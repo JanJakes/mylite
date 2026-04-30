@@ -141,6 +141,15 @@ case "$principal_output" in
 		;;
 esac
 
+account_ddl_output=$("$parser" "CREATE USER 'u'@'h'; ALTER USER 'u'@'%'; DROP USER IF EXISTS 'u'@'%'; RENAME USER 'u'@'h' TO 'v'@'h'; CREATE ROLE IF NOT EXISTS 'r'@'%'; DROP ROLE r")
+case "$account_ddl_output" in
+	*"create"*/user:"'u'@'h'"*"alter"*/user:"'u'@'%'"*"drop"*/user:"'u'@'%'"*"rename"*/user:"'u'@'h'"*"create"*/role:"'r'@'%'"*"drop"*/role:r*) ;;
+	*)
+		echo "unexpected account DDL output: $account_ddl_output" >&2
+		exit 1
+		;;
+esac
+
 with_output=$("$parser" "WITH c AS (SELECT 1) UPDATE t SET a=1; WITH c AS (SELECT 1) DELETE FROM t; WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c")
 case "$with_output" in
 	*"kinds=update"*"delete"*"insert"*) ;;

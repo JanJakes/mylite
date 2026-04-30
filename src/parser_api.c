@@ -1183,6 +1183,12 @@ static void set_statement_object_name(const mylite_parser *parser,
 {
 	size_t first_name_token = first_name_token_after_object(parser, object_token_index, last_token_index);
 
+	if (statement->object_kind == MYLITE_STATEMENT_OBJECT_USER ||
+	    statement->object_kind == MYLITE_STATEMENT_OBJECT_ROLE) {
+		set_statement_account_name_from_first_token(parser, statement, first_name_token, last_token_index);
+		return;
+	}
+
 	set_statement_object_name_from_first_token(parser, statement, first_name_token, last_token_index);
 }
 

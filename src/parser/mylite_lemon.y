@@ -724,6 +724,10 @@ show_tail ::= EVENTS show_database_tail show_filter_tail.
 show_tail ::= TRIGGERS show_database_tail show_filter_tail.
 show_tail ::= show_table_metadata_prefix show_column_kind show_table_source show_database_tail show_filter_tail.
 show_tail ::= show_table_metadata_prefix show_index_kind show_table_source show_database_tail show_filter_tail.
+show_tail ::= CHARACTER SET show_filter_tail.
+show_tail ::= CHARSET show_filter_tail.
+show_tail ::= COLLATION show_filter_tail.
+show_tail ::= ENGINE show_engine_name show_engine_kind.
 
 show_full_tail ::= FULL show_full_kind.
 
@@ -766,6 +770,15 @@ show_index_kind ::= KEYS.
 
 show_table_source ::= FROM cache_table_ref.
 show_table_source ::= IN cache_table_ref.
+
+show_engine_name ::= ATOM.
+show_engine_name ::= LABEL.
+
+show_engine_kind ::= STATUS.
+show_engine_kind ::= LOGS.
+show_engine_kind ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "MUTEX");
+}
 
 show_count_star ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "*");
@@ -820,10 +833,6 @@ show_full_kind ::= PROCESSLIST.
 
 show_unprefixed_kind ::= BINARY.
 show_unprefixed_kind ::= BINLOG.
-show_unprefixed_kind ::= CHARACTER.
-show_unprefixed_kind ::= CHARSET.
-show_unprefixed_kind ::= COLLATION.
-show_unprefixed_kind ::= ENGINE.
 show_unprefixed_kind ::= FUNCTION.
 show_unprefixed_kind ::= PROCEDURE.
 show_unprefixed_kind ::= PROFILE.

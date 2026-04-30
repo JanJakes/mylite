@@ -12,6 +12,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4.9 parser grammar: `sql/sql_yacc.yy`
 - MySQL 8.4 statement labels:
   `https://dev.mysql.com/doc/refman/8.4/en/statement-labels.html`
+- MySQL 8.4 local variable DECLARE statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/declare-local-variable.html`
 - MySQL 8.4 DECLARE ... CONDITION statement:
   `https://dev.mysql.com/doc/refman/8.4/en/declare-condition.html`
 - MySQL 8.4 DECLARE ... HANDLER statement:
@@ -186,7 +188,8 @@ Stored-program statement heads such as `DECLARE`, cursor operations, `IF`,
 kinds. Compound-control tokens are structurally matched for `IF ... END IF`,
 `LOOP ... END LOOP`, `REPEAT ... END REPEAT`, and `WHILE ... END WHILE` without
 misclassifying `IF(...)` expressions or `IF [NOT] EXISTS` clauses as compound
-block starts. Cursor names are recorded for `DECLARE ... CURSOR`, `OPEN`,
+block starts. Local variable names are recorded for ordinary `DECLARE`
+statements. Cursor names are recorded for `DECLARE ... CURSOR`, `OPEN`,
 `FETCH`, and `CLOSE`. Jump target labels are recorded for `LEAVE` and
 `ITERATE`. Label declarations are recorded when they prefix the MySQL-labeled
 constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`. Named condition
@@ -265,6 +268,9 @@ condition value is recorded for `DECLARE ... HANDLER`. `GET DIAGNOSTICS
   semantics.
 - Cursor metadata records the first cursor handle only. It does not yet validate
   declaration scope, result shape, fetch target lists, or cursor lifecycle.
+- Local variable metadata records only the first declared variable name. It does
+  not expand comma-separated declaration lists, validate type/default clauses,
+  or model block scope.
 - Condition declaration metadata records only the declared condition name. It
   does not yet validate declaration ordering, SQLSTATE/error-code validity,
   handler references, or condition scope.

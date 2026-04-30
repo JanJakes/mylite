@@ -256,6 +256,12 @@ Transaction savepoint statements expose the savepoint handle:
 ok statements=1 kinds=savepoint[1:2,0:11]/savepoint:s
 ```
 
+Stored-program local variable declarations expose the first declared variable:
+
+```text
+ok statements=1 kinds=declare[1:3,0:13]/local_variable:x
+```
+
 Parenthesized query expressions keep their opening-parenthesis span and are
 classified by the leading query token:
 

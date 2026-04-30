@@ -46,7 +46,7 @@ esac
 
 cursor_output=$("$parser" 'DECLARE c CURSOR FOR SELECT 1; DECLARE x INT; OPEN c; FETCH c INTO x; CLOSE c; CREATE TABLE cursor (id int)')
 case "$cursor_output" in
-	*"declare"*/cursor:c*"declare[8:10"*"open"*/cursor:c*"fetch"*/cursor:c*"close"*/cursor:c*"create"*/table:cursor*) ;;
+	*"declare"*/cursor:c*"declare"*/local_variable:x*"open"*/cursor:c*"fetch"*/cursor:c*"close"*/cursor:c*"create"*/table:cursor*) ;;
 	*)
 		echo "unexpected cursor output: $cursor_output" >&2
 		exit 1
@@ -62,9 +62,18 @@ SQL
 )
 declare_condition_output=$("$parser" "$declare_condition_sql")
 case "$declare_condition_output" in
-	*"declare"*/condition:cond*"declare"*/condition:not_found*"declare"*/condition:'`cond`'*"declare[21:23"*) ;;
+	*"declare"*/condition:cond*"declare"*/condition:not_found*"declare"*/condition:'`cond`'*"declare"*/local_variable:x*) ;;
 	*)
 		echo "unexpected DECLARE CONDITION output: $declare_condition_output" >&2
+		exit 1
+		;;
+esac
+
+declare_variable_output=$("$parser" 'DECLARE x, y INT DEFAULT 1; DECLARE `return` VARCHAR(10)')
+case "$declare_variable_output" in
+	*"declare"*/local_variable:x*"declare"*/local_variable:'`return`'*) ;;
+	*)
+		echo "unexpected DECLARE variable output: $declare_variable_output" >&2
 		exit 1
 		;;
 esac

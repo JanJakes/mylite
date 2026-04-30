@@ -636,6 +636,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_INSTANCE: return "instance";
 	case MYLITE_STATEMENT_OBJECT_LABEL: return "label";
 	case MYLITE_STATEMENT_OBJECT_LOGFILE_GROUP: return "logfile_group";
+	case MYLITE_STATEMENT_OBJECT_LOCAL_VARIABLE: return "local_variable";
 	case MYLITE_STATEMENT_OBJECT_PLUGIN: return "plugin";
 	case MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT: return "prepared_statement";
 	case MYLITE_STATEMENT_OBJECT_PROCEDURE: return "procedure";
@@ -1866,6 +1867,15 @@ static int classify_declare_statement_object(const mylite_parser *parser,
 	}
 
 	if (!statement_contains_token(parser, token_index, last_token_index, CURSOR_T)) {
+		if (token_index <= last_token_index &&
+		    token_index < parser->token_count &&
+		    token_can_continue_object_name(&parser->tokens[token_index])) {
+			return set_statement_direct_object_name(parser,
+			                                        statement,
+			                                        MYLITE_STATEMENT_OBJECT_LOCAL_VARIABLE,
+			                                        token_index,
+			                                        last_token_index);
+		}
 		return 0;
 	}
 	return classify_cursor_statement_object(parser, statement, token_index, last_token_index);

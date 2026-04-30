@@ -128,6 +128,13 @@ def main() -> int:
         ("get nonsense;", 1, {}),
         ("signal sqlstate '01000';", 0, {"statements": "1", "stored_program": "1"}),
         ("signal select;", 1, {}),
+        ("begin;", 0, {"statements": "1", "transaction": "1"}),
+        ("begin work;", 0, {"statements": "1", "transaction": "1"}),
+        ("begin nonsense;", 1, {}),
+        ("commit and no chain release;", 0, {"statements": "1", "transaction": "1"}),
+        ("commit nonsense;", 1, {}),
+        ("rollback to savepoint s1;", 0, {"statements": "1", "transaction": "1"}),
+        ("rollback nonsense;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

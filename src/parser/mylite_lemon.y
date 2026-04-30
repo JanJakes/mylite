@@ -79,6 +79,9 @@ statement ::= prepare_statement.
 statement ::= execute_statement.
 statement ::= get_statement.
 statement ::= signal_statement.
+statement ::= begin_statement.
+statement ::= commit_statement.
+statement ::= rollback_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -619,9 +622,51 @@ signal_condition ::= ATOM.
 signal_condition ::= LABEL.
 signal_condition ::= SQLSTATE.
 
-optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
-optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
-optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
+begin_statement ::= BEGIN. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+}
+begin_statement ::= BEGIN WORK. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+}
+
+commit_statement ::= COMMIT transaction_end_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+}
+
+rollback_statement ::= ROLLBACK transaction_end_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+}
+rollback_statement ::= ROLLBACK rollback_to_savepoint_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+}
+
+transaction_end_tail ::= .
+transaction_end_tail ::= WORK.
+transaction_end_tail ::= RELEASE.
+transaction_end_tail ::= NO RELEASE.
+transaction_end_tail ::= AND CHAIN.
+transaction_end_tail ::= AND NO CHAIN.
+transaction_end_tail ::= WORK RELEASE.
+transaction_end_tail ::= WORK NO RELEASE.
+transaction_end_tail ::= WORK AND CHAIN.
+transaction_end_tail ::= WORK AND NO CHAIN.
+transaction_end_tail ::= AND CHAIN RELEASE.
+transaction_end_tail ::= AND CHAIN NO RELEASE.
+transaction_end_tail ::= AND NO CHAIN RELEASE.
+transaction_end_tail ::= AND NO CHAIN NO RELEASE.
+transaction_end_tail ::= WORK AND CHAIN RELEASE.
+transaction_end_tail ::= WORK AND CHAIN NO RELEASE.
+transaction_end_tail ::= WORK AND NO CHAIN RELEASE.
+transaction_end_tail ::= WORK AND NO CHAIN NO RELEASE.
+
+rollback_to_savepoint_tail ::= TO savepoint_reference.
+rollback_to_savepoint_tail ::= TO SAVEPOINT savepoint_reference.
+rollback_to_savepoint_tail ::= WORK TO savepoint_reference.
+rollback_to_savepoint_tail ::= WORK TO SAVEPOINT savepoint_reference.
+
+savepoint_reference ::= ATOM.
+savepoint_reference ::= LABEL.
+
 optional_tail_start(A) ::= RESIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= ELSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= LOOP. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -849,14 +894,19 @@ keyword ::= VARIABLES.
 keyword ::= WARNINGS.
 keyword ::= DELAYED.
 keyword ::= DIAGNOSTICS.
+keyword ::= AND.
+keyword ::= CHAIN.
 keyword ::= HIGH_PRIORITY.
 keyword ::= IGNORE.
 keyword ::= INTO.
 keyword ::= LOW_PRIORITY.
+keyword ::= NO.
 keyword ::= QUICK.
 keyword ::= RECURSIVE.
 keyword ::= ROW.
 keyword ::= SQLSTATE.
+keyword ::= TO.
+keyword ::= WORK.
 
 keyword_not_select_clause ::= SELECT.
 keyword_not_select_clause ::= WITH.
@@ -1019,11 +1069,16 @@ keyword_not_select_clause ::= VARIABLES.
 keyword_not_select_clause ::= WARNINGS.
 keyword_not_select_clause ::= DELAYED.
 keyword_not_select_clause ::= DIAGNOSTICS.
+keyword_not_select_clause ::= AND.
+keyword_not_select_clause ::= CHAIN.
 keyword_not_select_clause ::= HIGH_PRIORITY.
 keyword_not_select_clause ::= IGNORE.
 keyword_not_select_clause ::= INTO.
 keyword_not_select_clause ::= LOW_PRIORITY.
+keyword_not_select_clause ::= NO.
 keyword_not_select_clause ::= QUICK.
 keyword_not_select_clause ::= RECURSIVE.
 keyword_not_select_clause ::= ROW.
 keyword_not_select_clause ::= SQLSTATE.
+keyword_not_select_clause ::= TO.
+keyword_not_select_clause ::= WORK.

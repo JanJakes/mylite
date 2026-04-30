@@ -9,6 +9,10 @@
 
 int yyparse(mylite_parser *parser);
 
+static void classify_statement_metadata(mylite_parser *parser);
+static void classify_with_statement_kinds(mylite_parser *parser);
+static mylite_statement_kind classify_with_statement_kind(const mylite_parser *parser,
+                                                          const mylite_statement *statement);
 static void classify_statement_objects(mylite_parser *parser);
 static void classify_statement_object(const mylite_parser *parser, mylite_statement *statement);
 static mylite_statement_object_kind object_kind_from_token_sequence(const mylite_parser *parser,
@@ -169,7 +173,7 @@ int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result
 		mylite_parser_set_error(&parser, parser.lexer.error);
 	}
 	if (parser.error[0] == '\0') {
-		classify_statement_objects(&parser);
+		classify_statement_metadata(&parser);
 	}
 
 	result->ok = rc == 0 && parser.error[0] == '\0';
@@ -327,6 +331,60 @@ const char *mylite_token_kind_name(mylite_token_kind kind)
 	default:
 		return "unknown";
 	}
+}
+
+static void classify_statement_metadata(mylite_parser *parser)
+{
+	classify_with_statement_kinds(parser);
+	classify_statement_objects(parser);
+}
+
+static void classify_with_statement_kinds(mylite_parser *parser)
+{
+	size_t i;
+
+	for (i = 0; i < parser->statement_count; i++) {
+		if (parser->statements[i].first_token == 0 ||
+		    parser->statements[i].first_token > parser->token_count ||
+		    parser->tokens[parser->statements[i].first_token - 1].parser_token != WITH_T) {
+			continue;
+		}
+		parser->statements[i].kind = classify_with_statement_kind(parser, &parser->statements[i]);
+	}
+}
+
+static mylite_statement_kind classify_with_statement_kind(const mylite_parser *parser,
+                                                          const mylite_statement *statement)
+{
+	size_t token_index = statement->first_token;
+	size_t last_token_index;
+
+	if (statement->last_token < statement->first_token) {
+		return statement->kind;
+	}
+	last_token_index = statement->last_token - 1;
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		int token = parser->tokens[token_index].parser_token;
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+			continue;
+		}
+
+		switch (token) {
+		case SELECT_T: return MYLITE_STATEMENT_SELECT;
+		case INSERT_T: return MYLITE_STATEMENT_INSERT;
+		case REPLACE_T: return MYLITE_STATEMENT_REPLACE;
+		case UPDATE_T: return MYLITE_STATEMENT_UPDATE;
+		case DELETE_T: return MYLITE_STATEMENT_DELETE;
+		default:
+			token_index++;
+			break;
+		}
+	}
+	return statement->kind;
 }
 
 static void classify_statement_objects(mylite_parser *parser)

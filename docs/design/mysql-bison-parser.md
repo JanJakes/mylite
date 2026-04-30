@@ -43,7 +43,9 @@ valid.
 
 Statement bodies remain token-preserving and permissive so the prototype can
 accept the broad MySQL statement inventory while detailed productions are added
-statement by statement.
+statement by statement. `WITH` statements are post-classified by skipping
+matched CTE subqueries and inspecting the outer DML verb, so `WITH ... UPDATE`,
+`WITH ... DELETE`, and `WITH ... INSERT` do not collapse to `select`.
 
 ## Boundaries
 

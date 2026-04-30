@@ -14,6 +14,7 @@ python3 tests/check_keywords.py
 "$parser" --quiet "INSERT INTO t1 (id, title) VALUES (1, 'a'), (2, 'b') ON DUPLICATE KEY UPDATE title = VALUES(title)"
 "$parser" --quiet "CREATE PROCEDURE p1() BEGIN SELECT 1; IF 1 THEN SELECT 2; END IF; END"
 "$parser" --quiet "WITH cte AS (SELECT 0 /*! ) */ SELECT * FROM cte a, cte b"
+"$parser" --quiet "WITH c AS (SELECT 1) UPDATE t SET a=1"
 "$parser" --quiet "COMMIT"
 
 span_output=$("$parser" "SELECT 1; COMMIT")
@@ -30,6 +31,15 @@ case "$object_output" in
 	*"create"*/table:'`db`.`t`'*"alter"*/view:v*"drop"*/function:f*) ;;
 	*)
 		echo "unexpected object output: $object_output" >&2
+		exit 1
+		;;
+esac
+
+with_output=$("$parser" "WITH c AS (SELECT 1) UPDATE t SET a=1; WITH c AS (SELECT 1) DELETE FROM t; WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c")
+case "$with_output" in
+	*"kinds=update"*"delete"*"insert"*) ;;
+	*)
+		echo "unexpected WITH output: $with_output" >&2
 		exit 1
 		;;
 esac

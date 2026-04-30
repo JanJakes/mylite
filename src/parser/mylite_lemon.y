@@ -85,6 +85,8 @@ statement ::= rollback_statement.
 statement ::= set_statement.
 statement ::= grant_statement.
 statement ::= revoke_statement.
+statement ::= leave_statement.
+statement ::= iterate_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -109,8 +111,6 @@ required_tail_start(A) ::= HELP. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= IF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= ELSEIF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= RETURN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-required_tail_start(A) ::= LEAVE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-required_tail_start(A) ::= ITERATE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 
 select_statement ::= SELECT select_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
@@ -715,6 +715,17 @@ privilege_first_token ::= SHOW.
 privilege_first_token ::= SHUTDOWN.
 privilege_first_token ::= TRIGGER.
 privilege_first_token ::= UPDATE.
+
+leave_statement ::= LEAVE stored_program_label_ref. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+iterate_statement ::= ITERATE stored_program_label_ref. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+stored_program_label_ref ::= ATOM.
+stored_program_label_ref ::= LABEL.
 
 optional_tail_start(A) ::= RESIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= ELSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }

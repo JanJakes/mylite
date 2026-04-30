@@ -181,9 +181,9 @@ drop_statement ::= DROP drop_tail. {
 drop_tail ::= drop_object_kind required_statement_tail.
 drop_tail ::= drop_table_prefix drop_if_exists_tail drop_name_list drop_restrict_tail.
 drop_tail ::= LOGFILE ATOM required_statement_tail.
-drop_tail ::= RESOURCE ATOM required_statement_tail.
+drop_tail ::= RESOURCE drop_resource_group cache_name_part drop_resource_force_tail.
 drop_tail ::= SPATIAL ATOM required_statement_tail.
-drop_tail ::= UNDO TABLESPACE required_statement_tail.
+drop_tail ::= UNDO TABLESPACE cache_name_part drop_tablespace_engine_tail.
 drop_tail ::= PREPARE prepared_statement_name.
 drop_tail ::= INDEX drop_index_name ON cache_table_ref drop_index_options_tail.
 drop_tail ::= drop_database_kind drop_if_exists_tail cache_name_part.
@@ -191,14 +191,14 @@ drop_tail ::= drop_routine_kind drop_if_exists_tail cache_table_ref.
 drop_tail ::= EVENT drop_if_exists_tail cache_table_ref.
 drop_tail ::= TRIGGER drop_if_exists_tail cache_table_ref.
 drop_tail ::= VIEW drop_if_exists_tail drop_name_list drop_restrict_tail.
+drop_tail ::= SERVER drop_if_exists_tail cache_name_part.
+drop_tail ::= TABLESPACE cache_name_part drop_tablespace_engine_tail.
 
 drop_table_kind ::= TABLE.
 drop_table_kind ::= TABLES.
 
 drop_object_kind ::= USER.
 drop_object_kind ::= ROLE.
-drop_object_kind ::= SERVER.
-drop_object_kind ::= TABLESPACE.
 
 drop_table_prefix ::= drop_table_kind.
 drop_table_prefix ::= TEMPORARY drop_table_kind.
@@ -212,6 +212,18 @@ drop_name_list ::= drop_name_list COMMA cache_table_ref.
 drop_restrict_tail ::= .
 drop_restrict_tail ::= RESTRICT.
 drop_restrict_tail ::= CASCADE.
+
+drop_resource_group ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "GROUP");
+}
+
+drop_resource_force_tail ::= .
+drop_resource_force_tail ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "FORCE");
+}
+
+drop_tablespace_engine_tail ::= .
+drop_tablespace_engine_tail ::= ENGINE cache_name_part.
 
 drop_index_name ::= cache_name_part.
 

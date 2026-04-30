@@ -46,6 +46,12 @@ ok statements=1 kinds=use[1:2,0:7]/database:app
 ok statements=1 kinds=prepare[1:4,0:22]/prepared_statement:stmt
 ```
 
+Grant and revoke principal targets preserve the first account span:
+
+```text
+ok statements=1 kinds=grant[1:10,0:31]/user:'u'@'h'
+```
+
 Parenthesized query expressions keep their opening-parenthesis span and are
 classified by the leading query token:
 

@@ -132,6 +132,15 @@ case "$prepared_output" in
 		;;
 esac
 
+principal_output=$("$parser" "GRANT SELECT ON db.t TO 'u'@'h'; GRANT r TO u; REVOKE SELECT ON db.t FROM 'u'@'%'; REVOKE r FROM u")
+case "$principal_output" in
+	*"grant"*/user:"'u'@'h'"*"grant"*/user:u*"revoke"*/user:"'u'@'%'"*"revoke"*/user:u*) ;;
+	*)
+		echo "unexpected principal output: $principal_output" >&2
+		exit 1
+		;;
+esac
+
 with_output=$("$parser" "WITH c AS (SELECT 1) UPDATE t SET a=1; WITH c AS (SELECT 1) DELETE FROM t; WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c")
 case "$with_output" in
 	*"kinds=update"*"delete"*"insert"*) ;;

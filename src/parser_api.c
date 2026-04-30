@@ -54,6 +54,22 @@ static int classify_prepared_statement_object(const mylite_parser *parser,
                                               mylite_statement *statement,
                                               size_t token_index,
                                               size_t last_token_index);
+static int classify_principal_statement_object(const mylite_parser *parser,
+                                               mylite_statement *statement,
+                                               size_t token_index,
+                                               size_t last_token_index);
+static size_t find_principal_name_token(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index,
+                                        int marker_token);
+static void set_statement_account_name_from_first_token(const mylite_parser *parser,
+                                                        mylite_statement *statement,
+                                                        size_t first_name_token,
+                                                        size_t last_token_index);
+static size_t last_account_name_token(const mylite_parser *parser,
+                                      size_t first_name_token,
+                                      size_t last_token_index);
+static int token_is_account_at_marker(const mylite_parser *parser, size_t token_index);
 static int classify_show_statement_object(const mylite_parser *parser,
                                           mylite_statement *statement,
                                           size_t token_index,
@@ -852,6 +868,9 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	case MYLITE_STATEMENT_EXECUTE:
 	case MYLITE_STATEMENT_DEALLOCATE:
 		return classify_prepared_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_GRANT:
+	case MYLITE_STATEMENT_REVOKE:
+		return classify_principal_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_SHOW:
 		return classify_show_statement_object(parser, statement, name_token_index, last_token_index);
 	default:
@@ -929,6 +948,85 @@ static int classify_prepared_statement_object(const mylite_parser *parser,
 	                                        MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT,
 	                                        token_index,
 	                                        last_token_index);
+}
+
+static int classify_principal_statement_object(const mylite_parser *parser,
+                                               mylite_statement *statement,
+                                               size_t token_index,
+                                               size_t last_token_index)
+{
+	int marker_token = statement->kind == MYLITE_STATEMENT_GRANT ? TO_T : FROM_T;
+	size_t name_token_index = find_principal_name_token(parser, token_index, last_token_index, marker_token);
+
+	if (name_token_index > last_token_index || name_token_index >= parser->token_count) {
+		return 0;
+	}
+
+	statement->object_kind = MYLITE_STATEMENT_OBJECT_USER;
+	set_statement_account_name_from_first_token(parser, statement, name_token_index, last_token_index);
+	return 1;
+}
+
+static size_t find_principal_name_token(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index,
+                                        int marker_token)
+{
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == marker_token &&
+		    token_can_start_object_name(&parser->tokens[token_index + 1])) {
+			return token_index + 1;
+		}
+		token_index++;
+	}
+	return parser->token_count;
+}
+
+static void set_statement_account_name_from_first_token(const mylite_parser *parser,
+                                                        mylite_statement *statement,
+                                                        size_t first_name_token,
+                                                        size_t last_token_index)
+{
+	size_t last_name_token;
+	const mylite_token *first;
+	const mylite_token *last;
+
+	if (first_name_token >= parser->token_count) {
+		return;
+	}
+
+	last_name_token = last_account_name_token(parser, first_name_token, last_token_index);
+	first = &parser->tokens[first_name_token];
+	last = &parser->tokens[last_name_token];
+
+	statement->object_name_first_token = first_name_token + 1;
+	statement->object_name_last_token = last_name_token + 1;
+	statement->object_name_start_offset = first->start_offset;
+	statement->object_name_end_offset = last->end_offset;
+	statement->object_name_start_line = first->start_line;
+	statement->object_name_start_column = first->start_column;
+	statement->object_name_end_line = last->end_line;
+	statement->object_name_end_column = last->end_column;
+}
+
+static size_t last_account_name_token(const mylite_parser *parser,
+                                      size_t first_name_token,
+                                      size_t last_token_index)
+{
+	if (first_name_token + 2 <= last_token_index &&
+	    token_is_account_at_marker(parser, first_name_token + 1) &&
+	    token_can_start_object_name(&parser->tokens[first_name_token + 2])) {
+		return first_name_token + 2;
+	}
+	return first_name_token;
+}
+
+static int token_is_account_at_marker(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       parser->tokens[token_index].parser_token == USER_VARIABLE &&
+	       parser->tokens[token_index].end_offset - parser->tokens[token_index].start_offset == 1 &&
+	       parser->lexer.input[parser->tokens[token_index].start_offset] == '@';
 }
 
 static int classify_show_statement_object(const mylite_parser *parser,

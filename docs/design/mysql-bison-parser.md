@@ -56,7 +56,9 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, direct `DESCRIBE` / `EXPLAIN` table forms, `LOAD ... INTO TABLE`,
 `LOCK TABLES`, `SHOW CREATE ...`, `SHOW COLUMNS` / `FIELDS`,
 `SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, and prepared-statement names in
-`PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`.
+`PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Principal
+targets are recorded for `GRANT ... TO` and `REVOKE ... FROM`, including the
+first `user@host` span when present.
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token.
@@ -83,6 +85,9 @@ block starts.
   `SHOW` metadata is similarly limited to forms with a clear table, view, or
   schema target. Prepared-statement metadata records the statement handle name,
   not the SQL text referenced by `PREPARE`.
+- Principal metadata records the first syntactic grant/revoke account target
+  only. It does not yet resolve roles, dynamic privileges, multiple accounts,
+  proxy grants, or account-name normalization.
 - Parenthesized query-expression classification only identifies the leading
   query statement kind; it does not build the query-expression tree.
 - Stored-program control matching records token pairs only; it does not yet

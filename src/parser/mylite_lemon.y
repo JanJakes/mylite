@@ -146,7 +146,7 @@ create_statement ::= CREATE create_tail. {
 
 create_tail ::= create_object_kind required_statement_tail.
 create_tail ::= TEMPORARY TABLE required_statement_tail.
-create_tail ::= AGGREGATE FUNCTION required_statement_tail.
+create_tail ::= AGGREGATE FUNCTION cache_table_ref required_statement_tail.
 create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
 create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
 create_tail ::= LOGFILE create_logfile_group cache_name_part required_statement_tail.
@@ -160,6 +160,7 @@ create_tail ::= ROLE create_if_not_exists_tail drop_account_list.
 create_tail ::= USER create_if_not_exists_tail drop_account_name create_user_tail.
 create_tail ::= EVENT create_if_not_exists_tail cache_table_ref required_statement_tail.
 create_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref required_statement_tail.
+create_tail ::= create_routine_kind create_if_not_exists_tail cache_table_ref required_statement_tail.
 
 create_index_kind ::= UNIQUE.
 create_index_kind ::= FULLTEXT.
@@ -181,11 +182,12 @@ create_object_kind ::= OR.
 create_object_kind ::= ALGORITHM.
 create_object_kind ::= SQL.
 create_object_kind ::= DEFINER.
-create_object_kind ::= FUNCTION.
-create_object_kind ::= PROCEDURE.
 
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.
+
+create_routine_kind ::= FUNCTION.
+create_routine_kind ::= PROCEDURE.
 
 create_if_not_exists_tail ::= .
 create_if_not_exists_tail ::= IF create_not reset_exists.

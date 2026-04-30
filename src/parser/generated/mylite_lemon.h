@@ -44,9 +44,9 @@
 #define ML_ALGORITHM                       44
 #define ML_SQL                             45
 #define ML_DEFINER                         46
-#define ML_PROCEDURE                       47
-#define ML_DATABASE                        48
-#define ML_SCHEMA                          49
+#define ML_DATABASE                        47
+#define ML_SCHEMA                          48
+#define ML_PROCEDURE                       49
 #define ML_IF                              50
 #define ML_DROP                            51
 #define ML_PREPARE                         52

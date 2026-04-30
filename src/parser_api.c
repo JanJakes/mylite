@@ -53,6 +53,19 @@ static size_t find_load_table_name_token(const mylite_parser *parser,
 static size_t find_lock_table_name_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index);
+static int classify_set_statement_object(const mylite_parser *parser,
+                                         mylite_statement *statement,
+                                         size_t token_index,
+                                         size_t last_token_index);
+static size_t find_set_role_name_token(const mylite_parser *parser,
+                                       size_t token_index,
+                                       size_t last_token_index);
+static size_t find_set_default_role_user_name_token(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static size_t find_set_password_name_token(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index);
 static int classify_prepared_statement_object(const mylite_parser *parser,
                                               mylite_statement *statement,
                                               size_t token_index,
@@ -940,6 +953,8 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
 		name_token_index = find_lock_table_name_token(parser, name_token_index, last_token_index);
 		break;
+	case MYLITE_STATEMENT_SET:
+		return classify_set_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_PREPARE:
 	case MYLITE_STATEMENT_EXECUTE:
 	case MYLITE_STATEMENT_DEALLOCATE:
@@ -1019,6 +1034,113 @@ static size_t find_lock_table_name_token(const mylite_parser *parser,
 	token_index++;
 	if (token_index <= last_token_index && token_can_start_object_name(&parser->tokens[token_index])) {
 		return token_index;
+	}
+	return parser->token_count;
+}
+
+static int classify_set_statement_object(const mylite_parser *parser,
+                                         mylite_statement *statement,
+                                         size_t token_index,
+                                         size_t last_token_index)
+{
+	size_t name_token_index;
+
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == ROLE_T) {
+		name_token_index = find_set_role_name_token(parser, token_index + 1, last_token_index);
+		if (name_token_index >= parser->token_count) {
+			return 0;
+		}
+		statement->object_kind = MYLITE_STATEMENT_OBJECT_ROLE;
+		set_statement_account_name_from_first_token(parser, statement, name_token_index, last_token_index);
+		return 1;
+	}
+
+	if (parser->tokens[token_index].parser_token == DEFAULT_T &&
+	    token_index + 1 <= last_token_index &&
+	    parser->tokens[token_index + 1].parser_token == ROLE_T) {
+		name_token_index = find_set_role_name_token(parser, token_index + 2, last_token_index);
+		if (name_token_index < parser->token_count) {
+			statement->object_kind = MYLITE_STATEMENT_OBJECT_ROLE;
+			set_statement_account_name_from_first_token(parser, statement, name_token_index, last_token_index);
+			return 1;
+		}
+
+		name_token_index = find_set_default_role_user_name_token(parser, token_index + 2, last_token_index);
+		if (name_token_index >= parser->token_count) {
+			return 0;
+		}
+		statement->object_kind = MYLITE_STATEMENT_OBJECT_USER;
+		set_statement_account_name_from_first_token(parser, statement, name_token_index, last_token_index);
+		return 1;
+	}
+
+	if (token_text_equals(parser, token_index, "PASSWORD")) {
+		name_token_index = find_set_password_name_token(parser, token_index + 1, last_token_index);
+		if (name_token_index >= parser->token_count) {
+			return 0;
+		}
+		statement->object_kind = MYLITE_STATEMENT_OBJECT_USER;
+		set_statement_account_name_from_first_token(parser, statement, name_token_index, last_token_index);
+		return 1;
+	}
+
+	return 0;
+}
+
+static size_t find_set_role_name_token(const mylite_parser *parser,
+                                       size_t token_index,
+                                       size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return parser->token_count;
+	}
+
+	if (parser->tokens[token_index].parser_token == ALL_T) {
+		if (token_index + 2 <= last_token_index &&
+		    token_text_equals(parser, token_index + 1, "EXCEPT") &&
+		    token_can_start_object_name(&parser->tokens[token_index + 2])) {
+			return token_index + 2;
+		}
+		return parser->token_count;
+	}
+
+	if (parser->tokens[token_index].parser_token == DEFAULT_T ||
+	    token_text_equals(parser, token_index, "NONE")) {
+		return parser->token_count;
+	}
+
+	if (token_can_start_object_name(&parser->tokens[token_index])) {
+		return token_index;
+	}
+	return parser->token_count;
+}
+
+static size_t find_set_default_role_user_name_token(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == TO_T &&
+		    token_can_start_object_name(&parser->tokens[token_index + 1])) {
+			return token_index + 1;
+		}
+		token_index++;
+	}
+	return parser->token_count;
+}
+
+static size_t find_set_password_name_token(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "FOR") &&
+	    token_can_start_object_name(&parser->tokens[token_index + 1])) {
+		return token_index + 1;
 	}
 	return parser->token_count;
 }

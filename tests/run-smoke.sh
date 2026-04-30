@@ -177,6 +177,15 @@ case "$account_ddl_output" in
 		;;
 esac
 
+set_account_output=$("$parser" "SET ROLE r; SET ROLE ALL EXCEPT 'r'@'h'; SET ROLE DEFAULT; SET DEFAULT ROLE r TO 'u'@'h'; SET DEFAULT ROLE ALL TO 'u'@'h'; SET PASSWORD FOR 'u'@'h' = 'x'; SET PASSWORD = 'x'; SET autocommit=1")
+case "$set_account_output" in
+	*"set"*/role:r*"set"*/role:"'r'@'h'"*"set[13:15"*"set"*/role:r*"set"*/user:"'u'@'h'"*"set"*/user:"'u'@'h'"*"set[44:47"*"set[49:52"*) ;;
+	*)
+		echo "unexpected SET account output: $set_account_output" >&2
+		exit 1
+		;;
+esac
+
 savepoint_output=$("$parser" 'SAVEPOINT s; RELEASE SAVEPOINT s; ROLLBACK TO SAVEPOINT `s`; ROLLBACK')
 case "$savepoint_output" in
 	*"savepoint"*/savepoint:s*"release"*/savepoint:s*"rollback"*/savepoint:'`s`'*"rollback[13:13"*) ;;

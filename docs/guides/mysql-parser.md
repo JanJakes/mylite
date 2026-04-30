@@ -58,6 +58,13 @@ Account and role DDL preserve the first account-style target span too:
 ok statements=1 kinds=create[1:5,0:19]/user:'u'@'h'
 ```
 
+Account-management `SET` statements expose the first explicit role or user
+target while ordinary variable assignments stay objectless:
+
+```text
+ok statements=1 kinds=set[1:3,0:10]/role:r
+```
+
 Transaction savepoint statements expose the savepoint handle:
 
 ```text

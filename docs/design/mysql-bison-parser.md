@@ -12,6 +12,10 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4.9 parser grammar: `sql/sql_yacc.yy`
 - MySQL 8.4 statement labels:
   `https://dev.mysql.com/doc/refman/8.4/en/statement-labels.html`
+- MySQL 8.4 account-management SET statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/set-role.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/set-default-role.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/set-password.html`
 - WordPress SQLite Database Integration query corpus:
   `packages/mysql-on-sqlite/tests/mysql/data/mysql-server-tests-queries.csv`
 
@@ -62,8 +66,10 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 targets are recorded for `GRANT ... TO` and `REVOKE ... FROM`, including the
 first `user@host` span when present. Account and role DDL target spans also
 preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
-`RENAME` forms. Savepoint names are recorded for `SAVEPOINT`,
-`RELEASE SAVEPOINT`, and `ROLLBACK TO SAVEPOINT`.
+`RENAME` forms. Account-management `SET` metadata is recorded for explicit
+`SET ROLE`, `SET DEFAULT ROLE`, and `SET PASSWORD FOR` role or account targets,
+while session-variable `SET` statements remain objectless. Savepoint names are
+recorded for `SAVEPOINT`, `RELEASE SAVEPOINT`, and `ROLLBACK TO SAVEPOINT`.
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token.
@@ -95,7 +101,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   not the SQL text referenced by `PREPARE`.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
-  accounts, proxy grants, account-name normalization, or rename destinations.
+  accounts, proxy grants, account-name normalization, rename destinations, or
+  implicit current-user/current-role targets in `SET` statements.
 - Savepoint metadata records the named savepoint only. Bare `ROLLBACK` and
   non-savepoint `RELEASE` forms remain objectless.
 - Parenthesized query-expression classification only identifies the leading

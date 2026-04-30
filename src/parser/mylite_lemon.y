@@ -83,6 +83,8 @@ statement ::= begin_statement.
 statement ::= commit_statement.
 statement ::= rollback_statement.
 statement ::= set_statement.
+statement ::= grant_statement.
+statement ::= revoke_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -102,8 +104,6 @@ statement_start(A) ::= required_tail_start(B). { A = B; }
 statement_start(A) ::= optional_tail_start(B). { A = B; }
 
 required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= GRANT. { A = MYLITE_STATEMENT_ADMIN; }
-required_tail_start(A) ::= REVOKE. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= HELP. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= IF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= ELSEIF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -685,6 +685,35 @@ set_first_token ::= RESOURCE.
 set_first_token ::= ROLE.
 set_first_token ::= SESSION.
 set_first_token ::= TRANSACTION.
+
+grant_statement ::= GRANT privilege_first_token required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+
+revoke_statement ::= REVOKE privilege_first_token required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+
+privilege_first_token ::= ALTER.
+privilege_first_token ::= ATOM.
+privilege_first_token ::= CREATE.
+privilege_first_token ::= DELETE.
+privilege_first_token ::= DROP.
+privilege_first_token ::= EVENT.
+privilege_first_token ::= EXECUTE.
+privilege_first_token ::= GRANT.
+privilege_first_token ::= IF.
+privilege_first_token ::= INDEX.
+privilege_first_token ::= INSERT.
+privilege_first_token ::= LABEL.
+privilege_first_token ::= LOCK.
+privilege_first_token ::= REPLICATION.
+privilege_first_token ::= ROLE.
+privilege_first_token ::= SELECT.
+privilege_first_token ::= SHOW.
+privilege_first_token ::= SHUTDOWN.
+privilege_first_token ::= TRIGGER.
+privilege_first_token ::= UPDATE.
 
 optional_tail_start(A) ::= RESIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= ELSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }

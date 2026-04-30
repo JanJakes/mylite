@@ -139,6 +139,12 @@ def main() -> int:
         ("set global max_connections = 100;", 0, {"statements": "1", "utility": "1"}),
         ("set role r1;", 0, {"statements": "1", "utility": "1"}),
         ("set select;", 1, {}),
+        ("grant select on *.* to u;", 0, {"statements": "1", "admin": "1"}),
+        ("grant backup_admin on *.* to u;", 0, {"statements": "1", "admin": "1"}),
+        ("grant from;", 1, {}),
+        ("revoke select on *.* from u;", 0, {"statements": "1", "admin": "1"}),
+        ("revoke if exists r1 from u;", 0, {"statements": "1", "admin": "1"}),
+        ("revoke from;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

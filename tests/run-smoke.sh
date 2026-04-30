@@ -192,6 +192,15 @@ case "$set_account_output" in
 		;;
 esac
 
+install_output=$("$parser" "INSTALL PLUGIN p SONAME 'x.so'; UNINSTALL PLUGIN p; INSTALL COMPONENT 'file://component'; UNINSTALL COMPONENT 'file://component'")
+case "$install_output" in
+	*"install"*/plugin:p*"uninstall"*/plugin:p*"install"*/component:"'file://component'"*"uninstall"*/component:"'file://component'"*) ;;
+	*)
+		echo "unexpected install output: $install_output" >&2
+		exit 1
+		;;
+esac
+
 savepoint_output=$("$parser" 'SAVEPOINT s; RELEASE SAVEPOINT s; ROLLBACK TO SAVEPOINT `s`; ROLLBACK')
 case "$savepoint_output" in
 	*"savepoint"*/savepoint:s*"release"*/savepoint:s*"rollback"*/savepoint:'`s`'*"rollback[13:13"*) ;;

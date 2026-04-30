@@ -19,6 +19,11 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
+- MySQL 8.4 component and plugin statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/install-component.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/uninstall-component.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/install-plugin.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/uninstall-plugin.html`
 - WordPress SQLite Database Integration query corpus:
   `packages/mysql-on-sqlite/tests/mysql/data/mysql-server-tests-queries.csv`
 
@@ -66,9 +71,11 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `LOCK TABLES`, `SHOW CREATE ...`, `SHOW COLUMNS` / `FIELDS`,
 `SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, account targets in
 `SHOW CREATE USER` and `SHOW GRANTS FOR`, and prepared-statement names in
-`PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Principal
-targets are recorded for `GRANT ... TO` and `REVOKE ... FROM`, including the
-first `user@host` span when present. Account and role DDL target spans also
+`PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Component and
+plugin targets are recorded for `INSTALL` and `UNINSTALL` administrative
+statements. Principal targets are recorded for `GRANT ... TO` and
+`REVOKE ... FROM`, including the first `user@host` span when present. Account
+and role DDL target spans also
 preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
 `RENAME` forms. Account-management `SET` metadata is recorded for explicit
 `SET ROLE`, `SET DEFAULT ROLE`, and `SET PASSWORD FOR` role or account targets,
@@ -101,8 +108,9 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   target metadata is deliberately conservative so query-plan forms such as
   `EXPLAIN SELECT` and `EXPLAIN FORMAT=... SELECT` remain objectless.
   `SHOW` metadata is similarly limited to forms with a clear table, view, or
-  schema target. Prepared-statement metadata records the statement handle name,
-  not the SQL text referenced by `PREPARE`.
+  schema/account target. Prepared-statement metadata records the statement
+  handle name, not the SQL text referenced by `PREPARE`. Component/plugin
+  metadata records only the first target in multi-target statements.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

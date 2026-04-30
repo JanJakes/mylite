@@ -66,6 +66,10 @@ static size_t find_set_default_role_user_name_token(const mylite_parser *parser,
 static size_t find_set_password_name_token(const mylite_parser *parser,
                                            size_t token_index,
                                            size_t last_token_index);
+static int classify_install_statement_object(const mylite_parser *parser,
+                                             mylite_statement *statement,
+                                             size_t token_index,
+                                             size_t last_token_index);
 static int classify_prepared_statement_object(const mylite_parser *parser,
                                               mylite_statement *statement,
                                               size_t token_index,
@@ -527,12 +531,14 @@ const char *mylite_statement_kind_name(mylite_statement_kind kind)
 const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 {
 	switch (kind) {
+	case MYLITE_STATEMENT_OBJECT_COMPONENT: return "component";
 	case MYLITE_STATEMENT_OBJECT_CURSOR: return "cursor";
 	case MYLITE_STATEMENT_OBJECT_DATABASE: return "database";
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
 	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
 	case MYLITE_STATEMENT_OBJECT_INDEX: return "index";
 	case MYLITE_STATEMENT_OBJECT_LABEL: return "label";
+	case MYLITE_STATEMENT_OBJECT_PLUGIN: return "plugin";
 	case MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT: return "prepared_statement";
 	case MYLITE_STATEMENT_OBJECT_PROCEDURE: return "procedure";
 	case MYLITE_STATEMENT_OBJECT_ROLE: return "role";
@@ -958,6 +964,9 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		break;
 	case MYLITE_STATEMENT_SET:
 		return classify_set_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_INSTALL:
+	case MYLITE_STATEMENT_UNINSTALL:
+		return classify_install_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_PREPARE:
 	case MYLITE_STATEMENT_EXECUTE:
 	case MYLITE_STATEMENT_DEALLOCATE:
@@ -1146,6 +1155,34 @@ static size_t find_set_password_name_token(const mylite_parser *parser,
 		return token_index + 1;
 	}
 	return parser->token_count;
+}
+
+static int classify_install_statement_object(const mylite_parser *parser,
+                                             mylite_statement *statement,
+                                             size_t token_index,
+                                             size_t last_token_index)
+{
+	mylite_statement_object_kind object_kind;
+
+	if (token_index + 1 > last_token_index ||
+	    token_index + 1 >= parser->token_count ||
+	    !token_can_start_object_name(&parser->tokens[token_index + 1])) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "COMPONENT")) {
+		object_kind = MYLITE_STATEMENT_OBJECT_COMPONENT;
+	} else if (token_text_equals(parser, token_index, "PLUGIN")) {
+		object_kind = MYLITE_STATEMENT_OBJECT_PLUGIN;
+	} else {
+		return 0;
+	}
+
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        object_kind,
+	                                        token_index + 1,
+	                                        last_token_index);
 }
 
 static int classify_prepared_statement_object(const mylite_parser *parser,

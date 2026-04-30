@@ -417,9 +417,35 @@ import_comma ::= ATOM(A). {
 
 import_file ::= ATOM.
 
-cache_statement ::= CACHE INDEX required_statement_tail. {
+cache_statement ::= CACHE INDEX cache_table_list IN cache_keycache. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
+
+cache_table_list ::= cache_table_spec.
+cache_table_list ::= cache_table_list import_comma cache_table_spec.
+
+cache_table_spec ::= cache_table_ref.
+cache_table_spec ::= cache_table_ref KEY cache_key_list.
+
+cache_table_ref ::= cache_name_part.
+cache_table_ref ::= cache_name_part DOT cache_name_part.
+
+cache_name_part ::= ATOM.
+cache_name_part ::= LABEL.
+cache_name_part ::= DEFAULT.
+
+cache_key_list ::= LP cache_key_names RP.
+
+cache_key_names ::= cache_key_name.
+cache_key_names ::= cache_key_names import_comma cache_key_name.
+
+cache_key_name ::= ATOM.
+cache_key_name ::= LABEL.
+cache_key_name ::= DEFAULT.
+
+cache_keycache ::= ATOM.
+cache_keycache ::= LABEL.
+cache_keycache ::= DEFAULT.
 
 kill_statement ::= KILL kill_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
@@ -1156,6 +1182,7 @@ keyword ::= TABLESPACE.
 keyword ::= VALUES.
 keyword ::= HANDLER.
 keyword ::= IMPORT.
+keyword ::= IN.
 keyword ::= START.
 keyword ::= BEGIN.
 keyword ::= COMMIT.
@@ -1277,6 +1304,7 @@ keyword ::= GLOBAL.
 keyword ::= GRANTS.
 keyword ::= HOSTS.
 keyword ::= INDEXES.
+keyword ::= KEY.
 keyword ::= KEYS.
 keyword ::= PLUGINS.
 keyword ::= LOGS.
@@ -1351,6 +1379,7 @@ keyword_not_select_clause ::= TABLESPACE.
 keyword_not_select_clause ::= VALUES.
 keyword_not_select_clause ::= HANDLER.
 keyword_not_select_clause ::= IMPORT.
+keyword_not_select_clause ::= IN.
 keyword_not_select_clause ::= START.
 keyword_not_select_clause ::= BEGIN.
 keyword_not_select_clause ::= COMMIT.
@@ -1470,6 +1499,7 @@ keyword_not_select_clause ::= GLOBAL.
 keyword_not_select_clause ::= GRANTS.
 keyword_not_select_clause ::= HOSTS.
 keyword_not_select_clause ::= INDEXES.
+keyword_not_select_clause ::= KEY.
 keyword_not_select_clause ::= KEYS.
 keyword_not_select_clause ::= PLUGINS.
 keyword_not_select_clause ::= LOGS.

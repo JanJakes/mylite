@@ -41,6 +41,7 @@ statement ::= drop_statement.
 statement ::= alter_statement.
 statement ::= rename_statement.
 statement ::= truncate_statement.
+statement ::= load_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -66,7 +67,6 @@ required_tail_start(A) ::= UPDATE. { A = MYLITE_STATEMENT_UPDATE; }
 required_tail_start(A) ::= DELETE. { A = MYLITE_STATEMENT_DELETE; }
 required_tail_start(A) ::= CALL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= LOAD. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= TABLE. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= VALUES. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= HANDLER. { A = MYLITE_STATEMENT_UTILITY; }
@@ -230,6 +230,16 @@ truncate_tail ::= truncate_table_name statement_tail.
 truncate_table_name ::= ATOM.
 truncate_table_name ::= LABEL.
 
+load_statement ::= LOAD load_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+
+load_tail ::= load_first_token required_statement_tail.
+
+load_first_token ::= DATA.
+load_first_token ::= XML.
+load_first_token ::= INDEX.
+
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -307,6 +317,7 @@ keyword ::= REPLACE.
 keyword ::= UPDATE.
 keyword ::= DELETE.
 keyword ::= CREATE.
+keyword ::= DATA.
 keyword ::= DATABASE.
 keyword ::= ALTER.
 keyword ::= DROP.
@@ -405,6 +416,7 @@ keyword ::= SPATIAL.
 keyword ::= TEMPORARY.
 keyword ::= UNDO.
 keyword ::= UNIQUE.
+keyword ::= XML.
 
 keyword_not_select_clause ::= SELECT.
 keyword_not_select_clause ::= WITH.
@@ -413,6 +425,7 @@ keyword_not_select_clause ::= REPLACE.
 keyword_not_select_clause ::= UPDATE.
 keyword_not_select_clause ::= DELETE.
 keyword_not_select_clause ::= CREATE.
+keyword_not_select_clause ::= DATA.
 keyword_not_select_clause ::= DATABASE.
 keyword_not_select_clause ::= ALTER.
 keyword_not_select_clause ::= DROP.
@@ -509,3 +522,4 @@ keyword_not_select_clause ::= SPATIAL.
 keyword_not_select_clause ::= TEMPORARY.
 keyword_not_select_clause ::= UNDO.
 keyword_not_select_clause ::= UNIQUE.
+keyword_not_select_clause ::= XML.

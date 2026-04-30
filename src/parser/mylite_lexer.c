@@ -453,6 +453,7 @@ static int keyword_token(const MyliteToken *token) {
       {"CLOSE", ML_CLOSE},
       {"COMMIT", ML_COMMIT},
       {"CREATE", ML_CREATE},
+      {"DATA", ML_DATA},
       {"DATABASE", ML_DATABASE},
       {"DEFINER", ML_DEFINER},
       {"DECLARE", ML_DECLARE},
@@ -541,6 +542,7 @@ static int keyword_token(const MyliteToken *token) {
       {"WHEN", ML_WHEN},
       {"WHILE", ML_WHILE},
       {"WITH", ML_WITH},
+      {"XML", ML_XML},
       {"XA", ML_XA},
   };
   size_t i;

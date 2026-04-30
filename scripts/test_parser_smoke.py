@@ -34,6 +34,10 @@ def main() -> int:
         ("truncate table t;", 0, {"statements": "1", "ddl": "1"}),
         ("truncate t;", 0, {"statements": "1", "ddl": "1"}),
         ("truncate select;", 1, {}),
+        ("load data infile 'x' into table t;", 0, {"statements": "1", "utility": "1"}),
+        ("load xml infile 'x' into table t;", 0, {"statements": "1", "utility": "1"}),
+        ("load index into cache t;", 0, {"statements": "1", "utility": "1"}),
+        ("load nonsense;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

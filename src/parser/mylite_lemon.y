@@ -864,12 +864,27 @@ with_first_token ::= ATOM.
 with_first_token ::= LABEL.
 with_first_token ::= RECURSIVE.
 
-table_statement ::= TABLE table_statement_target statement_tail. {
+table_statement ::= TABLE table_statement_target table_query_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
 }
 
-table_statement_target ::= ATOM.
-table_statement_target ::= LABEL.
+table_statement_target ::= cache_table_ref.
+
+table_query_tail ::= .
+table_query_tail ::= table_limit.
+
+table_limit ::= table_limit_word ATOM table_offset_tail.
+
+table_limit_word ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "LIMIT");
+}
+
+table_offset_tail ::= .
+table_offset_tail ::= table_offset_word ATOM.
+
+table_offset_word ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "OFFSET");
+}
 
 values_statement ::= VALUES ROW LP statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);

@@ -102,6 +102,10 @@ static int classify_install_statement_object(const mylite_parser *parser,
                                              mylite_statement *statement,
                                              size_t token_index,
                                              size_t last_token_index);
+static int classify_xa_statement_object(const mylite_parser *parser,
+                                        mylite_statement *statement,
+                                        size_t token_index,
+                                        size_t last_token_index);
 static int classify_prepared_statement_object(const mylite_parser *parser,
                                               mylite_statement *statement,
                                               size_t token_index,
@@ -598,6 +602,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_TRIGGER: return "trigger";
 	case MYLITE_STATEMENT_OBJECT_USER: return "user";
 	case MYLITE_STATEMENT_OBJECT_VIEW: return "view";
+	case MYLITE_STATEMENT_OBJECT_XA_TRANSACTION: return "xa_transaction";
 	case MYLITE_STATEMENT_OBJECT_NONE:
 	default:
 		return "none";
@@ -1048,6 +1053,8 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	case MYLITE_STATEMENT_INSTALL:
 	case MYLITE_STATEMENT_UNINSTALL:
 		return classify_install_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_XA:
+		return classify_xa_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_PREPARE:
 	case MYLITE_STATEMENT_EXECUTE:
 	case MYLITE_STATEMENT_DEALLOCATE:
@@ -1454,6 +1461,32 @@ static int classify_install_statement_object(const mylite_parser *parser,
 	return set_statement_direct_object_name(parser,
 	                                        statement,
 	                                        object_kind,
+	                                        token_index + 1,
+	                                        last_token_index);
+}
+
+static int classify_xa_statement_object(const mylite_parser *parser,
+                                        mylite_statement *statement,
+                                        size_t token_index,
+                                        size_t last_token_index)
+{
+	if (token_index + 1 > last_token_index ||
+	    token_index + 1 >= parser->token_count ||
+	    !token_can_start_object_name(&parser->tokens[token_index + 1])) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token != START_T &&
+	    parser->tokens[token_index].parser_token != END_T &&
+	    parser->tokens[token_index].parser_token != PREPARE_T &&
+	    parser->tokens[token_index].parser_token != COMMIT_T &&
+	    parser->tokens[token_index].parser_token != ROLLBACK_T) {
+		return 0;
+	}
+
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        MYLITE_STATEMENT_OBJECT_XA_TRANSACTION,
 	                                        token_index + 1,
 	                                        last_token_index);
 }

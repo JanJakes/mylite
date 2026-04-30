@@ -239,6 +239,15 @@ case "$replication_channel_output" in
 		;;
 esac
 
+xa_output=$("$parser" "XA START 'x'; XA END 'x'; XA PREPARE 'x'; XA COMMIT 'x' ONE PHASE; XA ROLLBACK 'x'; XA RECOVER; XA RECOVER CONVERT XID")
+case "$xa_output" in
+	*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa[23:24"*"xa[26:29"*) ;;
+	*)
+		echo "unexpected XA output: $xa_output" >&2
+		exit 1
+		;;
+esac
+
 clone_output=$("$parser" "CLONE LOCAL DATA DIRECTORY = '/tmp/clone'; CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY 'p'")
 case "$clone_output" in
 	*"kinds=clone"*"clone[8:17"*) ;;

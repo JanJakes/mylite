@@ -143,6 +143,12 @@ Replication-control statements expose explicit channel targets:
 ok statements=1 kinds=start[1:5,0:30]/replication_channel:'ch'
 ```
 
+XA transaction statements expose XID targets:
+
+```text
+ok statements=1 kinds=xa[1:3,0:12]/xa_transaction:'x'
+```
+
 Resource group administration exposes the group name:
 
 ```text

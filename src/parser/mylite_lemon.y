@@ -229,11 +229,21 @@ rename_statement ::= RENAME rename_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-rename_tail ::= rename_first_token required_statement_tail.
+rename_tail ::= rename_kind rename_source TO required_statement_tail.
 
-rename_first_token ::= TABLE.
-rename_first_token ::= TABLES.
-rename_first_token ::= USER.
+rename_kind ::= TABLE.
+rename_kind ::= TABLES.
+rename_kind ::= USER.
+
+rename_source ::= rename_source_token.
+rename_source ::= rename_source rename_source_token.
+
+rename_source_token ::= ATOM.
+rename_source_token ::= COMPONENT.
+rename_source_token ::= LABEL.
+rename_source_token ::= MASTER.
+rename_source_token ::= PLUGIN.
+rename_source_token ::= USER.
 
 truncate_statement ::= TRUNCATE truncate_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);

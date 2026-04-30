@@ -201,6 +201,10 @@ static int classify_show_statement_object(const mylite_parser *parser,
                                           mylite_statement *statement,
                                           size_t token_index,
                                           size_t last_token_index);
+static int classify_show_diagnostics_statement_object(const mylite_parser *parser,
+                                                      mylite_statement *statement,
+                                                      size_t token_index,
+                                                      size_t last_token_index);
 static int classify_show_variable_statement_object(const mylite_parser *parser,
                                                    mylite_statement *statement,
                                                    size_t token_index,
@@ -662,6 +666,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_CURSOR: return "cursor";
 	case MYLITE_STATEMENT_OBJECT_DATABASE: return "database";
 	case MYLITE_STATEMENT_OBJECT_DIAGNOSTICS_CONDITION: return "diagnostics_condition";
+	case MYLITE_STATEMENT_OBJECT_DIAGNOSTICS_AREA: return "diagnostics_area";
 	case MYLITE_STATEMENT_OBJECT_DUMPFILE: return "dumpfile";
 	case MYLITE_STATEMENT_OBJECT_ENGINE: return "engine";
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
@@ -2308,6 +2313,10 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		                                        last_token_index);
 	}
 
+	if (classify_show_diagnostics_statement_object(parser, statement, token_index, last_token_index)) {
+		return 1;
+	}
+
 	if (classify_show_variable_statement_object(parser, statement, token_index, last_token_index)) {
 		return 1;
 	}
@@ -2456,6 +2465,33 @@ static int classify_show_statement_object(const mylite_parser *parser,
 	}
 
 	return 0;
+}
+
+static int classify_show_diagnostics_statement_object(const mylite_parser *parser,
+                                                      mylite_statement *statement,
+                                                      size_t token_index,
+                                                      size_t last_token_index)
+{
+	if (token_text_equals(parser, token_index, "WARNINGS") ||
+	    token_text_equals(parser, token_index, "ERRORS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_DIAGNOSTICS_AREA);
+	}
+
+	if (!token_text_equals(parser, token_index, "COUNT") ||
+	    token_index + 4 > last_token_index ||
+	    token_index + 4 >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index + 1].parser_token != '(' ||
+	    parser->tokens[token_index + 2].parser_token != '*' ||
+	    parser->tokens[token_index + 3].parser_token != ')' ||
+	    (!token_text_equals(parser, token_index + 4, "WARNINGS") &&
+	     !token_text_equals(parser, token_index + 4, "ERRORS"))) {
+		return 0;
+	}
+
+	return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_DIAGNOSTICS_AREA);
 }
 
 static int classify_show_variable_statement_object(const mylite_parser *parser,

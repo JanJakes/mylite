@@ -51,6 +51,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 SHOW variable statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-variables.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-status.html`
+- MySQL 8.4 SHOW diagnostics statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-warnings.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-errors.html`
 - MySQL 8.4 EXPLAIN for named connections:
   `https://dev.mysql.com/doc/refman/8.4/en/explain-for-connection.html`
 - MySQL 8.4 KILL statement:
@@ -171,7 +174,8 @@ targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
 collation targets in `SHOW CHARACTER SET`, `SHOW CHARSET`, and
 `SHOW COLLATION`, query targets in `SHOW PROFILE ... FOR QUERY`,
 system-variable and status-variable targets in `SHOW VARIABLES`,
-`SHOW STATUS`, and their scoped forms,
+`SHOW STATUS`, and their scoped forms, diagnostics-area targets in
+`SHOW WARNINGS`, `SHOW ERRORS`, and their `SHOW COUNT(*) ...` forms,
 connection targets in `KILL`, binary log event
 payloads in `BINLOG`, binary log targets in `SHOW BINLOG EVENTS IN ...` and
 `PURGE BINARY LOGS TO ...`, relay log targets in

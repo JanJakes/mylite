@@ -268,11 +268,20 @@ case "$show_object_output" in
 		;;
 esac
 
-show_variable_output=$("$parser" "SHOW VARIABLES; SHOW VARIABLES LIKE 'autocommit'; SHOW SESSION VARIABLES LIKE 'sql_mode'; SHOW LOCAL VARIABLES WHERE Variable_name = 'time_zone'; SHOW STATUS; SHOW GLOBAL STATUS LIKE 'Com_select'; SHOW SESSION STATUS LIKE 'Bytes_sent'; SHOW COUNT(*) WARNINGS")
+show_variable_output=$("$parser" "SHOW VARIABLES; SHOW VARIABLES LIKE 'autocommit'; SHOW SESSION VARIABLES LIKE 'sql_mode'; SHOW LOCAL VARIABLES WHERE Variable_name = 'time_zone'; SHOW STATUS; SHOW GLOBAL STATUS LIKE 'Com_select'; SHOW SESSION STATUS LIKE 'Bytes_sent'")
 case "$show_variable_output" in
-	*"show"*/system_variable*"show"*/system_variable:"'autocommit'"*"show"*/system_variable:"'sql_mode'"*"show"*/system_variable*"show"*/status_variable*"show"*/status_variable:"'Com_select'"*"show"*/status_variable:"'Bytes_sent'"*"show[38:43"*) ;;
+	*"show"*/system_variable*"show"*/system_variable:"'autocommit'"*"show"*/system_variable:"'sql_mode'"*"show"*/system_variable*"show"*/status_variable*"show"*/status_variable:"'Com_select'"*"show"*/status_variable:"'Bytes_sent'"*) ;;
 	*)
 		echo "unexpected SHOW variable/status output: $show_variable_output" >&2
+		exit 1
+		;;
+esac
+
+show_diagnostics_output=$("$parser" 'SHOW WARNINGS; SHOW WARNINGS LIMIT 5; SHOW ERRORS; SHOW ERRORS LIMIT 2, 10; SHOW COUNT(*) WARNINGS; SHOW COUNT(*) ERRORS; SHOW STATUS')
+case "$show_diagnostics_output" in
+	*"show"*/diagnostics_area*"show"*/diagnostics_area*"show"*/diagnostics_area*"show"*/diagnostics_area*"show"*/diagnostics_area*"show"*/diagnostics_area*"show"*/status_variable*) ;;
+	*)
+		echo "unexpected SHOW diagnostics output: $show_diagnostics_output" >&2
 		exit 1
 		;;
 esac

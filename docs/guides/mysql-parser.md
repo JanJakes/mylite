@@ -257,6 +257,16 @@ ok statements=1 kinds=show[1:5,0:31]/character_set:'utf8%'
 ok statements=1 kinds=show[1:4,0:40]/collation:'utf8mb4_0900_ai_ci'
 ```
 
+SHOW diagnostics statements expose the diagnostics-area object kind:
+
+```text
+ok statements=1 kinds=show[1:4,0:21]/diagnostics_area
+```
+
+```text
+ok statements=1 kinds=show[1:6,0:20]/diagnostics_area
+```
+
 SIGNAL and RESIGNAL expose explicit SQLSTATE values or named conditions:
 
 ```text

@@ -705,7 +705,6 @@ show_statement ::= SHOW show_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
 }
 
-show_tail ::= show_unprefixed_kind statement_tail.
 show_tail ::= show_full_tail statement_tail.
 show_tail ::= show_scope_prefix show_scoped_kind show_filter_tail.
 show_tail ::= COUNT LP show_count_star RP show_count_kind.
@@ -736,6 +735,7 @@ show_tail ::= show_routine_status_kind STATUS show_filter_tail.
 show_tail ::= show_routine_status_kind show_routine_code_marker cache_table_ref.
 show_tail ::= STORAGE ENGINES.
 show_tail ::= PROFILE show_profile_tail.
+show_tail ::= REPLICA STATUS show_channel_tail.
 
 show_full_tail ::= FULL show_full_kind.
 
@@ -861,7 +861,10 @@ show_simple_kind ::= PROFILES.
 show_simple_kind ::= REPLICAS.
 
 show_slave_tail ::= HOSTS.
-show_slave_tail ::= STATUS.
+show_slave_tail ::= STATUS show_channel_tail.
+
+show_channel_tail ::= .
+show_channel_tail ::= reset_channel_tail.
 
 show_grants_tail ::= .
 show_grants_tail ::= FOR show_grants_principal show_grants_using_tail.
@@ -876,8 +879,6 @@ show_grants_principal ::= rename_user_account.
 show_grants_principal ::= ATOM LP RP.
 
 show_full_kind ::= PROCESSLIST.
-
-show_unprefixed_kind ::= REPLICA.
 
 describe_statement ::= DESCRIBE describe_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);

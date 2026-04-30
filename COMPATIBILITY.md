@@ -180,9 +180,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. | Parser records explicit `FOR CHANNEL` names and default-channel operations; replica thread state is not implemented. |
 | `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. | Parser records the group-replication subsystem target; group membership, credentials, recovery, and privilege behavior are not implemented. |
 | `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. | Parser records the group-replication subsystem target; group leave, channel shutdown, timeout, and privilege behavior are not implemented. |
-| `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. |  |
-| `EXECUTE` | ❌ | high | Prepared-statement execution with USING variables and result metadata. |  |
-| `DEALLOCATE PREPARE` / `DROP PREPARE` | ❌ | high | Prepared statement cleanup. |  |
+| `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. | Parser records the prepared-statement handle; SQL text parsing, parameter metadata, and registry behavior are not implemented. |
+| `EXECUTE` | ❌ | high | Prepared-statement execution with USING variables and result metadata. | Parser records the prepared-statement handle; USING binding, execution, and result metadata are not implemented. |
+| `DEALLOCATE PREPARE` / `DROP PREPARE` | ❌ | high | Prepared statement cleanup. | Parser records the prepared-statement handle; per-session statement registry cleanup is not implemented. |
 | `BEGIN ... END` | ❌ | medium | Compound statement block scope for stored programs and events. |  |
 | Statement labels | ❌ | medium | Label declaration, LEAVE/ITERATE binding, and duplicate-label diagnostics. | Parser records leading labels on compound blocks and loop statements; duplicate-label checks, end-label validation, binding, and the 16-character label limit are not implemented. |
 | `DECLARE` local variables | ❌ | medium | Stored-program local variable declarations, defaults, and scope. | Parser accepts local variable declarations and records the first declared variable name; type/default validation and block scope are not implemented. |
@@ -213,9 +213,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE ROLE` | ❌ | medium | Role creation syntax and metadata. |  |
 | `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. |  |
 | `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. |  |
-| `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. |  |
+| `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. | Parser records the first granted-to user or role target; privilege graph updates and diagnostics are not implemented. |
 | `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. |  |
-| `REVOKE` | ❌ | medium | Privilege and role revocation semantics. |  |
+| `REVOKE` | ❌ | medium | Privilege and role revocation semantics. | Parser records the first revoked-from user or role target; privilege graph updates and diagnostics are not implemented. |
 | `SET DEFAULT ROLE` | ❌ | medium | Default role assignment. |  |
 | `SET PASSWORD` | ❌ | medium | Password assignment semantics. |  |
 | `SET ROLE` | ❌ | medium | Active-role selection. |  |
@@ -228,22 +228,22 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. | Parser records the first concrete table target and leaves nameless modifier-only forms objectless; checksum behavior is not implemented. |
 | `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. | Parser records the first concrete table target; optimization behavior and result rows are not implemented. |
 | `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. | Parser records the first concrete table target; repair behavior and result rows are not implemented. |
-| `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. |  |
-| `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. |  |
-| `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. |  |
-| `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. |  |
+| `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. | Parser records the first component URI target; component registry behavior is not implemented. |
+| `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. | Parser records the first component URI target; component registry behavior is not implemented. |
+| `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. | Parser records the plugin name target; plugin loading and registry behavior are not implemented. |
+| `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. | Parser records the plugin name target; plugin unloading and registry behavior are not implemented. |
 | `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser records local clone directory targets and remote donor server endpoints; clone plugin behavior, privilege checks, copying, and restart semantics are not implemented. |
 | `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser records explicit user-variable and system-variable targets plus account-management, character-set, and transaction targets; unadorned variable names remain semantic-analysis work. |
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser accepts the statement and records the requested character-set target; charset validation and session variable updates are not implemented. |
 | `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser accepts the statement and records the requested character-set target; collation validation and session variable updates are not implemented. |
 | `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. | Parser records the first table/index target; key-cache assignment behavior is not implemented. |
 | `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. | Parser records table targets, relay-log channels, binary-log collections, privilege collection targets, and status-variable collection targets; runtime flush behavior is not implemented. |
-| `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. |  |
+| `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. | Parser records the processlist id target; connection/query termination behavior and privilege diagnostics are not implemented. |
 | `LOAD INDEX INTO CACHE` | ❌ | low | MyISAM index preload syntax. | Parser records the first table target; index preload behavior is not implemented. |
 | `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. | Parser records reset targets for binary logs, replica channels, and persisted variables; runtime reset behavior is not implemented. |
 | `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. | Parser records explicit persisted-variable names and leaves full-reset forms objectless; persisted variable storage is not implemented. |
-| `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. |  |
-| `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. |  |
+| `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. | Parser records the instance target; embedded-compatible restart behavior and diagnostics are not implemented. |
+| `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. | Parser records the instance target; embedded-compatible shutdown behavior and diagnostics are not implemented. |
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. |  |
 | `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. |  |
 | `HELP` | ❌ | low | Server help lookup result-set semantics. | Parser records quoted help topics and leaves keyword topics objectless; help-table lookup rows are not implemented. |

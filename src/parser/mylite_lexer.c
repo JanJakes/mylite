@@ -117,7 +117,12 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
       return lexer_operator(lexer, token);
     case '@':
       if (is_identifier_continue(lexer_peek(lexer, 1))) {
-        return lexer_identifier(lexer, token);
+        lexer_advance(lexer);
+        while (is_identifier_continue(lexer_peek(lexer, 0))) {
+          lexer_advance(lexer);
+        }
+        token->length = lexer->offset - token->offset;
+        return ML_AT_HOST;
       }
       lexer_advance(lexer);
       token->length = 1;

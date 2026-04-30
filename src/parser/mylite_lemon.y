@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM DOT AT_SIGN AT_EMPTY.
+%fallback ATOM DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %extra_argument {MyliteParseContext *ctx}
@@ -157,6 +157,7 @@ create_tail ::= TABLESPACE cache_name_part create_options_tail.
 create_tail ::= UNDO TABLESPACE cache_name_part create_options_tail.
 create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_options_tail.
 create_tail ::= ROLE create_if_not_exists_tail drop_account_list.
+create_tail ::= USER create_if_not_exists_tail drop_account_name create_user_tail.
 
 create_index_kind ::= UNIQUE.
 create_index_kind ::= FULLTEXT.
@@ -182,7 +183,6 @@ create_object_kind ::= EVENT.
 create_object_kind ::= FUNCTION.
 create_object_kind ::= PROCEDURE.
 create_object_kind ::= TRIGGER.
-create_object_kind ::= USER.
 
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.
@@ -196,6 +196,9 @@ create_not ::= ATOM(A). {
 
 create_options_tail ::= .
 create_options_tail ::= create_options_tail statement_token.
+
+create_user_tail ::= .
+create_user_tail ::= create_user_tail statement_token.
 
 create_resource_group ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "GROUP");
@@ -217,7 +220,7 @@ drop_statement ::= DROP drop_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-drop_tail ::= drop_account_kind drop_if_exists_tail drop_account_list.
+drop_tail ::= drop_account_kind drop_if_exists_tail drop_account_list drop_account_trailing_tail.
 drop_tail ::= drop_table_prefix drop_if_exists_tail drop_name_list drop_restrict_tail.
 drop_tail ::= LOGFILE drop_logfile_group cache_name_part drop_tablespace_engine_tail.
 drop_tail ::= RESOURCE drop_resource_group cache_name_part drop_resource_force_tail.
@@ -250,21 +253,17 @@ drop_account_list ::= drop_account_list COMMA drop_account_name.
 
 drop_account_name ::= drop_account_principal.
 drop_account_name ::= drop_account_principal drop_account_host.
-drop_account_name ::= drop_account_principal drop_account_host drop_account_trailing_tail.
 
+drop_account_trailing_tail ::= .
 drop_account_trailing_tail ::= ATOM(A). {
   mylite_parser_require_token_prefix(ctx, A, "\"");
 }
 
 drop_account_principal ::= drop_account_ident.
 
-drop_account_host ::= drop_inline_host drop_host_dot_tail.
+drop_account_host ::= AT_HOST drop_host_dot_tail.
 drop_account_host ::= AT_SIGN drop_host_name.
 drop_account_host ::= AT_EMPTY.
-
-drop_inline_host ::= ATOM(A). {
-  mylite_parser_require_token_prefix(ctx, A, "@");
-}
 
 drop_host_name ::= drop_account_ident drop_host_dot_tail.
 

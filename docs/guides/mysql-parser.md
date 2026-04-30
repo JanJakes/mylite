@@ -95,6 +95,12 @@ SHOW ENGINE diagnostics expose the engine name:
 ok statements=1 kinds=show[1:4,0:25]/engine:InnoDB
 ```
 
+KILL statements expose the processlist id as a connection target:
+
+```text
+ok statements=1 kinds=kill[1:3,0:14]/connection:123
+```
+
 Resource group administration exposes the group name:
 
 ```text

@@ -21,6 +21,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
 - MySQL 8.4 schema-scoped SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show.html`
+- MySQL 8.4 KILL statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/kill.html`
 - MySQL 8.4 component and plugin statements:
   `https://dev.mysql.com/doc/refman/8.4/en/install-component.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/uninstall-component.html`,
@@ -94,7 +96,8 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 STATUS`, `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
 targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
 `SHOW FUNCTION CODE` and `SHOW PROCEDURE CODE`, engine targets in
-`SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, and prepared-statement names in
+`SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, connection targets in
+`KILL`, and prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Component and
 plugin targets are recorded for `INSTALL` and `UNINSTALL` administrative
 statements. Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`,
@@ -147,6 +150,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   the named object, not engine-specific options or rename destinations.
   Instance metadata records only the instance-level command surface, not the
   specific backup-lock, TLS, keyring, or redo-log operation.
+  `KILL` metadata records only the processlist id token, not the distinction
+  between query and connection termination.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

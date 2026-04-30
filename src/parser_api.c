@@ -60,6 +60,10 @@ static int classify_instance_statement_object(const mylite_parser *parser,
                                               mylite_statement *statement,
                                               size_t token_index,
                                               size_t last_token_index);
+static int classify_kill_statement_object(const mylite_parser *parser,
+                                          mylite_statement *statement,
+                                          size_t token_index,
+                                          size_t last_token_index);
 static int classify_set_statement_object(const mylite_parser *parser,
                                          mylite_statement *statement,
                                          size_t token_index,
@@ -541,6 +545,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 {
 	switch (kind) {
 	case MYLITE_STATEMENT_OBJECT_COMPONENT: return "component";
+	case MYLITE_STATEMENT_OBJECT_CONNECTION: return "connection";
 	case MYLITE_STATEMENT_OBJECT_CURSOR: return "cursor";
 	case MYLITE_STATEMENT_OBJECT_DATABASE: return "database";
 	case MYLITE_STATEMENT_OBJECT_ENGINE: return "engine";
@@ -987,6 +992,8 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		break;
 	case MYLITE_STATEMENT_UNLOCK:
 		return classify_instance_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_KILL:
+		return classify_kill_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_SET:
 		return classify_set_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_INSTALL:
@@ -1107,6 +1114,27 @@ static int classify_instance_statement_object(const mylite_parser *parser,
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_INSTANCE);
 	}
 	return 0;
+}
+
+static int classify_kill_statement_object(const mylite_parser *parser,
+                                          mylite_statement *statement,
+                                          size_t token_index,
+                                          size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "QUERY") ||
+	    token_text_equals(parser, token_index, "CONNECTION")) {
+		token_index++;
+	}
+
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        MYLITE_STATEMENT_OBJECT_CONNECTION,
+	                                        token_index,
+	                                        last_token_index);
 }
 
 static int classify_set_statement_object(const mylite_parser *parser,

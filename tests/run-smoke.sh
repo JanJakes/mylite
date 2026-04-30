@@ -185,6 +185,15 @@ case "$show_engine_output" in
 		;;
 esac
 
+kill_output=$("$parser" 'KILL 123; KILL QUERY 456; KILL CONNECTION 789; KILL QUERY')
+case "$kill_output" in
+	*"kill"*/connection:123*"kill"*/connection:456*"kill"*/connection:789*"kill[12:13"*) ;;
+	*)
+		echo "unexpected KILL output: $kill_output" >&2
+		exit 1
+		;;
+esac
+
 prepared_output=$("$parser" 'PREPARE stmt FROM @sql; EXECUTE stmt USING @a; DEALLOCATE PREPARE stmt; DROP PREPARE stmt')
 case "$prepared_output" in
 	*"prepare"*/prepared_statement:stmt*"execute"*/prepared_statement:stmt*"deallocate"*/prepared_statement:stmt*"drop"*/prepared_statement:stmt*) ;;

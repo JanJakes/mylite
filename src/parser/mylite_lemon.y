@@ -158,6 +158,8 @@ create_tail ::= UNDO TABLESPACE cache_name_part create_options_tail.
 create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_options_tail.
 create_tail ::= ROLE create_if_not_exists_tail drop_account_list.
 create_tail ::= USER create_if_not_exists_tail drop_account_name create_user_tail.
+create_tail ::= EVENT create_if_not_exists_tail cache_table_ref required_statement_tail.
+create_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref required_statement_tail.
 
 create_index_kind ::= UNIQUE.
 create_index_kind ::= FULLTEXT.
@@ -179,10 +181,8 @@ create_object_kind ::= OR.
 create_object_kind ::= ALGORITHM.
 create_object_kind ::= SQL.
 create_object_kind ::= DEFINER.
-create_object_kind ::= EVENT.
 create_object_kind ::= FUNCTION.
 create_object_kind ::= PROCEDURE.
-create_object_kind ::= TRIGGER.
 
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.

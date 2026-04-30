@@ -126,6 +126,12 @@ SHOW account-introspection forms preserve account spans:
 ok statements=1 kinds=show[1:6,0:24]/user:'u'@'h'
 ```
 
+Documented current-user function forms keep the full function-call span:
+
+```text
+ok statements=1 kinds=show[1:6,0:31]/user:CURRENT_USER()
+```
+
 ```text
 ok statements=1 kinds=show[1:2,0:11]/user
 ```

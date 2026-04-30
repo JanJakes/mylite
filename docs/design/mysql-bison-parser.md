@@ -208,6 +208,7 @@ forms, `EXPLAIN ... FOR CONNECTION`, `SIGNAL` / `RESIGNAL` condition values,
 `SHOW INDEX` / `KEYS`, `SHOW TABLES`, schema-scoped `SHOW TABLE STATUS`,
 `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
 targets in `SHOW CREATE USER`, bare `SHOW GRANTS`, and `SHOW GRANTS FOR`,
+including `CURRENT_USER()` function-call spans where documented,
 database targets in
 `SHOW DATABASES` and `SHOW SCHEMAS`, routine targets in `SHOW FUNCTION CODE`
 and `SHOW PROCEDURE CODE`, and routine collection/pattern targets in

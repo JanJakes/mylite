@@ -706,6 +706,7 @@ show_tail ::= show_unprefixed_kind statement_tail.
 show_tail ::= show_extended_tail statement_tail.
 show_tail ::= show_full_tail statement_tail.
 show_tail ::= show_scope_prefix show_scoped_kind statement_tail.
+show_tail ::= COUNT LP show_count_star RP show_count_kind.
 
 show_extended_tail ::= EXTENDED show_extended_kind.
 show_extended_tail ::= EXTENDED FULL show_extended_kind.
@@ -718,6 +719,13 @@ show_scope_prefix ::= SESSION.
 
 show_scoped_kind ::= STATUS.
 show_scoped_kind ::= VARIABLES.
+
+show_count_star ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "*");
+}
+
+show_count_kind ::= ERRORS.
+show_count_kind ::= WARNINGS.
 
 show_extended_kind ::= COLUMNS.
 show_extended_kind ::= FIELDS.
@@ -737,7 +745,6 @@ show_unprefixed_kind ::= CHARACTER.
 show_unprefixed_kind ::= CHARSET.
 show_unprefixed_kind ::= COLLATION.
 show_unprefixed_kind ::= COLUMNS.
-show_unprefixed_kind ::= COUNT.
 show_unprefixed_kind ::= CREATE.
 show_unprefixed_kind ::= DATABASES.
 show_unprefixed_kind ::= ENGINE.

@@ -368,7 +368,6 @@ alter_statement ::= ALTER alter_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-alter_tail ::= alter_object_kind required_statement_tail.
 alter_tail ::= TABLE cache_table_ref.
 alter_tail ::= TABLE cache_table_ref required_statement_tail.
 alter_tail ::= LOGFILE create_logfile_group cache_name_part required_statement_tail.
@@ -382,16 +381,23 @@ alter_tail ::= alter_routine_kind cache_table_ref create_options_tail.
 alter_tail ::= alter_database_kind cache_name_part create_options_required_tail.
 alter_tail ::= alter_database_kind CHARACTER required_statement_tail.
 alter_tail ::= VIEW cache_table_ref required_statement_tail.
+alter_tail ::= alter_prefixed_view_tail.
+alter_tail ::= create_definer_clause alter_definer_object_tail.
 alter_tail ::= INSTANCE alter_instance_action.
-
-alter_object_kind ::= ALGORITHM.
-alter_object_kind ::= DEFINER.
 
 alter_database_kind ::= DATABASE.
 alter_database_kind ::= SCHEMA.
 
 alter_routine_kind ::= FUNCTION.
 alter_routine_kind ::= PROCEDURE.
+
+alter_prefixed_view_tail ::= alter_view_prefix VIEW cache_table_ref required_statement_tail.
+
+alter_view_prefix ::= create_view_algorithm create_view_definer_tail create_view_sql_security_tail.
+alter_view_prefix ::= create_definer_clause create_view_sql_security_tail.
+alter_view_prefix ::= create_view_sql_security.
+
+alter_definer_object_tail ::= EVENT cache_table_ref required_statement_tail.
 
 alter_instance_action ::= ATOM(A) alter_instance_innodb alter_instance_redo_log. {
   mylite_parser_require_token_text_any(ctx, A, "ENABLE", "DISABLE");

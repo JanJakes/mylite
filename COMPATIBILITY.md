@@ -55,6 +55,12 @@ Priority is a delivery-order signal, not a relaxation of correctness:
 
 The parser should eventually recognize the full MySQL grammar. Unsupported embedded-server features may still be accepted with a MySQL-compatible diagnostic, warning, or placeholder when that is safer for applications than a syntax error.
 
+### 1.0 Parser Foundation
+
+| Feature | Status | Priority | Target behavior | Implementation notes |
+| --- | --- | --- | --- | --- |
+| Bison parser foundation | 🟡 | top | Accept MySQL statement text through a Bison-owned parser boundary and produce an AST shell for later analysis and translation. | Prototype in [docs/design/mysql-bison-parser.md](docs/design/mysql-bison-parser.md). Validates balanced groups, `BEGIN ... END`, `CASE ... END`, statement sequencing, MySQL lexical forms, and executable version-comment syntax. Corpus gate parses 69,577 WordPress SQLite Database Integration MySQL queries, but detailed statement productions and semantic validation are still incomplete. |
+
 ### 1.1 Data Definition Statements
 
 | Feature | Status | Priority | Target behavior | Implementation notes |

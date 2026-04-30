@@ -420,8 +420,15 @@ reset_channel ::= ATOM(A). {
 reset_channel_name ::= ATOM.
 reset_channel_name ::= LABEL.
 
-purge_statement ::= PURGE purge_log_kind LOGS required_statement_tail. {
+purge_statement ::= PURGE purge_log_kind LOGS purge_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
+}
+
+purge_tail ::= TO required_statement_tail.
+purge_tail ::= purge_before required_statement_tail.
+
+purge_before ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "BEFORE");
 }
 
 purge_log_kind ::= BINARY.

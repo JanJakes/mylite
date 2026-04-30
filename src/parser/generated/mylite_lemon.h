@@ -196,11 +196,11 @@
 #define ML_RESTART                        196
 #define ML_SHUTDOWN                       197
 #define ML_DELAYED                        198
-#define ML_RECURSIVE                      199
-#define ML_VALUES                         200
-#define ML_ROW                            201
-#define ML_UNION                          202
-#define ML_ORDER                          203
+#define ML_ORDER                          199
+#define ML_RECURSIVE                      200
+#define ML_VALUES                         201
+#define ML_ROW                            202
+#define ML_UNION                          203
 #define ML_EXECUTE                        204
 #define ML_GET                            205
 #define ML_DIAGNOSTICS                    206

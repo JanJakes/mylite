@@ -1593,8 +1593,8 @@ delete_statement ::= DELETE delete_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DELETE);
 }
 
-delete_tail ::= dml_delete_target required_statement_tail.
-delete_tail ::= dml_delete_modifiers dml_delete_target required_statement_tail.
+delete_tail ::= delete_core.
+delete_tail ::= dml_delete_modifiers delete_core.
 
 dml_delete_modifiers ::= dml_delete_modifier.
 dml_delete_modifiers ::= dml_delete_modifiers dml_delete_modifier.
@@ -1603,9 +1603,25 @@ dml_delete_modifier ::= IGNORE.
 dml_delete_modifier ::= LOW_PRIORITY.
 dml_delete_modifier ::= QUICK.
 
-dml_delete_target ::= ATOM.
-dml_delete_target ::= FROM.
-dml_delete_target ::= LABEL.
+delete_core ::= FROM dml_delete_table_list delete_after_from_tail.
+delete_core ::= dml_delete_table_list FROM dml_delete_source_start statement_tail.
+delete_core ::= FROM dml_delete_table_list USING required_statement_tail.
+
+dml_delete_table_list ::= cache_table_ref.
+dml_delete_table_list ::= dml_delete_table_list import_comma cache_table_ref.
+
+dml_delete_source_start ::= cache_table_ref.
+dml_delete_source_start ::= LP.
+
+delete_after_from_tail ::= .
+delete_after_from_tail ::= WHERE required_statement_tail.
+delete_after_from_tail ::= ORDER BY required_statement_tail.
+delete_after_from_tail ::= LIMIT required_statement_tail.
+delete_after_from_tail ::= delete_partition_marker required_statement_tail.
+
+delete_partition_marker ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "PARTITION");
+}
 
 with_statement ::= WITH with_first_token required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);

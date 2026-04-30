@@ -144,6 +144,12 @@ ok statements=1 kinds=show[1:5,0:30]/function:'f%'
 ok statements=1 kinds=show[1:3,0:21]/procedure
 ```
 
+SHOW collection forms expose collection object kinds:
+
+```text
+ok statements=1 kinds=show[1:2,0:15]/privilege
+```
+
 SHOW ENGINE diagnostics expose the engine name:
 
 ```text

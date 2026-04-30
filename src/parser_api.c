@@ -699,6 +699,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_OUTFILE: return "outfile";
 	case MYLITE_STATEMENT_OBJECT_PLUGIN: return "plugin";
 	case MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT: return "prepared_statement";
+	case MYLITE_STATEMENT_OBJECT_PRIVILEGE: return "privilege";
 	case MYLITE_STATEMENT_OBJECT_PROCEDURE: return "procedure";
 	case MYLITE_STATEMENT_OBJECT_QUERY: return "query";
 	case MYLITE_STATEMENT_OBJECT_RELAY_LOG: return "relay_log";
@@ -2544,6 +2545,9 @@ static int classify_show_collection_statement_object(const mylite_parser *parser
 	}
 	if (token_text_equals(parser, token_index, "PLUGINS")) {
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_PLUGIN);
+	}
+	if (token_text_equals(parser, token_index, "PRIVILEGES")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_PRIVILEGE);
 	}
 	if (token_text_equals(parser, token_index, "PROCESSLIST")) {
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_CONNECTION);

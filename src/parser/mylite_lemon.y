@@ -583,8 +583,8 @@ purge_statement ::= PURGE purge_log_kind LOGS purge_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
 }
 
-purge_tail ::= TO required_statement_tail.
-purge_tail ::= purge_before required_statement_tail.
+purge_tail ::= TO purge_log_name.
+purge_tail ::= purge_before expression_start statement_tail.
 
 purge_before ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "BEFORE");
@@ -592,6 +592,9 @@ purge_before ::= ATOM(A). {
 
 purge_log_kind ::= BINARY.
 purge_log_kind ::= MASTER.
+
+purge_log_name ::= ATOM.
+purge_log_name ::= LABEL.
 
 change_statement ::= CHANGE change_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);

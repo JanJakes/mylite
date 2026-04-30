@@ -164,6 +164,7 @@ def main() -> int:
         ("purge master logs before now();", 0, {"statements": "1", "replication": "1"}),
         ("purge binary logs garbage;", 1, {}),
         ("purge binary logs to;", 1, {}),
+        ("purge binary logs to 'bin.0001' extra;", 1, {}),
         ("purge binary logs before;", 1, {}),
         ("purge binary;", 1, {}),
         ("purge nonsense;", 1, {}),

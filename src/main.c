@@ -17,7 +17,7 @@ static int parse_nul_batch(const char *data, size_t length, int quiet);
 static int read_stdin(input_buffer *buffer);
 static int append_bytes(input_buffer *buffer, const char *data, size_t length);
 static void free_buffer(input_buffer *buffer);
-static void print_result(const mylite_parse_result *result);
+static void print_result(const mylite_parse_result *result, const char *sql);
 static void print_tokens(const mylite_parse_result *result, const char *sql);
 static void print_usage(const char *program);
 
@@ -82,7 +82,7 @@ static int parse_single_sql(const char *sql, size_t length, int quiet, int show_
 
 	if (!quiet) {
 		if (ok) {
-			print_result(&result);
+			print_result(&result, sql);
 			if (show_tokens) {
 				print_tokens(&result, sql);
 			}
@@ -192,12 +192,13 @@ static void free_buffer(input_buffer *buffer)
 	buffer->capacity = 0;
 }
 
-static void print_result(const mylite_parse_result *result)
+static void print_result(const mylite_parse_result *result, const char *sql)
 {
 	size_t i;
 
 	printf("ok statements=%zu", result->statement_count);
 	for (i = 0; i < result->statement_count; i++) {
+		const mylite_statement *statement = &result->statements[i];
 		const char *object_name = result->statements[i].object_kind == MYLITE_STATEMENT_OBJECT_NONE
 			? ""
 			: mylite_statement_object_kind_name(result->statements[i].object_kind);
@@ -210,6 +211,11 @@ static void print_result(const mylite_parse_result *result)
 		       result->statements[i].end_offset);
 		if (object_name[0] != '\0') {
 			printf("/%s", object_name);
+			if (statement->object_name_start_offset < statement->object_name_end_offset) {
+				printf(":%.*s",
+				       (int)(statement->object_name_end_offset - statement->object_name_start_offset),
+				       sql + statement->object_name_start_offset);
+			}
 		}
 	}
 	printf("\n");

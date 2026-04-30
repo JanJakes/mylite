@@ -10,11 +10,23 @@
 int yyparse(mylite_parser *parser);
 
 static void classify_statement_objects(mylite_parser *parser);
-static mylite_statement_object_kind classify_statement_object(const mylite_parser *parser,
-                                                              const mylite_statement *statement);
+static void classify_statement_object(const mylite_parser *parser, mylite_statement *statement);
 static mylite_statement_object_kind object_kind_from_token_sequence(const mylite_parser *parser,
                                                                     size_t token_index,
                                                                     size_t last_token_index);
+static void set_statement_object_name(const mylite_parser *parser,
+                                      mylite_statement *statement,
+                                      size_t object_token_index,
+                                      size_t last_token_index);
+static size_t first_name_token_after_object(const mylite_parser *parser,
+                                            size_t object_token_index,
+                                            size_t last_token_index);
+static size_t last_qualified_name_token(const mylite_parser *parser,
+                                        size_t first_name_token,
+                                        size_t last_token_index);
+static int token_can_start_object_name(const mylite_token *token);
+static int token_can_continue_object_name(const mylite_token *token);
+static int is_optional_name_modifier(int token);
 static int statement_kind_uses_object_scan(mylite_statement_kind kind);
 static mylite_token_kind token_kind_from_parser_token(int token);
 
@@ -100,12 +112,20 @@ int mylite_parser_add_statement(mylite_parser *parser, mylite_statement_kind kin
 	parser->statements[parser->statement_count].object_kind = MYLITE_STATEMENT_OBJECT_NONE;
 	parser->statements[parser->statement_count].first_token = parser->active_statement_first_token;
 	parser->statements[parser->statement_count].last_token = parser->lexer.last_significant_token;
+	parser->statements[parser->statement_count].object_name_first_token = 0;
+	parser->statements[parser->statement_count].object_name_last_token = 0;
 	parser->statements[parser->statement_count].start_offset = parser->active_statement_start_offset;
 	parser->statements[parser->statement_count].end_offset = parser->lexer.last_significant_token_end_offset;
+	parser->statements[parser->statement_count].object_name_start_offset = 0;
+	parser->statements[parser->statement_count].object_name_end_offset = 0;
 	parser->statements[parser->statement_count].start_line = parser->active_statement_start_line;
 	parser->statements[parser->statement_count].start_column = parser->active_statement_start_column;
 	parser->statements[parser->statement_count].end_line = parser->lexer.last_significant_token_end_line;
 	parser->statements[parser->statement_count].end_column = parser->lexer.last_significant_token_end_column;
+	parser->statements[parser->statement_count].object_name_start_line = 0;
+	parser->statements[parser->statement_count].object_name_start_column = 0;
+	parser->statements[parser->statement_count].object_name_end_line = 0;
+	parser->statements[parser->statement_count].object_name_end_column = 0;
 	parser->statement_count++;
 	return 1;
 }
@@ -303,12 +323,11 @@ static void classify_statement_objects(mylite_parser *parser)
 	size_t i;
 
 	for (i = 0; i < parser->statement_count; i++) {
-		parser->statements[i].object_kind = classify_statement_object(parser, &parser->statements[i]);
+		classify_statement_object(parser, &parser->statements[i]);
 	}
 }
 
-static mylite_statement_object_kind classify_statement_object(const mylite_parser *parser,
-                                                              const mylite_statement *statement)
+static void classify_statement_object(const mylite_parser *parser, mylite_statement *statement)
 {
 	size_t token_index;
 	size_t last_token_index;
@@ -316,7 +335,7 @@ static mylite_statement_object_kind classify_statement_object(const mylite_parse
 	if (!statement_kind_uses_object_scan(statement->kind) ||
 	    statement->first_token == 0 ||
 	    statement->last_token < statement->first_token) {
-		return MYLITE_STATEMENT_OBJECT_NONE;
+		return;
 	}
 
 	token_index = statement->first_token;
@@ -325,10 +344,11 @@ static mylite_statement_object_kind classify_statement_object(const mylite_parse
 		mylite_statement_object_kind object_kind =
 			object_kind_from_token_sequence(parser, token_index, last_token_index);
 		if (object_kind != MYLITE_STATEMENT_OBJECT_NONE) {
-			return object_kind;
+			statement->object_kind = object_kind;
+			set_statement_object_name(parser, statement, token_index, last_token_index);
+			return;
 		}
 	}
-	return MYLITE_STATEMENT_OBJECT_NONE;
 }
 
 static mylite_statement_object_kind object_kind_from_token_sequence(const mylite_parser *parser,
@@ -366,6 +386,93 @@ static mylite_statement_object_kind object_kind_from_token_sequence(const mylite
 		}
 		return MYLITE_STATEMENT_OBJECT_NONE;
 	}
+}
+
+static void set_statement_object_name(const mylite_parser *parser,
+                                      mylite_statement *statement,
+                                      size_t object_token_index,
+                                      size_t last_token_index)
+{
+	size_t first_name_token = first_name_token_after_object(parser, object_token_index, last_token_index);
+	size_t last_name_token;
+	const mylite_token *first;
+	const mylite_token *last;
+
+	if (first_name_token >= parser->token_count) {
+		return;
+	}
+
+	last_name_token = last_qualified_name_token(parser, first_name_token, last_token_index);
+	first = &parser->tokens[first_name_token];
+	last = &parser->tokens[last_name_token];
+
+	statement->object_name_first_token = first_name_token + 1;
+	statement->object_name_last_token = last_name_token + 1;
+	statement->object_name_start_offset = first->start_offset;
+	statement->object_name_end_offset = last->end_offset;
+	statement->object_name_start_line = first->start_line;
+	statement->object_name_start_column = first->start_column;
+	statement->object_name_end_line = last->end_line;
+	statement->object_name_end_column = last->end_column;
+}
+
+static size_t first_name_token_after_object(const mylite_parser *parser,
+                                            size_t object_token_index,
+                                            size_t last_token_index)
+{
+	size_t token_index = object_token_index + 1;
+
+	if (parser->tokens[object_token_index].parser_token == SPATIAL_T && token_index + 2 <= last_token_index) {
+		token_index += 2;
+	}
+
+	while (token_index <= last_token_index) {
+		if (is_optional_name_modifier(parser->tokens[token_index].parser_token)) {
+			token_index++;
+			continue;
+		}
+		if (token_can_start_object_name(&parser->tokens[token_index])) {
+			return token_index;
+		}
+		token_index++;
+	}
+	return parser->token_count;
+}
+
+static size_t last_qualified_name_token(const mylite_parser *parser,
+                                        size_t first_name_token,
+                                        size_t last_token_index)
+{
+	size_t token_index = first_name_token;
+
+	while (token_index + 2 <= last_token_index &&
+	       parser->tokens[token_index + 1].parser_token == '.' &&
+	       token_can_continue_object_name(&parser->tokens[token_index + 2])) {
+		token_index += 2;
+	}
+	return token_index;
+}
+
+static int token_can_start_object_name(const mylite_token *token)
+{
+	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_STRING ||
+	       token->kind == MYLITE_TOKEN_NUMBER;
+}
+
+static int token_can_continue_object_name(const mylite_token *token)
+{
+	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER;
+}
+
+static int is_optional_name_modifier(int token)
+{
+	return token == IF_T ||
+	       token == NOT_T ||
+	       token == EXISTS_T ||
+	       token == TEMPORARY_T;
 }
 
 static int statement_kind_uses_object_scan(mylite_statement_kind kind)

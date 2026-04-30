@@ -19,10 +19,11 @@ ok statements=1 kinds=select[1:2,0:8]
 ```
 
 DDL and table-maintenance statements include a target object kind when the
-prototype can identify one:
+prototype can identify one. If a first target name is found, the CLI prints the
+exact source slice after the object kind:
 
 ```text
-ok statements=1 kinds=create[1:7,0:23]/table
+ok statements=1 kinds=create[1:12,0:44]/table:`db`.`t`
 ```
 
 Dump tokens:

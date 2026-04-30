@@ -24,9 +24,9 @@ case "$span_output" in
 		;;
 esac
 
-object_output=$("$parser" "CREATE TABLE t (id int); ALTER VIEW v AS SELECT 1; DROP FUNCTION f")
+object_output=$("$parser" 'CREATE TABLE IF NOT EXISTS `db`.`t` (id int); ALTER VIEW v AS SELECT 1; DROP FUNCTION f')
 case "$object_output" in
-	*"create"*/table*"alter"*/view*"drop"*/function*) ;;
+	*"create"*/table:'`db`.`t`'*"alter"*/view:v*"drop"*/function:f*) ;;
 	*)
 		echo "unexpected object output: $object_output" >&2
 		exit 1

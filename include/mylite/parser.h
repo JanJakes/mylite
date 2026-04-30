@@ -115,12 +115,20 @@ typedef struct mylite_statement {
 	mylite_statement_object_kind object_kind;
 	size_t first_token;
 	size_t last_token;
+	size_t object_name_first_token;
+	size_t object_name_last_token;
 	size_t start_offset;
 	size_t end_offset;
+	size_t object_name_start_offset;
+	size_t object_name_end_offset;
 	unsigned int start_line;
 	unsigned int start_column;
 	unsigned int end_line;
 	unsigned int end_column;
+	unsigned int object_name_start_line;
+	unsigned int object_name_start_column;
+	unsigned int object_name_end_line;
+	unsigned int object_name_end_column;
 } mylite_statement;
 
 typedef struct mylite_parse_result {

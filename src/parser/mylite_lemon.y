@@ -321,9 +321,9 @@ start_statement ::= START start_tail. {
 }
 
 start_tail ::= TRANSACTION start_transaction_tail.
-start_tail ::= REPLICA statement_tail.
-start_tail ::= SLAVE statement_tail.
-start_tail ::= GROUP_REPLICATION statement_tail.
+start_tail ::= REPLICA start_replica_tail.
+start_tail ::= SLAVE start_replica_tail.
+start_tail ::= GROUP_REPLICATION start_group_replication_tail.
 
 start_transaction_tail ::= .
 start_transaction_tail ::= transaction_characteristics.
@@ -344,6 +344,58 @@ transaction_consistent ::= ATOM(A). {
 }
 transaction_snapshot ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "SNAPSHOT");
+}
+
+start_replica_tail ::= start_thread_tail start_until_tail start_connection_tail show_channel_tail.
+
+start_thread_tail ::= .
+start_thread_tail ::= start_thread_list.
+
+start_thread_list ::= start_thread_type.
+start_thread_list ::= start_thread_list import_comma start_thread_type.
+
+start_thread_type ::= IO_THREAD.
+start_thread_type ::= SQL_THREAD.
+
+start_until_tail ::= .
+start_until_tail ::= UNTIL start_until_spec.
+
+start_until_spec ::= ATOM(A) start_option_equals ATOM. {
+  mylite_parser_require_token_text_any(ctx, A, "SQL_BEFORE_GTIDS", "SQL_AFTER_GTIDS");
+}
+start_until_spec ::= ATOM(A) start_option_equals ATOM import_comma ATOM(B) start_option_equals ATOM. {
+  mylite_parser_require_start_until_log_pair(ctx, A, B);
+}
+start_until_spec ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "SQL_AFTER_MTS_GAPS");
+}
+
+start_connection_tail ::= start_user_option start_password_option start_default_auth_option start_plugin_dir_option.
+
+start_user_option ::= .
+start_user_option ::= USER start_option_equals ATOM.
+
+start_password_option ::= .
+start_password_option ::= PASSWORD start_option_equals ATOM.
+
+start_default_auth_option ::= .
+start_default_auth_option ::= DEFAULT_AUTH start_option_equals ATOM.
+
+start_plugin_dir_option ::= .
+start_plugin_dir_option ::= PLUGIN_DIR start_option_equals ATOM.
+
+start_group_replication_tail ::= .
+start_group_replication_tail ::= start_group_replication_options.
+
+start_group_replication_options ::= start_group_replication_option.
+start_group_replication_options ::= start_group_replication_options import_comma start_group_replication_option.
+
+start_group_replication_option ::= USER start_option_equals ATOM.
+start_group_replication_option ::= PASSWORD start_option_equals ATOM.
+start_group_replication_option ::= DEFAULT_AUTH start_option_equals ATOM.
+
+start_option_equals ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "=");
 }
 
 savepoint_statement ::= SAVEPOINT savepoint_name. {
@@ -1706,6 +1758,7 @@ keyword ::= COLLATION.
 keyword ::= COLUMNS.
 keyword ::= COUNT.
 keyword ::= DATABASES.
+keyword ::= DEFAULT_AUTH.
 keyword ::= ENGINE.
 keyword ::= ENGINES.
 keyword ::= ERRORS.
@@ -1755,18 +1808,21 @@ keyword ::= EXIT.
 keyword ::= HIGH_PRIORITY.
 keyword ::= IGNORE.
 keyword ::= INTO.
+keyword ::= IO_THREAD.
 keyword ::= LOW_PRIORITY.
 keyword ::= NAMES.
 keyword ::= NO.
 keyword ::= OFFSET.
 keyword ::= ORDER.
 keyword ::= PASSWORD.
+keyword ::= PLUGIN_DIR.
 keyword ::= QUICK.
 keyword ::= NEXT.
 keyword ::= PREV.
 keyword ::= RECURSIVE.
 keyword ::= ROW.
 keyword ::= SQLSTATE.
+keyword ::= SQL_THREAD.
 keyword ::= DISTINCT.
 keyword ::= DISTINCTROW.
 keyword ::= SQL_BIG_RESULT.
@@ -1913,6 +1969,7 @@ keyword_not_select_clause ::= COLLATION.
 keyword_not_select_clause ::= COLUMNS.
 keyword_not_select_clause ::= COUNT.
 keyword_not_select_clause ::= DATABASES.
+keyword_not_select_clause ::= DEFAULT_AUTH.
 keyword_not_select_clause ::= ENGINE.
 keyword_not_select_clause ::= ENGINES.
 keyword_not_select_clause ::= ERRORS.
@@ -1962,18 +2019,21 @@ keyword_not_select_clause ::= EXIT.
 keyword_not_select_clause ::= HIGH_PRIORITY.
 keyword_not_select_clause ::= IGNORE.
 keyword_not_select_clause ::= INTO.
+keyword_not_select_clause ::= IO_THREAD.
 keyword_not_select_clause ::= LOW_PRIORITY.
 keyword_not_select_clause ::= NAMES.
 keyword_not_select_clause ::= NO.
 keyword_not_select_clause ::= OFFSET.
 keyword_not_select_clause ::= ORDER.
 keyword_not_select_clause ::= PASSWORD.
+keyword_not_select_clause ::= PLUGIN_DIR.
 keyword_not_select_clause ::= QUICK.
 keyword_not_select_clause ::= NEXT.
 keyword_not_select_clause ::= PREV.
 keyword_not_select_clause ::= RECURSIVE.
 keyword_not_select_clause ::= ROW.
 keyword_not_select_clause ::= SQLSTATE.
+keyword_not_select_clause ::= SQL_THREAD.
 keyword_not_select_clause ::= DISTINCT.
 keyword_not_select_clause ::= DISTINCTROW.
 keyword_not_select_clause ::= SQL_BIG_RESULT.

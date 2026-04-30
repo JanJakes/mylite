@@ -40,6 +40,9 @@ void mylite_parser_require_token_text_any(MyliteParseContext *ctx,
 void mylite_parser_require_profile_type(MyliteParseContext *ctx,
                                         MyliteToken first,
                                         MyliteToken second);
+void mylite_parser_require_start_until_log_pair(MyliteParseContext *ctx,
+                                                MyliteToken file,
+                                                MyliteToken pos);
 void mylite_parser_require_diagnostics_statement_item(MyliteParseContext *ctx,
                                                       MyliteToken token);
 void mylite_parser_require_diagnostics_condition_item(MyliteParseContext *ctx,

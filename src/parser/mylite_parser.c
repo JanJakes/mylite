@@ -223,6 +223,21 @@ void mylite_parser_require_profile_type(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &first);
 }
 
+void mylite_parser_require_start_until_log_pair(MyliteParseContext *ctx,
+                                                MyliteToken file,
+                                                MyliteToken pos) {
+  if (ctx->failed ||
+      (token_ascii_equals(&file, "SOURCE_LOG_FILE") &&
+       token_ascii_equals(&pos, "SOURCE_LOG_POS")) ||
+      (token_ascii_equals(&file, "RELAY_LOG_FILE") &&
+       token_ascii_equals(&pos, "RELAY_LOG_POS"))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &file);
+}
+
 void mylite_parser_require_diagnostics_statement_item(MyliteParseContext *ctx,
                                                       MyliteToken token) {
   static const char *const items[] = {

@@ -87,6 +87,7 @@ def main() -> int:
         ("create event if not exists;", 1, {}),
         ("create event e1 every 1 second do select 1;", 1, {}),
         ("create trigger tr1;", 1, {}),
+        ("create trigger tr1 before insert on t set @a=1;", 1, {}),
         ("create function;", 1, {}),
         ("create procedure if not exists;", 1, {}),
         ("create aggregate function agg;", 1, {}),

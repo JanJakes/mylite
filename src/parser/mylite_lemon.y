@@ -164,7 +164,7 @@ create_tail ::= VIEW cache_table_ref view_column_tail view_body.
 create_tail ::= create_prefixed_view_tail.
 create_tail ::= create_definer_clause create_definer_object_tail.
 create_tail ::= EVENT create_if_not_exists_tail cache_table_ref create_event_body.
-create_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref required_statement_tail.
+create_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref create_trigger_body.
 create_tail ::= create_routine_kind create_if_not_exists_tail cache_table_ref required_statement_tail.
 
 create_index_kind ::= UNIQUE.
@@ -253,13 +253,27 @@ create_definer_account ::= drop_account_name.
 create_definer_account ::= ATOM LP RP.
 
 create_definer_object_tail ::= EVENT create_if_not_exists_tail cache_table_ref create_event_body.
-create_definer_object_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref required_statement_tail.
+create_definer_object_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref create_trigger_body.
 create_definer_object_tail ::= create_routine_kind create_if_not_exists_tail cache_table_ref required_statement_tail.
 
 create_event_body ::= ON create_schedule required_statement_tail.
 
 create_schedule ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "SCHEDULE");
+}
+
+create_trigger_body ::= create_trigger_time create_trigger_event ON cache_table_ref FOR create_each ROW required_statement_tail.
+
+create_trigger_time ::= ATOM(A). {
+  mylite_parser_require_token_text_any(ctx, A, "BEFORE", "AFTER");
+}
+
+create_trigger_event ::= INSERT.
+create_trigger_event ::= UPDATE.
+create_trigger_event ::= DELETE.
+
+create_each ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "EACH");
 }
 
 create_if_not_exists_tail ::= .

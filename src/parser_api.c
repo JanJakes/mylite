@@ -3154,6 +3154,69 @@ static int token_can_continue_object_name(const mylite_token *token)
 static int token_can_be_unquoted_object_name_keyword(int token)
 {
 	switch (token) {
+	case BINLOG_T:
+	case CACHE_T:
+	case CHAIN_T:
+	case CHECKSUM_T:
+	case CLONE_T:
+	case CLOSE_T:
+	case COMMIT_T:
+	case CURSOR_T:
+	case COLUMNS_T:
+	case DATA_T:
+	case DECLARE_T:
+	case DEALLOCATE_T:
+	case DO_T:
+	case EXECUTE_T:
+	case FETCH_T:
+	case FIELDS_T:
+	case FLUSH_T:
+	case FORMAT_T:
+	case FULL_T:
+	case HANDLER_T:
+	case HELP_T:
+	case IMPORT_T:
+	case INFILE_T:
+	case INSTALL_T:
+	case ITERATE_T:
+	case JSON_T:
+	case KILL_T:
+	case LEAVE_T:
+	case LOAD_T:
+	case LOCAL_T:
+	case LOCK_T:
+	case NO_T:
+	case OPEN_T:
+	case OPTIMIZE_T:
+	case PREPARE_T:
+	case PURGE_T:
+	case READ_T:
+	case RELEASE_T:
+	case REPAIR_T:
+	case RESET_T:
+	case RESTART_T:
+	case ROLLBACK_T:
+	case RETURN_T:
+	case SAVEPOINT_T:
+	case SHUTDOWN_T:
+	case START_T:
+	case STOP_T:
+	case TO_T:
+	case TRUNCATE_T:
+	case TRANSACTION_T:
+	case UNINSTALL_T:
+	case UNLOCK_T:
+	case WRITE_T:
+	case XA_T:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+static int token_can_be_unquoted_local_name_keyword(int token)
+{
+	switch (token) {
 	case CHAIN_T:
 	case CLOSE_T:
 	case CURSOR_T:
@@ -3201,14 +3264,14 @@ static int token_can_start_local_variable_name(const mylite_token *token)
 {
 	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
 	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
-	       token_can_be_unquoted_object_name_keyword(token->parser_token);
+	       token_can_be_unquoted_local_name_keyword(token->parser_token);
 }
 
 static int token_can_start_label_name(const mylite_token *token)
 {
 	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
 	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
-	       token_can_be_unquoted_object_name_keyword(token->parser_token);
+	       token_can_be_unquoted_local_name_keyword(token->parser_token);
 }
 
 static int is_optional_name_modifier(int token)

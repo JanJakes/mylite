@@ -10,6 +10,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 ## Sources
 
 - MySQL 8.4.9 parser grammar: `sql/sql_yacc.yy`
+- MySQL 8.4 keywords and reserved words:
+  `https://dev.mysql.com/doc/refman/8.4/en/keywords.html`
 - MySQL 8.4 statement labels:
   `https://dev.mysql.com/doc/refman/8.4/en/statement-labels.html`
 - MySQL 8.4 local variable DECLARE statement:
@@ -175,7 +177,8 @@ statement-leading words, major clause words, common DDL/admin/transaction/load
 words, boolean/null operators, and join/set operators as keywords so the future
 analyzer does not need to rediscover them from identifier text. Keyword-like
 nonreserved words that MySQL commonly permits as identifiers remain usable in
-target object-name spans. The grammar validates that
+target object-name spans, including nonreserved administrative keywords such as
+`CACHE`, `CLONE`, and `COMMIT`. The grammar validates that
 grouping delimiters, `BEGIN ... END`, and `CASE ... END` blocks are balanced.
 Known statement heads that require a body now reject a bare keyword, while
 transaction statements that MySQL accepts as single-keyword statements remain

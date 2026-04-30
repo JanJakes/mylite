@@ -512,6 +512,10 @@ fidelity but still remain usable in target-name spans:
 ok statements=1 kinds=create[1:7,0:26]/table:json
 ```
 
+```text
+ok statements=1 kinds=create[1:7,0:27]/table:clone
+```
+
 Run smoke tests:
 
 ```sh

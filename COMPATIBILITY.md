@@ -26,6 +26,7 @@ Priority is a delivery-order signal, not a relaxation of correctness:
 - [MySQL 8.4.9 release notes](https://dev.mysql.com/doc/relnotes/mysql/8.4/en/news-8-4-9.html)
 - [What Is New in MySQL 8.4 since MySQL 8.0](https://dev.mysql.com/doc/refman/8.4/en/mysql-nutshell.html)
 - [MySQL 8.4 SQL statement manual](https://dev.mysql.com/doc/refman/8.4/en/sql-statements.html)
+- [MySQL 8.4 keywords and reserved words](https://dev.mysql.com/doc/refman/8.4/en/keywords.html)
 - [MySQL 8.4 built-in function and operator reference](https://dev.mysql.com/doc/refman/8.4/en/built-in-function-reference.html)
 - [MySQL 8.4 data type manual](https://dev.mysql.com/doc/refman/8.4/en/data-types.html)
 - [MySQL 8.4 `INFORMATION_SCHEMA` table reference](https://dev.mysql.com/doc/refman/8.4/en/information-schema-table-reference.html)

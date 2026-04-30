@@ -637,6 +637,15 @@ case "$keyword_output" in
 		;;
 esac
 
+nonreserved_keyword_name_output=$("$parser" 'CREATE TABLE cache (id int); CREATE TABLE clone (id int); CREATE TABLE commit (id int); CREATE TABLE flush (id int); CREATE TABLE handler (id int); CREATE TABLE help (id int); CREATE TABLE prepare (id int); CREATE TABLE repair (id int); CREATE TABLE reset (id int); CREATE TABLE rollback (id int); CREATE TABLE savepoint (id int); CREATE TABLE xa (id int)')
+case "$nonreserved_keyword_name_output" in
+	*"create"*/table:cache*"create"*/table:clone*"create"*/table:commit*"create"*/table:flush*"create"*/table:handler*"create"*/table:help*"create"*/table:prepare*"create"*/table:repair*"create"*/table:reset*"create"*/table:rollback*"create"*/table:savepoint*"create"*/table:xa*) ;;
+	*)
+		echo "unexpected nonreserved keyword name output: $nonreserved_keyword_name_output" >&2
+		exit 1
+		;;
+esac
+
 match_output=$("$parser" --tokens "SELECT (1), CASE WHEN a THEN b END")
 case "$match_output" in
 	*"match 2 4"*"match 4 2"*"match 6 11"*"match 11 6"*) ;;

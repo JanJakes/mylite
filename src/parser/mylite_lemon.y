@@ -1847,10 +1847,15 @@ dml_delete_source_start ::= cache_table_ref.
 dml_delete_source_start ::= LP.
 
 delete_after_from_tail ::= .
-delete_after_from_tail ::= WHERE required_statement_tail.
-delete_after_from_tail ::= ORDER BY required_statement_tail.
-delete_after_from_tail ::= LIMIT required_statement_tail.
-delete_after_from_tail ::= delete_partition_marker required_statement_tail.
+delete_after_from_tail ::= WHERE expression_start statement_tail.
+delete_after_from_tail ::= ORDER BY expression_start statement_tail.
+delete_after_from_tail ::= LIMIT ATOM.
+delete_after_from_tail ::= delete_partition_clause delete_after_from_tail.
+
+delete_partition_clause ::= delete_partition_marker LP delete_partition_list RP.
+
+delete_partition_list ::= cache_name_part.
+delete_partition_list ::= delete_partition_list import_comma cache_name_part.
 
 delete_partition_marker ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "PARTITION");

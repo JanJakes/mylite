@@ -58,6 +58,7 @@ $(PARSER_GEN_C) $(PARSER_GEN_H): $(PARSER_GRAMMAR) $(LEMON) tools/lempar.c
 regen-parser: $(PARSER_GEN_C) $(PARSER_GEN_H)
 
 test-parser: all
+	python3 scripts/test_parser_smoke.py --exe $(BUILD_DIR)/mylite-parse
 	python3 scripts/test_parser_corpus.py --exe $(BUILD_DIR)/mylite-parse
 
 clean:

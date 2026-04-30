@@ -350,8 +350,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   the named object, not engine-specific options or rename destinations.
   Instance metadata records only the instance-level command surface, not the
   specific backup-lock, TLS, keyring, or redo-log operation.
-  `KILL` metadata records only the processlist id token, not the distinction
-  between query and connection termination.
+  `KILL` metadata records only numeric processlist id tokens, not the
+  distinction between query and connection termination.
   `CLONE` metadata records local clone directories or remote donor endpoints
   only; plugin availability, privilege checks, copy behavior, SSL requirements,
   and restart side effects remain runtime work.

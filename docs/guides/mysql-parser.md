@@ -262,7 +262,7 @@ EXPLAIN and DESCRIBE expose explainable statements as query targets:
 ok statements=1 kinds=explain[1:3,0:16]/query
 ```
 
-KILL statements expose the processlist id as a connection target:
+KILL statements expose a numeric processlist id as a connection target:
 
 ```text
 ok statements=1 kinds=kill[1:3,0:14]/connection:123

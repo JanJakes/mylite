@@ -138,6 +138,7 @@ static int classify_kill_statement_object(const mylite_parser *parser,
                                           mylite_statement *statement,
                                           size_t token_index,
                                           size_t last_token_index);
+static int token_can_start_processlist_id(const mylite_token *token);
 static int classify_clone_statement_object(const mylite_parser *parser,
                                            mylite_statement *statement,
                                            size_t token_index,
@@ -2038,11 +2039,22 @@ static int classify_kill_statement_object(const mylite_parser *parser,
 		token_index++;
 	}
 
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    !token_can_start_processlist_id(&parser->tokens[token_index])) {
+		return 0;
+	}
+
 	return set_statement_direct_object_name(parser,
 	                                        statement,
 	                                        MYLITE_STATEMENT_OBJECT_CONNECTION,
 	                                        token_index,
 	                                        last_token_index);
+}
+
+static int token_can_start_processlist_id(const mylite_token *token)
+{
+	return token->kind == MYLITE_TOKEN_NUMBER;
 }
 
 static int classify_clone_statement_object(const mylite_parser *parser,

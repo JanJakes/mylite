@@ -206,24 +206,24 @@ alter_statement ::= ALTER alter_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-alter_tail ::= alter_first_token required_statement_tail.
+alter_tail ::= alter_object_kind required_statement_tail.
+alter_tail ::= LOGFILE ATOM required_statement_tail.
+alter_tail ::= RESOURCE ATOM required_statement_tail.
+alter_tail ::= UNDO TABLESPACE required_statement_tail.
 
-alter_first_token ::= TABLE.
-alter_first_token ::= ALGORITHM.
-alter_first_token ::= DATABASE.
-alter_first_token ::= DEFINER.
-alter_first_token ::= SCHEMA.
-alter_first_token ::= VIEW.
-alter_first_token ::= EVENT.
-alter_first_token ::= FUNCTION.
-alter_first_token ::= PROCEDURE.
-alter_first_token ::= USER.
-alter_first_token ::= INSTANCE.
-alter_first_token ::= LOGFILE.
-alter_first_token ::= RESOURCE.
-alter_first_token ::= SERVER.
-alter_first_token ::= TABLESPACE.
-alter_first_token ::= UNDO.
+alter_object_kind ::= TABLE.
+alter_object_kind ::= ALGORITHM.
+alter_object_kind ::= DATABASE.
+alter_object_kind ::= DEFINER.
+alter_object_kind ::= SCHEMA.
+alter_object_kind ::= VIEW.
+alter_object_kind ::= EVENT.
+alter_object_kind ::= FUNCTION.
+alter_object_kind ::= PROCEDURE.
+alter_object_kind ::= USER.
+alter_object_kind ::= INSTANCE.
+alter_object_kind ::= SERVER.
+alter_object_kind ::= TABLESPACE.
 
 rename_statement ::= RENAME rename_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);

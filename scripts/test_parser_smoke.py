@@ -202,6 +202,7 @@ def main() -> int:
         ("describe db.t;", 0, {"statements": "1", "show": "1"}),
         ("describe t c;", 0, {"statements": "1", "show": "1"}),
         ("describe select * from t;", 0, {"statements": "1", "show": "1"}),
+        ("describe select;", 1, {}),
         ("describe t c extra;", 1, {}),
         ("describe from;", 1, {}),
         ("explain select * from t;", 0, {"statements": "1", "show": "1"}),

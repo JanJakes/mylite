@@ -739,7 +739,7 @@ describe_statement ::= DESC describe_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
 }
 
-describe_tail ::= SELECT required_statement_tail.
+describe_tail ::= SELECT select_tail.
 describe_tail ::= describe_table_ref.
 describe_tail ::= describe_table_ref describe_column_ref.
 

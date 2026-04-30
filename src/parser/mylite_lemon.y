@@ -315,7 +315,7 @@ table_admin_statement ::= ANALYZE table_admin_with_optional_binlog. {
 table_admin_statement ::= CHECK table_admin_table_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
-table_admin_statement ::= CHECKSUM table_admin_table_tail. {
+table_admin_statement ::= CHECKSUM table_admin_table_tail_singular. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 table_admin_statement ::= OPTIMIZE table_admin_with_optional_binlog. {
@@ -330,6 +330,8 @@ table_admin_with_optional_binlog ::= LOCAL table_admin_table_tail.
 table_admin_with_optional_binlog ::= NO_WRITE_TO_BINLOG table_admin_table_tail.
 
 table_admin_table_tail ::= table_admin_table_keyword required_statement_tail.
+
+table_admin_table_tail_singular ::= TABLE required_statement_tail.
 
 table_admin_table_keyword ::= TABLE.
 table_admin_table_keyword ::= TABLES.

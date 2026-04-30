@@ -550,22 +550,28 @@ clone_statement ::= CLONE clone_tail. {
 clone_tail ::= INSTANCE FROM required_statement_tail.
 clone_tail ::= LOCAL DATA ATOM required_statement_tail.
 
-flush_statement ::= FLUSH flush_first_token statement_tail. {
+flush_statement ::= FLUSH flush_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-flush_first_token ::= BINARY.
-flush_first_token ::= ERROR.
-flush_first_token ::= HOSTS.
-flush_first_token ::= LOCAL.
-flush_first_token ::= LOGS.
-flush_first_token ::= OPTIMIZER_COSTS.
-flush_first_token ::= PRIVILEGES.
-flush_first_token ::= RELAY.
-flush_first_token ::= STATUS.
-flush_first_token ::= TABLE.
-flush_first_token ::= TABLES.
-flush_first_token ::= USER_RESOURCES.
+flush_tail ::= flush_kind statement_tail.
+flush_tail ::= LOCAL flush_local_kind statement_tail.
+flush_tail ::= NO_WRITE_TO_BINLOG flush_local_kind statement_tail.
+flush_tail ::= BINARY LOGS statement_tail.
+flush_tail ::= ERROR LOGS statement_tail.
+flush_tail ::= RELAY LOGS statement_tail.
+
+flush_local_kind ::= TABLE.
+flush_local_kind ::= TABLES.
+
+flush_kind ::= HOSTS.
+flush_kind ::= LOGS.
+flush_kind ::= OPTIMIZER_COSTS.
+flush_kind ::= PRIVILEGES.
+flush_kind ::= STATUS.
+flush_kind ::= TABLE.
+flush_kind ::= TABLES.
+flush_kind ::= USER_RESOURCES.
 
 restart_statement ::= RESTART. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);

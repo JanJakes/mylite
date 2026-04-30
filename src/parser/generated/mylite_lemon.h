@@ -143,11 +143,11 @@
 #define ML_CLONE                          143
 #define ML_FROM                           144
 #define ML_FLUSH                          145
-#define ML_ERROR                          146
-#define ML_HOSTS                          147
-#define ML_LOGS                           148
-#define ML_OPTIMIZER_COSTS                149
-#define ML_RELAY                          150
+#define ML_LOGS                           146
+#define ML_ERROR                          147
+#define ML_RELAY                          148
+#define ML_HOSTS                          149
+#define ML_OPTIMIZER_COSTS                150
 #define ML_USER_RESOURCES                 151
 #define ML_RESTART                        152
 #define ML_SHUTDOWN                       153

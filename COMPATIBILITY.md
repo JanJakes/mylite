@@ -184,22 +184,22 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `EXECUTE` | ❌ | high | Prepared-statement execution with USING variables and result metadata. |  |
 | `DEALLOCATE PREPARE` / `DROP PREPARE` | ❌ | high | Prepared statement cleanup. |  |
 | `BEGIN ... END` | ❌ | medium | Compound statement block scope for stored programs and events. |  |
-| Statement labels | ❌ | medium | Label declaration, LEAVE/ITERATE binding, and duplicate-label diagnostics. |  |
+| Statement labels | ❌ | medium | Label declaration, LEAVE/ITERATE binding, and duplicate-label diagnostics. | Parser records leading labels on compound blocks and loop statements; duplicate-label checks, end-label validation, binding, and the 16-character label limit are not implemented. |
 | `DECLARE` local variables | ❌ | medium | Stored-program local variable declarations, defaults, and scope. | Parser accepts local variable declarations and records the first declared variable name; type/default validation and block scope are not implemented. |
 | `DECLARE ... CONDITION` | ❌ | medium | Named condition declarations. | Parser accepts the declaration and records the declared condition-name target; stored-program declaration ordering and runtime condition binding are not implemented. |
-| `DECLARE ... CURSOR` | ❌ | medium | Cursor declaration over SELECT statements. |  |
+| `DECLARE ... CURSOR` | ❌ | medium | Cursor declaration over SELECT statements. | Parser records the cursor handle; cursor scope, declaration ordering, SELECT result shape, and lifecycle semantics are not implemented. |
 | `DECLARE ... HANDLER` | ❌ | medium | CONTINUE/EXIT handler declarations for SQLSTATE, errors, warnings, and NOT FOUND. | Parser accepts handler declarations and records the first handled condition value; declaration ordering, handler binding, and runtime control flow are not implemented. |
-| `CASE` statement | ❌ | medium | Stored-program CASE statement semantics. |  |
-| `IF` statement | ❌ | medium | Stored-program IF/ELSEIF/ELSE semantics. |  |
-| `LOOP` | ❌ | medium | Stored-program LOOP semantics. |  |
-| `REPEAT` | ❌ | medium | Stored-program REPEAT UNTIL semantics. |  |
-| `WHILE` | ❌ | medium | Stored-program WHILE semantics. |  |
-| `ITERATE` | ❌ | medium | Loop iteration transfer. |  |
-| `LEAVE` | ❌ | medium | Block/loop exit transfer. |  |
-| `RETURN` | ❌ | medium | Stored-function return semantics. |  |
-| `OPEN` cursor | ❌ | medium | Cursor open lifecycle. |  |
-| `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. |  |
-| `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. |  |
+| `CASE` statement | ❌ | medium | Stored-program CASE statement semantics. | Parser recognizes the statement head and matches `CASE ... END` / `END CASE`; branch semantics are not implemented. |
+| `IF` statement | ❌ | medium | Stored-program IF/ELSEIF/ELSE semantics. | Parser recognizes the statement head and matches `IF ... END IF`; branch semantics are not implemented. |
+| `LOOP` | ❌ | medium | Stored-program LOOP semantics. | Parser recognizes the statement head and matches `LOOP ... END LOOP`; loop execution is not implemented. |
+| `REPEAT` | ❌ | medium | Stored-program REPEAT UNTIL semantics. | Parser recognizes the statement head and matches `REPEAT ... END REPEAT`; loop execution and condition evaluation are not implemented. |
+| `WHILE` | ❌ | medium | Stored-program WHILE semantics. | Parser recognizes the statement head and matches `WHILE ... END WHILE`; loop execution and condition evaluation are not implemented. |
+| `ITERATE` | ❌ | medium | Loop iteration transfer. | Parser records the target label; binding and transfer semantics are not implemented. |
+| `LEAVE` | ❌ | medium | Block/loop exit transfer. | Parser records the target label; binding and transfer semantics are not implemented. |
+| `RETURN` | ❌ | medium | Stored-function return semantics. | Parser recognizes the statement head; expression validation and function return semantics are not implemented. |
+| `OPEN` cursor | ❌ | medium | Cursor open lifecycle. | Parser records the cursor handle; lifecycle semantics are not implemented. |
+| `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. | Parser records the cursor handle; fetch target assignment and NOT FOUND behavior are not implemented. |
+| `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. | Parser records the cursor handle; lifecycle semantics are not implemented. |
 | `GET DIAGNOSTICS` | ❌ | medium | Current and stacked diagnostics retrieval. | Parser accepts statement and condition-item forms, records explicit diagnostics condition-area indexes, and records the first statement-level assignment target; diagnostics storage and assignment semantics are not implemented. |
 | `SIGNAL` | ❌ | medium | User-raised SQLSTATE and condition item semantics. | Parser accepts the statement and records explicit SQLSTATE or condition-name targets; runtime diagnostics behavior is not implemented. |
 | `RESIGNAL` | ❌ | medium | Handler rethrow and diagnostics mutation. | Parser accepts bare, SET-only, SQLSTATE, and condition-name forms and records explicit condition values; handler-context and diagnostics semantics are not implemented. |

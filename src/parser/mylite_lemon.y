@@ -1599,9 +1599,15 @@ open_statement ::= OPEN stored_program_label_ref. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-fetch_statement ::= FETCH stored_program_label_ref INTO required_statement_tail. {
+fetch_statement ::= FETCH stored_program_label_ref INTO fetch_target_list. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
+
+fetch_target_list ::= fetch_target.
+fetch_target_list ::= fetch_target_list import_comma fetch_target.
+
+fetch_target ::= ATOM.
+fetch_target ::= LABEL.
 
 close_statement ::= CLOSE stored_program_label_ref. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

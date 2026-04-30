@@ -149,8 +149,8 @@ create_statement ::= CREATE create_tail. {
 
 create_tail ::= create_table_prefix create_if_not_exists_tail cache_table_ref create_table_tail.
 create_tail ::= AGGREGATE FUNCTION cache_table_ref create_udf_tail.
-create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
-create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
+create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_ref create_index_tail.
+create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref create_index_tail.
 create_tail ::= LOGFILE create_logfile_group cache_name_part create_logfile_group_tail.
 create_tail ::= RESOURCE create_resource_group cache_name_part create_resource_type create_options_tail.
 create_tail ::= SPATIAL create_reference create_system cache_name_part create_srs_attribute_start statement_token create_options_tail.
@@ -181,6 +181,8 @@ create_index_using_tail ::= create_index_type cache_name_part.
 create_index_type ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "TYPE");
 }
+
+create_index_tail ::= LP create_table_definition_tokens RP create_options_tail.
 
 create_table_prefix ::= TABLE.
 create_table_prefix ::= TEMPORARY TABLE.

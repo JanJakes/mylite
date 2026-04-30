@@ -82,6 +82,7 @@ def main() -> int:
         ("create tablespace;", 1, {}),
         ("create index idx;", 1, {}),
         ("create index idx on;", 1, {}),
+        ("create index idx on t;", 1, {}),
         ("create role if exists role;", 1, {}),
         ("create role;", 1, {}),
         ("create user;", 1, {}),

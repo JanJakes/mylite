@@ -705,7 +705,7 @@ show_statement ::= SHOW show_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
 }
 
-show_tail ::= show_full_tail statement_tail.
+show_tail ::= show_full_tail.
 show_tail ::= show_scope_prefix show_scoped_kind show_filter_tail.
 show_tail ::= COUNT LP show_count_star RP show_count_kind.
 show_tail ::= CREATE show_create_tail.

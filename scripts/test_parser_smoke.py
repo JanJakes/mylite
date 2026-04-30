@@ -271,6 +271,7 @@ def main() -> int:
         ("show profile block;", 1, {}),
         ("show extended;", 1, {}),
         ("show full;", 1, {}),
+        ("show full processlist garbage;", 1, {}),
         ("show global create table t;", 1, {}),
         ("show nonsense;", 1, {}),
         ("describe t;", 0, {"statements": "1", "show": "1"}),

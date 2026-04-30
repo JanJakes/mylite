@@ -708,13 +708,15 @@ get_statement ::= GET DIAGNOSTICS required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-signal_statement ::= SIGNAL signal_condition statement_tail. {
+signal_statement ::= SIGNAL signal_condition_value statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-signal_condition ::= ATOM.
-signal_condition ::= LABEL.
-signal_condition ::= SQLSTATE.
+signal_condition_value ::= signal_named_condition.
+signal_condition_value ::= SQLSTATE ATOM.
+
+signal_named_condition ::= ATOM.
+signal_named_condition ::= LABEL.
 
 begin_statement ::= BEGIN. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
@@ -877,9 +879,12 @@ return_statement ::= RETURN expression_start statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-resignal_statement ::= RESIGNAL statement_tail. {
+resignal_statement ::= RESIGNAL resignal_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
+
+resignal_tail ::= .
+resignal_tail ::= signal_condition_value statement_tail.
 
 while_statement ::= WHILE expression_start required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

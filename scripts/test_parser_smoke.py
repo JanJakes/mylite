@@ -265,6 +265,8 @@ def main() -> int:
         ("values row(1) garbage;", 1, {}),
         ("values select;", 1, {}),
         ("prepare s from 'select 1';", 0, {"statements": "1", "prepared": "1"}),
+        ("prepare s from @sql;", 0, {"statements": "1", "prepared": "1"}),
+        ("prepare s from 'select 1' extra;", 1, {}),
         ("prepare s;", 1, {}),
         ("prepare select from 'select 1';", 1, {}),
         ("execute s;", 0, {"statements": "1", "prepared": "1"}),

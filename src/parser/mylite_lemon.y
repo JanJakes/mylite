@@ -922,9 +922,11 @@ values_query_tail ::= UNION required_statement_tail.
 values_query_tail ::= ORDER BY required_statement_tail.
 values_query_tail ::= LIMIT required_statement_tail.
 
-prepare_statement ::= PREPARE prepared_statement_name FROM required_statement_tail. {
+prepare_statement ::= PREPARE prepared_statement_name FROM prepare_source. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
 }
+
+prepare_source ::= ATOM.
 
 execute_statement ::= EXECUTE prepared_statement_name execute_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);

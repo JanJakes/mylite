@@ -3154,8 +3154,11 @@ static int token_can_continue_object_name(const mylite_token *token)
 static int token_can_be_unquoted_object_name_keyword(int token)
 {
 	switch (token) {
+	case AUTO_INCREMENT_T:
+	case BEGIN_T:
 	case BINLOG_T:
 	case CACHE_T:
+	case CHARSET_T:
 	case CHAIN_T:
 	case CHECKSUM_T:
 	case CLONE_T:
@@ -3167,6 +3170,9 @@ static int token_can_be_unquoted_object_name_keyword(int token)
 	case DECLARE_T:
 	case DEALLOCATE_T:
 	case DO_T:
+	case END_T:
+	case ENGINE_T:
+	case EVENT_T:
 	case EXECUTE_T:
 	case FETCH_T:
 	case FIELDS_T:
@@ -3180,32 +3186,33 @@ static int token_can_be_unquoted_object_name_keyword(int token)
 	case INSTALL_T:
 	case ITERATE_T:
 	case JSON_T:
-	case KILL_T:
 	case LEAVE_T:
-	case LOAD_T:
 	case LOCAL_T:
-	case LOCK_T:
 	case NO_T:
+	case OFFSET_T:
 	case OPEN_T:
-	case OPTIMIZE_T:
 	case PREPARE_T:
-	case PURGE_T:
+	case QUICK_T:
 	case READ_T:
-	case RELEASE_T:
 	case REPAIR_T:
 	case RESET_T:
 	case RESTART_T:
+	case ROLE_T:
 	case ROLLBACK_T:
 	case RETURN_T:
 	case SAVEPOINT_T:
 	case SHUTDOWN_T:
 	case START_T:
 	case STOP_T:
+	case TEMPORARY_T:
 	case TO_T:
 	case TRUNCATE_T:
 	case TRANSACTION_T:
 	case UNINSTALL_T:
-	case UNLOCK_T:
+	case UNTIL_T:
+	case USER_T:
+	case VALUE_T:
+	case VIEW_T:
 	case WRITE_T:
 	case XA_T:
 		return 1;
@@ -3278,8 +3285,7 @@ static int is_optional_name_modifier(int token)
 {
 	return token == IF_T ||
 	       token == NOT_T ||
-	       token == EXISTS_T ||
-	       token == TEMPORARY_T;
+	       token == EXISTS_T;
 }
 
 static int token_text_equals(const mylite_parser *parser, size_t token_index, const char *expected)

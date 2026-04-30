@@ -646,6 +646,15 @@ case "$nonreserved_keyword_name_output" in
 		;;
 esac
 
+nonreserved_modifier_name_output=$("$parser" 'CREATE TABLE temporary (id int); CREATE TABLE charset (id int); CREATE TABLE engine (id int); CREATE TABLE event (id int); CREATE TABLE offset (id int); CREATE TABLE quick (id int); CREATE TABLE role (id int); CREATE TABLE user (id int); CREATE TABLE until (id int); CREATE TABLE value (id int); CREATE TABLE view (id int)')
+case "$nonreserved_modifier_name_output" in
+	*"create"*/table:temporary*"create"*/table:charset*"create"*/table:engine*"create"*/table:event*"create"*/table:offset*"create"*/table:quick*"create"*/table:role*"create"*/table:user*"create"*/table:until*"create"*/table:value*"create"*/table:view*) ;;
+	*)
+		echo "unexpected nonreserved modifier name output: $nonreserved_modifier_name_output" >&2
+		exit 1
+		;;
+esac
+
 match_output=$("$parser" --tokens "SELECT (1), CASE WHEN a THEN b END")
 case "$match_output" in
 	*"match 2 4"*"match 4 2"*"match 6 11"*"match 11 6"*) ;;

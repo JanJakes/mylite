@@ -110,6 +110,8 @@ def main() -> int:
         ("purge binary;", 1, {}),
         ("purge nonsense;", 1, {}),
         ("change replication source to source_host='127.0.0.1';", 0, {"statements": "1", "replication": "1"}),
+        ("change master to master_host='127.0.0.1';", 0, {"statements": "1", "replication": "1"}),
+        ("change replication source;", 1, {}),
         ("change nonsense;", 1, {}),
         ("xa start 'x';", 0, {"statements": "1", "replication": "1"}),
         ("xa recover;", 0, {"statements": "1", "replication": "1"}),

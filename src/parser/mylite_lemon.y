@@ -376,12 +376,12 @@ purge_statement ::= PURGE purge_log_kind LOGS required_statement_tail. {
 purge_log_kind ::= BINARY.
 purge_log_kind ::= MASTER.
 
-change_statement ::= CHANGE change_first_token required_statement_tail. {
+change_statement ::= CHANGE change_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
 }
 
-change_first_token ::= MASTER.
-change_first_token ::= REPLICATION.
+change_tail ::= MASTER TO required_statement_tail.
+change_tail ::= REPLICATION ATOM TO required_statement_tail.
 
 xa_statement ::= XA xa_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);

@@ -104,6 +104,12 @@ ok statements=1 kinds=set[1:4,0:31]/system_variable:@@session.sql_mode
 ok statements=1 kinds=get[1:5,0:27]/user_variable:@n
 ```
 
+SELECT file-export forms expose the literal export target:
+
+```text
+ok statements=1 kinds=select[1:7,0:41]/outfile:'/tmp/x.csv'
+```
+
 SHOW account-introspection forms preserve account spans:
 
 ```text

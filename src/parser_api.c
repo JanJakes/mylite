@@ -45,7 +45,9 @@ static size_t skip_dml_modifiers(const mylite_parser *parser,
 static int is_dml_modifier_token(int token);
 static int classify_direct_statement_object(const mylite_parser *parser, mylite_statement *statement);
 static int classify_select_statement_object(const mylite_parser *parser, mylite_statement *statement);
-static size_t find_select_into_target_token(const mylite_parser *parser, const mylite_statement *statement);
+static size_t find_select_into_target_token(const mylite_parser *parser,
+                                            const mylite_statement *statement,
+                                            mylite_statement_object_kind *object_kind);
 static size_t find_import_sdi_file_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index);
@@ -639,6 +641,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_CURSOR: return "cursor";
 	case MYLITE_STATEMENT_OBJECT_DATABASE: return "database";
 	case MYLITE_STATEMENT_OBJECT_DIAGNOSTICS_CONDITION: return "diagnostics_condition";
+	case MYLITE_STATEMENT_OBJECT_DUMPFILE: return "dumpfile";
 	case MYLITE_STATEMENT_OBJECT_ENGINE: return "engine";
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
 	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
@@ -648,6 +651,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_LABEL: return "label";
 	case MYLITE_STATEMENT_OBJECT_LOGFILE_GROUP: return "logfile_group";
 	case MYLITE_STATEMENT_OBJECT_LOCAL_VARIABLE: return "local_variable";
+	case MYLITE_STATEMENT_OBJECT_OUTFILE: return "outfile";
 	case MYLITE_STATEMENT_OBJECT_PLUGIN: return "plugin";
 	case MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT: return "prepared_statement";
 	case MYLITE_STATEMENT_OBJECT_PROCEDURE: return "procedure";
@@ -1188,21 +1192,21 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 
 static int classify_select_statement_object(const mylite_parser *parser, mylite_statement *statement)
 {
-	size_t name_token_index = find_select_into_target_token(parser, statement);
-	mylite_statement_object_kind object_kind;
+	mylite_statement_object_kind object_kind = MYLITE_STATEMENT_OBJECT_NONE;
+	size_t name_token_index = find_select_into_target_token(parser, statement, &object_kind);
 
 	if (name_token_index >= parser->token_count) {
 		return 0;
 	}
-	object_kind = variable_object_kind_from_token(&parser->tokens[name_token_index]);
-	if (object_kind == MYLITE_STATEMENT_OBJECT_NONE ||
-	    object_kind == MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE) {
+	if (object_kind == MYLITE_STATEMENT_OBJECT_NONE) {
 		return 0;
 	}
 	return set_statement_direct_object_name(parser, statement, object_kind, name_token_index, statement->last_token - 1);
 }
 
-static size_t find_select_into_target_token(const mylite_parser *parser, const mylite_statement *statement)
+static size_t find_select_into_target_token(const mylite_parser *parser,
+                                            const mylite_statement *statement,
+                                            mylite_statement_object_kind *object_kind)
 {
 	size_t token_index = find_statement_kind_token(parser, statement);
 	size_t last_token_index;
@@ -1221,10 +1225,25 @@ static size_t find_select_into_target_token(const mylite_parser *parser, const m
 			continue;
 		}
 		if (parser->tokens[token_index].parser_token == INTO_T) {
+			mylite_statement_object_kind variable_kind;
+
 			if (token_text_equals(parser, token_index + 1, "OUTFILE") ||
 			    token_text_equals(parser, token_index + 1, "DUMPFILE")) {
+				if (token_index + 2 > last_token_index ||
+				    parser->tokens[token_index + 2].kind != MYLITE_TOKEN_STRING) {
+					return parser->token_count;
+				}
+				*object_kind = token_text_equals(parser, token_index + 1, "OUTFILE") ?
+					MYLITE_STATEMENT_OBJECT_OUTFILE :
+					MYLITE_STATEMENT_OBJECT_DUMPFILE;
+				return token_index + 2;
+			}
+
+			variable_kind = variable_object_kind_from_token(&parser->tokens[token_index + 1]);
+			if (variable_kind == MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE) {
 				return parser->token_count;
 			}
+			*object_kind = variable_kind;
 			return token_index + 1;
 		}
 		token_index++;

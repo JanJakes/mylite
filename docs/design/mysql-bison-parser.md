@@ -142,8 +142,8 @@ target-name classification uses the same matched-token data to skip CTE bodies
 before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 `DELETE`, including common priority, delayed, quick, and ignore modifiers.
 `SELECT ... INTO` assignment targets are recorded for user variables and local
-variables, while `INTO OUTFILE` and `INTO DUMPFILE` remain file-export body
-tokens.
+variables, while `INTO OUTFILE` and `INTO DUMPFILE` record the explicit export
+file target.
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table
@@ -221,6 +221,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   not expand multi-target `SELECT ... INTO`, `SET`, or `GET DIAGNOSTICS`
   assignment lists, and it does not classify ambiguous unadorned `SET name`
   assignments without semantic scope information.
+- File-export metadata records only the first literal target for
+  `SELECT ... INTO OUTFILE` and `SELECT ... INTO DUMPFILE`; field/line options
+  and file I/O behavior remain unimplemented.
 - Utility object metadata records the first direct target only and does not yet
   expand multi-table maintenance, cache-index lists, load-index lists, or lock
   lists. `DESCRIBE` and `EXPLAIN` target metadata is deliberately conservative:

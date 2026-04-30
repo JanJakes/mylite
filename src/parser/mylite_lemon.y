@@ -158,6 +158,7 @@ create_tail ::= UNDO TABLESPACE cache_name_part create_options_tail.
 create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_options_tail.
 create_tail ::= ROLE create_if_not_exists_tail drop_account_list.
 create_tail ::= USER create_if_not_exists_tail drop_account_name create_user_tail.
+create_tail ::= VIEW cache_table_ref required_statement_tail.
 create_tail ::= EVENT create_if_not_exists_tail cache_table_ref required_statement_tail.
 create_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref required_statement_tail.
 create_tail ::= create_routine_kind create_if_not_exists_tail cache_table_ref required_statement_tail.
@@ -176,7 +177,6 @@ create_index_type ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "TYPE");
 }
 
-create_object_kind ::= VIEW.
 create_object_kind ::= OR.
 create_object_kind ::= ALGORITHM.
 create_object_kind ::= SQL.

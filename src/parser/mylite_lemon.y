@@ -717,6 +717,12 @@ show_tail ::= MASTER STATUS.
 show_tail ::= SLAVE show_slave_tail.
 show_tail ::= GRANTS show_grants_tail.
 show_tail ::= show_scoped_kind show_filter_tail.
+show_tail ::= show_schema_list_kind show_filter_tail.
+show_tail ::= show_table_list_prefix TABLES show_database_tail show_filter_tail.
+show_tail ::= TABLE STATUS show_database_tail show_filter_tail.
+show_tail ::= OPEN TABLES show_database_tail show_filter_tail.
+show_tail ::= EVENTS show_database_tail show_filter_tail.
+show_tail ::= TRIGGERS show_database_tail show_filter_tail.
 
 show_extended_tail ::= EXTENDED show_extended_kind.
 show_extended_tail ::= EXTENDED FULL show_extended_kind.
@@ -733,6 +739,20 @@ show_scoped_kind ::= VARIABLES.
 show_filter_tail ::= .
 show_filter_tail ::= LIKE ATOM.
 show_filter_tail ::= WHERE expression_start statement_tail.
+
+show_database_tail ::= .
+show_database_tail ::= FROM show_database_name.
+show_database_tail ::= IN show_database_name.
+
+show_database_name ::= cache_name_part.
+
+show_schema_list_kind ::= DATABASES.
+show_schema_list_kind ::= SCHEMAS.
+
+show_table_list_prefix ::= .
+show_table_list_prefix ::= EXTENDED.
+show_table_list_prefix ::= FULL.
+show_table_list_prefix ::= EXTENDED FULL.
 
 show_count_star ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "*");
@@ -788,12 +808,10 @@ show_extended_kind ::= FIELDS.
 show_extended_kind ::= INDEX.
 show_extended_kind ::= INDEXES.
 show_extended_kind ::= KEYS.
-show_extended_kind ::= TABLES.
 
 show_full_kind ::= COLUMNS.
 show_full_kind ::= FIELDS.
 show_full_kind ::= PROCESSLIST.
-show_full_kind ::= TABLES.
 
 show_unprefixed_kind ::= BINARY.
 show_unprefixed_kind ::= BINLOG.
@@ -801,24 +819,17 @@ show_unprefixed_kind ::= CHARACTER.
 show_unprefixed_kind ::= CHARSET.
 show_unprefixed_kind ::= COLLATION.
 show_unprefixed_kind ::= COLUMNS.
-show_unprefixed_kind ::= DATABASES.
 show_unprefixed_kind ::= ENGINE.
-show_unprefixed_kind ::= EVENTS.
 show_unprefixed_kind ::= FIELDS.
 show_unprefixed_kind ::= FUNCTION.
 show_unprefixed_kind ::= INDEX.
 show_unprefixed_kind ::= INDEXES.
 show_unprefixed_kind ::= KEYS.
-show_unprefixed_kind ::= OPEN.
 show_unprefixed_kind ::= PROCEDURE.
 show_unprefixed_kind ::= PROFILE.
 show_unprefixed_kind ::= RELAYLOG.
 show_unprefixed_kind ::= REPLICA.
-show_unprefixed_kind ::= SCHEMAS.
 show_unprefixed_kind ::= STORAGE.
-show_unprefixed_kind ::= TABLE.
-show_unprefixed_kind ::= TABLES.
-show_unprefixed_kind ::= TRIGGERS.
 
 describe_statement ::= DESCRIBE describe_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);

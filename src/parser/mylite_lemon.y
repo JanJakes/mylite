@@ -424,7 +424,7 @@ alter_statement ::= ALTER alter_tail. {
 
 alter_tail ::= TABLE cache_table_ref.
 alter_tail ::= TABLE cache_table_ref required_statement_tail.
-alter_tail ::= LOGFILE create_logfile_group cache_name_part required_statement_tail.
+alter_tail ::= LOGFILE create_logfile_group cache_name_part create_logfile_group_tail.
 alter_tail ::= RESOURCE create_resource_group cache_name_part required_statement_tail.
 alter_tail ::= SERVER cache_name_part create_server_options.
 alter_tail ::= TABLESPACE cache_name_part alter_tablespace_action.

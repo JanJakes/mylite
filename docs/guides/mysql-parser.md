@@ -158,6 +158,16 @@ Binary log statements expose explicit log-file targets:
 ok statements=1 kinds=show[1:7,0:41]/binary_log:'bin.000001'
 ```
 
+Binary log collection statements expose the binary-log object kind:
+
+```text
+ok statements=1 kinds=show[1:4,0:22]/binary_log
+```
+
+```text
+ok statements=1 kinds=show[1:3,0:18]/binary_log
+```
+
 Relay log event statements expose explicit relay-log files, or a channel when
 no file is named:
 
@@ -165,10 +175,21 @@ no file is named:
 ok statements=1 kinds=show[1:7,0:43]/relay_log:'relay.000001'
 ```
 
-SHOW REPLICA STATUS exposes explicit channel names:
+SHOW REPLICA STATUS exposes explicit channel names or the replica-channel
+collection:
 
 ```text
 ok statements=1 kinds=show[1:6,0:36]/replication_channel:'ch'
+```
+
+```text
+ok statements=1 kinds=show[1:3,0:19]/replication_channel
+```
+
+SHOW REPLICAS exposes the replica-channel collection:
+
+```text
+ok statements=1 kinds=show[1:2,0:13]/replication_channel
 ```
 
 BINLOG statements expose their event payload string:

@@ -349,9 +349,9 @@ case "$show_profile_output" in
 		;;
 esac
 
-binary_log_output=$("$parser" "SHOW BINLOG EVENTS IN 'bin.000001' FROM 4; SHOW BINLOG EVENTS; PURGE BINARY LOGS TO 'bin.000001'; PURGE BINARY LOGS BEFORE NOW()")
+binary_log_output=$("$parser" "SHOW BINARY LOGS; SHOW BINARY LOG STATUS; SHOW MASTER STATUS; SHOW BINLOG EVENTS IN 'bin.000001' FROM 4; SHOW BINLOG EVENTS; PURGE BINARY LOGS TO 'bin.000001'; PURGE BINARY LOGS BEFORE NOW()")
 case "$binary_log_output" in
-	*"show"*/binary_log:"'bin.000001'"*"show[9:11"*"purge"*/binary_log:"'bin.000001'"*"purge[19:25"*) ;;
+	*"show"*/binary_log*"show"*/binary_log*"show"*/binary_log*"show"*/binary_log:"'bin.000001'"*"show"*/binary_log*"purge"*/binary_log:"'bin.000001'"*"purge[32:38"*) ;;
 	*)
 		echo "unexpected binary log output: $binary_log_output" >&2
 		exit 1
@@ -367,9 +367,9 @@ case "$relay_log_output" in
 		;;
 esac
 
-replica_status_output=$("$parser" "SHOW REPLICA STATUS FOR CHANNEL 'ch'; SHOW REPLICA STATUS; SHOW SLAVE STATUS FOR CHANNEL 'old'")
+replica_status_output=$("$parser" "SHOW REPLICAS; SHOW REPLICA STATUS FOR CHANNEL 'ch'; SHOW REPLICA STATUS; SHOW SLAVE STATUS FOR CHANNEL 'old'")
 case "$replica_status_output" in
-	*"show"*/replication_channel:"'ch'"*"show[8:10"*"show[12:17"*) ;;
+	*"show"*/replication_channel*"show"*/replication_channel:"'ch'"*"show"*/replication_channel*"show[15:20"*) ;;
 	*)
 		echo "unexpected SHOW REPLICA STATUS output: $replica_status_output" >&2
 		exit 1

@@ -66,11 +66,15 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 binary log statements:
   `https://dev.mysql.com/doc/refman/8.4/en/binlog.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-binlog-events.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-binary-log-status.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-binary-logs.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/purge-binary-logs.html`
 - MySQL 8.4 SHOW RELAYLOG EVENTS statement:
   `https://dev.mysql.com/doc/refman/8.4/en/show-relaylog-events.html`
 - MySQL 8.4 SHOW REPLICA STATUS statement:
   `https://dev.mysql.com/doc/refman/8.4/en/show-replica-status.html`
+- MySQL 8.4 SHOW REPLICAS statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-replicas.html`
 - MySQL 8.4 FLUSH statement:
   `https://dev.mysql.com/doc/refman/8.4/en/flush.html`
 - MySQL 8.4 table-maintenance statements:
@@ -184,10 +188,12 @@ system-variable and status-variable targets in `SHOW VARIABLES`,
 `SHOW STATUS`, and their scoped forms, diagnostics-area targets in
 `SHOW WARNINGS`, `SHOW ERRORS`, and their `SHOW COUNT(*) ...` forms,
 connection targets in `KILL`, binary log event
-payloads in `BINLOG`, binary log targets in `SHOW BINLOG EVENTS IN ...` and
+payloads in `BINLOG`, binary log targets in `SHOW BINARY LOGS`,
+`SHOW BINARY LOG STATUS`, `SHOW MASTER STATUS`, `SHOW BINLOG EVENTS`, and
 `PURGE BINARY LOGS TO ...`, relay log targets in
 `SHOW RELAYLOG EVENTS IN ...`, replication channel targets in channel-only
-`SHOW RELAYLOG EVENTS`, `SHOW REPLICA STATUS`, and `FLUSH RELAY LOGS`, table
+`SHOW RELAYLOG EVENTS`, `SHOW REPLICAS`, `SHOW REPLICA STATUS`, and
+`FLUSH RELAY LOGS`, table
 targets in `FLUSH TABLES`, and
 table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `REPAIR`, and prepared-statement names in

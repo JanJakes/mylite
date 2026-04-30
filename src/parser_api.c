@@ -212,6 +212,14 @@ static int classify_show_database_statement_object(const mylite_parser *parser,
 static int classify_show_collection_statement_object(const mylite_parser *parser,
                                                      mylite_statement *statement,
                                                      size_t token_index);
+static int classify_show_binary_log_statement_object(const mylite_parser *parser,
+                                                     mylite_statement *statement,
+                                                     size_t token_index,
+                                                     size_t last_token_index);
+static int classify_show_replica_statement_object(const mylite_parser *parser,
+                                                  mylite_statement *statement,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
 static int classify_show_variable_statement_object(const mylite_parser *parser,
                                                    mylite_statement *statement,
                                                    size_t token_index,
@@ -2332,23 +2340,20 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		return 1;
 	}
 
+	if (classify_show_binary_log_statement_object(parser, statement, token_index, last_token_index)) {
+		return 1;
+	}
+
+	if (classify_show_replica_statement_object(parser, statement, token_index, last_token_index)) {
+		return 1;
+	}
+
 	if (classify_show_variable_statement_object(parser, statement, token_index, last_token_index)) {
 		return 1;
 	}
 
 	if (classify_show_character_set_statement_object(parser, statement, token_index, last_token_index)) {
 		return 1;
-	}
-
-	if (parser->tokens[token_index].parser_token == BINLOG_T &&
-	    token_index + 1 <= last_token_index &&
-	    token_text_equals(parser, token_index + 1, "EVENTS")) {
-		name_token_index = find_show_binlog_events_name_token(parser, token_index + 2, last_token_index);
-		return set_statement_direct_object_name(parser,
-		                                        statement,
-		                                        MYLITE_STATEMENT_OBJECT_BINARY_LOG,
-		                                        name_token_index,
-		                                        last_token_index);
 	}
 
 	if (token_text_equals(parser, token_index, "RELAYLOG") &&
@@ -2362,17 +2367,6 @@ static int classify_show_statement_object(const mylite_parser *parser,
 			                                        name_token_index,
 			                                        last_token_index);
 		}
-		name_token_index = find_replication_channel_name_token(parser, token_index + 2, last_token_index);
-		return set_statement_direct_object_name(parser,
-		                                        statement,
-		                                        MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL,
-		                                        name_token_index,
-		                                        last_token_index);
-	}
-
-	if (token_text_equals(parser, token_index, "REPLICA") &&
-	    token_index + 1 <= last_token_index &&
-	    token_text_equals(parser, token_index + 1, "STATUS")) {
 		name_token_index = find_replication_channel_name_token(parser, token_index + 2, last_token_index);
 		return set_statement_direct_object_name(parser,
 		                                        statement,
@@ -2547,6 +2541,77 @@ static int classify_show_collection_statement_object(const mylite_parser *parser
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_CONNECTION);
 	}
 	return 0;
+}
+
+static int classify_show_binary_log_statement_object(const mylite_parser *parser,
+                                                     mylite_statement *statement,
+                                                     size_t token_index,
+                                                     size_t last_token_index)
+{
+	size_t name_token_index;
+
+	if (parser->tokens[token_index].parser_token == BINLOG_T &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index + 1, "EVENTS")) {
+		name_token_index = find_show_binlog_events_name_token(parser, token_index + 2, last_token_index);
+		if (name_token_index < parser->token_count) {
+			return set_statement_direct_object_name(parser,
+			                                        statement,
+			                                        MYLITE_STATEMENT_OBJECT_BINARY_LOG,
+			                                        name_token_index,
+			                                        last_token_index);
+		}
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_BINARY_LOG);
+	}
+
+	if (token_text_equals(parser, token_index, "BINARY") &&
+	    token_index + 1 <= last_token_index &&
+	    token_index + 1 < parser->token_count &&
+	    (token_text_equals(parser, token_index + 1, "LOGS") ||
+	     (token_text_equals(parser, token_index + 1, "LOG") &&
+	      token_index + 2 <= last_token_index &&
+	      token_index + 2 < parser->token_count &&
+	      token_text_equals(parser, token_index + 2, "STATUS")))) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_BINARY_LOG);
+	}
+
+	if (token_text_equals(parser, token_index, "MASTER") &&
+	    token_index + 1 <= last_token_index &&
+	    token_index + 1 < parser->token_count &&
+	    token_text_equals(parser, token_index + 1, "STATUS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_BINARY_LOG);
+	}
+
+	return 0;
+}
+
+static int classify_show_replica_statement_object(const mylite_parser *parser,
+                                                  mylite_statement *statement,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	size_t name_token_index;
+
+	if (token_text_equals(parser, token_index, "REPLICAS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL);
+	}
+
+	if (!token_text_equals(parser, token_index, "REPLICA") ||
+	    token_index + 1 > last_token_index ||
+	    token_index + 1 >= parser->token_count ||
+	    !token_text_equals(parser, token_index + 1, "STATUS")) {
+		return 0;
+	}
+
+	name_token_index = find_replication_channel_name_token(parser, token_index + 2, last_token_index);
+	if (name_token_index < parser->token_count) {
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+	return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL);
 }
 
 static int classify_show_variable_statement_object(const mylite_parser *parser,

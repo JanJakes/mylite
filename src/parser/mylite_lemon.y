@@ -68,6 +68,10 @@ statement ::= clone_statement.
 statement ::= flush_statement.
 statement ::= restart_statement.
 statement ::= shutdown_statement.
+statement ::= insert_statement.
+statement ::= replace_statement.
+statement ::= update_statement.
+statement ::= delete_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -87,10 +91,6 @@ statement_start(A) ::= required_tail_start(B). { A = B; }
 statement_start(A) ::= optional_tail_start(B). { A = B; }
 
 required_tail_start(A) ::= WITH. { A = MYLITE_STATEMENT_SELECT; }
-required_tail_start(A) ::= INSERT. { A = MYLITE_STATEMENT_INSERT; }
-required_tail_start(A) ::= REPLACE. { A = MYLITE_STATEMENT_REPLACE; }
-required_tail_start(A) ::= UPDATE. { A = MYLITE_STATEMENT_UPDATE; }
-required_tail_start(A) ::= DELETE. { A = MYLITE_STATEMENT_DELETE; }
 required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= TABLE. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= VALUES. { A = MYLITE_STATEMENT_SELECT; }
@@ -524,6 +524,59 @@ shutdown_statement ::= SHUTDOWN. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
+insert_statement ::= INSERT insert_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_INSERT);
+}
+
+insert_tail ::= dml_insert_first_token required_statement_tail.
+
+dml_insert_first_token ::= ATOM.
+dml_insert_first_token ::= DELAYED.
+dml_insert_first_token ::= HIGH_PRIORITY.
+dml_insert_first_token ::= IGNORE.
+dml_insert_first_token ::= INTO.
+dml_insert_first_token ::= LABEL.
+dml_insert_first_token ::= LOW_PRIORITY.
+
+replace_statement ::= REPLACE replace_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLACE);
+}
+
+replace_tail ::= dml_replace_first_token required_statement_tail.
+
+dml_replace_first_token ::= ATOM.
+dml_replace_first_token ::= DELAYED.
+dml_replace_first_token ::= INTO.
+dml_replace_first_token ::= LABEL.
+dml_replace_first_token ::= LOW_PRIORITY.
+
+update_statement ::= UPDATE update_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UPDATE);
+}
+
+update_tail ::= dml_update_first_token required_statement_tail.
+
+dml_update_first_token ::= ATOM.
+dml_update_first_token ::= IGNORE.
+dml_update_first_token ::= LABEL.
+dml_update_first_token ::= LOW_PRIORITY.
+dml_update_first_token ::= LP.
+dml_update_first_token ::= TRIGGERS.
+dml_update_first_token ::= USER.
+
+delete_statement ::= DELETE delete_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DELETE);
+}
+
+delete_tail ::= dml_delete_first_token required_statement_tail.
+
+dml_delete_first_token ::= ATOM.
+dml_delete_first_token ::= FROM.
+dml_delete_first_token ::= IGNORE.
+dml_delete_first_token ::= LABEL.
+dml_delete_first_token ::= LOW_PRIORITY.
+dml_delete_first_token ::= QUICK.
+
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -752,6 +805,12 @@ keyword ::= TRIGGERS.
 keyword ::= USER_RESOURCES.
 keyword ::= VARIABLES.
 keyword ::= WARNINGS.
+keyword ::= DELAYED.
+keyword ::= HIGH_PRIORITY.
+keyword ::= IGNORE.
+keyword ::= INTO.
+keyword ::= LOW_PRIORITY.
+keyword ::= QUICK.
 
 keyword_not_select_clause ::= SELECT.
 keyword_not_select_clause ::= WITH.
@@ -912,3 +971,9 @@ keyword_not_select_clause ::= TRIGGERS.
 keyword_not_select_clause ::= USER_RESOURCES.
 keyword_not_select_clause ::= VARIABLES.
 keyword_not_select_clause ::= WARNINGS.
+keyword_not_select_clause ::= DELAYED.
+keyword_not_select_clause ::= HIGH_PRIORITY.
+keyword_not_select_clause ::= IGNORE.
+keyword_not_select_clause ::= INTO.
+keyword_not_select_clause ::= LOW_PRIORITY.
+keyword_not_select_clause ::= QUICK.

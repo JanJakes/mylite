@@ -103,6 +103,16 @@ def main() -> int:
         ("restart now;", 1, {}),
         ("shutdown;", 0, {"statements": "1", "admin": "1"}),
         ("shutdown now;", 1, {}),
+        ("insert into t values (1);", 0, {"statements": "1", "insert": "1"}),
+        ("insert ignore into t values (1);", 0, {"statements": "1", "insert": "1"}),
+        ("insert select;", 1, {}),
+        ("replace into t values (1);", 0, {"statements": "1", "replace": "1"}),
+        ("replace select;", 1, {}),
+        ("update t set a = 1;", 0, {"statements": "1", "update": "1"}),
+        ("update select set a = 1;", 1, {}),
+        ("delete from t;", 0, {"statements": "1", "delete": "1"}),
+        ("delete quick from t;", 0, {"statements": "1", "delete": "1"}),
+        ("delete select;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

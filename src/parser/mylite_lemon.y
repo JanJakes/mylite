@@ -867,12 +867,36 @@ clone_statement ::= CLONE clone_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-clone_tail ::= INSTANCE FROM required_statement_tail.
-clone_tail ::= LOCAL DATA clone_directory required_statement_tail.
+clone_tail ::= INSTANCE FROM clone_instance_source clone_identified BY clone_password.
+clone_tail ::= LOCAL DATA clone_directory diagnostics_equals clone_directory_path.
+
+clone_instance_source ::= clone_user clone_at clone_host clone_colon ATOM.
+
+clone_user ::= ATOM.
+clone_user ::= LABEL.
+
+clone_at ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "@");
+}
+
+clone_host ::= ATOM.
+clone_host ::= LABEL.
+
+clone_colon ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, ":");
+}
+
+clone_identified ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "IDENTIFIED");
+}
+
+clone_password ::= ATOM.
 
 clone_directory ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "DIRECTORY");
 }
+
+clone_directory_path ::= ATOM.
 
 flush_statement ::= FLUSH flush_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);

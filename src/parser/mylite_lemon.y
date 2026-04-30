@@ -151,6 +151,7 @@ create_tail ::= AGGREGATE FUNCTION required_statement_tail.
 create_tail ::= LOGFILE ATOM required_statement_tail.
 create_tail ::= RESOURCE ATOM required_statement_tail.
 create_tail ::= UNDO TABLESPACE required_statement_tail.
+create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_options_tail.
 
 create_index_kind ::= UNIQUE.
 create_index_kind ::= FULLTEXT.
@@ -162,8 +163,6 @@ create_object_kind ::= OR.
 create_object_kind ::= ALGORITHM.
 create_object_kind ::= SQL.
 create_object_kind ::= DEFINER.
-create_object_kind ::= DATABASE.
-create_object_kind ::= SCHEMA.
 create_object_kind ::= INDEX.
 create_object_kind ::= EVENT.
 create_object_kind ::= FUNCTION.
@@ -173,6 +172,19 @@ create_object_kind ::= USER.
 create_object_kind ::= ROLE.
 create_object_kind ::= SERVER.
 create_object_kind ::= TABLESPACE.
+
+create_database_kind ::= DATABASE.
+create_database_kind ::= SCHEMA.
+
+create_if_not_exists_tail ::= .
+create_if_not_exists_tail ::= IF create_not reset_exists.
+
+create_not ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "NOT");
+}
+
+create_options_tail ::= .
+create_options_tail ::= create_options_tail statement_token.
 
 drop_statement ::= DROP drop_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);

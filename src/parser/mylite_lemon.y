@@ -314,7 +314,7 @@ event_schedule_start ::= ATOM(A). {
   mylite_parser_require_event_schedule_start(ctx, A);
 }
 
-create_trigger_body ::= create_trigger_time create_trigger_event ON cache_table_ref FOR create_each ROW required_statement_tail.
+create_trigger_body ::= create_trigger_time create_trigger_event ON cache_table_ref FOR create_each ROW create_trigger_statement_tail.
 
 create_trigger_time ::= ATOM(A). {
   mylite_parser_require_token_text_any(ctx, A, "BEFORE", "AFTER");
@@ -327,6 +327,20 @@ create_trigger_event ::= DELETE.
 create_each ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "EACH");
 }
+
+create_trigger_statement_tail ::= create_trigger_statement_start statement_tail.
+create_trigger_statement_tail ::= create_trigger_order create_trigger_statement_start statement_tail.
+
+create_trigger_order ::= ATOM(A) cache_name_part. {
+  mylite_parser_require_token_text_any(ctx, A, "FOLLOWS", "PRECEDES");
+}
+
+create_trigger_statement_start ::= BEGIN.
+create_trigger_statement_start ::= DELETE.
+create_trigger_statement_start ::= INSERT.
+create_trigger_statement_start ::= LABEL.
+create_trigger_statement_start ::= SELECT.
+create_trigger_statement_start ::= UPDATE.
 
 create_function_tail ::= create_udf_tail.
 create_function_tail ::= routine_signature create_returns statement_token required_statement_tail.
@@ -646,6 +660,7 @@ alter_tablespace_option_value ::= statement_token.
 alter_tablespace_option_value ::= alter_tablespace_option_value statement_token.
 
 alter_undo_tablespace_action ::= SET alter_undo_tablespace_state drop_tablespace_engine_tail.
+create_trigger_statement_start ::= SET.
 
 alter_undo_tablespace_state ::= ATOM(A). {
   mylite_parser_require_token_text_any(ctx, A, "ACTIVE", "INACTIVE");
@@ -697,6 +712,7 @@ alter_instance_reload_rollback_tail(A) ::= . {
 alter_instance_reload_rollback_tail(A) ::= NO ROLLBACK ON ERROR. {
   A = 1;
 }
+create_trigger_statement_start ::= ROLLBACK.
 
 alter_user_target ::= drop_account_name.
 
@@ -898,6 +914,7 @@ savepoint_name ::= LABEL.
 release_statement ::= RELEASE SAVEPOINT savepoint_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
+create_trigger_statement_start ::= RELEASE.
 
 lock_statement ::= LOCK lock_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
@@ -1618,6 +1635,7 @@ handler_limit_tail ::= LIMIT ATOM OFFSET ATOM.
 call_statement ::= CALL call_name call_arguments. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
+create_trigger_statement_start ::= CALL.
 
 call_name ::= call_target.
 call_name ::= call_target ATOM call_target.

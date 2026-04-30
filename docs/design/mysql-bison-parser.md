@@ -304,8 +304,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   `SHOW RELAYLOG EVENTS` metadata records the explicit relay log name when
   present, bare relay-log targets, or an explicit channel name when no log file
   is named.
-  `SHOW REPLICA STATUS` metadata records only explicit channel names and leaves
-  bare status forms objectless.
+  `SHOW REPLICA STATUS` metadata records explicit channel names or the
+  replication-channel collection for bare status forms.
   `FLUSH TABLES` metadata records only the first table target. `FLUSH RELAY
   LOGS` records only explicit channel names. Other global flush forms remain
   objectless.

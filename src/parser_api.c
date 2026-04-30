@@ -44,6 +44,9 @@ static size_t skip_dml_modifiers(const mylite_parser *parser,
                                  size_t last_token_index);
 static int is_dml_modifier_token(int token);
 static int classify_direct_statement_object(const mylite_parser *parser, mylite_statement *statement);
+static size_t find_import_sdi_file_token(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index);
 static int classify_describe_or_explain_statement_object(const mylite_parser *parser,
                                                          mylite_statement *statement,
                                                          size_t token_index,
@@ -607,6 +610,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_ROLE: return "role";
 	case MYLITE_STATEMENT_OBJECT_SAVEPOINT: return "savepoint";
 	case MYLITE_STATEMENT_OBJECT_SCHEMA: return "schema";
+	case MYLITE_STATEMENT_OBJECT_SDI_FILE: return "sdi_file";
 	case MYLITE_STATEMENT_OBJECT_SERVER: return "server";
 	case MYLITE_STATEMENT_OBJECT_SPATIAL_REFERENCE_SYSTEM: return "spatial_reference_system";
 	case MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE: return "system_variable";
@@ -1004,6 +1008,10 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	case MYLITE_STATEMENT_RESTART:
 	case MYLITE_STATEMENT_SHUTDOWN:
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_INSTANCE);
+	case MYLITE_STATEMENT_IMPORT:
+		object_kind = MYLITE_STATEMENT_OBJECT_SDI_FILE;
+		name_token_index = find_import_sdi_file_token(parser, name_token_index, last_token_index);
+		break;
 	case MYLITE_STATEMENT_USE:
 		object_kind = MYLITE_STATEMENT_OBJECT_DATABASE;
 		break;
@@ -1116,6 +1124,20 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	}
 
 	return set_statement_direct_object_name(parser, statement, object_kind, name_token_index, last_token_index);
+}
+
+static size_t find_import_sdi_file_token(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index)
+{
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == FROM_T &&
+		    parser->tokens[token_index + 1].kind == MYLITE_TOKEN_STRING) {
+			return token_index + 1;
+		}
+		token_index++;
+	}
+	return parser->token_count;
 }
 
 static int classify_describe_or_explain_statement_object(const mylite_parser *parser,

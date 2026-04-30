@@ -112,6 +112,15 @@ case "$utility_object_output" in
 		;;
 esac
 
+import_output=$("$parser" "IMPORT TABLE FROM '/tmp/a.sdi', '/tmp/b.sdi'; IMPORT TABLE FROM @file")
+case "$import_output" in
+	*"import"*/sdi_file:"'/tmp/a.sdi'"*"import[8:11"*) ;;
+	*)
+		echo "unexpected IMPORT output: $import_output" >&2
+		exit 1
+		;;
+esac
+
 explain_sql='DESC `db`.`t`;
 DESCRIBE t c;
 EXPLAIN `db`.`e`;

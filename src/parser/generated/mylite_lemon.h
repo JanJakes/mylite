@@ -43,8 +43,8 @@
 #define ML_ROLE                            43
 #define ML_SERVER                          44
 #define ML_DROP                            45
-#define ML_TABLES                          46
-#define ML_PREPARE                         47
+#define ML_PREPARE                         46
+#define ML_TABLES                          47
 #define ML_ALTER                           48
 #define ML_INSTANCE                        49
 #define ML_RENAME                          50

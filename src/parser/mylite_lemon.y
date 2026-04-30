@@ -184,6 +184,7 @@ drop_tail ::= LOGFILE ATOM required_statement_tail.
 drop_tail ::= RESOURCE ATOM required_statement_tail.
 drop_tail ::= SPATIAL ATOM required_statement_tail.
 drop_tail ::= UNDO TABLESPACE required_statement_tail.
+drop_tail ::= PREPARE prepared_statement_name.
 
 drop_table_kind ::= TABLE.
 drop_table_kind ::= TABLES.
@@ -196,7 +197,6 @@ drop_object_kind ::= VIEW.
 drop_object_kind ::= EVENT.
 drop_object_kind ::= FUNCTION.
 drop_object_kind ::= PROCEDURE.
-drop_object_kind ::= PREPARE.
 drop_object_kind ::= TRIGGER.
 drop_object_kind ::= USER.
 drop_object_kind ::= ROLE.

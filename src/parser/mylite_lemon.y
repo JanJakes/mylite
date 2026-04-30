@@ -239,11 +239,15 @@ truncate_statement ::= TRUNCATE truncate_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-truncate_tail ::= TABLE required_statement_tail.
-truncate_tail ::= truncate_table_name statement_tail.
+truncate_tail ::= TABLE truncate_table_ref.
+truncate_tail ::= truncate_table_ref.
 
-truncate_table_name ::= ATOM.
-truncate_table_name ::= LABEL.
+truncate_table_ref ::= truncate_table_part.
+truncate_table_ref ::= truncate_table_part ATOM truncate_table_part.
+
+truncate_table_part ::= ATOM.
+truncate_table_part ::= LABEL.
+truncate_table_part ::= USER.
 
 load_statement ::= LOAD load_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);

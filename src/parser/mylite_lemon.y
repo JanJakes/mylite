@@ -88,6 +88,7 @@ statement ::= revoke_statement.
 statement ::= leave_statement.
 statement ::= iterate_statement.
 statement ::= help_statement.
+statement ::= do_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -107,7 +108,6 @@ statement_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 statement_start(A) ::= required_tail_start(B). { A = B; }
 statement_start(A) ::= optional_tail_start(B). { A = B; }
 
-required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= IF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= ELSEIF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= RETURN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -734,6 +734,29 @@ help_statement ::= HELP help_topic statement_tail. {
 help_topic ::= ATOM.
 help_topic ::= LABEL.
 help_topic ::= keyword_not_select_clause.
+
+do_statement ::= DO expression_start statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+
+expression_start ::= ATOM.
+expression_start ::= LABEL.
+expression_start ::= expression_start_keyword.
+expression_start ::= LP.
+expression_start ::= LB.
+expression_start ::= LC.
+
+expression_start_keyword ::= BINARY.
+expression_start_keyword ::= CASE.
+expression_start_keyword ::= COUNT.
+expression_start_keyword ::= DEFAULT.
+expression_start_keyword ::= FORMAT.
+expression_start_keyword ::= IF.
+expression_start_keyword ::= INSERT.
+expression_start_keyword ::= REPEAT.
+expression_start_keyword ::= REPLACE.
+expression_start_keyword ::= ROW.
+expression_start_keyword ::= USER.
 
 optional_tail_start(A) ::= RESIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= ELSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }

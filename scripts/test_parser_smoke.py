@@ -153,6 +153,9 @@ def main() -> int:
         ("help 'select';", 0, {"statements": "1", "utility": "1"}),
         ("help select;", 0, {"statements": "1", "utility": "1"}),
         ("help;", 1, {}),
+        ("do 1 + 1;", 0, {"statements": "1", "utility": "1"}),
+        ("do (select 1);", 0, {"statements": "1", "utility": "1"}),
+        ("do select 1;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

@@ -167,6 +167,7 @@ unknown_head:
 	| END_LOOP_T
 	| END_REPEAT_T
 	| END_WHILE_T
+	| END_CASE_T
 	| THEN_T
 	| ELSE_T
 	| ELSEIF_T

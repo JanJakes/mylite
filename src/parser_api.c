@@ -15,6 +15,16 @@ static int is_if_function_call(const mylite_parser *parser, size_t token_index);
 static int is_if_exists_clause(const mylite_parser *parser, size_t token_index);
 static int is_compound_control_end_token(int token);
 static int compound_control_tokens_match(int start_token, int end_token);
+static void merge_compound_control_statement_spans(mylite_parser *parser);
+static int statement_starts_with_matched_compound_control(const mylite_parser *parser,
+                                                          const mylite_statement *statement,
+                                                          size_t *end_token);
+static size_t last_compound_control_statement_token(const mylite_parser *parser, size_t end_token);
+static int compound_control_end_allows_label(int token);
+static void set_statement_end_from_token(const mylite_parser *parser,
+                                         mylite_statement *statement,
+                                         size_t token_index);
+static void remove_statements_covered_by_previous(mylite_parser *parser, size_t statement_index);
 static void classify_statement_metadata(mylite_parser *parser);
 static void classify_grouped_query_statement_kinds(mylite_parser *parser);
 static mylite_statement_kind classify_grouped_query_statement_kind(const mylite_parser *parser,
@@ -480,6 +490,7 @@ int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result
 	}
 	if (parser.error[0] == '\0') {
 		match_compound_control_tokens(&parser);
+		merge_compound_control_statement_spans(&parser);
 		classify_statement_metadata(&parser);
 	}
 
@@ -616,6 +627,106 @@ static int compound_control_tokens_match(int start_token, int end_token)
 	       (start_token == LOOP_T && end_token == END_LOOP_T) ||
 	       (start_token == REPEAT_T && end_token == END_REPEAT_T) ||
 	       (start_token == WHILE_T && end_token == END_WHILE_T);
+}
+
+static void merge_compound_control_statement_spans(mylite_parser *parser)
+{
+	size_t statement_index = 0;
+
+	while (statement_index < parser->statement_count) {
+		mylite_statement *statement = &parser->statements[statement_index];
+		size_t end_token;
+
+		if (!statement_starts_with_matched_compound_control(parser, statement, &end_token)) {
+			statement_index++;
+			continue;
+		}
+
+		end_token = last_compound_control_statement_token(parser, end_token);
+		set_statement_end_from_token(parser, statement, end_token);
+		remove_statements_covered_by_previous(parser, statement_index);
+		statement_index++;
+	}
+}
+
+static int statement_starts_with_matched_compound_control(const mylite_parser *parser,
+                                                          const mylite_statement *statement,
+                                                          size_t *end_token)
+{
+	const mylite_token *first_token;
+	size_t matching_token;
+
+	if (statement->first_token == 0 ||
+	    statement->first_token > parser->token_count ||
+	    statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	first_token = &parser->tokens[statement->first_token - 1];
+	matching_token = first_token->matching_token;
+	if (matching_token == 0 ||
+	    matching_token <= statement->last_token ||
+	    matching_token > parser->token_count ||
+	    !compound_control_tokens_match(first_token->parser_token,
+	                                   parser->tokens[matching_token - 1].parser_token)) {
+		return 0;
+	}
+
+	*end_token = matching_token - 1;
+	return 1;
+}
+
+static size_t last_compound_control_statement_token(const mylite_parser *parser, size_t end_token)
+{
+	size_t label_token = end_token + 1;
+
+	if (compound_control_end_allows_label(parser->tokens[end_token].parser_token) &&
+	    label_token < parser->token_count &&
+	    token_can_start_label_name(&parser->tokens[label_token])) {
+		return label_token;
+	}
+	return end_token;
+}
+
+static int compound_control_end_allows_label(int token)
+{
+	return token == END_LOOP_T ||
+	       token == END_REPEAT_T ||
+	       token == END_WHILE_T;
+}
+
+static void set_statement_end_from_token(const mylite_parser *parser,
+                                         mylite_statement *statement,
+                                         size_t token_index)
+{
+	const mylite_token *token = &parser->tokens[token_index];
+
+	statement->last_token = token_index + 1;
+	statement->end_offset = token->end_offset;
+	statement->end_line = token->end_line;
+	statement->end_column = token->end_column;
+}
+
+static void remove_statements_covered_by_previous(mylite_parser *parser, size_t statement_index)
+{
+	size_t first_covered = statement_index + 1;
+	size_t first_uncovered = first_covered;
+	size_t covered_count;
+
+	while (first_uncovered < parser->statement_count &&
+	       parser->statements[first_uncovered].first_token <= parser->statements[statement_index].last_token) {
+		first_uncovered++;
+	}
+
+	covered_count = first_uncovered - first_covered;
+	if (covered_count == 0) {
+		return;
+	}
+
+	memmove(&parser->statements[first_covered],
+	        &parser->statements[first_uncovered],
+	        (parser->statement_count - first_uncovered) * sizeof(parser->statements[0]));
+	parser->statement_count -= covered_count;
 }
 
 void mylite_parse_result_free(mylite_parse_result *result)

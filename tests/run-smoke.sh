@@ -44,6 +44,15 @@ case "$stored_head_output" in
 		;;
 esac
 
+compound_span_output=$("$parser" 'IF x THEN SELECT 1; END IF; CASE x WHEN 1 THEN SELECT 1; END CASE; LOOP LEAVE done; END LOOP done; REPEAT SELECT 1; UNTIL x END REPEAT rpt; WHILE x DO SELECT 1; END WHILE wh')
+case "$compound_span_output" in
+	*"kinds=if[1:7"*"case[9:17"*"loop[19:24"*"repeat[26:33"*"while[35:42"*) ;;
+	*)
+		echo "unexpected compound statement span output: $compound_span_output" >&2
+		exit 1
+		;;
+esac
+
 cursor_output=$("$parser" 'DECLARE c CURSOR FOR SELECT 1; DECLARE x INT; OPEN c; FETCH c INTO x; CLOSE c; CREATE TABLE cursor (id int)')
 case "$cursor_output" in
 	*"declare"*/cursor:c*"declare"*/local_variable:x*"open"*/cursor:c*"fetch"*/cursor:c*"close"*/cursor:c*"create"*/table:cursor*) ;;

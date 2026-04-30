@@ -14,6 +14,12 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/keywords.html`
 - MySQL 8.4 statement labels:
   `https://dev.mysql.com/doc/refman/8.4/en/statement-labels.html`
+- MySQL 8.4 flow-control statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/case.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/if.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/loop.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/repeat.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/while.html`
 - MySQL 8.4 local variable DECLARE statement:
   `https://dev.mysql.com/doc/refman/8.4/en/declare-local-variable.html`
 - MySQL 8.4 DECLARE ... CONDITION statement:
@@ -272,13 +278,16 @@ according to the innermost leading query token.
 Stored-program statement heads such as `DECLARE`, cursor operations, `IF`,
 `CASE`, loop forms, `LEAVE`, `ITERATE`, and `RETURN` have explicit statement
 kinds. Compound-control tokens are structurally matched for `IF ... END IF`,
-`LOOP ... END LOOP`, `REPEAT ... END REPEAT`, and `WHILE ... END WHILE` without
-misclassifying `IF(...)` expressions or `IF [NOT] EXISTS` clauses as compound
-block starts. Local variable names are recorded for ordinary `DECLARE`
-statements. Cursor names are recorded for `DECLARE ... CURSOR`, `OPEN`,
-`FETCH`, and `CLOSE`. Jump target labels are recorded for `LEAVE` and
-`ITERATE`. Label declarations are recorded when they prefix the MySQL-labeled
-constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`. Named condition
+`CASE ... END CASE`, `LOOP ... END LOOP`, `REPEAT ... END REPEAT`, and
+`WHILE ... END WHILE` without misclassifying `IF(...)` expressions or
+`IF [NOT] EXISTS` clauses as compound block starts. Standalone matched
+flow-control blocks keep semicolon-delimited bodies in one statement span, with
+optional loop end labels included in that span. Local variable names are
+recorded for ordinary `DECLARE` statements. Cursor names are recorded for
+`DECLARE ... CURSOR`, `OPEN`, `FETCH`, and `CLOSE`. Jump target labels are
+recorded for `LEAVE` and `ITERATE`. Label declarations are recorded when they
+prefix the MySQL-labeled constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
+Named condition
 declarations are recorded for `DECLARE ... CONDITION`, and the first handled
 condition value is recorded for `DECLARE ... HANDLER`. `GET DIAGNOSTICS
 ... CONDITION` records the requested diagnostics condition area number.

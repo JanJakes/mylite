@@ -527,6 +527,12 @@ match 7 21
 match 21 7
 ```
 
+Semicolon-delimited flow-control bodies stay in one statement span:
+
+```text
+ok statements=1 kinds=if[1:7,0:26]
+```
+
 Cursor operations expose their cursor handle:
 
 ```text

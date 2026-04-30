@@ -361,13 +361,13 @@ reset_statement ::= RESET reset_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-reset_tail ::= reset_first_token statement_tail.
+reset_tail ::= BINARY LOGS statement_tail.
+reset_tail ::= reset_kind statement_tail.
 
-reset_first_token ::= BINARY.
-reset_first_token ::= MASTER.
-reset_first_token ::= PERSIST.
-reset_first_token ::= REPLICA.
-reset_first_token ::= SLAVE.
+reset_kind ::= MASTER.
+reset_kind ::= PERSIST.
+reset_kind ::= REPLICA.
+reset_kind ::= SLAVE.
 
 purge_statement ::= PURGE purge_first_token required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);

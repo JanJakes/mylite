@@ -102,6 +102,8 @@ def main() -> int:
         ("deallocate prepare s extra;", 1, {}),
         ("deallocate nonsense;", 1, {}),
         ("reset persist;", 0, {"statements": "1", "admin": "1"}),
+        ("reset binary logs and gtids;", 0, {"statements": "1", "admin": "1"}),
+        ("reset binary;", 1, {}),
         ("reset nonsense;", 1, {}),
         ("purge binary logs to 'bin.0001';", 0, {"statements": "1", "replication": "1"}),
         ("purge nonsense;", 1, {}),

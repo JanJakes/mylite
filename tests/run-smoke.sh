@@ -26,6 +26,15 @@ case "$span_output" in
 		;;
 esac
 
+grouped_query_output=$("$parser" '(SELECT 1) UNION SELECT 2; ((VALUES ROW(1),ROW(2))) ORDER BY 1; (TABLE t)')
+case "$grouped_query_output" in
+	*"kinds=select[1:7,0:25],values[9:25,27:62],table[27:30,64:73]"*) ;;
+	*)
+		echo "unexpected grouped query output: $grouped_query_output" >&2
+		exit 1
+		;;
+esac
+
 object_output=$("$parser" 'CREATE TABLE IF NOT EXISTS `db`.`t` (id int); ALTER VIEW v AS SELECT 1; DROP FUNCTION f')
 case "$object_output" in
 	*"create"*/table:'`db`.`t`'*"alter"*/view:v*"drop"*/function:f*) ;;

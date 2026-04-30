@@ -10,6 +10,10 @@
 int yyparse(mylite_parser *parser);
 
 static void classify_statement_metadata(mylite_parser *parser);
+static void classify_grouped_query_statement_kinds(mylite_parser *parser);
+static mylite_statement_kind classify_grouped_query_statement_kind(const mylite_parser *parser,
+                                                                   const mylite_statement *statement);
+static mylite_statement_kind query_statement_kind_from_token(int token);
 static void classify_with_statement_kinds(mylite_parser *parser);
 static mylite_statement_kind classify_with_statement_kind(const mylite_parser *parser,
                                                           const mylite_statement *statement);
@@ -73,11 +77,27 @@ void mylite_parser_destroy(mylite_parser *parser)
 
 void mylite_parser_begin_statement(mylite_parser *parser, mylite_statement_kind kind, int requires_body)
 {
+	mylite_parser_begin_statement_at_token(parser, kind, requires_body, parser->lexer.token_count);
+}
+
+void mylite_parser_begin_statement_at_token(mylite_parser *parser,
+                                            mylite_statement_kind kind,
+                                            int requires_body,
+                                            size_t first_token)
+{
 	parser->active_statement_kind = kind;
-	parser->active_statement_first_token = parser->lexer.token_count;
-	parser->active_statement_start_offset = parser->lexer.token_start_offset;
-	parser->active_statement_start_line = parser->lexer.token_start_line;
-	parser->active_statement_start_column = parser->lexer.token_start_column;
+	parser->active_statement_first_token = first_token;
+	if (first_token > 0 && first_token <= parser->token_count) {
+		const mylite_token *token = &parser->tokens[first_token - 1];
+		parser->active_statement_start_offset = token->start_offset;
+		parser->active_statement_start_line = token->start_line;
+		parser->active_statement_start_column = token->start_column;
+	} else {
+		parser->active_statement_first_token = parser->lexer.token_count;
+		parser->active_statement_start_offset = parser->lexer.token_start_offset;
+		parser->active_statement_start_line = parser->lexer.token_start_line;
+		parser->active_statement_start_column = parser->lexer.token_start_column;
+	}
 	parser->active_statement_body_items = 0;
 	parser->active_statement_requires_body = requires_body;
 }
@@ -354,8 +374,71 @@ const char *mylite_token_kind_name(mylite_token_kind kind)
 
 static void classify_statement_metadata(mylite_parser *parser)
 {
+	classify_grouped_query_statement_kinds(parser);
 	classify_with_statement_kinds(parser);
 	classify_statement_objects(parser);
+}
+
+static void classify_grouped_query_statement_kinds(mylite_parser *parser)
+{
+	size_t i;
+
+	for (i = 0; i < parser->statement_count; i++) {
+		parser->statements[i].kind = classify_grouped_query_statement_kind(parser, &parser->statements[i]);
+	}
+}
+
+static mylite_statement_kind classify_grouped_query_statement_kind(const mylite_parser *parser,
+                                                                   const mylite_statement *statement)
+{
+	size_t token_index;
+	size_t last_token_index;
+	mylite_statement_kind kind;
+
+	if (statement->kind != MYLITE_STATEMENT_UNKNOWN ||
+	    statement->first_token == 0 ||
+	    statement->last_token < statement->first_token) {
+		return statement->kind;
+	}
+
+	token_index = statement->first_token - 1;
+	last_token_index = statement->last_token - 1;
+	if (token_index >= parser->token_count || parser->tokens[token_index].parser_token != '(') {
+		return statement->kind;
+	}
+
+	while (token_index <= last_token_index &&
+	       token_index < parser->token_count &&
+	       parser->tokens[token_index].parser_token == '(') {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+		if (matching_token == 0 ||
+		    matching_token <= token_index + 1 ||
+		    matching_token > statement->last_token) {
+			return statement->kind;
+		}
+		token_index++;
+	}
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return statement->kind;
+	}
+
+	kind = query_statement_kind_from_token(parser->tokens[token_index].parser_token);
+	return kind == MYLITE_STATEMENT_UNKNOWN ? statement->kind : kind;
+}
+
+static mylite_statement_kind query_statement_kind_from_token(int token)
+{
+	switch (token) {
+	case SELECT_T:
+	case WITH_T:
+		return MYLITE_STATEMENT_SELECT;
+	case TABLE_T:
+		return MYLITE_STATEMENT_TABLE;
+	case VALUES_T:
+		return MYLITE_STATEMENT_VALUES;
+	default:
+		return MYLITE_STATEMENT_UNKNOWN;
+	}
 }
 
 static void classify_with_statement_kinds(mylite_parser *parser)

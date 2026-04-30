@@ -33,6 +33,13 @@ For DML, the reported table is the first syntactic target table, including
 ok statements=1 kinds=update[1:13,0:38]/table:wt
 ```
 
+Parenthesized query expressions keep their opening-parenthesis span and are
+classified by the leading query token:
+
+```text
+ok statements=1 kinds=select[1:7,0:25]
+```
+
 Dump tokens:
 
 ```sh

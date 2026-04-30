@@ -127,7 +127,7 @@ statement_head:
 	| RESIGNAL_T    { BEGIN_STATEMENT(MYLITE_STATEMENT_RESIGNAL, 1); }
 	| GET_T         { BEGIN_STATEMENT(MYLITE_STATEMENT_GET, 1); }
 	| IF_T          { BEGIN_STATEMENT(MYLITE_STATEMENT_IF, 1); }
-	| unknown_head  { BEGIN_STATEMENT(MYLITE_STATEMENT_UNKNOWN, 0); }
+	| unknown_head  { mylite_parser_begin_statement_at_token(parser, MYLITE_STATEMENT_UNKNOWN, 0, $1); }
 	;
 
 unknown_head:
@@ -196,9 +196,9 @@ case_block:
 	;
 
 group:
-	  '(' group_body ')' { mylite_parser_match_tokens(parser, $1, $3); }
-	| '[' group_body ']' { mylite_parser_match_tokens(parser, $1, $3); }
-	| '{' group_body '}' { mylite_parser_match_tokens(parser, $1, $3); }
+	  '(' group_body ')' { mylite_parser_match_tokens(parser, $1, $3); $$ = $1; }
+	| '[' group_body ']' { mylite_parser_match_tokens(parser, $1, $3); $$ = $1; }
+	| '{' group_body '}' { mylite_parser_match_tokens(parser, $1, $3); $$ = $1; }
 	;
 
 group_body:

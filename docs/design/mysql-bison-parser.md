@@ -49,6 +49,9 @@ matched CTE subqueries and inspecting the outer DML verb, so `WITH ... UPDATE`,
 target-name classification uses the same matched-token data to skip CTE bodies
 before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 `DELETE`, including common priority, delayed, quick, and ignore modifiers.
+Statements that begin with parenthesized query expressions keep spans anchored
+to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
+according to the innermost leading query token.
 
 ## Boundaries
 
@@ -59,6 +62,8 @@ before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 - DML object metadata records the first syntactic target table span only. It
   does not yet resolve aliases, joined table references, partition clauses, or
   every affected table in multi-table statements.
+- Parenthesized query-expression classification only identifies the leading
+  query statement kind; it does not build the query-expression tree.
 - Skips ordinary comments. MySQL executable `/*! ... */` comments are tokenized
   as SQL because they can carry required syntax.
 - Accepts unknown statement starts as `unknown`; later grammar work should

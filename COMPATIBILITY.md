@@ -155,20 +155,20 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `BEGIN` / `BEGIN WORK` | ❌ | top | Transaction begin statement distinct from compound BEGIN ... END. | Parser records bare `BEGIN` and `BEGIN WORK` as transaction objects while leaving compound blocks objectless. |
 | `COMMIT` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. | Parser records the transaction object kind; completion modifiers remain body tokens. |
 | `ROLLBACK` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. | Parser records bare transaction rollback separately from `ROLLBACK TO SAVEPOINT` savepoint targets. |
-| `SAVEPOINT` | ❌ | top | Nested savepoint creation and replacement semantics. |  |
-| `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. |  |
-| `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. |  |
+| `SAVEPOINT` | ❌ | top | Nested savepoint creation and replacement semantics. | Parser records the savepoint name; nested savepoint state and replacement semantics are not implemented. |
+| `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. | Parser records the savepoint name; partial rollback behavior is not implemented. |
+| `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. | Parser records the savepoint name; release behavior and missing-savepoint errors are not implemented. |
 | `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/next-transaction scope. | Parser records `SET [GLOBAL | SESSION] TRANSACTION` as transaction metadata; isolation and access-mode semantics are not implemented. |
 | `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. | Parser records the instance object kind; backup-lock behavior and connection-loss semantics are not implemented. |
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. | Parser records the instance object kind; backup-lock release behavior is not implemented. |
 | `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. | Parser records the first named table target for singular and plural forms; aliases, lock modes, implicit commits, and multi-table lock lists are not implemented. |
 | `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. | Parser records the table object kind for singular and plural forms without a name; lock release behavior and implicit commit semantics are not implemented. |
-| `XA START` | ❌ | low | XA transaction branch start. |  |
-| `XA END` | ❌ | low | XA transaction branch end. |  |
-| `XA PREPARE` | ❌ | low | XA prepare phase. |  |
-| `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. |  |
-| `XA ROLLBACK` | ❌ | low | XA rollback. |  |
-| `XA RECOVER` | ❌ | low | XA recovery result-set metadata. |  |
+| `XA START` | ❌ | low | XA transaction branch start. | Parser records the first XID token; XA state management is not implemented. |
+| `XA END` | ❌ | low | XA transaction branch end. | Parser records the first XID token; XA state management is not implemented. |
+| `XA PREPARE` | ❌ | low | XA prepare phase. | Parser records the first XID token; XA prepare semantics are not implemented. |
+| `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. | Parser records the first XID token; one-phase/two-phase commit semantics are not implemented. |
+| `XA ROLLBACK` | ❌ | low | XA rollback. | Parser records the first XID token; XA rollback semantics are not implemented. |
+| `XA RECOVER` | ❌ | low | XA recovery result-set metadata. | Parser recognizes XA recovery forms and leaves them objectless; recovery rows are not implemented. |
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. |  |
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. |  |
 | `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. |  |
@@ -223,11 +223,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. |  |
 | `DROP RESOURCE GROUP` | ❌ | low | Resource group deletion syntax. |  |
 | `SET RESOURCE GROUP` | ❌ | low | Thread assignment to resource groups. |  |
-| `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. |  |
-| `CHECK TABLE` | ❌ | high | Table consistency checks and result-set metadata. |  |
-| `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. |  |
-| `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. |  |
-| `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. |  |
+| `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. | Parser records the first concrete table target, including `ANALYZE FORMAT=... TABLE`; statistics behavior is not implemented. |
+| `CHECK TABLE` | ❌ | high | Table consistency checks and result-set metadata. | Parser records the first concrete table target; check behavior and result rows are not implemented. |
+| `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. | Parser records the first concrete table target and leaves nameless modifier-only forms objectless; checksum behavior is not implemented. |
+| `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. | Parser records the first concrete table target; optimization behavior and result rows are not implemented. |
+| `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. | Parser records the first concrete table target; repair behavior and result rows are not implemented. |
 | `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. |  |
 | `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. |  |
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. |  |
@@ -236,17 +236,17 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser records explicit user-variable and system-variable targets plus account-management, character-set, and transaction targets; unadorned variable names remain semantic-analysis work. |
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser accepts the statement and records the requested character-set target; charset validation and session variable updates are not implemented. |
 | `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser accepts the statement and records the requested character-set target; collation validation and session variable updates are not implemented. |
-| `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. |  |
+| `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. | Parser records the first table/index target; key-cache assignment behavior is not implemented. |
 | `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. |  |
 | `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. |  |
-| `LOAD INDEX INTO CACHE` | ❌ | low | MyISAM index preload syntax. |  |
+| `LOAD INDEX INTO CACHE` | ❌ | low | MyISAM index preload syntax. | Parser records the first table target; index preload behavior is not implemented. |
 | `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. |  |
-| `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. |  |
+| `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. | Parser records explicit persisted-variable names and leaves full-reset forms objectless; persisted variable storage is not implemented. |
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. |  |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. |  |
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. |  |
 | `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. |  |
-| `HELP` | ❌ | low | Server help lookup result-set semantics. |  |
+| `HELP` | ❌ | low | Server help lookup result-set semantics. | Parser records quoted help topics and leaves keyword topics objectless; help-table lookup rows are not implemented. |
 | `USE` | ❌ | top | Default schema selection in the embedded single-file model. |  |
 
 ### 1.5 SHOW Statements

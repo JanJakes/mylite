@@ -323,9 +323,11 @@ alter_statement ::= ALTER alter_tail. {
 }
 
 alter_tail ::= alter_object_kind required_statement_tail.
-alter_tail ::= LOGFILE ATOM required_statement_tail.
-alter_tail ::= RESOURCE ATOM required_statement_tail.
-alter_tail ::= UNDO TABLESPACE required_statement_tail.
+alter_tail ::= LOGFILE create_logfile_group cache_name_part required_statement_tail.
+alter_tail ::= RESOURCE create_resource_group cache_name_part required_statement_tail.
+alter_tail ::= SERVER cache_name_part required_statement_tail.
+alter_tail ::= TABLESPACE cache_name_part required_statement_tail.
+alter_tail ::= UNDO TABLESPACE cache_name_part required_statement_tail.
 
 alter_object_kind ::= TABLE.
 alter_object_kind ::= ALGORITHM.
@@ -338,8 +340,6 @@ alter_object_kind ::= FUNCTION.
 alter_object_kind ::= PROCEDURE.
 alter_object_kind ::= USER.
 alter_object_kind ::= INSTANCE.
-alter_object_kind ::= SERVER.
-alter_object_kind ::= TABLESPACE.
 
 rename_statement ::= RENAME rename_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);

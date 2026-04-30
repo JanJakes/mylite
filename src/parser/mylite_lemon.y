@@ -1082,7 +1082,11 @@ handler_read_tuple ::= LP values_row_contents RP.
 
 handler_read_suffix ::= .
 handler_read_suffix ::= WHERE required_statement_tail.
-handler_read_suffix ::= LIMIT required_statement_tail.
+handler_read_suffix ::= handler_limit_tail.
+
+handler_limit_tail ::= LIMIT ATOM.
+handler_limit_tail ::= LIMIT ATOM import_comma ATOM.
+handler_limit_tail ::= LIMIT ATOM OFFSET ATOM.
 
 call_statement ::= CALL call_name call_arguments. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

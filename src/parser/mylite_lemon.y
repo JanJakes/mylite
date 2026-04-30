@@ -566,7 +566,42 @@ plugin_uninstall_tail ::= PLUGIN plugin_name.
 plugin_uninstall_tail ::= COMPONENT component_file_list.
 
 component_install_tail ::= .
-component_install_tail ::= SET required_statement_tail.
+component_install_tail ::= SET component_install_assignments.
+
+component_install_assignments ::= component_install_assignment.
+component_install_assignments ::= component_install_assignments import_comma component_install_assignment.
+
+component_install_assignment ::= component_install_assignment_scope component_install_name diagnostics_equals component_install_value.
+
+component_install_assignment_scope ::= .
+component_install_assignment_scope ::= GLOBAL.
+component_install_assignment_scope ::= PERSIST.
+
+component_install_name ::= cache_name_part.
+component_install_name ::= cache_name_part DOT cache_name_part.
+
+component_install_value ::= component_install_value_token.
+component_install_value ::= component_install_value component_install_value_token.
+
+component_install_value_token ::= ATOM.
+component_install_value_token ::= LABEL.
+component_install_value_token ::= keyword.
+component_install_value_token ::= DOT.
+component_install_value_token ::= LP component_install_value_inner RP.
+component_install_value_token ::= LB component_install_value_inner RB.
+component_install_value_token ::= LC component_install_value_inner RC.
+
+component_install_value_inner ::= .
+component_install_value_inner ::= component_install_value_inner component_install_value_inner_token.
+
+component_install_value_inner_token ::= ATOM.
+component_install_value_inner_token ::= LABEL.
+component_install_value_inner_token ::= keyword.
+component_install_value_inner_token ::= DOT.
+component_install_value_inner_token ::= COMMA.
+component_install_value_inner_token ::= LP component_install_value_inner RP.
+component_install_value_inner_token ::= LB component_install_value_inner RB.
+component_install_value_inner_token ::= LC component_install_value_inner RC.
 
 component_file_list ::= component_file.
 component_file_list ::= component_file_list import_comma component_file.

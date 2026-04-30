@@ -502,7 +502,7 @@ explain_first_token ::= WITH.
 explain_first_token ::= ATOM.
 explain_first_token ::= LABEL.
 
-use_statement ::= USE use_target statement_tail. {
+use_statement ::= USE use_target. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 

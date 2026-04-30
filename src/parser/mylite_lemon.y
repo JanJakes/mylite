@@ -154,7 +154,7 @@ create_tail ::= create_index_kind INDEX create_index_name create_index_using_tai
 create_tail ::= LOGFILE create_logfile_group cache_name_part required_statement_tail.
 create_tail ::= RESOURCE create_resource_group cache_name_part create_resource_type create_options_tail.
 create_tail ::= SPATIAL create_reference create_system cache_name_part required_statement_tail.
-create_tail ::= SERVER cache_name_part required_statement_tail.
+create_tail ::= SERVER cache_name_part create_server_tail.
 create_tail ::= TABLESPACE cache_name_part create_options_tail.
 create_tail ::= UNDO TABLESPACE cache_name_part create_options_tail.
 create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_options_tail.
@@ -264,6 +264,35 @@ create_resource_type_value ::= ATOM(A). {
 create_logfile_group ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "GROUP");
 }
+
+create_server_tail ::= create_foreign DATA create_wrapper cache_name_part create_server_options.
+
+create_foreign ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "FOREIGN");
+}
+
+create_wrapper ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "WRAPPER");
+}
+
+create_server_options ::= create_options_marker LP create_server_option_tokens RP.
+
+create_options_marker ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "OPTIONS");
+}
+
+create_server_option_tokens ::= .
+create_server_option_tokens ::= create_server_option_tokens create_server_option_token.
+
+create_server_option_token ::= ATOM.
+create_server_option_token ::= LABEL.
+create_server_option_token ::= keyword.
+create_server_option_token ::= COMMA.
+create_server_option_token ::= LP.
+create_server_option_token ::= LB.
+create_server_option_token ::= RB.
+create_server_option_token ::= LC.
+create_server_option_token ::= RC.
 
 create_reference ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "REFERENCE");

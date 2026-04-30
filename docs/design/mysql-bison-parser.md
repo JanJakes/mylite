@@ -229,8 +229,8 @@ payloads in `BINLOG`, binary log targets in `SHOW BINARY LOGS`,
 `RESET BINARY LOGS AND GTIDS`, relay log targets in
 `SHOW RELAYLOG EVENTS IN ...`, replication channel targets in channel-only
 `SHOW RELAYLOG EVENTS`, `SHOW REPLICAS`, `SHOW REPLICA STATUS`, and
-`FLUSH RELAY LOGS`, table
-targets in `FLUSH TABLES`, and
+`FLUSH RELAY LOGS`, binary-log, privilege, and status-variable collection
+targets in `FLUSH`, table targets in `FLUSH TABLES`, and
 table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `REPAIR`, and prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Persisted
@@ -340,8 +340,10 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   `SHOW REPLICA STATUS` metadata records explicit channel names or the
   replication-channel collection for bare status forms.
   `FLUSH TABLES` metadata records only the first table target. `FLUSH RELAY
-  LOGS` records only explicit channel names. Other global flush forms remain
-  objectless.
+  LOGS` records only explicit channel names. `FLUSH BINARY LOGS`,
+  `FLUSH PRIVILEGES`, and `FLUSH STATUS` record their collection object kinds
+  after optional `LOCAL` / `NO_WRITE_TO_BINLOG` modifiers. Other global flush
+  forms remain objectless.
   Table-maintenance metadata records only the first concrete table target and
   leaves malformed or name-less forms objectless.
   `RESET PERSIST` metadata records the first variable name only and leaves

@@ -304,6 +304,12 @@ FLUSH RELAY LOGS exposes explicit channel names:
 ok statements=1 kinds=flush[1:6,0:33]/replication_channel:'ch'
 ```
 
+FLUSH collection forms expose clear global targets:
+
+```text
+ok statements=3 kinds=flush[1:3,0:17]/binary_log,flush[5:6,19:35]/privilege,flush[8:9,37:49]/status_variable
+```
+
 RESET PERSIST exposes explicit persisted system-variable targets:
 
 ```text

@@ -430,18 +430,18 @@ case "$kill_output" in
 		;;
 esac
 
-flush_output=$("$parser" 'FLUSH TABLES t; FLUSH TABLE `db`.`t`, u WITH READ LOCK; FLUSH TABLES WITH READ LOCK; FLUSH PRIVILEGES')
+flush_output=$("$parser" 'FLUSH TABLES t; FLUSH LOCAL TABLES t; FLUSH NO_WRITE_TO_BINLOG TABLES `db`.`t`; FLUSH TABLES WITH READ LOCK; FLUSH BINARY LOGS; FLUSH LOCAL BINARY LOGS; FLUSH PRIVILEGES; FLUSH STATUS')
 case "$flush_output" in
-	*"flush"*/table:t*"flush"*/table:'`db`.`t`'*"flush[16:20"*"flush[22:23"*) ;;
+	*"flush"*/table:t*"flush"*/table:t*"flush"*/table:'`db`.`t`'*"flush[17:21"*"flush"*/binary_log*"flush"*/binary_log*"flush"*/privilege*"flush"*/status_variable*) ;;
 	*)
 		echo "unexpected FLUSH output: $flush_output" >&2
 		exit 1
 		;;
 esac
 
-flush_relay_output=$("$parser" "FLUSH RELAY LOGS FOR CHANNEL 'ch'; FLUSH RELAY LOGS; FLUSH TABLES t")
+flush_relay_output=$("$parser" "FLUSH RELAY LOGS FOR CHANNEL 'ch'; FLUSH NO_WRITE_TO_BINLOG RELAY LOGS FOR CHANNEL 'ch2'; FLUSH RELAY LOGS; FLUSH TABLES t")
 case "$flush_relay_output" in
-	*"flush"*/replication_channel:"'ch'"*"flush[8:10"*"flush"*/table:t*) ;;
+	*"flush"*/replication_channel:"'ch'"*"flush"*/replication_channel:"'ch2'"*"flush[16:18"*"flush"*/table:t*) ;;
 	*)
 		echo "unexpected FLUSH RELAY output: $flush_relay_output" >&2
 		exit 1

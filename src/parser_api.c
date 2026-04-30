@@ -1630,6 +1630,13 @@ static int classify_flush_statement_object(const mylite_parser *parser,
 {
 	size_t name_token_index;
 
+	while (token_index <= last_token_index &&
+	       token_index < parser->token_count &&
+	       (parser->tokens[token_index].parser_token == LOCAL_T ||
+	        token_text_equals(parser, token_index, "NO_WRITE_TO_BINLOG"))) {
+		token_index++;
+	}
+
 	if (token_index + 1 <= last_token_index &&
 	    token_text_equals(parser, token_index, "RELAY") &&
 	    token_text_equals(parser, token_index + 1, "LOGS")) {
@@ -1639,6 +1646,20 @@ static int classify_flush_statement_object(const mylite_parser *parser,
 		                                        MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL,
 		                                        name_token_index,
 		                                        last_token_index);
+	}
+
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "BINARY") &&
+	    token_text_equals(parser, token_index + 1, "LOGS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_BINARY_LOG);
+	}
+
+	if (token_text_equals(parser, token_index, "PRIVILEGES")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_PRIVILEGE);
+	}
+
+	if (token_text_equals(parser, token_index, "STATUS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_STATUS_VARIABLE);
 	}
 
 	name_token_index = find_flush_table_name_token(parser, token_index, last_token_index);

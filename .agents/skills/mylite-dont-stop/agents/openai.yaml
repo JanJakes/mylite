@@ -1,0 +1,4 @@
+interface:
+  display_name: "MyLite Don't Stop"
+  short_description: "Persist through broad MyLite work"
+  default_prompt: "Use $mylite-dont-stop to continue substantial MyLite work through specs, implementation, verification, documentation, and commit or push when required."

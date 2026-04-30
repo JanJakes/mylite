@@ -1,0 +1,91 @@
+---
+name: mylite-implement-feature
+description: Implement a specific MyLite MySQL-compatibility feature end to end after design/test expectations exist, including code, tests, docs, verification, and self-review. Use only for substantive feature implementation, not simple git operations, small docs edits, generic reviews, or status requests.
+---
+
+# MyLite implement feature
+
+Implement the feature completely. Do not stop at scaffolding, partial behavior,
+or a TODO trail when the requested feature can be finished.
+
+## Trigger boundary
+
+Use this skill when the user asks to implement a specific MyLite compatibility
+feature or materially expand an existing compatibility feature through code,
+tests, docs, and verification.
+
+Do not use this skill for simple commands, routine commits, amend/push requests,
+small compatibility-matrix edits, lightweight bug triage, review-only prompts,
+or broad batch work that belongs to `mylite-work-hard`.
+
+## Planning and context
+
+Begin substantial implementation work in Plan mode when it is available in the
+active session. The plan must confirm the design, test expectations, affected
+layers, verification commands, and subagent ownership before implementation
+edits. If Plan mode is unavailable, write the same plan as a concise working
+checklist before editing.
+
+Do not infer subagent permission from this skill. Use subagents only when the
+active session, tool policy, and user request explicitly allow delegation. When
+allowed, cap live subagents at two: one implementer for a disjoint ownership
+area and one reviewer/verifier. Do not run many concurrent reviewers. Do not
+delegate the next critical-path task when local progress depends on its result.
+
+Treat a subagent as stale when a wait times out with no final status and no
+actionable output. After one timeout, ask for a concise finish/status only if
+the result still matters; after a second timeout, or if the response still does
+not materially advance the task, close that agent and continue locally.
+
+## Source discipline
+
+Use official MySQL 8.4 Reference Manual pages, preferably URLs under
+`https://dev.mysql.com/doc/refman/8.4/`, and real MySQL 8.4.9 runtime
+probes as the compatibility authority. Do not use MySQL 8.3, 8.0, Innovation
+release, MariaDB, Percona, or copied implementation sources as normative
+behavior. If a search or browser opens the wrong MySQL documentation version,
+discard that page and replace it with the matching 8.4 page before relying on
+it. Runtime-sensitive tests must be based on recorded MySQL 8.4.9 observations,
+not guesses.
+
+## Workflow
+
+1. Start in Plan mode for substantial implementation work when the active
+   session supports it; otherwise write the implementation checklist locally
+   before editing.
+2. Read `README.md`, `AGENTS.md`, `COMPATIBILITY.md`, and the feature design.
+   Confirm the design lives in `docs/specs/<feature-name>/specs.md` with an
+   independently authored spec, MyLite Lemon-syntax grammar snippets where
+   applicable, a compatibility entry, and MySQL-verified test expectations. If
+   any are missing, use `mylite-start-feature` first instead of improvising.
+3. Reconfirm the intended MySQL 8.4.9 behavior and test expectations before
+   touching implementation code.
+4. When syntax is involved, implement grammar support before runtime behavior,
+   extending MyLite's own grammar from the independently authored Lemon-syntax
+   snippets in `specs.md` without copying restrictively licensed documentation,
+   grammar text, or implementation sources.
+5. Implement through the remaining right layers: parser/AST, analyzer,
+   metadata, translation, SQLite extension API hook, targeted SQLite extension
+   point, C function, file format, or integration package. Keep dependencies
+   minimal and architecture explicit.
+   For SQLite integration, prefer public SQLite extension APIs, then
+   MyLite-side wrappers/translations, then targeted SQLite fork hooks only when
+   needed for correctness or avoidable overhead. SQLite fork changes belong in
+   `third_party/sqlite/patches/`, must apply to `third_party/sqlite/upstream/`,
+   and must be reflected in the buildable amalgamation.
+6. Add or refine tests while implementing. Cover happy paths, edge cases,
+   errors, warnings, metadata, side effects, and regression-sensitive behavior.
+7. Run the relevant test suite and static checks. Fix failures at the root.
+8. Update `COMPATIBILITY.md`, feature docs, and comments where behavior changed.
+9. Self-review the diff for MySQL equivalence, architecture, performance, binary
+   size, missing tests, and accidental broad changes.
+
+## Done
+
+- Feature works end to end.
+- When syntax is involved, MyLite grammar support is implemented before runtime
+  behavior and matches the independently authored Lemon-syntax grammar snippets
+  in `specs.md`.
+- Tests pass and are compared to MySQL where required for compatibility.
+- Documentation and compatibility status match the implementation.
+- The final diff is focused, reviewed, and ready to commit.

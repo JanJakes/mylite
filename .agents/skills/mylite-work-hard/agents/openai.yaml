@@ -1,0 +1,4 @@
+interface:
+  display_name: "MyLite Work Hard"
+  short_description: "Continuously implement MyLite compatibility batches"
+  default_prompt: "Use $mylite-work-hard to pick a batch, run start, implement, and review workflows for each feature, verify, commit and push, and continue."

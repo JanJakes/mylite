@@ -187,6 +187,9 @@ drop_tail ::= UNDO TABLESPACE required_statement_tail.
 drop_tail ::= PREPARE prepared_statement_name.
 drop_tail ::= INDEX drop_index_name ON cache_table_ref drop_index_options_tail.
 drop_tail ::= drop_database_kind drop_if_exists_tail cache_name_part.
+drop_tail ::= drop_routine_kind drop_if_exists_tail cache_table_ref.
+drop_tail ::= EVENT drop_if_exists_tail cache_table_ref.
+drop_tail ::= TRIGGER drop_if_exists_tail cache_table_ref.
 
 drop_table_kind ::= TABLE.
 drop_table_kind ::= TABLES.
@@ -194,14 +197,13 @@ drop_table_kind ::= TABLES.
 drop_object_kind ::= TABLE.
 drop_object_kind ::= TABLES.
 drop_object_kind ::= VIEW.
-drop_object_kind ::= EVENT.
-drop_object_kind ::= FUNCTION.
-drop_object_kind ::= PROCEDURE.
-drop_object_kind ::= TRIGGER.
 drop_object_kind ::= USER.
 drop_object_kind ::= ROLE.
 drop_object_kind ::= SERVER.
 drop_object_kind ::= TABLESPACE.
+
+drop_routine_kind ::= FUNCTION.
+drop_routine_kind ::= PROCEDURE.
 
 drop_index_name ::= cache_name_part.
 
@@ -654,6 +656,8 @@ cache_table_ref ::= cache_name_part DOT cache_name_part.
 
 cache_name_part ::= ATOM.
 cache_name_part ::= COMPONENT.
+cache_name_part ::= COUNT.
+cache_name_part ::= DATABASE.
 cache_name_part ::= LABEL.
 cache_name_part ::= DEFAULT.
 cache_name_part ::= ENGINE.

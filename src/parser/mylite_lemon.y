@@ -418,12 +418,27 @@ table_admin_with_optional_binlog ::= table_admin_table_tail.
 table_admin_with_optional_binlog ::= LOCAL table_admin_table_tail.
 table_admin_with_optional_binlog ::= NO_WRITE_TO_BINLOG table_admin_table_tail.
 
-table_admin_table_tail ::= table_admin_table_keyword required_statement_tail.
+table_admin_table_tail ::= table_admin_table_keyword table_admin_table_list table_admin_options.
 
-table_admin_table_tail_singular ::= TABLE required_statement_tail.
+table_admin_table_tail_singular ::= TABLE table_admin_table_list table_admin_options.
 
 table_admin_table_keyword ::= TABLE.
 table_admin_table_keyword ::= TABLES.
+
+table_admin_table_list ::= cache_table_ref.
+table_admin_table_list ::= table_admin_table_list import_comma cache_table_ref.
+
+table_admin_options ::= .
+table_admin_options ::= table_admin_option_start statement_tail.
+
+table_admin_option_start ::= UPDATE.
+table_admin_option_start ::= DROP.
+table_admin_option_start ::= EXTENDED.
+table_admin_option_start ::= FOR.
+table_admin_option_start ::= QUICK.
+table_admin_option_start ::= ATOM(A). {
+  mylite_parser_require_table_admin_option(ctx, A);
+}
 
 plugin_admin_statement ::= INSTALL plugin_admin_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
@@ -481,8 +496,11 @@ cache_name_part ::= ATOM.
 cache_name_part ::= COMPONENT.
 cache_name_part ::= LABEL.
 cache_name_part ::= DEFAULT.
+cache_name_part ::= ENGINE.
 cache_name_part ::= EVENTS.
+cache_name_part ::= GRANTS.
 cache_name_part ::= PLUGIN.
+cache_name_part ::= PROCESSLIST.
 cache_name_part ::= USER.
 
 cache_key_list ::= LP cache_key_names RP.

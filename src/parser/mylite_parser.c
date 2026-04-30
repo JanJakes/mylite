@@ -227,6 +227,24 @@ void mylite_parser_require_diagnostics_condition_item(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
+void mylite_parser_require_table_admin_option(MyliteParseContext *ctx,
+                                              MyliteToken token) {
+  static const char *const options[] = {
+      "CHANGED",
+      "FAST",
+      "MEDIUM",
+      "USE_FRM",
+  };
+
+  if (ctx->failed || token_ascii_matches_any(&token, options,
+                                             sizeof(options) / sizeof(options[0]))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {

@@ -123,6 +123,10 @@ static int classify_reset_statement_object(const mylite_parser *parser,
 static size_t find_replication_channel_name_token(const mylite_parser *parser,
                                                   size_t token_index,
                                                   size_t last_token_index);
+static int classify_transaction_statement_object(const mylite_parser *parser,
+                                                 mylite_statement *statement,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
 static int classify_set_statement_object(const mylite_parser *parser,
                                          mylite_statement *statement,
                                          size_t token_index,
@@ -674,6 +678,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE: return "system_variable";
 	case MYLITE_STATEMENT_OBJECT_TABLE: return "table";
 	case MYLITE_STATEMENT_OBJECT_TABLESPACE: return "tablespace";
+	case MYLITE_STATEMENT_OBJECT_TRANSACTION: return "transaction";
 	case MYLITE_STATEMENT_OBJECT_TRIGGER: return "trigger";
 	case MYLITE_STATEMENT_OBJECT_USER: return "user";
 	case MYLITE_STATEMENT_OBJECT_USER_VARIABLE: return "user_variable";
@@ -1138,6 +1143,13 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	case MYLITE_STATEMENT_FLUSH:
 		return classify_flush_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_START:
+		if (classify_transaction_statement_object(parser, statement, name_token_index, last_token_index)) {
+			return 1;
+		}
+		return classify_replication_channel_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_BEGIN:
+	case MYLITE_STATEMENT_COMMIT:
+		return classify_transaction_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_STOP:
 	case MYLITE_STATEMENT_CHANGE:
 		return classify_replication_channel_statement_object(parser, statement, name_token_index, last_token_index);
@@ -1724,6 +1736,49 @@ static size_t find_replication_channel_name_token(const mylite_parser *parser,
 	return parser->token_count;
 }
 
+static int classify_transaction_statement_object(const mylite_parser *parser,
+                                                 mylite_statement *statement,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	switch (statement->kind) {
+	case MYLITE_STATEMENT_BEGIN:
+		if (token_index > last_token_index) {
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_TRANSACTION);
+		}
+		if (token_index < parser->token_count && token_text_equals(parser, token_index, "WORK")) {
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_TRANSACTION);
+		}
+		return 0;
+	case MYLITE_STATEMENT_COMMIT:
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_TRANSACTION);
+	case MYLITE_STATEMENT_START:
+		if (token_index <= last_token_index &&
+		    token_index < parser->token_count &&
+		    parser->tokens[token_index].parser_token == TRANSACTION_T) {
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_TRANSACTION);
+		}
+		return 0;
+	case MYLITE_STATEMENT_SET:
+		if (token_index > last_token_index || token_index >= parser->token_count) {
+			return 0;
+		}
+		if (parser->tokens[token_index].parser_token == TRANSACTION_T) {
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_TRANSACTION);
+		}
+		if (token_index + 1 <= last_token_index &&
+		    token_index + 1 < parser->token_count &&
+		    (token_text_equals(parser, token_index, "GLOBAL") ||
+		     token_text_equals(parser, token_index, "SESSION")) &&
+		    parser->tokens[token_index + 1].parser_token == TRANSACTION_T) {
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_TRANSACTION);
+		}
+		return 0;
+	default:
+		return 0;
+	}
+}
+
 static int classify_set_statement_object(const mylite_parser *parser,
                                          mylite_statement *statement,
                                          size_t token_index,
@@ -1780,6 +1835,10 @@ static int classify_set_statement_object(const mylite_parser *parser,
 		}
 		statement->object_kind = MYLITE_STATEMENT_OBJECT_USER;
 		set_statement_account_name_from_first_token(parser, statement, name_token_index, last_token_index);
+		return 1;
+	}
+
+	if (classify_transaction_statement_object(parser, statement, token_index, last_token_index)) {
 		return 1;
 	}
 
@@ -2023,6 +2082,10 @@ static int classify_savepoint_statement_object(const mylite_parser *parser,
 		name_token_index = token_index;
 	} else {
 		name_token_index = find_savepoint_name_token(parser, token_index, last_token_index);
+	}
+
+	if (statement->kind == MYLITE_STATEMENT_ROLLBACK && name_token_index >= parser->token_count) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_TRANSACTION);
 	}
 
 	return set_statement_direct_object_name(parser,

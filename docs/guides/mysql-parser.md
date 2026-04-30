@@ -219,6 +219,12 @@ Replication-control statements expose explicit channel targets:
 ok statements=1 kinds=start[1:5,0:30]/replication_channel:'ch'
 ```
 
+Transaction-control statements expose the transaction object kind:
+
+```text
+ok statements=1 kinds=start[1:4,0:28]/transaction
+```
+
 XA transaction statements expose XID targets:
 
 ```text

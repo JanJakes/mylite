@@ -463,7 +463,7 @@ case "$set_account_output" in
 	*)
 		echo "unexpected SET account output: $set_account_output" >&2
 		exit 1
-	;;
+		;;
 esac
 
 set_charset_output=$("$parser" "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci; SET NAMES DEFAULT; SET CHARACTER SET 'latin1'; SET CHARSET DEFAULT; SET CHARACTERISTICS AS TRANSACTION READ WRITE")
@@ -513,9 +513,18 @@ esac
 
 savepoint_output=$("$parser" 'SAVEPOINT s; RELEASE SAVEPOINT s; ROLLBACK TO SAVEPOINT `s`; ROLLBACK')
 case "$savepoint_output" in
-	*"savepoint"*/savepoint:s*"release"*/savepoint:s*"rollback"*/savepoint:'`s`'*"rollback[13:13"*) ;;
+	*"savepoint"*/savepoint:s*"release"*/savepoint:s*"rollback"*/savepoint:'`s`'*"rollback"*/transaction*) ;;
 	*)
 		echo "unexpected savepoint output: $savepoint_output" >&2
+		exit 1
+		;;
+esac
+
+transaction_output=$("$parser" "BEGIN; BEGIN WORK; BEGIN NOT ATOMIC SELECT 1 END; START TRANSACTION; START TRANSACTION READ WRITE; START REPLICA FOR CHANNEL 'ch'; COMMIT; COMMIT AND CHAIN; ROLLBACK; ROLLBACK AND NO CHAIN; ROLLBACK TO SAVEPOINT s; SET TRANSACTION ISOLATION LEVEL READ COMMITTED; SET SESSION TRANSACTION READ ONLY; SET GLOBAL TRANSACTION READ WRITE; SET SESSION sql_mode = 'ANSI'")
+case "$transaction_output" in
+	*"begin"*/transaction*"begin"*/transaction*"begin[6:11"*"start"*/transaction*"start"*/transaction*"start"*/replication_channel:"'ch'"*"commit"*/transaction*"commit"*/transaction*"rollback"*/transaction*"rollback"*/transaction*"rollback"*/savepoint:s*"set"*/transaction*"set"*/transaction*"set"*/transaction*"set"*/system_variable:sql_mode*) ;;
+	*)
+		echo "unexpected transaction output: $transaction_output" >&2
 		exit 1
 		;;
 esac

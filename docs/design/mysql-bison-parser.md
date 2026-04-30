@@ -76,6 +76,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/change-replication-filter.html`
 - MySQL 8.4 XA transaction statements:
   `https://dev.mysql.com/doc/refman/8.4/en/xa-statements.html`
+- MySQL 8.4 transaction-control statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/commit.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/set-transaction.html`
 - MySQL 8.4 HELP statement:
   `https://dev.mysql.com/doc/refman/8.4/en/help.html`
 - MySQL 8.4 component and plugin statements:
@@ -171,9 +174,12 @@ table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 system-variable targets are recorded for `RESET PERSIST`. Replication channel
 targets are recorded for `START`, `STOP`, `RESET`, and `CHANGE` forms that
 include `FOR CHANNEL`. XA transaction XID targets are recorded for the
-XID-bearing XA statements. Quoted `HELP` search topics are recorded as
-help-topic targets. Component and plugin targets are recorded for `INSTALL` and
-`UNINSTALL` administrative statements.
+XID-bearing XA statements. Non-XA transaction-control statements record the
+transaction object kind for `BEGIN`, `BEGIN WORK`, `START TRANSACTION`,
+`COMMIT`, bare `ROLLBACK`, and `SET [GLOBAL | SESSION] TRANSACTION`, while
+leaving compound `BEGIN ... END` blocks objectless. Quoted `HELP` search
+topics are recorded as help-topic targets. Component and plugin targets are
+recorded for `INSTALL` and `UNINSTALL` administrative statements.
 `CLONE` has an explicit statement kind while its local-directory and remote
 instance endpoints remain body tokens.
 `STOP` has an explicit statement kind for replication-control statements.
@@ -284,8 +290,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or
   implicit current-user/current-role targets in `SET` statements.
-- Savepoint metadata records the named savepoint only. Bare `ROLLBACK` and
-  non-savepoint `RELEASE` forms remain objectless.
+- Savepoint metadata records the named savepoint only. Bare `ROLLBACK` records
+  the transaction object kind, and non-savepoint `RELEASE` forms remain
+  objectless.
 - Parenthesized query-expression classification only identifies the leading
   query statement kind; it does not build the query-expression tree.
 - Stored-program control matching records token pairs only; it does not yet

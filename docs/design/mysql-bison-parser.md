@@ -43,6 +43,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
 - MySQL 8.4 schema-scoped SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show.html`
+- MySQL 8.4 SHOW character-set statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-character-set.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-collation.html`
 - MySQL 8.4 SHOW PROFILE statement:
   `https://dev.mysql.com/doc/refman/8.4/en/show-profile.html`
 - MySQL 8.4 SHOW variable statements:
@@ -164,9 +167,11 @@ forms, `EXPLAIN ... FOR CONNECTION`, `SIGNAL` / `RESIGNAL` condition values,
 STATUS`, `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
 targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
 `SHOW FUNCTION CODE` and `SHOW PROCEDURE CODE`, engine targets in
-`SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, query targets in
-`SHOW PROFILE ... FOR QUERY`, system-variable and status-variable targets in
-`SHOW [GLOBAL | SESSION] VARIABLES` and `SHOW [GLOBAL | SESSION] STATUS`,
+`SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, character-set and
+collation targets in `SHOW CHARACTER SET`, `SHOW CHARSET`, and
+`SHOW COLLATION`, query targets in `SHOW PROFILE ... FOR QUERY`,
+system-variable and status-variable targets in `SHOW VARIABLES`,
+`SHOW STATUS`, and their scoped forms,
 connection targets in `KILL`, binary log event
 payloads in `BINLOG`, binary log targets in `SHOW BINLOG EVENTS IN ...` and
 `PURGE BINARY LOGS TO ...`, relay log targets in

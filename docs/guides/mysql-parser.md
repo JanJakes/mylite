@@ -247,6 +247,16 @@ ok statements=1 kinds=show[1:4,0:32]/system_variable:'autocommit'
 ok statements=1 kinds=show[1:4,0:29]/status_variable:'Com_select'
 ```
 
+SHOW character-set statements expose character-set or collation targets:
+
+```text
+ok statements=1 kinds=show[1:5,0:31]/character_set:'utf8%'
+```
+
+```text
+ok statements=1 kinds=show[1:4,0:40]/collation:'utf8mb4_0900_ai_ci'
+```
+
 SIGNAL and RESIGNAL expose explicit SQLSTATE values or named conditions:
 
 ```text

@@ -205,6 +205,10 @@ static int classify_show_variable_statement_object(const mylite_parser *parser,
                                                    mylite_statement *statement,
                                                    size_t token_index,
                                                    size_t last_token_index);
+static int classify_show_character_set_statement_object(const mylite_parser *parser,
+                                                        mylite_statement *statement,
+                                                        size_t token_index,
+                                                        size_t last_token_index);
 static size_t find_show_profile_query_id_token(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
@@ -651,6 +655,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_BINARY_LOG: return "binary_log";
 	case MYLITE_STATEMENT_OBJECT_BINARY_LOG_EVENT: return "binary_log_event";
 	case MYLITE_STATEMENT_OBJECT_CHARACTER_SET: return "character_set";
+	case MYLITE_STATEMENT_OBJECT_COLLATION: return "collation";
 	case MYLITE_STATEMENT_OBJECT_COMPONENT: return "component";
 	case MYLITE_STATEMENT_OBJECT_CONDITION: return "condition";
 	case MYLITE_STATEMENT_OBJECT_CONNECTION: return "connection";
@@ -2307,6 +2312,10 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		return 1;
 	}
 
+	if (classify_show_character_set_statement_object(parser, statement, token_index, last_token_index)) {
+		return 1;
+	}
+
 	if (parser->tokens[token_index].parser_token == BINLOG_T &&
 	    token_index + 1 <= last_token_index &&
 	    token_text_equals(parser, token_index + 1, "EVENTS")) {
@@ -2474,6 +2483,43 @@ static int classify_show_variable_statement_object(const mylite_parser *parser,
 	}
 
 	name_token_index = find_show_like_pattern_token(parser, token_index + 1, last_token_index);
+	if (name_token_index < parser->token_count) {
+		return set_statement_direct_object_name_range(parser,
+		                                              statement,
+		                                              object_kind,
+		                                              name_token_index,
+		                                              name_token_index);
+	}
+
+	return set_statement_direct_object(statement, object_kind);
+}
+
+static int classify_show_character_set_statement_object(const mylite_parser *parser,
+                                                        mylite_statement *statement,
+                                                        size_t token_index,
+                                                        size_t last_token_index)
+{
+	mylite_statement_object_kind object_kind;
+	size_t name_token_index;
+	size_t first_filter_token;
+
+	if (parser->tokens[token_index].parser_token == CHARACTER_T &&
+	    token_index + 1 <= last_token_index &&
+	    token_index + 1 < parser->token_count &&
+	    parser->tokens[token_index + 1].parser_token == SET_T) {
+		object_kind = MYLITE_STATEMENT_OBJECT_CHARACTER_SET;
+		first_filter_token = token_index + 2;
+	} else if (parser->tokens[token_index].parser_token == CHARSET_T) {
+		object_kind = MYLITE_STATEMENT_OBJECT_CHARACTER_SET;
+		first_filter_token = token_index + 1;
+	} else if (token_text_equals(parser, token_index, "COLLATION")) {
+		object_kind = MYLITE_STATEMENT_OBJECT_COLLATION;
+		first_filter_token = token_index + 1;
+	} else {
+		return 0;
+	}
+
+	name_token_index = find_show_like_pattern_token(parser, first_filter_token, last_token_index);
 	if (name_token_index < parser->token_count) {
 		return set_statement_direct_object_name_range(parser,
 		                                              statement,

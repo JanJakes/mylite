@@ -277,6 +277,15 @@ case "$show_variable_output" in
 		;;
 esac
 
+show_charset_output=$("$parser" "SHOW CHARACTER SET; SHOW CHARACTER SET LIKE 'utf8%'; SHOW CHARSET LIKE 'latin1'; SHOW COLLATION; SHOW COLLATION LIKE 'utf8mb4_0900_ai_ci'; SHOW COLLATION WHERE Charset = 'latin1'; SHOW CHARACTERISTICS AS TRANSACTION READ WRITE")
+case "$show_charset_output" in
+	*"show"*/character_set*"show"*/character_set:"'utf8%'"*"show"*/character_set:"'latin1'"*"show"*/collation*"show"*/collation:"'utf8mb4_0900_ai_ci'"*"show"*/collation*"show[31:36"*) ;;
+	*)
+		echo "unexpected SHOW character set/collation output: $show_charset_output" >&2
+		exit 1
+		;;
+esac
+
 show_schema_output=$("$parser" 'SHOW TABLE STATUS FROM `db`; SHOW OPEN TABLES FROM `db`; SHOW TRIGGERS IN `db`; SHOW EVENTS FROM `db`; SHOW TABLE STATUS LIKE "wp_%"')
 case "$show_schema_output" in
 	*"show"*/database:'`db`'*"show"*/database:'`db`'*"show"*/database:'`db`'*"show"*/database:'`db`'*"show[23:27"*) ;;

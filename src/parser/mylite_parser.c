@@ -16,6 +16,9 @@ static void set_parser_error(MyliteParseContext *ctx, const MyliteToken *token,
                              const char *message);
 static void format_near_token(MyliteParseContext *ctx, int token_id,
                               const MyliteToken *token);
+static int token_ascii_matches_any(const MyliteToken *token,
+                                   const char *const *texts,
+                                   size_t text_count);
 static int token_ascii_equals(const MyliteToken *token, const char *text);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
@@ -181,6 +184,49 @@ void mylite_parser_require_token_text_any(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
+void mylite_parser_require_diagnostics_statement_item(MyliteParseContext *ctx,
+                                                      MyliteToken token) {
+  static const char *const items[] = {
+      "NUMBER",
+      "ROW_COUNT",
+  };
+
+  if (ctx->failed || token_ascii_matches_any(&token, items,
+                                             sizeof(items) / sizeof(items[0]))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
+void mylite_parser_require_diagnostics_condition_item(MyliteParseContext *ctx,
+                                                      MyliteToken token) {
+  static const char *const items[] = {
+      "CATALOG_NAME",
+      "CLASS_ORIGIN",
+      "COLUMN_NAME",
+      "CONSTRAINT_CATALOG",
+      "CONSTRAINT_NAME",
+      "CONSTRAINT_SCHEMA",
+      "CURSOR_NAME",
+      "MESSAGE_TEXT",
+      "MYSQL_ERRNO",
+      "RETURNED_SQLSTATE",
+      "SCHEMA_NAME",
+      "SUBCLASS_ORIGIN",
+      "TABLE_NAME",
+  };
+
+  if (ctx->failed || token_ascii_matches_any(&token, items,
+                                             sizeof(items) / sizeof(items[0]))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {
@@ -227,6 +273,20 @@ static void format_near_token(MyliteParseContext *ctx, int token_id,
   result->error_column = token->column;
   snprintf(result->error_message, sizeof(result->error_message),
            "syntax error near '%s'", snippet);
+}
+
+static int token_ascii_matches_any(const MyliteToken *token,
+                                   const char *const *texts,
+                                   size_t text_count) {
+  size_t i;
+
+  for (i = 0; i < text_count; i++) {
+    if (token_ascii_equals(token, texts[i])) {
+      return 1;
+    }
+  }
+
+  return 0;
 }
 
 static int token_ascii_equals(const MyliteToken *token, const char *text) {

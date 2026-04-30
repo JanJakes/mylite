@@ -894,8 +894,39 @@ execute_using_arg ::= ATOM.
 prepared_statement_name ::= ATOM.
 prepared_statement_name ::= LABEL.
 
-get_statement ::= GET DIAGNOSTICS required_statement_tail. {
+get_statement ::= GET DIAGNOSTICS diagnostics_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+diagnostics_tail ::= diagnostics_statement_items.
+diagnostics_tail ::= CONDITION diagnostics_condition_value diagnostics_condition_items.
+
+diagnostics_statement_items ::= diagnostics_statement_item.
+diagnostics_statement_items ::= diagnostics_statement_items import_comma diagnostics_statement_item.
+
+diagnostics_statement_item ::= diagnostics_target diagnostics_equals diagnostics_statement_item_name.
+
+diagnostics_condition_items ::= diagnostics_condition_item.
+diagnostics_condition_items ::= diagnostics_condition_items import_comma diagnostics_condition_item.
+
+diagnostics_condition_item ::= diagnostics_target diagnostics_equals diagnostics_condition_item_name.
+
+diagnostics_target ::= ATOM.
+diagnostics_target ::= LABEL.
+
+diagnostics_condition_value ::= ATOM.
+diagnostics_condition_value ::= LABEL.
+
+diagnostics_equals ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "=");
+}
+
+diagnostics_statement_item_name ::= ATOM(A). {
+  mylite_parser_require_diagnostics_statement_item(ctx, A);
+}
+
+diagnostics_condition_item_name ::= ATOM(A). {
+  mylite_parser_require_diagnostics_condition_item(ctx, A);
 }
 
 signal_statement ::= SIGNAL signal_condition_value statement_tail. {

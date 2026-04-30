@@ -186,14 +186,13 @@ drop_tail ::= SPATIAL ATOM required_statement_tail.
 drop_tail ::= UNDO TABLESPACE required_statement_tail.
 drop_tail ::= PREPARE prepared_statement_name.
 drop_tail ::= INDEX drop_index_name ON cache_table_ref drop_index_options_tail.
+drop_tail ::= drop_database_kind drop_if_exists_tail cache_name_part.
 
 drop_table_kind ::= TABLE.
 drop_table_kind ::= TABLES.
 
 drop_object_kind ::= TABLE.
 drop_object_kind ::= TABLES.
-drop_object_kind ::= DATABASE.
-drop_object_kind ::= SCHEMA.
 drop_object_kind ::= VIEW.
 drop_object_kind ::= EVENT.
 drop_object_kind ::= FUNCTION.
@@ -208,6 +207,12 @@ drop_index_name ::= cache_name_part.
 
 drop_index_options_tail ::= .
 drop_index_options_tail ::= drop_index_options_tail statement_token.
+
+drop_database_kind ::= DATABASE.
+drop_database_kind ::= SCHEMA.
+
+drop_if_exists_tail ::= .
+drop_if_exists_tail ::= IF reset_exists.
 
 alter_statement ::= ALTER alter_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
@@ -653,6 +658,7 @@ cache_name_part ::= LABEL.
 cache_name_part ::= DEFAULT.
 cache_name_part ::= ENGINE.
 cache_name_part ::= EVENTS.
+cache_name_part ::= FIRST.
 cache_name_part ::= GRANTS.
 cache_name_part ::= PLUGIN.
 cache_name_part ::= PROCESSLIST.

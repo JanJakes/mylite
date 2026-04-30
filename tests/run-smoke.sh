@@ -206,6 +206,15 @@ case "$binary_log_output" in
 		;;
 esac
 
+binlog_event_output=$("$parser" "BINLOG 'abc'; BINLOG @payload")
+case "$binlog_event_output" in
+	*"binlog"*/binary_log_event:"'abc'"*"binlog[4:5"*) ;;
+	*)
+		echo "unexpected BINLOG event output: $binlog_event_output" >&2
+		exit 1
+		;;
+esac
+
 kill_output=$("$parser" 'KILL 123; KILL QUERY 456; KILL CONNECTION 789; KILL QUERY')
 case "$kill_output" in
 	*"kill"*/connection:123*"kill"*/connection:456*"kill"*/connection:789*"kill[12:13"*) ;;

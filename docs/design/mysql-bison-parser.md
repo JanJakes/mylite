@@ -28,6 +28,7 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 KILL statement:
   `https://dev.mysql.com/doc/refman/8.4/en/kill.html`
 - MySQL 8.4 binary log statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/binlog.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-binlog-events.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/purge-binary-logs.html`
 - MySQL 8.4 FLUSH statement:
@@ -128,8 +129,8 @@ STATUS`, `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
 targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
 `SHOW FUNCTION CODE` and `SHOW PROCEDURE CODE`, engine targets in
 `SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, query targets in
-`SHOW PROFILE ... FOR QUERY`, connection targets in `KILL`, binary log targets
-in `SHOW BINLOG EVENTS IN ...` and
+`SHOW PROFILE ... FOR QUERY`, connection targets in `KILL`, binary log event
+payloads in `BINLOG`, binary log targets in `SHOW BINLOG EVENTS IN ...` and
 `PURGE BINARY LOGS TO ...`, table targets in `FLUSH TABLES`, and
 table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `REPAIR`, and prepared-statement names in
@@ -198,7 +199,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   `KILL` metadata records only the processlist id token, not the distinction
   between query and connection termination.
   Binary log metadata records only the explicit log-file target and does not
-  classify position or time expressions.
+  classify position or time expressions. `BINLOG` metadata records only the
+  first string event payload.
   `FLUSH TABLES` metadata records only the first table target and leaves
   global flush forms objectless.
   Table-maintenance metadata records only the first concrete table target and

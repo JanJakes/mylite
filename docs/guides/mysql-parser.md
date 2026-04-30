@@ -123,6 +123,12 @@ Binary log statements expose explicit log-file targets:
 ok statements=1 kinds=show[1:7,0:41]/binary_log:'bin.000001'
 ```
 
+BINLOG statements expose their event payload string:
+
+```text
+ok statements=1 kinds=binlog[1:2,0:12]/binary_log_event:'abc'
+```
+
 FLUSH TABLES exposes the first table target:
 
 ```text

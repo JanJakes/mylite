@@ -585,6 +585,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 {
 	switch (kind) {
 	case MYLITE_STATEMENT_OBJECT_BINARY_LOG: return "binary_log";
+	case MYLITE_STATEMENT_OBJECT_BINARY_LOG_EVENT: return "binary_log_event";
 	case MYLITE_STATEMENT_OBJECT_COMPONENT: return "component";
 	case MYLITE_STATEMENT_OBJECT_CONNECTION: return "connection";
 	case MYLITE_STATEMENT_OBJECT_CURSOR: return "cursor";
@@ -1068,6 +1069,14 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		return classify_kill_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_PURGE:
 		return classify_purge_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_BINLOG:
+		if (name_token_index > last_token_index ||
+		    name_token_index >= parser->token_count ||
+		    parser->tokens[name_token_index].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		object_kind = MYLITE_STATEMENT_OBJECT_BINARY_LOG_EVENT;
+		break;
 	case MYLITE_STATEMENT_RESET:
 		return classify_reset_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_SET:

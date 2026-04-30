@@ -146,8 +146,9 @@ create_statement ::= CREATE create_tail. {
 
 create_tail ::= create_object_kind required_statement_tail.
 create_tail ::= TEMPORARY TABLE required_statement_tail.
-create_tail ::= create_index_kind INDEX required_statement_tail.
 create_tail ::= AGGREGATE FUNCTION required_statement_tail.
+create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
+create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
 create_tail ::= LOGFILE create_logfile_group cache_name_part required_statement_tail.
 create_tail ::= RESOURCE create_resource_group cache_name_part required_statement_tail.
 create_tail ::= SPATIAL create_reference create_system cache_name_part required_statement_tail.
@@ -160,13 +161,22 @@ create_index_kind ::= UNIQUE.
 create_index_kind ::= FULLTEXT.
 create_index_kind ::= SPATIAL.
 
+create_index_name ::= cache_name_part.
+
+create_index_using_tail ::= .
+create_index_using_tail ::= USING cache_name_part.
+create_index_using_tail ::= create_index_type cache_name_part.
+
+create_index_type ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "TYPE");
+}
+
 create_object_kind ::= TABLE.
 create_object_kind ::= VIEW.
 create_object_kind ::= OR.
 create_object_kind ::= ALGORITHM.
 create_object_kind ::= SQL.
 create_object_kind ::= DEFINER.
-create_object_kind ::= INDEX.
 create_object_kind ::= EVENT.
 create_object_kind ::= FUNCTION.
 create_object_kind ::= PROCEDURE.

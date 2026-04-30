@@ -600,12 +600,51 @@ change_statement ::= CHANGE change_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
 }
 
-change_tail ::= MASTER TO required_statement_tail.
-change_tail ::= REPLICATION change_replication_source TO required_statement_tail.
+change_tail ::= MASTER TO change_options change_for_channel_tail.
+change_tail ::= REPLICATION change_replication_source TO change_options change_for_channel_tail.
 
 change_replication_source ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "SOURCE");
 }
+
+change_options ::= change_option.
+change_options ::= change_options import_comma change_option.
+
+change_option ::= change_option_name diagnostics_equals change_option_value.
+
+change_option_name ::= ATOM.
+
+change_option_value ::= change_option_value_token.
+change_option_value ::= change_option_value change_option_value_token.
+
+change_option_value_token ::= ATOM.
+change_option_value_token ::= LABEL.
+change_option_value_token ::= DOT.
+change_option_value_token ::= LP change_option_value_contents RP.
+change_option_value_token ::= LB.
+change_option_value_token ::= RB.
+change_option_value_token ::= LC.
+change_option_value_token ::= RC.
+
+change_option_value_contents ::= .
+change_option_value_contents ::= change_option_value_contents change_option_value_content.
+
+change_option_value_content ::= ATOM.
+change_option_value_content ::= LABEL.
+change_option_value_content ::= keyword.
+change_option_value_content ::= DOT.
+change_option_value_content ::= COMMA.
+change_option_value_content ::= LP change_option_value_contents RP.
+change_option_value_content ::= LB.
+change_option_value_content ::= RB.
+change_option_value_content ::= LC.
+change_option_value_content ::= RC.
+
+change_for_channel_tail ::= .
+change_for_channel_tail ::= FOR reset_channel change_channel_name.
+
+change_channel_name ::= ATOM.
+change_channel_name ::= LABEL.
 
 xa_statement ::= XA xa_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);

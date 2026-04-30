@@ -106,6 +106,11 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
         return lexer_identifier(lexer, token);
       }
       return lexer_operator(lexer, token);
+    case '@':
+      if (is_identifier_continue(lexer_peek(lexer, 1))) {
+        return lexer_identifier(lexer, token);
+      }
+      return lexer_operator(lexer, token);
     default:
       break;
   }

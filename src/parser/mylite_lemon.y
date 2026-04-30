@@ -344,8 +344,8 @@ kill_statement ::= KILL kill_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-kill_tail ::= kill_target statement_tail.
-kill_tail ::= kill_mode required_statement_tail.
+kill_tail ::= kill_target.
+kill_tail ::= kill_mode kill_target.
 
 kill_mode ::= CONNECTION.
 kill_mode ::= QUERY.

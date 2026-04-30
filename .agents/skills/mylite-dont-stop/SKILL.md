@@ -1,6 +1,6 @@
 ---
 name: mylite-dont-stop
-description: Persist through substantial MyLite compatibility implementation, migration, or multi-step feature work when the user asks Codex to keep going despite broad scope. Do not use for simple git commands, status checks, one-off reviews, small documentation edits, or ordinary amend/push requests.
+description: Persist through substantial MyLite compatibility implementation, migration, or multi-step feature work when the user asks the agent to keep going despite broad scope. Do not use for simple git commands, status checks, one-off reviews, small documentation edits, or ordinary amend/push requests.
 ---
 
 # MyLite don't stop

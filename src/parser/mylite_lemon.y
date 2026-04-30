@@ -455,6 +455,7 @@ cache_table_ref ::= cache_name_part DOT cache_name_part.
 cache_name_part ::= ATOM.
 cache_name_part ::= LABEL.
 cache_name_part ::= DEFAULT.
+cache_name_part ::= EVENTS.
 
 cache_key_list ::= LP cache_key_names RP.
 
@@ -756,24 +757,41 @@ flush_statement ::= FLUSH flush_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-flush_tail ::= flush_kind statement_tail.
-flush_tail ::= LOCAL flush_local_kind statement_tail.
-flush_tail ::= NO_WRITE_TO_BINLOG flush_local_kind statement_tail.
-flush_tail ::= BINARY LOGS statement_tail.
-flush_tail ::= ERROR LOGS statement_tail.
-flush_tail ::= RELAY LOGS statement_tail.
+flush_tail ::= flush_simple_list.
+flush_tail ::= flush_table_kind flush_table_tail.
+flush_tail ::= LOCAL flush_table_kind flush_table_tail.
+flush_tail ::= NO_WRITE_TO_BINLOG flush_table_kind flush_table_tail.
+flush_tail ::= BINARY LOGS.
+flush_tail ::= ERROR LOGS.
+flush_tail ::= RELAY LOGS.
 
-flush_local_kind ::= TABLE.
-flush_local_kind ::= TABLES.
+flush_simple_list ::= flush_simple_kind.
+flush_simple_list ::= flush_simple_list import_comma flush_simple_kind.
 
-flush_kind ::= HOSTS.
-flush_kind ::= LOGS.
-flush_kind ::= OPTIMIZER_COSTS.
-flush_kind ::= PRIVILEGES.
-flush_kind ::= STATUS.
-flush_kind ::= TABLE.
-flush_kind ::= TABLES.
-flush_kind ::= USER_RESOURCES.
+flush_simple_kind ::= HOSTS.
+flush_simple_kind ::= LOGS.
+flush_simple_kind ::= OPTIMIZER_COSTS.
+flush_simple_kind ::= PRIVILEGES.
+flush_simple_kind ::= STATUS.
+flush_simple_kind ::= USER_RESOURCES.
+
+flush_table_kind ::= TABLE.
+flush_table_kind ::= TABLES.
+
+flush_table_tail ::= .
+flush_table_tail ::= flush_table_list.
+flush_table_tail ::= flush_table_modifier.
+flush_table_tail ::= flush_table_list flush_table_modifier.
+
+flush_table_list ::= cache_table_ref.
+flush_table_list ::= flush_table_list import_comma cache_table_ref.
+
+flush_table_modifier ::= WITH READ LOCK.
+flush_table_modifier ::= FOR flush_export.
+
+flush_export ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "EXPORT");
+}
 
 restart_statement ::= RESTART. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);

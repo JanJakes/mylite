@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM DOT.
+%fallback ATOM DOT AT_SIGN AT_EMPTY.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %extra_argument {MyliteParseContext *ctx}
@@ -178,7 +178,7 @@ drop_statement ::= DROP drop_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-drop_tail ::= drop_object_kind required_statement_tail.
+drop_tail ::= drop_account_kind drop_if_exists_tail drop_account_list.
 drop_tail ::= drop_table_prefix drop_if_exists_tail drop_name_list drop_restrict_tail.
 drop_tail ::= LOGFILE drop_logfile_group cache_name_part drop_tablespace_engine_tail.
 drop_tail ::= RESOURCE drop_resource_group cache_name_part drop_resource_force_tail.
@@ -197,14 +197,46 @@ drop_tail ::= TABLESPACE cache_name_part drop_tablespace_engine_tail.
 drop_table_kind ::= TABLE.
 drop_table_kind ::= TABLES.
 
-drop_object_kind ::= USER.
-drop_object_kind ::= ROLE.
+drop_account_kind ::= USER.
+drop_account_kind ::= ROLE.
 
 drop_table_prefix ::= drop_table_kind.
 drop_table_prefix ::= TEMPORARY drop_table_kind.
 
 drop_routine_kind ::= FUNCTION.
 drop_routine_kind ::= PROCEDURE.
+
+drop_account_list ::= drop_account_name.
+drop_account_list ::= drop_account_list COMMA drop_account_name.
+
+drop_account_name ::= drop_account_principal.
+drop_account_name ::= drop_account_principal drop_account_host.
+drop_account_name ::= drop_account_principal drop_account_host drop_account_trailing_tail.
+
+drop_account_trailing_tail ::= ATOM(A). {
+  mylite_parser_require_token_prefix(ctx, A, "\"");
+}
+
+drop_account_principal ::= drop_account_ident.
+
+drop_account_host ::= drop_inline_host drop_host_dot_tail.
+drop_account_host ::= AT_SIGN drop_host_name.
+drop_account_host ::= AT_EMPTY.
+
+drop_inline_host ::= ATOM(A). {
+  mylite_parser_require_token_prefix(ctx, A, "@");
+}
+
+drop_host_name ::= drop_account_ident drop_host_dot_tail.
+
+drop_host_dot_tail ::= .
+drop_host_dot_tail ::= drop_host_dot_tail DOT drop_account_ident.
+
+drop_account_ident ::= ATOM.
+drop_account_ident ::= LABEL.
+drop_account_ident ::= MASTER.
+drop_account_ident ::= ROLE.
+drop_account_ident ::= USER.
 
 drop_name_list ::= cache_table_ref.
 drop_name_list ::= drop_name_list COMMA cache_table_ref.
@@ -1234,9 +1266,7 @@ clone_instance_source ::= clone_user clone_at clone_host clone_colon ATOM.
 clone_user ::= ATOM.
 clone_user ::= LABEL.
 
-clone_at ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "@");
-}
+clone_at ::= AT_SIGN.
 
 clone_host ::= ATOM.
 clone_host ::= LABEL.

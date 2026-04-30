@@ -19,6 +19,8 @@ static void format_near_token(MyliteParseContext *ctx, int token_id,
 static int token_ascii_matches_any(const MyliteToken *token,
                                    const char *const *texts,
                                    size_t text_count);
+static int token_ascii_starts_with(const MyliteToken *token,
+                                   const char *prefix);
 static int token_ascii_equals(const MyliteToken *token, const char *text);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
@@ -177,6 +179,17 @@ void mylite_parser_require_token_text_any(MyliteParseContext *ctx,
                                           const char *second) {
   if (ctx->failed || token_ascii_equals(&token, first) ||
       token_ascii_equals(&token, second)) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
+void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
+                                        MyliteToken token,
+                                        const char *prefix) {
+  if (ctx->failed || token_ascii_starts_with(&token, prefix)) {
     return;
   }
 
@@ -403,6 +416,28 @@ static int token_ascii_matches_any(const MyliteToken *token,
   }
 
   return 0;
+}
+
+static int token_ascii_starts_with(const MyliteToken *token,
+                                   const char *prefix) {
+  size_t i;
+
+  for (i = 0; i < token->length && prefix[i] != '\0'; i++) {
+    unsigned char a = (unsigned char) token->start[i];
+    unsigned char b = (unsigned char) prefix[i];
+
+    if (a >= 'a' && a <= 'z') {
+      a = (unsigned char) (a - 'a' + 'A');
+    }
+    if (b >= 'a' && b <= 'z') {
+      b = (unsigned char) (b - 'a' + 'A');
+    }
+    if (a != b) {
+      return 0;
+    }
+  }
+
+  return prefix[i] == '\0';
 }
 
 static int token_ascii_equals(const MyliteToken *token, const char *text) {

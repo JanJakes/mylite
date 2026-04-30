@@ -37,6 +37,9 @@ void mylite_parser_require_token_text_any(MyliteParseContext *ctx,
                                           MyliteToken token,
                                           const char *first,
                                           const char *second);
+void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
+                                        MyliteToken token,
+                                        const char *prefix);
 void mylite_parser_require_profile_type(MyliteParseContext *ctx,
                                         MyliteToken first,
                                         MyliteToken second);

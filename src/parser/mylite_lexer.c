@@ -119,7 +119,13 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
       if (is_identifier_continue(lexer_peek(lexer, 1))) {
         return lexer_identifier(lexer, token);
       }
-      return lexer_operator(lexer, token);
+      lexer_advance(lexer);
+      token->length = 1;
+      if (lexer_peek(lexer, 0) == '\'' || lexer_peek(lexer, 0) == '"' ||
+          lexer_peek(lexer, 0) == '`') {
+        return ML_AT_SIGN;
+      }
+      return ML_AT_EMPTY;
     default:
       break;
   }

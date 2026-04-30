@@ -77,6 +77,12 @@ SHOW account-introspection forms preserve account spans:
 ok statements=1 kinds=show[1:6,0:24]/user:'u'@'h'
 ```
 
+Schema-scoped SHOW forms expose explicit `FROM` or `IN` database targets:
+
+```text
+ok statements=1 kinds=show[1:5,0:25]/database:db
+```
+
 Resource group administration exposes the group name:
 
 ```text

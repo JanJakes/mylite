@@ -1482,6 +1482,38 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		                                        last_token_index);
 	}
 
+	if (parser->tokens[token_index].parser_token == TABLE_T &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index + 1, "STATUS")) {
+		name_token_index = find_show_from_name_token(parser, token_index + 2, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_DATABASE,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	if (parser->tokens[token_index].parser_token == OPEN_T &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index + 1, "TABLES")) {
+		name_token_index = find_show_from_name_token(parser, token_index + 2, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_DATABASE,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	if (token_text_equals(parser, token_index, "EVENTS") ||
+	    token_text_equals(parser, token_index, "TRIGGERS")) {
+		name_token_index = find_show_from_name_token(parser, token_index + 1, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_DATABASE,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
 	return 0;
 }
 

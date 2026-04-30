@@ -19,6 +19,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
+- MySQL 8.4 schema-scoped SHOW statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/show.html`
 - MySQL 8.4 component and plugin statements:
   `https://dev.mysql.com/doc/refman/8.4/en/install-component.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/uninstall-component.html`,
@@ -88,8 +90,9 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, direct `DESCRIBE` / `EXPLAIN` table forms, `LOAD ... INTO TABLE`,
 `CACHE INDEX`, `LOAD INDEX INTO CACHE`, `LOCK TABLES`, `SHOW CREATE ...`,
 `SHOW COLUMNS` / `FIELDS`,
-`SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, account targets in
-`SHOW CREATE USER` and `SHOW GRANTS FOR`, and prepared-statement names in
+`SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, schema-scoped `SHOW TABLE
+STATUS`, `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
+targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, and prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Component and
 plugin targets are recorded for `INSTALL` and `UNINSTALL` administrative
 statements. Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`,
@@ -132,8 +135,10 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   so query-plan forms such as `EXPLAIN SELECT` and
   `EXPLAIN FORMAT=... SELECT` remain objectless.
   `SHOW` metadata is similarly limited to forms with a clear table, view, or
-  schema/account target. Prepared-statement metadata records the statement
-  handle name, not the SQL text referenced by `PREPARE`. Component/plugin
+  schema/account target. Schema-scoped `SHOW` metadata is recorded only when an
+  explicit `FROM` or `IN` schema name is present. Prepared-statement metadata
+  records the statement handle name, not the SQL text referenced by `PREPARE`.
+  Component/plugin
   metadata records only the first target in multi-target statements. Resource
   group metadata records only the named group, not VCPU, priority, or thread
   assignment lists. Server, logfile-group, and tablespace metadata records only

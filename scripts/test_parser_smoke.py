@@ -80,6 +80,8 @@ def main() -> int:
         ("create role;", 1, {}),
         ("create user;", 1, {}),
         ("create user if exists user@localhost;", 1, {}),
+        ("create logfile group lg;", 1, {}),
+        ("create logfile group lg add datafile 'u.dat';", 1, {}),
         ("create event if not exists;", 1, {}),
         ("create trigger tr1;", 1, {}),
         ("create function;", 1, {}),

@@ -100,10 +100,12 @@ USE `db`;
 TABLE `db`.`t`;
 HANDLER `db`.`h` OPEN;
 LOAD DATA INFILE "x" INTO TABLE `db`.`ld`;
+CACHE INDEX c IN keycache;
+LOAD INDEX INTO CACHE `db`.`li`;
 LOCK TABLES `db`.`lt` READ'
 utility_object_output=$("$parser" "$utility_sql")
 case "$utility_object_output" in
-	*"truncate"*/table:t*"truncate"*/table:'`db`.`t`'*"use"*/database:'`db`'*"table"*/table:'`db`.`t`'*"handler"*/table:'`db`.`h`'*"load"*/table:'`db`.`ld`'*"lock"*/table:'`db`.`lt`'*) ;;
+	*"truncate"*/table:t*"truncate"*/table:'`db`.`t`'*"use"*/database:'`db`'*"table"*/table:'`db`.`t`'*"handler"*/table:'`db`.`h`'*"load"*/table:'`db`.`ld`'*"cache"*/table:c*"load"*/table:'`db`.`li`'*"lock"*/table:'`db`.`lt`'*) ;;
 	*)
 		echo "unexpected utility object output: $utility_object_output" >&2
 		exit 1

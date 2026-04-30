@@ -24,6 +24,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/uninstall-component.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/install-plugin.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/uninstall-plugin.html`
+- MySQL 8.4 MyISAM key cache statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/cache-index.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/load-index.html`
 - WordPress SQLite Database Integration query corpus:
   `packages/mysql-on-sqlite/tests/mysql/data/mysql-server-tests-queries.csv`
 
@@ -68,7 +71,8 @@ before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, direct `DESCRIBE` / `EXPLAIN` table forms, `LOAD ... INTO TABLE`,
-`LOCK TABLES`, `SHOW CREATE ...`, `SHOW COLUMNS` / `FIELDS`,
+`CACHE INDEX`, `LOAD INDEX INTO CACHE`, `LOCK TABLES`, `SHOW CREATE ...`,
+`SHOW COLUMNS` / `FIELDS`,
 `SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, account targets in
 `SHOW CREATE USER` and `SHOW GRANTS FOR`, and prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Component and
@@ -104,9 +108,10 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   does not yet resolve aliases, joined table references, partition clauses, or
   every affected table in multi-table statements.
 - Utility object metadata records the first direct target only and does not yet
-  expand multi-table maintenance or lock lists. `DESCRIBE` and `EXPLAIN`
-  target metadata is deliberately conservative so query-plan forms such as
-  `EXPLAIN SELECT` and `EXPLAIN FORMAT=... SELECT` remain objectless.
+  expand multi-table maintenance, cache-index lists, load-index lists, or lock
+  lists. `DESCRIBE` and `EXPLAIN` target metadata is deliberately conservative
+  so query-plan forms such as `EXPLAIN SELECT` and
+  `EXPLAIN FORMAT=... SELECT` remain objectless.
   `SHOW` metadata is similarly limited to forms with a clear table, view, or
   schema/account target. Prepared-statement metadata records the statement
   handle name, not the SQL text referenced by `PREPARE`. Component/plugin

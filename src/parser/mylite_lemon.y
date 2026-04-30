@@ -160,7 +160,7 @@ create_tail ::= UNDO TABLESPACE cache_name_part create_options_tail.
 create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_options_tail.
 create_tail ::= ROLE create_if_not_exists_tail drop_account_list.
 create_tail ::= USER create_if_not_exists_tail drop_account_name create_user_tail.
-create_tail ::= VIEW cache_table_ref required_statement_tail.
+create_tail ::= VIEW cache_table_ref view_column_tail view_body.
 create_tail ::= create_prefixed_view_tail.
 create_tail ::= create_definer_clause create_definer_object_tail.
 create_tail ::= EVENT create_if_not_exists_tail cache_table_ref required_statement_tail.
@@ -204,7 +204,7 @@ create_soname ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "SONAME");
 }
 
-create_prefixed_view_tail ::= create_view_prefix VIEW cache_table_ref required_statement_tail.
+create_prefixed_view_tail ::= create_view_prefix VIEW cache_table_ref view_column_tail view_body.
 
 create_view_prefix ::= OR REPLACE create_view_optional_options.
 create_view_prefix ::= create_view_options.
@@ -234,6 +234,18 @@ create_view_security_kind ::= DEFINER.
 create_view_security_kind ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "INVOKER");
 }
+
+view_body ::= view_as required_statement_tail.
+
+view_as ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "AS");
+}
+
+view_column_tail ::= .
+view_column_tail ::= LP view_column_list RP.
+
+view_column_list ::= cache_name_part.
+view_column_list ::= view_column_list import_comma cache_name_part.
 
 create_definer_clause ::= DEFINER diagnostics_equals create_definer_account.
 
@@ -448,7 +460,7 @@ alter_tail ::= EVENT cache_table_ref required_statement_tail.
 alter_tail ::= alter_routine_kind cache_table_ref create_options_tail.
 alter_tail ::= alter_database_kind cache_name_part create_options_required_tail.
 alter_tail ::= alter_database_kind CHARACTER required_statement_tail.
-alter_tail ::= VIEW cache_table_ref required_statement_tail.
+alter_tail ::= VIEW cache_table_ref view_column_tail view_body.
 alter_tail ::= alter_prefixed_view_tail.
 alter_tail ::= create_definer_clause alter_definer_object_tail.
 alter_tail ::= INSTANCE alter_instance_action.
@@ -459,7 +471,7 @@ alter_database_kind ::= SCHEMA.
 alter_routine_kind ::= FUNCTION.
 alter_routine_kind ::= PROCEDURE.
 
-alter_prefixed_view_tail ::= alter_view_prefix VIEW cache_table_ref required_statement_tail.
+alter_prefixed_view_tail ::= alter_view_prefix VIEW cache_table_ref view_column_tail view_body.
 
 alter_view_prefix ::= create_view_algorithm create_view_definer_tail create_view_sql_security_tail.
 alter_view_prefix ::= create_definer_clause create_view_sql_security_tail.

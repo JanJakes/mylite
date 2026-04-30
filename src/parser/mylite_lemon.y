@@ -333,6 +333,8 @@ alter_statement ::= ALTER alter_tail. {
 }
 
 alter_tail ::= alter_object_kind required_statement_tail.
+alter_tail ::= TABLE cache_table_ref.
+alter_tail ::= TABLE cache_table_ref required_statement_tail.
 alter_tail ::= LOGFILE create_logfile_group cache_name_part required_statement_tail.
 alter_tail ::= RESOURCE create_resource_group cache_name_part required_statement_tail.
 alter_tail ::= SERVER cache_name_part required_statement_tail.
@@ -346,7 +348,6 @@ alter_tail ::= alter_database_kind CHARACTER required_statement_tail.
 alter_tail ::= VIEW cache_table_ref required_statement_tail.
 alter_tail ::= INSTANCE alter_instance_action.
 
-alter_object_kind ::= TABLE.
 alter_object_kind ::= ALGORITHM.
 alter_object_kind ::= DEFINER.
 

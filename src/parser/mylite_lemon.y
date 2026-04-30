@@ -745,6 +745,7 @@ use_statement ::= USE use_target. {
 
 use_target ::= ATOM.
 use_target ::= LABEL.
+use_target ::= FIRST.
 
 handler_statement ::= HANDLER handler_name handler_operation. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
@@ -759,7 +760,7 @@ handler_target ::= LABEL.
 handler_operation ::= OPEN.
 handler_operation ::= OPEN handler_alias.
 handler_operation ::= OPEN handler_as handler_alias.
-handler_operation ::= READ required_statement_tail.
+handler_operation ::= READ handler_read_tail.
 handler_operation ::= CLOSE.
 
 handler_as ::= ATOM(A). {
@@ -768,6 +769,28 @@ handler_as ::= ATOM(A). {
 
 handler_alias ::= ATOM.
 handler_alias ::= LABEL.
+
+handler_read_tail ::= handler_read_direction handler_read_suffix.
+handler_read_tail ::= handler_read_index handler_read_direction handler_read_suffix.
+handler_read_tail ::= handler_read_index handler_read_operator handler_read_tuple handler_read_suffix.
+
+handler_read_index ::= ATOM.
+handler_read_index ::= LABEL.
+
+handler_read_direction ::= FIRST.
+handler_read_direction ::= NEXT.
+handler_read_direction ::= PREV.
+handler_read_direction ::= LAST.
+
+handler_read_operator ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "=");
+}
+
+handler_read_tuple ::= LP values_row_contents RP.
+
+handler_read_suffix ::= .
+handler_read_suffix ::= WHERE required_statement_tail.
+handler_read_suffix ::= LIMIT required_statement_tail.
 
 call_statement ::= CALL call_name call_arguments. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
@@ -1193,10 +1216,14 @@ expression_start_keyword ::= DEFAULT.
 expression_start_keyword ::= DEFINER.
 expression_start_keyword ::= ENGINE.
 expression_start_keyword ::= EVENTS.
+expression_start_keyword ::= FIRST.
 expression_start_keyword ::= FORMAT.
 expression_start_keyword ::= IF.
 expression_start_keyword ::= INSERT.
+expression_start_keyword ::= LAST.
+expression_start_keyword ::= NEXT.
 expression_start_keyword ::= PLUGIN.
+expression_start_keyword ::= PREV.
 expression_start_keyword ::= PRIVILEGES.
 expression_start_keyword ::= REPEAT.
 expression_start_keyword ::= REPLACE.
@@ -1428,6 +1455,7 @@ keyword ::= WHILE.
 keyword ::= WRITE.
 keyword ::= CASE.
 keyword ::= WHEN.
+keyword ::= WHERE.
 keyword ::= TRIGGER.
 keyword ::= DECLARE.
 keyword ::= OPEN.
@@ -1478,6 +1506,7 @@ keyword ::= ERROR.
 keyword ::= EVENTS.
 keyword ::= EXTENDED.
 keyword ::= FIELDS.
+keyword ::= FIRST.
 keyword ::= FOR.
 keyword ::= FORMAT.
 keyword ::= FULL.
@@ -1487,6 +1516,7 @@ keyword ::= HOSTS.
 keyword ::= INDEXES.
 keyword ::= KEY.
 keyword ::= KEYS.
+keyword ::= LAST.
 keyword ::= PLUGINS.
 keyword ::= LOGS.
 keyword ::= OPTIMIZER_COSTS.
@@ -1525,6 +1555,8 @@ keyword ::= OFFSET.
 keyword ::= ORDER.
 keyword ::= PASSWORD.
 keyword ::= QUICK.
+keyword ::= NEXT.
+keyword ::= PREV.
 keyword ::= RECURSIVE.
 keyword ::= ROW.
 keyword ::= SQLSTATE.
@@ -1631,6 +1663,7 @@ keyword_not_select_clause ::= WHILE.
 keyword_not_select_clause ::= WRITE.
 keyword_not_select_clause ::= CASE.
 keyword_not_select_clause ::= WHEN.
+keyword_not_select_clause ::= WHERE.
 keyword_not_select_clause ::= TRIGGER.
 keyword_not_select_clause ::= DECLARE.
 keyword_not_select_clause ::= OPEN.
@@ -1679,6 +1712,7 @@ keyword_not_select_clause ::= ERROR.
 keyword_not_select_clause ::= EVENTS.
 keyword_not_select_clause ::= EXTENDED.
 keyword_not_select_clause ::= FIELDS.
+keyword_not_select_clause ::= FIRST.
 keyword_not_select_clause ::= FOR.
 keyword_not_select_clause ::= FORMAT.
 keyword_not_select_clause ::= FULL.
@@ -1688,6 +1722,7 @@ keyword_not_select_clause ::= HOSTS.
 keyword_not_select_clause ::= INDEXES.
 keyword_not_select_clause ::= KEY.
 keyword_not_select_clause ::= KEYS.
+keyword_not_select_clause ::= LAST.
 keyword_not_select_clause ::= PLUGINS.
 keyword_not_select_clause ::= LOGS.
 keyword_not_select_clause ::= OPTIMIZER_COSTS.
@@ -1726,6 +1761,8 @@ keyword_not_select_clause ::= OFFSET.
 keyword_not_select_clause ::= ORDER.
 keyword_not_select_clause ::= PASSWORD.
 keyword_not_select_clause ::= QUICK.
+keyword_not_select_clause ::= NEXT.
+keyword_not_select_clause ::= PREV.
 keyword_not_select_clause ::= RECURSIVE.
 keyword_not_select_clause ::= ROW.
 keyword_not_select_clause ::= SQLSTATE.

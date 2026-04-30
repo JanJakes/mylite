@@ -136,6 +136,16 @@ ok statements=1 kinds=show[1:7,0:37]/database:db
 ok statements=1 kinds=show[1:4,0:20]/procedure:p
 ```
 
+SHOW table-detail forms expose the inspected table:
+
+```text
+ok statements=1 kinds=show[1:4,0:19]/table:t
+```
+
+```text
+ok statements=1 kinds=show[1:6,0:38]/table:`db`.`v`
+```
+
 Schema-scoped SHOW forms expose explicit `FROM` or `IN` database targets:
 
 ```text

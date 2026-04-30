@@ -277,6 +277,15 @@ case "$show_create_output" in
 		;;
 esac
 
+show_table_detail_output=$("$parser" 'SHOW COLUMNS FROM t; SHOW FULL FIELDS FROM `db`.`v` LIKE "id%"; SHOW EXTENDED COLUMNS IN t IN `db` WHERE Field = "id"; SHOW INDEX FROM t; SHOW EXTENDED INDEXES IN `db`.`t`; SHOW KEYS FROM k FROM `db`')
+case "$show_table_detail_output" in
+	*"show"*/table:t*"show"*/table:'`db`.`v`'*"show"*/table:t*"show"*/table:t*"show"*/table:'`db`.`t`'*"show"*/table:k*) ;;
+	*)
+		echo "unexpected SHOW table detail output: $show_table_detail_output" >&2
+		exit 1
+		;;
+esac
+
 show_variable_output=$("$parser" "SHOW VARIABLES; SHOW VARIABLES LIKE 'autocommit'; SHOW SESSION VARIABLES LIKE 'sql_mode'; SHOW LOCAL VARIABLES WHERE Variable_name = 'time_zone'; SHOW STATUS; SHOW GLOBAL STATUS LIKE 'Com_select'; SHOW SESSION STATUS LIKE 'Bytes_sent'")
 case "$show_variable_output" in
 	*"show"*/system_variable*"show"*/system_variable:"'autocommit'"*"show"*/system_variable:"'sql_mode'"*"show"*/system_variable*"show"*/status_variable*"show"*/status_variable:"'Com_select'"*"show"*/status_variable:"'Bytes_sent'"*) ;;

@@ -54,8 +54,10 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/show-procedure-status.html`
 - MySQL 8.4 schema-scoped SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-columns.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-databases.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-events.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-index.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-open-tables.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-table-status.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-tables.html`,
@@ -299,10 +301,12 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   or named condition value. Bare `RESIGNAL` and `RESIGNAL SET ...` forms remain
   objectless, and signal information item assignments are not yet classified.
   `SHOW` metadata is similarly limited to forms with a clear table, view, event,
-  trigger, schema, or account target. Schema-scoped `SHOW` metadata records
-  explicit `FROM` or `IN` schema names, otherwise collection targets or `LIKE`
-  patterns where the pattern maps unambiguously to table or event names.
-  `WHERE` filters remain analysis-layer work. Prepared-statement metadata
+  trigger, schema, or account target. `SHOW COLUMNS` / `FIELDS` and
+  `SHOW INDEX` / `KEYS` metadata records the inspected table target.
+  Schema-scoped `SHOW` metadata records explicit `FROM` or `IN` schema names,
+  otherwise collection targets or `LIKE` patterns where the pattern maps
+  unambiguously to table or event names. `WHERE` filters remain analysis-layer
+  work. Prepared-statement metadata
   records the statement handle name, not the SQL text referenced by `PREPARE`.
   Component/plugin
   metadata records only the first target in multi-target statements. Resource

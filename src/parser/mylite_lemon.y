@@ -38,6 +38,7 @@ statement_chunk ::= statement SEMI.
 statement ::= select_statement.
 statement ::= create_statement.
 statement ::= drop_statement.
+statement ::= alter_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -61,7 +62,6 @@ required_tail_start(A) ::= INSERT. { A = MYLITE_STATEMENT_INSERT; }
 required_tail_start(A) ::= REPLACE. { A = MYLITE_STATEMENT_REPLACE; }
 required_tail_start(A) ::= UPDATE. { A = MYLITE_STATEMENT_UPDATE; }
 required_tail_start(A) ::= DELETE. { A = MYLITE_STATEMENT_DELETE; }
-required_tail_start(A) ::= ALTER. { A = MYLITE_STATEMENT_DDL; }
 required_tail_start(A) ::= TRUNCATE. { A = MYLITE_STATEMENT_DDL; }
 required_tail_start(A) ::= RENAME. { A = MYLITE_STATEMENT_DDL; }
 required_tail_start(A) ::= CALL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -186,6 +186,29 @@ drop_first_token ::= TABLESPACE.
 drop_first_token ::= UNDO.
 drop_first_token ::= SPATIAL.
 drop_first_token ::= RESOURCE.
+
+alter_statement ::= ALTER alter_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
+}
+
+alter_tail ::= alter_first_token required_statement_tail.
+
+alter_first_token ::= TABLE.
+alter_first_token ::= ALGORITHM.
+alter_first_token ::= DATABASE.
+alter_first_token ::= DEFINER.
+alter_first_token ::= SCHEMA.
+alter_first_token ::= VIEW.
+alter_first_token ::= EVENT.
+alter_first_token ::= FUNCTION.
+alter_first_token ::= PROCEDURE.
+alter_first_token ::= USER.
+alter_first_token ::= INSTANCE.
+alter_first_token ::= LOGFILE.
+alter_first_token ::= RESOURCE.
+alter_first_token ::= SERVER.
+alter_first_token ::= TABLESPACE.
+alter_first_token ::= UNDO.
 
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -316,6 +339,7 @@ keyword ::= OPTIMIZE.
 keyword ::= REPAIR.
 keyword ::= INSTALL.
 keyword ::= INDEX.
+keyword ::= INSTANCE.
 keyword ::= UNINSTALL.
 keyword ::= CLONE.
 keyword ::= CACHE.
@@ -421,6 +445,7 @@ keyword_not_select_clause ::= OPTIMIZE.
 keyword_not_select_clause ::= REPAIR.
 keyword_not_select_clause ::= INSTALL.
 keyword_not_select_clause ::= INDEX.
+keyword_not_select_clause ::= INSTANCE.
 keyword_not_select_clause ::= UNINSTALL.
 keyword_not_select_clause ::= CLONE.
 keyword_not_select_clause ::= CACHE.

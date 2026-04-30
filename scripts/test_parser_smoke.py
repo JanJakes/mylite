@@ -24,6 +24,9 @@ def main() -> int:
         ("create nonsense;", 1, {}),
         ("drop table if exists t;", 0, {"statements": "1", "ddl": "1"}),
         ("drop nonsense;", 1, {}),
+        ("alter table t add column a int;", 0, {"statements": "1", "ddl": "1"}),
+        ("alter algorithm=merge view v as select 1;", 0, {"statements": "1", "ddl": "1"}),
+        ("alter nonsense;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

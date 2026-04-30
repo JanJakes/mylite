@@ -481,6 +481,7 @@ static int keyword_token(const MyliteToken *token) {
       {"IF", ML_IF},
       {"IMPORT", ML_IMPORT},
       {"INDEX", ML_INDEX},
+      {"INSTANCE", ML_INSTANCE},
       {"INSERT", ML_INSERT},
       {"INSTALL", ML_INSTALL},
       {"ITERATE", ML_ITERATE},

@@ -5,6 +5,9 @@
 %fallback ATOM DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
+%type alter_instance_reload_tls_tail {int}
+%type alter_instance_reload_channel_tail {int}
+%type alter_instance_reload_rollback_tail {int}
 %extra_argument {MyliteParseContext *ctx}
 %token_destructor { (void)ctx; (void)yypminor; }
 %default_destructor { (void)ctx; (void)yypminor; }
@@ -341,17 +344,64 @@ alter_tail ::= alter_routine_kind cache_table_ref create_options_tail.
 alter_tail ::= alter_database_kind cache_name_part create_options_required_tail.
 alter_tail ::= alter_database_kind CHARACTER required_statement_tail.
 alter_tail ::= VIEW cache_table_ref required_statement_tail.
+alter_tail ::= INSTANCE alter_instance_action.
 
 alter_object_kind ::= TABLE.
 alter_object_kind ::= ALGORITHM.
 alter_object_kind ::= DEFINER.
-alter_object_kind ::= INSTANCE.
 
 alter_database_kind ::= DATABASE.
 alter_database_kind ::= SCHEMA.
 
 alter_routine_kind ::= FUNCTION.
 alter_routine_kind ::= PROCEDURE.
+
+alter_instance_action ::= ATOM(A) alter_instance_innodb alter_instance_redo_log. {
+  mylite_parser_require_token_text_any(ctx, A, "ENABLE", "DISABLE");
+}
+alter_instance_action ::= ATOM(A) alter_instance_master_key_kind MASTER KEY. {
+  mylite_parser_require_token_text(ctx, A, "ROTATE");
+}
+alter_instance_action ::= ATOM(A) alter_instance_reload_target. {
+  mylite_parser_require_token_text(ctx, A, "RELOAD");
+}
+
+alter_instance_innodb ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "INNODB");
+}
+
+alter_instance_redo_log ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "REDO_LOG");
+}
+
+alter_instance_master_key_kind ::= alter_instance_innodb.
+alter_instance_master_key_kind ::= BINLOG.
+
+alter_instance_reload_target ::= ATOM(A) alter_instance_reload_tls_tail(B). {
+  if (B) {
+    mylite_parser_require_token_text(ctx, A, "TLS");
+  } else {
+    mylite_parser_require_token_text_any(ctx, A, "TLS", "KEYRING");
+  }
+}
+
+alter_instance_reload_tls_tail(A) ::= alter_instance_reload_channel_tail(B) alter_instance_reload_rollback_tail(C). {
+  A = B || C;
+}
+
+alter_instance_reload_channel_tail(A) ::= . {
+  A = 0;
+}
+alter_instance_reload_channel_tail(A) ::= reset_channel_tail. {
+  A = 1;
+}
+
+alter_instance_reload_rollback_tail(A) ::= . {
+  A = 0;
+}
+alter_instance_reload_rollback_tail(A) ::= NO ROLLBACK ON ERROR. {
+  A = 1;
+}
 
 alter_user_target ::= drop_account_name.
 

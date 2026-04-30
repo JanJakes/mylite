@@ -495,7 +495,7 @@ alter_tail ::= SERVER cache_name_part create_server_options.
 alter_tail ::= TABLESPACE cache_name_part alter_tablespace_action.
 alter_tail ::= UNDO TABLESPACE cache_name_part alter_undo_tablespace_action.
 alter_tail ::= USER drop_if_exists_tail alter_user_target create_user_tail.
-alter_tail ::= EVENT cache_table_ref required_statement_tail.
+alter_tail ::= EVENT cache_table_ref alter_event_action.
 alter_tail ::= alter_routine_kind cache_table_ref create_options_tail.
 alter_tail ::= alter_database_kind cache_name_part create_options_required_tail.
 alter_tail ::= alter_database_kind CHARACTER required_statement_tail.
@@ -516,7 +516,18 @@ alter_view_prefix ::= create_view_algorithm create_view_definer_tail create_view
 alter_view_prefix ::= create_definer_clause create_view_sql_security_tail.
 alter_view_prefix ::= create_view_sql_security.
 
-alter_definer_object_tail ::= EVENT cache_table_ref required_statement_tail.
+alter_definer_object_tail ::= EVENT cache_table_ref alter_event_action.
+
+alter_event_action ::= ON alter_event_on_tail.
+alter_event_action ::= RENAME TO cache_table_ref create_options_tail.
+alter_event_action ::= ATOM(A) create_options_tail. {
+  mylite_parser_require_event_atom_action(ctx, A);
+}
+alter_event_action ::= DO required_statement_tail.
+
+alter_event_on_tail ::= ATOM(A) required_statement_tail. {
+  mylite_parser_require_token_text_any(ctx, A, "SCHEDULE", "COMPLETION");
+}
 
 alter_resource_group_actions ::= alter_resource_group_action create_options_tail.
 

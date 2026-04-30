@@ -107,6 +107,7 @@ def main() -> int:
         ("create view;", 1, {}),
         ("create view v1;", 1, {}),
         ("create view v1 select 1;", 1, {}),
+        ("create view v1 as garbage;", 1, {}),
         ("create or view v1 as select 1;", 1, {}),
         ("create algorithm view v1 as select 1;", 1, {}),
         ("create sql security view v1 as select 1;", 1, {}),

@@ -276,11 +276,17 @@ create_view_security_kind ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "INVOKER");
 }
 
-view_body ::= view_as required_statement_tail.
+view_body ::= view_as view_query_start required_statement_tail.
 
 view_as ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "AS");
 }
+
+view_query_start ::= LP.
+view_query_start ::= SELECT.
+view_query_start ::= TABLE.
+view_query_start ::= VALUES.
+view_query_start ::= WITH.
 
 view_column_tail ::= .
 view_column_tail ::= LP view_column_list RP.

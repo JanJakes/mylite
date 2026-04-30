@@ -266,7 +266,7 @@ load_statement ::= LOAD load_tail. {
 
 load_tail ::= DATA load_file_tail.
 load_tail ::= XML load_file_tail.
-load_tail ::= INDEX INTO CACHE required_statement_tail.
+load_tail ::= INDEX INTO CACHE cache_table_list load_index_tail.
 
 load_file_tail ::= load_infile ATOM load_file_table_tail.
 load_file_tail ::= load_file_modifier load_file_tail.
@@ -284,6 +284,28 @@ load_file_table_tail ::= load_duplicate_handling INTO TABLE required_statement_t
 
 load_duplicate_handling ::= IGNORE.
 load_duplicate_handling ::= REPLACE.
+
+load_index_tail ::= .
+load_index_tail ::= load_index_partition.
+load_index_tail ::= IGNORE load_leaves.
+load_index_tail ::= load_index_partition IGNORE load_leaves.
+
+load_index_partition ::= load_partition LP load_partition_names RP.
+
+load_partition ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "PARTITION");
+}
+
+load_partition_names ::= load_partition_name.
+load_partition_names ::= load_partition_names import_comma load_partition_name.
+
+load_partition_name ::= ATOM.
+load_partition_name ::= LABEL.
+load_partition_name ::= ALL.
+
+load_leaves ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "LEAVES");
+}
 
 start_statement ::= START start_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);

@@ -35,6 +35,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/binlog.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-binlog-events.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/purge-binary-logs.html`
+- MySQL 8.4 SHOW RELAYLOG EVENTS statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-relaylog-events.html`
 - MySQL 8.4 FLUSH statement:
   `https://dev.mysql.com/doc/refman/8.4/en/flush.html`
 - MySQL 8.4 table-maintenance statements:
@@ -135,7 +137,9 @@ targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
 `SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, query targets in
 `SHOW PROFILE ... FOR QUERY`, connection targets in `KILL`, binary log event
 payloads in `BINLOG`, binary log targets in `SHOW BINLOG EVENTS IN ...` and
-`PURGE BINARY LOGS TO ...`, table targets in `FLUSH TABLES`, and
+`PURGE BINARY LOGS TO ...`, relay log targets in
+`SHOW RELAYLOG EVENTS IN ...`, replication channel targets in channel-only
+`SHOW RELAYLOG EVENTS`, table targets in `FLUSH TABLES`, and
 table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `REPAIR`, and prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Persisted
@@ -208,6 +212,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   Binary log metadata records only the explicit log-file target and does not
   classify position or time expressions. `BINLOG` metadata records only the
   first string event payload.
+  `SHOW RELAYLOG EVENTS` metadata records the explicit relay log name when
+  present, otherwise an explicit channel name, and leaves bare forms objectless.
   `FLUSH TABLES` metadata records only the first table target and leaves
   global flush forms objectless.
   Table-maintenance metadata records only the first concrete table target and

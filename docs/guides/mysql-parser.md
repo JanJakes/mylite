@@ -131,6 +131,13 @@ Binary log statements expose explicit log-file targets:
 ok statements=1 kinds=show[1:7,0:41]/binary_log:'bin.000001'
 ```
 
+Relay log event statements expose explicit relay-log files, or a channel when
+no file is named:
+
+```text
+ok statements=1 kinds=show[1:7,0:43]/relay_log:'relay.000001'
+```
+
 BINLOG statements expose their event payload string:
 
 ```text

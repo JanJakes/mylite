@@ -608,6 +608,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT: return "prepared_statement";
 	case MYLITE_STATEMENT_OBJECT_PROCEDURE: return "procedure";
 	case MYLITE_STATEMENT_OBJECT_QUERY: return "query";
+	case MYLITE_STATEMENT_OBJECT_RELAY_LOG: return "relay_log";
 	case MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL: return "replication_channel";
 	case MYLITE_STATEMENT_OBJECT_RESOURCE_GROUP: return "resource_group";
 	case MYLITE_STATEMENT_OBJECT_ROLE: return "role";
@@ -1818,6 +1819,25 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		return set_statement_direct_object_name(parser,
 		                                        statement,
 		                                        MYLITE_STATEMENT_OBJECT_BINARY_LOG,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	if (token_text_equals(parser, token_index, "RELAYLOG") &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index + 1, "EVENTS")) {
+		name_token_index = find_show_binlog_events_name_token(parser, token_index + 2, last_token_index);
+		if (name_token_index < parser->token_count) {
+			return set_statement_direct_object_name(parser,
+			                                        statement,
+			                                        MYLITE_STATEMENT_OBJECT_RELAY_LOG,
+			                                        name_token_index,
+			                                        last_token_index);
+		}
+		name_token_index = find_replication_channel_name_token(parser, token_index + 2, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL,
 		                                        name_token_index,
 		                                        last_token_index);
 	}

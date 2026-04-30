@@ -22,6 +22,15 @@ case "$span_output" in
 		;;
 esac
 
+token_output=$("$parser" --tokens "SELECT @a, ?")
+case "$token_output" in
+	*"token 1 keyword"*"token 2 user_variable"*"token 3 punctuation"*"token 4 parameter"*) ;;
+	*)
+		echo "unexpected token output: $token_output" >&2
+		exit 1
+		;;
+esac
+
 if "$parser" --quiet "SELECT (1"; then
 	echo "expected unmatched parenthesis to fail" >&2
 	exit 1

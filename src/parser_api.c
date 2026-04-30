@@ -8,6 +8,8 @@
 
 int yyparse(mylite_parser *parser);
 
+static mylite_token_kind token_kind_from_parser_token(int token);
+
 void mylite_parser_init(mylite_parser *parser, const char *sql, size_t length)
 {
 	memset(parser, 0, sizeof(*parser));
@@ -16,7 +18,11 @@ void mylite_parser_init(mylite_parser *parser, const char *sql, size_t length)
 
 void mylite_parser_destroy(mylite_parser *parser)
 {
+	free(parser->tokens);
 	free(parser->statements);
+	parser->tokens = NULL;
+	parser->token_count = 0;
+	parser->token_capacity = 0;
 	parser->statements = NULL;
 	parser->statement_count = 0;
 	parser->statement_capacity = 0;
@@ -31,6 +37,34 @@ void mylite_parser_begin_statement(mylite_parser *parser, mylite_statement_kind 
 	parser->active_statement_start_column = parser->lexer.token_start_column;
 	parser->active_statement_body_items = 0;
 	parser->active_statement_requires_body = requires_body;
+}
+
+int mylite_parser_record_token(mylite_parser *parser, int token)
+{
+	mylite_token *tokens;
+	size_t new_capacity;
+
+	if (parser->token_count == parser->token_capacity) {
+		new_capacity = parser->token_capacity == 0 ? 32 : parser->token_capacity * 2;
+		tokens = (mylite_token *)realloc(parser->tokens, new_capacity * sizeof(parser->tokens[0]));
+		if (tokens == NULL) {
+			mylite_parser_set_error(parser, "out of memory");
+			return 0;
+		}
+		parser->tokens = tokens;
+		parser->token_capacity = new_capacity;
+	}
+
+	parser->tokens[parser->token_count].kind = token_kind_from_parser_token(token);
+	parser->tokens[parser->token_count].parser_token = token;
+	parser->tokens[parser->token_count].start_offset = parser->lexer.token_start_offset;
+	parser->tokens[parser->token_count].end_offset = parser->lexer.token_end_offset;
+	parser->tokens[parser->token_count].start_line = parser->lexer.token_start_line;
+	parser->tokens[parser->token_count].start_column = parser->lexer.token_start_column;
+	parser->tokens[parser->token_count].end_line = parser->lexer.token_end_line;
+	parser->tokens[parser->token_count].end_column = parser->lexer.token_end_column;
+	parser->token_count++;
+	return 1;
 }
 
 int mylite_parser_add_statement(mylite_parser *parser, mylite_statement_kind kind)
@@ -96,6 +130,20 @@ int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result
 	}
 
 	result->ok = rc == 0 && parser.error[0] == '\0';
+	result->token_count = parser.token_count;
+	if (parser.token_count > 0) {
+		result->tokens = (mylite_token *)malloc(parser.token_count * sizeof(parser.tokens[0]));
+		if (result->tokens == NULL) {
+			result->ok = 0;
+			result->token_count = 0;
+			snprintf(result->error, sizeof(result->error), "out of memory");
+			result->error_line = parser.lexer.line;
+			result->error_column = parser.lexer.column;
+			mylite_parser_destroy(&parser);
+			return 0;
+		}
+		memcpy(result->tokens, parser.tokens, parser.token_count * sizeof(parser.tokens[0]));
+	}
 	result->statement_count = parser.statement_count;
 	if (parser.statement_count > 0) {
 		result->statements = (mylite_statement *)malloc(parser.statement_count * sizeof(parser.statements[0]));
@@ -104,6 +152,9 @@ int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result
 			snprintf(result->error, sizeof(result->error), "out of memory");
 			result->error_line = parser.lexer.line;
 			result->error_column = parser.lexer.column;
+			free(result->tokens);
+			result->tokens = NULL;
+			result->token_count = 0;
 			mylite_parser_destroy(&parser);
 			return 0;
 		}
@@ -123,6 +174,7 @@ int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result
 
 void mylite_parse_result_free(mylite_parse_result *result)
 {
+	free(result->tokens);
 	free(result->statements);
 	memset(result, 0, sizeof(*result));
 }
@@ -190,5 +242,43 @@ const char *mylite_statement_kind_name(mylite_statement_kind kind)
 	case MYLITE_STATEMENT_UNKNOWN:
 	default:
 		return "unknown";
+	}
+}
+
+const char *mylite_token_kind_name(mylite_token_kind kind)
+{
+	switch (kind) {
+	case MYLITE_TOKEN_IDENTIFIER: return "identifier";
+	case MYLITE_TOKEN_QUOTED_IDENTIFIER: return "quoted_identifier";
+	case MYLITE_TOKEN_STRING: return "string";
+	case MYLITE_TOKEN_NUMBER: return "number";
+	case MYLITE_TOKEN_PARAMETER: return "parameter";
+	case MYLITE_TOKEN_USER_VARIABLE: return "user_variable";
+	case MYLITE_TOKEN_SYSTEM_VARIABLE: return "system_variable";
+	case MYLITE_TOKEN_OPERATOR: return "operator";
+	case MYLITE_TOKEN_PUNCTUATION: return "punctuation";
+	case MYLITE_TOKEN_KEYWORD: return "keyword";
+	case MYLITE_TOKEN_UNKNOWN:
+	default:
+		return "unknown";
+	}
+}
+
+static mylite_token_kind token_kind_from_parser_token(int token)
+{
+	switch (token) {
+	case IDENT: return MYLITE_TOKEN_IDENTIFIER;
+	case QUOTED_IDENT: return MYLITE_TOKEN_QUOTED_IDENTIFIER;
+	case STRING: return MYLITE_TOKEN_STRING;
+	case NUMBER: return MYLITE_TOKEN_NUMBER;
+	case PARAM: return MYLITE_TOKEN_PARAMETER;
+	case USER_VARIABLE: return MYLITE_TOKEN_USER_VARIABLE;
+	case SYSTEM_VARIABLE: return MYLITE_TOKEN_SYSTEM_VARIABLE;
+	case OPERATOR: return MYLITE_TOKEN_OPERATOR;
+	default:
+		if (token > 0 && token < 256) {
+			return MYLITE_TOKEN_PUNCTUATION;
+		}
+		return MYLITE_TOKEN_KEYWORD;
 	}
 }

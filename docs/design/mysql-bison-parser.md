@@ -22,13 +22,13 @@ string literals, numeric literals, user/system variables, parameter markers,
 statement-leading keywords, and stored program `END IF` / `END LOOP` style
 compound endings.
 
-The grammar records a statement kind plus source spans for each parsed
-statement. Spans include token ordinals, byte offsets into the original SQL
-buffer, and line/column endpoints for diagnostics and future AST nodes. The
-grammar validates that grouping delimiters, `BEGIN ... END`, and `CASE ... END`
-blocks are balanced. Known statement heads that require a body now reject a bare
-keyword, while transaction statements that MySQL accepts as single-keyword
-statements remain valid.
+The parser records the full token stream and a statement kind plus source spans
+for each parsed statement. Spans include token ordinals, byte offsets into the
+original SQL buffer, and line/column endpoints for diagnostics and future AST
+nodes. The grammar validates that grouping delimiters, `BEGIN ... END`, and
+`CASE ... END` blocks are balanced. Known statement heads that require a body
+now reject a bare keyword, while transaction statements that MySQL accepts as
+single-keyword statements remain valid.
 
 Statement bodies remain token-preserving and permissive so the prototype can
 accept the broad MySQL statement inventory while detailed productions are added
@@ -36,7 +36,7 @@ statement by statement.
 
 ## Boundaries
 
-- Produces a statement-kind AST shell only.
+- Produces a token stream and statement-kind AST shell only.
 - Does not yet resolve identifiers, expression precedence, table references,
   metadata, warnings, or MySQL runtime errors.
 - Skips ordinary comments. MySQL executable `/*! ... */` comments are tokenized

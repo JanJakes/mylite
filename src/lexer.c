@@ -141,6 +141,9 @@ int mylite_lexer_next(mylite_parser *parser)
 			parser->lexer.last_significant_token_end_line = parser->lexer.token_end_line;
 			parser->lexer.last_significant_token_end_column = parser->lexer.token_end_column;
 		}
+		if (!mylite_parser_record_token(parser, token)) {
+			return 0;
+		}
 	}
 	return token;
 }

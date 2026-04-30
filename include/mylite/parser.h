@@ -68,6 +68,31 @@ typedef enum mylite_statement_kind {
 	MYLITE_STATEMENT_IF
 } mylite_statement_kind;
 
+typedef enum mylite_token_kind {
+	MYLITE_TOKEN_UNKNOWN = 0,
+	MYLITE_TOKEN_IDENTIFIER,
+	MYLITE_TOKEN_QUOTED_IDENTIFIER,
+	MYLITE_TOKEN_STRING,
+	MYLITE_TOKEN_NUMBER,
+	MYLITE_TOKEN_PARAMETER,
+	MYLITE_TOKEN_USER_VARIABLE,
+	MYLITE_TOKEN_SYSTEM_VARIABLE,
+	MYLITE_TOKEN_OPERATOR,
+	MYLITE_TOKEN_PUNCTUATION,
+	MYLITE_TOKEN_KEYWORD
+} mylite_token_kind;
+
+typedef struct mylite_token {
+	mylite_token_kind kind;
+	int parser_token;
+	size_t start_offset;
+	size_t end_offset;
+	unsigned int start_line;
+	unsigned int start_column;
+	unsigned int end_line;
+	unsigned int end_column;
+} mylite_token;
+
 typedef struct mylite_statement {
 	mylite_statement_kind kind;
 	size_t first_token;
@@ -82,6 +107,8 @@ typedef struct mylite_statement {
 
 typedef struct mylite_parse_result {
 	int ok;
+	size_t token_count;
+	mylite_token *tokens;
 	size_t statement_count;
 	mylite_statement *statements;
 	char error[256];
@@ -92,6 +119,7 @@ typedef struct mylite_parse_result {
 int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result);
 void mylite_parse_result_free(mylite_parse_result *result);
 const char *mylite_statement_kind_name(mylite_statement_kind kind);
+const char *mylite_token_kind_name(mylite_token_kind kind);
 
 #ifdef __cplusplus
 }

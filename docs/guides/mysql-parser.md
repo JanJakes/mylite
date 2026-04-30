@@ -18,6 +18,12 @@ The CLI reports statement kind plus token and byte spans:
 ok statements=1 kinds=select[1:2,0:8]
 ```
 
+Dump tokens:
+
+```sh
+bin/mylite-parse --tokens "SELECT @a, ?"
+```
+
 Run smoke tests:
 
 ```sh

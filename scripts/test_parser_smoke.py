@@ -86,6 +86,7 @@ def main() -> int:
         ("release nonsense;", 1, {}),
         ("lock tables t write;", 0, {"statements": "1", "transaction": "1"}),
         ("lock instance for backup;", 0, {"statements": "1", "transaction": "1"}),
+        ("lock instance for bogus;", 1, {}),
         ("lock instance backup;", 1, {}),
         ("lock nonsense;", 1, {}),
         ("unlock tables;", 0, {"statements": "1", "transaction": "1"}),

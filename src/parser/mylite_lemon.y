@@ -330,7 +330,11 @@ lock_statement ::= LOCK lock_tail. {
 }
 
 lock_tail ::= lock_table_kind required_statement_tail.
-lock_tail ::= INSTANCE FOR ATOM.
+lock_tail ::= INSTANCE FOR lock_backup.
+
+lock_backup ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "BACKUP");
+}
 
 lock_table_kind ::= TABLE.
 lock_table_kind ::= TABLES.

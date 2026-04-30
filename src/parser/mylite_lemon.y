@@ -732,6 +732,9 @@ show_tail ::= BINARY LOGS.
 show_tail ::= MASTER LOGS.
 show_tail ::= BINLOG EVENTS show_log_events_tail.
 show_tail ::= RELAYLOG EVENTS show_log_events_tail.
+show_tail ::= show_routine_status_kind STATUS show_filter_tail.
+show_tail ::= show_routine_status_kind show_routine_code_marker cache_table_ref.
+show_tail ::= STORAGE ENGINES.
 
 show_full_tail ::= FULL show_full_kind.
 
@@ -792,6 +795,13 @@ show_log_file_tail ::= IN ATOM.
 show_log_from_tail ::= .
 show_log_from_tail ::= FROM ATOM.
 
+show_routine_status_kind ::= FUNCTION.
+show_routine_status_kind ::= PROCEDURE.
+
+show_routine_code_marker ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "code");
+}
+
 show_count_star ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "*");
 }
@@ -843,11 +853,8 @@ show_grants_principal ::= ATOM LP RP.
 
 show_full_kind ::= PROCESSLIST.
 
-show_unprefixed_kind ::= FUNCTION.
-show_unprefixed_kind ::= PROCEDURE.
 show_unprefixed_kind ::= PROFILE.
 show_unprefixed_kind ::= REPLICA.
-show_unprefixed_kind ::= STORAGE.
 
 describe_statement ::= DESCRIBE describe_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);

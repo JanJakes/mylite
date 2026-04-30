@@ -104,6 +104,12 @@ ok statements=1 kinds=set[1:4,0:31]/system_variable:@@session.sql_mode
 ok statements=1 kinds=get[1:5,0:27]/user_variable:@n
 ```
 
+Connection character-set SET forms expose the requested character set:
+
+```text
+ok statements=1 kinds=set[1:5,0:44]/character_set:utf8mb4
+```
+
 SELECT file-export forms expose the literal export target:
 
 ```text

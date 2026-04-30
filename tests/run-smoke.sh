@@ -463,6 +463,15 @@ case "$set_account_output" in
 	*)
 		echo "unexpected SET account output: $set_account_output" >&2
 		exit 1
+	;;
+esac
+
+set_charset_output=$("$parser" "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci; SET NAMES DEFAULT; SET CHARACTER SET 'latin1'; SET CHARSET DEFAULT; SET CHARACTERISTICS AS TRANSACTION READ WRITE")
+case "$set_charset_output" in
+	*"set"*/character_set:utf8mb4*"set"*/character_set:DEFAULT*"set"*/character_set:"'latin1'"*"set"*/character_set:DEFAULT*"set[20:25"*) ;;
+	*)
+		echo "unexpected SET character set output: $set_charset_output" >&2
+		exit 1
 		;;
 esac
 

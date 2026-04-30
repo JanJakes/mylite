@@ -24,6 +24,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/select-into.html`
 - MySQL 8.4 SET variable assignment statement:
   `https://dev.mysql.com/doc/refman/8.4/en/set-variable.html`
+- MySQL 8.4 connection character-set SET statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/set-character-set.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/set-names.html`
 - MySQL 8.4 IMPORT TABLE statement:
   `https://dev.mysql.com/doc/refman/8.4/en/import-table.html`
 - MySQL 8.4 CALL statement:
@@ -188,8 +191,9 @@ preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
 and variable-assignment `SET` metadata is recorded for explicit user-variable
 and system-variable targets. Unadorned `SET name = ...` assignments remain
 objectless until semantic context can distinguish local variables from system
-variables. Savepoint names are recorded for `SAVEPOINT`, `RELEASE SAVEPOINT`,
-and `ROLLBACK TO SAVEPOINT`.
+variables. Connection character-set `SET NAMES` and `SET CHARACTER SET` forms
+record the target character set. Savepoint names are recorded for `SAVEPOINT`,
+`RELEASE SAVEPOINT`, and `ROLLBACK TO SAVEPOINT`.
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token.
@@ -221,6 +225,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   not expand multi-target `SELECT ... INTO`, `SET`, or `GET DIAGNOSTICS`
   assignment lists, and it does not classify ambiguous unadorned `SET name`
   assignments without semantic scope information.
+- Character-set `SET` metadata records only the requested character set. It
+  does not validate charset availability, collation compatibility, or the
+  session variables affected by the statement.
 - File-export metadata records only the first literal target for
   `SELECT ... INTO OUTFILE` and `SELECT ... INTO DUMPFILE`; field/line options
   and file I/O behavior remain unimplemented.

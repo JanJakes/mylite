@@ -1581,11 +1581,8 @@ dml_update_modifiers ::= dml_update_modifiers dml_update_modifier.
 dml_update_modifier ::= IGNORE.
 dml_update_modifier ::= LOW_PRIORITY.
 
-dml_update_target ::= ATOM.
-dml_update_target ::= LABEL.
+dml_update_target ::= cache_table_ref.
 dml_update_target ::= LP.
-dml_update_target ::= TRIGGERS.
-dml_update_target ::= USER.
 
 delete_statement ::= DELETE delete_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DELETE);

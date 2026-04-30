@@ -548,6 +548,8 @@ def main() -> int:
         ("replace select;", 1, {}),
         ("update t set a = 1;", 0, {"statements": "1", "update": "1"}),
         ("update ignore t set a = 1;", 0, {"statements": "1", "update": "1"}),
+        ("update mysql.user set plugin='mysql_native_password';", 0, {"statements": "1", "update": "1"}),
+        ("update (select 1) as x, t set t.a=x.a;", 0, {"statements": "1", "update": "1"}),
         ("update ignore;", 1, {}),
         ("update select set a = 1;", 1, {}),
         ("delete from t;", 0, {"statements": "1", "delete": "1"}),

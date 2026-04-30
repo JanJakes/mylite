@@ -1,0 +1,4 @@
+interface:
+  display_name: "MyLite Review Feature"
+  short_description: "Gate a completed MyLite feature"
+  default_prompt: "Use $mylite-review-feature to review this feature against specs.md, MySQL 8.4.9 behavior, tests, docs, and architecture."

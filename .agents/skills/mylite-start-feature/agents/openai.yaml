@@ -1,0 +1,4 @@
+interface:
+  display_name: "MyLite Start Feature"
+  short_description: "Plan spec and MySQL-verified tests"
+  default_prompt: "Use $mylite-start-feature to create docs/specs/<feature-name>/specs.md with an independent spec, Lemon grammar where applicable, and MySQL-verified tests."

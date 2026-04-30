@@ -1,0 +1,4 @@
+interface:
+  display_name: "MyLite Implement Feature"
+  short_description: "Implement a spec-backed feature"
+  default_prompt: "Use $mylite-implement-feature to implement this feature from specs.md, starting with grammar support, then verify and self-review."

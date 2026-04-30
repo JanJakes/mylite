@@ -976,7 +976,7 @@ diagnostics_condition_item_name ::= ATOM(A). {
   mylite_parser_require_diagnostics_condition_item(ctx, A);
 }
 
-signal_statement ::= SIGNAL signal_condition_value statement_tail. {
+signal_statement ::= SIGNAL signal_condition_value signal_set_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
@@ -985,6 +985,9 @@ signal_condition_value ::= SQLSTATE ATOM.
 
 signal_named_condition ::= ATOM.
 signal_named_condition ::= LABEL.
+
+signal_set_tail ::= .
+signal_set_tail ::= SET required_statement_tail.
 
 begin_statement ::= BEGIN. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
@@ -1152,7 +1155,8 @@ resignal_statement ::= RESIGNAL resignal_tail. {
 }
 
 resignal_tail ::= .
-resignal_tail ::= signal_condition_value statement_tail.
+resignal_tail ::= SET required_statement_tail.
+resignal_tail ::= signal_condition_value signal_set_tail.
 
 while_statement ::= WHILE expression_start required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

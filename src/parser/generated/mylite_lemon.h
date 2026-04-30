@@ -131,8 +131,8 @@
 #define ML_DESCRIBE                       131
 #define ML_DESC                           132
 #define ML_EXPLAIN                        133
-#define ML_DELETE                         134
-#define ML_FORMAT                         135
+#define ML_FORMAT                         134
+#define ML_DELETE                         135
 #define ML_INSERT                         136
 #define ML_LP                             137
 #define ML_REPLACE                        138

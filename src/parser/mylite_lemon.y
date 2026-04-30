@@ -504,20 +504,20 @@ explain_statement ::= EXPLAIN explain_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
 }
 
-explain_tail ::= explain_first_token statement_tail.
+explain_tail ::= explain_query_start statement_tail.
+explain_tail ::= FORMAT ATOM required_statement_tail.
+explain_tail ::= FOR CONNECTION required_statement_tail.
 
-explain_first_token ::= ANALYZE.
-explain_first_token ::= DELETE.
-explain_first_token ::= FORMAT.
-explain_first_token ::= FOR.
-explain_first_token ::= INSERT.
-explain_first_token ::= LP.
-explain_first_token ::= REPLACE.
-explain_first_token ::= SELECT.
-explain_first_token ::= UPDATE.
-explain_first_token ::= WITH.
-explain_first_token ::= ATOM.
-explain_first_token ::= LABEL.
+explain_query_start ::= ANALYZE.
+explain_query_start ::= DELETE.
+explain_query_start ::= INSERT.
+explain_query_start ::= LP.
+explain_query_start ::= REPLACE.
+explain_query_start ::= SELECT.
+explain_query_start ::= UPDATE.
+explain_query_start ::= WITH.
+explain_query_start ::= ATOM.
+explain_query_start ::= LABEL.
 
 use_statement ::= USE use_target. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);

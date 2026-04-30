@@ -698,7 +698,11 @@ clone_statement ::= CLONE clone_tail. {
 }
 
 clone_tail ::= INSTANCE FROM required_statement_tail.
-clone_tail ::= LOCAL DATA ATOM required_statement_tail.
+clone_tail ::= LOCAL DATA clone_directory required_statement_tail.
+
+clone_directory ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "DIRECTORY");
+}
 
 flush_statement ::= FLUSH flush_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);

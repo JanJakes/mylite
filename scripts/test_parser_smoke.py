@@ -203,6 +203,7 @@ def main() -> int:
         ("clone local data directory = 'x';", 0, {"statements": "1", "admin": "1"}),
         ("clone instance from 'u'@'h':3306 identified by 'p';", 0, {"statements": "1", "admin": "1"}),
         ("clone local;", 1, {}),
+        ("clone local data file = 'x';", 1, {}),
         ("clone instance;", 1, {}),
         ("clone nonsense;", 1, {}),
         ("flush tables;", 0, {"statements": "1", "admin": "1"}),

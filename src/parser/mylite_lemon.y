@@ -47,6 +47,7 @@ statement ::= savepoint_statement.
 statement ::= release_statement.
 statement ::= lock_statement.
 statement ::= unlock_statement.
+statement ::= table_admin_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -93,11 +94,6 @@ required_tail_start(A) ::= DESC. { A = MYLITE_STATEMENT_SHOW; }
 required_tail_start(A) ::= EXPLAIN. { A = MYLITE_STATEMENT_SHOW; }
 required_tail_start(A) ::= HELP. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= USE. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= ANALYZE. { A = MYLITE_STATEMENT_ADMIN; }
-required_tail_start(A) ::= CHECK. { A = MYLITE_STATEMENT_ADMIN; }
-required_tail_start(A) ::= CHECKSUM. { A = MYLITE_STATEMENT_ADMIN; }
-required_tail_start(A) ::= OPTIMIZE. { A = MYLITE_STATEMENT_ADMIN; }
-required_tail_start(A) ::= REPAIR. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= INSTALL. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= UNINSTALL. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= CLONE. { A = MYLITE_STATEMENT_ADMIN; }
@@ -282,6 +278,31 @@ unlock_first_token ::= TABLE.
 unlock_first_token ::= TABLES.
 unlock_first_token ::= INSTANCE.
 
+table_admin_statement ::= ANALYZE table_admin_with_optional_binlog. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+table_admin_statement ::= CHECK table_admin_table_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+table_admin_statement ::= CHECKSUM table_admin_table_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+table_admin_statement ::= OPTIMIZE table_admin_with_optional_binlog. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+table_admin_statement ::= REPAIR table_admin_with_optional_binlog. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+
+table_admin_with_optional_binlog ::= table_admin_table_tail.
+table_admin_with_optional_binlog ::= LOCAL table_admin_table_tail.
+table_admin_with_optional_binlog ::= NO_WRITE_TO_BINLOG table_admin_table_tail.
+
+table_admin_table_tail ::= table_admin_table_keyword required_statement_tail.
+
+table_admin_table_keyword ::= TABLE.
+table_admin_table_keyword ::= TABLES.
+
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -368,6 +389,7 @@ keyword ::= RENAME.
 keyword ::= CALL.
 keyword ::= DO.
 keyword ::= LOAD.
+keyword ::= LOCAL.
 keyword ::= TABLE.
 keyword ::= TABLES.
 keyword ::= TABLESPACE.
@@ -416,6 +438,7 @@ keyword ::= REPAIR.
 keyword ::= INSTALL.
 keyword ::= INDEX.
 keyword ::= INSTANCE.
+keyword ::= NO_WRITE_TO_BINLOG.
 keyword ::= UNINSTALL.
 keyword ::= CLONE.
 keyword ::= CACHE.
@@ -480,6 +503,7 @@ keyword_not_select_clause ::= RENAME.
 keyword_not_select_clause ::= CALL.
 keyword_not_select_clause ::= DO.
 keyword_not_select_clause ::= LOAD.
+keyword_not_select_clause ::= LOCAL.
 keyword_not_select_clause ::= TABLE.
 keyword_not_select_clause ::= TABLES.
 keyword_not_select_clause ::= TABLESPACE.
@@ -528,6 +552,7 @@ keyword_not_select_clause ::= REPAIR.
 keyword_not_select_clause ::= INSTALL.
 keyword_not_select_clause ::= INDEX.
 keyword_not_select_clause ::= INSTANCE.
+keyword_not_select_clause ::= NO_WRITE_TO_BINLOG.
 keyword_not_select_clause ::= UNINSTALL.
 keyword_not_select_clause ::= CLONE.
 keyword_not_select_clause ::= CACHE.

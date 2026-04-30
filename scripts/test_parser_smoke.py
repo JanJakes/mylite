@@ -48,6 +48,12 @@ def main() -> int:
         ("lock nonsense;", 1, {}),
         ("unlock tables;", 0, {"statements": "1", "transaction": "1"}),
         ("unlock nonsense;", 1, {}),
+        ("analyze table t;", 0, {"statements": "1", "admin": "1"}),
+        ("check tables t;", 0, {"statements": "1", "admin": "1"}),
+        ("checksum table t;", 0, {"statements": "1", "admin": "1"}),
+        ("optimize local table t;", 0, {"statements": "1", "admin": "1"}),
+        ("repair no_write_to_binlog table t;", 0, {"statements": "1", "admin": "1"}),
+        ("analyze nonsense;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

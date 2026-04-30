@@ -70,7 +70,8 @@ Stored-program statement heads such as `DECLARE`, cursor operations, `IF`,
 kinds. Compound-control tokens are structurally matched for `IF ... END IF`,
 `LOOP ... END LOOP`, `REPEAT ... END REPEAT`, and `WHILE ... END WHILE` without
 misclassifying `IF(...)` expressions or `IF [NOT] EXISTS` clauses as compound
-block starts.
+block starts. Cursor names are recorded for `DECLARE ... CURSOR`, `OPEN`,
+`FETCH`, and `CLOSE`.
 
 ## Boundaries
 
@@ -98,6 +99,8 @@ block starts.
 - Stored-program control matching records token pairs only; it does not yet
   validate label binding, declaration ordering, cursor scope, or control-flow
   semantics.
+- Cursor metadata records the first cursor handle only. It does not yet validate
+  declaration scope, result shape, fetch target lists, or cursor lifecycle.
 - Skips ordinary comments. MySQL executable `/*! ... */` comments are tokenized
   as SQL because they can carry required syntax.
 - Accepts unknown statement starts as `unknown`; later grammar work should

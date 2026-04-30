@@ -91,6 +91,12 @@ match 7 21
 match 21 7
 ```
 
+Cursor operations expose their cursor handle:
+
+```text
+ok statements=1 kinds=open[1:2,0:6]/cursor:c
+```
+
 Keyword lookup is table-driven and must remain sorted:
 
 ```sh

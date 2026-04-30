@@ -38,6 +38,7 @@ static const keyword keywords[] = {
 	{ "CONSTRAINT", CONSTRAINT_T },
 	{ "CREATE", CREATE_T },
 	{ "CROSS", CROSS_T },
+	{ "CURSOR", CURSOR_T },
 	{ "DATA", DATA_T },
 	{ "DATABASE", DATABASE_T },
 	{ "DEALLOCATE", DEALLOCATE_T },

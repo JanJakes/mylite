@@ -62,6 +62,14 @@ static int classify_savepoint_statement_object(const mylite_parser *parser,
                                                mylite_statement *statement,
                                                size_t token_index,
                                                size_t last_token_index);
+static int classify_cursor_statement_object(const mylite_parser *parser,
+                                            mylite_statement *statement,
+                                            size_t token_index,
+                                            size_t last_token_index);
+static int statement_contains_token(const mylite_parser *parser,
+                                    size_t token_index,
+                                    size_t last_token_index,
+                                    int wanted_token);
 static size_t find_savepoint_name_token(const mylite_parser *parser,
                                         size_t token_index,
                                         size_t last_token_index);
@@ -499,6 +507,7 @@ const char *mylite_statement_kind_name(mylite_statement_kind kind)
 const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 {
 	switch (kind) {
+	case MYLITE_STATEMENT_OBJECT_CURSOR: return "cursor";
 	case MYLITE_STATEMENT_OBJECT_DATABASE: return "database";
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
 	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
@@ -883,6 +892,11 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	case MYLITE_STATEMENT_RELEASE:
 	case MYLITE_STATEMENT_ROLLBACK:
 		return classify_savepoint_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_DECLARE:
+	case MYLITE_STATEMENT_OPEN:
+	case MYLITE_STATEMENT_FETCH:
+	case MYLITE_STATEMENT_CLOSE:
+		return classify_cursor_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_SHOW:
 		return classify_show_statement_object(parser, statement, name_token_index, last_token_index);
 	default:
@@ -997,6 +1011,37 @@ static int classify_savepoint_statement_object(const mylite_parser *parser,
 	                                        MYLITE_STATEMENT_OBJECT_SAVEPOINT,
 	                                        name_token_index,
 	                                        last_token_index);
+}
+
+static int classify_cursor_statement_object(const mylite_parser *parser,
+                                            mylite_statement *statement,
+                                            size_t token_index,
+                                            size_t last_token_index)
+{
+	if (statement->kind == MYLITE_STATEMENT_DECLARE &&
+	    !statement_contains_token(parser, token_index, last_token_index, CURSOR_T)) {
+		return 0;
+	}
+
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        MYLITE_STATEMENT_OBJECT_CURSOR,
+	                                        token_index,
+	                                        last_token_index);
+}
+
+static int statement_contains_token(const mylite_parser *parser,
+                                    size_t token_index,
+                                    size_t last_token_index,
+                                    int wanted_token)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == wanted_token) {
+			return 1;
+		}
+		token_index++;
+	}
+	return 0;
 }
 
 static size_t find_savepoint_name_token(const mylite_parser *parser,
@@ -1323,6 +1368,7 @@ static int token_can_be_unquoted_object_name_keyword(int token)
 	switch (token) {
 	case CHAIN_T:
 	case CLOSE_T:
+	case CURSOR_T:
 	case COLUMNS_T:
 	case DATA_T:
 	case DECLARE_T:

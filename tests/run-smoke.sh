@@ -44,6 +44,15 @@ case "$stored_head_output" in
 		;;
 esac
 
+cursor_output=$("$parser" 'DECLARE c CURSOR FOR SELECT 1; DECLARE x INT; OPEN c; FETCH c INTO x; CLOSE c; CREATE TABLE cursor (id int)')
+case "$cursor_output" in
+	*"declare"*/cursor:c*"declare[8:10"*"open"*/cursor:c*"fetch"*/cursor:c*"close"*/cursor:c*"create"*/table:cursor*) ;;
+	*)
+		echo "unexpected cursor output: $cursor_output" >&2
+		exit 1
+		;;
+esac
+
 object_output=$("$parser" 'CREATE TABLE IF NOT EXISTS `db`.`t` (id int); ALTER VIEW v AS SELECT 1; DROP FUNCTION f')
 case "$object_output" in
 	*"create"*/table:'`db`.`t`'*"alter"*/view:v*"drop"*/function:f*) ;;

@@ -405,8 +405,15 @@ xa_statement ::= XA xa_tail. {
 }
 
 xa_tail ::= RECOVER.
-xa_tail ::= RECOVER ATOM ATOM.
+xa_tail ::= RECOVER xa_recover_convert xa_recover_xid.
 xa_tail ::= xa_first_token required_statement_tail.
+
+xa_recover_convert ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "CONVERT");
+}
+xa_recover_xid ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "XID");
+}
 
 xa_first_token ::= START.
 xa_first_token ::= BEGIN.

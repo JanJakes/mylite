@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM DOT COMMA.
+%fallback ATOM DOT.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %extra_argument {MyliteParseContext *ctx}
@@ -230,21 +230,30 @@ rename_statement ::= RENAME rename_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-rename_tail ::= rename_kind rename_source TO required_statement_tail.
+rename_tail ::= rename_table_kind rename_table_pairs.
+rename_tail ::= USER rename_user_pairs.
 
-rename_kind ::= TABLE.
-rename_kind ::= TABLES.
-rename_kind ::= USER.
+rename_table_kind ::= TABLE.
+rename_table_kind ::= TABLES.
 
-rename_source ::= rename_source_token.
-rename_source ::= rename_source rename_source_token.
+rename_table_pairs ::= rename_table_pair.
+rename_table_pairs ::= rename_table_pairs import_comma rename_table_pair.
 
-rename_source_token ::= ATOM.
-rename_source_token ::= COMPONENT.
-rename_source_token ::= LABEL.
-rename_source_token ::= MASTER.
-rename_source_token ::= PLUGIN.
-rename_source_token ::= USER.
+rename_table_pair ::= cache_table_ref TO cache_table_ref.
+
+rename_user_pairs ::= rename_user_pair.
+rename_user_pairs ::= rename_user_pairs import_comma rename_user_pair.
+
+rename_user_pair ::= rename_user_account TO rename_user_account.
+
+rename_user_account ::= rename_user_token.
+rename_user_account ::= rename_user_account rename_user_token.
+
+rename_user_token ::= ATOM.
+rename_user_token ::= LABEL.
+rename_user_token ::= MASTER.
+rename_user_token ::= ROLE.
+rename_user_token ::= USER.
 
 truncate_statement ::= TRUNCATE truncate_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
@@ -469,9 +478,11 @@ cache_table_ref ::= cache_name_part.
 cache_table_ref ::= cache_name_part DOT cache_name_part.
 
 cache_name_part ::= ATOM.
+cache_name_part ::= COMPONENT.
 cache_name_part ::= LABEL.
 cache_name_part ::= DEFAULT.
 cache_name_part ::= EVENTS.
+cache_name_part ::= PLUGIN.
 cache_name_part ::= USER.
 
 cache_key_list ::= LP cache_key_names RP.
@@ -1000,6 +1011,7 @@ values_row_contents ::= values_row_contents values_row_token.
 values_row_token ::= ATOM.
 values_row_token ::= LABEL.
 values_row_token ::= keyword.
+values_row_token ::= COMMA.
 values_row_token ::= LP values_row_contents RP.
 values_row_token ::= LB.
 values_row_token ::= RB.
@@ -1355,6 +1367,7 @@ required_statement_tail ::= required_statement_tail statement_token.
 statement_token ::= ATOM.
 statement_token ::= LABEL.
 statement_token ::= keyword.
+statement_token ::= COMMA.
 statement_token ::= LP.
 statement_token ::= RP.
 statement_token ::= LB.

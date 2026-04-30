@@ -65,6 +65,12 @@ target while ordinary variable assignments stay objectless:
 ok statements=1 kinds=set[1:3,0:10]/role:r
 ```
 
+SHOW account-introspection forms preserve account spans:
+
+```text
+ok statements=1 kinds=show[1:6,0:24]/user:'u'@'h'
+```
+
 Transaction savepoint statements expose the savepoint handle:
 
 ```text

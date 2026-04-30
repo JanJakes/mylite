@@ -16,6 +16,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/set-role.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/set-default-role.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/set-password.html`
+- MySQL 8.4 account-introspection SHOW statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
 - WordPress SQLite Database Integration query corpus:
   `packages/mysql-on-sqlite/tests/mysql/data/mysql-server-tests-queries.csv`
 
@@ -61,7 +64,8 @@ Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, direct `DESCRIBE` / `EXPLAIN` table forms, `LOAD ... INTO TABLE`,
 `LOCK TABLES`, `SHOW CREATE ...`, `SHOW COLUMNS` / `FIELDS`,
-`SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, and prepared-statement names in
+`SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, account targets in
+`SHOW CREATE USER` and `SHOW GRANTS FOR`, and prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Principal
 targets are recorded for `GRANT ... TO` and `REVOKE ... FROM`, including the
 first `user@host` span when present. Account and role DDL target spans also

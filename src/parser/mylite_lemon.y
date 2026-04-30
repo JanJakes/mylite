@@ -439,7 +439,11 @@ change_statement ::= CHANGE change_tail. {
 }
 
 change_tail ::= MASTER TO required_statement_tail.
-change_tail ::= REPLICATION ATOM TO required_statement_tail.
+change_tail ::= REPLICATION change_replication_source TO required_statement_tail.
+
+change_replication_source ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "SOURCE");
+}
 
 xa_statement ::= XA xa_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);

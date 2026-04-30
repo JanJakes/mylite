@@ -292,7 +292,8 @@ included in that span where MySQL allows them. Local variable names are
 recorded for ordinary `DECLARE` statements. Cursor names are recorded for
 `DECLARE ... CURSOR`, `OPEN`, `FETCH`, and `CLOSE`. Jump target labels are
 recorded for `LEAVE` and `ITERATE`. Label declarations are recorded when they
-prefix the MySQL-labeled constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
+prefix semicolon-delimited MySQL-labeled constructs: `BEGIN`, `LOOP`,
+`REPEAT`, and `WHILE`.
 Named condition
 declarations are recorded for `DECLARE ... CONDITION`, and the first handled
 condition value is recorded for `DECLARE ... HANDLER`. `GET DIAGNOSTICS

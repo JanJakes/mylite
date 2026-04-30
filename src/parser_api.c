@@ -681,6 +681,7 @@ static int statement_starts_with_matched_compound_control(const mylite_parser *p
                                                           size_t *end_token)
 {
 	const mylite_token *first_token;
+	size_t first_token_index;
 	size_t matching_token;
 
 	if (statement->first_token == 0 ||
@@ -689,7 +690,14 @@ static int statement_starts_with_matched_compound_control(const mylite_parser *p
 		return 0;
 	}
 
-	first_token = &parser->tokens[statement->first_token - 1];
+	first_token_index = statement->first_token - 1;
+	if (first_token_index + 2 < parser->token_count &&
+	    token_can_start_label_name(&parser->tokens[first_token_index]) &&
+	    token_text_equals(parser, first_token_index + 1, ":")) {
+		first_token_index += 2;
+	}
+
+	first_token = &parser->tokens[first_token_index];
 	matching_token = first_token->matching_token;
 	if (matching_token == 0 ||
 	    matching_token <= statement->last_token ||

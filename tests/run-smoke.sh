@@ -172,7 +172,7 @@ case "$signal_output" in
 		;;
 esac
 
-labeled_statement_output=$("$parser" 'done: LOOP LEAVE done END LOOP done; rpt: REPEAT ITERATE rpt UNTIL done END REPEAT rpt; wh: WHILE done DO LEAVE wh END WHILE wh; blk: BEGIN SELECT 1 END blk')
+labeled_statement_output=$("$parser" 'done: LOOP LEAVE done; END LOOP done; rpt: REPEAT ITERATE rpt; UNTIL done END REPEAT rpt; wh: WHILE done DO LEAVE wh; END WHILE wh; blk: BEGIN SELECT 1; END blk')
 case "$labeled_statement_output" in
 	*"loop"*/label:done*"repeat"*/label:rpt*"while"*/label:wh*"begin"*/label:blk*) ;;
 	*)

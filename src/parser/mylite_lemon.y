@@ -2,7 +2,6 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%type required_tail_start {MyliteStatementKind}
 %type optional_tail_start {MyliteStatementKind}
 %type statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
@@ -89,9 +88,9 @@ statement ::= leave_statement.
 statement ::= iterate_statement.
 statement ::= help_statement.
 statement ::= do_statement.
-statement ::= required_tail_start(A) required_statement_tail. {
-  mylite_parser_record_statement(ctx, A);
-}
+statement ::= if_statement.
+statement ::= elseif_statement.
+statement ::= return_statement.
 statement ::= optional_tail_start(A) statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -105,12 +104,7 @@ statement ::= permissive_start(A) statement_tail. {
 statement_start(A) ::= SELECT. { A = MYLITE_STATEMENT_SELECT; }
 statement_start(A) ::= CREATE. { A = MYLITE_STATEMENT_DDL; }
 statement_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-statement_start(A) ::= required_tail_start(B). { A = B; }
 statement_start(A) ::= optional_tail_start(B). { A = B; }
-
-required_tail_start(A) ::= IF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-required_tail_start(A) ::= ELSEIF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-required_tail_start(A) ::= RETURN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 
 select_statement ::= SELECT select_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
@@ -757,6 +751,18 @@ expression_start_keyword ::= REPEAT.
 expression_start_keyword ::= REPLACE.
 expression_start_keyword ::= ROW.
 expression_start_keyword ::= USER.
+
+if_statement ::= IF expression_start required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+elseif_statement ::= ELSEIF expression_start required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+return_statement ::= RETURN expression_start statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
 
 optional_tail_start(A) ::= RESIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= ELSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }

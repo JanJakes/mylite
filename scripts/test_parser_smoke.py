@@ -156,6 +156,12 @@ def main() -> int:
         ("do 1 + 1;", 0, {"statements": "1", "utility": "1"}),
         ("do (select 1);", 0, {"statements": "1", "utility": "1"}),
         ("do select 1;", 1, {}),
+        ("if a then select 1; end if;", 0, {"statements": "2", "stored_program": "2"}),
+        ("if select then select 1; end if;", 1, {}),
+        ("elseif a then select 1;", 0, {"statements": "1", "stored_program": "1"}),
+        ("elseif select then select 1;", 1, {}),
+        ("return 1;", 0, {"statements": "1", "stored_program": "1"}),
+        ("return select;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

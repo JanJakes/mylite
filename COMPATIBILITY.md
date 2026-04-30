@@ -178,8 +178,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. | Parser records explicit `FOR CHANNEL` names and default-channel operations, including legacy `SLAVE` spelling; replica metadata reset behavior is not implemented. |
 | `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. | Parser records explicit `FOR CHANNEL` names and default-channel operations; replica thread state is not implemented. |
 | `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. | Parser records explicit `FOR CHANNEL` names and default-channel operations; replica thread state is not implemented. |
-| `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. |  |
-| `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. |  |
+| `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. | Parser records the group-replication subsystem target; group membership, credentials, recovery, and privilege behavior are not implemented. |
+| `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. | Parser records the group-replication subsystem target; group leave, channel shutdown, timeout, and privilege behavior are not implemented. |
 | `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. |  |
 | `EXECUTE` | ❌ | high | Prepared-statement execution with USING variables and result metadata. |  |
 | `DEALLOCATE PREPARE` / `DROP PREPARE` | ❌ | high | Prepared statement cleanup. |  |

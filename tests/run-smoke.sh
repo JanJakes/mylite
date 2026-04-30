@@ -468,7 +468,7 @@ esac
 
 replication_channel_output=$("$parser" "START REPLICA FOR CHANNEL 'ch'; STOP REPLICA SQL_THREAD FOR CHANNEL 'ch'; RESET REPLICA ALL FOR CHANNEL 'ch'; CHANGE REPLICATION SOURCE TO SOURCE_HOST='h' FOR CHANNEL 'ch'; CHANGE REPLICATION FILTER REPLICATE_DO_DB=(db) FOR CHANNEL 'ch'; START REPLICA; STOP REPLICA; RESET REPLICA; CHANGE REPLICATION SOURCE TO SOURCE_HOST='h'; START GROUP_REPLICATION; STOP GROUP_REPLICATION")
 case "$replication_channel_output" in
-	*"start"*/replication_channel:"'ch'"*"stop"*/replication_channel:"'ch'"*"reset"*/replication_channel:"'ch'"*"change"*/replication_channel:"'ch'"*"change"*/replication_channel:"'ch'"*"start"*/replication_channel*"stop"*/replication_channel*"reset"*/replication_channel*"change"*/replication_channel*"start[61:62"*"stop[64:65"*) ;;
+	*"start"*/replication_channel:"'ch'"*"stop"*/replication_channel:"'ch'"*"reset"*/replication_channel:"'ch'"*"change"*/replication_channel:"'ch'"*"change"*/replication_channel:"'ch'"*"start"*/replication_channel*"stop"*/replication_channel*"reset"*/replication_channel*"change"*/replication_channel*"start"*/group_replication*"stop"*/group_replication*) ;;
 	*)
 		echo "unexpected replication channel output: $replication_channel_output" >&2
 		exit 1
@@ -504,7 +504,7 @@ esac
 
 stop_output=$("$parser" 'STOP REPLICA; STOP GROUP_REPLICATION; STOP SLAVE SQL_THREAD; CREATE TABLE stop (id int)')
 case "$stop_output" in
-	*"kinds=stop"*"stop[4:5"*"stop[7:9"*"create"*/table:stop*) ;;
+	*"stop"*/replication_channel*"stop"*/group_replication*"stop"*/replication_channel*"create"*/table:stop*) ;;
 	*)
 		echo "unexpected STOP output: $stop_output" >&2
 		exit 1

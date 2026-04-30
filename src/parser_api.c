@@ -717,6 +717,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_ENGINE: return "engine";
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
 	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
+	case MYLITE_STATEMENT_OBJECT_GROUP_REPLICATION: return "group_replication";
 	case MYLITE_STATEMENT_OBJECT_HELP_TOPIC: return "help_topic";
 	case MYLITE_STATEMENT_OBJECT_INDEX: return "index";
 	case MYLITE_STATEMENT_OBJECT_INSTANCE: return "instance";
@@ -1854,7 +1855,15 @@ static int classify_replication_channel_statement_object(const mylite_parser *pa
                                                          size_t token_index,
                                                          size_t last_token_index)
 {
-	size_t name_token_index = find_replication_channel_name_token(parser, token_index, last_token_index);
+	size_t name_token_index;
+
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    token_text_equals(parser, token_index, "GROUP_REPLICATION")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_GROUP_REPLICATION);
+	}
+
+	name_token_index = find_replication_channel_name_token(parser, token_index, last_token_index);
 
 	if (name_token_index >= parser->token_count) {
 		if (is_replication_channel_operation(parser, token_index, last_token_index)) {

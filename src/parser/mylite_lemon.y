@@ -1693,7 +1693,7 @@ case_statement ::= CASE statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-declare_statement ::= DECLARE declare_first_token statement_tail. {
+declare_statement ::= DECLARE declare_first_token required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 

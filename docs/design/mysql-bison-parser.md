@@ -55,7 +55,8 @@ Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, direct `DESCRIBE` / `EXPLAIN` table forms, `LOAD ... INTO TABLE`,
 `LOCK TABLES`, `SHOW CREATE ...`, `SHOW COLUMNS` / `FIELDS`,
-`SHOW INDEX` / `KEYS`, and `SHOW TABLES FROM ...`.
+`SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, and prepared-statement names in
+`PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`.
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token.
@@ -80,7 +81,8 @@ block starts.
   target metadata is deliberately conservative so query-plan forms such as
   `EXPLAIN SELECT` and `EXPLAIN FORMAT=... SELECT` remain objectless.
   `SHOW` metadata is similarly limited to forms with a clear table, view, or
-  schema target.
+  schema target. Prepared-statement metadata records the statement handle name,
+  not the SQL text referenced by `PREPARE`.
 - Parenthesized query-expression classification only identifies the leading
   query statement kind; it does not build the query-expression tree.
 - Stored-program control matching records token pairs only; it does not yet

@@ -50,6 +50,10 @@ static size_t find_load_table_name_token(const mylite_parser *parser,
 static size_t find_lock_table_name_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index);
+static int classify_prepared_statement_object(const mylite_parser *parser,
+                                              mylite_statement *statement,
+                                              size_t token_index,
+                                              size_t last_token_index);
 static int classify_show_statement_object(const mylite_parser *parser,
                                           mylite_statement *statement,
                                           size_t token_index,
@@ -476,6 +480,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
 	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
 	case MYLITE_STATEMENT_OBJECT_INDEX: return "index";
+	case MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT: return "prepared_statement";
 	case MYLITE_STATEMENT_OBJECT_PROCEDURE: return "procedure";
 	case MYLITE_STATEMENT_OBJECT_ROLE: return "role";
 	case MYLITE_STATEMENT_OBJECT_SCHEMA: return "schema";
@@ -843,6 +848,10 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
 		name_token_index = find_lock_table_name_token(parser, name_token_index, last_token_index);
 		break;
+	case MYLITE_STATEMENT_PREPARE:
+	case MYLITE_STATEMENT_EXECUTE:
+	case MYLITE_STATEMENT_DEALLOCATE:
+		return classify_prepared_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_SHOW:
 		return classify_show_statement_object(parser, statement, name_token_index, last_token_index);
 	default:
@@ -901,6 +910,25 @@ static size_t find_lock_table_name_token(const mylite_parser *parser,
 		return token_index;
 	}
 	return parser->token_count;
+}
+
+static int classify_prepared_statement_object(const mylite_parser *parser,
+                                              mylite_statement *statement,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	if (statement->kind == MYLITE_STATEMENT_DEALLOCATE &&
+	    token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    parser->tokens[token_index].parser_token == PREPARE_T) {
+		token_index++;
+	}
+
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT,
+	                                        token_index,
+	                                        last_token_index);
 }
 
 static int classify_show_statement_object(const mylite_parser *parser,
@@ -1023,6 +1051,7 @@ static mylite_statement_object_kind object_kind_from_token_sequence(const mylite
 	case EVENT_T: return MYLITE_STATEMENT_OBJECT_EVENT;
 	case FUNCTION_T: return MYLITE_STATEMENT_OBJECT_FUNCTION;
 	case INDEX_T: return MYLITE_STATEMENT_OBJECT_INDEX;
+	case PREPARE_T: return MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT;
 	case PROCEDURE_T: return MYLITE_STATEMENT_OBJECT_PROCEDURE;
 	case ROLE_T: return MYLITE_STATEMENT_OBJECT_ROLE;
 	case SCHEMA_T: return MYLITE_STATEMENT_OBJECT_SCHEMA;

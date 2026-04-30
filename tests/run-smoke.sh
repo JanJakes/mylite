@@ -123,6 +123,15 @@ case "$show_object_output" in
 		;;
 esac
 
+prepared_output=$("$parser" 'PREPARE stmt FROM @sql; EXECUTE stmt USING @a; DEALLOCATE PREPARE stmt; DROP PREPARE stmt')
+case "$prepared_output" in
+	*"prepare"*/prepared_statement:stmt*"execute"*/prepared_statement:stmt*"deallocate"*/prepared_statement:stmt*"drop"*/prepared_statement:stmt*) ;;
+	*)
+		echo "unexpected prepared statement output: $prepared_output" >&2
+		exit 1
+		;;
+esac
+
 with_output=$("$parser" "WITH c AS (SELECT 1) UPDATE t SET a=1; WITH c AS (SELECT 1) DELETE FROM t; WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c")
 case "$with_output" in
 	*"kinds=update"*"delete"*"insert"*) ;;

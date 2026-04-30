@@ -237,6 +237,16 @@ HELP exposes quoted help-topic searches:
 ok statements=1 kinds=help[1:2,0:15]/help_topic:'contents'
 ```
 
+SHOW variable statements expose system-variable or status-variable targets:
+
+```text
+ok statements=1 kinds=show[1:4,0:32]/system_variable:'autocommit'
+```
+
+```text
+ok statements=1 kinds=show[1:4,0:29]/status_variable:'Com_select'
+```
+
 SIGNAL and RESIGNAL expose explicit SQLSTATE values or named conditions:
 
 ```text

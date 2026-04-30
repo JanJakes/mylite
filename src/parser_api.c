@@ -201,9 +201,16 @@ static int classify_show_statement_object(const mylite_parser *parser,
                                           mylite_statement *statement,
                                           size_t token_index,
                                           size_t last_token_index);
+static int classify_show_variable_statement_object(const mylite_parser *parser,
+                                                   mylite_statement *statement,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
 static size_t find_show_profile_query_id_token(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
+static size_t find_show_like_pattern_token(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index);
 static size_t find_show_binlog_events_name_token(const mylite_parser *parser,
                                                  size_t token_index,
                                                  size_t last_token_index);
@@ -675,6 +682,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_SERVER: return "server";
 	case MYLITE_STATEMENT_OBJECT_SPATIAL_REFERENCE_SYSTEM: return "spatial_reference_system";
 	case MYLITE_STATEMENT_OBJECT_SQLSTATE: return "sqlstate";
+	case MYLITE_STATEMENT_OBJECT_STATUS_VARIABLE: return "status_variable";
 	case MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE: return "system_variable";
 	case MYLITE_STATEMENT_OBJECT_TABLE: return "table";
 	case MYLITE_STATEMENT_OBJECT_TABLESPACE: return "tablespace";
@@ -2295,6 +2303,10 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		                                        last_token_index);
 	}
 
+	if (classify_show_variable_statement_object(parser, statement, token_index, last_token_index)) {
+		return 1;
+	}
+
 	if (parser->tokens[token_index].parser_token == BINLOG_T &&
 	    token_index + 1 <= last_token_index &&
 	    token_text_equals(parser, token_index + 1, "EVENTS")) {
@@ -2437,6 +2449,42 @@ static int classify_show_statement_object(const mylite_parser *parser,
 	return 0;
 }
 
+static int classify_show_variable_statement_object(const mylite_parser *parser,
+                                                   mylite_statement *statement,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	mylite_statement_object_kind object_kind;
+	size_t name_token_index;
+
+	if ((token_text_equals(parser, token_index, "GLOBAL") ||
+	     token_text_equals(parser, token_index, "SESSION") ||
+	     token_text_equals(parser, token_index, "LOCAL")) &&
+	    token_index + 1 <= last_token_index &&
+	    token_index + 1 < parser->token_count) {
+		token_index++;
+	}
+
+	if (token_text_equals(parser, token_index, "VARIABLES")) {
+		object_kind = MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE;
+	} else if (token_text_equals(parser, token_index, "STATUS")) {
+		object_kind = MYLITE_STATEMENT_OBJECT_STATUS_VARIABLE;
+	} else {
+		return 0;
+	}
+
+	name_token_index = find_show_like_pattern_token(parser, token_index + 1, last_token_index);
+	if (name_token_index < parser->token_count) {
+		return set_statement_direct_object_name_range(parser,
+		                                              statement,
+		                                              object_kind,
+		                                              name_token_index,
+		                                              name_token_index);
+	}
+
+	return set_statement_direct_object(statement, object_kind);
+}
+
 static size_t find_show_profile_query_id_token(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index)
@@ -2446,6 +2494,20 @@ static size_t find_show_profile_query_id_token(const mylite_parser *parser,
 		    token_text_equals(parser, token_index + 1, "QUERY") &&
 		    parser->tokens[token_index + 2].kind == MYLITE_TOKEN_NUMBER) {
 			return token_index + 2;
+		}
+		token_index++;
+	}
+	return parser->token_count;
+}
+
+static size_t find_show_like_pattern_token(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if (token_text_equals(parser, token_index, "LIKE") &&
+		    parser->tokens[token_index + 1].kind == MYLITE_TOKEN_STRING) {
+			return token_index + 1;
 		}
 		token_index++;
 	}

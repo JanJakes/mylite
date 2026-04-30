@@ -45,6 +45,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/show.html`
 - MySQL 8.4 SHOW PROFILE statement:
   `https://dev.mysql.com/doc/refman/8.4/en/show-profile.html`
+- MySQL 8.4 SHOW variable statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-variables.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-status.html`
 - MySQL 8.4 EXPLAIN for named connections:
   `https://dev.mysql.com/doc/refman/8.4/en/explain-for-connection.html`
 - MySQL 8.4 KILL statement:
@@ -162,7 +165,9 @@ STATUS`, `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
 targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
 `SHOW FUNCTION CODE` and `SHOW PROCEDURE CODE`, engine targets in
 `SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, query targets in
-`SHOW PROFILE ... FOR QUERY`, connection targets in `KILL`, binary log event
+`SHOW PROFILE ... FOR QUERY`, system-variable and status-variable targets in
+`SHOW [GLOBAL | SESSION] VARIABLES` and `SHOW [GLOBAL | SESSION] STATUS`,
+connection targets in `KILL`, binary log event
 payloads in `BINLOG`, binary log targets in `SHOW BINLOG EVENTS IN ...` and
 `PURGE BINARY LOGS TO ...`, relay log targets in
 `SHOW RELAYLOG EVENTS IN ...`, replication channel targets in channel-only

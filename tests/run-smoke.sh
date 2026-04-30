@@ -261,9 +261,18 @@ case "$show_object_output" in
 		echo "unexpected SHOW object output: $show_object_output" >&2
 		exit 1
 		;;
-	*"show"*/table:'`db`.`t`'*"show"*/view:v*"show"*/table:'`db`.`c`'*"show"*/table:f*"show"*/table:'`db`.`i`'*"show"*/table:k*"show"*/database:'`db`'*"show"*/user:"'u'@'h'"*"show"*/user:"'u'@'h'"*"show[57:58"*"show[60:61"*) ;;
+	*"show"*/table:'`db`.`t`'*"show"*/view:v*"show"*/table:'`db`.`c`'*"show"*/table:f*"show"*/table:'`db`.`i`'*"show"*/table:k*"show"*/database:'`db`'*"show"*/user:"'u'@'h'"*"show"*/user:"'u'@'h'"*"show[57:58"*"show"*/system_variable*) ;;
 	*)
 		echo "unexpected SHOW object output: $show_object_output" >&2
+		exit 1
+		;;
+esac
+
+show_variable_output=$("$parser" "SHOW VARIABLES; SHOW VARIABLES LIKE 'autocommit'; SHOW SESSION VARIABLES LIKE 'sql_mode'; SHOW LOCAL VARIABLES WHERE Variable_name = 'time_zone'; SHOW STATUS; SHOW GLOBAL STATUS LIKE 'Com_select'; SHOW SESSION STATUS LIKE 'Bytes_sent'; SHOW COUNT(*) WARNINGS")
+case "$show_variable_output" in
+	*"show"*/system_variable*"show"*/system_variable:"'autocommit'"*"show"*/system_variable:"'sql_mode'"*"show"*/system_variable*"show"*/status_variable*"show"*/status_variable:"'Com_select'"*"show"*/status_variable:"'Bytes_sent'"*"show[38:43"*) ;;
+	*)
+		echo "unexpected SHOW variable/status output: $show_variable_output" >&2
 		exit 1
 		;;
 esac

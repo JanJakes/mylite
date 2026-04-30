@@ -552,8 +552,10 @@ alter_tail ::= UNDO TABLESPACE cache_name_part alter_undo_tablespace_action.
 alter_tail ::= USER drop_if_exists_tail alter_user_target create_user_tail.
 alter_tail ::= EVENT cache_table_ref alter_event_action.
 alter_tail ::= alter_routine_kind cache_table_ref create_options_tail.
-alter_tail ::= alter_database_kind cache_name_part create_options_required_tail.
-alter_tail ::= alter_database_kind CHARACTER required_statement_tail.
+alter_tail ::= alter_database_kind cache_name_part alter_database_tail.
+alter_tail ::= alter_database_kind CHARACTER create_options_required_tail.
+alter_tail ::= alter_database_kind CHARSET create_options_required_tail.
+alter_tail ::= alter_database_kind alter_database_read_tail.
 alter_tail ::= VIEW cache_table_ref view_column_tail view_body.
 alter_tail ::= alter_prefixed_view_tail.
 alter_tail ::= create_definer_clause alter_definer_object_tail.
@@ -561,6 +563,15 @@ alter_tail ::= INSTANCE alter_instance_action.
 
 alter_database_kind ::= DATABASE.
 alter_database_kind ::= SCHEMA.
+
+alter_database_tail ::= alter_database_option_start create_options_required_tail.
+
+alter_database_option_start ::= DEFAULT.
+alter_database_option_start ::= CHARACTER.
+alter_database_option_start ::= CHARSET.
+alter_database_option_start ::= ATOM(A). {
+  mylite_parser_require_alter_database_option_start(ctx, A);
+}
 
 alter_routine_kind ::= FUNCTION.
 alter_routine_kind ::= PROCEDURE.
@@ -789,6 +800,9 @@ transaction_characteristics ::= transaction_characteristics import_comma transac
 
 transaction_characteristic ::= READ transaction_access_mode.
 transaction_characteristic ::= WITH transaction_consistent transaction_snapshot.
+
+alter_database_read_tail ::= READ create_options_required_tail.
+alter_database_option_start ::= READ.
 
 transaction_access_mode ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "ONLY");

@@ -269,6 +269,15 @@ case "$flush_output" in
 		;;
 esac
 
+flush_relay_output=$("$parser" "FLUSH RELAY LOGS FOR CHANNEL 'ch'; FLUSH RELAY LOGS; FLUSH TABLES t")
+case "$flush_relay_output" in
+	*"flush"*/replication_channel:"'ch'"*"flush[8:10"*"flush"*/table:t*) ;;
+	*)
+		echo "unexpected FLUSH RELAY output: $flush_relay_output" >&2
+		exit 1
+		;;
+esac
+
 maintenance_output=$("$parser" 'ANALYZE TABLE t; CHECK TABLE `db`.`t`; CHECKSUM TABLE t QUICK; OPTIMIZE TABLE t; REPAIR TABLE t USE_FRM; ANALYZE FORMAT=JSON TABLE t; CHECKSUM TABLE QUICK')
 case "$maintenance_output" in
 	*"analyze"*/table:t*"check"*/table:'`db`.`t`'*"checksum"*/table:t*"optimize"*/table:t*"repair"*/table:t*"analyze"*/table:t*"checksum[32:34"*) ;;

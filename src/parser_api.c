@@ -72,6 +72,10 @@ static size_t find_lock_table_name_token(const mylite_parser *parser,
 static size_t find_flush_table_name_token(const mylite_parser *parser,
                                           size_t token_index,
                                           size_t last_token_index);
+static int classify_flush_statement_object(const mylite_parser *parser,
+                                           mylite_statement *statement,
+                                           size_t token_index,
+                                           size_t last_token_index);
 static size_t find_maintenance_table_name_token(const mylite_parser *parser,
                                                 size_t token_index,
                                                 size_t last_token_index);
@@ -1074,9 +1078,7 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	case MYLITE_STATEMENT_UNLOCK:
 		return classify_instance_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_FLUSH:
-		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
-		name_token_index = find_flush_table_name_token(parser, name_token_index, last_token_index);
-		break;
+		return classify_flush_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_START:
 	case MYLITE_STATEMENT_STOP:
 	case MYLITE_STATEMENT_CHANGE:
@@ -1297,6 +1299,32 @@ static size_t find_flush_table_name_token(const mylite_parser *parser,
 		return token_index;
 	}
 	return parser->token_count;
+}
+
+static int classify_flush_statement_object(const mylite_parser *parser,
+                                           mylite_statement *statement,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	size_t name_token_index;
+
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "RELAY") &&
+	    token_text_equals(parser, token_index + 1, "LOGS")) {
+		name_token_index = find_replication_channel_name_token(parser, token_index + 2, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	name_token_index = find_flush_table_name_token(parser, token_index, last_token_index);
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        MYLITE_STATEMENT_OBJECT_TABLE,
+	                                        name_token_index,
+	                                        last_token_index);
 }
 
 static size_t find_maintenance_table_name_token(const mylite_parser *parser,

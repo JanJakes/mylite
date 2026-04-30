@@ -141,8 +141,8 @@ targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
 payloads in `BINLOG`, binary log targets in `SHOW BINLOG EVENTS IN ...` and
 `PURGE BINARY LOGS TO ...`, relay log targets in
 `SHOW RELAYLOG EVENTS IN ...`, replication channel targets in channel-only
-`SHOW RELAYLOG EVENTS` and `SHOW REPLICA STATUS`, table targets in
-`FLUSH TABLES`, and
+`SHOW RELAYLOG EVENTS`, `SHOW REPLICA STATUS`, and `FLUSH RELAY LOGS`, table
+targets in `FLUSH TABLES`, and
 table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `REPAIR`, and prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Persisted
@@ -219,8 +219,9 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   present, otherwise an explicit channel name, and leaves bare forms objectless.
   `SHOW REPLICA STATUS` metadata records only explicit channel names and leaves
   bare status forms objectless.
-  `FLUSH TABLES` metadata records only the first table target and leaves
-  global flush forms objectless.
+  `FLUSH TABLES` metadata records only the first table target. `FLUSH RELAY
+  LOGS` records only explicit channel names. Other global flush forms remain
+  objectless.
   Table-maintenance metadata records only the first concrete table target and
   leaves malformed or name-less forms objectless.
   `RESET PERSIST` metadata records the first variable name only and leaves

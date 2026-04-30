@@ -156,6 +156,12 @@ FLUSH TABLES exposes the first table target:
 ok statements=1 kinds=flush[1:3,0:14]/table:t
 ```
 
+FLUSH RELAY LOGS exposes explicit channel names:
+
+```text
+ok statements=1 kinds=flush[1:6,0:33]/replication_channel:'ch'
+```
+
 RESET PERSIST exposes explicit persisted system-variable targets:
 
 ```text

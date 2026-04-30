@@ -277,6 +277,8 @@ record the target character set. Savepoint names are recorded for `SAVEPOINT`,
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token.
+Standalone `VALUES` statements are recorded as query targets because MySQL
+treats them as DML statements that return row sets.
 Stored-program statement heads such as `DECLARE`, cursor operations, `IF`,
 `CASE`, loop forms, `LEAVE`, `ITERATE`, and `RETURN` have explicit statement
 kinds. Compound-control tokens are structurally matched for `BEGIN ... END`,

@@ -39,6 +39,12 @@ Table-maintenance statements also report the first concrete table target:
 ok statements=1 kinds=analyze[1:3,0:15]/table:t
 ```
 
+Standalone `VALUES` statements expose the query object kind:
+
+```text
+ok statements=1 kinds=values[1:10,0:21]/query
+```
+
 Direct utility targets are reported for statements such as `USE`, `TABLE`,
 `TRUNCATE`, `HANDLER`, `IMPORT TABLE`, `CALL`, direct `DESCRIBE` / `EXPLAIN`
 table forms, `EXPLAIN ... FOR CONNECTION`, `LOAD ... INTO TABLE`, `CACHE INDEX`,

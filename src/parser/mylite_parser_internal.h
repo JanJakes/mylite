@@ -37,6 +37,8 @@ void mylite_parser_require_token_text_any(MyliteParseContext *ctx,
                                           MyliteToken token,
                                           const char *first,
                                           const char *second);
+void mylite_parser_require_create_view_algorithm(MyliteParseContext *ctx,
+                                                 MyliteToken token);
 void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
                                         MyliteToken token,
                                         const char *prefix);

@@ -147,7 +147,6 @@ create_statement ::= CREATE create_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-create_tail ::= create_object_kind required_statement_tail.
 create_tail ::= create_table_prefix create_if_not_exists_tail cache_table_ref required_statement_tail.
 create_tail ::= AGGREGATE FUNCTION cache_table_ref required_statement_tail.
 create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
@@ -162,6 +161,8 @@ create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part c
 create_tail ::= ROLE create_if_not_exists_tail drop_account_list.
 create_tail ::= USER create_if_not_exists_tail drop_account_name create_user_tail.
 create_tail ::= VIEW cache_table_ref required_statement_tail.
+create_tail ::= create_prefixed_view_tail.
+create_tail ::= create_definer_clause create_definer_object_tail.
 create_tail ::= EVENT create_if_not_exists_tail cache_table_ref required_statement_tail.
 create_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref required_statement_tail.
 create_tail ::= create_routine_kind create_if_not_exists_tail cache_table_ref required_statement_tail.
@@ -180,11 +181,6 @@ create_index_type ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "TYPE");
 }
 
-create_object_kind ::= OR.
-create_object_kind ::= ALGORITHM.
-create_object_kind ::= SQL.
-create_object_kind ::= DEFINER.
-
 create_table_prefix ::= TABLE.
 create_table_prefix ::= TEMPORARY TABLE.
 
@@ -193,6 +189,46 @@ create_database_kind ::= SCHEMA.
 
 create_routine_kind ::= FUNCTION.
 create_routine_kind ::= PROCEDURE.
+
+create_prefixed_view_tail ::= create_view_prefix VIEW cache_table_ref required_statement_tail.
+
+create_view_prefix ::= OR REPLACE create_view_optional_options.
+create_view_prefix ::= create_view_options.
+
+create_view_optional_options ::= .
+create_view_optional_options ::= create_view_options.
+
+create_view_options ::= create_view_algorithm create_view_definer_tail create_view_sql_security_tail.
+create_view_options ::= create_definer_clause create_view_sql_security_tail.
+create_view_options ::= create_view_sql_security.
+
+create_view_algorithm ::= ALGORITHM diagnostics_equals create_view_algorithm_name.
+
+create_view_algorithm_name ::= ATOM(A). {
+  mylite_parser_require_create_view_algorithm(ctx, A);
+}
+
+create_view_definer_tail ::= .
+create_view_definer_tail ::= create_definer_clause.
+
+create_view_sql_security_tail ::= .
+create_view_sql_security_tail ::= create_view_sql_security.
+
+create_view_sql_security ::= SQL SECURITY create_view_security_kind.
+
+create_view_security_kind ::= DEFINER.
+create_view_security_kind ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "INVOKER");
+}
+
+create_definer_clause ::= DEFINER diagnostics_equals create_definer_account.
+
+create_definer_account ::= drop_account_name.
+create_definer_account ::= ATOM LP RP.
+
+create_definer_object_tail ::= EVENT create_if_not_exists_tail cache_table_ref required_statement_tail.
+create_definer_object_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref required_statement_tail.
+create_definer_object_tail ::= create_routine_kind create_if_not_exists_tail cache_table_ref required_statement_tail.
 
 create_if_not_exists_tail ::= .
 create_if_not_exists_tail ::= IF create_not reset_exists.

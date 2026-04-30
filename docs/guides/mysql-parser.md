@@ -220,6 +220,12 @@ DECLARE CONDITION exposes the declared condition name:
 ok statements=1 kinds=declare[1:6,0:43]/condition:cond
 ```
 
+DECLARE HANDLER exposes the first handled condition value:
+
+```text
+ok statements=1 kinds=declare[1:9,0:48]/condition:SQLEXCEPTION
+```
+
 Resource group administration exposes the group name:
 
 ```text

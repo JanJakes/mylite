@@ -69,6 +69,25 @@ case "$declare_condition_output" in
 		;;
 esac
 
+declare_handler_sql=$(cat <<'SQL'
+DECLARE EXIT HANDLER FOR SQLEXCEPTION SET @x = 1;
+DECLARE CONTINUE HANDLER FOR SQLSTATE '45000' BEGIN RESIGNAL; END;
+DECLARE CONTINUE HANDLER FOR SQLSTATE VALUE '01000' SET @x = 1;
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+DECLARE CONTINUE HANDLER FOR 1051 SET @x = 1;
+DECLARE CONTINUE HANDLER FOR my_condition SET @x = 1;
+DECLARE c CURSOR FOR SELECT 1
+SQL
+)
+declare_handler_output=$("$parser" "$declare_handler_sql")
+case "$declare_handler_output" in
+	*"declare"*/condition:SQLEXCEPTION*"declare"*/sqlstate:"'45000'"*"declare"*/sqlstate:"'01000'"*"declare"*/condition:"NOT FOUND"*"declare"*/condition:1051*"declare"*/condition:my_condition*"declare"*/cursor:c*) ;;
+	*)
+		echo "unexpected DECLARE HANDLER output: $declare_handler_output" >&2
+		exit 1
+		;;
+esac
+
 label_output=$("$parser" 'LEAVE done; ITERATE done; RETURN done')
 case "$label_output" in
 	*"leave"*/label:done*"iterate"*/label:done*"return[7:8"*) ;;

@@ -54,6 +54,11 @@ static int classify_signal_statement_object(const mylite_parser *parser,
                                             mylite_statement *statement,
                                             size_t token_index,
                                             size_t last_token_index);
+static int classify_condition_value_statement_object(const mylite_parser *parser,
+                                                     mylite_statement *statement,
+                                                     size_t token_index,
+                                                     size_t last_token_index,
+                                                     int allow_condition_class);
 static int classify_describe_or_explain_statement_object(const mylite_parser *parser,
                                                          mylite_statement *statement,
                                                          size_t token_index,
@@ -143,6 +148,9 @@ static int classify_declare_statement_object(const mylite_parser *parser,
                                              mylite_statement *statement,
                                              size_t token_index,
                                              size_t last_token_index);
+static size_t find_declare_handler_condition_token(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
 static int classify_cursor_statement_object(const mylite_parser *parser,
                                             mylite_statement *statement,
                                             size_t token_index,
@@ -193,6 +201,11 @@ static int set_statement_direct_object_name(const mylite_parser *parser,
                                             mylite_statement_object_kind object_kind,
                                             size_t name_token_index,
                                             size_t last_token_index);
+static int set_statement_direct_object_name_range(const mylite_parser *parser,
+                                                  mylite_statement *statement,
+                                                  mylite_statement_object_kind object_kind,
+                                                  size_t first_name_token,
+                                                  size_t last_name_token);
 static mylite_statement_object_kind object_kind_from_token_sequence(const mylite_parser *parser,
                                                                     size_t token_index,
                                                                     size_t last_token_index);
@@ -1181,6 +1194,15 @@ static int classify_signal_statement_object(const mylite_parser *parser,
                                             size_t token_index,
                                             size_t last_token_index)
 {
+	return classify_condition_value_statement_object(parser, statement, token_index, last_token_index, 0);
+}
+
+static int classify_condition_value_statement_object(const mylite_parser *parser,
+                                                     mylite_statement *statement,
+                                                     size_t token_index,
+                                                     size_t last_token_index,
+                                                     int allow_condition_class)
+{
 	if (token_index > last_token_index || token_index >= parser->token_count) {
 		return 0;
 	}
@@ -1205,6 +1227,25 @@ static int classify_signal_statement_object(const mylite_parser *parser,
 		                                        statement,
 		                                        MYLITE_STATEMENT_OBJECT_SQLSTATE,
 		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	if (allow_condition_class &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "NOT") &&
+	    token_text_equals(parser, token_index + 1, "FOUND")) {
+		return set_statement_direct_object_name_range(parser,
+		                                              statement,
+		                                              MYLITE_STATEMENT_OBJECT_CONDITION,
+		                                              token_index,
+		                                              token_index + 1);
+	}
+
+	if (allow_condition_class && parser->tokens[token_index].kind == MYLITE_TOKEN_NUMBER) {
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_CONDITION,
+		                                        token_index,
 		                                        last_token_index);
 	}
 
@@ -1758,6 +1799,8 @@ static int classify_declare_statement_object(const mylite_parser *parser,
                                              size_t token_index,
                                              size_t last_token_index)
 {
+	size_t handler_condition_token;
+
 	if (token_index + 1 <= last_token_index &&
 	    token_index + 1 < parser->token_count &&
 	    token_can_continue_object_name(&parser->tokens[token_index]) &&
@@ -1769,10 +1812,39 @@ static int classify_declare_statement_object(const mylite_parser *parser,
 		                                        last_token_index);
 	}
 
+	handler_condition_token = find_declare_handler_condition_token(parser, token_index, last_token_index);
+	if (handler_condition_token < parser->token_count) {
+		return classify_condition_value_statement_object(parser,
+		                                                 statement,
+		                                                 handler_condition_token,
+		                                                 last_token_index,
+		                                                 1);
+	}
+
 	if (!statement_contains_token(parser, token_index, last_token_index, CURSOR_T)) {
 		return 0;
 	}
 	return classify_cursor_statement_object(parser, statement, token_index, last_token_index);
+}
+
+static size_t find_declare_handler_condition_token(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == HANDLER_T) {
+			token_index++;
+			break;
+		}
+		token_index++;
+	}
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if (token_text_equals(parser, token_index, "FOR")) {
+			return token_index + 1;
+		}
+		token_index++;
+	}
+	return parser->token_count;
 }
 
 static int classify_cursor_statement_object(const mylite_parser *parser,
@@ -2154,6 +2226,34 @@ static int set_statement_direct_object_name(const mylite_parser *parser,
 	} else {
 		set_statement_object_name_from_first_token(parser, statement, name_token_index, last_token_index);
 	}
+	return 1;
+}
+
+static int set_statement_direct_object_name_range(const mylite_parser *parser,
+                                                  mylite_statement *statement,
+                                                  mylite_statement_object_kind object_kind,
+                                                  size_t first_name_token,
+                                                  size_t last_name_token)
+{
+	const mylite_token *first;
+	const mylite_token *last;
+
+	if (first_name_token > last_name_token ||
+	    last_name_token >= parser->token_count) {
+		return 0;
+	}
+
+	first = &parser->tokens[first_name_token];
+	last = &parser->tokens[last_name_token];
+	statement->object_kind = object_kind;
+	statement->object_name_first_token = first_name_token + 1;
+	statement->object_name_last_token = last_name_token + 1;
+	statement->object_name_start_offset = first->start_offset;
+	statement->object_name_end_offset = last->end_offset;
+	statement->object_name_start_line = first->start_line;
+	statement->object_name_start_column = first->start_column;
+	statement->object_name_end_line = last->end_line;
+	statement->object_name_end_column = last->end_column;
 	return 1;
 }
 

@@ -735,6 +735,7 @@ show_tail ::= RELAYLOG EVENTS show_log_events_tail.
 show_tail ::= show_routine_status_kind STATUS show_filter_tail.
 show_tail ::= show_routine_status_kind show_routine_code_marker cache_table_ref.
 show_tail ::= STORAGE ENGINES.
+show_tail ::= PROFILE show_profile_tail.
 
 show_full_tail ::= FULL show_full_kind.
 
@@ -802,6 +803,29 @@ show_routine_code_marker ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "code");
 }
 
+show_profile_tail ::= show_profile_type_tail show_profile_for_tail show_limit_tail.
+
+show_profile_type_tail ::= .
+show_profile_type_tail ::= show_profile_type_list.
+
+show_profile_type_list ::= show_profile_type.
+show_profile_type_list ::= show_profile_type_list import_comma show_profile_type.
+
+show_profile_type ::= ALL.
+show_profile_type ::= ATOM(A) show_profile_atom_type_tail(B). {
+  mylite_parser_require_profile_type(ctx, A, B);
+}
+
+show_profile_atom_type_tail(B) ::= . {
+  B = (MyliteToken){0};
+}
+show_profile_atom_type_tail(B) ::= ATOM(A). {
+  B = A;
+}
+
+show_profile_for_tail ::= .
+show_profile_for_tail ::= FOR QUERY ATOM.
+
 show_count_star ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "*");
 }
@@ -853,7 +877,6 @@ show_grants_principal ::= ATOM LP RP.
 
 show_full_kind ::= PROCESSLIST.
 
-show_unprefixed_kind ::= PROFILE.
 show_unprefixed_kind ::= REPLICA.
 
 describe_statement ::= DESCRIBE describe_tail. {

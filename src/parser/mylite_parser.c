@@ -184,6 +184,45 @@ void mylite_parser_require_token_text_any(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
+void mylite_parser_require_profile_type(MyliteParseContext *ctx,
+                                        MyliteToken first,
+                                        MyliteToken second) {
+  static const char *const single_word_types[] = {
+      "CPU",
+      "IPC",
+      "MEMORY",
+      "SOURCE",
+      "SWAPS",
+  };
+
+  if (ctx->failed) {
+    return;
+  }
+
+  if (second.length == 0) {
+    if (token_ascii_matches_any(
+            &first, single_word_types,
+            sizeof(single_word_types) / sizeof(single_word_types[0]))) {
+      return;
+    }
+    ctx->failed = 1;
+    format_near_token(ctx, 0, &first);
+    return;
+  }
+
+  if ((token_ascii_equals(&first, "BLOCK") &&
+       token_ascii_equals(&second, "IO")) ||
+      (token_ascii_equals(&first, "CONTEXT") &&
+       token_ascii_equals(&second, "SWITCHES")) ||
+      (token_ascii_equals(&first, "PAGE") &&
+       token_ascii_equals(&second, "FAULTS"))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &first);
+}
+
 void mylite_parser_require_diagnostics_statement_item(MyliteParseContext *ctx,
                                                       MyliteToken token) {
   static const char *const items[] = {

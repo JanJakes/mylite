@@ -1549,9 +1549,8 @@ dml_insert_modifier ::= HIGH_PRIORITY.
 dml_insert_modifier ::= IGNORE.
 dml_insert_modifier ::= LOW_PRIORITY.
 
-dml_insert_target ::= ATOM.
-dml_insert_target ::= INTO.
-dml_insert_target ::= LABEL.
+dml_insert_target ::= cache_table_ref.
+dml_insert_target ::= INTO cache_table_ref.
 
 replace_statement ::= REPLACE replace_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLACE);
@@ -1566,9 +1565,8 @@ dml_replace_modifiers ::= dml_replace_modifiers dml_replace_modifier.
 dml_replace_modifier ::= DELAYED.
 dml_replace_modifier ::= LOW_PRIORITY.
 
-dml_replace_target ::= ATOM.
-dml_replace_target ::= INTO.
-dml_replace_target ::= LABEL.
+dml_replace_target ::= cache_table_ref.
+dml_replace_target ::= INTO cache_table_ref.
 
 update_statement ::= UPDATE update_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UPDATE);

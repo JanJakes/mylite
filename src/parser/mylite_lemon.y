@@ -349,9 +349,18 @@ plugin_admin_tail ::= plugin_admin_object required_statement_tail.
 plugin_admin_object ::= COMPONENT.
 plugin_admin_object ::= PLUGIN.
 
-import_statement ::= IMPORT TABLE FROM required_statement_tail. {
+import_statement ::= IMPORT TABLE FROM import_file_list. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
+
+import_file_list ::= import_file.
+import_file_list ::= import_file_list import_comma import_file.
+
+import_comma ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, ",");
+}
+
+import_file ::= ATOM.
 
 cache_statement ::= CACHE INDEX required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);

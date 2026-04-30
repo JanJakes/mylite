@@ -156,6 +156,7 @@ create_tail ::= SERVER cache_name_part required_statement_tail.
 create_tail ::= TABLESPACE cache_name_part create_options_tail.
 create_tail ::= UNDO TABLESPACE cache_name_part create_options_tail.
 create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_options_tail.
+create_tail ::= ROLE create_if_not_exists_tail drop_account_list.
 
 create_index_kind ::= UNIQUE.
 create_index_kind ::= FULLTEXT.
@@ -182,7 +183,6 @@ create_object_kind ::= FUNCTION.
 create_object_kind ::= PROCEDURE.
 create_object_kind ::= TRIGGER.
 create_object_kind ::= USER.
-create_object_kind ::= ROLE.
 
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.

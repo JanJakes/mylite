@@ -1895,12 +1895,17 @@ delete_partition_marker ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "PARTITION");
 }
 
-with_statement ::= WITH with_recursive_tail with_cte_name with_cte_column_tail with_cte_as LP required_statement_tail. {
+with_statement ::= WITH with_recursive_tail with_cte_list with_query_start required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
 }
 
 with_recursive_tail ::= .
 with_recursive_tail ::= RECURSIVE.
+
+with_cte_list ::= with_cte.
+with_cte_list ::= with_cte_list import_comma with_cte.
+
+with_cte ::= with_cte_name with_cte_column_tail with_cte_as LP with_cte_body RP.
 
 with_cte_name ::= cache_name_part.
 
@@ -1913,6 +1918,31 @@ with_cte_column_list ::= with_cte_column_list import_comma cache_name_part.
 with_cte_as ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "AS");
 }
+
+with_cte_body ::= with_cte_body_token.
+with_cte_body ::= with_cte_body with_cte_body_token.
+
+with_cte_body_nested ::= .
+with_cte_body_nested ::= with_cte_body_nested with_cte_body_token.
+
+with_cte_body_token ::= ATOM.
+with_cte_body_token ::= LABEL.
+with_cte_body_token ::= keyword.
+with_cte_body_token ::= COMMA.
+with_cte_body_token ::= LP with_cte_body_nested RP.
+with_cte_body_token ::= LB.
+with_cte_body_token ::= RB.
+with_cte_body_token ::= LC.
+with_cte_body_token ::= RC.
+
+with_query_start ::= LP.
+with_query_start ::= DELETE.
+with_query_start ::= INSERT.
+with_query_start ::= REPLACE.
+with_query_start ::= SELECT.
+with_query_start ::= TABLE.
+with_query_start ::= UPDATE.
+with_query_start ::= VALUES.
 
 table_statement ::= TABLE table_statement_target table_query_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);

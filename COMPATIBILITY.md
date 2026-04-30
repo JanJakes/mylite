@@ -51,6 +51,12 @@ Priority is a delivery-order signal, not a relaxation of correctness:
 - Keep `COMPATIBILITY.md`, feature guides, design notes, and MySQL-runtime tests in sync.
 - Prefer MySQL 8.4.9 behavior over convenience, SQLite defaults, or older MySQL/MariaDB behavior.
 
+## 0. Parser Infrastructure
+
+| Feature | Status | Priority | Target behavior | Implementation notes |
+| --- | --- | --- | --- | --- |
+| Lemon parser prototype | 🟡 | top | Lean C parser foundation with MySQL-aware lexing and corpus acceptance. | Current grammar accepts a token stream rather than full MySQL statement syntax. Verified against the WordPress SQLite Database Integration MySQL query corpus. See [docs/parser-lemon-prototype.md](docs/parser-lemon-prototype.md). |
+
 ## 1. SQL Statement Surface
 
 The parser should eventually recognize the full MySQL grammar. Unsupported embedded-server features may still be accepted with a MySQL-compatible diagnostic, warning, or placeholder when that is safer for applications than a syntax error.

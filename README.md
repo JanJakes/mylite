@@ -117,7 +117,19 @@ evaluation before becoming part of the default build:
 
 ## Development
 
-TBD.
+Build the current Lemon parser prototype:
+
+```sh
+make all
+```
+
+Run the parser corpus test:
+
+```sh
+make test-parser
+```
+
+See [docs/parser-lemon-prototype.md](docs/parser-lemon-prototype.md).
 
 ## References
 

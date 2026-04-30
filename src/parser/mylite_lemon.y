@@ -1912,9 +1912,21 @@ values_row_token ::= LC.
 values_row_token ::= RC.
 
 values_query_tail ::= .
-values_query_tail ::= UNION required_statement_tail.
+values_query_tail ::= UNION values_union_tail.
 values_query_tail ::= ORDER BY values_order_list.
 values_query_tail ::= values_limit_tail.
+
+values_union_tail ::= values_union_query_start required_statement_tail.
+values_union_tail ::= values_union_option values_union_query_start required_statement_tail.
+
+values_union_option ::= ALL.
+values_union_option ::= DISTINCT.
+
+values_union_query_start ::= LP.
+values_union_query_start ::= SELECT.
+values_union_query_start ::= TABLE.
+values_union_query_start ::= VALUES.
+values_union_query_start ::= WITH.
 
 values_order_list ::= values_order_item.
 values_order_list ::= values_order_list import_comma values_order_item.

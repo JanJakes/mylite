@@ -2,7 +2,6 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%type optional_tail_start {MyliteStatementKind}
 %type statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %extra_argument {MyliteParseContext *ctx}
@@ -98,9 +97,13 @@ statement ::= when_statement.
 statement ::= open_statement.
 statement ::= fetch_statement.
 statement ::= close_statement.
-statement ::= optional_tail_start(A) statement_tail. {
-  mylite_parser_record_statement(ctx, A);
-}
+statement ::= else_statement.
+statement ::= loop_statement.
+statement ::= repeat_statement.
+statement ::= case_statement.
+statement ::= declare_statement.
+statement ::= end_statement.
+statement ::= parenthesized_statement.
 statement ::= LABEL statement_start(A) statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -111,7 +114,9 @@ statement ::= permissive_start(A) statement_tail. {
 statement_start(A) ::= SELECT. { A = MYLITE_STATEMENT_SELECT; }
 statement_start(A) ::= CREATE. { A = MYLITE_STATEMENT_DDL; }
 statement_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-statement_start(A) ::= optional_tail_start(B). { A = B; }
+statement_start(A) ::= LOOP. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+statement_start(A) ::= REPEAT. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+statement_start(A) ::= WHILE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 
 select_statement ::= SELECT select_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
@@ -799,13 +804,41 @@ close_statement ::= CLOSE stored_program_label_ref statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-optional_tail_start(A) ::= ELSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= LOOP. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= REPEAT. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= CASE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= DECLARE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= END. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= LP. { A = MYLITE_STATEMENT_SELECT; }
+else_statement ::= ELSE statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+loop_statement ::= LOOP statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+repeat_statement ::= REPEAT statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+case_statement ::= CASE statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+declare_statement ::= DECLARE declare_first_token statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+declare_first_token ::= ATOM.
+declare_first_token ::= CONDITION.
+declare_first_token ::= CONTINUE.
+declare_first_token ::= CURSOR.
+declare_first_token ::= EXIT.
+declare_first_token ::= LABEL.
+declare_first_token ::= UNDO.
+
+end_statement ::= END statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+parenthesized_statement ::= LP statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+}
 
 permissive_start(A) ::= ATOM(B). {
   mylite_parser_require_permissive(ctx, B);
@@ -1022,6 +1055,10 @@ keyword ::= DEFAULT.
 keyword ::= DIAGNOSTICS.
 keyword ::= AND.
 keyword ::= CHAIN.
+keyword ::= CONDITION.
+keyword ::= CONTINUE.
+keyword ::= CURSOR.
+keyword ::= EXIT.
 keyword ::= HIGH_PRIORITY.
 keyword ::= IGNORE.
 keyword ::= INTO.
@@ -1200,6 +1237,10 @@ keyword_not_select_clause ::= DEFAULT.
 keyword_not_select_clause ::= DIAGNOSTICS.
 keyword_not_select_clause ::= AND.
 keyword_not_select_clause ::= CHAIN.
+keyword_not_select_clause ::= CONDITION.
+keyword_not_select_clause ::= CONTINUE.
+keyword_not_select_clause ::= CURSOR.
+keyword_not_select_clause ::= EXIT.
 keyword_not_select_clause ::= HIGH_PRIORITY.
 keyword_not_select_clause ::= IGNORE.
 keyword_not_select_clause ::= INTO.

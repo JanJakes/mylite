@@ -175,6 +175,15 @@ def main() -> int:
         ("fetch select into a;", 1, {}),
         ("close cur1;", 0, {"statements": "1", "stored_program": "1"}),
         ("close select;", 1, {}),
+        ("else;", 0, {"statements": "1", "stored_program": "1"}),
+        ("loop select 1;", 0, {"statements": "1", "stored_program": "1"}),
+        ("repeat select 1;", 0, {"statements": "1", "stored_program": "1"}),
+        ("case when a then select 1; end case;", 0, {"statements": "2", "stored_program": "2"}),
+        ("declare x int;", 0, {"statements": "1", "stored_program": "1"}),
+        ("declare continue handler for sqlexception select 1;", 0, {"statements": "1", "stored_program": "1"}),
+        ("declare select int;", 1, {}),
+        ("end loop;", 0, {"statements": "1", "stored_program": "1"}),
+        ("(select 1);", 0, {"statements": "1", "select": "1"}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

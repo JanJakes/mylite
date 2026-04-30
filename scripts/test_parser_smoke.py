@@ -162,6 +162,19 @@ def main() -> int:
         ("elseif select then select 1;", 1, {}),
         ("return 1;", 0, {"statements": "1", "stored_program": "1"}),
         ("return select;", 1, {}),
+        ("resignal;", 0, {"statements": "1", "stored_program": "1"}),
+        ("while a do select 1;", 0, {"statements": "1", "stored_program": "1"}),
+        ("while select do select 1;", 1, {}),
+        ("until a;", 0, {"statements": "1", "stored_program": "1"}),
+        ("until select;", 1, {}),
+        ("when a then select 1;", 0, {"statements": "1", "stored_program": "1"}),
+        ("when select then select 1;", 1, {}),
+        ("open cur1;", 0, {"statements": "1", "stored_program": "1"}),
+        ("open select;", 1, {}),
+        ("fetch cur1 into a;", 0, {"statements": "1", "stored_program": "1"}),
+        ("fetch select into a;", 1, {}),
+        ("close cur1;", 0, {"statements": "1", "stored_program": "1"}),
+        ("close select;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

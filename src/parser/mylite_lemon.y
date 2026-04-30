@@ -91,6 +91,13 @@ statement ::= do_statement.
 statement ::= if_statement.
 statement ::= elseif_statement.
 statement ::= return_statement.
+statement ::= resignal_statement.
+statement ::= while_statement.
+statement ::= until_statement.
+statement ::= when_statement.
+statement ::= open_statement.
+statement ::= fetch_statement.
+statement ::= close_statement.
 statement ::= optional_tail_start(A) statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -764,19 +771,40 @@ return_statement ::= RETURN expression_start statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-optional_tail_start(A) ::= RESIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+resignal_statement ::= RESIGNAL statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+while_statement ::= WHILE expression_start required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+until_statement ::= UNTIL expression_start statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+when_statement ::= WHEN expression_start required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+open_statement ::= OPEN stored_program_label_ref statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+fetch_statement ::= FETCH stored_program_label_ref statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+close_statement ::= CLOSE stored_program_label_ref statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
 optional_tail_start(A) ::= ELSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= LOOP. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= REPEAT. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= UNTIL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= WHILE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= CASE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= WHEN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= DECLARE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= END. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= OPEN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= FETCH. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-optional_tail_start(A) ::= CLOSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= LP. { A = MYLITE_STATEMENT_SELECT; }
 
 permissive_start(A) ::= ATOM(B). {

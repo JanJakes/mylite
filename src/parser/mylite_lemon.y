@@ -53,6 +53,10 @@ statement ::= import_statement.
 statement ::= cache_statement.
 statement ::= kill_statement.
 statement ::= deallocate_statement.
+statement ::= reset_statement.
+statement ::= purge_statement.
+statement ::= change_statement.
+statement ::= xa_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -82,11 +86,7 @@ required_tail_start(A) ::= TABLE. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= VALUES. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= HANDLER. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= SET. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= XA. { A = MYLITE_STATEMENT_REPLICATION; }
 required_tail_start(A) ::= BINLOG. { A = MYLITE_STATEMENT_REPLICATION; }
-required_tail_start(A) ::= PURGE. { A = MYLITE_STATEMENT_REPLICATION; }
-required_tail_start(A) ::= RESET. { A = MYLITE_STATEMENT_ADMIN; }
-required_tail_start(A) ::= CHANGE. { A = MYLITE_STATEMENT_REPLICATION; }
 required_tail_start(A) ::= PREPARE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= EXECUTE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= GRANT. { A = MYLITE_STATEMENT_ADMIN; }
@@ -339,6 +339,46 @@ deallocate_statement ::= DEALLOCATE PREPARE required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
 }
 
+reset_statement ::= RESET reset_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+
+reset_tail ::= reset_first_token statement_tail.
+
+reset_first_token ::= BINARY.
+reset_first_token ::= MASTER.
+reset_first_token ::= PERSIST.
+reset_first_token ::= REPLICA.
+reset_first_token ::= SLAVE.
+
+purge_statement ::= PURGE purge_first_token required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
+}
+
+purge_first_token ::= BINARY.
+purge_first_token ::= MASTER.
+
+change_statement ::= CHANGE change_first_token required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
+}
+
+change_first_token ::= MASTER.
+change_first_token ::= REPLICATION.
+
+xa_statement ::= XA xa_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
+}
+
+xa_tail ::= RECOVER statement_tail.
+xa_tail ::= xa_first_token required_statement_tail.
+
+xa_first_token ::= START.
+xa_first_token ::= BEGIN.
+xa_first_token ::= END.
+xa_first_token ::= PREPARE.
+xa_first_token ::= COMMIT.
+xa_first_token ::= ROLLBACK.
+
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -426,6 +466,7 @@ keyword ::= CALL.
 keyword ::= DO.
 keyword ::= LOAD.
 keyword ::= LOCAL.
+keyword ::= MASTER.
 keyword ::= TABLE.
 keyword ::= TABLES.
 keyword ::= TABLESPACE.
@@ -446,6 +487,7 @@ keyword ::= SLAVE.
 keyword ::= LOCK.
 keyword ::= UNLOCK.
 keyword ::= XA.
+keyword ::= BINARY.
 keyword ::= BINLOG.
 keyword ::= PURGE.
 keyword ::= RESET.
@@ -516,8 +558,11 @@ keyword ::= FULLTEXT.
 keyword ::= LOGFILE.
 keyword ::= OR.
 keyword ::= PLUGIN.
+keyword ::= PERSIST.
 keyword ::= RESOURCE.
 keyword ::= QUERY.
+keyword ::= RECOVER.
+keyword ::= REPLICATION.
 keyword ::= SECURITY.
 keyword ::= SQL.
 keyword ::= SPATIAL.
@@ -544,6 +589,7 @@ keyword_not_select_clause ::= CALL.
 keyword_not_select_clause ::= DO.
 keyword_not_select_clause ::= LOAD.
 keyword_not_select_clause ::= LOCAL.
+keyword_not_select_clause ::= MASTER.
 keyword_not_select_clause ::= TABLE.
 keyword_not_select_clause ::= TABLES.
 keyword_not_select_clause ::= TABLESPACE.
@@ -564,6 +610,7 @@ keyword_not_select_clause ::= SLAVE.
 keyword_not_select_clause ::= LOCK.
 keyword_not_select_clause ::= UNLOCK.
 keyword_not_select_clause ::= XA.
+keyword_not_select_clause ::= BINARY.
 keyword_not_select_clause ::= BINLOG.
 keyword_not_select_clause ::= PURGE.
 keyword_not_select_clause ::= RESET.
@@ -632,8 +679,11 @@ keyword_not_select_clause ::= FULLTEXT.
 keyword_not_select_clause ::= LOGFILE.
 keyword_not_select_clause ::= OR.
 keyword_not_select_clause ::= PLUGIN.
+keyword_not_select_clause ::= PERSIST.
 keyword_not_select_clause ::= RESOURCE.
 keyword_not_select_clause ::= QUERY.
+keyword_not_select_clause ::= RECOVER.
+keyword_not_select_clause ::= REPLICATION.
 keyword_not_select_clause ::= SECURITY.
 keyword_not_select_clause ::= SQL.
 keyword_not_select_clause ::= SPATIAL.

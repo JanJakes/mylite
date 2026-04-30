@@ -66,6 +66,15 @@ def main() -> int:
         ("kill select;", 1, {}),
         ("deallocate prepare s;", 0, {"statements": "1", "prepared": "1"}),
         ("deallocate nonsense;", 1, {}),
+        ("reset persist;", 0, {"statements": "1", "admin": "1"}),
+        ("reset nonsense;", 1, {}),
+        ("purge binary logs to 'bin.0001';", 0, {"statements": "1", "replication": "1"}),
+        ("purge nonsense;", 1, {}),
+        ("change replication source to source_host='127.0.0.1';", 0, {"statements": "1", "replication": "1"}),
+        ("change nonsense;", 1, {}),
+        ("xa start 'x';", 0, {"statements": "1", "replication": "1"}),
+        ("xa recover;", 0, {"statements": "1", "replication": "1"}),
+        ("xa nonsense;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

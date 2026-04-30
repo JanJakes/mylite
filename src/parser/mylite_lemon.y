@@ -1777,8 +1777,8 @@ update_statement ::= UPDATE update_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UPDATE);
 }
 
-update_tail ::= dml_update_target required_statement_tail.
-update_tail ::= dml_update_modifiers dml_update_target required_statement_tail.
+update_tail ::= dml_update_table_reference_tokens SET required_statement_tail.
+update_tail ::= dml_update_modifiers dml_update_table_reference_tokens SET required_statement_tail.
 
 dml_update_modifiers ::= dml_update_modifier.
 dml_update_modifiers ::= dml_update_modifiers dml_update_modifier.
@@ -1786,8 +1786,41 @@ dml_update_modifiers ::= dml_update_modifiers dml_update_modifier.
 dml_update_modifier ::= IGNORE.
 dml_update_modifier ::= LOW_PRIORITY.
 
-dml_update_target ::= cache_table_ref.
-dml_update_target ::= LP.
+dml_update_table_reference_tokens ::= dml_update_table_reference_head.
+dml_update_table_reference_tokens ::= dml_update_table_reference_tokens dml_update_table_reference_continuation.
+
+dml_update_table_reference_head ::= cache_name_part.
+dml_update_table_reference_head ::= LP dml_update_table_reference_nested RP.
+
+dml_update_table_reference_continuation ::= dml_update_table_reference_head.
+dml_update_table_reference_continuation ::= dml_update_table_reference_keyword.
+dml_update_table_reference_continuation ::= COMMA.
+
+dml_update_table_reference_keyword ::= AND.
+dml_update_table_reference_keyword ::= BY.
+dml_update_table_reference_keyword ::= FOR.
+dml_update_table_reference_keyword ::= GROUP_REPLICATION.
+dml_update_table_reference_keyword ::= IGNORE.
+dml_update_table_reference_keyword ::= INDEX.
+dml_update_table_reference_keyword ::= KEY.
+dml_update_table_reference_keyword ::= ON.
+dml_update_table_reference_keyword ::= ORDER.
+dml_update_table_reference_keyword ::= STRAIGHT_JOIN.
+dml_update_table_reference_keyword ::= USE.
+dml_update_table_reference_keyword ::= USING.
+
+dml_update_table_reference_nested ::= .
+dml_update_table_reference_nested ::= dml_update_table_reference_nested dml_update_table_reference_nested_token.
+
+dml_update_table_reference_nested_token ::= ATOM.
+dml_update_table_reference_nested_token ::= LABEL.
+dml_update_table_reference_nested_token ::= keyword.
+dml_update_table_reference_nested_token ::= COMMA.
+dml_update_table_reference_nested_token ::= LP dml_update_table_reference_nested RP.
+dml_update_table_reference_nested_token ::= LB.
+dml_update_table_reference_nested_token ::= RB.
+dml_update_table_reference_nested_token ::= LC.
+dml_update_table_reference_nested_token ::= RC.
 
 delete_statement ::= DELETE delete_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DELETE);

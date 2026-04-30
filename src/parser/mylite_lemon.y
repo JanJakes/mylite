@@ -345,7 +345,13 @@ create_trigger_statement_start ::= UPDATE.
 create_function_tail ::= create_udf_tail.
 create_function_tail ::= routine_signature create_returns statement_token required_statement_tail.
 
-create_procedure_tail ::= routine_signature required_statement_tail.
+create_procedure_tail ::= routine_signature create_procedure_tail_start statement_tail.
+
+create_procedure_tail_start ::= keyword_not_select_clause.
+create_procedure_tail_start ::= LABEL.
+create_procedure_tail_start ::= ATOM(A). {
+  mylite_parser_require_create_procedure_tail_atom(ctx, A);
+}
 
 routine_signature ::= LP routine_signature_tokens RP.
 

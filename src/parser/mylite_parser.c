@@ -297,6 +297,29 @@ void mylite_parser_require_event_atom_action(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
+void mylite_parser_require_create_procedure_tail_atom(MyliteParseContext *ctx,
+                                                      MyliteToken token) {
+  static const char *const starters[] = {
+      "COMMENT",
+      "CONTAINS",
+      "DETERMINISTIC",
+      "LANGUAGE",
+      "MODIFIES",
+      "NOT",
+      "READS",
+      "SQL",
+  };
+
+  if (ctx->failed || (token.length > 0 && token.start[0] == '`') ||
+      token_ascii_matches_any(&token, starters,
+                              sizeof(starters) / sizeof(starters[0]))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
 void mylite_parser_require_create_database_option_start(MyliteParseContext *ctx,
                                                         MyliteToken token) {
   static const char *const starters[] = {

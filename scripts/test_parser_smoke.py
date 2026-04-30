@@ -105,6 +105,7 @@ def main() -> int:
         ("create function;", 1, {}),
         ("create function f returns int return 1;", 1, {}),
         ("create procedure if not exists;", 1, {}),
+        ("create procedure p() garbage;", 1, {}),
         ("create aggregate function agg;", 1, {}),
         ("create aggregate function agg returns blob soname 'x.so';", 1, {}),
         ("create view;", 1, {}),

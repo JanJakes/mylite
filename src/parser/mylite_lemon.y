@@ -1335,8 +1335,23 @@ values_row_token ::= RC.
 
 values_query_tail ::= .
 values_query_tail ::= UNION required_statement_tail.
-values_query_tail ::= ORDER BY required_statement_tail.
+values_query_tail ::= ORDER BY values_order_list.
 values_query_tail ::= values_limit_tail.
+
+values_order_list ::= values_order_item.
+values_order_list ::= values_order_list import_comma values_order_item.
+
+values_order_item ::= values_order_expression values_order_direction.
+
+values_order_expression ::= ATOM.
+values_order_expression ::= LABEL.
+values_order_expression ::= LP values_row_contents RP.
+
+values_order_direction ::= .
+values_order_direction ::= DESC.
+values_order_direction ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "ASC");
+}
 
 values_limit_tail ::= LIMIT ATOM.
 values_limit_tail ::= LIMIT ATOM import_comma ATOM.

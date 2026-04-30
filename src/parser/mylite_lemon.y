@@ -148,7 +148,7 @@ create_statement ::= CREATE create_tail. {
 }
 
 create_tail ::= create_table_prefix create_if_not_exists_tail cache_table_ref required_statement_tail.
-create_tail ::= AGGREGATE FUNCTION cache_table_ref required_statement_tail.
+create_tail ::= AGGREGATE FUNCTION cache_table_ref create_udf_tail.
 create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
 create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
 create_tail ::= LOGFILE create_logfile_group cache_name_part create_logfile_group_tail.
@@ -189,6 +189,20 @@ create_database_kind ::= SCHEMA.
 
 create_routine_kind ::= FUNCTION.
 create_routine_kind ::= PROCEDURE.
+
+create_udf_tail ::= create_returns create_udf_return_type create_soname ATOM.
+
+create_returns ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "RETURNS");
+}
+
+create_udf_return_type ::= ATOM(A). {
+  mylite_parser_require_udf_return_type(ctx, A);
+}
+
+create_soname ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "SONAME");
+}
 
 create_prefixed_view_tail ::= create_view_prefix VIEW cache_table_ref required_statement_tail.
 

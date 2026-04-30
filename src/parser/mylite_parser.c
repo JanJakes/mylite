@@ -243,6 +243,25 @@ void mylite_parser_require_resource_group_action(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
+void mylite_parser_require_udf_return_type(MyliteParseContext *ctx,
+                                           MyliteToken token) {
+  static const char *const types[] = {
+      "DECIMAL",
+      "INT",
+      "INTEGER",
+      "REAL",
+      "STRING",
+  };
+
+  if (ctx->failed ||
+      token_ascii_matches_any(&token, types, sizeof(types) / sizeof(types[0]))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
 void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
                                         MyliteToken token,
                                         const char *prefix) {

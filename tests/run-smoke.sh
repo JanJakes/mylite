@@ -268,6 +268,15 @@ case "$show_object_output" in
 		;;
 esac
 
+show_create_output=$("$parser" 'SHOW CREATE DATABASE IF NOT EXISTS db; SHOW CREATE EVENT e; SHOW CREATE FUNCTION f; SHOW CREATE PROCEDURE p; SHOW CREATE TRIGGER tr; SHOW CREATE TABLE t; SHOW CREATE VIEW v; SHOW CREATE USER CURRENT_USER()')
+case "$show_create_output" in
+	*"show"*/database:db*"show"*/event:e*"show"*/function:f*"show"*/procedure:p*"show"*/trigger:tr*"show"*/table:t*"show"*/view:v*"show"*/user:CURRENT_USER*) ;;
+	*)
+		echo "unexpected SHOW CREATE output: $show_create_output" >&2
+		exit 1
+		;;
+esac
+
 show_variable_output=$("$parser" "SHOW VARIABLES; SHOW VARIABLES LIKE 'autocommit'; SHOW SESSION VARIABLES LIKE 'sql_mode'; SHOW LOCAL VARIABLES WHERE Variable_name = 'time_zone'; SHOW STATUS; SHOW GLOBAL STATUS LIKE 'Com_select'; SHOW SESSION STATUS LIKE 'Bytes_sent'")
 case "$show_variable_output" in
 	*"show"*/system_variable*"show"*/system_variable:"'autocommit'"*"show"*/system_variable:"'sql_mode'"*"show"*/system_variable*"show"*/status_variable*"show"*/status_variable:"'Com_select'"*"show"*/status_variable:"'Bytes_sent'"*) ;;

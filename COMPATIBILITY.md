@@ -260,14 +260,14 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SHOW COLUMNS` / `SHOW FIELDS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW COUNT(*) ERRORS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser records the diagnostics-area object kind; row-count semantics are not implemented. |
 | `SHOW COUNT(*) WARNINGS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser records the diagnostics-area object kind; row-count semantics are not implemented. |
-| `SHOW CREATE DATABASE` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW CREATE EVENT` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW CREATE FUNCTION` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW CREATE PROCEDURE` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW CREATE TABLE` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW CREATE TRIGGER` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW CREATE USER` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW CREATE VIEW` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
+| `SHOW CREATE DATABASE` | ❌ | high | Recreate SQL text, default character set/collation options, `IF NOT EXISTS` behavior, privileges, and result metadata. | Parser records the database target, including forms with `IF NOT EXISTS`. |
+| `SHOW CREATE EVENT` | ❌ | medium | Recreate SQL text, scheduler metadata, definer/security context, privileges, and result metadata. | Parser records the event target. |
+| `SHOW CREATE FUNCTION` | ❌ | medium | Recreate SQL text, routine metadata, definer/security context, privileges, and result metadata. | Parser records the function target. |
+| `SHOW CREATE PROCEDURE` | ❌ | medium | Recreate SQL text, routine metadata, definer/security context, privileges, and result metadata. | Parser records the procedure target. |
+| `SHOW CREATE TABLE` | ❌ | top | Recreate SQL text, MySQL option rewrites, generated/invisible/check/constraint metadata, privileges, and result metadata. | Parser records the table target. |
+| `SHOW CREATE TRIGGER` | ❌ | high | Recreate SQL text, trigger timing/event/table metadata, definer/security context, privileges, and result metadata. | Parser records the trigger target. |
+| `SHOW CREATE USER` | ❌ | medium | Recreate SQL text, account authentication/resource/password options, privileges, and result metadata. | Parser records explicit account targets and current-user function targets. |
+| `SHOW CREATE VIEW` | ❌ | high | Recreate SQL text, view algorithm/security/check-option metadata, definer context, privileges, and result metadata. | Parser records the view target. |
 | `SHOW DATABASES` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser records the database object kind, including the `LIKE` pattern when present. |
 | `SHOW ENGINE` | ❌ | low | Generic SHOW ENGINE syntax, subcommand dispatch, result-set shape, and engine-specific diagnostics. |  |
 | `SHOW ENGINE LOGS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |

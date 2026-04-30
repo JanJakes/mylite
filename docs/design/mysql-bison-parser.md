@@ -41,6 +41,14 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
+- MySQL 8.4 SHOW CREATE statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-create-database.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-create-event.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-create-function.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-create-procedure.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-create-table.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-create-trigger.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-create-view.html`
 - MySQL 8.4 routine SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-function-status.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-procedure-status.html`

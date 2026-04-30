@@ -126,6 +126,16 @@ ok statements=1 kinds=show[1:6,0:24]/user:'u'@'h'
 ok statements=1 kinds=show[1:2,0:11]/user
 ```
 
+SHOW CREATE forms expose the object being recreated:
+
+```text
+ok statements=1 kinds=show[1:7,0:37]/database:db
+```
+
+```text
+ok statements=1 kinds=show[1:4,0:20]/procedure:p
+```
+
 Schema-scoped SHOW forms expose explicit `FROM` or `IN` database targets:
 
 ```text

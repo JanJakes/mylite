@@ -101,6 +101,12 @@ KILL statements expose the processlist id as a connection target:
 ok statements=1 kinds=kill[1:3,0:14]/connection:123
 ```
 
+Binary log statements expose explicit log-file targets:
+
+```text
+ok statements=1 kinds=show[1:7,0:41]/binary_log:'bin.000001'
+```
+
 Resource group administration exposes the group name:
 
 ```text

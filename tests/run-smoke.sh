@@ -185,6 +185,15 @@ case "$show_engine_output" in
 		;;
 esac
 
+binary_log_output=$("$parser" "SHOW BINLOG EVENTS IN 'bin.000001' FROM 4; SHOW BINLOG EVENTS; PURGE BINARY LOGS TO 'bin.000001'; PURGE BINARY LOGS BEFORE NOW()")
+case "$binary_log_output" in
+	*"show"*/binary_log:"'bin.000001'"*"show[9:11"*"purge"*/binary_log:"'bin.000001'"*"purge[19:25"*) ;;
+	*)
+		echo "unexpected binary log output: $binary_log_output" >&2
+		exit 1
+		;;
+esac
+
 kill_output=$("$parser" 'KILL 123; KILL QUERY 456; KILL CONNECTION 789; KILL QUERY')
 case "$kill_output" in
 	*"kill"*/connection:123*"kill"*/connection:456*"kill"*/connection:789*"kill[12:13"*) ;;

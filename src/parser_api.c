@@ -64,6 +64,10 @@ static int classify_kill_statement_object(const mylite_parser *parser,
                                           mylite_statement *statement,
                                           size_t token_index,
                                           size_t last_token_index);
+static int classify_purge_statement_object(const mylite_parser *parser,
+                                           mylite_statement *statement,
+                                           size_t token_index,
+                                           size_t last_token_index);
 static int classify_set_statement_object(const mylite_parser *parser,
                                          mylite_statement *statement,
                                          size_t token_index,
@@ -120,6 +124,9 @@ static int classify_show_statement_object(const mylite_parser *parser,
                                           mylite_statement *statement,
                                           size_t token_index,
                                           size_t last_token_index);
+static size_t find_show_binlog_events_name_token(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
 static size_t skip_show_modifiers(const mylite_parser *parser,
                                   size_t token_index,
                                   size_t last_token_index);
@@ -544,6 +551,7 @@ const char *mylite_statement_kind_name(mylite_statement_kind kind)
 const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 {
 	switch (kind) {
+	case MYLITE_STATEMENT_OBJECT_BINARY_LOG: return "binary_log";
 	case MYLITE_STATEMENT_OBJECT_COMPONENT: return "component";
 	case MYLITE_STATEMENT_OBJECT_CONNECTION: return "connection";
 	case MYLITE_STATEMENT_OBJECT_CURSOR: return "cursor";
@@ -994,6 +1002,8 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		return classify_instance_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_KILL:
 		return classify_kill_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_PURGE:
+		return classify_purge_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_SET:
 		return classify_set_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_INSTALL:
@@ -1135,6 +1145,37 @@ static int classify_kill_statement_object(const mylite_parser *parser,
 	                                        MYLITE_STATEMENT_OBJECT_CONNECTION,
 	                                        token_index,
 	                                        last_token_index);
+}
+
+static int classify_purge_statement_object(const mylite_parser *parser,
+                                           mylite_statement *statement,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	size_t name_token_index;
+
+	if (token_index + 3 > last_token_index ||
+	    token_index + 3 >= parser->token_count ||
+	    (!token_text_equals(parser, token_index, "BINARY") &&
+	     !token_text_equals(parser, token_index, "MASTER")) ||
+	    !token_text_equals(parser, token_index + 1, "LOGS")) {
+		return 0;
+	}
+
+	name_token_index = token_index + 2;
+	while (name_token_index + 1 <= last_token_index && name_token_index < parser->token_count) {
+		if (parser->tokens[name_token_index].parser_token == TO_T &&
+		    token_can_start_object_name(&parser->tokens[name_token_index + 1])) {
+			return set_statement_direct_object_name(parser,
+			                                        statement,
+			                                        MYLITE_STATEMENT_OBJECT_BINARY_LOG,
+			                                        name_token_index + 1,
+			                                        last_token_index);
+		}
+		name_token_index++;
+	}
+
+	return 0;
 }
 
 static int classify_set_statement_object(const mylite_parser *parser,
@@ -1480,6 +1521,17 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		                                        last_token_index);
 	}
 
+	if (parser->tokens[token_index].parser_token == BINLOG_T &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index + 1, "EVENTS")) {
+		name_token_index = find_show_binlog_events_name_token(parser, token_index + 2, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_BINARY_LOG,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
 	if (parser->tokens[token_index].parser_token == ENGINE_T &&
 	    token_index + 2 <= last_token_index &&
 	    token_can_start_object_name(&parser->tokens[token_index + 1]) &&
@@ -1570,6 +1622,20 @@ static int classify_show_statement_object(const mylite_parser *parser,
 	}
 
 	return 0;
+}
+
+static size_t find_show_binlog_events_name_token(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == IN_T &&
+		    token_can_start_object_name(&parser->tokens[token_index + 1])) {
+			return token_index + 1;
+		}
+		token_index++;
+	}
+	return parser->token_count;
 }
 
 static size_t skip_show_modifiers(const mylite_parser *parser,

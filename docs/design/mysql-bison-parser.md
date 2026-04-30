@@ -41,6 +41,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
+- MySQL 8.4 routine SHOW statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-function-status.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-procedure-status.html`
 - MySQL 8.4 schema-scoped SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-databases.html`
@@ -179,7 +182,8 @@ forms, `EXPLAIN ... FOR CONNECTION`, `SIGNAL` / `RESIGNAL` condition values,
 STATUS`, `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
 targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, database targets in
 `SHOW DATABASES` and `SHOW SCHEMAS`, routine targets in `SHOW FUNCTION CODE`
-and `SHOW PROCEDURE CODE`, engine targets in
+and `SHOW PROCEDURE CODE`, and routine collection/pattern targets in
+`SHOW FUNCTION STATUS` and `SHOW PROCEDURE STATUS`, engine targets in
 `SHOW ENGINE ... STATUS`, `SHOW ENGINE ... MUTEX`, and `SHOW ENGINES`,
 plugin targets in `SHOW PLUGINS`, connection targets in `SHOW PROCESSLIST`,
 character-set and collation targets in `SHOW CHARACTER SET`, `SHOW CHARSET`,

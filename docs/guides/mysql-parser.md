@@ -134,6 +134,16 @@ Routine-code SHOW forms expose routine names:
 ok statements=1 kinds=show[1:4,0:20]/function:f
 ```
 
+Routine-status SHOW forms expose routine collections or patterns:
+
+```text
+ok statements=1 kinds=show[1:5,0:30]/function:'f%'
+```
+
+```text
+ok statements=1 kinds=show[1:3,0:21]/procedure
+```
+
 SHOW ENGINE diagnostics expose the engine name:
 
 ```text

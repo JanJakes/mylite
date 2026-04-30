@@ -313,9 +313,9 @@ case "$show_schema_output" in
 		;;
 esac
 
-show_routine_code_output=$("$parser" 'SHOW FUNCTION CODE f; SHOW PROCEDURE CODE p; SHOW FUNCTION STATUS LIKE "f%"')
+show_routine_code_output=$("$parser" 'SHOW FUNCTION CODE f; SHOW PROCEDURE CODE p; SHOW FUNCTION STATUS; SHOW FUNCTION STATUS LIKE "f%"; SHOW PROCEDURE STATUS; SHOW PROCEDURE STATUS LIKE "p%"')
 case "$show_routine_code_output" in
-	*"show"*/function:f*"show"*/procedure:p*"show[11:15"*) ;;
+	*"show"*/function:f*"show"*/procedure:p*"show"*/function*"show"*/function:'"f%"'*"show"*/procedure*"show"*/procedure:'"p%"'*) ;;
 	*)
 		echo "unexpected SHOW routine code output: $show_routine_code_output" >&2
 		exit 1

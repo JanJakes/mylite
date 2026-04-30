@@ -220,6 +220,10 @@ static int classify_show_replica_statement_object(const mylite_parser *parser,
                                                   mylite_statement *statement,
                                                   size_t token_index,
                                                   size_t last_token_index);
+static int classify_show_routine_status_statement_object(const mylite_parser *parser,
+                                                         mylite_statement *statement,
+                                                         size_t token_index,
+                                                         size_t last_token_index);
 static int classify_show_variable_statement_object(const mylite_parser *parser,
                                                    mylite_statement *statement,
                                                    size_t token_index,
@@ -2384,6 +2388,10 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		                                        last_token_index);
 	}
 
+	if (classify_show_routine_status_statement_object(parser, statement, token_index, last_token_index)) {
+		return 1;
+	}
+
 	if (parser->tokens[token_index].parser_token == ENGINE_T &&
 	    token_index + 2 <= last_token_index &&
 	    token_can_start_object_name(&parser->tokens[token_index + 1]) &&
@@ -2612,6 +2620,36 @@ static int classify_show_replica_statement_object(const mylite_parser *parser,
 		                                        last_token_index);
 	}
 	return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL);
+}
+
+static int classify_show_routine_status_statement_object(const mylite_parser *parser,
+                                                         mylite_statement *statement,
+                                                         size_t token_index,
+                                                         size_t last_token_index)
+{
+	mylite_statement_object_kind object_kind;
+	size_t name_token_index;
+
+	if ((parser->tokens[token_index].parser_token != FUNCTION_T &&
+	     parser->tokens[token_index].parser_token != PROCEDURE_T) ||
+	    token_index + 1 > last_token_index ||
+	    token_index + 1 >= parser->token_count ||
+	    !token_text_equals(parser, token_index + 1, "STATUS")) {
+		return 0;
+	}
+
+	object_kind = parser->tokens[token_index].parser_token == FUNCTION_T ?
+		MYLITE_STATEMENT_OBJECT_FUNCTION :
+		MYLITE_STATEMENT_OBJECT_PROCEDURE;
+	name_token_index = find_show_like_pattern_token(parser, token_index + 2, last_token_index);
+	if (name_token_index < parser->token_count) {
+		return set_statement_direct_object_name_range(parser,
+		                                              statement,
+		                                              object_kind,
+		                                              name_token_index,
+		                                              name_token_index);
+	}
+	return set_statement_direct_object(statement, object_kind);
 }
 
 static int classify_show_variable_statement_object(const mylite_parser *parser,

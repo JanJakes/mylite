@@ -533,7 +533,7 @@ alter_statement ::= ALTER alter_tail. {
 }
 
 alter_tail ::= TABLE cache_table_ref.
-alter_tail ::= TABLE cache_table_ref required_statement_tail.
+alter_tail ::= TABLE cache_table_ref alter_table_tail.
 alter_tail ::= LOGFILE create_logfile_group cache_name_part create_logfile_group_tail.
 alter_tail ::= RESOURCE create_resource_group cache_name_part alter_resource_group_actions.
 alter_tail ::= SERVER cache_name_part create_server_options.
@@ -554,6 +554,32 @@ alter_database_kind ::= SCHEMA.
 
 alter_routine_kind ::= FUNCTION.
 alter_routine_kind ::= PROCEDURE.
+
+alter_table_tail ::= alter_table_action_start create_options_tail.
+
+alter_table_action_start ::= ATOM(A). {
+  mylite_parser_require_alter_table_action_start(ctx, A);
+}
+alter_table_action_start ::= ALGORITHM.
+alter_table_action_start ::= ALTER.
+alter_table_action_start ::= ANALYZE.
+alter_table_action_start ::= CHANGE.
+alter_table_action_start ::= CHARACTER.
+alter_table_action_start ::= CHECK.
+alter_table_action_start ::= CHECKSUM.
+alter_table_action_start ::= DEFAULT.
+alter_table_action_start ::= DROP.
+alter_table_action_start ::= ENGINE.
+alter_table_action_start ::= IMPORT.
+alter_table_action_start ::= LOCK.
+alter_table_action_start ::= OPTIMIZE.
+alter_table_action_start ::= ORDER.
+alter_table_action_start ::= RENAME.
+alter_table_action_start ::= REPAIR.
+alter_table_action_start ::= STORAGE.
+alter_table_action_start ::= TABLESPACE.
+alter_table_action_start ::= TRUNCATE.
+alter_table_action_start ::= UNION.
 
 alter_prefixed_view_tail ::= alter_view_prefix VIEW cache_table_ref view_column_tail view_body.
 

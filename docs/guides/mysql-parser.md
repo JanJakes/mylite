@@ -132,6 +132,28 @@ Schema-scoped SHOW forms expose explicit `FROM` or `IN` database targets:
 ok statements=1 kinds=show[1:5,0:25]/database:db
 ```
 
+Bare schema collection SHOW forms expose the listed object kind:
+
+```text
+ok statements=1 kinds=show[1:2,0:11]/table
+```
+
+`LIKE` filters expose the filtered object kind when the pattern maps to names:
+
+```text
+ok statements=1 kinds=show[1:4,0:24]/table:'wp_%'
+```
+
+```text
+ok statements=1 kinds=show[1:4,0:27]/event:'e_%'
+```
+
+`SHOW TRIGGERS LIKE` filters by table name:
+
+```text
+ok statements=1 kinds=show[1:4,0:29]/table:'wp_%'
+```
+
 Routine-code SHOW forms expose routine names:
 
 ```text

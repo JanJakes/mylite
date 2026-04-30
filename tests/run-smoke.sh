@@ -304,9 +304,9 @@ case "$show_charset_output" in
 		;;
 esac
 
-show_schema_output=$("$parser" 'SHOW TABLE STATUS FROM `db`; SHOW OPEN TABLES FROM `db`; SHOW TRIGGERS IN `db`; SHOW EVENTS FROM `db`; SHOW TABLE STATUS LIKE "wp_%"')
+show_schema_output=$("$parser" 'SHOW TABLE STATUS FROM `db`; SHOW OPEN TABLES FROM `db`; SHOW TRIGGERS IN `db`; SHOW EVENTS FROM `db`; SHOW TABLES; SHOW TABLES LIKE "wp_%"; SHOW TABLE STATUS LIKE "wp_%"; SHOW OPEN TABLES; SHOW OPEN TABLES LIKE "wp_%"; SHOW EVENTS; SHOW EVENTS LIKE "e_%"; SHOW TRIGGERS; SHOW TRIGGERS LIKE "wp_%"')
 case "$show_schema_output" in
-	*"show"*/database:'`db`'*"show"*/database:'`db`'*"show"*/database:'`db`'*"show"*/database:'`db`'*"show[23:27"*) ;;
+	*"show"*/database:'`db`'*"show"*/database:'`db`'*"show"*/database:'`db`'*"show"*/database:'`db`'*"show"*/table*"show"*/table:'"wp_%"'*"show"*/table:'"wp_%"'*"show"*/table*"show"*/table:'"wp_%"'*"show"*/event*"show"*/event:'"e_%"'*"show"*/trigger*"show"*/table:'"wp_%"'*) ;;
 	*)
 		echo "unexpected SHOW schema output: $show_schema_output" >&2
 		exit 1

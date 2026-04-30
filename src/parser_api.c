@@ -236,6 +236,12 @@ static int classify_show_character_set_statement_object(const mylite_parser *par
                                                         mylite_statement *statement,
                                                         size_t token_index,
                                                         size_t last_token_index);
+static int classify_show_schema_collection_target(const mylite_parser *parser,
+                                                  mylite_statement *statement,
+                                                  size_t first_filter_token,
+                                                  size_t last_token_index,
+                                                  mylite_statement_object_kind collection_object_kind,
+                                                  mylite_statement_object_kind like_pattern_object_kind);
 static size_t find_show_profile_query_id_token(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
@@ -2483,44 +2489,52 @@ static int classify_show_statement_object(const mylite_parser *parser,
 	}
 
 	if (token_text_equals(parser, token_index, "TABLES")) {
-		name_token_index = find_show_from_name_token(parser, token_index + 1, last_token_index);
-		return set_statement_direct_object_name(parser,
-		                                        statement,
-		                                        MYLITE_STATEMENT_OBJECT_DATABASE,
-		                                        name_token_index,
-		                                        last_token_index);
+		return classify_show_schema_collection_target(parser,
+		                                             statement,
+		                                             token_index + 1,
+		                                             last_token_index,
+		                                             MYLITE_STATEMENT_OBJECT_TABLE,
+		                                             MYLITE_STATEMENT_OBJECT_TABLE);
 	}
 
 	if (parser->tokens[token_index].parser_token == TABLE_T &&
 	    token_index + 1 <= last_token_index &&
 	    token_text_equals(parser, token_index + 1, "STATUS")) {
-		name_token_index = find_show_from_name_token(parser, token_index + 2, last_token_index);
-		return set_statement_direct_object_name(parser,
-		                                        statement,
-		                                        MYLITE_STATEMENT_OBJECT_DATABASE,
-		                                        name_token_index,
-		                                        last_token_index);
+		return classify_show_schema_collection_target(parser,
+		                                             statement,
+		                                             token_index + 2,
+		                                             last_token_index,
+		                                             MYLITE_STATEMENT_OBJECT_TABLE,
+		                                             MYLITE_STATEMENT_OBJECT_TABLE);
 	}
 
 	if (parser->tokens[token_index].parser_token == OPEN_T &&
 	    token_index + 1 <= last_token_index &&
 	    token_text_equals(parser, token_index + 1, "TABLES")) {
-		name_token_index = find_show_from_name_token(parser, token_index + 2, last_token_index);
-		return set_statement_direct_object_name(parser,
-		                                        statement,
-		                                        MYLITE_STATEMENT_OBJECT_DATABASE,
-		                                        name_token_index,
-		                                        last_token_index);
+		return classify_show_schema_collection_target(parser,
+		                                             statement,
+		                                             token_index + 2,
+		                                             last_token_index,
+		                                             MYLITE_STATEMENT_OBJECT_TABLE,
+		                                             MYLITE_STATEMENT_OBJECT_TABLE);
 	}
 
-	if (token_text_equals(parser, token_index, "EVENTS") ||
-	    token_text_equals(parser, token_index, "TRIGGERS")) {
-		name_token_index = find_show_from_name_token(parser, token_index + 1, last_token_index);
-		return set_statement_direct_object_name(parser,
-		                                        statement,
-		                                        MYLITE_STATEMENT_OBJECT_DATABASE,
-		                                        name_token_index,
-		                                        last_token_index);
+	if (token_text_equals(parser, token_index, "EVENTS")) {
+		return classify_show_schema_collection_target(parser,
+		                                             statement,
+		                                             token_index + 1,
+		                                             last_token_index,
+		                                             MYLITE_STATEMENT_OBJECT_EVENT,
+		                                             MYLITE_STATEMENT_OBJECT_EVENT);
+	}
+
+	if (token_text_equals(parser, token_index, "TRIGGERS")) {
+		return classify_show_schema_collection_target(parser,
+		                                             statement,
+		                                             token_index + 1,
+		                                             last_token_index,
+		                                             MYLITE_STATEMENT_OBJECT_TRIGGER,
+		                                             MYLITE_STATEMENT_OBJECT_TABLE);
 	}
 
 	return 0;
@@ -2775,6 +2789,34 @@ static int classify_show_character_set_statement_object(const mylite_parser *par
 	}
 
 	return set_statement_direct_object(statement, object_kind);
+}
+
+static int classify_show_schema_collection_target(const mylite_parser *parser,
+                                                  mylite_statement *statement,
+                                                  size_t first_filter_token,
+                                                  size_t last_token_index,
+                                                  mylite_statement_object_kind collection_object_kind,
+                                                  mylite_statement_object_kind like_pattern_object_kind)
+{
+	size_t name_token_index = find_show_from_name_token(parser, first_filter_token, last_token_index);
+	if (name_token_index < parser->token_count) {
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_DATABASE,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	name_token_index = find_show_like_pattern_token(parser, first_filter_token, last_token_index);
+	if (name_token_index < parser->token_count) {
+		return set_statement_direct_object_name_range(parser,
+		                                              statement,
+		                                              like_pattern_object_kind,
+		                                              name_token_index,
+		                                              name_token_index);
+	}
+
+	return set_statement_direct_object(statement, collection_object_kind);
 }
 
 static size_t find_show_profile_query_id_token(const mylite_parser *parser,

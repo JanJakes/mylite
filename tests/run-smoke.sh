@@ -230,6 +230,15 @@ case "$reset_output" in
 		;;
 esac
 
+replication_channel_output=$("$parser" "START REPLICA FOR CHANNEL 'ch'; STOP REPLICA SQL_THREAD FOR CHANNEL 'ch'; RESET REPLICA ALL FOR CHANNEL 'ch'; CHANGE REPLICATION SOURCE TO SOURCE_HOST='h' FOR CHANNEL 'ch'; CHANGE REPLICATION FILTER REPLICATE_DO_DB=(db) FOR CHANNEL 'ch'; START REPLICA; STOP REPLICA; RESET REPLICA")
+case "$replication_channel_output" in
+	*"start"*/replication_channel:"'ch'"*"stop"*/replication_channel:"'ch'"*"reset"*/replication_channel:"'ch'"*"change"*/replication_channel:"'ch'"*"change"*/replication_channel:"'ch'"*"start[44:45"*"stop[47:48"*"reset[50:51"*) ;;
+	*)
+		echo "unexpected replication channel output: $replication_channel_output" >&2
+		exit 1
+		;;
+esac
+
 clone_output=$("$parser" "CLONE LOCAL DATA DIRECTORY = '/tmp/clone'; CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY 'p'")
 case "$clone_output" in
 	*"kinds=clone"*"clone[8:17"*) ;;

@@ -137,6 +137,12 @@ STOP replication-control forms are classified as `stop`:
 ok statements=1 kinds=stop[1:2,0:12]
 ```
 
+Replication-control statements expose explicit channel targets:
+
+```text
+ok statements=1 kinds=start[1:5,0:30]/replication_channel:'ch'
+```
+
 Resource group administration exposes the group name:
 
 ```text

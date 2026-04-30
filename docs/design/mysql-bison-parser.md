@@ -37,6 +37,12 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 STOP replication statements:
   `https://dev.mysql.com/doc/refman/8.4/en/stop-replica.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/stop-group-replication.html`
+- MySQL 8.4 replication channel statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/start-replica.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/stop-replica.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/reset-replica.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/change-replication-source-to.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/change-replication-filter.html`
 - MySQL 8.4 component and plugin statements:
   `https://dev.mysql.com/doc/refman/8.4/en/install-component.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/uninstall-component.html`,
@@ -116,8 +122,10 @@ targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
 table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `REPAIR`, and prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Persisted
-system-variable targets are recorded for `RESET PERSIST`. Component and plugin
-targets are recorded for `INSTALL` and `UNINSTALL` administrative statements.
+system-variable targets are recorded for `RESET PERSIST`. Replication channel
+targets are recorded for `START`, `STOP`, `RESET`, and `CHANGE` forms that
+include `FOR CHANNEL`. Component and plugin targets are recorded for `INSTALL`
+and `UNINSTALL` administrative statements.
 `CLONE` has an explicit statement kind while its local-directory and remote
 instance endpoints remain body tokens.
 `STOP` has an explicit statement kind for replication-control statements.
@@ -181,6 +189,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   leaves malformed or name-less forms objectless.
   `RESET PERSIST` metadata records the first variable name only and leaves
   full persisted-variable reset forms objectless.
+  Replication metadata records only explicit `FOR CHANNEL` names and leaves
+  default-channel operations objectless.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

@@ -286,6 +286,15 @@ case "$show_diagnostics_output" in
 		;;
 esac
 
+show_database_output=$("$parser" "SHOW DATABASES; SHOW DATABASES LIKE 'wp%'; SHOW SCHEMAS; SHOW SCHEMAS WHERE Schema_name = 'test'; SHOW TABLES FROM db")
+case "$show_database_output" in
+	*"show"*/database*"show"*/database:"'wp%'"*"show"*/database*"show"*/database*"show"*/database:db*) ;;
+	*)
+		echo "unexpected SHOW database output: $show_database_output" >&2
+		exit 1
+		;;
+esac
+
 show_charset_output=$("$parser" "SHOW CHARACTER SET; SHOW CHARACTER SET LIKE 'utf8%'; SHOW CHARSET LIKE 'latin1'; SHOW COLLATION; SHOW COLLATION LIKE 'utf8mb4_0900_ai_ci'; SHOW COLLATION WHERE Charset = 'latin1'; SHOW CHARACTERISTICS AS TRANSACTION READ WRITE")
 case "$show_charset_output" in
 	*"show"*/character_set*"show"*/character_set:"'utf8%'"*"show"*/character_set:"'latin1'"*"show"*/collation*"show"*/collation:"'utf8mb4_0900_ai_ci'"*"show"*/collation*"show[31:36"*) ;;

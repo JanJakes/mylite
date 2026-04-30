@@ -205,6 +205,10 @@ static int classify_show_diagnostics_statement_object(const mylite_parser *parse
                                                       mylite_statement *statement,
                                                       size_t token_index,
                                                       size_t last_token_index);
+static int classify_show_database_statement_object(const mylite_parser *parser,
+                                                   mylite_statement *statement,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
 static int classify_show_variable_statement_object(const mylite_parser *parser,
                                                    mylite_statement *statement,
                                                    size_t token_index,
@@ -2317,6 +2321,10 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		return 1;
 	}
 
+	if (classify_show_database_statement_object(parser, statement, token_index, last_token_index)) {
+		return 1;
+	}
+
 	if (classify_show_variable_statement_object(parser, statement, token_index, last_token_index)) {
 		return 1;
 	}
@@ -2492,6 +2500,30 @@ static int classify_show_diagnostics_statement_object(const mylite_parser *parse
 	}
 
 	return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_DIAGNOSTICS_AREA);
+}
+
+static int classify_show_database_statement_object(const mylite_parser *parser,
+                                                   mylite_statement *statement,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	size_t name_token_index;
+
+	if (!token_text_equals(parser, token_index, "DATABASES") &&
+	    !token_text_equals(parser, token_index, "SCHEMAS")) {
+		return 0;
+	}
+
+	name_token_index = find_show_like_pattern_token(parser, token_index + 1, last_token_index);
+	if (name_token_index < parser->token_count) {
+		return set_statement_direct_object_name_range(parser,
+		                                              statement,
+		                                              MYLITE_STATEMENT_OBJECT_DATABASE,
+		                                              name_token_index,
+		                                              name_token_index);
+	}
+
+	return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_DATABASE);
 }
 
 static int classify_show_variable_statement_object(const mylite_parser *parser,

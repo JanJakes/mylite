@@ -42,7 +42,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
 - MySQL 8.4 schema-scoped SHOW statements:
-  `https://dev.mysql.com/doc/refman/8.4/en/show.html`
+  `https://dev.mysql.com/doc/refman/8.4/en/show.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-databases.html`
 - MySQL 8.4 SHOW character-set statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-character-set.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-collation.html`
@@ -168,8 +169,9 @@ forms, `EXPLAIN ... FOR CONNECTION`, `SIGNAL` / `RESIGNAL` condition values,
 `SHOW COLUMNS` / `FIELDS`,
 `SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, schema-scoped `SHOW TABLE
 STATUS`, `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
-targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
-`SHOW FUNCTION CODE` and `SHOW PROCEDURE CODE`, engine targets in
+targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, database targets in
+`SHOW DATABASES` and `SHOW SCHEMAS`, routine targets in `SHOW FUNCTION CODE`
+and `SHOW PROCEDURE CODE`, engine targets in
 `SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, character-set and
 collation targets in `SHOW CHARACTER SET`, `SHOW CHARSET`, and
 `SHOW COLLATION`, query targets in `SHOW PROFILE ... FOR QUERY`,

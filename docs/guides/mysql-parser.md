@@ -267,6 +267,12 @@ ok statements=1 kinds=show[1:4,0:21]/diagnostics_area
 ok statements=1 kinds=show[1:6,0:20]/diagnostics_area
 ```
 
+SHOW database statements expose the database collection or pattern:
+
+```text
+ok statements=1 kinds=show[1:4,0:25]/database:'wp%'
+```
+
 SIGNAL and RESIGNAL expose explicit SQLSTATE values or named conditions:
 
 ```text

@@ -15,6 +15,21 @@ static mylite_statement_kind classify_with_statement_kind(const mylite_parser *p
                                                           const mylite_statement *statement);
 static void classify_statement_objects(mylite_parser *parser);
 static void classify_statement_object(const mylite_parser *parser, mylite_statement *statement);
+static int classify_dml_statement_object(const mylite_parser *parser, mylite_statement *statement);
+static size_t find_statement_kind_token(const mylite_parser *parser, const mylite_statement *statement);
+static size_t find_insert_or_replace_name_token(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index);
+static size_t find_update_name_token(const mylite_parser *parser,
+                                     size_t token_index,
+                                     size_t last_token_index);
+static size_t find_delete_name_token(const mylite_parser *parser,
+                                     size_t token_index,
+                                     size_t last_token_index);
+static size_t skip_dml_modifiers(const mylite_parser *parser,
+                                 size_t token_index,
+                                 size_t last_token_index);
+static int is_dml_modifier_token(int token);
 static mylite_statement_object_kind object_kind_from_token_sequence(const mylite_parser *parser,
                                                                     size_t token_index,
                                                                     size_t last_token_index);
@@ -22,6 +37,10 @@ static void set_statement_object_name(const mylite_parser *parser,
                                       mylite_statement *statement,
                                       size_t object_token_index,
                                       size_t last_token_index);
+static void set_statement_object_name_from_first_token(const mylite_parser *parser,
+                                                       mylite_statement *statement,
+                                                       size_t first_name_token,
+                                                       size_t last_token_index);
 static size_t first_name_token_after_object(const mylite_parser *parser,
                                             size_t object_token_index,
                                             size_t last_token_index);
@@ -401,6 +420,10 @@ static void classify_statement_object(const mylite_parser *parser, mylite_statem
 	size_t token_index;
 	size_t last_token_index;
 
+	if (classify_dml_statement_object(parser, statement)) {
+		return;
+	}
+
 	if (!statement_kind_uses_object_scan(statement->kind) ||
 	    statement->first_token == 0 ||
 	    statement->last_token < statement->first_token) {
@@ -418,6 +441,135 @@ static void classify_statement_object(const mylite_parser *parser, mylite_statem
 			return;
 		}
 	}
+}
+
+static int classify_dml_statement_object(const mylite_parser *parser, mylite_statement *statement)
+{
+	size_t verb_token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+	size_t name_token_index;
+
+	if (verb_token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	last_token_index = statement->last_token - 1;
+	switch (statement->kind) {
+	case MYLITE_STATEMENT_INSERT:
+	case MYLITE_STATEMENT_REPLACE:
+		name_token_index = find_insert_or_replace_name_token(parser, verb_token_index + 1, last_token_index);
+		break;
+	case MYLITE_STATEMENT_UPDATE:
+		name_token_index = find_update_name_token(parser, verb_token_index + 1, last_token_index);
+		break;
+	case MYLITE_STATEMENT_DELETE:
+		name_token_index = find_delete_name_token(parser, verb_token_index + 1, last_token_index);
+		break;
+	default:
+		return 0;
+	}
+
+	if (name_token_index >= parser->token_count) {
+		return 0;
+	}
+
+	statement->object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
+	set_statement_object_name_from_first_token(parser, statement, name_token_index, last_token_index);
+	return 1;
+}
+
+static size_t find_statement_kind_token(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index;
+	size_t last_token_index;
+	int desired_token = 0;
+
+	if (statement->first_token == 0 || statement->last_token < statement->first_token) {
+		return parser->token_count;
+	}
+
+	switch (statement->kind) {
+	case MYLITE_STATEMENT_SELECT: desired_token = SELECT_T; break;
+	case MYLITE_STATEMENT_INSERT: desired_token = INSERT_T; break;
+	case MYLITE_STATEMENT_REPLACE: desired_token = REPLACE_T; break;
+	case MYLITE_STATEMENT_UPDATE: desired_token = UPDATE_T; break;
+	case MYLITE_STATEMENT_DELETE: desired_token = DELETE_T; break;
+	default:
+		return statement->first_token - 1;
+	}
+
+	token_index = statement->first_token - 1;
+	last_token_index = statement->last_token - 1;
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == desired_token) {
+			return token_index;
+		}
+		token_index++;
+	}
+	return parser->token_count;
+}
+
+static size_t find_insert_or_replace_name_token(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index)
+{
+	token_index = skip_dml_modifiers(parser, token_index, last_token_index);
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == INTO_T) {
+		token_index++;
+	}
+	if (token_index <= last_token_index && token_can_start_object_name(&parser->tokens[token_index])) {
+		return token_index;
+	}
+	return parser->token_count;
+}
+
+static size_t find_update_name_token(const mylite_parser *parser,
+                                     size_t token_index,
+                                     size_t last_token_index)
+{
+	token_index = skip_dml_modifiers(parser, token_index, last_token_index);
+	if (token_index <= last_token_index && token_can_start_object_name(&parser->tokens[token_index])) {
+		return token_index;
+	}
+	return parser->token_count;
+}
+
+static size_t find_delete_name_token(const mylite_parser *parser,
+                                     size_t token_index,
+                                     size_t last_token_index)
+{
+	token_index = skip_dml_modifiers(parser, token_index, last_token_index);
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == FROM_T) {
+		token_index++;
+	}
+	if (token_index <= last_token_index && token_can_start_object_name(&parser->tokens[token_index])) {
+		return token_index;
+	}
+	return parser->token_count;
+}
+
+static size_t skip_dml_modifiers(const mylite_parser *parser,
+                                 size_t token_index,
+                                 size_t last_token_index)
+{
+	while (token_index <= last_token_index && is_dml_modifier_token(parser->tokens[token_index].parser_token)) {
+		token_index++;
+	}
+	return token_index;
+}
+
+static int is_dml_modifier_token(int token)
+{
+	return token == LOW_PRIORITY_T ||
+	       token == DELAYED_T ||
+	       token == HIGH_PRIORITY_T ||
+	       token == IGNORE_T ||
+	       token == QUICK_T;
 }
 
 static mylite_statement_object_kind object_kind_from_token_sequence(const mylite_parser *parser,
@@ -463,6 +615,15 @@ static void set_statement_object_name(const mylite_parser *parser,
                                       size_t last_token_index)
 {
 	size_t first_name_token = first_name_token_after_object(parser, object_token_index, last_token_index);
+
+	set_statement_object_name_from_first_token(parser, statement, first_name_token, last_token_index);
+}
+
+static void set_statement_object_name_from_first_token(const mylite_parser *parser,
+                                                       mylite_statement *statement,
+                                                       size_t first_name_token,
+                                                       size_t last_token_index)
+{
 	size_t last_name_token;
 	const mylite_token *first;
 	const mylite_token *last;

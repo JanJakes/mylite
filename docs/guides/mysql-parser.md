@@ -18,12 +18,19 @@ The CLI reports statement kind plus token and byte spans:
 ok statements=1 kinds=select[1:2,0:8]
 ```
 
-DDL and table-maintenance statements include a target object kind when the
-prototype can identify one. If a first target name is found, the CLI prints the
-exact source slice after the object kind:
+DDL, table-maintenance, and DML table statements include a target object kind
+when the prototype can identify one. If a first target name is found, the CLI
+prints the exact source slice after the object kind:
 
 ```text
 ok statements=1 kinds=create[1:12,0:44]/table:`db`.`t`
+```
+
+For DML, the reported table is the first syntactic target table, including
+`WITH`-prefixed `INSERT`, `REPLACE`, `UPDATE`, and `DELETE` statements:
+
+```text
+ok statements=1 kinds=update[1:13,0:38]/table:wt
 ```
 
 Dump tokens:

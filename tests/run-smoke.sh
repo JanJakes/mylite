@@ -35,6 +35,20 @@ case "$object_output" in
 		;;
 esac
 
+dml_sql='INSERT INTO `db`.`t` VALUES (1);
+REPLACE LOW_PRIORITY INTO r VALUES (1);
+UPDATE IGNORE u SET a=1;
+DELETE LOW_PRIORITY QUICK IGNORE FROM `db`.`d` WHERE a=1;
+WITH c AS (SELECT 1) UPDATE wt SET a=1'
+dml_object_output=$("$parser" "$dml_sql")
+case "$dml_object_output" in
+	*"insert"*/table:'`db`.`t`'*"replace"*/table:r*"update"*/table:u*"delete"*/table:'`db`.`d`'*"update"*/table:wt*) ;;
+	*)
+		echo "unexpected DML object output: $dml_object_output" >&2
+		exit 1
+		;;
+esac
+
 with_output=$("$parser" "WITH c AS (SELECT 1) UPDATE t SET a=1; WITH c AS (SELECT 1) DELETE FROM t; WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c")
 case "$with_output" in
 	*"kinds=update"*"delete"*"insert"*) ;;

@@ -97,6 +97,7 @@ static const keyword keywords[] = {
 	{ "PRIMARY", PRIMARY_T },
 	{ "PROCEDURE", PROCEDURE_T },
 	{ "PURGE", PURGE_T },
+	{ "QUICK", QUICK_T },
 	{ "REFERENCES", REFERENCES_T },
 	{ "REGEXP", REGEXP_T },
 	{ "RELEASE", RELEASE_T },

@@ -367,6 +367,15 @@ case "$show_profile_output" in
 		;;
 esac
 
+show_parse_tree_output=$("$parser" 'SHOW PARSE_TREE SELECT 1; SHOW PARSE_TREE SELECT * FROM t; SHOW PARSE_TREE UPDATE t SET a = 1')
+case "$show_parse_tree_output" in
+	"ok statements=3 kinds=show[1:4,0:24]/query,show[6:11,26:57]/query,show[13:20,59:93]") ;;
+	*)
+		echo "unexpected SHOW PARSE_TREE output: $show_parse_tree_output" >&2
+		exit 1
+		;;
+esac
+
 binary_log_output=$("$parser" "SHOW BINARY LOGS; SHOW BINARY LOG STATUS; SHOW MASTER STATUS; SHOW BINLOG EVENTS IN 'bin.000001' FROM 4; SHOW BINLOG EVENTS; PURGE BINARY LOGS TO 'bin.000001'; PURGE BINARY LOGS BEFORE NOW()")
 case "$binary_log_output" in
 	*"show"*/binary_log*"show"*/binary_log*"show"*/binary_log*"show"*/binary_log:"'bin.000001'"*"show"*/binary_log*"purge"*/binary_log:"'bin.000001'"*"purge[32:38"*) ;;

@@ -67,6 +67,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/show-collation.html`
 - MySQL 8.4 SHOW PROFILE statement:
   `https://dev.mysql.com/doc/refman/8.4/en/show-profile.html`
+- MySQL 8.4 SHOW PARSE_TREE statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-parse-tree.html`
 - MySQL 8.4 SHOW variable statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-variables.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-status.html`
@@ -207,8 +209,8 @@ and `SHOW PROCEDURE CODE`, and routine collection/pattern targets in
 plugin targets in `SHOW PLUGINS`, privilege targets in `SHOW PRIVILEGES`,
 connection targets in `SHOW PROCESSLIST`,
 character-set and collation targets in `SHOW CHARACTER SET`, `SHOW CHARSET`,
-and `SHOW COLLATION`, query targets in `SHOW PROFILE`, `SHOW PROFILES`, and
-`SHOW PROFILE ... FOR QUERY`,
+and `SHOW COLLATION`, query targets in `SHOW PROFILE`, `SHOW PROFILES`,
+`SHOW PROFILE ... FOR QUERY`, and `SHOW PARSE_TREE SELECT ...`,
 system-variable and status-variable targets in `SHOW VARIABLES`,
 `SHOW STATUS`, and their scoped forms, diagnostics-area targets in
 `SHOW WARNINGS`, `SHOW ERRORS`, and their `SHOW COUNT(*) ...` forms,
@@ -343,6 +345,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   privilege, connection-loss, shutdown, or restart semantics.
   `SHOW PROFILE` metadata records query targets for bare forms and numeric
   `FOR QUERY` ids, while malformed `FOR QUERY` forms stay objectless.
+  `SHOW PARSE_TREE` metadata records documented `SELECT` payloads as query
+  targets, while non-`SELECT` payloads and runtime JSON generation remain
+  analysis/runtime work.
   `SHOW ENGINE` metadata records the named engine for MySQL 8.4 `STATUS` and
   `MUTEX` forms; historical `LOGS` forms remain objectless.
 - Account and principal metadata records the first syntactic account or role

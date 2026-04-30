@@ -220,6 +220,12 @@ ok statements=1 kinds=show[1:5,0:24]/query:1
 ok statements=1 kinds=show[1:2,0:12]/query
 ```
 
+SHOW PARSE_TREE exposes documented SELECT payloads as query targets:
+
+```text
+ok statements=1 kinds=show[1:4,0:24]/query
+```
+
 KILL statements expose the processlist id as a connection target:
 
 ```text

@@ -2436,6 +2436,15 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_QUERY);
 	}
 
+	if (token_text_equals(parser, token_index, "PARSE_TREE")) {
+		if (token_index + 1 <= last_token_index &&
+		    token_index + 1 < parser->token_count &&
+		    parser->tokens[token_index + 1].parser_token == SELECT_T) {
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_QUERY);
+		}
+		return 0;
+	}
+
 	if (classify_show_routine_status_statement_object(parser, statement, token_index, last_token_index)) {
 		return 1;
 	}

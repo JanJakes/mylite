@@ -145,7 +145,7 @@ create_statement ::= CREATE create_tail. {
 }
 
 create_tail ::= create_object_kind required_statement_tail.
-create_tail ::= TEMPORARY TABLE required_statement_tail.
+create_tail ::= create_table_prefix create_if_not_exists_tail cache_table_ref required_statement_tail.
 create_tail ::= AGGREGATE FUNCTION cache_table_ref required_statement_tail.
 create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
 create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
@@ -176,12 +176,14 @@ create_index_type ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "TYPE");
 }
 
-create_object_kind ::= TABLE.
 create_object_kind ::= VIEW.
 create_object_kind ::= OR.
 create_object_kind ::= ALGORITHM.
 create_object_kind ::= SQL.
 create_object_kind ::= DEFINER.
+
+create_table_prefix ::= TABLE.
+create_table_prefix ::= TEMPORARY TABLE.
 
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.

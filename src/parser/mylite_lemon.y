@@ -501,6 +501,9 @@ cache_name_part ::= EVENTS.
 cache_name_part ::= GRANTS.
 cache_name_part ::= PLUGIN.
 cache_name_part ::= PROCESSLIST.
+cache_name_part ::= TABLES.
+cache_name_part ::= TABLESPACE.
+cache_name_part ::= TRIGGERS.
 cache_name_part ::= USER.
 
 cache_key_list ::= LP cache_key_names RP.
@@ -707,6 +710,7 @@ show_tail ::= show_extended_tail statement_tail.
 show_tail ::= show_full_tail statement_tail.
 show_tail ::= show_scope_prefix show_scoped_kind statement_tail.
 show_tail ::= COUNT LP show_count_star RP show_count_kind.
+show_tail ::= CREATE show_create_tail.
 
 show_extended_tail ::= EXTENDED show_extended_kind.
 show_extended_tail ::= EXTENDED FULL show_extended_kind.
@@ -727,6 +731,18 @@ show_count_star ::= ATOM(A). {
 show_count_kind ::= ERRORS.
 show_count_kind ::= WARNINGS.
 
+show_create_tail ::= show_create_named_kind cache_table_ref.
+show_create_tail ::= USER rename_user_account.
+
+show_create_named_kind ::= DATABASE.
+show_create_named_kind ::= EVENT.
+show_create_named_kind ::= FUNCTION.
+show_create_named_kind ::= PROCEDURE.
+show_create_named_kind ::= SCHEMA.
+show_create_named_kind ::= TABLE.
+show_create_named_kind ::= TRIGGER.
+show_create_named_kind ::= VIEW.
+
 show_extended_kind ::= COLUMNS.
 show_extended_kind ::= FIELDS.
 show_extended_kind ::= INDEX.
@@ -745,7 +761,6 @@ show_unprefixed_kind ::= CHARACTER.
 show_unprefixed_kind ::= CHARSET.
 show_unprefixed_kind ::= COLLATION.
 show_unprefixed_kind ::= COLUMNS.
-show_unprefixed_kind ::= CREATE.
 show_unprefixed_kind ::= DATABASES.
 show_unprefixed_kind ::= ENGINE.
 show_unprefixed_kind ::= ENGINES.

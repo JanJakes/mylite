@@ -176,28 +176,31 @@ drop_statement ::= DROP drop_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-drop_tail ::= drop_first_token required_statement_tail.
+drop_tail ::= drop_object_kind required_statement_tail.
+drop_tail ::= TEMPORARY drop_table_kind required_statement_tail.
+drop_tail ::= LOGFILE ATOM required_statement_tail.
+drop_tail ::= RESOURCE ATOM required_statement_tail.
+drop_tail ::= SPATIAL ATOM required_statement_tail.
+drop_tail ::= UNDO TABLESPACE required_statement_tail.
 
-drop_first_token ::= TABLE.
-drop_first_token ::= TABLES.
-drop_first_token ::= TEMPORARY.
-drop_first_token ::= DATABASE.
-drop_first_token ::= SCHEMA.
-drop_first_token ::= VIEW.
-drop_first_token ::= EVENT.
-drop_first_token ::= FUNCTION.
-drop_first_token ::= PROCEDURE.
-drop_first_token ::= PREPARE.
-drop_first_token ::= TRIGGER.
-drop_first_token ::= USER.
-drop_first_token ::= ROLE.
-drop_first_token ::= SERVER.
-drop_first_token ::= INDEX.
-drop_first_token ::= LOGFILE.
-drop_first_token ::= TABLESPACE.
-drop_first_token ::= UNDO.
-drop_first_token ::= SPATIAL.
-drop_first_token ::= RESOURCE.
+drop_table_kind ::= TABLE.
+drop_table_kind ::= TABLES.
+
+drop_object_kind ::= TABLE.
+drop_object_kind ::= TABLES.
+drop_object_kind ::= DATABASE.
+drop_object_kind ::= SCHEMA.
+drop_object_kind ::= VIEW.
+drop_object_kind ::= EVENT.
+drop_object_kind ::= FUNCTION.
+drop_object_kind ::= PROCEDURE.
+drop_object_kind ::= PREPARE.
+drop_object_kind ::= TRIGGER.
+drop_object_kind ::= USER.
+drop_object_kind ::= ROLE.
+drop_object_kind ::= SERVER.
+drop_object_kind ::= INDEX.
+drop_object_kind ::= TABLESPACE.
 
 alter_statement ::= ALTER alter_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);

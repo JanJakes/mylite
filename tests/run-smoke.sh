@@ -342,7 +342,7 @@ esac
 
 show_profile_output=$("$parser" 'SHOW PROFILE; SHOW PROFILES; SHOW PROFILE FOR QUERY 1; SHOW PROFILE CPU FOR QUERY 2; SHOW PROFILE FOR QUERY @q')
 case "$show_profile_output" in
-	*"show[1:2"*"show[4:5"*"show"*/query:1*"show"*/query:2*"show[20:24"*) ;;
+	*"show"*/query*"show"*/query*"show"*/query:1*"show"*/query:2*"show[20:24"*) ;;
 	*)
 		echo "unexpected SHOW PROFILE output: $show_profile_output" >&2
 		exit 1

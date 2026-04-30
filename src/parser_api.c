@@ -236,6 +236,9 @@ static int classify_show_character_set_statement_object(const mylite_parser *par
 static size_t find_show_profile_query_id_token(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
+static int has_show_profile_for_query_clause(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index);
 static size_t find_show_like_pattern_token(const mylite_parser *parser,
                                            size_t token_index,
                                            size_t last_token_index);
@@ -2386,11 +2389,21 @@ static int classify_show_statement_object(const mylite_parser *parser,
 
 	if (token_text_equals(parser, token_index, "PROFILE")) {
 		name_token_index = find_show_profile_query_id_token(parser, token_index + 1, last_token_index);
+		if (name_token_index >= parser->token_count &&
+		    has_show_profile_for_query_clause(parser, token_index + 1, last_token_index)) {
+			return 0;
+		}
+		if (name_token_index >= parser->token_count) {
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_QUERY);
+		}
 		return set_statement_direct_object_name(parser,
 		                                        statement,
 		                                        MYLITE_STATEMENT_OBJECT_QUERY,
 		                                        name_token_index,
 		                                        last_token_index);
+	}
+	if (token_text_equals(parser, token_index, "PROFILES")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_QUERY);
 	}
 
 	if (classify_show_routine_status_statement_object(parser, statement, token_index, last_token_index)) {
@@ -2753,6 +2766,20 @@ static size_t find_show_profile_query_id_token(const mylite_parser *parser,
 		token_index++;
 	}
 	return parser->token_count;
+}
+
+static int has_show_profile_for_query_clause(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index)
+{
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if (token_text_equals(parser, token_index, "FOR") &&
+		    token_text_equals(parser, token_index + 1, "QUERY")) {
+			return 1;
+		}
+		token_index++;
+	}
+	return 0;
 }
 
 static size_t find_show_like_pattern_token(const mylite_parser *parser,

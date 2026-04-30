@@ -191,7 +191,8 @@ and `SHOW PROCEDURE CODE`, and routine collection/pattern targets in
 plugin targets in `SHOW PLUGINS`, privilege targets in `SHOW PRIVILEGES`,
 connection targets in `SHOW PROCESSLIST`,
 character-set and collation targets in `SHOW CHARACTER SET`, `SHOW CHARSET`,
-and `SHOW COLLATION`, query targets in `SHOW PROFILE ... FOR QUERY`,
+and `SHOW COLLATION`, query targets in `SHOW PROFILE`, `SHOW PROFILES`, and
+`SHOW PROFILE ... FOR QUERY`,
 system-variable and status-variable targets in `SHOW VARIABLES`,
 `SHOW STATUS`, and their scoped forms, diagnostics-area targets in
 `SHOW WARNINGS`, `SHOW ERRORS`, and their `SHOW COUNT(*) ...` forms,
@@ -319,8 +320,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   objectless.
   Instance lifecycle metadata records only the instance object kind, not
   privilege, connection-loss, shutdown, or restart semantics.
-  `SHOW PROFILE` metadata records only numeric `FOR QUERY` ids and leaves bare
-  `SHOW PROFILE` / `SHOW PROFILES` objectless.
+  `SHOW PROFILE` metadata records query targets for bare forms and numeric
+  `FOR QUERY` ids, while malformed `FOR QUERY` forms stay objectless.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

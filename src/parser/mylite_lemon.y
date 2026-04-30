@@ -148,9 +148,12 @@ create_tail ::= create_object_kind required_statement_tail.
 create_tail ::= TEMPORARY TABLE required_statement_tail.
 create_tail ::= create_index_kind INDEX required_statement_tail.
 create_tail ::= AGGREGATE FUNCTION required_statement_tail.
-create_tail ::= LOGFILE ATOM required_statement_tail.
-create_tail ::= RESOURCE ATOM required_statement_tail.
-create_tail ::= UNDO TABLESPACE required_statement_tail.
+create_tail ::= LOGFILE create_logfile_group cache_name_part required_statement_tail.
+create_tail ::= RESOURCE create_resource_group cache_name_part required_statement_tail.
+create_tail ::= SPATIAL create_reference create_system cache_name_part required_statement_tail.
+create_tail ::= SERVER cache_name_part required_statement_tail.
+create_tail ::= TABLESPACE cache_name_part create_options_tail.
+create_tail ::= UNDO TABLESPACE cache_name_part create_options_tail.
 create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_options_tail.
 
 create_index_kind ::= UNIQUE.
@@ -170,8 +173,6 @@ create_object_kind ::= PROCEDURE.
 create_object_kind ::= TRIGGER.
 create_object_kind ::= USER.
 create_object_kind ::= ROLE.
-create_object_kind ::= SERVER.
-create_object_kind ::= TABLESPACE.
 
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.
@@ -185,6 +186,22 @@ create_not ::= ATOM(A). {
 
 create_options_tail ::= .
 create_options_tail ::= create_options_tail statement_token.
+
+create_resource_group ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "GROUP");
+}
+
+create_logfile_group ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "GROUP");
+}
+
+create_reference ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "REFERENCE");
+}
+
+create_system ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "SYSTEM");
+}
 
 drop_statement ::= DROP drop_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);

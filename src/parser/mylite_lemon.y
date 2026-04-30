@@ -536,7 +536,7 @@ call_target ::= LABEL.
 call_arguments ::= .
 call_arguments ::= LP statement_tail.
 
-binlog_statement ::= BINLOG binlog_payload statement_tail. {
+binlog_statement ::= BINLOG binlog_payload. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
 }
 

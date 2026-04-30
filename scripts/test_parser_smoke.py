@@ -140,6 +140,7 @@ def main() -> int:
         ("call p nonsense;", 1, {}),
         ("call select();", 1, {}),
         ("binlog 'abc';", 0, {"statements": "1", "replication": "1"}),
+        ("binlog 'abc' extra;", 1, {}),
         ("binlog select;", 1, {}),
         ("clone local data directory = 'x';", 0, {"statements": "1", "admin": "1"}),
         ("clone nonsense;", 1, {}),

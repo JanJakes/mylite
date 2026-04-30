@@ -201,6 +201,15 @@ case "$utility_object_output" in
 		;;
 esac
 
+table_lock_output=$("$parser" 'LOCK TABLE t READ; LOCK TABLES `db`.`lt` AS l WRITE; UNLOCK TABLES; UNLOCK TABLE; UNLOCK INSTANCE')
+case "$table_lock_output" in
+	*"lock"*/table:t*"lock"*/table:'`db`.`lt`'*"unlock"*/table*"unlock"*/table*"unlock"*/instance*) ;;
+	*)
+		echo "unexpected table lock output: $table_lock_output" >&2
+		exit 1
+		;;
+esac
+
 import_output=$("$parser" "IMPORT TABLE FROM '/tmp/a.sdi', '/tmp/b.sdi'; IMPORT TABLE FROM @file")
 case "$import_output" in
 	*"import"*/sdi_file:"'/tmp/a.sdi'"*"import[8:11"*) ;;

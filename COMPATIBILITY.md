@@ -158,10 +158,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. |  |
 | `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. |  |
 | `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/next-transaction scope. | Parser records `SET [GLOBAL | SESSION] TRANSACTION` as transaction metadata; isolation and access-mode semantics are not implemented. |
-| `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. |  |
-| `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. |  |
-| `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. |  |
-| `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. |  |
+| `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. | Parser records the instance object kind; backup-lock behavior and connection-loss semantics are not implemented. |
+| `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. | Parser records the instance object kind; backup-lock release behavior is not implemented. |
+| `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. | Parser records the first named table target for singular and plural forms; aliases, lock modes, implicit commits, and multi-table lock lists are not implemented. |
+| `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. | Parser records the table object kind for singular and plural forms without a name; lock release behavior and implicit commit semantics are not implemented. |
 | `XA START` | ❌ | low | XA transaction branch start. |  |
 | `XA END` | ❌ | low | XA transaction branch end. |  |
 | `XA PREPARE` | ❌ | low | XA prepare phase. |  |

@@ -119,6 +119,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 transaction-control statements:
   `https://dev.mysql.com/doc/refman/8.4/en/commit.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/set-transaction.html`
+- MySQL 8.4 table-lock statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/lock-tables.html`
 - MySQL 8.4 HELP statement:
   `https://dev.mysql.com/doc/refman/8.4/en/help.html`
 - MySQL 8.4 component and plugin statements:
@@ -195,7 +197,8 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table
 forms, `EXPLAIN ... FOR CONNECTION`, `SIGNAL` / `RESIGNAL` condition values,
 `LOAD ... INTO TABLE`,
-`CACHE INDEX`, `LOAD INDEX INTO CACHE`, `LOCK TABLES`, `SHOW CREATE ...`,
+`CACHE INDEX`, `LOAD INDEX INTO CACHE`, `LOCK` / `UNLOCK TABLES`,
+`SHOW CREATE ...`,
 `SHOW COLUMNS` / `FIELDS`,
 `SHOW INDEX` / `KEYS`, `SHOW TABLES`, schema-scoped `SHOW TABLE STATUS`,
 `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
@@ -297,6 +300,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   direct table forms and `EXPLAIN ... FOR CONNECTION` record targets, while
   query-plan forms such as `EXPLAIN SELECT` and `EXPLAIN FORMAT=... SELECT`
   remain objectless.
+  `UNLOCK TABLES` metadata records the table object kind without a name because
+  the statement releases the session's table locks rather than naming tables.
   `IMPORT TABLE` metadata records only the first string SDI file target.
   `CALL` metadata records only the first procedure name and does not classify
   parameters or OUT/INOUT binding semantics.

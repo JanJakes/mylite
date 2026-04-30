@@ -30,6 +30,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/flush.html`
 - MySQL 8.4 table-maintenance statements:
   `https://dev.mysql.com/doc/refman/8.4/en/table-maintenance-statements.html`
+- MySQL 8.4 RESET PERSIST statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/reset-persist.html`
 - MySQL 8.4 component and plugin statements:
   `https://dev.mysql.com/doc/refman/8.4/en/install-component.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/uninstall-component.html`,
@@ -108,10 +110,11 @@ targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
 `PURGE BINARY LOGS TO ...`, table targets in `FLUSH TABLES`, and
 table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `REPAIR`, and prepared-statement names in
-`PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Component and
-plugin targets are recorded for `INSTALL` and `UNINSTALL` administrative
-statements. Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`,
-and `SET RESOURCE GROUP`. Server, logfile-group, and tablespace DDL targets are
+`PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Persisted
+system-variable targets are recorded for `RESET PERSIST`. Component and plugin
+targets are recorded for `INSTALL` and `UNINSTALL` administrative statements.
+Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`, and
+`SET RESOURCE GROUP`. Server, logfile-group, and tablespace DDL targets are
 recorded for the low-level storage/metadata statements that expose a direct
 name. Instance-level `ALTER`, `LOCK`, and `UNLOCK` statements are recorded with
 an object kind but no object-name span. Principal targets are recorded for
@@ -168,6 +171,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   global flush forms objectless.
   Table-maintenance metadata records only the first concrete table target and
   leaves malformed or name-less forms objectless.
+  `RESET PERSIST` metadata records the first variable name only and leaves
+  full persisted-variable reset forms objectless.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

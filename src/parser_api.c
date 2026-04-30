@@ -74,6 +74,10 @@ static int classify_purge_statement_object(const mylite_parser *parser,
                                            mylite_statement *statement,
                                            size_t token_index,
                                            size_t last_token_index);
+static int classify_reset_statement_object(const mylite_parser *parser,
+                                           mylite_statement *statement,
+                                           size_t token_index,
+                                           size_t last_token_index);
 static int classify_set_statement_object(const mylite_parser *parser,
                                          mylite_statement *statement,
                                          size_t token_index,
@@ -578,6 +582,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_SCHEMA: return "schema";
 	case MYLITE_STATEMENT_OBJECT_SERVER: return "server";
 	case MYLITE_STATEMENT_OBJECT_SPATIAL_REFERENCE_SYSTEM: return "spatial_reference_system";
+	case MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE: return "system_variable";
 	case MYLITE_STATEMENT_OBJECT_TABLE: return "table";
 	case MYLITE_STATEMENT_OBJECT_TABLESPACE: return "tablespace";
 	case MYLITE_STATEMENT_OBJECT_TRIGGER: return "trigger";
@@ -1022,6 +1027,8 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		return classify_kill_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_PURGE:
 		return classify_purge_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_RESET:
+		return classify_reset_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_SET:
 		return classify_set_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_INSTALL:
@@ -1226,6 +1233,31 @@ static int classify_purge_statement_object(const mylite_parser *parser,
 	}
 
 	return 0;
+}
+
+static int classify_reset_statement_object(const mylite_parser *parser,
+                                           mylite_statement *statement,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    !token_text_equals(parser, token_index, "PERSIST")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index + 2 <= last_token_index &&
+	    parser->tokens[token_index].parser_token == IF_T &&
+	    parser->tokens[token_index + 1].parser_token == EXISTS_T) {
+		token_index += 2;
+	}
+
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE,
+	                                        token_index,
+	                                        last_token_index);
 }
 
 static int classify_set_statement_object(const mylite_parser *parser,

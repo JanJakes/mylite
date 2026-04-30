@@ -221,6 +221,15 @@ case "$maintenance_output" in
 		;;
 esac
 
+reset_output=$("$parser" 'RESET PERSIST max_connections; RESET PERSIST IF EXISTS autocommit; RESET PERSIST; RESET BINARY LOGS AND GTIDS')
+case "$reset_output" in
+	*"reset"*/system_variable:max_connections*"reset"*/system_variable:autocommit*"reset[11:12"*"reset[14:18"*) ;;
+	*)
+		echo "unexpected RESET output: $reset_output" >&2
+		exit 1
+		;;
+esac
+
 prepared_output=$("$parser" 'PREPARE stmt FROM @sql; EXECUTE stmt USING @a; DEALLOCATE PREPARE stmt; DROP PREPARE stmt')
 case "$prepared_output" in
 	*"prepare"*/prepared_statement:stmt*"execute"*/prepared_statement:stmt*"deallocate"*/prepared_statement:stmt*"drop"*/prepared_statement:stmt*) ;;

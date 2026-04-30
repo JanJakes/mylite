@@ -119,6 +119,12 @@ FLUSH TABLES exposes the first table target:
 ok statements=1 kinds=flush[1:3,0:14]/table:t
 ```
 
+RESET PERSIST exposes explicit persisted system-variable targets:
+
+```text
+ok statements=1 kinds=reset[1:3,0:29]/system_variable:max_connections
+```
+
 Resource group administration exposes the group name:
 
 ```text

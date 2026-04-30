@@ -25,10 +25,13 @@ compound endings.
 The parser records the full token stream and a statement kind plus source spans
 for each parsed statement. Spans include token ordinals, byte offsets into the
 original SQL buffer, and line/column endpoints for diagnostics and future AST
-nodes. The grammar validates that grouping delimiters, `BEGIN ... END`, and
-`CASE ... END` blocks are balanced. Known statement heads that require a body
-now reject a bare keyword, while transaction statements that MySQL accepts as
-single-keyword statements remain valid.
+nodes. The lexer classifies statement-leading words, major clause words, common
+DDL words, boolean/null operators, and join/set operators as keywords so the
+future analyzer does not need to rediscover them from identifier text. The
+grammar validates that grouping delimiters, `BEGIN ... END`, and `CASE ... END`
+blocks are balanced. Known statement heads that require a body now reject a bare
+keyword, while transaction statements that MySQL accepts as single-keyword
+statements remain valid.
 
 Statement bodies remain token-preserving and permissive so the prototype can
 accept the broad MySQL statement inventory while detailed productions are added

@@ -24,6 +24,12 @@ Dump tokens:
 bin/mylite-parse --tokens "SELECT @a, ?"
 ```
 
+Keyword lookup is table-driven and must remain sorted:
+
+```sh
+python3 tests/check_keywords.py
+```
+
 Run smoke tests:
 
 ```sh

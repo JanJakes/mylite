@@ -3,6 +3,8 @@ set -eu
 
 parser="${PARSER:-bin/mylite-parse}"
 
+python3 tests/check_keywords.py
+
 "$parser" --quiet "SELECT 1"
 "$parser" --quiet "SELECT IF(a > 1, 'yes', 'no') FROM t WHERE b IN (SELECT b FROM u)"
 "$parser" --quiet "SELECT max(CASE col WHEN 1 THEN val ELSE NULL END) FROM t1 GROUP BY row_id"
@@ -22,9 +24,9 @@ case "$span_output" in
 		;;
 esac
 
-token_output=$("$parser" --tokens "SELECT @a, ?")
+token_output=$("$parser" --tokens "SELECT @a, ? FROM t WHERE a IS NULL")
 case "$token_output" in
-	*"token 1 keyword"*"token 2 user_variable"*"token 3 punctuation"*"token 4 parameter"*) ;;
+	*"token 1 keyword"*"token 2 user_variable"*"token 3 punctuation"*"token 4 parameter"*"token 5 keyword"*"token 7 keyword"*"token 10 keyword"*) ;;
 	*)
 		echo "unexpected token output: $token_output" >&2
 		exit 1

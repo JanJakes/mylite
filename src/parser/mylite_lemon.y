@@ -163,7 +163,7 @@ create_tail ::= USER create_if_not_exists_tail drop_account_name create_user_tai
 create_tail ::= VIEW cache_table_ref view_column_tail view_body.
 create_tail ::= create_prefixed_view_tail.
 create_tail ::= create_definer_clause create_definer_object_tail.
-create_tail ::= EVENT create_if_not_exists_tail cache_table_ref required_statement_tail.
+create_tail ::= EVENT create_if_not_exists_tail cache_table_ref create_event_body.
 create_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref required_statement_tail.
 create_tail ::= create_routine_kind create_if_not_exists_tail cache_table_ref required_statement_tail.
 
@@ -252,9 +252,15 @@ create_definer_clause ::= DEFINER diagnostics_equals create_definer_account.
 create_definer_account ::= drop_account_name.
 create_definer_account ::= ATOM LP RP.
 
-create_definer_object_tail ::= EVENT create_if_not_exists_tail cache_table_ref required_statement_tail.
+create_definer_object_tail ::= EVENT create_if_not_exists_tail cache_table_ref create_event_body.
 create_definer_object_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref required_statement_tail.
 create_definer_object_tail ::= create_routine_kind create_if_not_exists_tail cache_table_ref required_statement_tail.
+
+create_event_body ::= ON create_schedule required_statement_tail.
+
+create_schedule ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "SCHEDULE");
+}
 
 create_if_not_exists_tail ::= .
 create_if_not_exists_tail ::= IF create_not reset_exists.

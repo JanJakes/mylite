@@ -706,7 +706,6 @@ show_statement ::= SHOW show_tail. {
 }
 
 show_tail ::= show_unprefixed_kind statement_tail.
-show_tail ::= show_extended_tail statement_tail.
 show_tail ::= show_full_tail statement_tail.
 show_tail ::= show_scope_prefix show_scoped_kind show_filter_tail.
 show_tail ::= COUNT LP show_count_star RP show_count_kind.
@@ -723,9 +722,8 @@ show_tail ::= TABLE STATUS show_database_tail show_filter_tail.
 show_tail ::= OPEN TABLES show_database_tail show_filter_tail.
 show_tail ::= EVENTS show_database_tail show_filter_tail.
 show_tail ::= TRIGGERS show_database_tail show_filter_tail.
-
-show_extended_tail ::= EXTENDED show_extended_kind.
-show_extended_tail ::= EXTENDED FULL show_extended_kind.
+show_tail ::= show_table_metadata_prefix show_column_kind show_table_source show_database_tail show_filter_tail.
+show_tail ::= show_table_metadata_prefix show_index_kind show_table_source show_database_tail show_filter_tail.
 
 show_full_tail ::= FULL show_full_kind.
 
@@ -753,6 +751,21 @@ show_table_list_prefix ::= .
 show_table_list_prefix ::= EXTENDED.
 show_table_list_prefix ::= FULL.
 show_table_list_prefix ::= EXTENDED FULL.
+
+show_table_metadata_prefix ::= .
+show_table_metadata_prefix ::= EXTENDED.
+show_table_metadata_prefix ::= FULL.
+show_table_metadata_prefix ::= EXTENDED FULL.
+
+show_column_kind ::= COLUMNS.
+show_column_kind ::= FIELDS.
+
+show_index_kind ::= INDEX.
+show_index_kind ::= INDEXES.
+show_index_kind ::= KEYS.
+
+show_table_source ::= FROM cache_table_ref.
+show_table_source ::= IN cache_table_ref.
 
 show_count_star ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "*");
@@ -803,14 +816,6 @@ show_grants_principal_list ::= show_grants_principal_list import_comma show_gran
 show_grants_principal ::= rename_user_account.
 show_grants_principal ::= ATOM LP RP.
 
-show_extended_kind ::= COLUMNS.
-show_extended_kind ::= FIELDS.
-show_extended_kind ::= INDEX.
-show_extended_kind ::= INDEXES.
-show_extended_kind ::= KEYS.
-
-show_full_kind ::= COLUMNS.
-show_full_kind ::= FIELDS.
 show_full_kind ::= PROCESSLIST.
 
 show_unprefixed_kind ::= BINARY.
@@ -818,13 +823,8 @@ show_unprefixed_kind ::= BINLOG.
 show_unprefixed_kind ::= CHARACTER.
 show_unprefixed_kind ::= CHARSET.
 show_unprefixed_kind ::= COLLATION.
-show_unprefixed_kind ::= COLUMNS.
 show_unprefixed_kind ::= ENGINE.
-show_unprefixed_kind ::= FIELDS.
 show_unprefixed_kind ::= FUNCTION.
-show_unprefixed_kind ::= INDEX.
-show_unprefixed_kind ::= INDEXES.
-show_unprefixed_kind ::= KEYS.
 show_unprefixed_kind ::= PROCEDURE.
 show_unprefixed_kind ::= PROFILE.
 show_unprefixed_kind ::= RELAYLOG.

@@ -189,6 +189,7 @@ static int read_number(mylite_parser *parser);
 static int read_variable(mylite_parser *parser);
 static int read_operator_or_punctuation(mylite_parser *parser);
 static int lookup_keyword(const char *start, size_t length);
+static int previous_token_allows_keyword_identifier(const mylite_parser *parser);
 static int is_word_start(unsigned char ch);
 static int is_word_part(unsigned char ch);
 static int is_operator_char(unsigned char ch);
@@ -446,6 +447,10 @@ static int read_word(mylite_parser *parser)
 		advance_byte(lexer);
 	}
 	token = lookup_keyword(lexer->input + start, lexer->offset - start);
+	if ((token == BEGIN_T || token == END_T) &&
+	    previous_token_allows_keyword_identifier(parser)) {
+		return IDENT;
+	}
 	if (token == END_T) {
 		return read_end_compound(parser, token);
 	}
@@ -636,6 +641,41 @@ static int lookup_keyword(const char *start, size_t length)
 		}
 	}
 	return IDENT;
+}
+
+static int previous_token_allows_keyword_identifier(const mylite_parser *parser)
+{
+	const mylite_lexer *lexer = &parser->lexer;
+	int previous_token;
+
+	if (lexer->last_significant_token == 0 ||
+	    lexer->last_significant_token > parser->token_count) {
+		return 0;
+	}
+
+	previous_token = parser->tokens[lexer->last_significant_token - 1].parser_token;
+	switch (previous_token) {
+	case '(':
+	case ',':
+	case '.':
+	case DATABASE_T:
+	case EVENT_T:
+	case FUNCTION_T:
+	case INDEX_T:
+	case INTO_T:
+	case KEY_T:
+	case PROCEDURE_T:
+	case ROLE_T:
+	case SCHEMA_T:
+	case TABLE_T:
+	case TO_T:
+	case TRIGGER_T:
+	case USER_T:
+	case VIEW_T:
+		return 1;
+	default:
+		return 0;
+	}
 }
 
 static int is_word_start(unsigned char ch)

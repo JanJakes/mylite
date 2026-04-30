@@ -655,6 +655,15 @@ case "$nonreserved_modifier_name_output" in
 		;;
 esac
 
+begin_end_name_output=$("$parser" 'CREATE TABLE begin (id int); CREATE TABLE end (id int); CREATE TABLE t (begin int, end int); DROP TABLE begin; RENAME TABLE old TO begin; BEGIN')
+case "$begin_end_name_output" in
+	*"create"*/table:begin*"create"*/table:end*"create"*/table:t*"drop"*/table:begin*"rename"*/table:old*"begin"*/transaction*) ;;
+	*)
+		echo "unexpected BEGIN/END name output: $begin_end_name_output" >&2
+		exit 1
+		;;
+esac
+
 match_output=$("$parser" --tokens "SELECT (1), CASE WHEN a THEN b END")
 case "$match_output" in
 	*"match 2 4"*"match 4 2"*"match 6 11"*"match 11 6"*) ;;

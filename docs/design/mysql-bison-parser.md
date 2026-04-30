@@ -178,7 +178,8 @@ words, boolean/null operators, and join/set operators as keywords so the future
 analyzer does not need to rediscover them from identifier text. Keyword-like
 nonreserved words that MySQL commonly permits as identifiers remain usable in
 target object-name spans, including nonreserved administrative keywords such as
-`CACHE`, `CLONE`, and `COMMIT`. The grammar validates that
+`CACHE`, `CLONE`, and `COMMIT`. `BEGIN` and `END` remain compound-control
+tokens unless they appear in an object-name position. The grammar validates that
 grouping delimiters, `BEGIN ... END`, and `CASE ... END` blocks are balanced.
 Known statement heads that require a body now reject a bare keyword, while
 transaction statements that MySQL accepts as single-keyword statements remain

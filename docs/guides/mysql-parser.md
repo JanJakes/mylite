@@ -516,6 +516,13 @@ ok statements=1 kinds=create[1:7,0:26]/table:json
 ok statements=1 kinds=create[1:7,0:27]/table:clone
 ```
 
+`BEGIN` and `END` are still recognized as control tokens except in object-name
+positions:
+
+```text
+ok statements=1 kinds=create[1:7,0:27]/table:begin
+```
+
 Run smoke tests:
 
 ```sh

@@ -153,7 +153,7 @@ create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_r
 create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
 create_tail ::= LOGFILE create_logfile_group cache_name_part required_statement_tail.
 create_tail ::= RESOURCE create_resource_group cache_name_part create_resource_type create_options_tail.
-create_tail ::= SPATIAL create_reference create_system cache_name_part required_statement_tail.
+create_tail ::= SPATIAL create_reference create_system cache_name_part create_srs_attribute_start statement_token create_options_tail.
 create_tail ::= SERVER cache_name_part create_server_tail.
 create_tail ::= TABLESPACE cache_name_part create_options_tail.
 create_tail ::= UNDO TABLESPACE cache_name_part create_options_tail.
@@ -300,6 +300,10 @@ create_reference ::= ATOM(A). {
 
 create_system ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "SYSTEM");
+}
+
+create_srs_attribute_start ::= ATOM(A). {
+  mylite_parser_require_srs_attribute(ctx, A);
 }
 
 drop_statement ::= DROP drop_tail. {

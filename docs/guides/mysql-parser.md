@@ -138,6 +138,12 @@ no file is named:
 ok statements=1 kinds=show[1:7,0:43]/relay_log:'relay.000001'
 ```
 
+SHOW REPLICA STATUS exposes explicit channel names:
+
+```text
+ok statements=1 kinds=show[1:6,0:36]/replication_channel:'ch'
+```
+
 BINLOG statements expose their event payload string:
 
 ```text

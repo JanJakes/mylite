@@ -233,6 +233,15 @@ case "$relay_log_output" in
 		;;
 esac
 
+replica_status_output=$("$parser" "SHOW REPLICA STATUS FOR CHANNEL 'ch'; SHOW REPLICA STATUS; SHOW SLAVE STATUS FOR CHANNEL 'old'")
+case "$replica_status_output" in
+	*"show"*/replication_channel:"'ch'"*"show[8:10"*"show[12:17"*) ;;
+	*)
+		echo "unexpected SHOW REPLICA STATUS output: $replica_status_output" >&2
+		exit 1
+		;;
+esac
+
 binlog_event_output=$("$parser" "BINLOG 'abc'; BINLOG @payload")
 case "$binlog_event_output" in
 	*"binlog"*/binary_log_event:"'abc'"*"binlog[4:5"*) ;;

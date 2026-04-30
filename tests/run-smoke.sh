@@ -203,6 +203,15 @@ case "$kill_output" in
 		;;
 esac
 
+flush_output=$("$parser" 'FLUSH TABLES t; FLUSH TABLE `db`.`t`, u WITH READ LOCK; FLUSH TABLES WITH READ LOCK; FLUSH PRIVILEGES')
+case "$flush_output" in
+	*"flush"*/table:t*"flush"*/table:'`db`.`t`'*"flush[16:20"*"flush[22:23"*) ;;
+	*)
+		echo "unexpected FLUSH output: $flush_output" >&2
+		exit 1
+		;;
+esac
+
 prepared_output=$("$parser" 'PREPARE stmt FROM @sql; EXECUTE stmt USING @a; DEALLOCATE PREPARE stmt; DROP PREPARE stmt')
 case "$prepared_output" in
 	*"prepare"*/prepared_statement:stmt*"execute"*/prepared_statement:stmt*"deallocate"*/prepared_statement:stmt*"drop"*/prepared_statement:stmt*) ;;

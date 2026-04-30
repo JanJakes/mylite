@@ -56,6 +56,9 @@ static size_t find_cache_index_name_token(const mylite_parser *parser,
 static size_t find_lock_table_name_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index);
+static size_t find_flush_table_name_token(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index);
 static int classify_instance_statement_object(const mylite_parser *parser,
                                               mylite_statement *statement,
                                               size_t token_index,
@@ -1000,6 +1003,10 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		break;
 	case MYLITE_STATEMENT_UNLOCK:
 		return classify_instance_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_FLUSH:
+		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
+		name_token_index = find_flush_table_name_token(parser, name_token_index, last_token_index);
+		break;
 	case MYLITE_STATEMENT_KILL:
 		return classify_kill_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_PURGE:
@@ -1098,6 +1105,24 @@ static size_t find_cache_index_name_token(const mylite_parser *parser,
 static size_t find_lock_table_name_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index)
+{
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    (parser->tokens[token_index].parser_token != TABLE_T &&
+	     !token_text_equals(parser, token_index, "TABLES"))) {
+		return parser->token_count;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index && token_can_start_object_name(&parser->tokens[token_index])) {
+		return token_index;
+	}
+	return parser->token_count;
+}
+
+static size_t find_flush_table_name_token(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index)
 {
 	if (token_index > last_token_index ||
 	    token_index >= parser->token_count ||

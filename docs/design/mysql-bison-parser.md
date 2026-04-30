@@ -26,6 +26,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 binary log statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-binlog-events.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/purge-binary-logs.html`
+- MySQL 8.4 FLUSH statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/flush.html`
 - MySQL 8.4 component and plugin statements:
   `https://dev.mysql.com/doc/refman/8.4/en/install-component.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/uninstall-component.html`,
@@ -101,7 +103,8 @@ targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
 `SHOW FUNCTION CODE` and `SHOW PROCEDURE CODE`, engine targets in
 `SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, connection targets in
 `KILL`, binary log targets in `SHOW BINLOG EVENTS IN ...` and
-`PURGE BINARY LOGS TO ...`, and prepared-statement names in
+`PURGE BINARY LOGS TO ...`, table targets in `FLUSH TABLES`, and
+prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Component and
 plugin targets are recorded for `INSTALL` and `UNINSTALL` administrative
 statements. Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`,
@@ -158,6 +161,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   between query and connection termination.
   Binary log metadata records only the explicit log-file target and does not
   classify position or time expressions.
+  `FLUSH TABLES` metadata records only the first table target and leaves
+  global flush forms objectless.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

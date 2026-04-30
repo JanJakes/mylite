@@ -107,6 +107,12 @@ Binary log statements expose explicit log-file targets:
 ok statements=1 kinds=show[1:7,0:41]/binary_log:'bin.000001'
 ```
 
+FLUSH TABLES exposes the first table target:
+
+```text
+ok statements=1 kinds=flush[1:3,0:14]/table:t
+```
+
 Resource group administration exposes the group name:
 
 ```text

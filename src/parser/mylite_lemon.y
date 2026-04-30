@@ -36,6 +36,7 @@ statement_chunk ::= SEMI. { mylite_parser_record_empty_statement(ctx); }
 statement_chunk ::= statement SEMI.
 
 statement ::= select_statement.
+statement ::= create_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -50,6 +51,7 @@ statement ::= permissive_start(A) statement_tail. {
 }
 
 statement_start(A) ::= SELECT. { A = MYLITE_STATEMENT_SELECT; }
+statement_start(A) ::= CREATE. { A = MYLITE_STATEMENT_DDL; }
 statement_start(A) ::= required_tail_start(B). { A = B; }
 statement_start(A) ::= optional_tail_start(B). { A = B; }
 
@@ -58,7 +60,6 @@ required_tail_start(A) ::= INSERT. { A = MYLITE_STATEMENT_INSERT; }
 required_tail_start(A) ::= REPLACE. { A = MYLITE_STATEMENT_REPLACE; }
 required_tail_start(A) ::= UPDATE. { A = MYLITE_STATEMENT_UPDATE; }
 required_tail_start(A) ::= DELETE. { A = MYLITE_STATEMENT_DELETE; }
-required_tail_start(A) ::= CREATE. { A = MYLITE_STATEMENT_DDL; }
 required_tail_start(A) ::= ALTER. { A = MYLITE_STATEMENT_DDL; }
 required_tail_start(A) ::= DROP. { A = MYLITE_STATEMENT_DDL; }
 required_tail_start(A) ::= TRUNCATE. { A = MYLITE_STATEMENT_DDL; }
@@ -126,6 +127,38 @@ select_first_token ::= LB.
 select_first_token ::= RB.
 select_first_token ::= LC.
 select_first_token ::= RC.
+
+create_statement ::= CREATE create_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
+}
+
+create_tail ::= create_first_token required_statement_tail.
+
+create_first_token ::= TABLE.
+create_first_token ::= TEMPORARY.
+create_first_token ::= VIEW.
+create_first_token ::= OR.
+create_first_token ::= ALGORITHM.
+create_first_token ::= SQL.
+create_first_token ::= DEFINER.
+create_first_token ::= DATABASE.
+create_first_token ::= SCHEMA.
+create_first_token ::= INDEX.
+create_first_token ::= UNIQUE.
+create_first_token ::= FULLTEXT.
+create_first_token ::= SPATIAL.
+create_first_token ::= EVENT.
+create_first_token ::= FUNCTION.
+create_first_token ::= AGGREGATE.
+create_first_token ::= PROCEDURE.
+create_first_token ::= TRIGGER.
+create_first_token ::= USER.
+create_first_token ::= ROLE.
+create_first_token ::= RESOURCE.
+create_first_token ::= SERVER.
+create_first_token ::= LOGFILE.
+create_first_token ::= TABLESPACE.
+create_first_token ::= UNDO.
 
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -287,6 +320,19 @@ keyword ::= VIEW.
 keyword ::= HAVING.
 keyword ::= ELSE.
 keyword ::= END.
+keyword ::= AGGREGATE.
+keyword ::= ALGORITHM.
+keyword ::= DEFINER.
+keyword ::= FULLTEXT.
+keyword ::= LOGFILE.
+keyword ::= OR.
+keyword ::= RESOURCE.
+keyword ::= SECURITY.
+keyword ::= SQL.
+keyword ::= SPATIAL.
+keyword ::= TEMPORARY.
+keyword ::= UNDO.
+keyword ::= UNIQUE.
 
 keyword_not_select_clause ::= SELECT.
 keyword_not_select_clause ::= WITH.
@@ -376,3 +422,16 @@ keyword_not_select_clause ::= USER.
 keyword_not_select_clause ::= VIEW.
 keyword_not_select_clause ::= ELSE.
 keyword_not_select_clause ::= END.
+keyword_not_select_clause ::= AGGREGATE.
+keyword_not_select_clause ::= ALGORITHM.
+keyword_not_select_clause ::= DEFINER.
+keyword_not_select_clause ::= FULLTEXT.
+keyword_not_select_clause ::= LOGFILE.
+keyword_not_select_clause ::= OR.
+keyword_not_select_clause ::= RESOURCE.
+keyword_not_select_clause ::= SECURITY.
+keyword_not_select_clause ::= SQL.
+keyword_not_select_clause ::= SPATIAL.
+keyword_not_select_clause ::= TEMPORARY.
+keyword_not_select_clause ::= UNDO.
+keyword_not_select_clause ::= UNIQUE.

@@ -20,6 +20,8 @@ def main() -> int:
             0,
             {"statements": "1", "ddl": "1"},
         ),
+        ("create table t (a int);", 0, {"statements": "1", "ddl": "1"}),
+        ("create nonsense;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

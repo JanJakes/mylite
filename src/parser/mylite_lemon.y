@@ -157,7 +157,7 @@ create_tail ::= SPATIAL create_reference create_system cache_name_part create_sr
 create_tail ::= SERVER cache_name_part create_server_tail.
 create_tail ::= TABLESPACE cache_name_part create_tablespace_tail.
 create_tail ::= UNDO TABLESPACE cache_name_part create_undo_tablespace_tail.
-create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_options_tail.
+create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_database_tail.
 create_tail ::= ROLE create_if_not_exists_tail drop_account_list.
 create_tail ::= USER create_if_not_exists_tail drop_account_name create_user_tail.
 create_tail ::= VIEW cache_table_ref view_column_tail view_body.
@@ -190,6 +190,9 @@ create_table_prefix ::= TEMPORARY TABLE.
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.
 
+create_database_tail ::= .
+create_database_tail ::= create_database_option_start create_options_tail.
+
 create_table_tail ::= LP create_table_definition_tokens RP create_options_tail.
 create_table_tail ::= LIKE cache_table_ref.
 create_table_tail ::= create_table_query_start required_statement_tail.
@@ -220,6 +223,13 @@ create_table_query_start ::= CHARSET.
 create_table_query_start ::= DEFAULT.
 create_table_query_start ::= ENGINE.
 create_table_query_start ::= TABLESPACE.
+
+create_database_option_start ::= DEFAULT.
+create_database_option_start ::= CHARACTER.
+create_database_option_start ::= CHARSET.
+create_database_option_start ::= ATOM(A). {
+  mylite_parser_require_create_database_option_start(ctx, A);
+}
 
 create_udf_tail ::= create_returns create_udf_return_type create_soname ATOM.
 

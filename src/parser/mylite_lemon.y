@@ -413,8 +413,8 @@ alter_tail ::= TABLE cache_table_ref required_statement_tail.
 alter_tail ::= LOGFILE create_logfile_group cache_name_part required_statement_tail.
 alter_tail ::= RESOURCE create_resource_group cache_name_part required_statement_tail.
 alter_tail ::= SERVER cache_name_part create_server_options.
-alter_tail ::= TABLESPACE cache_name_part required_statement_tail.
-alter_tail ::= UNDO TABLESPACE cache_name_part required_statement_tail.
+alter_tail ::= TABLESPACE cache_name_part alter_tablespace_action.
+alter_tail ::= UNDO TABLESPACE cache_name_part alter_undo_tablespace_action.
 alter_tail ::= USER drop_if_exists_tail alter_user_target create_user_tail.
 alter_tail ::= EVENT cache_table_ref required_statement_tail.
 alter_tail ::= alter_routine_kind cache_table_ref create_options_tail.
@@ -438,6 +438,20 @@ alter_view_prefix ::= create_definer_clause create_view_sql_security_tail.
 alter_view_prefix ::= create_view_sql_security.
 
 alter_definer_object_tail ::= EVENT cache_table_ref required_statement_tail.
+
+alter_tablespace_action ::= RENAME TO cache_name_part.
+alter_tablespace_action ::= alter_tablespace_option_name diagnostics_equals alter_tablespace_option_value.
+
+alter_tablespace_option_name ::= ATOM.
+
+alter_tablespace_option_value ::= statement_token.
+alter_tablespace_option_value ::= alter_tablespace_option_value statement_token.
+
+alter_undo_tablespace_action ::= SET alter_undo_tablespace_state drop_tablespace_engine_tail.
+
+alter_undo_tablespace_state ::= ATOM(A). {
+  mylite_parser_require_token_text_any(ctx, A, "ACTIVE", "INACTIVE");
+}
 
 alter_instance_action ::= ATOM(A) alter_instance_innodb alter_instance_redo_log. {
   mylite_parser_require_token_text_any(ctx, A, "ENABLE", "DISABLE");

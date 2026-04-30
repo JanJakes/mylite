@@ -326,8 +326,9 @@ transaction_characteristic ::= READ transaction_access_mode.
 transaction_characteristic ::= WITH transaction_consistent transaction_snapshot.
 
 transaction_access_mode ::= ATOM(A). {
-  mylite_parser_require_token_text_any(ctx, A, "ONLY", "WRITE");
+  mylite_parser_require_token_text(ctx, A, "ONLY");
 }
+transaction_access_mode ::= WRITE.
 
 transaction_consistent ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "CONSISTENT");
@@ -351,7 +352,7 @@ lock_statement ::= LOCK lock_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
 
-lock_tail ::= lock_table_kind required_statement_tail.
+lock_tail ::= lock_table_kind lock_table_list.
 lock_tail ::= INSTANCE FOR lock_backup.
 
 lock_backup ::= ATOM(A). {
@@ -360,6 +361,23 @@ lock_backup ::= ATOM(A). {
 
 lock_table_kind ::= TABLE.
 lock_table_kind ::= TABLES.
+
+lock_table_list ::= lock_table_spec.
+lock_table_list ::= lock_table_list import_comma lock_table_spec.
+
+lock_table_spec ::= cache_table_ref lock_table_alias lock_type.
+lock_table_spec ::= cache_table_ref lock_type.
+
+lock_table_alias ::= handler_as lock_alias.
+lock_table_alias ::= lock_alias.
+
+lock_alias ::= ATOM.
+lock_alias ::= LABEL.
+
+lock_type ::= READ.
+lock_type ::= READ LOCAL.
+lock_type ::= WRITE.
+lock_type ::= LOW_PRIORITY WRITE.
 
 unlock_statement ::= UNLOCK unlock_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
@@ -454,6 +472,7 @@ cache_name_part ::= ATOM.
 cache_name_part ::= LABEL.
 cache_name_part ::= DEFAULT.
 cache_name_part ::= EVENTS.
+cache_name_part ::= USER.
 
 cache_key_list ::= LP cache_key_names RP.
 
@@ -1406,6 +1425,7 @@ keyword ::= LOOP.
 keyword ::= REPEAT.
 keyword ::= UNTIL.
 keyword ::= WHILE.
+keyword ::= WRITE.
 keyword ::= CASE.
 keyword ::= WHEN.
 keyword ::= TRIGGER.
@@ -1608,6 +1628,7 @@ keyword_not_select_clause ::= LOOP.
 keyword_not_select_clause ::= REPEAT.
 keyword_not_select_clause ::= UNTIL.
 keyword_not_select_clause ::= WHILE.
+keyword_not_select_clause ::= WRITE.
 keyword_not_select_clause ::= CASE.
 keyword_not_select_clause ::= WHEN.
 keyword_not_select_clause ::= TRIGGER.

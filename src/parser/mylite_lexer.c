@@ -669,6 +669,7 @@ static int keyword_token(const MyliteToken *token) {
       {"WHILE", ML_WHILE},
       {"WITH", ML_WITH},
       {"WORK", ML_WORK},
+      {"WRITE", ML_WRITE},
       {"XML", ML_XML},
       {"XA", ML_XA},
   };

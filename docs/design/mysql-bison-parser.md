@@ -202,9 +202,9 @@ matched CTE subqueries and inspecting the outer DML verb, so `WITH ... UPDATE`,
 target-name classification uses the same matched-token data to skip CTE bodies
 before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 `DELETE`, including common priority, delayed, quick, and ignore modifiers.
-`SELECT ... INTO` assignment targets are recorded for user variables and local
-variables, while `INTO OUTFILE` and `INTO DUMPFILE` record the explicit export
-file target.
+`SELECT ... INTO` and `TABLE ... INTO` assignment targets are recorded for user
+variables and local variables, while `INTO OUTFILE` and `INTO DUMPFILE` record
+the explicit export file target.
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table
@@ -309,14 +309,15 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   does not yet resolve aliases, joined table references, partition clauses, or
   every affected table in multi-table statements.
 - Assignment metadata records only the first direct assignment target. It does
-  not expand multi-target `SELECT ... INTO`, `SET`, or `GET DIAGNOSTICS`
-  assignment lists, and it does not classify ambiguous unadorned `SET name`
-  assignments without semantic scope information.
+  not expand multi-target `SELECT ... INTO`, `TABLE ... INTO`, `SET`, or
+  `GET DIAGNOSTICS` assignment lists, and it does not classify ambiguous
+  unadorned `SET name` assignments without semantic scope information.
 - Character-set `SET` metadata records only the requested character set. It
   does not validate charset availability, collation compatibility, or the
   session variables affected by the statement.
 - File-export metadata records only the first literal target for
-  `SELECT ... INTO OUTFILE` and `SELECT ... INTO DUMPFILE`; field/line options
+  `SELECT ... INTO OUTFILE`, `SELECT ... INTO DUMPFILE`,
+  `TABLE ... INTO OUTFILE`, and `TABLE ... INTO DUMPFILE`; field/line options
   and file I/O behavior remain unimplemented.
 - Utility object metadata records the first direct target only and does not yet
   expand multi-table maintenance, cache-index lists, load-index lists, or lock

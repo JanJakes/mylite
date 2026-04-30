@@ -106,10 +106,14 @@ ok statements=1 kinds=set[1:3,0:10]/role:r
 ```
 
 Explicit variable-assignment targets are also reported for `SELECT ... INTO`,
-`SET`, and statement-level `GET DIAGNOSTICS` forms:
+`TABLE ... INTO`, `SET`, and statement-level `GET DIAGNOSTICS` forms:
 
 ```text
 ok statements=1 kinds=select[1:6,0:23]/user_variable:@x
+```
+
+```text
+ok statements=1 kinds=table[1:4,0:15]/user_variable:@x
 ```
 
 ```text
@@ -126,10 +130,14 @@ Connection character-set SET forms expose the requested character set:
 ok statements=1 kinds=set[1:5,0:44]/character_set:utf8mb4
 ```
 
-SELECT file-export forms expose the literal export target:
+SELECT and TABLE file-export forms expose the literal export target:
 
 ```text
 ok statements=1 kinds=select[1:7,0:41]/outfile:'/tmp/x.csv'
+```
+
+```text
+ok statements=1 kinds=table[1:5,0:33]/outfile:'/tmp/t.tsv'
 ```
 
 SHOW account-introspection forms preserve account spans:

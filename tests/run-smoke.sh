@@ -53,6 +53,15 @@ case "$table_query_output" in
 		;;
 esac
 
+table_into_output=$("$parser" "TABLE t INTO OUTFILE '/tmp/t.tsv'; TABLE t INTO DUMPFILE '/tmp/t.bin'; TABLE t INTO @row; (TABLE t) INTO local_var; (TABLE t INTO @inner)")
+case "$table_into_output" in
+	*"table"*/outfile:"'/tmp/t.tsv'"*"table"*/dumpfile:"'/tmp/t.bin'"*"table"*/user_variable:@row*"table"*/local_variable:local_var*"table"*/user_variable:@inner*) ;;
+	*)
+		echo "unexpected table into output: $table_into_output" >&2
+		exit 1
+		;;
+esac
+
 stored_head_output=$("$parser" 'DECLARE x INT; OPEN c; FETCH c INTO x; CLOSE c; IF x THEN RETURN x END IF; LOOP LEAVE done END LOOP; REPEAT ITERATE done UNTIL x END REPEAT; WHILE x DO SET x=x+1 END WHILE; CASE x WHEN 1 THEN RETURN 1 END CASE; LEAVE done; ITERATE done; RETURN 1')
 case "$stored_head_output" in
 	*"kinds=declare"*"open"*"fetch"*"close"*"if"*"loop"*"repeat"*"while"*"case"*"leave"*"iterate"*"return"*) ;;

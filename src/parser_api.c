@@ -59,6 +59,10 @@ static int classify_select_statement_object(const mylite_parser *parser, mylite_
 static size_t find_select_into_target_token(const mylite_parser *parser,
                                             const mylite_statement *statement,
                                             mylite_statement_object_kind *object_kind);
+static size_t find_into_target_token(const mylite_parser *parser,
+                                     size_t into_token_index,
+                                     size_t last_token_index,
+                                     mylite_statement_object_kind *object_kind);
 static size_t find_import_sdi_file_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index);
@@ -93,6 +97,14 @@ static size_t find_explainable_statement_token(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
 static int token_is_explainable_statement_head(int token);
+static int classify_table_statement_object(const mylite_parser *parser,
+                                           mylite_statement *statement,
+                                           size_t token_index,
+                                           size_t last_token_index);
+static size_t find_table_into_target_token(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index,
+                                           mylite_statement_object_kind *object_kind);
 static size_t find_table_statement_name_token(const mylite_parser *parser,
                                               size_t token_index,
                                               size_t last_token_index);
@@ -1317,9 +1329,7 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
 		break;
 	case MYLITE_STATEMENT_TABLE:
-		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
-		name_token_index = find_table_statement_name_token(parser, token_index, last_token_index);
-		break;
+		return classify_table_statement_object(parser, statement, token_index, last_token_index);
 	case MYLITE_STATEMENT_TRUNCATE:
 		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
 		if (name_token_index <= last_token_index &&
@@ -1462,30 +1472,44 @@ static size_t find_select_into_target_token(const mylite_parser *parser,
 			continue;
 		}
 		if (parser->tokens[token_index].parser_token == INTO_T) {
-			mylite_statement_object_kind variable_kind;
-
-			if (token_text_equals(parser, token_index + 1, "OUTFILE") ||
-			    token_text_equals(parser, token_index + 1, "DUMPFILE")) {
-				if (token_index + 2 > last_token_index ||
-				    parser->tokens[token_index + 2].kind != MYLITE_TOKEN_STRING) {
-					return parser->token_count;
-				}
-				*object_kind = token_text_equals(parser, token_index + 1, "OUTFILE") ?
-					MYLITE_STATEMENT_OBJECT_OUTFILE :
-					MYLITE_STATEMENT_OBJECT_DUMPFILE;
-				return token_index + 2;
-			}
-
-			variable_kind = variable_object_kind_from_token(&parser->tokens[token_index + 1]);
-			if (variable_kind == MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE) {
-				return parser->token_count;
-			}
-			*object_kind = variable_kind;
-			return token_index + 1;
+			return find_into_target_token(parser, token_index, last_token_index, object_kind);
 		}
 		token_index++;
 	}
 	return parser->token_count;
+}
+
+static size_t find_into_target_token(const mylite_parser *parser,
+                                     size_t into_token_index,
+                                     size_t last_token_index,
+                                     mylite_statement_object_kind *object_kind)
+{
+	mylite_statement_object_kind variable_kind;
+	size_t target_token_index = into_token_index + 1;
+
+	if (target_token_index > last_token_index || target_token_index >= parser->token_count) {
+		return parser->token_count;
+	}
+
+	if (token_text_equals(parser, target_token_index, "OUTFILE") ||
+	    token_text_equals(parser, target_token_index, "DUMPFILE")) {
+		if (target_token_index + 1 > last_token_index ||
+		    parser->tokens[target_token_index + 1].kind != MYLITE_TOKEN_STRING) {
+			return parser->token_count;
+		}
+		*object_kind = token_text_equals(parser, target_token_index, "OUTFILE") ?
+			MYLITE_STATEMENT_OBJECT_OUTFILE :
+			MYLITE_STATEMENT_OBJECT_DUMPFILE;
+		return target_token_index + 1;
+	}
+
+	variable_kind = variable_object_kind_from_token(&parser->tokens[target_token_index]);
+	if (variable_kind == MYLITE_STATEMENT_OBJECT_NONE ||
+	    variable_kind == MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE) {
+		return parser->token_count;
+	}
+	*object_kind = variable_kind;
+	return target_token_index;
 }
 
 static size_t find_import_sdi_file_token(const mylite_parser *parser,
@@ -1725,6 +1749,47 @@ static int token_is_explainable_statement_head(int token)
 	default:
 		return 0;
 	}
+}
+
+static int classify_table_statement_object(const mylite_parser *parser,
+                                           mylite_statement *statement,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	mylite_statement_object_kind object_kind = MYLITE_STATEMENT_OBJECT_NONE;
+	size_t name_token_index = find_table_into_target_token(parser,
+	                                                       token_index,
+	                                                       last_token_index,
+	                                                       &object_kind);
+
+	if (name_token_index < parser->token_count && object_kind != MYLITE_STATEMENT_OBJECT_NONE) {
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        object_kind,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	name_token_index = find_table_statement_name_token(parser, token_index, last_token_index);
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        MYLITE_STATEMENT_OBJECT_TABLE,
+	                                        name_token_index,
+	                                        last_token_index);
+}
+
+static size_t find_table_into_target_token(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index,
+                                           mylite_statement_object_kind *object_kind)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == INTO_T) {
+			return find_into_target_token(parser, token_index, last_token_index, object_kind);
+		}
+		token_index++;
+	}
+	return parser->token_count;
 }
 
 static size_t find_table_statement_name_token(const mylite_parser *parser,

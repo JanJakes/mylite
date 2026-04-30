@@ -155,8 +155,8 @@ create_tail ::= LOGFILE create_logfile_group cache_name_part create_logfile_grou
 create_tail ::= RESOURCE create_resource_group cache_name_part create_resource_type create_options_tail.
 create_tail ::= SPATIAL create_reference create_system cache_name_part create_srs_attribute_start statement_token create_options_tail.
 create_tail ::= SERVER cache_name_part create_server_tail.
-create_tail ::= TABLESPACE cache_name_part create_options_tail.
-create_tail ::= UNDO TABLESPACE cache_name_part create_options_tail.
+create_tail ::= TABLESPACE cache_name_part create_tablespace_tail.
+create_tail ::= UNDO TABLESPACE cache_name_part create_undo_tablespace_tail.
 create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_options_tail.
 create_tail ::= ROLE create_if_not_exists_tail drop_account_list.
 create_tail ::= USER create_if_not_exists_tail drop_account_name create_user_tail.
@@ -369,9 +369,21 @@ create_add ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "ADD");
 }
 
+create_datafile ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "DATAFILE");
+}
+
 create_undofile ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "UNDOFILE");
 }
+
+create_tablespace_tail ::= .
+create_tablespace_tail ::= ENGINE create_options_tail.
+create_tablespace_tail ::= ATOM(A) create_options_tail. {
+  mylite_parser_require_create_tablespace_tail_atom(ctx, A);
+}
+
+create_undo_tablespace_tail ::= create_add create_datafile ATOM create_options_tail.
 
 create_server_tail ::= create_foreign DATA create_wrapper cache_name_part create_server_options.
 

@@ -461,47 +461,96 @@ unlock_tail ::= INSTANCE.
 unlock_table_kind ::= TABLE.
 unlock_table_kind ::= TABLES.
 
-table_admin_statement ::= ANALYZE table_admin_with_optional_binlog. {
+table_admin_statement ::= ANALYZE analyze_table_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
-table_admin_statement ::= CHECK table_admin_table_tail. {
+table_admin_statement ::= CHECK check_table_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
-table_admin_statement ::= CHECKSUM table_admin_table_tail_singular. {
+table_admin_statement ::= CHECKSUM checksum_table_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
-table_admin_statement ::= OPTIMIZE table_admin_with_optional_binlog. {
+table_admin_statement ::= OPTIMIZE optimize_table_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
-table_admin_statement ::= REPAIR table_admin_with_optional_binlog. {
+table_admin_statement ::= REPAIR repair_table_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-table_admin_with_optional_binlog ::= table_admin_table_tail.
-table_admin_with_optional_binlog ::= LOCAL table_admin_table_tail.
-table_admin_with_optional_binlog ::= NO_WRITE_TO_BINLOG table_admin_table_tail.
+analyze_table_tail ::= table_admin_optional_binlog table_admin_table_keyword table_admin_table_list analyze_table_options.
 
-table_admin_table_tail ::= table_admin_table_keyword table_admin_table_list table_admin_options.
+analyze_table_options ::= .
+analyze_table_options ::= UPDATE analyze_histogram_marker ON table_admin_column_list analyze_histogram_value_tail.
+analyze_table_options ::= DROP analyze_histogram_marker ON table_admin_column_list.
 
-table_admin_table_tail_singular ::= TABLE table_admin_table_list table_admin_options.
+analyze_histogram_marker ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "HISTOGRAM");
+}
+
+analyze_histogram_value_tail ::= .
+analyze_histogram_value_tail ::= WITH ATOM analyze_buckets_marker.
+analyze_histogram_value_tail ::= USING DATA ATOM.
+
+analyze_buckets_marker ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "BUCKETS");
+}
+
+table_admin_column_list ::= table_admin_column.
+table_admin_column_list ::= table_admin_column_list import_comma table_admin_column.
+
+table_admin_column ::= ATOM.
+table_admin_column ::= LABEL.
+
+check_table_tail ::= table_admin_table_keyword table_admin_table_list check_table_options.
+
+check_table_options ::= .
+check_table_options ::= check_table_option_list.
+
+check_table_option_list ::= check_table_option.
+check_table_option_list ::= check_table_option_list check_table_option.
+
+check_table_option ::= FOR check_upgrade_marker.
+check_table_option ::= EXTENDED.
+check_table_option ::= QUICK.
+check_table_option ::= ATOM(A). {
+  mylite_parser_require_check_table_option(ctx, A);
+}
+
+check_upgrade_marker ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "UPGRADE");
+}
+
+checksum_table_tail ::= TABLE table_admin_table_list checksum_table_option.
+
+checksum_table_option ::= .
+checksum_table_option ::= QUICK.
+checksum_table_option ::= EXTENDED.
+
+optimize_table_tail ::= table_admin_optional_binlog table_admin_table_keyword table_admin_table_list.
+
+repair_table_tail ::= table_admin_optional_binlog table_admin_table_keyword table_admin_table_list repair_table_options.
+
+repair_table_options ::= .
+repair_table_options ::= repair_table_option_list.
+
+repair_table_option_list ::= repair_table_option.
+repair_table_option_list ::= repair_table_option_list repair_table_option.
+
+repair_table_option ::= QUICK.
+repair_table_option ::= EXTENDED.
+repair_table_option ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "USE_FRM");
+}
+
+table_admin_optional_binlog ::= .
+table_admin_optional_binlog ::= LOCAL.
+table_admin_optional_binlog ::= NO_WRITE_TO_BINLOG.
 
 table_admin_table_keyword ::= TABLE.
 table_admin_table_keyword ::= TABLES.
 
 table_admin_table_list ::= cache_table_ref.
 table_admin_table_list ::= table_admin_table_list import_comma cache_table_ref.
-
-table_admin_options ::= .
-table_admin_options ::= table_admin_option_start statement_tail.
-
-table_admin_option_start ::= UPDATE.
-table_admin_option_start ::= DROP.
-table_admin_option_start ::= EXTENDED.
-table_admin_option_start ::= FOR.
-table_admin_option_start ::= QUICK.
-table_admin_option_start ::= ATOM(A). {
-  mylite_parser_require_table_admin_option(ctx, A);
-}
 
 plugin_admin_statement ::= INSTALL plugin_admin_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
@@ -1825,6 +1874,7 @@ keyword ::= LOW_PRIORITY.
 keyword ::= NAMES.
 keyword ::= NO.
 keyword ::= OFFSET.
+keyword ::= ON.
 keyword ::= ORDER.
 keyword ::= PASSWORD.
 keyword ::= PLUGIN_DIR.
@@ -2037,6 +2087,7 @@ keyword_not_select_clause ::= LOW_PRIORITY.
 keyword_not_select_clause ::= NAMES.
 keyword_not_select_clause ::= NO.
 keyword_not_select_clause ::= OFFSET.
+keyword_not_select_clause ::= ON.
 keyword_not_select_clause ::= ORDER.
 keyword_not_select_clause ::= PASSWORD.
 keyword_not_select_clause ::= PLUGIN_DIR.

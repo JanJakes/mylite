@@ -584,6 +584,7 @@ static int keyword_token(const MyliteToken *token) {
       {"NO", ML_NO},
       {"NO_WRITE_TO_BINLOG", ML_NO_WRITE_TO_BINLOG},
       {"OFFSET", ML_OFFSET},
+      {"ON", ML_ON},
       {"OPEN", ML_OPEN},
       {"OPTIMIZE", ML_OPTIMIZE},
       {"OPTIMIZER_COSTS", ML_OPTIMIZER_COSTS},

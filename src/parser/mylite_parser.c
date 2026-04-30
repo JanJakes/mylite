@@ -238,6 +238,24 @@ void mylite_parser_require_start_until_log_pair(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &file);
 }
 
+void mylite_parser_require_check_table_option(MyliteParseContext *ctx,
+                                              MyliteToken token) {
+  static const char *const options[] = {
+      "CHANGED",
+      "FAST",
+      "MEDIUM",
+  };
+
+  if (ctx->failed ||
+      token_ascii_matches_any(&token, options,
+                              sizeof(options) / sizeof(options[0]))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
 void mylite_parser_require_diagnostics_statement_item(MyliteParseContext *ctx,
                                                       MyliteToken token) {
   static const char *const items[] = {
@@ -274,24 +292,6 @@ void mylite_parser_require_diagnostics_condition_item(MyliteParseContext *ctx,
 
   if (ctx->failed || token_ascii_matches_any(&token, items,
                                              sizeof(items) / sizeof(items[0]))) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
-void mylite_parser_require_table_admin_option(MyliteParseContext *ctx,
-                                              MyliteToken token) {
-  static const char *const options[] = {
-      "CHANGED",
-      "FAST",
-      "MEDIUM",
-      "USE_FRM",
-  };
-
-  if (ctx->failed || token_ascii_matches_any(&token, options,
-                                             sizeof(options) / sizeof(options[0]))) {
     return;
   }
 

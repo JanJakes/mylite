@@ -279,21 +279,21 @@ lock_statement ::= LOCK lock_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
 
-lock_tail ::= lock_first_token required_statement_tail.
+lock_tail ::= lock_table_kind required_statement_tail.
+lock_tail ::= INSTANCE FOR ATOM.
 
-lock_first_token ::= TABLE.
-lock_first_token ::= TABLES.
-lock_first_token ::= INSTANCE.
+lock_table_kind ::= TABLE.
+lock_table_kind ::= TABLES.
 
 unlock_statement ::= UNLOCK unlock_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
 
-unlock_tail ::= unlock_first_token statement_tail.
+unlock_tail ::= unlock_table_kind.
+unlock_tail ::= INSTANCE.
 
-unlock_first_token ::= TABLE.
-unlock_first_token ::= TABLES.
-unlock_first_token ::= INSTANCE.
+unlock_table_kind ::= TABLE.
+unlock_table_kind ::= TABLES.
 
 table_admin_statement ::= ANALYZE table_admin_with_optional_binlog. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);

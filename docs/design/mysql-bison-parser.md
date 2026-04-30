@@ -14,6 +14,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/keywords.html`
 - MySQL 8.4 statement labels:
   `https://dev.mysql.com/doc/refman/8.4/en/statement-labels.html`
+- MySQL 8.4 compound BEGIN ... END statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/begin-end.html`
 - MySQL 8.4 flow-control statements:
   `https://dev.mysql.com/doc/refman/8.4/en/case.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/if.html`,
@@ -277,12 +279,13 @@ to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token.
 Stored-program statement heads such as `DECLARE`, cursor operations, `IF`,
 `CASE`, loop forms, `LEAVE`, `ITERATE`, and `RETURN` have explicit statement
-kinds. Compound-control tokens are structurally matched for `IF ... END IF`,
-`CASE ... END CASE`, `LOOP ... END LOOP`, `REPEAT ... END REPEAT`, and
-`WHILE ... END WHILE` without misclassifying `IF(...)` expressions or
-`IF [NOT] EXISTS` clauses as compound block starts. Standalone matched
-flow-control blocks keep semicolon-delimited bodies in one statement span, with
-optional loop end labels included in that span. Local variable names are
+kinds. Compound-control tokens are structurally matched for `BEGIN ... END`,
+`IF ... END IF`, `CASE ... END CASE`, `LOOP ... END LOOP`,
+`REPEAT ... END REPEAT`, and `WHILE ... END WHILE` without misclassifying
+`BEGIN WORK`, `IF(...)` expressions, or `IF [NOT] EXISTS` clauses as compound
+block starts. Standalone matched compound and flow-control blocks keep
+semicolon-delimited bodies in one statement span, with optional end labels
+included in that span where MySQL allows them. Local variable names are
 recorded for ordinary `DECLARE` statements. Cursor names are recorded for
 `DECLARE ... CURSOR`, `OPEN`, `FETCH`, and `CLOSE`. Jump target labels are
 recorded for `LEAVE` and `ITERATE`. Label declarations are recorded when they

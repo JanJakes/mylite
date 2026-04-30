@@ -11,6 +11,7 @@ int yyparse(mylite_parser *parser);
 
 static void match_compound_control_tokens(mylite_parser *parser);
 static int is_compound_control_start_token(const mylite_parser *parser, size_t token_index);
+static int is_begin_work_statement(const mylite_parser *parser, size_t token_index);
 static int is_if_function_call(const mylite_parser *parser, size_t token_index);
 static int is_if_exists_clause(const mylite_parser *parser, size_t token_index);
 static int is_compound_control_end_token(int token);
@@ -580,6 +581,9 @@ static int is_compound_control_start_token(const mylite_parser *parser, size_t t
 	int token = parser->tokens[token_index].parser_token;
 
 	switch (token) {
+	case BEGIN_T:
+		return parser->tokens[token_index].matching_token == 0 &&
+		       !is_begin_work_statement(parser, token_index);
 	case IF_T:
 		return !is_if_function_call(parser, token_index) &&
 		       !is_if_exists_clause(parser, token_index);
@@ -592,6 +596,12 @@ static int is_compound_control_start_token(const mylite_parser *parser, size_t t
 	default:
 		return 0;
 	}
+}
+
+static int is_begin_work_statement(const mylite_parser *parser, size_t token_index)
+{
+	return token_index + 1 < parser->token_count &&
+	       token_text_equals(parser, token_index + 1, "WORK");
 }
 
 static int is_if_function_call(const mylite_parser *parser, size_t token_index)
@@ -613,7 +623,8 @@ static int is_if_exists_clause(const mylite_parser *parser, size_t token_index)
 
 static int is_compound_control_end_token(int token)
 {
-	return token == END_IF_T ||
+	return token == END_T ||
+	       token == END_IF_T ||
 	       token == END_CASE_T ||
 	       token == END_LOOP_T ||
 	       token == END_REPEAT_T ||
@@ -622,7 +633,8 @@ static int is_compound_control_end_token(int token)
 
 static int compound_control_tokens_match(int start_token, int end_token)
 {
-	return (start_token == IF_T && end_token == END_IF_T) ||
+	return (start_token == BEGIN_T && end_token == END_T) ||
+	       (start_token == IF_T && end_token == END_IF_T) ||
 	       (start_token == CASE_T && end_token == END_CASE_T) ||
 	       (start_token == LOOP_T && end_token == END_LOOP_T) ||
 	       (start_token == REPEAT_T && end_token == END_REPEAT_T) ||
@@ -690,7 +702,8 @@ static size_t last_compound_control_statement_token(const mylite_parser *parser,
 
 static int compound_control_end_allows_label(int token)
 {
-	return token == END_LOOP_T ||
+	return token == END_T ||
+	       token == END_LOOP_T ||
 	       token == END_REPEAT_T ||
 	       token == END_WHILE_T;
 }

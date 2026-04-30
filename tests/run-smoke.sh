@@ -638,6 +638,15 @@ case "$transaction_output" in
 		;;
 esac
 
+begin_block_output=$("$parser" 'BEGIN SELECT 1; END blk; BEGIN END; BEGIN; BEGIN WORK')
+case "$begin_block_output" in
+	*"kinds=begin[1:6"*"begin[8:9"*"begin"*/transaction*"begin"*/transaction*) ;;
+	*)
+		echo "unexpected BEGIN block output: $begin_block_output" >&2
+		exit 1
+		;;
+esac
+
 with_output=$("$parser" "WITH c AS (SELECT 1) UPDATE t SET a=1; WITH c AS (SELECT 1) DELETE FROM t; WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c")
 case "$with_output" in
 	*"kinds=update"*"delete"*"insert"*) ;;

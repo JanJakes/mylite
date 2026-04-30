@@ -28,7 +28,7 @@ def main() -> int:
     )
 
     completed = subprocess.run(
-        [args.exe, "--nul"],
+        [args.exe, "--nul", "--permissive"],
         input=payload,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

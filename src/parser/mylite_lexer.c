@@ -9,7 +9,9 @@ static unsigned char lexer_peek(const MyliteLexer *lexer, size_t ahead);
 static unsigned char lexer_advance(MyliteLexer *lexer);
 static void lexer_skip_space_and_comments(MyliteLexer *lexer);
 static int lexer_skip_line_comment(MyliteLexer *lexer);
+static int lexer_enter_executable_comment(MyliteLexer *lexer);
 static int lexer_skip_block_comment(MyliteLexer *lexer);
+static int lexer_skip_until_block_comment_end(MyliteLexer *lexer);
 static int lexer_string(MyliteLexer *lexer, MyliteToken *token,
                         unsigned char quote);
 static int lexer_quoted_identifier(MyliteLexer *lexer, MyliteToken *token);
@@ -18,8 +20,12 @@ static int lexer_dollar_quoted_string(MyliteLexer *lexer,
 static int lexer_number(MyliteLexer *lexer, MyliteToken *token);
 static int lexer_identifier(MyliteLexer *lexer, MyliteToken *token);
 static int lexer_operator(MyliteLexer *lexer, MyliteToken *token);
+static int keyword_token(const MyliteToken *token);
+static int keyword_equals(const MyliteToken *token, const char *keyword);
+static unsigned char ascii_upper(unsigned char c);
 static int is_identifier_start(unsigned char c);
 static int is_identifier_continue(unsigned char c);
+static int is_executable_comment_start(const MyliteLexer *lexer);
 static int is_line_comment_start(const MyliteLexer *lexer);
 static void token_start(MyliteLexer *lexer, MyliteToken *token);
 
@@ -74,6 +80,13 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
       lexer_advance(lexer);
       token->length = 1;
       return ML_SEMI;
+    case ':':
+      lexer_advance(lexer);
+      if (lexer_peek(lexer, 0) == '=') {
+        lexer_advance(lexer);
+      }
+      token->length = lexer->offset - token->offset;
+      return ML_ATOM;
     case '\'':
     case '"':
       return lexer_string(lexer, token, c);
@@ -143,8 +156,20 @@ static void lexer_skip_space_and_comments(MyliteLexer *lexer) {
       continue;
     }
 
+    if (is_executable_comment_start(lexer)) {
+      consumed = lexer_enter_executable_comment(lexer);
+      continue;
+    }
+
     if (lexer_peek(lexer, 0) == '/' && lexer_peek(lexer, 1) == '*') {
       consumed = lexer_skip_block_comment(lexer);
+      continue;
+    }
+
+    if (lexer_peek(lexer, 0) == '*' && lexer_peek(lexer, 1) == '/') {
+      lexer_advance(lexer);
+      lexer_advance(lexer);
+      consumed = 1;
     }
   } while (consumed && !lexer_at_end(lexer));
 }
@@ -156,10 +181,35 @@ static int lexer_skip_line_comment(MyliteLexer *lexer) {
   return 1;
 }
 
+static int lexer_enter_executable_comment(MyliteLexer *lexer) {
+  unsigned long version = 0;
+  size_t digits = 0;
+
+  lexer_advance(lexer);
+  lexer_advance(lexer);
+  lexer_advance(lexer);
+
+  while (digits < 6 && isdigit(lexer_peek(lexer, 0))) {
+    version = version * 10 + (unsigned long) (lexer_peek(lexer, 0) - '0');
+    lexer_advance(lexer);
+    digits++;
+  }
+
+  if (digits == 0 || version <= 80409) {
+    return 1;
+  }
+
+  return lexer_skip_until_block_comment_end(lexer);
+}
+
 static int lexer_skip_block_comment(MyliteLexer *lexer) {
   lexer_advance(lexer);
   lexer_advance(lexer);
 
+  return lexer_skip_until_block_comment_end(lexer);
+}
+
+static int lexer_skip_until_block_comment_end(MyliteLexer *lexer) {
   while (!lexer_at_end(lexer)) {
     if (lexer_peek(lexer, 0) == '*' && lexer_peek(lexer, 1) == '/') {
       lexer_advance(lexer);
@@ -288,13 +338,22 @@ static int lexer_number(MyliteLexer *lexer, MyliteToken *token) {
 }
 
 static int lexer_identifier(MyliteLexer *lexer, MyliteToken *token) {
+  int keyword;
+
   lexer_advance(lexer);
   while (is_identifier_continue(lexer_peek(lexer, 0))) {
     lexer_advance(lexer);
   }
 
+  if (lexer_peek(lexer, 0) == ':' && lexer_peek(lexer, 1) != '=') {
+    lexer_advance(lexer);
+    token->length = lexer->offset - token->offset;
+    return ML_LABEL;
+  }
+
   token->length = lexer->offset - token->offset;
-  return ML_ATOM;
+  keyword = keyword_token(token);
+  return keyword == 0 ? ML_ATOM : keyword;
 }
 
 static int lexer_operator(MyliteLexer *lexer, MyliteToken *token) {
@@ -303,12 +362,133 @@ static int lexer_operator(MyliteLexer *lexer, MyliteToken *token) {
   return ML_ATOM;
 }
 
+static int keyword_token(const MyliteToken *token) {
+  static const struct {
+    const char *keyword;
+    int token;
+  } keywords[] = {
+      {"ALTER", ML_ALTER},
+      {"ANALYZE", ML_ANALYZE},
+      {"BEGIN", ML_BEGIN},
+      {"BINLOG", ML_BINLOG},
+      {"CACHE", ML_CACHE},
+      {"CALL", ML_CALL},
+      {"CASE", ML_CASE},
+      {"CHANGE", ML_CHANGE},
+      {"CHECK", ML_CHECK},
+      {"CHECKSUM", ML_CHECKSUM},
+      {"CLONE", ML_CLONE},
+      {"CLOSE", ML_CLOSE},
+      {"COMMIT", ML_COMMIT},
+      {"CREATE", ML_CREATE},
+      {"DECLARE", ML_DECLARE},
+      {"DEALLOCATE", ML_DEALLOCATE},
+      {"DELETE", ML_DELETE},
+      {"DESC", ML_DESC},
+      {"DESCRIBE", ML_DESCRIBE},
+      {"DO", ML_DO},
+      {"DROP", ML_DROP},
+      {"ELSE", ML_ELSE},
+      {"ELSEIF", ML_ELSEIF},
+      {"END", ML_END},
+      {"EXECUTE", ML_EXECUTE},
+      {"EXPLAIN", ML_EXPLAIN},
+      {"FETCH", ML_FETCH},
+      {"FLUSH", ML_FLUSH},
+      {"FROM", ML_FROM},
+      {"GET", ML_GET},
+      {"GRANT", ML_GRANT},
+      {"HANDLER", ML_HANDLER},
+      {"HAVING", ML_HAVING},
+      {"HELP", ML_HELP},
+      {"IF", ML_IF},
+      {"IMPORT", ML_IMPORT},
+      {"INSERT", ML_INSERT},
+      {"INSTALL", ML_INSTALL},
+      {"ITERATE", ML_ITERATE},
+      {"KILL", ML_KILL},
+      {"LEAVE", ML_LEAVE},
+      {"LOAD", ML_LOAD},
+      {"LOCK", ML_LOCK},
+      {"LOOP", ML_LOOP},
+      {"OPEN", ML_OPEN},
+      {"OPTIMIZE", ML_OPTIMIZE},
+      {"PURGE", ML_PURGE},
+      {"PREPARE", ML_PREPARE},
+      {"RELEASE", ML_RELEASE},
+      {"RENAME", ML_RENAME},
+      {"REPAIR", ML_REPAIR},
+      {"REPEAT", ML_REPEAT},
+      {"REPLACE", ML_REPLACE},
+      {"RESET", ML_RESET},
+      {"RESIGNAL", ML_RESIGNAL},
+      {"RESTART", ML_RESTART},
+      {"RETURN", ML_RETURN},
+      {"REVOKE", ML_REVOKE},
+      {"ROLLBACK", ML_ROLLBACK},
+      {"SAVEPOINT", ML_SAVEPOINT},
+      {"SELECT", ML_SELECT},
+      {"SET", ML_SET},
+      {"SHOW", ML_SHOW},
+      {"SHUTDOWN", ML_SHUTDOWN},
+      {"SIGNAL", ML_SIGNAL},
+      {"START", ML_START},
+      {"TABLE", ML_TABLE},
+      {"TRUNCATE", ML_TRUNCATE},
+      {"UNTIL", ML_UNTIL},
+      {"UNINSTALL", ML_UNINSTALL},
+      {"UNLOCK", ML_UNLOCK},
+      {"UPDATE", ML_UPDATE},
+      {"USE", ML_USE},
+      {"VALUES", ML_VALUES},
+      {"WHEN", ML_WHEN},
+      {"WHILE", ML_WHILE},
+      {"WITH", ML_WITH},
+      {"XA", ML_XA},
+  };
+  size_t i;
+
+  for (i = 0; i < sizeof(keywords) / sizeof(keywords[0]); i++) {
+    if (keyword_equals(token, keywords[i].keyword)) {
+      return keywords[i].token;
+    }
+  }
+
+  return 0;
+}
+
+static int keyword_equals(const MyliteToken *token, const char *keyword) {
+  size_t i = 0;
+
+  while (i < token->length && keyword[i] != '\0') {
+    if (ascii_upper((unsigned char) token->start[i]) !=
+        (unsigned char) keyword[i]) {
+      return 0;
+    }
+    i++;
+  }
+
+  return i == token->length && keyword[i] == '\0';
+}
+
+static unsigned char ascii_upper(unsigned char c) {
+  if (c >= 'a' && c <= 'z') {
+    return (unsigned char) (c - ('a' - 'A'));
+  }
+  return c;
+}
+
 static int is_identifier_start(unsigned char c) {
   return isalpha(c) || c == '_' || c >= 0x80;
 }
 
 static int is_identifier_continue(unsigned char c) {
   return isalnum(c) || c == '_' || c == '$' || c >= 0x80;
+}
+
+static int is_executable_comment_start(const MyliteLexer *lexer) {
+  return lexer_peek(lexer, 0) == '/' && lexer_peek(lexer, 1) == '*' &&
+         lexer_peek(lexer, 2) == '!';
 }
 
 static int is_line_comment_start(const MyliteLexer *lexer) {

@@ -9,6 +9,9 @@
 #include "generated/mylite_lemon.h"
 
 static void result_init(MyliteParseResult *result);
+static MyliteParseStatus parse_sql(const char *sql, size_t length,
+                                   int permissive,
+                                   MyliteParseResult *result);
 static void set_parser_error(MyliteParseContext *ctx, const MyliteToken *token,
                              const char *message);
 static void format_near_token(MyliteParseContext *ctx, int token_id,
@@ -16,12 +19,24 @@ static void format_near_token(MyliteParseContext *ctx, int token_id,
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
                                    MyliteParseResult *result) {
+  return parse_sql(sql, length, 0, result);
+}
+
+MyliteParseStatus mylite_parse_sql_permissive(const char *sql, size_t length,
+                                              MyliteParseResult *result) {
+  return parse_sql(sql, length, 1, result);
+}
+
+static MyliteParseStatus parse_sql(const char *sql, size_t length,
+                                   int permissive,
+                                   MyliteParseResult *result) {
   MyliteParseResult local_result;
   MyliteParseContext ctx;
   MyliteLexer lexer;
   MyliteToken token;
   void *parser;
   int token_id;
+  int last_token_id = 0;
 
   if (result == NULL) {
     result = &local_result;
@@ -30,6 +45,8 @@ MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
 
   ctx.sql = sql;
   ctx.length = length;
+  ctx.permissive = permissive;
+  ctx.permissive_fallbacks = 0;
   ctx.accepted = 0;
   ctx.failed = 0;
   ctx.result = result;
@@ -48,6 +65,7 @@ MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
       result->statement_count++;
     }
     MyLiteLemon(parser, token_id, token, &ctx);
+    last_token_id = token_id;
     if (ctx.failed) {
       MyLiteLemonFree(parser, free);
       return MYLITE_PARSE_ERROR;
@@ -64,6 +82,9 @@ MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
   token.offset = length;
   token.line = lexer.line;
   token.column = lexer.column;
+  if (result->token_count > 0 && last_token_id != ML_SEMI) {
+    MyLiteLemon(parser, ML_SEMI, token, &ctx);
+  }
   MyLiteLemon(parser, 0, token, &ctx);
   MyLiteLemonFree(parser, free);
 
@@ -77,6 +98,7 @@ MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
   if (result->statement_count == 0 && result->token_count > 0) {
     result->statement_count = 1;
   }
+  result->permissive_fallbacks = ctx.permissive_fallbacks;
 
   return MYLITE_PARSE_OK;
 }
@@ -97,6 +119,17 @@ void mylite_parser_syntax_error(MyliteParseContext *ctx, int token_id,
 
   ctx->failed = 1;
   format_near_token(ctx, token_id, &token);
+}
+
+void mylite_parser_require_permissive(MyliteParseContext *ctx,
+                                      MyliteToken token) {
+  if (ctx->permissive) {
+    ctx->permissive_fallbacks++;
+    return;
+  }
+
+  ctx->failed = 1;
+  set_parser_error(ctx, &token, "unsupported statement start");
 }
 
 static void result_init(MyliteParseResult *result) {

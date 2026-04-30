@@ -16,6 +16,8 @@ typedef struct MyliteToken {
 typedef struct MyliteParseContext {
   const char *sql;
   size_t length;
+  int permissive;
+  size_t permissive_fallbacks;
   int accepted;
   int failed;
   MyliteParseResult *result;
@@ -25,6 +27,8 @@ void mylite_parser_accept(MyliteParseContext *ctx);
 void mylite_parser_failure(MyliteParseContext *ctx);
 void mylite_parser_syntax_error(MyliteParseContext *ctx, int token_id,
                                 MyliteToken token);
+void mylite_parser_require_permissive(MyliteParseContext *ctx,
+                                      MyliteToken token);
 
 void *MyLiteLemonAlloc(void *(*malloc_proc)(size_t));
 void MyLiteLemon(void *parser, int token_id, MyliteToken token,
@@ -32,4 +36,3 @@ void MyLiteLemon(void *parser, int token_id, MyliteToken token,
 void MyLiteLemonFree(void *parser, void (*free_proc)(void *));
 
 #endif
-

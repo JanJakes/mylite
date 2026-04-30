@@ -15,6 +15,7 @@ typedef enum MyliteParseStatus {
 typedef struct MyliteParseResult {
   size_t statement_count;
   size_t token_count;
+  size_t permissive_fallbacks;
   size_t error_offset;
   size_t error_line;
   size_t error_column;
@@ -23,10 +24,11 @@ typedef struct MyliteParseResult {
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
                                    MyliteParseResult *result);
+MyliteParseStatus mylite_parse_sql_permissive(const char *sql, size_t length,
+                                              MyliteParseResult *result);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif
-

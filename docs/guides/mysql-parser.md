@@ -18,6 +18,13 @@ The CLI reports statement kind plus token and byte spans:
 ok statements=1 kinds=select[1:2,0:8]
 ```
 
+DDL and table-maintenance statements include a target object kind when the
+prototype can identify one:
+
+```text
+ok statements=1 kinds=create[1:7,0:23]/table
+```
+
 Dump tokens:
 
 ```sh

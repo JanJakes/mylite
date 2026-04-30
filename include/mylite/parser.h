@@ -68,6 +68,23 @@ typedef enum mylite_statement_kind {
 	MYLITE_STATEMENT_IF
 } mylite_statement_kind;
 
+typedef enum mylite_statement_object_kind {
+	MYLITE_STATEMENT_OBJECT_NONE = 0,
+	MYLITE_STATEMENT_OBJECT_DATABASE,
+	MYLITE_STATEMENT_OBJECT_EVENT,
+	MYLITE_STATEMENT_OBJECT_FUNCTION,
+	MYLITE_STATEMENT_OBJECT_INDEX,
+	MYLITE_STATEMENT_OBJECT_PROCEDURE,
+	MYLITE_STATEMENT_OBJECT_ROLE,
+	MYLITE_STATEMENT_OBJECT_SCHEMA,
+	MYLITE_STATEMENT_OBJECT_SPATIAL_REFERENCE_SYSTEM,
+	MYLITE_STATEMENT_OBJECT_TABLE,
+	MYLITE_STATEMENT_OBJECT_TABLESPACE,
+	MYLITE_STATEMENT_OBJECT_TRIGGER,
+	MYLITE_STATEMENT_OBJECT_USER,
+	MYLITE_STATEMENT_OBJECT_VIEW
+} mylite_statement_object_kind;
+
 typedef enum mylite_token_kind {
 	MYLITE_TOKEN_UNKNOWN = 0,
 	MYLITE_TOKEN_IDENTIFIER,
@@ -95,6 +112,7 @@ typedef struct mylite_token {
 
 typedef struct mylite_statement {
 	mylite_statement_kind kind;
+	mylite_statement_object_kind object_kind;
 	size_t first_token;
 	size_t last_token;
 	size_t start_offset;
@@ -119,6 +137,7 @@ typedef struct mylite_parse_result {
 int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result);
 void mylite_parse_result_free(mylite_parse_result *result);
 const char *mylite_statement_kind_name(mylite_statement_kind kind);
+const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind);
 const char *mylite_token_kind_name(mylite_token_kind kind);
 
 #ifdef __cplusplus

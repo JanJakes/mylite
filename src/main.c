@@ -198,6 +198,9 @@ static void print_result(const mylite_parse_result *result)
 
 	printf("ok statements=%zu", result->statement_count);
 	for (i = 0; i < result->statement_count; i++) {
+		const char *object_name = result->statements[i].object_kind == MYLITE_STATEMENT_OBJECT_NONE
+			? ""
+			: mylite_statement_object_kind_name(result->statements[i].object_kind);
 		printf("%s%s[%zu:%zu,%zu:%zu]",
 		       i == 0 ? " kinds=" : ",",
 		       mylite_statement_kind_name(result->statements[i].kind),
@@ -205,6 +208,9 @@ static void print_result(const mylite_parse_result *result)
 		       result->statements[i].last_token,
 		       result->statements[i].start_offset,
 		       result->statements[i].end_offset);
+		if (object_name[0] != '\0') {
+			printf("/%s", object_name);
+		}
 	}
 	printf("\n");
 }

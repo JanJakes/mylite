@@ -24,6 +24,15 @@ case "$span_output" in
 		;;
 esac
 
+object_output=$("$parser" "CREATE TABLE t (id int); ALTER VIEW v AS SELECT 1; DROP FUNCTION f")
+case "$object_output" in
+	*"create"*/table*"alter"*/view*"drop"*/function*) ;;
+	*)
+		echo "unexpected object output: $object_output" >&2
+		exit 1
+		;;
+esac
+
 token_output=$("$parser" --tokens "SELECT @a, ? FROM t WHERE a IS NULL")
 case "$token_output" in
 	*"token 1 keyword"*"token 2 user_variable"*"token 3 punctuation"*"token 4 parameter"*"token 5 keyword"*"token 7 keyword"*"token 10 keyword"*) ;;

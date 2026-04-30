@@ -59,7 +59,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| Bison parser foundation | 🟡 | top | Accept MySQL statement text through a Bison-owned parser boundary and produce a token stream plus AST shell for later analysis and translation. | Prototype in [docs/design/mysql-bison-parser.md](docs/design/mysql-bison-parser.md). Validates balanced groups, `BEGIN ... END`, `CASE ... END`, statement sequencing, MySQL lexical forms, executable version-comment syntax, statement token spans, source byte spans, and token stream spans. Corpus gate parses 69,577 WordPress SQLite Database Integration MySQL queries, but detailed statement productions and semantic validation are still incomplete. |
+| Bison parser foundation | 🟡 | top | Accept MySQL statement text through a Bison-owned parser boundary and produce a token stream plus AST shell for later analysis and translation. | Prototype in [docs/design/mysql-bison-parser.md](docs/design/mysql-bison-parser.md). Validates balanced groups, `BEGIN ... END`, `CASE ... END`, statement sequencing, MySQL lexical forms, executable version-comment syntax, statement token spans, source byte spans, token stream spans, and DDL/admin object-kind classification. Corpus gate parses 69,577 WordPress SQLite Database Integration MySQL queries, but detailed statement productions and semantic validation are still incomplete. |
 
 ### 1.1 Data Definition Statements
 

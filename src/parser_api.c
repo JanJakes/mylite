@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "lexer.h"
 #include "parser_bison.h"
@@ -8,6 +9,13 @@
 
 int yyparse(mylite_parser *parser);
 
+static void classify_statement_objects(mylite_parser *parser);
+static mylite_statement_object_kind classify_statement_object(const mylite_parser *parser,
+                                                              const mylite_statement *statement);
+static mylite_statement_object_kind object_kind_from_token_sequence(const mylite_parser *parser,
+                                                                    size_t token_index,
+                                                                    size_t last_token_index);
+static int statement_kind_uses_object_scan(mylite_statement_kind kind);
 static mylite_token_kind token_kind_from_parser_token(int token);
 
 void mylite_parser_init(mylite_parser *parser, const char *sql, size_t length)
@@ -89,6 +97,7 @@ int mylite_parser_add_statement(mylite_parser *parser, mylite_statement_kind kin
 	}
 
 	parser->statements[parser->statement_count].kind = kind;
+	parser->statements[parser->statement_count].object_kind = MYLITE_STATEMENT_OBJECT_NONE;
 	parser->statements[parser->statement_count].first_token = parser->active_statement_first_token;
 	parser->statements[parser->statement_count].last_token = parser->lexer.last_significant_token;
 	parser->statements[parser->statement_count].start_offset = parser->active_statement_start_offset;
@@ -127,6 +136,9 @@ int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result
 	rc = yyparse(&parser);
 	if (parser.lexer.error[0] != '\0') {
 		mylite_parser_set_error(&parser, parser.lexer.error);
+	}
+	if (parser.error[0] == '\0') {
+		classify_statement_objects(&parser);
 	}
 
 	result->ok = rc == 0 && parser.error[0] == '\0';
@@ -245,6 +257,28 @@ const char *mylite_statement_kind_name(mylite_statement_kind kind)
 	}
 }
 
+const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
+{
+	switch (kind) {
+	case MYLITE_STATEMENT_OBJECT_DATABASE: return "database";
+	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
+	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
+	case MYLITE_STATEMENT_OBJECT_INDEX: return "index";
+	case MYLITE_STATEMENT_OBJECT_PROCEDURE: return "procedure";
+	case MYLITE_STATEMENT_OBJECT_ROLE: return "role";
+	case MYLITE_STATEMENT_OBJECT_SCHEMA: return "schema";
+	case MYLITE_STATEMENT_OBJECT_SPATIAL_REFERENCE_SYSTEM: return "spatial_reference_system";
+	case MYLITE_STATEMENT_OBJECT_TABLE: return "table";
+	case MYLITE_STATEMENT_OBJECT_TABLESPACE: return "tablespace";
+	case MYLITE_STATEMENT_OBJECT_TRIGGER: return "trigger";
+	case MYLITE_STATEMENT_OBJECT_USER: return "user";
+	case MYLITE_STATEMENT_OBJECT_VIEW: return "view";
+	case MYLITE_STATEMENT_OBJECT_NONE:
+	default:
+		return "none";
+	}
+}
+
 const char *mylite_token_kind_name(mylite_token_kind kind)
 {
 	switch (kind) {
@@ -261,6 +295,95 @@ const char *mylite_token_kind_name(mylite_token_kind kind)
 	case MYLITE_TOKEN_UNKNOWN:
 	default:
 		return "unknown";
+	}
+}
+
+static void classify_statement_objects(mylite_parser *parser)
+{
+	size_t i;
+
+	for (i = 0; i < parser->statement_count; i++) {
+		parser->statements[i].object_kind = classify_statement_object(parser, &parser->statements[i]);
+	}
+}
+
+static mylite_statement_object_kind classify_statement_object(const mylite_parser *parser,
+                                                              const mylite_statement *statement)
+{
+	size_t token_index;
+	size_t last_token_index;
+
+	if (!statement_kind_uses_object_scan(statement->kind) ||
+	    statement->first_token == 0 ||
+	    statement->last_token < statement->first_token) {
+		return MYLITE_STATEMENT_OBJECT_NONE;
+	}
+
+	token_index = statement->first_token;
+	last_token_index = statement->last_token - 1;
+	for (; token_index <= last_token_index && token_index < parser->token_count; token_index++) {
+		mylite_statement_object_kind object_kind =
+			object_kind_from_token_sequence(parser, token_index, last_token_index);
+		if (object_kind != MYLITE_STATEMENT_OBJECT_NONE) {
+			return object_kind;
+		}
+	}
+	return MYLITE_STATEMENT_OBJECT_NONE;
+}
+
+static mylite_statement_object_kind object_kind_from_token_sequence(const mylite_parser *parser,
+                                                                    size_t token_index,
+                                                                    size_t last_token_index)
+{
+	int token = parser->tokens[token_index].parser_token;
+
+	switch (token) {
+	case DATABASE_T: return MYLITE_STATEMENT_OBJECT_DATABASE;
+	case EVENT_T: return MYLITE_STATEMENT_OBJECT_EVENT;
+	case FUNCTION_T: return MYLITE_STATEMENT_OBJECT_FUNCTION;
+	case INDEX_T: return MYLITE_STATEMENT_OBJECT_INDEX;
+	case PROCEDURE_T: return MYLITE_STATEMENT_OBJECT_PROCEDURE;
+	case ROLE_T: return MYLITE_STATEMENT_OBJECT_ROLE;
+	case SCHEMA_T: return MYLITE_STATEMENT_OBJECT_SCHEMA;
+	case TABLE_T: return MYLITE_STATEMENT_OBJECT_TABLE;
+	case TRIGGER_T: return MYLITE_STATEMENT_OBJECT_TRIGGER;
+	case USER_T: return MYLITE_STATEMENT_OBJECT_USER;
+	case VIEW_T: return MYLITE_STATEMENT_OBJECT_VIEW;
+	case SPATIAL_T:
+		if (token_index + 2 <= last_token_index &&
+		    parser->tokens[token_index + 1].kind == MYLITE_TOKEN_IDENTIFIER &&
+		    parser->tokens[token_index + 2].kind == MYLITE_TOKEN_IDENTIFIER) {
+			return MYLITE_STATEMENT_OBJECT_SPATIAL_REFERENCE_SYSTEM;
+		}
+		return MYLITE_STATEMENT_OBJECT_NONE;
+	default:
+		if (parser->tokens[token_index].kind == MYLITE_TOKEN_IDENTIFIER &&
+		    parser->tokens[token_index].end_offset - parser->tokens[token_index].start_offset == 10 &&
+		    strncasecmp("TABLESPACE",
+		                parser->lexer.input + parser->tokens[token_index].start_offset,
+		                10) == 0) {
+			return MYLITE_STATEMENT_OBJECT_TABLESPACE;
+		}
+		return MYLITE_STATEMENT_OBJECT_NONE;
+	}
+}
+
+static int statement_kind_uses_object_scan(mylite_statement_kind kind)
+{
+	switch (kind) {
+	case MYLITE_STATEMENT_CREATE:
+	case MYLITE_STATEMENT_ALTER:
+	case MYLITE_STATEMENT_DROP:
+	case MYLITE_STATEMENT_TRUNCATE:
+	case MYLITE_STATEMENT_RENAME:
+	case MYLITE_STATEMENT_ANALYZE:
+	case MYLITE_STATEMENT_CHECK:
+	case MYLITE_STATEMENT_CHECKSUM:
+	case MYLITE_STATEMENT_OPTIMIZE:
+	case MYLITE_STATEMENT_REPAIR:
+		return 1;
+	default:
+		return 0;
 	}
 }
 

@@ -100,6 +100,7 @@ statement ::= permissive_start(A) statement_tail. {
 
 statement_start(A) ::= SELECT. { A = MYLITE_STATEMENT_SELECT; }
 statement_start(A) ::= CREATE. { A = MYLITE_STATEMENT_DDL; }
+statement_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 statement_start(A) ::= required_tail_start(B). { A = B; }
 statement_start(A) ::= optional_tail_start(B). { A = B; }
 

@@ -586,27 +586,37 @@ insert_statement ::= INSERT insert_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_INSERT);
 }
 
-insert_tail ::= dml_insert_first_token required_statement_tail.
+insert_tail ::= dml_insert_target required_statement_tail.
+insert_tail ::= dml_insert_modifiers dml_insert_target required_statement_tail.
 
-dml_insert_first_token ::= ATOM.
-dml_insert_first_token ::= DELAYED.
-dml_insert_first_token ::= HIGH_PRIORITY.
-dml_insert_first_token ::= IGNORE.
-dml_insert_first_token ::= INTO.
-dml_insert_first_token ::= LABEL.
-dml_insert_first_token ::= LOW_PRIORITY.
+dml_insert_modifiers ::= dml_insert_modifier.
+dml_insert_modifiers ::= dml_insert_modifiers dml_insert_modifier.
+
+dml_insert_modifier ::= DELAYED.
+dml_insert_modifier ::= HIGH_PRIORITY.
+dml_insert_modifier ::= IGNORE.
+dml_insert_modifier ::= LOW_PRIORITY.
+
+dml_insert_target ::= ATOM.
+dml_insert_target ::= INTO.
+dml_insert_target ::= LABEL.
 
 replace_statement ::= REPLACE replace_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLACE);
 }
 
-replace_tail ::= dml_replace_first_token required_statement_tail.
+replace_tail ::= dml_replace_target required_statement_tail.
+replace_tail ::= dml_replace_modifiers dml_replace_target required_statement_tail.
 
-dml_replace_first_token ::= ATOM.
-dml_replace_first_token ::= DELAYED.
-dml_replace_first_token ::= INTO.
-dml_replace_first_token ::= LABEL.
-dml_replace_first_token ::= LOW_PRIORITY.
+dml_replace_modifiers ::= dml_replace_modifier.
+dml_replace_modifiers ::= dml_replace_modifiers dml_replace_modifier.
+
+dml_replace_modifier ::= DELAYED.
+dml_replace_modifier ::= LOW_PRIORITY.
+
+dml_replace_target ::= ATOM.
+dml_replace_target ::= INTO.
+dml_replace_target ::= LABEL.
 
 update_statement ::= UPDATE update_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UPDATE);

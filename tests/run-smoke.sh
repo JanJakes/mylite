@@ -439,6 +439,15 @@ case "$flush_output" in
 		;;
 esac
 
+flush_global_output=$("$parser" 'FLUSH ENGINE LOGS; FLUSH ERROR LOGS; FLUSH GENERAL LOGS; FLUSH LOGS; FLUSH SLOW LOGS; FLUSH HOSTS; FLUSH OPTIMIZER_COSTS; FLUSH USER_RESOURCES; FLUSH NO_WRITE_TO_BINLOG ERROR LOGS')
+case "$flush_global_output" in
+	*"flush"*/engine_log*"flush"*/error_log*"flush"*/general_log*"flush"*/log*"flush"*/slow_log*"flush"*/host_cache*"flush"*/optimizer_cost*"flush"*/user_resource*"flush"*/error_log*) ;;
+	*)
+		echo "unexpected global FLUSH output: $flush_global_output" >&2
+		exit 1
+		;;
+esac
+
 flush_relay_output=$("$parser" "FLUSH RELAY LOGS FOR CHANNEL 'ch'; FLUSH NO_WRITE_TO_BINLOG RELAY LOGS FOR CHANNEL 'ch2'; FLUSH RELAY LOGS; FLUSH TABLES t")
 case "$flush_relay_output" in
 	*"flush"*/replication_channel:"'ch'"*"flush"*/replication_channel:"'ch2'"*"flush[16:18"*"flush"*/table:t*) ;;

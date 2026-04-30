@@ -715,15 +715,21 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_DIRECTORY: return "directory";
 	case MYLITE_STATEMENT_OBJECT_DUMPFILE: return "dumpfile";
 	case MYLITE_STATEMENT_OBJECT_ENGINE: return "engine";
+	case MYLITE_STATEMENT_OBJECT_ENGINE_LOG: return "engine_log";
+	case MYLITE_STATEMENT_OBJECT_ERROR_LOG: return "error_log";
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
 	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
+	case MYLITE_STATEMENT_OBJECT_GENERAL_LOG: return "general_log";
 	case MYLITE_STATEMENT_OBJECT_GROUP_REPLICATION: return "group_replication";
 	case MYLITE_STATEMENT_OBJECT_HELP_TOPIC: return "help_topic";
+	case MYLITE_STATEMENT_OBJECT_HOST_CACHE: return "host_cache";
 	case MYLITE_STATEMENT_OBJECT_INDEX: return "index";
 	case MYLITE_STATEMENT_OBJECT_INSTANCE: return "instance";
 	case MYLITE_STATEMENT_OBJECT_LABEL: return "label";
+	case MYLITE_STATEMENT_OBJECT_LOG: return "log";
 	case MYLITE_STATEMENT_OBJECT_LOGFILE_GROUP: return "logfile_group";
 	case MYLITE_STATEMENT_OBJECT_LOCAL_VARIABLE: return "local_variable";
+	case MYLITE_STATEMENT_OBJECT_OPTIMIZER_COST: return "optimizer_cost";
 	case MYLITE_STATEMENT_OBJECT_OUTFILE: return "outfile";
 	case MYLITE_STATEMENT_OBJECT_PLUGIN: return "plugin";
 	case MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT: return "prepared_statement";
@@ -740,6 +746,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_SERVER: return "server";
 	case MYLITE_STATEMENT_OBJECT_SPATIAL_REFERENCE_SYSTEM: return "spatial_reference_system";
 	case MYLITE_STATEMENT_OBJECT_SQLSTATE: return "sqlstate";
+	case MYLITE_STATEMENT_OBJECT_SLOW_LOG: return "slow_log";
 	case MYLITE_STATEMENT_OBJECT_STATUS_VARIABLE: return "status_variable";
 	case MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE: return "system_variable";
 	case MYLITE_STATEMENT_OBJECT_TABLE: return "table";
@@ -748,6 +755,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_TRIGGER: return "trigger";
 	case MYLITE_STATEMENT_OBJECT_USER: return "user";
 	case MYLITE_STATEMENT_OBJECT_USER_VARIABLE: return "user_variable";
+	case MYLITE_STATEMENT_OBJECT_USER_RESOURCE: return "user_resource";
 	case MYLITE_STATEMENT_OBJECT_VIEW: return "view";
 	case MYLITE_STATEMENT_OBJECT_XA_TRANSACTION: return "xa_transaction";
 	case MYLITE_STATEMENT_OBJECT_NONE:
@@ -1671,12 +1679,52 @@ static int classify_flush_statement_object(const mylite_parser *parser,
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_BINARY_LOG);
 	}
 
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "ENGINE") &&
+	    token_text_equals(parser, token_index + 1, "LOGS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_ENGINE_LOG);
+	}
+
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "ERROR") &&
+	    token_text_equals(parser, token_index + 1, "LOGS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_ERROR_LOG);
+	}
+
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "GENERAL") &&
+	    token_text_equals(parser, token_index + 1, "LOGS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_GENERAL_LOG);
+	}
+
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "SLOW") &&
+	    token_text_equals(parser, token_index + 1, "LOGS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_SLOW_LOG);
+	}
+
+	if (token_text_equals(parser, token_index, "LOGS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_LOG);
+	}
+
 	if (token_text_equals(parser, token_index, "PRIVILEGES")) {
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_PRIVILEGE);
 	}
 
 	if (token_text_equals(parser, token_index, "STATUS")) {
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_STATUS_VARIABLE);
+	}
+
+	if (token_text_equals(parser, token_index, "HOSTS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_HOST_CACHE);
+	}
+
+	if (token_text_equals(parser, token_index, "OPTIMIZER_COSTS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_OPTIMIZER_COST);
+	}
+
+	if (token_text_equals(parser, token_index, "USER_RESOURCES")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_USER_RESOURCE);
 	}
 
 	name_token_index = find_flush_table_name_token(parser, token_index, last_token_index);

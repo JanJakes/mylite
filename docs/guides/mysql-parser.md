@@ -206,6 +206,10 @@ SHOW ENGINE diagnostics expose the engine name:
 ok statements=1 kinds=show[1:4,0:25]/engine:InnoDB
 ```
 
+```text
+ok statements=1 kinds=show[1:4,0:24]/engine:NDB
+```
+
 SHOW PROFILE exposes explicit query ids:
 
 ```text

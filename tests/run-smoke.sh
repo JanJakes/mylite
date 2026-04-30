@@ -340,9 +340,9 @@ case "$show_routine_code_output" in
 		;;
 esac
 
-show_engine_output=$("$parser" 'SHOW ENGINE InnoDB STATUS; SHOW ENGINE performance_schema MUTEX; SHOW ENGINES')
+show_engine_output=$("$parser" 'SHOW ENGINE InnoDB STATUS; SHOW ENGINE performance_schema MUTEX; SHOW ENGINE NDB STATUS; SHOW ENGINE InnoDB LOGS; SHOW ENGINES')
 case "$show_engine_output" in
-	*"show"*/engine:InnoDB*"show"*/engine:performance_schema*"show"*/engine*) ;;
+	*"show"*/engine:InnoDB*"show"*/engine:performance_schema*"show"*/engine:NDB*"show[16:19"*"show"*/engine*) ;;
 	*)
 		echo "unexpected SHOW engine output: $show_engine_output" >&2
 		exit 1

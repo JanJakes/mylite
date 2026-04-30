@@ -74,6 +74,7 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/show-warnings.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-errors.html`
 - MySQL 8.4 SHOW collection statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-engine.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-engines.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-plugins.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-privileges.html`,
@@ -342,6 +343,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   privilege, connection-loss, shutdown, or restart semantics.
   `SHOW PROFILE` metadata records query targets for bare forms and numeric
   `FOR QUERY` ids, while malformed `FOR QUERY` forms stay objectless.
+  `SHOW ENGINE` metadata records the named engine for MySQL 8.4 `STATUS` and
+  `MUTEX` forms; historical `LOGS` forms remain objectless.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

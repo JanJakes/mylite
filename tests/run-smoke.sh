@@ -385,9 +385,9 @@ case "$show_parse_tree_output" in
 		;;
 esac
 
-binary_log_output=$("$parser" "SHOW BINARY LOGS; SHOW BINARY LOG STATUS; SHOW MASTER STATUS; SHOW BINLOG EVENTS IN 'bin.000001' FROM 4; SHOW BINLOG EVENTS; PURGE BINARY LOGS TO 'bin.000001'; PURGE BINARY LOGS BEFORE NOW()")
+binary_log_output=$("$parser" "SHOW BINARY LOGS; SHOW BINARY LOG STATUS; SHOW MASTER STATUS; SHOW BINLOG EVENTS IN 'bin.000001' FROM 4; SHOW BINLOG EVENTS; PURGE BINARY LOGS TO 'bin.000001'; PURGE BINARY LOGS BEFORE NOW(); PURGE MASTER LOGS BEFORE '2024-01-01'")
 case "$binary_log_output" in
-	*"show"*/binary_log*"show"*/binary_log*"show"*/binary_log*"show"*/binary_log:"'bin.000001'"*"show"*/binary_log*"purge"*/binary_log:"'bin.000001'"*"purge[32:38"*) ;;
+	*"show"*/binary_log*"show"*/binary_log*"show"*/binary_log*"show"*/binary_log:"'bin.000001'"*"show"*/binary_log*"purge"*/binary_log:"'bin.000001'"*"purge"*/binary_log*"purge"*/binary_log*) ;;
 	*)
 		echo "unexpected binary log output: $binary_log_output" >&2
 		exit 1

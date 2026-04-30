@@ -169,8 +169,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. | Parser records the first XID token; one-phase/two-phase commit semantics are not implemented. |
 | `XA ROLLBACK` | ❌ | low | XA rollback. | Parser records the first XID token; XA rollback semantics are not implemented. |
 | `XA RECOVER` | ❌ | low | XA recovery result-set metadata. | Parser recognizes XA recovery forms and leaves them objectless; recovery rows are not implemented. |
-| `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. |  |
-| `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. |  |
+| `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. | Parser records the first string event payload; event decoding and execution are not implemented. |
+| `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser records named `TO` log files and collection-level `BEFORE` forms, including legacy `MASTER` spelling; binary-log purge behavior is not implemented. |
 | `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. |  |
 | `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |
 | `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. |  |

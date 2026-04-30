@@ -223,8 +223,8 @@ system-variable and status-variable targets in `SHOW VARIABLES`,
 `SHOW WARNINGS`, `SHOW ERRORS`, and their `SHOW COUNT(*) ...` forms,
 connection targets in `KILL`, binary log event
 payloads in `BINLOG`, binary log targets in `SHOW BINARY LOGS`,
-`SHOW BINARY LOG STATUS`, `SHOW MASTER STATUS`, `SHOW BINLOG EVENTS`, and
-`PURGE BINARY LOGS TO ...`, relay log targets in
+`SHOW BINARY LOG STATUS`, `SHOW MASTER STATUS`, `SHOW BINLOG EVENTS`,
+`PURGE BINARY LOGS TO ...`, and `PURGE BINARY LOGS BEFORE ...`, relay log targets in
 `SHOW RELAYLOG EVENTS IN ...`, replication channel targets in channel-only
 `SHOW RELAYLOG EVENTS`, `SHOW REPLICAS`, `SHOW REPLICA STATUS`, and
 `FLUSH RELAY LOGS`, table
@@ -329,9 +329,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   specific backup-lock, TLS, keyring, or redo-log operation.
   `KILL` metadata records only the processlist id token, not the distinction
   between query and connection termination.
-  Binary log metadata records only the explicit log-file target and does not
-  classify position or time expressions. `BINLOG` metadata records only the
-  first string event payload.
+  Binary log metadata records explicit log-file targets or binary-log collection
+  targets for `BEFORE` purge forms, but does not classify position or time
+  expressions. `BINLOG` metadata records only the first string event payload.
   `SHOW RELAYLOG EVENTS` metadata records the explicit relay log name when
   present, bare relay-log targets, or an explicit channel name when no log file
   is named.

@@ -286,6 +286,12 @@ BINLOG statements expose their event payload string:
 ok statements=1 kinds=binlog[1:2,0:12]/binary_log_event:'abc'
 ```
 
+PURGE BINARY LOGS exposes named or collection binary-log targets:
+
+```text
+ok statements=1 kinds=purge[1:7,0:30]/binary_log
+```
+
 FLUSH TABLES exposes the first table target:
 
 ```text

@@ -1722,6 +1722,9 @@ static int classify_purge_statement_object(const mylite_parser *parser,
 			                                        name_token_index + 1,
 			                                        last_token_index);
 		}
+		if (token_text_equals(parser, name_token_index, "BEFORE")) {
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_BINARY_LOG);
+		}
 		name_token_index++;
 	}
 

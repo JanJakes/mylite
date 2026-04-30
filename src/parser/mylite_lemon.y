@@ -873,22 +873,36 @@ table_statement_target ::= cache_table_ref.
 table_query_tail ::= .
 table_query_tail ::= table_limit.
 
-table_limit ::= table_limit_word ATOM table_offset_tail.
-
-table_limit_word ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "LIMIT");
-}
+table_limit ::= LIMIT ATOM table_offset_tail.
 
 table_offset_tail ::= .
-table_offset_tail ::= table_offset_word ATOM.
+table_offset_tail ::= OFFSET ATOM.
 
-table_offset_word ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "OFFSET");
-}
-
-values_statement ::= VALUES ROW LP statement_tail. {
+values_statement ::= VALUES values_row_list values_query_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
 }
+
+values_row_list ::= values_row.
+values_row_list ::= values_row_list import_comma values_row.
+
+values_row ::= ROW LP values_row_contents RP.
+
+values_row_contents ::= .
+values_row_contents ::= values_row_contents values_row_token.
+
+values_row_token ::= ATOM.
+values_row_token ::= LABEL.
+values_row_token ::= keyword.
+values_row_token ::= LP values_row_contents RP.
+values_row_token ::= LB.
+values_row_token ::= RB.
+values_row_token ::= LC.
+values_row_token ::= RC.
+
+values_query_tail ::= .
+values_query_tail ::= UNION required_statement_tail.
+values_query_tail ::= ORDER BY required_statement_tail.
+values_query_tail ::= LIMIT required_statement_tail.
 
 prepare_statement ::= PREPARE prepared_statement_name FROM required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
@@ -1273,6 +1287,7 @@ keyword ::= UNLOCK.
 keyword ::= XA.
 keyword ::= BINARY.
 keyword ::= BINLOG.
+keyword ::= BY.
 keyword ::= PURGE.
 keyword ::= RESET.
 keyword ::= CHANGE.
@@ -1330,6 +1345,7 @@ keyword ::= CLOSE.
 keyword ::= RETURN.
 keyword ::= LEAVE.
 keyword ::= ITERATE.
+keyword ::= LIMIT.
 keyword ::= FROM.
 keyword ::= USER.
 keyword ::= VIEW.
@@ -1355,6 +1371,7 @@ keyword ::= SPATIAL.
 keyword ::= TEMPORARY.
 keyword ::= TRANSACTION.
 keyword ::= UNDO.
+keyword ::= UNION.
 keyword ::= UNIQUE.
 keyword ::= XML.
 keyword ::= CHARACTER.
@@ -1413,6 +1430,8 @@ keyword ::= INTO.
 keyword ::= LOW_PRIORITY.
 keyword ::= NAMES.
 keyword ::= NO.
+keyword ::= OFFSET.
+keyword ::= ORDER.
 keyword ::= PASSWORD.
 keyword ::= QUICK.
 keyword ::= RECURSIVE.
@@ -1470,6 +1489,7 @@ keyword_not_select_clause ::= UNLOCK.
 keyword_not_select_clause ::= XA.
 keyword_not_select_clause ::= BINARY.
 keyword_not_select_clause ::= BINLOG.
+keyword_not_select_clause ::= BY.
 keyword_not_select_clause ::= PURGE.
 keyword_not_select_clause ::= RESET.
 keyword_not_select_clause ::= CHANGE.
@@ -1527,6 +1547,7 @@ keyword_not_select_clause ::= CLOSE.
 keyword_not_select_clause ::= RETURN.
 keyword_not_select_clause ::= LEAVE.
 keyword_not_select_clause ::= ITERATE.
+keyword_not_select_clause ::= LIMIT.
 keyword_not_select_clause ::= USER.
 keyword_not_select_clause ::= VIEW.
 keyword_not_select_clause ::= ELSE.
@@ -1550,6 +1571,7 @@ keyword_not_select_clause ::= SPATIAL.
 keyword_not_select_clause ::= TEMPORARY.
 keyword_not_select_clause ::= TRANSACTION.
 keyword_not_select_clause ::= UNDO.
+keyword_not_select_clause ::= UNION.
 keyword_not_select_clause ::= UNIQUE.
 keyword_not_select_clause ::= XML.
 keyword_not_select_clause ::= CHARACTER.
@@ -1608,6 +1630,8 @@ keyword_not_select_clause ::= INTO.
 keyword_not_select_clause ::= LOW_PRIORITY.
 keyword_not_select_clause ::= NAMES.
 keyword_not_select_clause ::= NO.
+keyword_not_select_clause ::= OFFSET.
+keyword_not_select_clause ::= ORDER.
 keyword_not_select_clause ::= PASSWORD.
 keyword_not_select_clause ::= QUICK.
 keyword_not_select_clause ::= RECURSIVE.

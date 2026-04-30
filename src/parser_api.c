@@ -23,6 +23,9 @@ static mylite_statement_kind query_statement_kind_from_token(int token);
 static void classify_with_statement_kinds(mylite_parser *parser);
 static mylite_statement_kind classify_with_statement_kind(const mylite_parser *parser,
                                                           const mylite_statement *statement);
+static void classify_labeled_statement_metadata(mylite_parser *parser);
+static int classify_labeled_statement(mylite_parser *parser, mylite_statement *statement);
+static mylite_statement_kind labeled_statement_kind_from_token(int token);
 static void classify_statement_objects(mylite_parser *parser);
 static void classify_statement_object(const mylite_parser *parser, mylite_statement *statement);
 static int classify_dml_statement_object(const mylite_parser *parser, mylite_statement *statement);
@@ -121,6 +124,7 @@ static size_t last_qualified_name_token(const mylite_parser *parser,
 static int token_can_start_object_name(const mylite_token *token);
 static int token_can_continue_object_name(const mylite_token *token);
 static int token_can_be_unquoted_object_name_keyword(int token);
+static int token_can_start_label_name(const mylite_token *token);
 static int is_optional_name_modifier(int token);
 static int token_text_equals(const mylite_parser *parser, size_t token_index, const char *expected);
 static int statement_kind_uses_object_scan(mylite_statement_kind kind);
@@ -553,6 +557,7 @@ static void classify_statement_metadata(mylite_parser *parser)
 {
 	classify_grouped_query_statement_kinds(parser);
 	classify_with_statement_kinds(parser);
+	classify_labeled_statement_metadata(parser);
 	classify_statement_objects(parser);
 }
 
@@ -664,6 +669,59 @@ static mylite_statement_kind classify_with_statement_kind(const mylite_parser *p
 		}
 	}
 	return statement->kind;
+}
+
+static void classify_labeled_statement_metadata(mylite_parser *parser)
+{
+	size_t i;
+
+	for (i = 0; i < parser->statement_count; i++) {
+		classify_labeled_statement(parser, &parser->statements[i]);
+	}
+}
+
+static int classify_labeled_statement(mylite_parser *parser, mylite_statement *statement)
+{
+	size_t label_token_index;
+	size_t separator_token_index;
+	size_t head_token_index;
+	mylite_statement_kind labeled_kind;
+
+	if (statement->kind != MYLITE_STATEMENT_UNKNOWN ||
+	    statement->first_token == 0 ||
+	    statement->last_token < statement->first_token + 2 ||
+	    statement->last_token > parser->token_count) {
+		return 0;
+	}
+
+	label_token_index = statement->first_token - 1;
+	separator_token_index = label_token_index + 1;
+	head_token_index = label_token_index + 2;
+	if (!token_can_start_label_name(&parser->tokens[label_token_index]) ||
+	    !token_text_equals(parser, separator_token_index, ":")) {
+		return 0;
+	}
+
+	labeled_kind = labeled_statement_kind_from_token(parser->tokens[head_token_index].parser_token);
+	if (labeled_kind == MYLITE_STATEMENT_UNKNOWN) {
+		return 0;
+	}
+
+	statement->kind = labeled_kind;
+	statement->object_kind = MYLITE_STATEMENT_OBJECT_LABEL;
+	set_statement_object_name_from_first_token(parser, statement, label_token_index, label_token_index);
+	return 1;
+}
+
+static mylite_statement_kind labeled_statement_kind_from_token(int token)
+{
+	switch (token) {
+	case BEGIN_T: return MYLITE_STATEMENT_BEGIN;
+	case LOOP_T: return MYLITE_STATEMENT_LOOP;
+	case REPEAT_T: return MYLITE_STATEMENT_REPEAT;
+	case WHILE_T: return MYLITE_STATEMENT_WHILE;
+	default: return MYLITE_STATEMENT_UNKNOWN;
+	}
 }
 
 static void classify_statement_objects(mylite_parser *parser)
@@ -1400,6 +1458,13 @@ static int token_can_be_unquoted_object_name_keyword(int token)
 	default:
 		return 0;
 	}
+}
+
+static int token_can_start_label_name(const mylite_token *token)
+{
+	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
+	       token_can_be_unquoted_object_name_keyword(token->parser_token);
 }
 
 static int is_optional_name_modifier(int token)

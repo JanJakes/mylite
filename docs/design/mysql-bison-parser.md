@@ -10,6 +10,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 ## Sources
 
 - MySQL 8.4.9 parser grammar: `sql/sql_yacc.yy`
+- MySQL 8.4 statement labels:
+  `https://dev.mysql.com/doc/refman/8.4/en/statement-labels.html`
 - WordPress SQLite Database Integration query corpus:
   `packages/mysql-on-sqlite/tests/mysql/data/mysql-server-tests-queries.csv`
 
@@ -72,7 +74,8 @@ kinds. Compound-control tokens are structurally matched for `IF ... END IF`,
 misclassifying `IF(...)` expressions or `IF [NOT] EXISTS` clauses as compound
 block starts. Cursor names are recorded for `DECLARE ... CURSOR`, `OPEN`,
 `FETCH`, and `CLOSE`. Jump target labels are recorded for `LEAVE` and
-`ITERATE`.
+`ITERATE`. Label declarations are recorded when they prefix the MySQL-labeled
+constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
 
 ## Boundaries
 
@@ -102,8 +105,9 @@ block starts. Cursor names are recorded for `DECLARE ... CURSOR`, `OPEN`,
   semantics.
 - Cursor metadata records the first cursor handle only. It does not yet validate
   declaration scope, result shape, fetch target lists, or cursor lifecycle.
-- Label metadata records the direct `LEAVE` / `ITERATE` target only. It does not
-  yet record label declarations or validate label binding.
+- Label metadata records direct `LEAVE` / `ITERATE` targets and leading label
+  declarations. It does not yet validate end labels, duplicate labels, the
+  16-character label limit, or label binding.
 - Skips ordinary comments. MySQL executable `/*! ... */` comments are tokenized
   as SQL because they can carry required syntax.
 - Accepts unknown statement starts as `unknown`; later grammar work should

@@ -62,6 +62,15 @@ case "$label_output" in
 		;;
 esac
 
+labeled_statement_output=$("$parser" 'done: LOOP LEAVE done END LOOP done; rpt: REPEAT ITERATE rpt UNTIL done END REPEAT rpt; wh: WHILE done DO LEAVE wh END WHILE wh; blk: BEGIN SELECT 1 END blk')
+case "$labeled_statement_output" in
+	*"loop"*/label:done*"repeat"*/label:rpt*"while"*/label:wh*"begin"*/label:blk*) ;;
+	*)
+		echo "unexpected labeled statement output: $labeled_statement_output" >&2
+		exit 1
+		;;
+esac
+
 object_output=$("$parser" 'CREATE TABLE IF NOT EXISTS `db`.`t` (id int); ALTER VIEW v AS SELECT 1; DROP FUNCTION f')
 case "$object_output" in
 	*"create"*/table:'`db`.`t`'*"alter"*/view:v*"drop"*/function:f*) ;;

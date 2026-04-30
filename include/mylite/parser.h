@@ -72,6 +72,12 @@ typedef struct mylite_statement {
 	mylite_statement_kind kind;
 	size_t first_token;
 	size_t last_token;
+	size_t start_offset;
+	size_t end_offset;
+	unsigned int start_line;
+	unsigned int start_column;
+	unsigned int end_line;
+	unsigned int end_column;
 } mylite_statement;
 
 typedef struct mylite_parse_result {

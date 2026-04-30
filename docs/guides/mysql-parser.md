@@ -12,6 +12,12 @@ Parse one statement:
 bin/mylite-parse "SELECT 1"
 ```
 
+The CLI reports statement kind plus token and byte spans:
+
+```text
+ok statements=1 kinds=select[1:2,0:8]
+```
+
 Run smoke tests:
 
 ```sh

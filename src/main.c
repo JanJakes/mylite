@@ -191,8 +191,13 @@ static void print_result(const mylite_parse_result *result)
 
 	printf("ok statements=%zu", result->statement_count);
 	for (i = 0; i < result->statement_count; i++) {
-		printf("%s%s", i == 0 ? " kinds=" : ",",
-		       mylite_statement_kind_name(result->statements[i].kind));
+		printf("%s%s[%zu:%zu,%zu:%zu]",
+		       i == 0 ? " kinds=" : ",",
+		       mylite_statement_kind_name(result->statements[i].kind),
+		       result->statements[i].first_token,
+		       result->statements[i].last_token,
+		       result->statements[i].start_offset,
+		       result->statements[i].end_offset);
 	}
 	printf("\n");
 }

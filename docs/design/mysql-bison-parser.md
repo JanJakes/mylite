@@ -22,9 +22,15 @@ string literals, numeric literals, user/system variables, parameter markers,
 statement-leading keywords, and stored program `END IF` / `END LOOP` style
 compound endings.
 
-The grammar records a statement kind for each parsed statement and validates
-that grouping delimiters and `BEGIN ... END` blocks are balanced. The body of
-each statement remains token-preserving and permissive so the prototype can
+The grammar records a statement kind plus source spans for each parsed
+statement. Spans include token ordinals, byte offsets into the original SQL
+buffer, and line/column endpoints for diagnostics and future AST nodes. The
+grammar validates that grouping delimiters, `BEGIN ... END`, and `CASE ... END`
+blocks are balanced. Known statement heads that require a body now reject a bare
+keyword, while transaction statements that MySQL accepts as single-keyword
+statements remain valid.
+
+Statement bodies remain token-preserving and permissive so the prototype can
 accept the broad MySQL statement inventory while detailed productions are added
 statement by statement.
 
@@ -37,6 +43,8 @@ statement by statement.
   as SQL because they can carry required syntax.
 - Accepts unknown statement starts as `unknown`; later grammar work should
   reduce that surface as concrete productions land.
+- Rejects bare known statement keywords such as `SELECT`, `CREATE`, and `SET`,
+  but detailed clause-level syntax errors still require future productions.
 
 ## Verification
 

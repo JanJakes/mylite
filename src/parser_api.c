@@ -22,11 +22,26 @@ void mylite_parser_destroy(mylite_parser *parser)
 	parser->statement_capacity = 0;
 }
 
+void mylite_parser_begin_statement(mylite_parser *parser, mylite_statement_kind kind, int requires_body)
+{
+	parser->active_statement_kind = kind;
+	parser->active_statement_first_token = parser->lexer.token_count;
+	parser->active_statement_start_offset = parser->lexer.token_start_offset;
+	parser->active_statement_start_line = parser->lexer.token_start_line;
+	parser->active_statement_start_column = parser->lexer.token_start_column;
+	parser->active_statement_body_items = 0;
+	parser->active_statement_requires_body = requires_body;
+}
+
 int mylite_parser_add_statement(mylite_parser *parser, mylite_statement_kind kind)
 {
 	mylite_statement *statements;
 	size_t new_capacity;
 
+	if (parser->active_statement_requires_body && parser->active_statement_body_items == 0) {
+		mylite_parser_set_error(parser, "statement requires a body");
+		return 0;
+	}
 	if (parser->statement_count == parser->statement_capacity) {
 		new_capacity = parser->statement_capacity == 0 ? 4 : parser->statement_capacity * 2;
 		statements = (mylite_statement *)realloc(parser->statements,
@@ -41,7 +56,13 @@ int mylite_parser_add_statement(mylite_parser *parser, mylite_statement_kind kin
 
 	parser->statements[parser->statement_count].kind = kind;
 	parser->statements[parser->statement_count].first_token = parser->active_statement_first_token;
-	parser->statements[parser->statement_count].last_token = parser->lexer.token_count;
+	parser->statements[parser->statement_count].last_token = parser->lexer.last_significant_token;
+	parser->statements[parser->statement_count].start_offset = parser->active_statement_start_offset;
+	parser->statements[parser->statement_count].end_offset = parser->lexer.last_significant_token_end_offset;
+	parser->statements[parser->statement_count].start_line = parser->active_statement_start_line;
+	parser->statements[parser->statement_count].start_column = parser->active_statement_start_column;
+	parser->statements[parser->statement_count].end_line = parser->lexer.last_significant_token_end_line;
+	parser->statements[parser->statement_count].end_column = parser->lexer.last_significant_token_end_column;
 	parser->statement_count++;
 	return 1;
 }

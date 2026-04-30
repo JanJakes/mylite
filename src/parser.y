@@ -5,6 +5,7 @@
 #include "parser_internal.h"
 
 #define YYSTYPE int
+#define BEGIN_STATEMENT(kind, requires_body) mylite_parser_begin_statement(parser, (kind), (requires_body))
 
 static int yylex(YYSTYPE *yylval, mylite_parser *parser);
 static void yyerror(mylite_parser *parser, const char *message);
@@ -50,74 +51,75 @@ separators:
 	;
 
 statement:
-	  statement_start statement_head top_body { mylite_parser_add_statement(parser, parser->active_statement_kind); }
-	;
-
-statement_start:
-	  /* empty */ { parser->active_statement_first_token = parser->lexer.token_count + 1; }
+	  statement_head top_body
+	  {
+		  if (!mylite_parser_add_statement(parser, parser->active_statement_kind)) {
+			  YYERROR;
+		  }
+	  }
 	;
 
 statement_head:
-	  SELECT_T      { parser->active_statement_kind = MYLITE_STATEMENT_SELECT; }
-	| WITH_T        { parser->active_statement_kind = MYLITE_STATEMENT_SELECT; }
-	| INSERT_T      { parser->active_statement_kind = MYLITE_STATEMENT_INSERT; }
-	| REPLACE_T     { parser->active_statement_kind = MYLITE_STATEMENT_REPLACE; }
-	| UPDATE_T      { parser->active_statement_kind = MYLITE_STATEMENT_UPDATE; }
-	| DELETE_T      { parser->active_statement_kind = MYLITE_STATEMENT_DELETE; }
-	| CREATE_T      { parser->active_statement_kind = MYLITE_STATEMENT_CREATE; }
-	| ALTER_T       { parser->active_statement_kind = MYLITE_STATEMENT_ALTER; }
-	| DROP_T        { parser->active_statement_kind = MYLITE_STATEMENT_DROP; }
-	| TRUNCATE_T    { parser->active_statement_kind = MYLITE_STATEMENT_TRUNCATE; }
-	| RENAME_T      { parser->active_statement_kind = MYLITE_STATEMENT_RENAME; }
-	| CALL_T        { parser->active_statement_kind = MYLITE_STATEMENT_CALL; }
-	| DO_T          { parser->active_statement_kind = MYLITE_STATEMENT_DO; }
-	| HANDLER_T     { parser->active_statement_kind = MYLITE_STATEMENT_HANDLER; }
-	| IMPORT_T      { parser->active_statement_kind = MYLITE_STATEMENT_IMPORT; }
-	| LOAD_T        { parser->active_statement_kind = MYLITE_STATEMENT_LOAD; }
-	| TABLE_T       { parser->active_statement_kind = MYLITE_STATEMENT_TABLE; }
-	| VALUES_T      { parser->active_statement_kind = MYLITE_STATEMENT_VALUES; }
-	| SET_T         { parser->active_statement_kind = MYLITE_STATEMENT_SET; }
-	| SHOW_T        { parser->active_statement_kind = MYLITE_STATEMENT_SHOW; }
-	| USE_T         { parser->active_statement_kind = MYLITE_STATEMENT_USE; }
-	| DESCRIBE_T    { parser->active_statement_kind = MYLITE_STATEMENT_DESCRIBE; }
-	| DESC_T        { parser->active_statement_kind = MYLITE_STATEMENT_DESCRIBE; }
-	| EXPLAIN_T     { parser->active_statement_kind = MYLITE_STATEMENT_EXPLAIN; }
-	| HELP_T        { parser->active_statement_kind = MYLITE_STATEMENT_HELP; }
-	| START_T       { parser->active_statement_kind = MYLITE_STATEMENT_START; }
-	| BEGIN_T       { parser->active_statement_kind = MYLITE_STATEMENT_BEGIN; }
-	| COMMIT_T      { parser->active_statement_kind = MYLITE_STATEMENT_COMMIT; }
-	| ROLLBACK_T    { parser->active_statement_kind = MYLITE_STATEMENT_ROLLBACK; }
-	| SAVEPOINT_T   { parser->active_statement_kind = MYLITE_STATEMENT_SAVEPOINT; }
-	| RELEASE_T     { parser->active_statement_kind = MYLITE_STATEMENT_RELEASE; }
-	| LOCK_T        { parser->active_statement_kind = MYLITE_STATEMENT_LOCK; }
-	| UNLOCK_T      { parser->active_statement_kind = MYLITE_STATEMENT_UNLOCK; }
-	| XA_T          { parser->active_statement_kind = MYLITE_STATEMENT_XA; }
-	| PREPARE_T     { parser->active_statement_kind = MYLITE_STATEMENT_PREPARE; }
-	| EXECUTE_T     { parser->active_statement_kind = MYLITE_STATEMENT_EXECUTE; }
-	| DEALLOCATE_T  { parser->active_statement_kind = MYLITE_STATEMENT_DEALLOCATE; }
-	| ANALYZE_T     { parser->active_statement_kind = MYLITE_STATEMENT_ANALYZE; }
-	| CHECK_T       { parser->active_statement_kind = MYLITE_STATEMENT_CHECK; }
-	| CHECKSUM_T    { parser->active_statement_kind = MYLITE_STATEMENT_CHECKSUM; }
-	| OPTIMIZE_T    { parser->active_statement_kind = MYLITE_STATEMENT_OPTIMIZE; }
-	| REPAIR_T      { parser->active_statement_kind = MYLITE_STATEMENT_REPAIR; }
-	| FLUSH_T       { parser->active_statement_kind = MYLITE_STATEMENT_FLUSH; }
-	| KILL_T        { parser->active_statement_kind = MYLITE_STATEMENT_KILL; }
-	| RESET_T       { parser->active_statement_kind = MYLITE_STATEMENT_RESET; }
-	| RESTART_T     { parser->active_statement_kind = MYLITE_STATEMENT_RESTART; }
-	| SHUTDOWN_T    { parser->active_statement_kind = MYLITE_STATEMENT_SHUTDOWN; }
-	| GRANT_T       { parser->active_statement_kind = MYLITE_STATEMENT_GRANT; }
-	| REVOKE_T      { parser->active_statement_kind = MYLITE_STATEMENT_REVOKE; }
-	| INSTALL_T     { parser->active_statement_kind = MYLITE_STATEMENT_INSTALL; }
-	| UNINSTALL_T   { parser->active_statement_kind = MYLITE_STATEMENT_UNINSTALL; }
-	| CACHE_T       { parser->active_statement_kind = MYLITE_STATEMENT_CACHE; }
-	| CHANGE_T      { parser->active_statement_kind = MYLITE_STATEMENT_CHANGE; }
-	| BINLOG_T      { parser->active_statement_kind = MYLITE_STATEMENT_BINLOG; }
-	| PURGE_T       { parser->active_statement_kind = MYLITE_STATEMENT_PURGE; }
-	| SIGNAL_T      { parser->active_statement_kind = MYLITE_STATEMENT_SIGNAL; }
-	| RESIGNAL_T    { parser->active_statement_kind = MYLITE_STATEMENT_RESIGNAL; }
-	| GET_T         { parser->active_statement_kind = MYLITE_STATEMENT_GET; }
-	| IF_T          { parser->active_statement_kind = MYLITE_STATEMENT_IF; }
-	| unknown_head  { parser->active_statement_kind = MYLITE_STATEMENT_UNKNOWN; }
+	  SELECT_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_SELECT, 1); }
+	| WITH_T        { BEGIN_STATEMENT(MYLITE_STATEMENT_SELECT, 1); }
+	| INSERT_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_INSERT, 1); }
+	| REPLACE_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_REPLACE, 1); }
+	| UPDATE_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_UPDATE, 1); }
+	| DELETE_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_DELETE, 1); }
+	| CREATE_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_CREATE, 1); }
+	| ALTER_T       { BEGIN_STATEMENT(MYLITE_STATEMENT_ALTER, 1); }
+	| DROP_T        { BEGIN_STATEMENT(MYLITE_STATEMENT_DROP, 1); }
+	| TRUNCATE_T    { BEGIN_STATEMENT(MYLITE_STATEMENT_TRUNCATE, 1); }
+	| RENAME_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_RENAME, 1); }
+	| CALL_T        { BEGIN_STATEMENT(MYLITE_STATEMENT_CALL, 1); }
+	| DO_T          { BEGIN_STATEMENT(MYLITE_STATEMENT_DO, 1); }
+	| HANDLER_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_HANDLER, 1); }
+	| IMPORT_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_IMPORT, 1); }
+	| LOAD_T        { BEGIN_STATEMENT(MYLITE_STATEMENT_LOAD, 1); }
+	| TABLE_T       { BEGIN_STATEMENT(MYLITE_STATEMENT_TABLE, 1); }
+	| VALUES_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_VALUES, 1); }
+	| SET_T         { BEGIN_STATEMENT(MYLITE_STATEMENT_SET, 1); }
+	| SHOW_T        { BEGIN_STATEMENT(MYLITE_STATEMENT_SHOW, 1); }
+	| USE_T         { BEGIN_STATEMENT(MYLITE_STATEMENT_USE, 1); }
+	| DESCRIBE_T    { BEGIN_STATEMENT(MYLITE_STATEMENT_DESCRIBE, 1); }
+	| DESC_T        { BEGIN_STATEMENT(MYLITE_STATEMENT_DESCRIBE, 1); }
+	| EXPLAIN_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_EXPLAIN, 1); }
+	| HELP_T        { BEGIN_STATEMENT(MYLITE_STATEMENT_HELP, 1); }
+	| START_T       { BEGIN_STATEMENT(MYLITE_STATEMENT_START, 1); }
+	| BEGIN_T       { BEGIN_STATEMENT(MYLITE_STATEMENT_BEGIN, 0); }
+	| COMMIT_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_COMMIT, 0); }
+	| ROLLBACK_T    { BEGIN_STATEMENT(MYLITE_STATEMENT_ROLLBACK, 0); }
+	| SAVEPOINT_T   { BEGIN_STATEMENT(MYLITE_STATEMENT_SAVEPOINT, 1); }
+	| RELEASE_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_RELEASE, 1); }
+	| LOCK_T        { BEGIN_STATEMENT(MYLITE_STATEMENT_LOCK, 1); }
+	| UNLOCK_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_UNLOCK, 1); }
+	| XA_T          { BEGIN_STATEMENT(MYLITE_STATEMENT_XA, 1); }
+	| PREPARE_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_PREPARE, 1); }
+	| EXECUTE_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_EXECUTE, 1); }
+	| DEALLOCATE_T  { BEGIN_STATEMENT(MYLITE_STATEMENT_DEALLOCATE, 1); }
+	| ANALYZE_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_ANALYZE, 1); }
+	| CHECK_T       { BEGIN_STATEMENT(MYLITE_STATEMENT_CHECK, 1); }
+	| CHECKSUM_T    { BEGIN_STATEMENT(MYLITE_STATEMENT_CHECKSUM, 1); }
+	| OPTIMIZE_T    { BEGIN_STATEMENT(MYLITE_STATEMENT_OPTIMIZE, 1); }
+	| REPAIR_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_REPAIR, 1); }
+	| FLUSH_T       { BEGIN_STATEMENT(MYLITE_STATEMENT_FLUSH, 1); }
+	| KILL_T        { BEGIN_STATEMENT(MYLITE_STATEMENT_KILL, 1); }
+	| RESET_T       { BEGIN_STATEMENT(MYLITE_STATEMENT_RESET, 1); }
+	| RESTART_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_RESTART, 0); }
+	| SHUTDOWN_T    { BEGIN_STATEMENT(MYLITE_STATEMENT_SHUTDOWN, 0); }
+	| GRANT_T       { BEGIN_STATEMENT(MYLITE_STATEMENT_GRANT, 1); }
+	| REVOKE_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_REVOKE, 1); }
+	| INSTALL_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_INSTALL, 1); }
+	| UNINSTALL_T   { BEGIN_STATEMENT(MYLITE_STATEMENT_UNINSTALL, 1); }
+	| CACHE_T       { BEGIN_STATEMENT(MYLITE_STATEMENT_CACHE, 1); }
+	| CHANGE_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_CHANGE, 1); }
+	| BINLOG_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_BINLOG, 1); }
+	| PURGE_T       { BEGIN_STATEMENT(MYLITE_STATEMENT_PURGE, 1); }
+	| SIGNAL_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_SIGNAL, 1); }
+	| RESIGNAL_T    { BEGIN_STATEMENT(MYLITE_STATEMENT_RESIGNAL, 1); }
+	| GET_T         { BEGIN_STATEMENT(MYLITE_STATEMENT_GET, 1); }
+	| IF_T          { BEGIN_STATEMENT(MYLITE_STATEMENT_IF, 1); }
+	| unknown_head  { BEGIN_STATEMENT(MYLITE_STATEMENT_UNKNOWN, 0); }
 	;
 
 unknown_head:
@@ -158,8 +160,8 @@ top_body:
 	;
 
 top_item:
-	  body_item
-	| END_T
+	  body_item { parser->active_statement_body_items++; }
+	| END_T     { parser->active_statement_body_items++; }
 	;
 
 body:

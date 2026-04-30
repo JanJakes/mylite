@@ -84,6 +84,7 @@ static const keyword keywords[] = {
 
 static void lexer_set_error(mylite_parser *parser, const char *message);
 static int next_token(mylite_parser *parser);
+static int finish_token(mylite_lexer *lexer, int token);
 static int skip_space_and_comments(mylite_parser *parser);
 static void enter_executable_comment(mylite_lexer *lexer);
 static int skip_block_comment(mylite_parser *parser);
@@ -100,6 +101,7 @@ static int is_word_start(unsigned char ch);
 static int is_word_part(unsigned char ch);
 static int is_operator_char(unsigned char ch);
 static int peek_keyword_after_space(mylite_lexer *lexer, const char *word, size_t length, size_t *end_offset);
+static void advance_to_offset(mylite_lexer *lexer, size_t end_offset);
 static void advance_byte(mylite_lexer *lexer);
 static unsigned char current_char(const mylite_lexer *lexer);
 static unsigned char peek_char(const mylite_lexer *lexer, size_t lookahead);
@@ -112,6 +114,16 @@ void mylite_lexer_init(mylite_lexer *lexer, const char *input, size_t length)
 	lexer->line = 1;
 	lexer->column = 1;
 	lexer->token_count = 0;
+	lexer->token_start_offset = 0;
+	lexer->token_end_offset = 0;
+	lexer->token_start_line = 1;
+	lexer->token_start_column = 1;
+	lexer->token_end_line = 1;
+	lexer->token_end_column = 1;
+	lexer->last_significant_token = 0;
+	lexer->last_significant_token_end_offset = 0;
+	lexer->last_significant_token_end_line = 1;
+	lexer->last_significant_token_end_column = 1;
 	lexer->executable_comment = 0;
 	lexer->error[0] = '\0';
 	lexer->error_line = 1;
@@ -123,6 +135,12 @@ int mylite_lexer_next(mylite_parser *parser)
 	int token = next_token(parser);
 	if (token > 0) {
 		parser->lexer.token_count++;
+		if (token != ';') {
+			parser->lexer.last_significant_token = parser->lexer.token_count;
+			parser->lexer.last_significant_token_end_offset = parser->lexer.token_end_offset;
+			parser->lexer.last_significant_token_end_line = parser->lexer.token_end_line;
+			parser->lexer.last_significant_token_end_column = parser->lexer.token_end_column;
+		}
 	}
 	return token;
 }
@@ -153,26 +171,40 @@ static int next_token(mylite_parser *parser)
 		}
 		return 0;
 	}
+	lexer->token_start_offset = lexer->offset;
+	lexer->token_start_line = lexer->line;
+	lexer->token_start_column = lexer->column;
 	if (is_word_start(ch)) {
-		return read_word(parser);
+		return finish_token(lexer, read_word(parser));
 	}
 	if (isdigit(ch) || (ch == '.' && isdigit(peek_char(lexer, 1)))) {
-		return read_number(parser);
+		return finish_token(lexer, read_number(parser));
 	}
 	if (ch == '`') {
-		return read_quoted_identifier(parser);
+		return finish_token(lexer, read_quoted_identifier(parser));
 	}
 	if (ch == '\'' || ch == '"') {
-		return read_string(parser, ch);
+		return finish_token(lexer, read_string(parser, ch));
 	}
 	if (ch == '@') {
-		return read_variable(parser);
+		return finish_token(lexer, read_variable(parser));
 	}
 	if (ch == '?') {
 		advance_byte(lexer);
-		return PARAM;
+		return finish_token(lexer, PARAM);
 	}
-	return read_operator_or_punctuation(parser);
+	return finish_token(lexer, read_operator_or_punctuation(parser));
+}
+
+static int finish_token(mylite_lexer *lexer, int token)
+{
+	if (token <= 0) {
+		return token;
+	}
+	lexer->token_end_offset = lexer->offset;
+	lexer->token_end_line = lexer->line;
+	lexer->token_end_column = lexer->column;
+	return token;
 }
 
 static int skip_space_and_comments(mylite_parser *parser)
@@ -281,23 +313,23 @@ static int read_end_compound(mylite_parser *parser, int fallback)
 	size_t end_offset = lexer->offset;
 
 	if (peek_keyword_after_space(lexer, "IF", 2, &end_offset)) {
-		lexer->offset = end_offset;
+		advance_to_offset(lexer, end_offset);
 		return END_IF_T;
 	}
 	if (peek_keyword_after_space(lexer, "LOOP", 4, &end_offset)) {
-		lexer->offset = end_offset;
+		advance_to_offset(lexer, end_offset);
 		return END_LOOP_T;
 	}
 	if (peek_keyword_after_space(lexer, "REPEAT", 6, &end_offset)) {
-		lexer->offset = end_offset;
+		advance_to_offset(lexer, end_offset);
 		return END_REPEAT_T;
 	}
 	if (peek_keyword_after_space(lexer, "WHILE", 5, &end_offset)) {
-		lexer->offset = end_offset;
+		advance_to_offset(lexer, end_offset);
 		return END_WHILE_T;
 	}
 	if (peek_keyword_after_space(lexer, "CASE", 4, &end_offset)) {
-		lexer->offset = end_offset;
+		advance_to_offset(lexer, end_offset);
 		return END_CASE_T;
 	}
 	return fallback;
@@ -354,6 +386,14 @@ static int read_number(mylite_parser *parser)
 		advance_byte(lexer);
 		advance_byte(lexer);
 		while (isxdigit(current_char(lexer))) {
+			advance_byte(lexer);
+		}
+		return NUMBER;
+	}
+	if (current_char(lexer) == '0' && (peek_char(lexer, 1) == 'b' || peek_char(lexer, 1) == 'B')) {
+		advance_byte(lexer);
+		advance_byte(lexer);
+		while (current_char(lexer) == '0' || current_char(lexer) == '1') {
 			advance_byte(lexer);
 		}
 		return NUMBER;
@@ -488,6 +528,13 @@ static int peek_keyword_after_space(mylite_lexer *lexer, const char *word, size_
 	}
 	*end_offset = offset + length;
 	return 1;
+}
+
+static void advance_to_offset(mylite_lexer *lexer, size_t end_offset)
+{
+	while (lexer->offset < end_offset) {
+		advance_byte(lexer);
+	}
 }
 
 static void advance_byte(mylite_lexer *lexer)

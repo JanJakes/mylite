@@ -353,7 +353,7 @@ kill_mode ::= QUERY.
 kill_target ::= ATOM.
 kill_target ::= LABEL.
 
-deallocate_statement ::= DEALLOCATE PREPARE required_statement_tail. {
+deallocate_statement ::= DEALLOCATE PREPARE prepared_statement_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
 }
 
@@ -653,13 +653,16 @@ values_statement ::= VALUES ROW required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
 }
 
-prepare_statement ::= PREPARE prepared_statement_name required_statement_tail. {
+prepare_statement ::= PREPARE prepared_statement_name FROM required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
 }
 
-execute_statement ::= EXECUTE prepared_statement_name statement_tail. {
+execute_statement ::= EXECUTE prepared_statement_name execute_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
 }
+
+execute_tail ::= .
+execute_tail ::= USING required_statement_tail.
 
 prepared_statement_name ::= ATOM.
 prepared_statement_name ::= LABEL.
@@ -1011,6 +1014,7 @@ keyword ::= EVENT.
 keyword ::= FUNCTION.
 keyword ::= HELP.
 keyword ::= USE.
+keyword ::= USING.
 keyword ::= ANALYZE.
 keyword ::= CHECK.
 keyword ::= CHECKSUM.
@@ -1204,6 +1208,7 @@ keyword_not_select_clause ::= EVENT.
 keyword_not_select_clause ::= FUNCTION.
 keyword_not_select_clause ::= HELP.
 keyword_not_select_clause ::= USE.
+keyword_not_select_clause ::= USING.
 keyword_not_select_clause ::= ANALYZE.
 keyword_not_select_clause ::= CHECK.
 keyword_not_select_clause ::= CHECKSUM.

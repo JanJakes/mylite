@@ -618,6 +618,7 @@ static int keyword_token(const MyliteToken *token) {
       {"UNLOCK", ML_UNLOCK},
       {"UPDATE", ML_UPDATE},
       {"USE", ML_USE},
+      {"USING", ML_USING},
       {"USER", ML_USER},
       {"USER_RESOURCES", ML_USER_RESOURCES},
       {"UNDO", ML_UNDO},

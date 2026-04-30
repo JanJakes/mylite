@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM DOT.
+%fallback ATOM DOT COMMA.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %extra_argument {MyliteParseContext *ctx}
@@ -433,9 +433,7 @@ import_statement ::= IMPORT TABLE FROM import_file_list. {
 import_file_list ::= import_file.
 import_file_list ::= import_file_list import_comma import_file.
 
-import_comma ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, ",");
-}
+import_comma ::= COMMA.
 
 import_file ::= ATOM.
 
@@ -564,7 +562,12 @@ xa_statement ::= XA xa_tail. {
 
 xa_tail ::= RECOVER.
 xa_tail ::= RECOVER xa_recover_convert xa_recover_xid.
-xa_tail ::= xa_first_token required_statement_tail.
+xa_tail ::= START xa_xid xa_start_tail.
+xa_tail ::= BEGIN xa_xid xa_start_tail.
+xa_tail ::= END xa_xid xa_end_tail.
+xa_tail ::= PREPARE xa_xid.
+xa_tail ::= COMMIT xa_xid xa_commit_tail.
+xa_tail ::= ROLLBACK xa_xid.
 
 xa_recover_convert ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "CONVERT");
@@ -573,12 +576,37 @@ xa_recover_xid ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "XID");
 }
 
-xa_first_token ::= START.
-xa_first_token ::= BEGIN.
-xa_first_token ::= END.
-xa_first_token ::= PREPARE.
-xa_first_token ::= COMMIT.
-xa_first_token ::= ROLLBACK.
+xa_xid ::= ATOM.
+xa_xid ::= ATOM import_comma ATOM.
+xa_xid ::= ATOM import_comma ATOM import_comma ATOM.
+
+xa_start_tail ::= .
+xa_start_tail ::= xa_start_option.
+
+xa_start_option ::= ATOM(A). {
+  mylite_parser_require_token_text_any(ctx, A, "JOIN", "RESUME");
+}
+
+xa_end_tail ::= .
+xa_end_tail ::= xa_suspend.
+xa_end_tail ::= xa_suspend FOR xa_migrate.
+
+xa_suspend ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "SUSPEND");
+}
+xa_migrate ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "MIGRATE");
+}
+
+xa_commit_tail ::= .
+xa_commit_tail ::= xa_one xa_phase.
+
+xa_one ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "ONE");
+}
+xa_phase ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "PHASE");
+}
 
 show_statement ::= SHOW show_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);

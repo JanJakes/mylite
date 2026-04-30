@@ -12,6 +12,7 @@ static int lexer_skip_line_comment(MyliteLexer *lexer);
 static int lexer_enter_executable_comment(MyliteLexer *lexer);
 static int lexer_skip_block_comment(MyliteLexer *lexer);
 static int lexer_skip_until_block_comment_end(MyliteLexer *lexer);
+static int lexer_prefixed_string(MyliteLexer *lexer, MyliteToken *token);
 static int lexer_string(MyliteLexer *lexer, MyliteToken *token,
                         unsigned char quote);
 static int lexer_quoted_identifier(MyliteLexer *lexer, MyliteToken *token);
@@ -86,6 +87,10 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
       return ML_RC;
     case ';':
       return lexer_semicolon(lexer, token);
+    case ',':
+      lexer_advance(lexer);
+      token->length = 1;
+      return ML_COMMA;
     case ':':
       lexer_advance(lexer);
       if (lexer_peek(lexer, 0) == '=') {
@@ -121,6 +126,10 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
 
   if (isdigit(c)) {
     return lexer_number(lexer, token);
+  }
+
+  if (lexer_prefixed_string(lexer, token)) {
+    return ML_ATOM;
   }
 
   if (is_identifier_start(c)) {
@@ -238,6 +247,18 @@ static int lexer_skip_until_block_comment_end(MyliteLexer *lexer) {
   }
 
   return 1;
+}
+
+static int lexer_prefixed_string(MyliteLexer *lexer, MyliteToken *token) {
+  unsigned char c = lexer_peek(lexer, 0);
+
+  if ((c != 'b' && c != 'B' && c != 'x' && c != 'X') ||
+      lexer_peek(lexer, 1) != '\'') {
+    return 0;
+  }
+
+  lexer_advance(lexer);
+  return lexer_string(lexer, token, '\'') == ML_ATOM;
 }
 
 static int lexer_string(MyliteLexer *lexer, MyliteToken *token,

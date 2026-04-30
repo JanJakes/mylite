@@ -186,6 +186,7 @@ def main() -> int:
         ("table t;", 0, {"statements": "1", "select": "1"}),
         ("table select;", 1, {}),
         ("values row(1);", 0, {"statements": "1", "select": "1"}),
+        ("values row 1;", 1, {}),
         ("values select;", 1, {}),
         ("prepare s from 'select 1';", 0, {"statements": "1", "prepared": "1"}),
         ("prepare s;", 1, {}),

@@ -650,7 +650,7 @@ table_statement ::= TABLE table_statement_target statement_tail. {
 table_statement_target ::= ATOM.
 table_statement_target ::= LABEL.
 
-values_statement ::= VALUES ROW required_statement_tail. {
+values_statement ::= VALUES ROW LP statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
 }
 

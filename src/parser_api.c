@@ -44,6 +44,13 @@ static size_t skip_dml_modifiers(const mylite_parser *parser,
                                  size_t last_token_index);
 static int is_dml_modifier_token(int token);
 static int classify_direct_statement_object(const mylite_parser *parser, mylite_statement *statement);
+static int classify_describe_or_explain_statement_object(const mylite_parser *parser,
+                                                         mylite_statement *statement,
+                                                         size_t token_index,
+                                                         size_t last_token_index);
+static size_t find_explain_connection_id_token(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index);
 static size_t find_describe_or_explain_table_name_token(const mylite_parser *parser,
                                                         size_t token_index,
                                                         size_t last_token_index);
@@ -997,11 +1004,10 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		break;
 	case MYLITE_STATEMENT_DESCRIBE:
 	case MYLITE_STATEMENT_EXPLAIN:
-		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
-		name_token_index = find_describe_or_explain_table_name_token(parser,
-		                                                             name_token_index,
-		                                                             last_token_index);
-		break;
+		return classify_describe_or_explain_statement_object(parser,
+		                                                     statement,
+		                                                     name_token_index,
+		                                                     last_token_index);
 	case MYLITE_STATEMENT_HELP:
 		if (name_token_index > last_token_index ||
 		    name_token_index >= parser->token_count ||
@@ -1099,12 +1105,61 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	return set_statement_direct_object_name(parser, statement, object_kind, name_token_index, last_token_index);
 }
 
+static int classify_describe_or_explain_statement_object(const mylite_parser *parser,
+                                                         mylite_statement *statement,
+                                                         size_t token_index,
+                                                         size_t last_token_index)
+{
+	size_t name_token_index = find_describe_or_explain_table_name_token(parser,
+	                                                                   token_index,
+	                                                                   last_token_index);
+	if (name_token_index < parser->token_count) {
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_TABLE,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	name_token_index = find_explain_connection_id_token(parser, token_index, last_token_index);
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        MYLITE_STATEMENT_OBJECT_CONNECTION,
+	                                        name_token_index,
+	                                        last_token_index);
+}
+
+static size_t find_explain_connection_id_token(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index)
+{
+	while (token_index + 2 <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == SELECT_T ||
+		    parser->tokens[token_index].parser_token == TABLE_T ||
+		    parser->tokens[token_index].parser_token == DELETE_T ||
+		    parser->tokens[token_index].parser_token == INSERT_T ||
+		    parser->tokens[token_index].parser_token == REPLACE_T ||
+		    parser->tokens[token_index].parser_token == UPDATE_T ||
+		    parser->tokens[token_index].parser_token == ANALYZE_T) {
+			return parser->token_count;
+		}
+		if (token_text_equals(parser, token_index, "FOR") &&
+		    token_text_equals(parser, token_index + 1, "CONNECTION") &&
+		    token_can_start_object_name(&parser->tokens[token_index + 2])) {
+			return token_index + 2;
+		}
+		token_index++;
+	}
+	return parser->token_count;
+}
+
 static size_t find_describe_or_explain_table_name_token(const mylite_parser *parser,
                                                         size_t token_index,
                                                         size_t last_token_index)
 {
 	if (token_index > last_token_index ||
 	    token_index >= parser->token_count ||
+	    token_text_equals(parser, token_index, "FOR") ||
 	    token_text_equals(parser, token_index, "FORMAT") ||
 	    token_text_equals(parser, token_index, "EXTENDED") ||
 	    token_text_equals(parser, token_index, "PARTITIONS") ||

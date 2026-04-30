@@ -21,6 +21,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
 - MySQL 8.4 schema-scoped SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show.html`
+- MySQL 8.4 EXPLAIN for named connections:
+  `https://dev.mysql.com/doc/refman/8.4/en/explain-for-connection.html`
 - MySQL 8.4 KILL statement:
   `https://dev.mysql.com/doc/refman/8.4/en/kill.html`
 - MySQL 8.4 binary log statements:
@@ -115,7 +117,8 @@ before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 `DELETE`, including common priority, delayed, quick, and ignore modifiers.
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
-`HANDLER`, direct `DESCRIBE` / `EXPLAIN` table forms, `LOAD ... INTO TABLE`,
+`HANDLER`, direct `DESCRIBE` / `EXPLAIN` table forms,
+`EXPLAIN ... FOR CONNECTION`, `LOAD ... INTO TABLE`,
 `CACHE INDEX`, `LOAD INDEX INTO CACHE`, `LOCK TABLES`, `SHOW CREATE ...`,
 `SHOW COLUMNS` / `FIELDS`,
 `SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, schema-scoped `SHOW TABLE
@@ -174,9 +177,10 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   every affected table in multi-table statements.
 - Utility object metadata records the first direct target only and does not yet
   expand multi-table maintenance, cache-index lists, load-index lists, or lock
-  lists. `DESCRIBE` and `EXPLAIN` target metadata is deliberately conservative
-  so query-plan forms such as `EXPLAIN SELECT` and
-  `EXPLAIN FORMAT=... SELECT` remain objectless.
+  lists. `DESCRIBE` and `EXPLAIN` target metadata is deliberately conservative:
+  direct table forms and `EXPLAIN ... FOR CONNECTION` record targets, while
+  query-plan forms such as `EXPLAIN SELECT` and `EXPLAIN FORMAT=... SELECT`
+  remain objectless.
   `SHOW` metadata is similarly limited to forms with a clear table, view, or
   schema/account target. Schema-scoped `SHOW` metadata is recorded only when an
   explicit `FROM` or `IN` schema name is present. Prepared-statement metadata

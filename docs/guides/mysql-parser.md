@@ -340,10 +340,14 @@ Server lifecycle statements expose the instance target:
 ok statements=1 kinds=restart[1:1,0:7]/instance
 ```
 
-Replication-control statements expose explicit channel targets:
+Replication-control statements expose explicit and default channel targets:
 
 ```text
 ok statements=1 kinds=start[1:5,0:30]/replication_channel:'ch'
+```
+
+```text
+ok statements=4 kinds=start[1:2,0:13]/replication_channel,stop[4:5,15:27]/replication_channel,reset[7:8,29:42]/replication_channel,change[10:16,44:88]/replication_channel
 ```
 
 Transaction-control statements expose the transaction object kind:

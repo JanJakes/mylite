@@ -236,8 +236,8 @@ table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Persisted
 system-variable targets are recorded for `RESET PERSIST`. Local clone
 directories and remote donor endpoints are recorded for `CLONE`. Replication
-channel targets are recorded for `START`, `STOP`, `RESET`, and `CHANGE` forms that
-include `FOR CHANNEL`. XA transaction XID targets are recorded for the
+channel targets are recorded for explicit and default-channel `START`, `STOP`,
+`RESET`, and `CHANGE` forms. XA transaction XID targets are recorded for the
 XID-bearing XA statements. Non-XA transaction-control statements record the
 transaction object kind for `BEGIN`, `BEGIN WORK`, `START TRANSACTION`,
 `COMMIT`, bare `ROLLBACK`, and `SET [GLOBAL | SESSION] TRANSACTION`, while
@@ -354,8 +354,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   full persisted-variable reset forms objectless.
   `RESET BINARY LOGS AND GTIDS` metadata records the binary-log collection and
   does not classify the optional file-index number.
-  Replication metadata records only explicit `FOR CHANNEL` names and leaves
-  default-channel operations objectless.
+  Replication metadata records explicit `FOR CHANNEL` names and default-channel
+  operations, but does not classify thread lists, source options, filters, or
+  replica runtime state.
   XA metadata records only the first XID token and leaves `XA RECOVER`
   objectless.
   `HELP` metadata records only quoted search strings and leaves keyword topics

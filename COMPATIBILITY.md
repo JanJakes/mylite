@@ -173,11 +173,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser records named `TO` log files and collection-level `BEFORE` forms, including legacy `MASTER` spelling; binary-log purge behavior is not implemented. |
 | `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser records the binary-log collection, including optional `TO` file-index forms; binary-log deletion and GTID reset behavior are not implemented. |
 | `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |
-| `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. |  |
-| `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. |  |
-| `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. |  |
-| `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. |  |
-| `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. |  |
+| `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. | Parser records explicit `FOR CHANNEL` names and default-channel operations; filter semantics are not implemented. |
+| `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. | Parser records explicit `FOR CHANNEL` names and default-channel operations; source option semantics are not implemented. |
+| `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. | Parser records explicit `FOR CHANNEL` names and default-channel operations, including legacy `SLAVE` spelling; replica metadata reset behavior is not implemented. |
+| `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. | Parser records explicit `FOR CHANNEL` names and default-channel operations; replica thread state is not implemented. |
+| `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. | Parser records explicit `FOR CHANNEL` names and default-channel operations; replica thread state is not implemented. |
 | `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. |  |
 | `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. |  |
 | `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. |  |

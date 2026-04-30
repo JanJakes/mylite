@@ -122,6 +122,10 @@ SHOW account-introspection forms preserve account spans:
 ok statements=1 kinds=show[1:6,0:24]/user:'u'@'h'
 ```
 
+```text
+ok statements=1 kinds=show[1:2,0:11]/user
+```
+
 Schema-scoped SHOW forms expose explicit `FROM` or `IN` database targets:
 
 ```text

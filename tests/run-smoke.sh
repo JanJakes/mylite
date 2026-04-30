@@ -261,7 +261,7 @@ case "$show_object_output" in
 		echo "unexpected SHOW object output: $show_object_output" >&2
 		exit 1
 		;;
-	*"show"*/table:'`db`.`t`'*"show"*/view:v*"show"*/table:'`db`.`c`'*"show"*/table:f*"show"*/table:'`db`.`i`'*"show"*/table:k*"show"*/database:'`db`'*"show"*/user:"'u'@'h'"*"show"*/user:"'u'@'h'"*"show[57:58"*"show"*/system_variable*) ;;
+	*"show"*/table:'`db`.`t`'*"show"*/view:v*"show"*/table:'`db`.`c`'*"show"*/table:f*"show"*/table:'`db`.`i`'*"show"*/table:k*"show"*/database:'`db`'*"show"*/user:"'u'@'h'"*"show"*/user:"'u'@'h'"*"show"*/user*"show"*/system_variable*) ;;
 	*)
 		echo "unexpected SHOW object output: $show_object_output" >&2
 		exit 1

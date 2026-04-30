@@ -181,7 +181,8 @@ forms, `EXPLAIN ... FOR CONNECTION`, `SIGNAL` / `RESIGNAL` condition values,
 `SHOW COLUMNS` / `FIELDS`,
 `SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, schema-scoped `SHOW TABLE
 STATUS`, `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
-targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, database targets in
+targets in `SHOW CREATE USER`, bare `SHOW GRANTS`, and `SHOW GRANTS FOR`,
+database targets in
 `SHOW DATABASES` and `SHOW SCHEMAS`, routine targets in `SHOW FUNCTION CODE`
 and `SHOW PROCEDURE CODE`, and routine collection/pattern targets in
 `SHOW FUNCTION STATUS` and `SHOW PROCEDURE STATUS`, engine targets in

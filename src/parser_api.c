@@ -2327,6 +2327,9 @@ static int classify_show_statement_object(const mylite_parser *parser,
 
 	if (token_text_equals(parser, token_index, "GRANTS")) {
 		name_token_index = find_show_grants_name_token(parser, token_index + 1, last_token_index);
+		if (name_token_index >= parser->token_count) {
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_USER);
+		}
 		return set_statement_direct_object_name(parser,
 		                                        statement,
 		                                        MYLITE_STATEMENT_OBJECT_USER,

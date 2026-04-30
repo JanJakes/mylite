@@ -180,9 +180,9 @@ drop_statement ::= DROP drop_tail. {
 
 drop_tail ::= drop_object_kind required_statement_tail.
 drop_tail ::= drop_table_prefix drop_if_exists_tail drop_name_list drop_restrict_tail.
-drop_tail ::= LOGFILE ATOM required_statement_tail.
+drop_tail ::= LOGFILE drop_logfile_group cache_name_part drop_tablespace_engine_tail.
 drop_tail ::= RESOURCE drop_resource_group cache_name_part drop_resource_force_tail.
-drop_tail ::= SPATIAL ATOM required_statement_tail.
+drop_tail ::= SPATIAL drop_reference drop_system cache_name_part.
 drop_tail ::= UNDO TABLESPACE cache_name_part drop_tablespace_engine_tail.
 drop_tail ::= PREPARE prepared_statement_name.
 drop_tail ::= INDEX drop_index_name ON cache_table_ref drop_index_options_tail.
@@ -217,9 +217,21 @@ drop_resource_group ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "GROUP");
 }
 
+drop_logfile_group ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "GROUP");
+}
+
 drop_resource_force_tail ::= .
 drop_resource_force_tail ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "FORCE");
+}
+
+drop_reference ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "REFERENCE");
+}
+
+drop_system ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "SYSTEM");
 }
 
 drop_tablespace_engine_tail ::= .

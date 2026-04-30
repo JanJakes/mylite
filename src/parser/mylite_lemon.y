@@ -264,9 +264,26 @@ load_statement ::= LOAD load_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 
-load_tail ::= DATA ATOM required_statement_tail.
-load_tail ::= XML ATOM required_statement_tail.
+load_tail ::= DATA load_file_tail.
+load_tail ::= XML load_file_tail.
 load_tail ::= INDEX INTO CACHE required_statement_tail.
+
+load_file_tail ::= load_infile ATOM load_file_table_tail.
+load_file_tail ::= load_file_modifier load_file_tail.
+
+load_file_modifier ::= LOW_PRIORITY.
+load_file_modifier ::= LOCAL.
+load_file_modifier ::= CONCURRENT.
+
+load_infile ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "INFILE");
+}
+
+load_file_table_tail ::= INTO TABLE required_statement_tail.
+load_file_table_tail ::= load_duplicate_handling INTO TABLE required_statement_tail.
+
+load_duplicate_handling ::= IGNORE.
+load_duplicate_handling ::= REPLACE.
 
 start_statement ::= START start_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
@@ -1117,6 +1134,7 @@ keyword ::= START.
 keyword ::= BEGIN.
 keyword ::= COMMIT.
 keyword ::= COMPONENT.
+keyword ::= CONCURRENT.
 keyword ::= CONNECTION.
 keyword ::= ROLLBACK.
 keyword ::= SAVEPOINT.
@@ -1311,6 +1329,7 @@ keyword_not_select_clause ::= START.
 keyword_not_select_clause ::= BEGIN.
 keyword_not_select_clause ::= COMMIT.
 keyword_not_select_clause ::= COMPONENT.
+keyword_not_select_clause ::= CONCURRENT.
 keyword_not_select_clause ::= CONNECTION.
 keyword_not_select_clause ::= ROLLBACK.
 keyword_not_select_clause ::= SAVEPOINT.

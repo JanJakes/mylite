@@ -473,6 +473,7 @@ static int keyword_token(const MyliteToken *token) {
       {"COLUMNS", ML_COLUMNS},
       {"COMMIT", ML_COMMIT},
       {"COMPONENT", ML_COMPONENT},
+      {"CONCURRENT", ML_CONCURRENT},
       {"CONDITION", ML_CONDITION},
       {"CONNECTION", ML_CONNECTION},
       {"CONTINUE", ML_CONTINUE},

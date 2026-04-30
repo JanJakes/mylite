@@ -54,6 +54,18 @@ def main() -> int:
         ("optimize local table t;", 0, {"statements": "1", "admin": "1"}),
         ("repair no_write_to_binlog table t;", 0, {"statements": "1", "admin": "1"}),
         ("analyze nonsense;", 1, {}),
+        ("install component 'file://x';", 0, {"statements": "1", "admin": "1"}),
+        ("uninstall plugin archive;", 0, {"statements": "1", "admin": "1"}),
+        ("install nonsense;", 1, {}),
+        ("import table from 't.sdi';", 0, {"statements": "1", "utility": "1"}),
+        ("import nonsense;", 1, {}),
+        ("cache index t in k;", 0, {"statements": "1", "admin": "1"}),
+        ("cache nonsense;", 1, {}),
+        ("kill query @id;", 0, {"statements": "1", "admin": "1"}),
+        ("kill @id;", 0, {"statements": "1", "admin": "1"}),
+        ("kill select;", 1, {}),
+        ("deallocate prepare s;", 0, {"statements": "1", "prepared": "1"}),
+        ("deallocate nonsense;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

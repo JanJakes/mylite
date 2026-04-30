@@ -48,6 +48,11 @@ statement ::= release_statement.
 statement ::= lock_statement.
 statement ::= unlock_statement.
 statement ::= table_admin_statement.
+statement ::= plugin_admin_statement.
+statement ::= import_statement.
+statement ::= cache_statement.
+statement ::= kill_statement.
+statement ::= deallocate_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -76,7 +81,6 @@ required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= TABLE. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= VALUES. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= HANDLER. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= IMPORT. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= SET. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= XA. { A = MYLITE_STATEMENT_REPLICATION; }
 required_tail_start(A) ::= BINLOG. { A = MYLITE_STATEMENT_REPLICATION; }
@@ -85,7 +89,6 @@ required_tail_start(A) ::= RESET. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= CHANGE. { A = MYLITE_STATEMENT_REPLICATION; }
 required_tail_start(A) ::= PREPARE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= EXECUTE. { A = MYLITE_STATEMENT_PREPARED; }
-required_tail_start(A) ::= DEALLOCATE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= GRANT. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= REVOKE. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= SHOW. { A = MYLITE_STATEMENT_SHOW; }
@@ -94,11 +97,7 @@ required_tail_start(A) ::= DESC. { A = MYLITE_STATEMENT_SHOW; }
 required_tail_start(A) ::= EXPLAIN. { A = MYLITE_STATEMENT_SHOW; }
 required_tail_start(A) ::= HELP. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= USE. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= INSTALL. { A = MYLITE_STATEMENT_ADMIN; }
-required_tail_start(A) ::= UNINSTALL. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= CLONE. { A = MYLITE_STATEMENT_ADMIN; }
-required_tail_start(A) ::= CACHE. { A = MYLITE_STATEMENT_ADMIN; }
-required_tail_start(A) ::= KILL. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= GET. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= SIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= IF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -303,6 +302,43 @@ table_admin_table_tail ::= table_admin_table_keyword required_statement_tail.
 table_admin_table_keyword ::= TABLE.
 table_admin_table_keyword ::= TABLES.
 
+plugin_admin_statement ::= INSTALL plugin_admin_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+plugin_admin_statement ::= UNINSTALL plugin_admin_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+
+plugin_admin_tail ::= plugin_admin_object required_statement_tail.
+
+plugin_admin_object ::= COMPONENT.
+plugin_admin_object ::= PLUGIN.
+
+import_statement ::= IMPORT TABLE required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+
+cache_statement ::= CACHE INDEX required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+
+kill_statement ::= KILL kill_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+
+kill_tail ::= kill_target statement_tail.
+kill_tail ::= kill_mode required_statement_tail.
+
+kill_mode ::= CONNECTION.
+kill_mode ::= QUERY.
+
+kill_target ::= ATOM.
+kill_target ::= LABEL.
+
+deallocate_statement ::= DEALLOCATE PREPARE required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
+}
+
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -399,6 +435,8 @@ keyword ::= IMPORT.
 keyword ::= START.
 keyword ::= BEGIN.
 keyword ::= COMMIT.
+keyword ::= COMPONENT.
+keyword ::= CONNECTION.
 keyword ::= ROLLBACK.
 keyword ::= SAVEPOINT.
 keyword ::= RELEASE.
@@ -477,7 +515,9 @@ keyword ::= DEFINER.
 keyword ::= FULLTEXT.
 keyword ::= LOGFILE.
 keyword ::= OR.
+keyword ::= PLUGIN.
 keyword ::= RESOURCE.
+keyword ::= QUERY.
 keyword ::= SECURITY.
 keyword ::= SQL.
 keyword ::= SPATIAL.
@@ -513,6 +553,8 @@ keyword_not_select_clause ::= IMPORT.
 keyword_not_select_clause ::= START.
 keyword_not_select_clause ::= BEGIN.
 keyword_not_select_clause ::= COMMIT.
+keyword_not_select_clause ::= COMPONENT.
+keyword_not_select_clause ::= CONNECTION.
 keyword_not_select_clause ::= ROLLBACK.
 keyword_not_select_clause ::= SAVEPOINT.
 keyword_not_select_clause ::= RELEASE.
@@ -589,7 +631,9 @@ keyword_not_select_clause ::= DEFINER.
 keyword_not_select_clause ::= FULLTEXT.
 keyword_not_select_clause ::= LOGFILE.
 keyword_not_select_clause ::= OR.
+keyword_not_select_clause ::= PLUGIN.
 keyword_not_select_clause ::= RESOURCE.
+keyword_not_select_clause ::= QUERY.
 keyword_not_select_clause ::= SECURITY.
 keyword_not_select_clause ::= SQL.
 keyword_not_select_clause ::= SPATIAL.

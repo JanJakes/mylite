@@ -60,7 +60,8 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 targets are recorded for `GRANT ... TO` and `REVOKE ... FROM`, including the
 first `user@host` span when present. Account and role DDL target spans also
 preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
-`RENAME` forms.
+`RENAME` forms. Savepoint names are recorded for `SAVEPOINT`,
+`RELEASE SAVEPOINT`, and `ROLLBACK TO SAVEPOINT`.
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token.
@@ -90,6 +91,8 @@ block starts.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, or rename destinations.
+- Savepoint metadata records the named savepoint only. Bare `ROLLBACK` and
+  non-savepoint `RELEASE` forms remain objectless.
 - Parenthesized query-expression classification only identifies the leading
   query statement kind; it does not build the query-expression tree.
 - Stored-program control matching records token pairs only; it does not yet

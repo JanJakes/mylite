@@ -150,6 +150,15 @@ case "$account_ddl_output" in
 		;;
 esac
 
+savepoint_output=$("$parser" 'SAVEPOINT s; RELEASE SAVEPOINT s; ROLLBACK TO SAVEPOINT `s`; ROLLBACK')
+case "$savepoint_output" in
+	*"savepoint"*/savepoint:s*"release"*/savepoint:s*"rollback"*/savepoint:'`s`'*"rollback[13:13"*) ;;
+	*)
+		echo "unexpected savepoint output: $savepoint_output" >&2
+		exit 1
+		;;
+esac
+
 with_output=$("$parser" "WITH c AS (SELECT 1) UPDATE t SET a=1; WITH c AS (SELECT 1) DELETE FROM t; WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c")
 case "$with_output" in
 	*"kinds=update"*"delete"*"insert"*) ;;

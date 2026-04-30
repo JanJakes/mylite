@@ -58,6 +58,13 @@ static int classify_principal_statement_object(const mylite_parser *parser,
                                                mylite_statement *statement,
                                                size_t token_index,
                                                size_t last_token_index);
+static int classify_savepoint_statement_object(const mylite_parser *parser,
+                                               mylite_statement *statement,
+                                               size_t token_index,
+                                               size_t last_token_index);
+static size_t find_savepoint_name_token(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index);
 static size_t find_principal_name_token(const mylite_parser *parser,
                                         size_t token_index,
                                         size_t last_token_index,
@@ -499,6 +506,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT: return "prepared_statement";
 	case MYLITE_STATEMENT_OBJECT_PROCEDURE: return "procedure";
 	case MYLITE_STATEMENT_OBJECT_ROLE: return "role";
+	case MYLITE_STATEMENT_OBJECT_SAVEPOINT: return "savepoint";
 	case MYLITE_STATEMENT_OBJECT_SCHEMA: return "schema";
 	case MYLITE_STATEMENT_OBJECT_SPATIAL_REFERENCE_SYSTEM: return "spatial_reference_system";
 	case MYLITE_STATEMENT_OBJECT_TABLE: return "table";
@@ -871,6 +879,10 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	case MYLITE_STATEMENT_GRANT:
 	case MYLITE_STATEMENT_REVOKE:
 		return classify_principal_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_SAVEPOINT:
+	case MYLITE_STATEMENT_RELEASE:
+	case MYLITE_STATEMENT_ROLLBACK:
+		return classify_savepoint_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_SHOW:
 		return classify_show_statement_object(parser, statement, name_token_index, last_token_index);
 	default:
@@ -965,6 +977,40 @@ static int classify_principal_statement_object(const mylite_parser *parser,
 	statement->object_kind = MYLITE_STATEMENT_OBJECT_USER;
 	set_statement_account_name_from_first_token(parser, statement, name_token_index, last_token_index);
 	return 1;
+}
+
+static int classify_savepoint_statement_object(const mylite_parser *parser,
+                                               mylite_statement *statement,
+                                               size_t token_index,
+                                               size_t last_token_index)
+{
+	size_t name_token_index;
+
+	if (statement->kind == MYLITE_STATEMENT_SAVEPOINT) {
+		name_token_index = token_index;
+	} else {
+		name_token_index = find_savepoint_name_token(parser, token_index, last_token_index);
+	}
+
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        MYLITE_STATEMENT_OBJECT_SAVEPOINT,
+	                                        name_token_index,
+	                                        last_token_index);
+}
+
+static size_t find_savepoint_name_token(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index)
+{
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == SAVEPOINT_T &&
+		    token_can_start_object_name(&parser->tokens[token_index + 1])) {
+			return token_index + 1;
+		}
+		token_index++;
+	}
+	return parser->token_count;
 }
 
 static size_t find_principal_name_token(const mylite_parser *parser,

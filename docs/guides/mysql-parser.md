@@ -58,6 +58,12 @@ Account and role DDL preserve the first account-style target span too:
 ok statements=1 kinds=create[1:5,0:19]/user:'u'@'h'
 ```
 
+Transaction savepoint statements expose the savepoint handle:
+
+```text
+ok statements=1 kinds=savepoint[1:2,0:11]/savepoint:s
+```
+
 Parenthesized query expressions keep their opening-parenthesis span and are
 classified by the leading query token:
 

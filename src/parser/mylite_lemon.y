@@ -1017,8 +1017,14 @@ explain_statement ::= EXPLAIN explain_tail. {
 }
 
 explain_tail ::= explain_query_start statement_tail.
-explain_tail ::= FORMAT ATOM required_statement_tail.
-explain_tail ::= FOR CONNECTION required_statement_tail.
+explain_tail ::= explain_format_clause explain_query_start statement_tail.
+explain_tail ::= FOR CONNECTION ATOM.
+
+explain_format_clause ::= FORMAT diagnostics_equals explain_format_name.
+
+explain_format_name ::= ATOM(A). {
+  mylite_parser_require_explain_format(ctx, A);
+}
 
 explain_query_start ::= ANALYZE.
 explain_query_start ::= DELETE.

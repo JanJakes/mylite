@@ -45,6 +45,8 @@ void mylite_parser_require_start_until_log_pair(MyliteParseContext *ctx,
                                                 MyliteToken pos);
 void mylite_parser_require_check_table_option(MyliteParseContext *ctx,
                                               MyliteToken token);
+void mylite_parser_require_explain_format(MyliteParseContext *ctx,
+                                          MyliteToken token);
 void mylite_parser_require_diagnostics_statement_item(MyliteParseContext *ctx,
                                                       MyliteToken token);
 void mylite_parser_require_diagnostics_condition_item(MyliteParseContext *ctx,

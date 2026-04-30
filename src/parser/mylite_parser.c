@@ -256,6 +256,24 @@ void mylite_parser_require_check_table_option(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
+void mylite_parser_require_explain_format(MyliteParseContext *ctx,
+                                          MyliteToken token) {
+  static const char *const formats[] = {
+      "JSON",
+      "TRADITIONAL",
+      "TREE",
+  };
+
+  if (ctx->failed ||
+      token_ascii_matches_any(&token, formats,
+                              sizeof(formats) / sizeof(formats[0]))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
 void mylite_parser_require_diagnostics_statement_item(MyliteParseContext *ctx,
                                                       MyliteToken token) {
   static const char *const items[] = {

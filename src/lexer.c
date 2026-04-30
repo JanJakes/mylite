@@ -154,6 +154,8 @@ static int skip_space_and_comments(mylite_parser *parser);
 static void enter_executable_comment(mylite_lexer *lexer);
 static int skip_block_comment(mylite_parser *parser);
 static int skip_line_comment(mylite_parser *parser);
+static int is_prefixed_literal_start(const mylite_lexer *lexer);
+static int read_prefixed_literal(mylite_parser *parser);
 static int read_word(mylite_parser *parser);
 static int read_end_compound(mylite_parser *parser, int fallback);
 static int read_quoted_identifier(mylite_parser *parser);
@@ -242,6 +244,9 @@ static int next_token(mylite_parser *parser)
 	lexer->token_start_offset = lexer->offset;
 	lexer->token_start_line = lexer->line;
 	lexer->token_start_column = lexer->column;
+	if (is_prefixed_literal_start(lexer)) {
+		return finish_token(lexer, read_prefixed_literal(parser));
+	}
 	if (is_word_start(ch)) {
 		return finish_token(lexer, read_word(parser));
 	}
@@ -357,6 +362,53 @@ static int skip_line_comment(mylite_parser *parser)
 		advance_byte(lexer);
 	}
 	return 1;
+}
+
+static int is_prefixed_literal_start(const mylite_lexer *lexer)
+{
+	unsigned char ch = current_char(lexer);
+	size_t offset;
+
+	if ((ch == 'N' || ch == 'n' || ch == 'X' || ch == 'x' || ch == 'B' || ch == 'b') &&
+	    peek_char(lexer, 1) == '\'') {
+		return 1;
+	}
+	if (ch != '_') {
+		return 0;
+	}
+
+	offset = lexer->offset + 1;
+	if (offset >= lexer->length || !is_word_part((unsigned char)lexer->input[offset])) {
+		return 0;
+	}
+	while (offset < lexer->length && is_word_part((unsigned char)lexer->input[offset])) {
+		offset++;
+	}
+	return offset < lexer->length && lexer->input[offset] == '\'';
+}
+
+static int read_prefixed_literal(mylite_parser *parser)
+{
+	mylite_lexer *lexer = &parser->lexer;
+	unsigned char prefix = current_char(lexer);
+	int token = STRING;
+
+	if (prefix == 'X' || prefix == 'x' || prefix == 'B' || prefix == 'b') {
+		token = NUMBER;
+	}
+
+	if (prefix == '_') {
+		while (is_word_part(current_char(lexer))) {
+			advance_byte(lexer);
+		}
+	} else {
+		advance_byte(lexer);
+	}
+
+	if (read_string(parser, '\'') == 0) {
+		return 0;
+	}
+	return token;
 }
 
 static int read_word(mylite_parser *parser)

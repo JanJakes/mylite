@@ -21,6 +21,9 @@ handles MySQL comments, executable version-comment bodies, quoted identifiers,
 string literals, numeric literals, user/system variables, parameter markers,
 statement-leading keywords, and stored program `END IF` / `END LOOP` style
 compound endings.
+MySQL prefixed literals such as `_utf8mb4'text'`, `N'text'`, `X'ff'`, and
+`B'1010'` are emitted as single literal tokens with source spans covering the
+prefix and quoted body.
 
 The parser records the full token stream, a statement kind, an optional target
 object kind for DDL/admin statements, an optional first target-name span, and

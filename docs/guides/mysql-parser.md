@@ -149,6 +149,12 @@ XA transaction statements expose XID targets:
 ok statements=1 kinds=xa[1:3,0:12]/xa_transaction:'x'
 ```
 
+HELP exposes quoted help-topic searches:
+
+```text
+ok statements=1 kinds=help[1:2,0:15]/help_topic:'contents'
+```
+
 Resource group administration exposes the group name:
 
 ```text

@@ -248,6 +248,15 @@ case "$xa_output" in
 		;;
 esac
 
+help_output=$("$parser" "HELP 'contents'; HELP SELECT; HELP 'CREATE TABLE'")
+case "$help_output" in
+	*"help"*/help_topic:"'contents'"*"help[4:5"*"help"*/help_topic:"'CREATE TABLE'"*) ;;
+	*)
+		echo "unexpected HELP output: $help_output" >&2
+		exit 1
+		;;
+esac
+
 clone_output=$("$parser" "CLONE LOCAL DATA DIRECTORY = '/tmp/clone'; CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY 'p'")
 case "$clone_output" in
 	*"kinds=clone"*"clone[8:17"*) ;;

@@ -582,6 +582,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_ENGINE: return "engine";
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
 	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
+	case MYLITE_STATEMENT_OBJECT_HELP_TOPIC: return "help_topic";
 	case MYLITE_STATEMENT_OBJECT_INDEX: return "index";
 	case MYLITE_STATEMENT_OBJECT_INSTANCE: return "instance";
 	case MYLITE_STATEMENT_OBJECT_LABEL: return "label";
@@ -997,6 +998,14 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		name_token_index = find_describe_or_explain_table_name_token(parser,
 		                                                             name_token_index,
 		                                                             last_token_index);
+		break;
+	case MYLITE_STATEMENT_HELP:
+		if (name_token_index > last_token_index ||
+		    name_token_index >= parser->token_count ||
+		    parser->tokens[name_token_index].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		object_kind = MYLITE_STATEMENT_OBJECT_HELP_TOPIC;
 		break;
 	case MYLITE_STATEMENT_TABLE:
 	case MYLITE_STATEMENT_HANDLER:

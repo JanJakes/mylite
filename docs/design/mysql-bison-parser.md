@@ -45,6 +45,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/change-replication-filter.html`
 - MySQL 8.4 XA transaction statements:
   `https://dev.mysql.com/doc/refman/8.4/en/xa-statements.html`
+- MySQL 8.4 HELP statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/help.html`
 - MySQL 8.4 component and plugin statements:
   `https://dev.mysql.com/doc/refman/8.4/en/install-component.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/uninstall-component.html`,
@@ -127,8 +129,9 @@ table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 system-variable targets are recorded for `RESET PERSIST`. Replication channel
 targets are recorded for `START`, `STOP`, `RESET`, and `CHANGE` forms that
 include `FOR CHANNEL`. XA transaction XID targets are recorded for the
-XID-bearing XA statements. Component and plugin targets are recorded for
-`INSTALL` and `UNINSTALL` administrative statements.
+XID-bearing XA statements. Quoted `HELP` search topics are recorded as
+help-topic targets. Component and plugin targets are recorded for `INSTALL` and
+`UNINSTALL` administrative statements.
 `CLONE` has an explicit statement kind while its local-directory and remote
 instance endpoints remain body tokens.
 `STOP` has an explicit statement kind for replication-control statements.
@@ -195,6 +198,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   Replication metadata records only explicit `FOR CHANNEL` names and leaves
   default-channel operations objectless.
   XA metadata records only the first XID token and leaves `XA RECOVER`
+  objectless.
+  `HELP` metadata records only quoted search strings and leaves keyword topics
   objectless.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple

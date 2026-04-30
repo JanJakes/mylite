@@ -185,6 +185,7 @@ drop_tail ::= RESOURCE ATOM required_statement_tail.
 drop_tail ::= SPATIAL ATOM required_statement_tail.
 drop_tail ::= UNDO TABLESPACE required_statement_tail.
 drop_tail ::= PREPARE prepared_statement_name.
+drop_tail ::= INDEX drop_index_name ON cache_table_ref drop_index_options_tail.
 
 drop_table_kind ::= TABLE.
 drop_table_kind ::= TABLES.
@@ -201,8 +202,12 @@ drop_object_kind ::= TRIGGER.
 drop_object_kind ::= USER.
 drop_object_kind ::= ROLE.
 drop_object_kind ::= SERVER.
-drop_object_kind ::= INDEX.
 drop_object_kind ::= TABLESPACE.
+
+drop_index_name ::= cache_name_part.
+
+drop_index_options_tail ::= .
+drop_index_options_tail ::= drop_index_options_tail statement_token.
 
 alter_statement ::= ALTER alter_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);

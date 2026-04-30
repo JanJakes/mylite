@@ -715,6 +715,7 @@ show_tail ::= show_diagnostics_kind show_limit_tail.
 show_tail ::= show_simple_kind.
 show_tail ::= MASTER STATUS.
 show_tail ::= SLAVE show_slave_tail.
+show_tail ::= GRANTS show_grants_tail.
 
 show_extended_tail ::= EXTENDED show_extended_kind.
 show_extended_tail ::= EXTENDED FULL show_extended_kind.
@@ -765,6 +766,18 @@ show_simple_kind ::= REPLICAS.
 show_slave_tail ::= HOSTS.
 show_slave_tail ::= STATUS.
 
+show_grants_tail ::= .
+show_grants_tail ::= FOR show_grants_principal show_grants_using_tail.
+
+show_grants_using_tail ::= .
+show_grants_using_tail ::= USING show_grants_principal_list.
+
+show_grants_principal_list ::= show_grants_principal.
+show_grants_principal_list ::= show_grants_principal_list import_comma show_grants_principal.
+
+show_grants_principal ::= rename_user_account.
+show_grants_principal ::= ATOM LP RP.
+
 show_extended_kind ::= COLUMNS.
 show_extended_kind ::= FIELDS.
 show_extended_kind ::= INDEX.
@@ -788,7 +801,6 @@ show_unprefixed_kind ::= ENGINE.
 show_unprefixed_kind ::= EVENTS.
 show_unprefixed_kind ::= FIELDS.
 show_unprefixed_kind ::= FUNCTION.
-show_unprefixed_kind ::= GRANTS.
 show_unprefixed_kind ::= INDEX.
 show_unprefixed_kind ::= INDEXES.
 show_unprefixed_kind ::= KEYS.

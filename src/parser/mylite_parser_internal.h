@@ -27,6 +27,9 @@ void mylite_parser_accept(MyliteParseContext *ctx);
 void mylite_parser_failure(MyliteParseContext *ctx);
 void mylite_parser_syntax_error(MyliteParseContext *ctx, int token_id,
                                 MyliteToken token);
+void mylite_parser_record_statement(MyliteParseContext *ctx,
+                                    MyliteStatementKind kind);
+void mylite_parser_record_empty_statement(MyliteParseContext *ctx);
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token);
 

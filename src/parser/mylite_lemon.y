@@ -2,6 +2,10 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
+%type required_tail_start {MyliteStatementKind}
+%type optional_tail_start {MyliteStatementKind}
+%type statement_start {MyliteStatementKind}
+%type permissive_start {MyliteStatementKind}
 %extra_argument {MyliteParseContext *ctx}
 %token_destructor { (void)ctx; (void)yypminor; }
 %default_destructor { (void)ctx; (void)yypminor; }
@@ -28,104 +32,136 @@ input ::= statement_chunks. { (void)ctx; }
 statement_chunks ::= statement_chunk.
 statement_chunks ::= statement_chunks statement_chunk.
 
-statement_chunk ::= SEMI.
+statement_chunk ::= SEMI. { mylite_parser_record_empty_statement(ctx); }
 statement_chunk ::= statement SEMI.
 
-statement ::= required_tail_start required_statement_tail.
-statement ::= optional_tail_start statement_tail.
-statement ::= LABEL statement_start statement_tail.
-statement ::= permissive_start statement_tail.
+statement ::= required_tail_start(A) required_statement_tail. {
+  mylite_parser_record_statement(ctx, A);
+}
+statement ::= optional_tail_start(A) statement_tail. {
+  mylite_parser_record_statement(ctx, A);
+}
+statement ::= LABEL statement_start(A) statement_tail. {
+  mylite_parser_record_statement(ctx, A);
+}
+statement ::= permissive_start(A) statement_tail. {
+  mylite_parser_record_statement(ctx, A);
+}
 
-statement_start ::= required_tail_start.
-statement_start ::= optional_tail_start.
+statement_start(A) ::= required_tail_start(B). { A = B; }
+statement_start(A) ::= optional_tail_start(B). { A = B; }
 
-required_tail_start ::= SELECT.
-required_tail_start ::= WITH.
-required_tail_start ::= INSERT.
-required_tail_start ::= REPLACE.
-required_tail_start ::= UPDATE.
-required_tail_start ::= DELETE.
-required_tail_start ::= CREATE.
-required_tail_start ::= ALTER.
-required_tail_start ::= DROP.
-required_tail_start ::= TRUNCATE.
-required_tail_start ::= RENAME.
-required_tail_start ::= CALL.
-required_tail_start ::= DO.
-required_tail_start ::= LOAD.
-required_tail_start ::= TABLE.
-required_tail_start ::= VALUES.
-required_tail_start ::= HANDLER.
-required_tail_start ::= IMPORT.
-required_tail_start ::= START.
-required_tail_start ::= SAVEPOINT.
-required_tail_start ::= RELEASE.
-required_tail_start ::= SET.
-required_tail_start ::= LOCK.
-required_tail_start ::= UNLOCK.
-required_tail_start ::= XA.
-required_tail_start ::= BINLOG.
-required_tail_start ::= PURGE.
-required_tail_start ::= RESET.
-required_tail_start ::= CHANGE.
-required_tail_start ::= PREPARE.
-required_tail_start ::= EXECUTE.
-required_tail_start ::= DEALLOCATE.
-required_tail_start ::= GRANT.
-required_tail_start ::= REVOKE.
-required_tail_start ::= SHOW.
-required_tail_start ::= DESCRIBE.
-required_tail_start ::= DESC.
-required_tail_start ::= EXPLAIN.
-required_tail_start ::= HELP.
-required_tail_start ::= USE.
-required_tail_start ::= ANALYZE.
-required_tail_start ::= CHECK.
-required_tail_start ::= CHECKSUM.
-required_tail_start ::= OPTIMIZE.
-required_tail_start ::= REPAIR.
-required_tail_start ::= INSTALL.
-required_tail_start ::= UNINSTALL.
-required_tail_start ::= CLONE.
-required_tail_start ::= CACHE.
-required_tail_start ::= KILL.
-required_tail_start ::= GET.
-required_tail_start ::= SIGNAL.
-required_tail_start ::= IF.
-required_tail_start ::= ELSEIF.
-required_tail_start ::= RETURN.
-required_tail_start ::= LEAVE.
-required_tail_start ::= ITERATE.
+required_tail_start(A) ::= SELECT. { A = MYLITE_STATEMENT_SELECT; }
+required_tail_start(A) ::= WITH. { A = MYLITE_STATEMENT_SELECT; }
+required_tail_start(A) ::= INSERT. { A = MYLITE_STATEMENT_INSERT; }
+required_tail_start(A) ::= REPLACE. { A = MYLITE_STATEMENT_REPLACE; }
+required_tail_start(A) ::= UPDATE. { A = MYLITE_STATEMENT_UPDATE; }
+required_tail_start(A) ::= DELETE. { A = MYLITE_STATEMENT_DELETE; }
+required_tail_start(A) ::= CREATE. { A = MYLITE_STATEMENT_DDL; }
+required_tail_start(A) ::= ALTER. { A = MYLITE_STATEMENT_DDL; }
+required_tail_start(A) ::= DROP. { A = MYLITE_STATEMENT_DDL; }
+required_tail_start(A) ::= TRUNCATE. { A = MYLITE_STATEMENT_DDL; }
+required_tail_start(A) ::= RENAME. { A = MYLITE_STATEMENT_DDL; }
+required_tail_start(A) ::= CALL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
+required_tail_start(A) ::= LOAD. { A = MYLITE_STATEMENT_UTILITY; }
+required_tail_start(A) ::= TABLE. { A = MYLITE_STATEMENT_SELECT; }
+required_tail_start(A) ::= VALUES. { A = MYLITE_STATEMENT_SELECT; }
+required_tail_start(A) ::= HANDLER. { A = MYLITE_STATEMENT_UTILITY; }
+required_tail_start(A) ::= IMPORT. { A = MYLITE_STATEMENT_UTILITY; }
+required_tail_start(A) ::= START. { A = MYLITE_STATEMENT_TRANSACTION; }
+required_tail_start(A) ::= SAVEPOINT. { A = MYLITE_STATEMENT_TRANSACTION; }
+required_tail_start(A) ::= RELEASE. { A = MYLITE_STATEMENT_TRANSACTION; }
+required_tail_start(A) ::= SET. { A = MYLITE_STATEMENT_UTILITY; }
+required_tail_start(A) ::= LOCK. { A = MYLITE_STATEMENT_TRANSACTION; }
+required_tail_start(A) ::= UNLOCK. { A = MYLITE_STATEMENT_TRANSACTION; }
+required_tail_start(A) ::= XA. { A = MYLITE_STATEMENT_REPLICATION; }
+required_tail_start(A) ::= BINLOG. { A = MYLITE_STATEMENT_REPLICATION; }
+required_tail_start(A) ::= PURGE. { A = MYLITE_STATEMENT_REPLICATION; }
+required_tail_start(A) ::= RESET. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= CHANGE. { A = MYLITE_STATEMENT_REPLICATION; }
+required_tail_start(A) ::= PREPARE. { A = MYLITE_STATEMENT_PREPARED; }
+required_tail_start(A) ::= EXECUTE. { A = MYLITE_STATEMENT_PREPARED; }
+required_tail_start(A) ::= DEALLOCATE. { A = MYLITE_STATEMENT_PREPARED; }
+required_tail_start(A) ::= GRANT. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= REVOKE. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= SHOW. { A = MYLITE_STATEMENT_SHOW; }
+required_tail_start(A) ::= DESCRIBE. { A = MYLITE_STATEMENT_SHOW; }
+required_tail_start(A) ::= DESC. { A = MYLITE_STATEMENT_SHOW; }
+required_tail_start(A) ::= EXPLAIN. { A = MYLITE_STATEMENT_SHOW; }
+required_tail_start(A) ::= HELP. { A = MYLITE_STATEMENT_UTILITY; }
+required_tail_start(A) ::= USE. { A = MYLITE_STATEMENT_UTILITY; }
+required_tail_start(A) ::= ANALYZE. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= CHECK. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= CHECKSUM. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= OPTIMIZE. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= REPAIR. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= INSTALL. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= UNINSTALL. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= CLONE. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= CACHE. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= KILL. { A = MYLITE_STATEMENT_ADMIN; }
+required_tail_start(A) ::= GET. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+required_tail_start(A) ::= SIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+required_tail_start(A) ::= IF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+required_tail_start(A) ::= ELSEIF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+required_tail_start(A) ::= RETURN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+required_tail_start(A) ::= LEAVE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+required_tail_start(A) ::= ITERATE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 
-optional_tail_start ::= BEGIN.
-optional_tail_start ::= COMMIT.
-optional_tail_start ::= ROLLBACK.
-optional_tail_start ::= FLUSH.
-optional_tail_start ::= RESTART.
-optional_tail_start ::= SHUTDOWN.
-optional_tail_start ::= RESIGNAL.
-optional_tail_start ::= ELSE.
-optional_tail_start ::= LOOP.
-optional_tail_start ::= REPEAT.
-optional_tail_start ::= UNTIL.
-optional_tail_start ::= WHILE.
-optional_tail_start ::= CASE.
-optional_tail_start ::= WHEN.
-optional_tail_start ::= DECLARE.
-optional_tail_start ::= END.
-optional_tail_start ::= OPEN.
-optional_tail_start ::= FETCH.
-optional_tail_start ::= CLOSE.
-optional_tail_start ::= LP.
+optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
+optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
+optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
+optional_tail_start(A) ::= FLUSH. { A = MYLITE_STATEMENT_ADMIN; }
+optional_tail_start(A) ::= RESTART. { A = MYLITE_STATEMENT_ADMIN; }
+optional_tail_start(A) ::= SHUTDOWN. { A = MYLITE_STATEMENT_ADMIN; }
+optional_tail_start(A) ::= RESIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= ELSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= LOOP. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= REPEAT. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= UNTIL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= WHILE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= CASE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= WHEN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= DECLARE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= END. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= OPEN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= FETCH. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= CLOSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+optional_tail_start(A) ::= LP. { A = MYLITE_STATEMENT_SELECT; }
 
-permissive_start ::= ATOM(A). { mylite_parser_require_permissive(ctx, A); }
-permissive_start ::= FROM(A). { mylite_parser_require_permissive(ctx, A); }
-permissive_start ::= HAVING(A). { mylite_parser_require_permissive(ctx, A); }
-permissive_start ::= RP(A). { mylite_parser_require_permissive(ctx, A); }
-permissive_start ::= LB(A). { mylite_parser_require_permissive(ctx, A); }
-permissive_start ::= RB(A). { mylite_parser_require_permissive(ctx, A); }
-permissive_start ::= LC(A). { mylite_parser_require_permissive(ctx, A); }
-permissive_start ::= RC(A). { mylite_parser_require_permissive(ctx, A); }
+permissive_start(A) ::= ATOM(B). {
+  mylite_parser_require_permissive(ctx, B);
+  A = MYLITE_STATEMENT_PERMISSIVE;
+}
+permissive_start(A) ::= FROM(B). {
+  mylite_parser_require_permissive(ctx, B);
+  A = MYLITE_STATEMENT_PERMISSIVE;
+}
+permissive_start(A) ::= HAVING(B). {
+  mylite_parser_require_permissive(ctx, B);
+  A = MYLITE_STATEMENT_PERMISSIVE;
+}
+permissive_start(A) ::= RP(B). {
+  mylite_parser_require_permissive(ctx, B);
+  A = MYLITE_STATEMENT_PERMISSIVE;
+}
+permissive_start(A) ::= LB(B). {
+  mylite_parser_require_permissive(ctx, B);
+  A = MYLITE_STATEMENT_PERMISSIVE;
+}
+permissive_start(A) ::= RB(B). {
+  mylite_parser_require_permissive(ctx, B);
+  A = MYLITE_STATEMENT_PERMISSIVE;
+}
+permissive_start(A) ::= LC(B). {
+  mylite_parser_require_permissive(ctx, B);
+  A = MYLITE_STATEMENT_PERMISSIVE;
+}
+permissive_start(A) ::= RC(B). {
+  mylite_parser_require_permissive(ctx, B);
+  A = MYLITE_STATEMENT_PERMISSIVE;
+}
 
 statement_tail ::= .
 statement_tail ::= statement_tail statement_token.

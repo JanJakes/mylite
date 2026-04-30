@@ -893,15 +893,15 @@ when_statement ::= WHEN expression_start required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-open_statement ::= OPEN stored_program_label_ref statement_tail. {
+open_statement ::= OPEN stored_program_label_ref. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-fetch_statement ::= FETCH stored_program_label_ref statement_tail. {
+fetch_statement ::= FETCH stored_program_label_ref INTO required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-close_statement ::= CLOSE stored_program_label_ref statement_tail. {
+close_statement ::= CLOSE stored_program_label_ref. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 

@@ -289,8 +289,11 @@ load_infile ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "INFILE");
 }
 
-load_file_table_tail ::= INTO TABLE required_statement_tail.
-load_file_table_tail ::= load_duplicate_handling INTO TABLE required_statement_tail.
+load_file_table_tail ::= INTO TABLE cache_table_ref load_file_options_tail.
+load_file_table_tail ::= load_duplicate_handling INTO TABLE cache_table_ref load_file_options_tail.
+
+load_file_options_tail ::= .
+load_file_options_tail ::= load_file_options_tail statement_token.
 
 load_duplicate_handling ::= IGNORE.
 load_duplicate_handling ::= REPLACE.

@@ -544,6 +544,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_PLUGIN: return "plugin";
 	case MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT: return "prepared_statement";
 	case MYLITE_STATEMENT_OBJECT_PROCEDURE: return "procedure";
+	case MYLITE_STATEMENT_OBJECT_RESOURCE_GROUP: return "resource_group";
 	case MYLITE_STATEMENT_OBJECT_ROLE: return "role";
 	case MYLITE_STATEMENT_OBJECT_SAVEPOINT: return "savepoint";
 	case MYLITE_STATEMENT_OBJECT_SCHEMA: return "schema";
@@ -1099,6 +1100,15 @@ static int classify_set_statement_object(const mylite_parser *parser,
 		return 1;
 	}
 
+	if (token_text_equals(parser, token_index, "RESOURCE") &&
+	    token_index + 2 <= last_token_index &&
+	    parser->tokens[token_index + 1].parser_token == GROUP_T &&
+	    token_can_start_object_name(&parser->tokens[token_index + 2])) {
+		statement->object_kind = MYLITE_STATEMENT_OBJECT_RESOURCE_GROUP;
+		set_statement_object_name_from_first_token(parser, statement, token_index + 2, last_token_index);
+		return 1;
+	}
+
 	if (parser->tokens[token_index].parser_token == DEFAULT_T &&
 	    token_index + 1 <= last_token_index &&
 	    parser->tokens[token_index + 1].parser_token == ROLE_T) {
@@ -1540,6 +1550,11 @@ static mylite_statement_object_kind object_kind_from_token_sequence(const mylite
 		}
 		return MYLITE_STATEMENT_OBJECT_NONE;
 	default:
+		if (token_text_equals(parser, token_index, "RESOURCE") &&
+		    token_index + 1 <= last_token_index &&
+		    parser->tokens[token_index + 1].parser_token == GROUP_T) {
+			return MYLITE_STATEMENT_OBJECT_RESOURCE_GROUP;
+		}
 		if (parser->tokens[token_index].kind == MYLITE_TOKEN_IDENTIFIER &&
 		    parser->tokens[token_index].end_offset - parser->tokens[token_index].start_offset == 10 &&
 		    strncasecmp("TABLESPACE",
@@ -1602,6 +1617,11 @@ static size_t first_name_token_after_object(const mylite_parser *parser,
 
 	if (parser->tokens[object_token_index].parser_token == SPATIAL_T && token_index + 2 <= last_token_index) {
 		token_index += 2;
+	}
+	if (token_text_equals(parser, object_token_index, "RESOURCE") &&
+	    token_index <= last_token_index &&
+	    parser->tokens[token_index].parser_token == GROUP_T) {
+		token_index++;
 	}
 
 	while (token_index <= last_token_index) {

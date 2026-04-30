@@ -77,6 +77,12 @@ SHOW account-introspection forms preserve account spans:
 ok statements=1 kinds=show[1:6,0:24]/user:'u'@'h'
 ```
 
+Resource group administration exposes the group name:
+
+```text
+ok statements=1 kinds=create[1:7,0:36]/resource_group:rg
+```
+
 Transaction savepoint statements expose the savepoint handle:
 
 ```text

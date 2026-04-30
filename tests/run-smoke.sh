@@ -194,6 +194,15 @@ case "$set_account_output" in
 		;;
 esac
 
+resource_group_output=$("$parser" 'CREATE RESOURCE GROUP rg TYPE = USER; ALTER RESOURCE GROUP rg ENABLE; DROP RESOURCE GROUP rg; SET RESOURCE GROUP rg')
+case "$resource_group_output" in
+	*"create"*/resource_group:rg*"alter"*/resource_group:rg*"drop"*/resource_group:rg*"set"*/resource_group:rg*) ;;
+	*)
+		echo "unexpected resource group output: $resource_group_output" >&2
+		exit 1
+		;;
+esac
+
 install_output=$("$parser" "INSTALL PLUGIN p SONAME 'x.so'; UNINSTALL PLUGIN p; INSTALL COMPONENT 'file://component'; UNINSTALL COMPONENT 'file://component'")
 case "$install_output" in
 	*"install"*/plugin:p*"uninstall"*/plugin:p*"install"*/component:"'file://component'"*"uninstall"*/component:"'file://component'"*) ;;

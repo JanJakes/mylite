@@ -27,6 +27,11 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 MyISAM key cache statements:
   `https://dev.mysql.com/doc/refman/8.4/en/cache-index.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/load-index.html`
+- MySQL 8.4 resource group statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-resource-group.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/alter-resource-group.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/drop-resource-group.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/set-resource-group.html`
 - WordPress SQLite Database Integration query corpus:
   `packages/mysql-on-sqlite/tests/mysql/data/mysql-server-tests-queries.csv`
 
@@ -77,7 +82,8 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `SHOW CREATE USER` and `SHOW GRANTS FOR`, and prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Component and
 plugin targets are recorded for `INSTALL` and `UNINSTALL` administrative
-statements. Principal targets are recorded for `GRANT ... TO` and
+statements. Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`,
+and `SET RESOURCE GROUP`. Principal targets are recorded for `GRANT ... TO` and
 `REVOKE ... FROM`, including the first `user@host` span when present. Account
 and role DDL target spans also
 preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
@@ -115,7 +121,9 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   `SHOW` metadata is similarly limited to forms with a clear table, view, or
   schema/account target. Prepared-statement metadata records the statement
   handle name, not the SQL text referenced by `PREPARE`. Component/plugin
-  metadata records only the first target in multi-target statements.
+  metadata records only the first target in multi-target statements. Resource
+  group metadata records only the named group, not VCPU, priority, or thread
+  assignment lists.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

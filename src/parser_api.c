@@ -34,6 +34,18 @@ static size_t skip_dml_modifiers(const mylite_parser *parser,
                                  size_t token_index,
                                  size_t last_token_index);
 static int is_dml_modifier_token(int token);
+static int classify_direct_statement_object(const mylite_parser *parser, mylite_statement *statement);
+static size_t find_load_table_name_token(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index);
+static size_t find_lock_table_name_token(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index);
+static int set_statement_direct_object_name(const mylite_parser *parser,
+                                            mylite_statement *statement,
+                                            mylite_statement_object_kind object_kind,
+                                            size_t name_token_index,
+                                            size_t last_token_index);
 static mylite_statement_object_kind object_kind_from_token_sequence(const mylite_parser *parser,
                                                                     size_t token_index,
                                                                     size_t last_token_index);
@@ -54,6 +66,7 @@ static size_t last_qualified_name_token(const mylite_parser *parser,
 static int token_can_start_object_name(const mylite_token *token);
 static int token_can_continue_object_name(const mylite_token *token);
 static int is_optional_name_modifier(int token);
+static int token_text_equals(const mylite_parser *parser, size_t token_index, const char *expected);
 static int statement_kind_uses_object_scan(mylite_statement_kind kind);
 static mylite_token_kind token_kind_from_parser_token(int token);
 
@@ -506,6 +519,9 @@ static void classify_statement_object(const mylite_parser *parser, mylite_statem
 	if (classify_dml_statement_object(parser, statement)) {
 		return;
 	}
+	if (classify_direct_statement_object(parser, statement)) {
+		return;
+	}
 
 	if (!statement_kind_uses_object_scan(statement->kind) ||
 	    statement->first_token == 0 ||
@@ -655,6 +671,103 @@ static int is_dml_modifier_token(int token)
 	       token == QUICK_T;
 }
 
+static int classify_direct_statement_object(const mylite_parser *parser, mylite_statement *statement)
+{
+	size_t token_index;
+	size_t last_token_index;
+	size_t name_token_index;
+	mylite_statement_object_kind object_kind = MYLITE_STATEMENT_OBJECT_NONE;
+
+	if (statement->first_token == 0 ||
+	    statement->last_token < statement->first_token ||
+	    statement->first_token > parser->token_count) {
+		return 0;
+	}
+
+	token_index = statement->first_token - 1;
+	last_token_index = statement->last_token - 1;
+	name_token_index = token_index + 1;
+
+	switch (statement->kind) {
+	case MYLITE_STATEMENT_USE:
+		object_kind = MYLITE_STATEMENT_OBJECT_DATABASE;
+		break;
+	case MYLITE_STATEMENT_TABLE:
+	case MYLITE_STATEMENT_HANDLER:
+		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
+		break;
+	case MYLITE_STATEMENT_TRUNCATE:
+		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
+		if (name_token_index <= last_token_index &&
+		    parser->tokens[name_token_index].parser_token == TABLE_T) {
+			name_token_index++;
+		}
+		break;
+	case MYLITE_STATEMENT_LOAD:
+		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
+		name_token_index = find_load_table_name_token(parser, name_token_index, last_token_index);
+		break;
+	case MYLITE_STATEMENT_LOCK:
+		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
+		name_token_index = find_lock_table_name_token(parser, name_token_index, last_token_index);
+		break;
+	default:
+		return 0;
+	}
+
+	return set_statement_direct_object_name(parser, statement, object_kind, name_token_index, last_token_index);
+}
+
+static size_t find_load_table_name_token(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index)
+{
+	while (token_index + 2 <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == INTO_T &&
+		    parser->tokens[token_index + 1].parser_token == TABLE_T &&
+		    token_can_start_object_name(&parser->tokens[token_index + 2])) {
+			return token_index + 2;
+		}
+		token_index++;
+	}
+	return parser->token_count;
+}
+
+static size_t find_lock_table_name_token(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index)
+{
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    (parser->tokens[token_index].parser_token != TABLE_T &&
+	     !token_text_equals(parser, token_index, "TABLES"))) {
+		return parser->token_count;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index && token_can_start_object_name(&parser->tokens[token_index])) {
+		return token_index;
+	}
+	return parser->token_count;
+}
+
+static int set_statement_direct_object_name(const mylite_parser *parser,
+                                            mylite_statement *statement,
+                                            mylite_statement_object_kind object_kind,
+                                            size_t name_token_index,
+                                            size_t last_token_index)
+{
+	if (name_token_index > last_token_index ||
+	    name_token_index >= parser->token_count ||
+	    !token_can_start_object_name(&parser->tokens[name_token_index])) {
+		return 0;
+	}
+
+	statement->object_kind = object_kind;
+	set_statement_object_name_from_first_token(parser, statement, name_token_index, last_token_index);
+	return 1;
+}
+
 static mylite_statement_object_kind object_kind_from_token_sequence(const mylite_parser *parser,
                                                                     size_t token_index,
                                                                     size_t last_token_index)
@@ -786,6 +899,20 @@ static int is_optional_name_modifier(int token)
 	       token == NOT_T ||
 	       token == EXISTS_T ||
 	       token == TEMPORARY_T;
+}
+
+static int token_text_equals(const mylite_parser *parser, size_t token_index, const char *expected)
+{
+	const mylite_token *token;
+	size_t expected_length = strlen(expected);
+
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+
+	token = &parser->tokens[token_index];
+	return token->end_offset - token->start_offset == expected_length &&
+	       strncasecmp(expected, parser->lexer.input + token->start_offset, expected_length) == 0;
 }
 
 static int statement_kind_uses_object_scan(mylite_statement_kind kind)

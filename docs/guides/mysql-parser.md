@@ -18,9 +18,9 @@ The CLI reports statement kind plus token and byte spans:
 ok statements=1 kinds=select[1:2,0:8]
 ```
 
-DDL, table-maintenance, and DML table statements include a target object kind
-when the prototype can identify one. If a first target name is found, the CLI
-prints the exact source slice after the object kind:
+DDL, table-maintenance, DML table statements, and direct utility targets include
+a target object kind when the prototype can identify one. If a first target name
+is found, the CLI prints the exact source slice after the object kind:
 
 ```text
 ok statements=1 kinds=create[1:12,0:44]/table:`db`.`t`
@@ -31,6 +31,13 @@ For DML, the reported table is the first syntactic target table, including
 
 ```text
 ok statements=1 kinds=update[1:13,0:38]/table:wt
+```
+
+Direct utility targets are reported for statements such as `USE`, `TABLE`,
+`TRUNCATE`, `HANDLER`, `LOAD ... INTO TABLE`, and `LOCK TABLES`:
+
+```text
+ok statements=1 kinds=use[1:2,0:7]/database:app
 ```
 
 Parenthesized query expressions keep their opening-parenthesis span and are

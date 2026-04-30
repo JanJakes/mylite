@@ -58,6 +58,22 @@ case "$dml_object_output" in
 		;;
 esac
 
+utility_sql='TRUNCATE t;
+TRUNCATE TABLE `db`.`t`;
+USE `db`;
+TABLE `db`.`t`;
+HANDLER `db`.`h` OPEN;
+LOAD DATA INFILE "x" INTO TABLE `db`.`ld`;
+LOCK TABLES `db`.`lt` READ'
+utility_object_output=$("$parser" "$utility_sql")
+case "$utility_object_output" in
+	*"truncate"*/table:t*"truncate"*/table:'`db`.`t`'*"use"*/database:'`db`'*"table"*/table:'`db`.`t`'*"handler"*/table:'`db`.`h`'*"load"*/table:'`db`.`ld`'*"lock"*/table:'`db`.`lt`'*) ;;
+	*)
+		echo "unexpected utility object output: $utility_object_output" >&2
+		exit 1
+		;;
+esac
+
 with_output=$("$parser" "WITH c AS (SELECT 1) UPDATE t SET a=1; WITH c AS (SELECT 1) DELETE FROM t; WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c")
 case "$with_output" in
 	*"kinds=update"*"delete"*"insert"*) ;;

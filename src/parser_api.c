@@ -93,6 +93,9 @@ static size_t find_explainable_statement_token(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
 static int token_is_explainable_statement_head(int token);
+static size_t find_table_statement_name_token(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index);
 static size_t find_describe_or_explain_table_name_token(const mylite_parser *parser,
                                                         size_t token_index,
                                                         size_t last_token_index);
@@ -1310,9 +1313,12 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		}
 		object_kind = MYLITE_STATEMENT_OBJECT_HELP_TOPIC;
 		break;
-	case MYLITE_STATEMENT_TABLE:
 	case MYLITE_STATEMENT_HANDLER:
 		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
+		break;
+	case MYLITE_STATEMENT_TABLE:
+		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
+		name_token_index = find_table_statement_name_token(parser, token_index, last_token_index);
 		break;
 	case MYLITE_STATEMENT_TRUNCATE:
 		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
@@ -1719,6 +1725,23 @@ static int token_is_explainable_statement_head(int token)
 	default:
 		return 0;
 	}
+}
+
+static size_t find_table_statement_name_token(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	while (token_index <= last_token_index &&
+	       token_index < parser->token_count &&
+	       parser->tokens[token_index].parser_token == '(') {
+		token_index++;
+	}
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    parser->tokens[token_index].parser_token == TABLE_T) {
+		return token_index + 1;
+	}
+	return parser->token_count;
 }
 
 static size_t find_describe_or_explain_table_name_token(const mylite_parser *parser,

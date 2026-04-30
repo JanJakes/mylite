@@ -45,6 +45,12 @@ Standalone `VALUES` statements expose the query object kind:
 ok statements=1 kinds=values[1:10,0:21]/query
 ```
 
+Direct and parenthesized `TABLE` statements preserve their table target:
+
+```text
+ok statements=1 kinds=table[1:6,0:16]/table:`db`.`t`
+```
+
 Direct utility targets are reported for statements such as `USE`, `TABLE`,
 `TRUNCATE`, `HANDLER`, `IMPORT TABLE`, `CALL`, direct `DESCRIBE` / `EXPLAIN`
 table forms, `EXPLAIN ... FOR CONNECTION`, `LOAD ... INTO TABLE`, `CACHE INDEX`,

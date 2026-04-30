@@ -567,6 +567,7 @@ static int keyword_token(const MyliteToken *token) {
       {"KILL", ML_KILL},
       {"LAST", ML_LAST},
       {"LEAVE", ML_LEAVE},
+      {"LIKE", ML_LIKE},
       {"LIMIT", ML_LIMIT},
       {"LOAD", ML_LOAD},
       {"LOCAL", ML_LOCAL},

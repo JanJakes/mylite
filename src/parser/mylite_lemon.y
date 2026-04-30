@@ -708,7 +708,7 @@ show_statement ::= SHOW show_tail. {
 show_tail ::= show_unprefixed_kind statement_tail.
 show_tail ::= show_extended_tail statement_tail.
 show_tail ::= show_full_tail statement_tail.
-show_tail ::= show_scope_prefix show_scoped_kind statement_tail.
+show_tail ::= show_scope_prefix show_scoped_kind show_filter_tail.
 show_tail ::= COUNT LP show_count_star RP show_count_kind.
 show_tail ::= CREATE show_create_tail.
 show_tail ::= show_diagnostics_kind show_limit_tail.
@@ -716,6 +716,7 @@ show_tail ::= show_simple_kind.
 show_tail ::= MASTER STATUS.
 show_tail ::= SLAVE show_slave_tail.
 show_tail ::= GRANTS show_grants_tail.
+show_tail ::= show_scoped_kind show_filter_tail.
 
 show_extended_tail ::= EXTENDED show_extended_kind.
 show_extended_tail ::= EXTENDED FULL show_extended_kind.
@@ -728,6 +729,10 @@ show_scope_prefix ::= SESSION.
 
 show_scoped_kind ::= STATUS.
 show_scoped_kind ::= VARIABLES.
+
+show_filter_tail ::= .
+show_filter_tail ::= LIKE ATOM.
+show_filter_tail ::= WHERE expression_start statement_tail.
 
 show_count_star ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "*");
@@ -810,12 +815,10 @@ show_unprefixed_kind ::= PROFILE.
 show_unprefixed_kind ::= RELAYLOG.
 show_unprefixed_kind ::= REPLICA.
 show_unprefixed_kind ::= SCHEMAS.
-show_unprefixed_kind ::= STATUS.
 show_unprefixed_kind ::= STORAGE.
 show_unprefixed_kind ::= TABLE.
 show_unprefixed_kind ::= TABLES.
 show_unprefixed_kind ::= TRIGGERS.
-show_unprefixed_kind ::= VARIABLES.
 
 describe_statement ::= DESCRIBE describe_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
@@ -1607,6 +1610,7 @@ keyword ::= CLOSE.
 keyword ::= RETURN.
 keyword ::= LEAVE.
 keyword ::= ITERATE.
+keyword ::= LIKE.
 keyword ::= LIMIT.
 keyword ::= FROM.
 keyword ::= USER.
@@ -1815,6 +1819,7 @@ keyword_not_select_clause ::= CLOSE.
 keyword_not_select_clause ::= RETURN.
 keyword_not_select_clause ::= LEAVE.
 keyword_not_select_clause ::= ITERATE.
+keyword_not_select_clause ::= LIKE.
 keyword_not_select_clause ::= LIMIT.
 keyword_not_select_clause ::= USER.
 keyword_not_select_clause ::= VIEW.

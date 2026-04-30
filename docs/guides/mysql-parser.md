@@ -34,7 +34,8 @@ ok statements=1 kinds=update[1:13,0:38]/table:wt
 ```
 
 Direct utility targets are reported for statements such as `USE`, `TABLE`,
-`TRUNCATE`, `HANDLER`, `LOAD ... INTO TABLE`, and `LOCK TABLES`:
+`TRUNCATE`, `HANDLER`, direct `DESCRIBE` / `EXPLAIN` table forms,
+`LOAD ... INTO TABLE`, and `LOCK TABLES`:
 
 ```text
 ok statements=1 kinds=use[1:2,0:7]/database:app

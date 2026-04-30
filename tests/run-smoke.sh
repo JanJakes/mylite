@@ -74,6 +74,25 @@ case "$utility_object_output" in
 		;;
 esac
 
+explain_sql='DESC `db`.`t`;
+DESCRIBE t c;
+EXPLAIN `db`.`e`;
+EXPLAIN SELECT 1;
+EXPLAIN FORMAT = JSON SELECT 1;
+DESCRIBE SELECT 1'
+explain_object_output=$("$parser" "$explain_sql")
+case "$explain_object_output" in
+	*"/table:FORMAT"*|*"/table:SELECT"*)
+		echo "unexpected EXPLAIN/DESCRIBE object output: $explain_object_output" >&2
+		exit 1
+		;;
+	*"describe"*/table:'`db`.`t`'*"describe"*/table:t*"explain"*/table:'`db`.`e`'*"explain[15:17"*"explain[19:24"*"describe[26:28"*) ;;
+	*)
+		echo "unexpected EXPLAIN/DESCRIBE object output: $explain_object_output" >&2
+		exit 1
+		;;
+esac
+
 with_output=$("$parser" "WITH c AS (SELECT 1) UPDATE t SET a=1; WITH c AS (SELECT 1) DELETE FROM t; WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c")
 case "$with_output" in
 	*"kinds=update"*"delete"*"insert"*) ;;

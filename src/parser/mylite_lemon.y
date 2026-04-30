@@ -1330,7 +1330,11 @@ values_row_token ::= RC.
 values_query_tail ::= .
 values_query_tail ::= UNION required_statement_tail.
 values_query_tail ::= ORDER BY required_statement_tail.
-values_query_tail ::= LIMIT required_statement_tail.
+values_query_tail ::= values_limit_tail.
+
+values_limit_tail ::= LIMIT ATOM.
+values_limit_tail ::= LIMIT ATOM import_comma ATOM.
+values_limit_tail ::= LIMIT ATOM OFFSET ATOM.
 
 prepare_statement ::= PREPARE prepared_statement_name FROM prepare_source. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);

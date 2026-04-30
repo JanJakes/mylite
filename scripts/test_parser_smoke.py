@@ -573,6 +573,8 @@ def main() -> int:
         ("delete select;", 1, {}),
         ("with cte as (select 1) select * from cte;", 0, {"statements": "1", "select": "1"}),
         ("with recursive cte as (select 1) select * from cte;", 0, {"statements": "1", "select": "1"}),
+        ("with cte(a, b) as (select 1, 2) select * from cte;", 0, {"statements": "1", "select": "1"}),
+        ("with cte select 1;", 1, {}),
         ("with select;", 1, {}),
         ("table t;", 0, {"statements": "1", "select": "1"}),
         ("table db.t limit 5 offset 5;", 0, {"statements": "1", "select": "1"}),

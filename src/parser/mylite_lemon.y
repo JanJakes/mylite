@@ -1638,13 +1638,24 @@ delete_partition_marker ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "PARTITION");
 }
 
-with_statement ::= WITH with_first_token required_statement_tail. {
+with_statement ::= WITH with_recursive_tail with_cte_name with_cte_column_tail with_cte_as LP required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
 }
 
-with_first_token ::= ATOM.
-with_first_token ::= LABEL.
-with_first_token ::= RECURSIVE.
+with_recursive_tail ::= .
+with_recursive_tail ::= RECURSIVE.
+
+with_cte_name ::= cache_name_part.
+
+with_cte_column_tail ::= .
+with_cte_column_tail ::= LP with_cte_column_list RP.
+
+with_cte_column_list ::= cache_name_part.
+with_cte_column_list ::= with_cte_column_list import_comma cache_name_part.
+
+with_cte_as ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "AS");
+}
 
 table_statement ::= TABLE table_statement_target table_query_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);

@@ -89,6 +89,12 @@ Low-level DDL targets such as server and logfile-group names are reported too:
 ok statements=1 kinds=create[1:12,0:61]/server:s
 ```
 
+Instance-level commands report an object kind without a name span:
+
+```text
+ok statements=1 kinds=lock[1:4,0:24]/instance
+```
+
 Transaction savepoint statements expose the savepoint handle:
 
 ```text

@@ -56,6 +56,10 @@ static size_t find_cache_index_name_token(const mylite_parser *parser,
 static size_t find_lock_table_name_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index);
+static int classify_instance_statement_object(const mylite_parser *parser,
+                                              mylite_statement *statement,
+                                              size_t token_index,
+                                              size_t last_token_index);
 static int classify_set_statement_object(const mylite_parser *parser,
                                          mylite_statement *statement,
                                          size_t token_index,
@@ -122,6 +126,8 @@ static size_t find_show_from_name_token(const mylite_parser *parser,
 static size_t find_show_grants_name_token(const mylite_parser *parser,
                                           size_t token_index,
                                           size_t last_token_index);
+static int set_statement_direct_object(mylite_statement *statement,
+                                       mylite_statement_object_kind object_kind);
 static int set_statement_direct_object_name(const mylite_parser *parser,
                                             mylite_statement *statement,
                                             mylite_statement_object_kind object_kind,
@@ -540,6 +546,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
 	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
 	case MYLITE_STATEMENT_OBJECT_INDEX: return "index";
+	case MYLITE_STATEMENT_OBJECT_INSTANCE: return "instance";
 	case MYLITE_STATEMENT_OBJECT_LABEL: return "label";
 	case MYLITE_STATEMENT_OBJECT_LOGFILE_GROUP: return "logfile_group";
 	case MYLITE_STATEMENT_OBJECT_PLUGIN: return "plugin";
@@ -939,6 +946,8 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	name_token_index = token_index + 1;
 
 	switch (statement->kind) {
+	case MYLITE_STATEMENT_ALTER:
+		return classify_instance_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_USE:
 		object_kind = MYLITE_STATEMENT_OBJECT_DATABASE;
 		break;
@@ -969,9 +978,14 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		name_token_index = find_cache_index_name_token(parser, name_token_index, last_token_index);
 		break;
 	case MYLITE_STATEMENT_LOCK:
+		if (classify_instance_statement_object(parser, statement, name_token_index, last_token_index)) {
+			return 1;
+		}
 		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
 		name_token_index = find_lock_table_name_token(parser, name_token_index, last_token_index);
 		break;
+	case MYLITE_STATEMENT_UNLOCK:
+		return classify_instance_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_SET:
 		return classify_set_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_INSTALL:
@@ -1079,6 +1093,19 @@ static size_t find_lock_table_name_token(const mylite_parser *parser,
 		return token_index;
 	}
 	return parser->token_count;
+}
+
+static int classify_instance_statement_object(const mylite_parser *parser,
+                                              mylite_statement *statement,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    token_text_equals(parser, token_index, "INSTANCE")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_INSTANCE);
+	}
+	return 0;
 }
 
 static int classify_set_statement_object(const mylite_parser *parser,
@@ -1501,6 +1528,12 @@ static size_t find_show_grants_name_token(const mylite_parser *parser,
 		token_index++;
 	}
 	return parser->token_count;
+}
+
+static int set_statement_direct_object(mylite_statement *statement, mylite_statement_object_kind object_kind)
+{
+	statement->object_kind = object_kind;
+	return 1;
 }
 
 static int set_statement_direct_object_name(const mylite_parser *parser,

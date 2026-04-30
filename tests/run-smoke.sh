@@ -212,6 +212,15 @@ case "$server_logfile_output" in
 		;;
 esac
 
+instance_output=$("$parser" 'ALTER INSTANCE ROTATE INNODB MASTER KEY; ALTER INSTANCE RELOAD TLS; LOCK INSTANCE FOR BACKUP; UNLOCK INSTANCE; LOCK TABLES t READ; ALTER TABLE t ADD COLUMN c int')
+case "$instance_output" in
+	*"alter"*/instance*"alter"*/instance*"lock"*/instance*"unlock"*/instance*"lock"*/table:t*"alter"*/table:t*) ;;
+	*)
+		echo "unexpected instance output: $instance_output" >&2
+		exit 1
+		;;
+esac
+
 install_output=$("$parser" "INSTALL PLUGIN p SONAME 'x.so'; UNINSTALL PLUGIN p; INSTALL COMPONENT 'file://component'; UNINSTALL COMPONENT 'file://component'")
 case "$install_output" in
 	*"install"*/plugin:p*"uninstall"*/plugin:p*"install"*/component:"'file://component'"*"uninstall"*/component:"'file://component'"*) ;;

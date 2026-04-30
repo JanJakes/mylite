@@ -39,6 +39,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/create-logfile-group.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/alter-logfile-group.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/drop-logfile-group.html`
+- MySQL 8.4 instance-level statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/alter-instance.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/lock-instance-for-backup.html`
 - WordPress SQLite Database Integration query corpus:
   `packages/mysql-on-sqlite/tests/mysql/data/mysql-server-tests-queries.csv`
 
@@ -92,9 +95,10 @@ plugin targets are recorded for `INSTALL` and `UNINSTALL` administrative
 statements. Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`,
 and `SET RESOURCE GROUP`. Server, logfile-group, and tablespace DDL targets are
 recorded for the low-level storage/metadata statements that expose a direct
-name. Principal targets are recorded for `GRANT ... TO` and
-`REVOKE ... FROM`, including the first `user@host` span when present. Account
-and role DDL target spans also
+name. Instance-level `ALTER`, `LOCK`, and `UNLOCK` statements are recorded with
+an object kind but no object-name span. Principal targets are recorded for
+`GRANT ... TO` and `REVOKE ... FROM`, including the first `user@host` span when
+present. Account and role DDL target spans also
 preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
 `RENAME` forms. Account-management `SET` metadata is recorded for explicit
 `SET ROLE`, `SET DEFAULT ROLE`, and `SET PASSWORD FOR` role or account targets,
@@ -134,6 +138,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   group metadata records only the named group, not VCPU, priority, or thread
   assignment lists. Server, logfile-group, and tablespace metadata records only
   the named object, not engine-specific options or rename destinations.
+  Instance metadata records only the instance-level command surface, not the
+  specific backup-lock, TLS, keyring, or redo-log operation.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

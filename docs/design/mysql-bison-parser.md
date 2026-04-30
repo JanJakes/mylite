@@ -234,8 +234,9 @@ targets in `FLUSH`, table targets in `FLUSH TABLES`, and
 table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `REPAIR`, and prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Persisted
-system-variable targets are recorded for `RESET PERSIST`. Replication channel
-targets are recorded for `START`, `STOP`, `RESET`, and `CHANGE` forms that
+system-variable targets are recorded for `RESET PERSIST`. Local clone
+directories and remote donor endpoints are recorded for `CLONE`. Replication
+channel targets are recorded for `START`, `STOP`, `RESET`, and `CHANGE` forms that
 include `FOR CHANNEL`. XA transaction XID targets are recorded for the
 XID-bearing XA statements. Non-XA transaction-control statements record the
 transaction object kind for `BEGIN`, `BEGIN WORK`, `START TRANSACTION`,
@@ -243,8 +244,8 @@ transaction object kind for `BEGIN`, `BEGIN WORK`, `START TRANSACTION`,
 leaving compound `BEGIN ... END` blocks objectless. Quoted `HELP` search
 topics are recorded as help-topic targets. Component and plugin targets are
 recorded for `INSTALL` and `UNINSTALL` administrative statements.
-`CLONE` has an explicit statement kind while its local-directory and remote
-instance endpoints remain body tokens.
+Local `CLONE` directory targets and remote `CLONE INSTANCE` donor endpoints
+are recorded as direct targets.
 `STOP` has an explicit statement kind for replication-control statements.
 Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`, and
 `SET RESOURCE GROUP`. Server, logfile-group, and tablespace DDL targets are
@@ -331,6 +332,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   specific backup-lock, TLS, keyring, or redo-log operation.
   `KILL` metadata records only the processlist id token, not the distinction
   between query and connection termination.
+  `CLONE` metadata records local clone directories or remote donor endpoints
+  only; plugin availability, privilege checks, copy behavior, SSL requirements,
+  and restart side effects remain runtime work.
   Binary log metadata records explicit log-file targets or binary-log collection
   targets for `BEFORE` purge forms, but does not classify position or time
   expressions. `BINLOG` metadata records only the first string event payload.

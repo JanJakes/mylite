@@ -493,9 +493,9 @@ case "$help_output" in
 		;;
 esac
 
-clone_output=$("$parser" "CLONE LOCAL DATA DIRECTORY = '/tmp/clone'; CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY 'p'")
+clone_output=$("$parser" "CLONE LOCAL DATA DIRECTORY = '/tmp/clone'; CLONE LOCAL DATA DIRECTORY '/tmp/clone2'; CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY 'p'; CLONE INSTANCE FROM 'u'@'h':3306 IDENTIFIED BY 'p' DATA DIRECTORY = '/tmp/clone' REQUIRE NO SSL")
 case "$clone_output" in
-	*"kinds=clone"*"clone[8:17"*) ;;
+	*"clone"*/directory:"'/tmp/clone'"*"clone"*/directory:"'/tmp/clone2'"*"clone"*/server:user@host:3306*"clone"*/server:"'u'@'h':3306"*) ;;
 	*)
 		echo "unexpected CLONE output: $clone_output" >&2
 		exit 1

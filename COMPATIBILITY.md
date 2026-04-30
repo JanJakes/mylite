@@ -232,7 +232,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. |  |
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. |  |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. |  |
-| `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. |  |
+| `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser records local clone directory targets and remote donor server endpoints; clone plugin behavior, privilege checks, copying, and restart semantics are not implemented. |
 | `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser records explicit user-variable and system-variable targets plus account-management, character-set, and transaction targets; unadorned variable names remain semantic-analysis work. |
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser accepts the statement and records the requested character-set target; charset validation and session variable updates are not implemented. |
 | `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser accepts the statement and records the requested character-set target; collation validation and session variable updates are not implemented. |

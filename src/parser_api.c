@@ -108,6 +108,16 @@ static int classify_kill_statement_object(const mylite_parser *parser,
                                           mylite_statement *statement,
                                           size_t token_index,
                                           size_t last_token_index);
+static int classify_clone_statement_object(const mylite_parser *parser,
+                                           mylite_statement *statement,
+                                           size_t token_index,
+                                           size_t last_token_index);
+static size_t find_data_directory_value_token(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index);
+static size_t find_clone_endpoint_last_token(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index);
 static int classify_purge_statement_object(const mylite_parser *parser,
                                            mylite_statement *statement,
                                            size_t token_index,
@@ -699,6 +709,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_DATABASE: return "database";
 	case MYLITE_STATEMENT_OBJECT_DIAGNOSTICS_CONDITION: return "diagnostics_condition";
 	case MYLITE_STATEMENT_OBJECT_DIAGNOSTICS_AREA: return "diagnostics_area";
+	case MYLITE_STATEMENT_OBJECT_DIRECTORY: return "directory";
 	case MYLITE_STATEMENT_OBJECT_DUMPFILE: return "dumpfile";
 	case MYLITE_STATEMENT_OBJECT_ENGINE: return "engine";
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
@@ -1212,6 +1223,8 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		return classify_replication_channel_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_KILL:
 		return classify_kill_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_CLONE:
+		return classify_clone_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_PURGE:
 		return classify_purge_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_BINLOG:
@@ -1716,6 +1729,87 @@ static int classify_kill_statement_object(const mylite_parser *parser,
 	                                        MYLITE_STATEMENT_OBJECT_CONNECTION,
 	                                        token_index,
 	                                        last_token_index);
+}
+
+static int classify_clone_statement_object(const mylite_parser *parser,
+                                           mylite_statement *statement,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	size_t name_token_index;
+	size_t endpoint_last_token;
+
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == LOCAL_T) {
+		name_token_index = find_data_directory_value_token(parser, token_index + 1, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_DIRECTORY,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	if (!token_text_equals(parser, token_index, "INSTANCE") ||
+	    token_index + 1 > last_token_index ||
+	    parser->tokens[token_index + 1].parser_token != FROM_T) {
+		return 0;
+	}
+
+	name_token_index = token_index + 2;
+	endpoint_last_token = find_clone_endpoint_last_token(parser, name_token_index, last_token_index);
+	if (endpoint_last_token >= parser->token_count) {
+		return 0;
+	}
+
+	return set_statement_direct_object_name_range(parser,
+	                                              statement,
+	                                              MYLITE_STATEMENT_OBJECT_SERVER,
+	                                              name_token_index,
+	                                              endpoint_last_token);
+}
+
+static size_t find_data_directory_value_token(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	while (token_index + 1 <= last_token_index) {
+		if (parser->tokens[token_index].parser_token == DATA_T &&
+		    token_text_equals(parser, token_index + 1, "DIRECTORY")) {
+			token_index += 2;
+			if (token_index <= last_token_index &&
+			    token_text_equals(parser, token_index, "=")) {
+				token_index++;
+			}
+			if (token_index <= last_token_index &&
+			    parser->tokens[token_index].kind == MYLITE_TOKEN_STRING) {
+				return token_index;
+			}
+			return parser->token_count;
+		}
+		token_index++;
+	}
+	return parser->token_count;
+}
+
+static size_t find_clone_endpoint_last_token(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index)
+{
+	size_t endpoint_first_token = token_index;
+
+	while (token_index <= last_token_index) {
+		if (token_text_equals(parser, token_index, "IDENTIFIED")) {
+			if (token_index == endpoint_first_token) {
+				return parser->token_count;
+			}
+			return token_index - 1;
+		}
+		token_index++;
+	}
+	return parser->token_count;
 }
 
 static int classify_purge_statement_object(const mylite_parser *parser,

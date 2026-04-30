@@ -322,10 +322,10 @@ RESET BINARY LOGS AND GTIDS exposes the binary-log collection:
 ok statements=1 kinds=reset[1:5,0:27]/binary_log
 ```
 
-CLONE is classified as its own administrative statement kind:
+CLONE exposes local directory and remote donor targets:
 
 ```text
-ok statements=1 kinds=clone[1:6,0:41]
+ok statements=2 kinds=clone[1:6,0:41]/directory:'/tmp/clone',clone[8:17,43:95]/server:user@host:3306
 ```
 
 STOP replication-control forms are classified as `stop`:

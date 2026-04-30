@@ -181,6 +181,19 @@ case "$labeled_statement_output" in
 		;;
 esac
 
+label_keyword_output=$("$parser" 'open: LOOP LEAVE open; END LOOP open; engine: LOOP LEAVE engine; END LOOP engine; value: LOOP LEAVE value; END LOOP value; quick: LOOP LEAVE quick; END LOOP quick; no: LOOP LEAVE no; END LOOP no; read: LOOP LEAVE read; END LOOP read; `read`: LOOP LEAVE `read`; END LOOP `read`')
+case "$label_keyword_output" in
+	*"/label:no"*|*"/label:read"*)
+		echo "unexpected restricted label keyword output: $label_keyword_output" >&2
+		exit 1
+		;;
+	*"loop"*/label:open*"loop"*/label:engine*"loop"*/label:value*"loop"*/label:quick*"loop"*/label:'`read`'*) ;;
+	*)
+		echo "unexpected label keyword output: $label_keyword_output" >&2
+		exit 1
+		;;
+esac
+
 object_output=$("$parser" 'CREATE TABLE IF NOT EXISTS `db`.`t` (id int); ALTER VIEW v AS SELECT 1; DROP FUNCTION f')
 case "$object_output" in
 	*"create"*/table:'`db`.`t`'*"alter"*/view:v*"drop"*/function:f*) ;;

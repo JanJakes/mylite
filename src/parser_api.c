@@ -343,7 +343,9 @@ static int token_can_continue_object_name(const mylite_token *token);
 static int token_can_be_unquoted_object_name_keyword(int token);
 static mylite_statement_object_kind variable_object_kind_from_token(const mylite_token *token);
 static int token_can_start_local_variable_name(const mylite_token *token);
+static int token_can_be_unquoted_local_name_keyword(int token);
 static int token_can_start_label_name(const mylite_token *token);
+static int token_can_be_unquoted_label_keyword(int token);
 static int is_optional_name_modifier(int token);
 static int token_text_equals(const mylite_parser *parser, size_t token_index, const char *expected);
 static int token_is_assignment_operator(const mylite_parser *parser, size_t token_index);
@@ -1070,8 +1072,7 @@ static int classify_labeled_statement(mylite_parser *parser, mylite_statement *s
 	size_t head_token_index;
 	mylite_statement_kind labeled_kind;
 
-	if (statement->kind != MYLITE_STATEMENT_UNKNOWN ||
-	    statement->first_token == 0 ||
+	if (statement->first_token == 0 ||
 	    statement->last_token < statement->first_token + 2 ||
 	    statement->last_token > parser->token_count) {
 		return 0;
@@ -3758,7 +3759,40 @@ static int token_can_start_label_name(const mylite_token *token)
 {
 	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
 	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
-	       token_can_be_unquoted_local_name_keyword(token->parser_token);
+	       token_can_be_unquoted_label_keyword(token->parser_token);
+}
+
+static int token_can_be_unquoted_label_keyword(int token)
+{
+	switch (token) {
+	case AUTO_INCREMENT_T:
+	case BINLOG_T:
+	case CHAIN_T:
+	case CLOSE_T:
+	case COLUMNS_T:
+	case DATA_T:
+	case ENGINE_T:
+	case EVENT_T:
+	case FIELDS_T:
+	case FORMAT_T:
+	case FULL_T:
+	case INFILE_T:
+	case JSON_T:
+	case LOCAL_T:
+	case OFFSET_T:
+	case OPEN_T:
+	case QUICK_T:
+	case ROLE_T:
+	case TEMPORARY_T:
+	case TRANSACTION_T:
+	case UNTIL_T:
+	case USER_T:
+	case VALUE_T:
+	case VIEW_T:
+		return 1;
+	default:
+		return 0;
+	}
 }
 
 static int is_optional_name_modifier(int token)

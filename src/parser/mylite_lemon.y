@@ -125,13 +125,24 @@ select_tail ::= select_tail statement_token.
 
 select_first_token ::= ATOM.
 select_first_token ::= LABEL.
-select_first_token ::= keyword_not_select_clause.
+select_first_token ::= expression_start_keyword.
+select_first_token ::= select_modifier.
 select_first_token ::= LP.
 select_first_token ::= RP.
 select_first_token ::= LB.
 select_first_token ::= RB.
 select_first_token ::= LC.
 select_first_token ::= RC.
+
+select_modifier ::= ALL.
+select_modifier ::= DISTINCT.
+select_modifier ::= DISTINCTROW.
+select_modifier ::= HIGH_PRIORITY.
+select_modifier ::= SQL_BIG_RESULT.
+select_modifier ::= SQL_BUFFER_RESULT.
+select_modifier ::= SQL_CALC_FOUND_ROWS.
+select_modifier ::= SQL_SMALL_RESULT.
+select_modifier ::= STRAIGHT_JOIN.
 
 create_statement ::= CREATE create_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
@@ -689,6 +700,7 @@ set_first_token ::= PERSIST.
 set_first_token ::= RESOURCE.
 set_first_token ::= ROLE.
 set_first_token ::= SESSION.
+set_first_token ::= SQL_BUFFER_RESULT.
 set_first_token ::= TRANSACTION.
 
 grant_statement ::= GRANT privilege_first_token required_statement_tail. {
@@ -700,6 +712,7 @@ revoke_statement ::= REVOKE privilege_first_token required_statement_tail. {
 }
 
 privilege_first_token ::= ALTER.
+privilege_first_token ::= ALL.
 privilege_first_token ::= ATOM.
 privilege_first_token ::= CREATE.
 privilege_first_token ::= DELETE.
@@ -752,15 +765,27 @@ expression_start ::= LC.
 
 expression_start_keyword ::= BINARY.
 expression_start_keyword ::= CASE.
+expression_start_keyword ::= CHARSET.
+expression_start_keyword ::= COLLATION.
 expression_start_keyword ::= COUNT.
+expression_start_keyword ::= DATA.
+expression_start_keyword ::= DATABASE.
 expression_start_keyword ::= DEFAULT.
+expression_start_keyword ::= DEFINER.
+expression_start_keyword ::= ENGINE.
+expression_start_keyword ::= EVENTS.
 expression_start_keyword ::= FORMAT.
 expression_start_keyword ::= IF.
 expression_start_keyword ::= INSERT.
+expression_start_keyword ::= PLUGIN.
+expression_start_keyword ::= PRIVILEGES.
 expression_start_keyword ::= REPEAT.
 expression_start_keyword ::= REPLACE.
 expression_start_keyword ::= ROW.
+expression_start_keyword ::= STATUS.
+expression_start_keyword ::= TRUNCATE.
 expression_start_keyword ::= USER.
+expression_start_keyword ::= VALUES.
 
 if_statement ::= IF expression_start required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
@@ -1051,6 +1076,7 @@ keyword ::= WARNINGS.
 keyword ::= DELAYED.
 keyword ::= DEFAULT.
 keyword ::= DIAGNOSTICS.
+keyword ::= ALL.
 keyword ::= AND.
 keyword ::= CHAIN.
 keyword ::= CONDITION.
@@ -1068,6 +1094,13 @@ keyword ::= QUICK.
 keyword ::= RECURSIVE.
 keyword ::= ROW.
 keyword ::= SQLSTATE.
+keyword ::= DISTINCT.
+keyword ::= DISTINCTROW.
+keyword ::= SQL_BIG_RESULT.
+keyword ::= SQL_BUFFER_RESULT.
+keyword ::= SQL_CALC_FOUND_ROWS.
+keyword ::= SQL_SMALL_RESULT.
+keyword ::= STRAIGHT_JOIN.
 keyword ::= TO.
 keyword ::= WORK.
 
@@ -1233,6 +1266,7 @@ keyword_not_select_clause ::= WARNINGS.
 keyword_not_select_clause ::= DELAYED.
 keyword_not_select_clause ::= DEFAULT.
 keyword_not_select_clause ::= DIAGNOSTICS.
+keyword_not_select_clause ::= ALL.
 keyword_not_select_clause ::= AND.
 keyword_not_select_clause ::= CHAIN.
 keyword_not_select_clause ::= CONDITION.
@@ -1250,5 +1284,12 @@ keyword_not_select_clause ::= QUICK.
 keyword_not_select_clause ::= RECURSIVE.
 keyword_not_select_clause ::= ROW.
 keyword_not_select_clause ::= SQLSTATE.
+keyword_not_select_clause ::= DISTINCT.
+keyword_not_select_clause ::= DISTINCTROW.
+keyword_not_select_clause ::= SQL_BIG_RESULT.
+keyword_not_select_clause ::= SQL_BUFFER_RESULT.
+keyword_not_select_clause ::= SQL_CALC_FOUND_ROWS.
+keyword_not_select_clause ::= SQL_SMALL_RESULT.
+keyword_not_select_clause ::= STRAIGHT_JOIN.
 keyword_not_select_clause ::= TO.
 keyword_not_select_clause ::= WORK.

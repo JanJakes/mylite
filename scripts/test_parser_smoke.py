@@ -146,6 +146,8 @@ def main() -> int:
         ("revoke if exists r1 from u;", 0, {"statements": "1", "admin": "1"}),
         ("revoke from;", 1, {}),
         ("block1: begin end;", 0, {"statements": "1", "stored_program": "1"}),
+        ("block1: loop end loop;", 0, {"statements": "1", "stored_program": "1"}),
+        ("block1: select 1;", 1, {}),
         ("leave block1;", 0, {"statements": "1", "stored_program": "1"}),
         ("leave select;", 1, {}),
         ("iterate block1;", 0, {"statements": "1", "stored_program": "1"}),

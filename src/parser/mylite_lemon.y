@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%type statement_start {MyliteStatementKind}
+%type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %extra_argument {MyliteParseContext *ctx}
 %token_destructor { (void)ctx; (void)yypminor; }
@@ -104,19 +104,17 @@ statement ::= case_statement.
 statement ::= declare_statement.
 statement ::= end_statement.
 statement ::= parenthesized_statement.
-statement ::= LABEL statement_start(A) statement_tail. {
+statement ::= LABEL labeled_statement_start(A) statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
 statement ::= permissive_start(A) statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
 
-statement_start(A) ::= SELECT. { A = MYLITE_STATEMENT_SELECT; }
-statement_start(A) ::= CREATE. { A = MYLITE_STATEMENT_DDL; }
-statement_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-statement_start(A) ::= LOOP. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-statement_start(A) ::= REPEAT. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-statement_start(A) ::= WHILE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+labeled_statement_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+labeled_statement_start(A) ::= LOOP. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+labeled_statement_start(A) ::= REPEAT. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+labeled_statement_start(A) ::= WHILE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 
 select_statement ::= SELECT select_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);

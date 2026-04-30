@@ -33,6 +33,12 @@ For DML, the reported table is the first syntactic target table, including
 ok statements=1 kinds=update[1:13,0:38]/table:wt
 ```
 
+Table-maintenance statements also report the first concrete table target:
+
+```text
+ok statements=1 kinds=analyze[1:3,0:15]/table:t
+```
+
 Direct utility targets are reported for statements such as `USE`, `TABLE`,
 `TRUNCATE`, `HANDLER`, direct `DESCRIBE` / `EXPLAIN` table forms,
 `LOAD ... INTO TABLE`, `CACHE INDEX`, `LOAD INDEX INTO CACHE`, `LOCK TABLES`,

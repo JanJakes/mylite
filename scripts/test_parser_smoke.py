@@ -496,6 +496,10 @@ def main() -> int:
         ("declare continue handler for sqlexception select 1;", 0, {"statements": "1", "stored_program": "1"}),
         ("declare select int;", 1, {}),
         ("end loop;", 0, {"statements": "1", "stored_program": "1"}),
+        ("end while loop_label;", 0, {"statements": "1", "stored_program": "1"}),
+        ("end case;", 0, {"statements": "1", "stored_program": "1"}),
+        ("end if label1;", 1, {}),
+        ("end nonsense extra;", 1, {}),
         ("(select 1);", 0, {"statements": "1", "select": "1"}),
     ]
 

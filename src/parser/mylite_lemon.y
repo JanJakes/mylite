@@ -1641,9 +1641,20 @@ declare_first_token ::= EXIT.
 declare_first_token ::= LABEL.
 declare_first_token ::= UNDO.
 
-end_statement ::= END statement_tail. {
+end_statement ::= END end_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
+
+end_tail ::= .
+end_tail ::= stored_program_label_ref.
+end_tail ::= IF.
+end_tail ::= LOOP end_label_tail.
+end_tail ::= REPEAT end_label_tail.
+end_tail ::= WHILE end_label_tail.
+end_tail ::= CASE.
+
+end_label_tail ::= .
+end_label_tail ::= stored_program_label_ref.
 
 parenthesized_statement ::= LP statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);

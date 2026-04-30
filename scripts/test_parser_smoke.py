@@ -38,6 +38,16 @@ def main() -> int:
         ("load xml infile 'x' into table t;", 0, {"statements": "1", "utility": "1"}),
         ("load index into cache t;", 0, {"statements": "1", "utility": "1"}),
         ("load nonsense;", 1, {}),
+        ("start transaction read only;", 0, {"statements": "1", "transaction": "1"}),
+        ("start nonsense;", 1, {}),
+        ("savepoint s1;", 0, {"statements": "1", "transaction": "1"}),
+        ("savepoint select;", 1, {}),
+        ("release savepoint s1;", 0, {"statements": "1", "transaction": "1"}),
+        ("release nonsense;", 1, {}),
+        ("lock tables t write;", 0, {"statements": "1", "transaction": "1"}),
+        ("lock nonsense;", 1, {}),
+        ("unlock tables;", 0, {"statements": "1", "transaction": "1"}),
+        ("unlock nonsense;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

@@ -42,6 +42,11 @@ statement ::= alter_statement.
 statement ::= rename_statement.
 statement ::= truncate_statement.
 statement ::= load_statement.
+statement ::= start_statement.
+statement ::= savepoint_statement.
+statement ::= release_statement.
+statement ::= lock_statement.
+statement ::= unlock_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -71,12 +76,7 @@ required_tail_start(A) ::= TABLE. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= VALUES. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= HANDLER. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= IMPORT. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= START. { A = MYLITE_STATEMENT_TRANSACTION; }
-required_tail_start(A) ::= SAVEPOINT. { A = MYLITE_STATEMENT_TRANSACTION; }
-required_tail_start(A) ::= RELEASE. { A = MYLITE_STATEMENT_TRANSACTION; }
 required_tail_start(A) ::= SET. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= LOCK. { A = MYLITE_STATEMENT_TRANSACTION; }
-required_tail_start(A) ::= UNLOCK. { A = MYLITE_STATEMENT_TRANSACTION; }
 required_tail_start(A) ::= XA. { A = MYLITE_STATEMENT_REPLICATION; }
 required_tail_start(A) ::= BINLOG. { A = MYLITE_STATEMENT_REPLICATION; }
 required_tail_start(A) ::= PURGE. { A = MYLITE_STATEMENT_REPLICATION; }
@@ -240,6 +240,48 @@ load_first_token ::= DATA.
 load_first_token ::= XML.
 load_first_token ::= INDEX.
 
+start_statement ::= START start_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+}
+
+start_tail ::= start_first_token statement_tail.
+
+start_first_token ::= TRANSACTION.
+start_first_token ::= REPLICA.
+start_first_token ::= SLAVE.
+start_first_token ::= GROUP_REPLICATION.
+
+savepoint_statement ::= SAVEPOINT savepoint_name statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+}
+
+savepoint_name ::= ATOM.
+savepoint_name ::= LABEL.
+
+release_statement ::= RELEASE SAVEPOINT required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+}
+
+lock_statement ::= LOCK lock_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+}
+
+lock_tail ::= lock_first_token required_statement_tail.
+
+lock_first_token ::= TABLE.
+lock_first_token ::= TABLES.
+lock_first_token ::= INSTANCE.
+
+unlock_statement ::= UNLOCK unlock_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+}
+
+unlock_tail ::= unlock_first_token statement_tail.
+
+unlock_first_token ::= TABLE.
+unlock_first_token ::= TABLES.
+unlock_first_token ::= INSTANCE.
+
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -338,7 +380,9 @@ keyword ::= COMMIT.
 keyword ::= ROLLBACK.
 keyword ::= SAVEPOINT.
 keyword ::= RELEASE.
+keyword ::= REPLICA.
 keyword ::= SET.
+keyword ::= SLAVE.
 keyword ::= LOCK.
 keyword ::= UNLOCK.
 keyword ::= XA.
@@ -351,6 +395,7 @@ keyword ::= PROCEDURE.
 keyword ::= EXECUTE.
 keyword ::= DEALLOCATE.
 keyword ::= GRANT.
+keyword ::= GROUP_REPLICATION.
 keyword ::= REVOKE.
 keyword ::= ROLE.
 keyword ::= SHOW.
@@ -414,6 +459,7 @@ keyword ::= SECURITY.
 keyword ::= SQL.
 keyword ::= SPATIAL.
 keyword ::= TEMPORARY.
+keyword ::= TRANSACTION.
 keyword ::= UNDO.
 keyword ::= UNIQUE.
 keyword ::= XML.
@@ -446,7 +492,9 @@ keyword_not_select_clause ::= COMMIT.
 keyword_not_select_clause ::= ROLLBACK.
 keyword_not_select_clause ::= SAVEPOINT.
 keyword_not_select_clause ::= RELEASE.
+keyword_not_select_clause ::= REPLICA.
 keyword_not_select_clause ::= SET.
+keyword_not_select_clause ::= SLAVE.
 keyword_not_select_clause ::= LOCK.
 keyword_not_select_clause ::= UNLOCK.
 keyword_not_select_clause ::= XA.
@@ -459,6 +507,7 @@ keyword_not_select_clause ::= PROCEDURE.
 keyword_not_select_clause ::= EXECUTE.
 keyword_not_select_clause ::= DEALLOCATE.
 keyword_not_select_clause ::= GRANT.
+keyword_not_select_clause ::= GROUP_REPLICATION.
 keyword_not_select_clause ::= REVOKE.
 keyword_not_select_clause ::= ROLE.
 keyword_not_select_clause ::= SHOW.
@@ -520,6 +569,7 @@ keyword_not_select_clause ::= SECURITY.
 keyword_not_select_clause ::= SQL.
 keyword_not_select_clause ::= SPATIAL.
 keyword_not_select_clause ::= TEMPORARY.
+keyword_not_select_clause ::= TRANSACTION.
 keyword_not_select_clause ::= UNDO.
 keyword_not_select_clause ::= UNIQUE.
 keyword_not_select_clause ::= XML.

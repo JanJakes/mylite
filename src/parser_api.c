@@ -1451,6 +1451,20 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		                                        last_token_index);
 	}
 
+	if ((parser->tokens[token_index].parser_token == FUNCTION_T ||
+	     parser->tokens[token_index].parser_token == PROCEDURE_T) &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index + 1, "CODE")) {
+		object_kind = parser->tokens[token_index].parser_token == FUNCTION_T ?
+			MYLITE_STATEMENT_OBJECT_FUNCTION :
+			MYLITE_STATEMENT_OBJECT_PROCEDURE;
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        object_kind,
+		                                        token_index + 2,
+		                                        last_token_index);
+	}
+
 	if (token_text_equals(parser, token_index, "COLUMNS") ||
 	    token_text_equals(parser, token_index, "FIELDS")) {
 		name_token_index = find_show_from_name_token(parser, token_index + 1, last_token_index);

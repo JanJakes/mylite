@@ -83,6 +83,12 @@ Schema-scoped SHOW forms expose explicit `FROM` or `IN` database targets:
 ok statements=1 kinds=show[1:5,0:25]/database:db
 ```
 
+Routine-code SHOW forms expose routine names:
+
+```text
+ok statements=1 kinds=show[1:4,0:20]/function:f
+```
+
 Resource group administration exposes the group name:
 
 ```text

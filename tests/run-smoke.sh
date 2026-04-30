@@ -167,6 +167,15 @@ case "$show_schema_output" in
 		;;
 esac
 
+show_routine_code_output=$("$parser" 'SHOW FUNCTION CODE f; SHOW PROCEDURE CODE p; SHOW FUNCTION STATUS LIKE "f%"')
+case "$show_routine_code_output" in
+	*"show"*/function:f*"show"*/procedure:p*"show[11:15"*) ;;
+	*)
+		echo "unexpected SHOW routine code output: $show_routine_code_output" >&2
+		exit 1
+		;;
+esac
+
 prepared_output=$("$parser" 'PREPARE stmt FROM @sql; EXECUTE stmt USING @a; DEALLOCATE PREPARE stmt; DROP PREPARE stmt')
 case "$prepared_output" in
 	*"prepare"*/prepared_statement:stmt*"execute"*/prepared_statement:stmt*"deallocate"*/prepared_statement:stmt*"drop"*/prepared_statement:stmt*) ;;

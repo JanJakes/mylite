@@ -92,7 +92,8 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `SHOW COLUMNS` / `FIELDS`,
 `SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, schema-scoped `SHOW TABLE
 STATUS`, `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
-targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, and prepared-statement names in
+targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
+`SHOW FUNCTION CODE` and `SHOW PROCEDURE CODE`, and prepared-statement names in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Component and
 plugin targets are recorded for `INSTALL` and `UNINSTALL` administrative
 statements. Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`,

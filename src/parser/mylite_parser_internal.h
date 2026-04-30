@@ -49,6 +49,8 @@ void mylite_parser_require_diagnostics_statement_item(MyliteParseContext *ctx,
                                                       MyliteToken token);
 void mylite_parser_require_diagnostics_condition_item(MyliteParseContext *ctx,
                                                       MyliteToken token);
+void mylite_parser_require_signal_condition_item(MyliteParseContext *ctx,
+                                                 MyliteToken token);
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token);
 

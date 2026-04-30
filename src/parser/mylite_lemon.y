@@ -523,12 +523,18 @@ handler_operation ::= OPEN statement_tail.
 handler_operation ::= READ required_statement_tail.
 handler_operation ::= CLOSE.
 
-call_statement ::= CALL call_target statement_tail. {
+call_statement ::= CALL call_name call_arguments. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
+call_name ::= call_target.
+call_name ::= call_target ATOM call_target.
+
 call_target ::= ATOM.
 call_target ::= LABEL.
+
+call_arguments ::= .
+call_arguments ::= LP statement_tail.
 
 binlog_statement ::= BINLOG binlog_payload statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);

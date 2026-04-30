@@ -102,6 +102,9 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
       if (lexer_dollar_quoted_string(lexer, token)) {
         return ML_ATOM;
       }
+      if (is_identifier_continue(lexer_peek(lexer, 1))) {
+        return lexer_identifier(lexer, token);
+      }
       return lexer_operator(lexer, token);
     default:
       break;
@@ -663,7 +666,7 @@ static unsigned char ascii_upper(unsigned char c) {
 }
 
 static int is_identifier_start(unsigned char c) {
-  return isalpha(c) || c == '_' || c >= 0x80;
+  return isalpha(c) || c == '_' || c == '$' || c >= 0x80;
 }
 
 static int is_identifier_continue(unsigned char c) {

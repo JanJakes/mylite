@@ -57,6 +57,12 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token.
+Stored-program statement heads such as `DECLARE`, cursor operations, `IF`,
+`CASE`, loop forms, `LEAVE`, `ITERATE`, and `RETURN` have explicit statement
+kinds. Compound-control tokens are structurally matched for `IF ... END IF`,
+`LOOP ... END LOOP`, `REPEAT ... END REPEAT`, and `WHILE ... END WHILE` without
+misclassifying `IF(...)` expressions or `IF [NOT] EXISTS` clauses as compound
+block starts.
 
 ## Boundaries
 
@@ -75,6 +81,9 @@ according to the innermost leading query token.
   schema target.
 - Parenthesized query-expression classification only identifies the leading
   query statement kind; it does not build the query-expression tree.
+- Stored-program control matching records token pairs only; it does not yet
+  validate label binding, declaration ordering, cursor scope, or control-flow
+  semantics.
 - Skips ordinary comments. MySQL executable `/*! ... */` comments are tokenized
   as SQL because they can carry required syntax.
 - Accepts unknown statement starts as `unknown`; later grammar work should

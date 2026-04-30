@@ -9,6 +9,12 @@
 
 int yyparse(mylite_parser *parser);
 
+static void match_compound_control_tokens(mylite_parser *parser);
+static int is_compound_control_start_token(const mylite_parser *parser, size_t token_index);
+static int is_if_function_call(const mylite_parser *parser, size_t token_index);
+static int is_if_exists_clause(const mylite_parser *parser, size_t token_index);
+static int is_compound_control_end_token(int token);
+static int compound_control_tokens_match(int start_token, int end_token);
 static void classify_statement_metadata(mylite_parser *parser);
 static void classify_grouped_query_statement_kinds(mylite_parser *parser);
 static mylite_statement_kind classify_grouped_query_statement_kind(const mylite_parser *parser,
@@ -239,6 +245,7 @@ int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result
 		mylite_parser_set_error(&parser, parser.lexer.error);
 	}
 	if (parser.error[0] == '\0') {
+		match_compound_control_tokens(&parser);
 		classify_statement_metadata(&parser);
 	}
 
@@ -283,6 +290,98 @@ int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result
 
 	mylite_parser_destroy(&parser);
 	return result->ok;
+}
+
+static void match_compound_control_tokens(mylite_parser *parser)
+{
+	size_t *stack;
+	size_t stack_size = 0;
+	size_t token_index;
+
+	if (parser->token_count == 0) {
+		return;
+	}
+
+	stack = (size_t *)malloc(parser->token_count * sizeof(stack[0]));
+	if (stack == NULL) {
+		mylite_parser_set_error(parser, "out of memory");
+		return;
+	}
+
+	for (token_index = 0; token_index < parser->token_count; token_index++) {
+		int token = parser->tokens[token_index].parser_token;
+
+		if (is_compound_control_start_token(parser, token_index)) {
+			stack[stack_size++] = token_index;
+			continue;
+		}
+		if (is_compound_control_end_token(token)) {
+			while (stack_size > 0) {
+				size_t start_token_index = stack[--stack_size];
+				int start_token = parser->tokens[start_token_index].parser_token;
+				if (compound_control_tokens_match(start_token, token)) {
+					mylite_parser_match_tokens(parser, start_token_index + 1, token_index + 1);
+					break;
+				}
+			}
+		}
+	}
+
+	free(stack);
+}
+
+static int is_compound_control_start_token(const mylite_parser *parser, size_t token_index)
+{
+	int token = parser->tokens[token_index].parser_token;
+
+	switch (token) {
+	case IF_T:
+		return !is_if_function_call(parser, token_index) &&
+		       !is_if_exists_clause(parser, token_index);
+	case CASE_T:
+		return parser->tokens[token_index].matching_token == 0;
+	case LOOP_T:
+	case REPEAT_T:
+	case WHILE_T:
+		return parser->tokens[token_index].matching_token == 0;
+	default:
+		return 0;
+	}
+}
+
+static int is_if_function_call(const mylite_parser *parser, size_t token_index)
+{
+	return token_index + 1 < parser->token_count &&
+	       parser->tokens[token_index + 1].parser_token == '(';
+}
+
+static int is_if_exists_clause(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index + 1 < parser->token_count &&
+	    parser->tokens[token_index + 1].parser_token == EXISTS_T) {
+		return 1;
+	}
+	return token_index + 2 < parser->token_count &&
+	       parser->tokens[token_index + 1].parser_token == NOT_T &&
+	       parser->tokens[token_index + 2].parser_token == EXISTS_T;
+}
+
+static int is_compound_control_end_token(int token)
+{
+	return token == END_IF_T ||
+	       token == END_CASE_T ||
+	       token == END_LOOP_T ||
+	       token == END_REPEAT_T ||
+	       token == END_WHILE_T;
+}
+
+static int compound_control_tokens_match(int start_token, int end_token)
+{
+	return (start_token == IF_T && end_token == END_IF_T) ||
+	       (start_token == CASE_T && end_token == END_CASE_T) ||
+	       (start_token == LOOP_T && end_token == END_LOOP_T) ||
+	       (start_token == REPEAT_T && end_token == END_REPEAT_T) ||
+	       (start_token == WHILE_T && end_token == END_WHILE_T);
 }
 
 void mylite_parse_result_free(mylite_parse_result *result)
@@ -351,7 +450,18 @@ const char *mylite_statement_kind_name(mylite_statement_kind kind)
 	case MYLITE_STATEMENT_SIGNAL: return "signal";
 	case MYLITE_STATEMENT_RESIGNAL: return "resignal";
 	case MYLITE_STATEMENT_GET: return "get";
+	case MYLITE_STATEMENT_DECLARE: return "declare";
+	case MYLITE_STATEMENT_OPEN: return "open";
+	case MYLITE_STATEMENT_FETCH: return "fetch";
+	case MYLITE_STATEMENT_CLOSE: return "close";
 	case MYLITE_STATEMENT_IF: return "if";
+	case MYLITE_STATEMENT_CASE: return "case";
+	case MYLITE_STATEMENT_LOOP: return "loop";
+	case MYLITE_STATEMENT_REPEAT: return "repeat";
+	case MYLITE_STATEMENT_WHILE: return "while";
+	case MYLITE_STATEMENT_LEAVE: return "leave";
+	case MYLITE_STATEMENT_ITERATE: return "iterate";
+	case MYLITE_STATEMENT_RETURN: return "return";
 	case MYLITE_STATEMENT_UNKNOWN:
 	default:
 		return "unknown";

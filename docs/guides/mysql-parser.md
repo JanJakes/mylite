@@ -62,6 +62,13 @@ match 2 4
 match 4 2
 ```
 
+Stored-program control blocks are matched as structural tokens as well:
+
+```text
+match 7 21
+match 21 7
+```
+
 Keyword lookup is table-driven and must remain sorted:
 
 ```sh

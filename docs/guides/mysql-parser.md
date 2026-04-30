@@ -310,6 +310,12 @@ RESET PERSIST exposes explicit persisted system-variable targets:
 ok statements=1 kinds=reset[1:3,0:29]/system_variable:max_connections
 ```
 
+RESET BINARY LOGS AND GTIDS exposes the binary-log collection:
+
+```text
+ok statements=1 kinds=reset[1:5,0:27]/binary_log
+```
+
 CLONE is classified as its own administrative statement kind:
 
 ```text

@@ -92,7 +92,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/show-binlog-events.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-binary-log-status.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-binary-logs.html`,
-  `https://dev.mysql.com/doc/refman/8.4/en/purge-binary-logs.html`
+  `https://dev.mysql.com/doc/refman/8.4/en/purge-binary-logs.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/reset-binary-logs-and-gtids.html`
 - MySQL 8.4 SHOW RELAYLOG EVENTS statement:
   `https://dev.mysql.com/doc/refman/8.4/en/show-relaylog-events.html`
 - MySQL 8.4 SHOW REPLICA STATUS statement:
@@ -224,7 +225,8 @@ system-variable and status-variable targets in `SHOW VARIABLES`,
 connection targets in `KILL`, binary log event
 payloads in `BINLOG`, binary log targets in `SHOW BINARY LOGS`,
 `SHOW BINARY LOG STATUS`, `SHOW MASTER STATUS`, `SHOW BINLOG EVENTS`,
-`PURGE BINARY LOGS TO ...`, and `PURGE BINARY LOGS BEFORE ...`, relay log targets in
+`PURGE BINARY LOGS TO ...`, `PURGE BINARY LOGS BEFORE ...`, and
+`RESET BINARY LOGS AND GTIDS`, relay log targets in
 `SHOW RELAYLOG EVENTS IN ...`, replication channel targets in channel-only
 `SHOW RELAYLOG EVENTS`, `SHOW REPLICAS`, `SHOW REPLICA STATUS`, and
 `FLUSH RELAY LOGS`, table
@@ -344,6 +346,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   leaves malformed or name-less forms objectless.
   `RESET PERSIST` metadata records the first variable name only and leaves
   full persisted-variable reset forms objectless.
+  `RESET BINARY LOGS AND GTIDS` metadata records the binary-log collection and
+  does not classify the optional file-index number.
   Replication metadata records only explicit `FOR CHANNEL` names and leaves
   default-channel operations objectless.
   XA metadata records only the first XID token and leaves `XA RECOVER`

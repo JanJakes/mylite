@@ -171,7 +171,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `XA RECOVER` | ❌ | low | XA recovery result-set metadata. | Parser recognizes XA recovery forms and leaves them objectless; recovery rows are not implemented. |
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. | Parser records the first string event payload; event decoding and execution are not implemented. |
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser records named `TO` log files and collection-level `BEFORE` forms, including legacy `MASTER` spelling; binary-log purge behavior is not implemented. |
-| `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. |  |
+| `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser records the binary-log collection, including optional `TO` file-index forms; binary-log deletion and GTID reset behavior are not implemented. |
 | `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |
 | `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. |  |
 | `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. |  |
@@ -240,7 +240,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. |  |
 | `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. |  |
 | `LOAD INDEX INTO CACHE` | ❌ | low | MyISAM index preload syntax. | Parser records the first table target; index preload behavior is not implemented. |
-| `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. |  |
+| `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. | Parser records reset targets for binary logs, replica channels, and persisted variables; runtime reset behavior is not implemented. |
 | `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. | Parser records explicit persisted-variable names and leaves full-reset forms objectless; persisted variable storage is not implemented. |
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. |  |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. |  |

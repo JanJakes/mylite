@@ -1757,6 +1757,14 @@ static int classify_reset_statement_object(const mylite_parser *parser,
 		return 0;
 	}
 
+	if (token_index + 3 <= last_token_index &&
+	    token_text_equals(parser, token_index, "BINARY") &&
+	    token_text_equals(parser, token_index + 1, "LOGS") &&
+	    parser->tokens[token_index + 2].parser_token == AND_T &&
+	    token_text_equals(parser, token_index + 3, "GTIDS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_BINARY_LOG);
+	}
+
 	if (!token_text_equals(parser, token_index, "PERSIST")) {
 		name_token_index = find_replication_channel_name_token(parser, token_index, last_token_index);
 		return set_statement_direct_object_name(parser,

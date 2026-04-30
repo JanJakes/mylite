@@ -398,52 +398,74 @@ show_statement ::= SHOW show_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
 }
 
-show_tail ::= show_first_token statement_tail.
+show_tail ::= show_unprefixed_kind statement_tail.
+show_tail ::= show_extended_tail statement_tail.
+show_tail ::= show_full_tail statement_tail.
+show_tail ::= show_scope_prefix show_scoped_kind statement_tail.
 
-show_first_token ::= BINARY.
-show_first_token ::= BINLOG.
-show_first_token ::= CHARACTER.
-show_first_token ::= CHARSET.
-show_first_token ::= COLLATION.
-show_first_token ::= COLUMNS.
-show_first_token ::= COUNT.
-show_first_token ::= CREATE.
-show_first_token ::= DATABASES.
-show_first_token ::= ENGINE.
-show_first_token ::= ENGINES.
-show_first_token ::= ERRORS.
-show_first_token ::= EVENTS.
-show_first_token ::= EXTENDED.
-show_first_token ::= FIELDS.
-show_first_token ::= FULL.
-show_first_token ::= FUNCTION.
-show_first_token ::= GLOBAL.
-show_first_token ::= GRANTS.
-show_first_token ::= INDEX.
-show_first_token ::= INDEXES.
-show_first_token ::= KEYS.
-show_first_token ::= LOCAL.
-show_first_token ::= MASTER.
-show_first_token ::= OPEN.
-show_first_token ::= PLUGINS.
-show_first_token ::= PRIVILEGES.
-show_first_token ::= PROCEDURE.
-show_first_token ::= PROCESSLIST.
-show_first_token ::= PROFILE.
-show_first_token ::= PROFILES.
-show_first_token ::= RELAYLOG.
-show_first_token ::= REPLICA.
-show_first_token ::= REPLICAS.
-show_first_token ::= SCHEMAS.
-show_first_token ::= SESSION.
-show_first_token ::= SLAVE.
-show_first_token ::= STATUS.
-show_first_token ::= STORAGE.
-show_first_token ::= TABLE.
-show_first_token ::= TABLES.
-show_first_token ::= TRIGGERS.
-show_first_token ::= VARIABLES.
-show_first_token ::= WARNINGS.
+show_extended_tail ::= EXTENDED show_extended_kind.
+show_extended_tail ::= EXTENDED FULL show_extended_kind.
+
+show_full_tail ::= FULL show_full_kind.
+
+show_scope_prefix ::= GLOBAL.
+show_scope_prefix ::= LOCAL.
+show_scope_prefix ::= SESSION.
+
+show_scoped_kind ::= STATUS.
+show_scoped_kind ::= VARIABLES.
+
+show_extended_kind ::= COLUMNS.
+show_extended_kind ::= FIELDS.
+show_extended_kind ::= INDEX.
+show_extended_kind ::= INDEXES.
+show_extended_kind ::= KEYS.
+show_extended_kind ::= TABLES.
+
+show_full_kind ::= COLUMNS.
+show_full_kind ::= FIELDS.
+show_full_kind ::= PROCESSLIST.
+show_full_kind ::= TABLES.
+
+show_unprefixed_kind ::= BINARY.
+show_unprefixed_kind ::= BINLOG.
+show_unprefixed_kind ::= CHARACTER.
+show_unprefixed_kind ::= CHARSET.
+show_unprefixed_kind ::= COLLATION.
+show_unprefixed_kind ::= COLUMNS.
+show_unprefixed_kind ::= COUNT.
+show_unprefixed_kind ::= CREATE.
+show_unprefixed_kind ::= DATABASES.
+show_unprefixed_kind ::= ENGINE.
+show_unprefixed_kind ::= ENGINES.
+show_unprefixed_kind ::= ERRORS.
+show_unprefixed_kind ::= EVENTS.
+show_unprefixed_kind ::= FIELDS.
+show_unprefixed_kind ::= FUNCTION.
+show_unprefixed_kind ::= GRANTS.
+show_unprefixed_kind ::= INDEX.
+show_unprefixed_kind ::= INDEXES.
+show_unprefixed_kind ::= KEYS.
+show_unprefixed_kind ::= MASTER.
+show_unprefixed_kind ::= OPEN.
+show_unprefixed_kind ::= PLUGINS.
+show_unprefixed_kind ::= PRIVILEGES.
+show_unprefixed_kind ::= PROCEDURE.
+show_unprefixed_kind ::= PROCESSLIST.
+show_unprefixed_kind ::= PROFILE.
+show_unprefixed_kind ::= PROFILES.
+show_unprefixed_kind ::= RELAYLOG.
+show_unprefixed_kind ::= REPLICA.
+show_unprefixed_kind ::= REPLICAS.
+show_unprefixed_kind ::= SCHEMAS.
+show_unprefixed_kind ::= SLAVE.
+show_unprefixed_kind ::= STATUS.
+show_unprefixed_kind ::= STORAGE.
+show_unprefixed_kind ::= TABLE.
+show_unprefixed_kind ::= TABLES.
+show_unprefixed_kind ::= TRIGGERS.
+show_unprefixed_kind ::= VARIABLES.
+show_unprefixed_kind ::= WARNINGS.
 
 describe_statement ::= DESCRIBE describe_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);

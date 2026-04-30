@@ -214,6 +214,12 @@ ok statements=1 kinds=signal[1:3,0:23]/sqlstate:'45000'
 ok statements=1 kinds=resignal[1:2,0:21]/condition:my_condition
 ```
 
+DECLARE CONDITION exposes the declared condition name:
+
+```text
+ok statements=1 kinds=declare[1:6,0:43]/condition:cond
+```
+
 Resource group administration exposes the group name:
 
 ```text

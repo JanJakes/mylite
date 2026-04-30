@@ -12,6 +12,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4.9 parser grammar: `sql/sql_yacc.yy`
 - MySQL 8.4 statement labels:
   `https://dev.mysql.com/doc/refman/8.4/en/statement-labels.html`
+- MySQL 8.4 DECLARE ... CONDITION statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/declare-condition.html`
 - MySQL 8.4 IMPORT TABLE statement:
   `https://dev.mysql.com/doc/refman/8.4/en/import-table.html`
 - MySQL 8.4 CALL statement:
@@ -183,7 +185,8 @@ misclassifying `IF(...)` expressions or `IF [NOT] EXISTS` clauses as compound
 block starts. Cursor names are recorded for `DECLARE ... CURSOR`, `OPEN`,
 `FETCH`, and `CLOSE`. Jump target labels are recorded for `LEAVE` and
 `ITERATE`. Label declarations are recorded when they prefix the MySQL-labeled
-constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
+constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`. Named condition
+declarations are recorded for `DECLARE ... CONDITION`.
 
 ## Boundaries
 
@@ -256,6 +259,9 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   semantics.
 - Cursor metadata records the first cursor handle only. It does not yet validate
   declaration scope, result shape, fetch target lists, or cursor lifecycle.
+- Condition declaration metadata records only the declared condition name. It
+  does not yet validate declaration ordering, SQLSTATE/error-code validity,
+  handler references, or condition scope.
 - Label metadata records direct `LEAVE` / `ITERATE` targets and leading label
   declarations. It does not yet validate end labels, duplicate labels, the
   16-character label limit, or label binding.

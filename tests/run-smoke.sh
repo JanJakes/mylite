@@ -50,6 +50,22 @@ case "$cursor_output" in
 	*)
 		echo "unexpected cursor output: $cursor_output" >&2
 		exit 1
+	;;
+esac
+
+declare_condition_sql=$(cat <<'SQL'
+DECLARE cond CONDITION FOR SQLSTATE '45000';
+DECLARE not_found CONDITION FOR NOT FOUND;
+DECLARE `cond` CONDITION FOR 1051;
+DECLARE x INT
+SQL
+)
+declare_condition_output=$("$parser" "$declare_condition_sql")
+case "$declare_condition_output" in
+	*"declare"*/condition:cond*"declare"*/condition:not_found*"declare"*/condition:'`cond`'*"declare[21:23"*) ;;
+	*)
+		echo "unexpected DECLARE CONDITION output: $declare_condition_output" >&2
+		exit 1
 		;;
 esac
 

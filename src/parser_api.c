@@ -139,6 +139,10 @@ static int classify_savepoint_statement_object(const mylite_parser *parser,
                                                mylite_statement *statement,
                                                size_t token_index,
                                                size_t last_token_index);
+static int classify_declare_statement_object(const mylite_parser *parser,
+                                             mylite_statement *statement,
+                                             size_t token_index,
+                                             size_t last_token_index);
 static int classify_cursor_statement_object(const mylite_parser *parser,
                                             mylite_statement *statement,
                                             size_t token_index,
@@ -1125,6 +1129,7 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	case MYLITE_STATEMENT_ROLLBACK:
 		return classify_savepoint_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_DECLARE:
+		return classify_declare_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_OPEN:
 	case MYLITE_STATEMENT_FETCH:
 	case MYLITE_STATEMENT_CLOSE:
@@ -1748,16 +1753,33 @@ static int classify_savepoint_statement_object(const mylite_parser *parser,
 	                                        last_token_index);
 }
 
+static int classify_declare_statement_object(const mylite_parser *parser,
+                                             mylite_statement *statement,
+                                             size_t token_index,
+                                             size_t last_token_index)
+{
+	if (token_index + 1 <= last_token_index &&
+	    token_index + 1 < parser->token_count &&
+	    token_can_continue_object_name(&parser->tokens[token_index]) &&
+	    token_text_equals(parser, token_index + 1, "CONDITION")) {
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_CONDITION,
+		                                        token_index,
+		                                        last_token_index);
+	}
+
+	if (!statement_contains_token(parser, token_index, last_token_index, CURSOR_T)) {
+		return 0;
+	}
+	return classify_cursor_statement_object(parser, statement, token_index, last_token_index);
+}
+
 static int classify_cursor_statement_object(const mylite_parser *parser,
                                             mylite_statement *statement,
                                             size_t token_index,
                                             size_t last_token_index)
 {
-	if (statement->kind == MYLITE_STATEMENT_DECLARE &&
-	    !statement_contains_token(parser, token_index, last_token_index, CURSOR_T)) {
-		return 0;
-	}
-
 	return set_statement_direct_object_name(parser,
 	                                        statement,
 	                                        MYLITE_STATEMENT_OBJECT_CURSOR,

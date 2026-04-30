@@ -332,7 +332,7 @@ plugin_admin_tail ::= plugin_admin_object required_statement_tail.
 plugin_admin_object ::= COMPONENT.
 plugin_admin_object ::= PLUGIN.
 
-import_statement ::= IMPORT TABLE required_statement_tail. {
+import_statement ::= IMPORT TABLE FROM required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 

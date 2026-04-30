@@ -387,7 +387,8 @@ xa_statement ::= XA xa_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
 }
 
-xa_tail ::= RECOVER statement_tail.
+xa_tail ::= RECOVER.
+xa_tail ::= RECOVER ATOM ATOM.
 xa_tail ::= xa_first_token required_statement_tail.
 
 xa_first_token ::= START.

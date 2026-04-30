@@ -115,6 +115,8 @@ def main() -> int:
         ("change nonsense;", 1, {}),
         ("xa start 'x';", 0, {"statements": "1", "replication": "1"}),
         ("xa recover;", 0, {"statements": "1", "replication": "1"}),
+        ("xa recover convert xid;", 0, {"statements": "1", "replication": "1"}),
+        ("xa recover garbage;", 1, {}),
         ("xa nonsense;", 1, {}),
         ("show tables;", 0, {"statements": "1", "show": "1"}),
         ("show extended full tables from test;", 0, {"statements": "1", "show": "1"}),

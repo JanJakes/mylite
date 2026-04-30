@@ -648,6 +648,7 @@ static int keyword_token(const MyliteToken *token) {
       {"SPATIAL", ML_SPATIAL},
       {"START", ML_START},
       {"STATUS", ML_STATUS},
+      {"STOP", ML_STOP},
       {"STORAGE", ML_STORAGE},
       {"STRAIGHT_JOIN", ML_STRAIGHT_JOIN},
       {"TABLE", ML_TABLE},

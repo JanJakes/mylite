@@ -42,6 +42,7 @@ statement ::= rename_statement.
 statement ::= truncate_statement.
 statement ::= load_statement.
 statement ::= start_statement.
+statement ::= stop_statement.
 statement ::= savepoint_statement.
 statement ::= release_statement.
 statement ::= lock_statement.
@@ -397,6 +398,16 @@ start_group_replication_option ::= DEFAULT_AUTH start_option_equals ATOM.
 start_option_equals ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "=");
 }
+
+stop_statement ::= STOP stop_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
+}
+
+stop_tail ::= REPLICA stop_replica_tail.
+stop_tail ::= SLAVE stop_replica_tail.
+stop_tail ::= GROUP_REPLICATION.
+
+stop_replica_tail ::= start_thread_tail show_channel_tail.
 
 savepoint_statement ::= SAVEPOINT savepoint_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
@@ -1790,6 +1801,7 @@ keyword ::= REPLICAS.
 keyword ::= SCHEMAS.
 keyword ::= SESSION.
 keyword ::= STATUS.
+keyword ::= STOP.
 keyword ::= STORAGE.
 keyword ::= TRIGGERS.
 keyword ::= USER_RESOURCES.
@@ -1859,6 +1871,7 @@ keyword_not_select_clause ::= HANDLER.
 keyword_not_select_clause ::= IMPORT.
 keyword_not_select_clause ::= IN.
 keyword_not_select_clause ::= START.
+keyword_not_select_clause ::= STOP.
 keyword_not_select_clause ::= BEGIN.
 keyword_not_select_clause ::= COMMIT.
 keyword_not_select_clause ::= COMPONENT.

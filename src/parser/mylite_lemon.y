@@ -711,6 +711,7 @@ show_tail ::= show_full_tail statement_tail.
 show_tail ::= show_scope_prefix show_scoped_kind statement_tail.
 show_tail ::= COUNT LP show_count_star RP show_count_kind.
 show_tail ::= CREATE show_create_tail.
+show_tail ::= show_diagnostics_kind show_limit_tail.
 
 show_extended_tail ::= EXTENDED show_extended_kind.
 show_extended_tail ::= EXTENDED FULL show_extended_kind.
@@ -743,6 +744,14 @@ show_create_named_kind ::= TABLE.
 show_create_named_kind ::= TRIGGER.
 show_create_named_kind ::= VIEW.
 
+show_diagnostics_kind ::= ERRORS.
+show_diagnostics_kind ::= WARNINGS.
+
+show_limit_tail ::= .
+show_limit_tail ::= LIMIT ATOM.
+show_limit_tail ::= LIMIT ATOM import_comma ATOM.
+show_limit_tail ::= LIMIT ATOM OFFSET ATOM.
+
 show_extended_kind ::= COLUMNS.
 show_extended_kind ::= FIELDS.
 show_extended_kind ::= INDEX.
@@ -764,7 +773,6 @@ show_unprefixed_kind ::= COLUMNS.
 show_unprefixed_kind ::= DATABASES.
 show_unprefixed_kind ::= ENGINE.
 show_unprefixed_kind ::= ENGINES.
-show_unprefixed_kind ::= ERRORS.
 show_unprefixed_kind ::= EVENTS.
 show_unprefixed_kind ::= FIELDS.
 show_unprefixed_kind ::= FUNCTION.
@@ -791,7 +799,6 @@ show_unprefixed_kind ::= TABLE.
 show_unprefixed_kind ::= TABLES.
 show_unprefixed_kind ::= TRIGGERS.
 show_unprefixed_kind ::= VARIABLES.
-show_unprefixed_kind ::= WARNINGS.
 
 describe_statement ::= DESCRIBE describe_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);

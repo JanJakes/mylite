@@ -152,7 +152,7 @@ create_tail ::= AGGREGATE FUNCTION cache_table_ref required_statement_tail.
 create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
 create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
 create_tail ::= LOGFILE create_logfile_group cache_name_part required_statement_tail.
-create_tail ::= RESOURCE create_resource_group cache_name_part required_statement_tail.
+create_tail ::= RESOURCE create_resource_group cache_name_part create_resource_type create_options_tail.
 create_tail ::= SPATIAL create_reference create_system cache_name_part required_statement_tail.
 create_tail ::= SERVER cache_name_part required_statement_tail.
 create_tail ::= TABLESPACE cache_name_part create_options_tail.
@@ -248,6 +248,17 @@ create_user_tail ::= create_user_tail statement_token.
 
 create_resource_group ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "GROUP");
+}
+
+create_resource_type ::= create_type_marker diagnostics_equals create_resource_type_value.
+
+create_type_marker ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "TYPE");
+}
+
+create_resource_type_value ::= USER.
+create_resource_type_value ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "SYSTEM");
 }
 
 create_logfile_group ::= ATOM(A). {

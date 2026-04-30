@@ -13,9 +13,12 @@ def main() -> int:
         ("select ;", 1, {}),
         ("select from t;", 1, {}),
         ("select select;", 1, {}),
+        ("select all;", 1, {}),
+        ("select distinct;", 1, {}),
         ("select * from t;", 0, {"statements": "1", "select": "1"}),
         ("select charset(a) from t;", 0, {"statements": "1", "select": "1"}),
         ("select distinct a from t;", 0, {"statements": "1", "select": "1"}),
+        ("select distinct * from t;", 0, {"statements": "1", "select": "1"}),
         ("nonsense 1;", 1, {}),
         ("/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE */;", 0, {"utility": "1"}),
         (

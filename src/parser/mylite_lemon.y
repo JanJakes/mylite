@@ -120,19 +120,13 @@ select_statement ::= SELECT select_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
 }
 
-select_tail ::= select_first_token.
-select_tail ::= select_tail statement_token.
+select_tail ::= select_expression_start statement_tail.
 
-select_first_token ::= ATOM.
-select_first_token ::= LABEL.
-select_first_token ::= expression_start_keyword.
-select_first_token ::= select_modifier.
-select_first_token ::= LP.
-select_first_token ::= RP.
-select_first_token ::= LB.
-select_first_token ::= RB.
-select_first_token ::= LC.
-select_first_token ::= RC.
+select_expression_start ::= expression_start.
+select_expression_start ::= select_modifiers expression_start.
+
+select_modifiers ::= select_modifier.
+select_modifiers ::= select_modifiers select_modifier.
 
 select_modifier ::= ALL.
 select_modifier ::= DISTINCT.

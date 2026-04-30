@@ -551,9 +551,18 @@ handler_name ::= handler_name handler_target.
 handler_target ::= ATOM.
 handler_target ::= LABEL.
 
-handler_operation ::= OPEN statement_tail.
+handler_operation ::= OPEN.
+handler_operation ::= OPEN handler_alias.
+handler_operation ::= OPEN handler_as handler_alias.
 handler_operation ::= READ required_statement_tail.
 handler_operation ::= CLOSE.
+
+handler_as ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "AS");
+}
+
+handler_alias ::= ATOM.
+handler_alias ::= LABEL.
 
 call_statement ::= CALL call_name call_arguments. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

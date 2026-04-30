@@ -264,14 +264,14 @@ start_first_token ::= REPLICA.
 start_first_token ::= SLAVE.
 start_first_token ::= GROUP_REPLICATION.
 
-savepoint_statement ::= SAVEPOINT savepoint_name statement_tail. {
+savepoint_statement ::= SAVEPOINT savepoint_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
 
 savepoint_name ::= ATOM.
 savepoint_name ::= LABEL.
 
-release_statement ::= RELEASE SAVEPOINT required_statement_tail. {
+release_statement ::= RELEASE SAVEPOINT savepoint_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
 

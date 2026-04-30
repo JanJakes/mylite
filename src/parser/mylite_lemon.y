@@ -378,13 +378,47 @@ reset_statement ::= RESET reset_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-reset_tail ::= BINARY LOGS statement_tail.
-reset_tail ::= reset_kind statement_tail.
+reset_tail ::= BINARY LOGS AND reset_gtids reset_binary_logs_tail.
+reset_tail ::= MASTER.
+reset_tail ::= PERSIST reset_persist_tail.
+reset_tail ::= REPLICA reset_replica_tail.
+reset_tail ::= SLAVE reset_replica_tail.
 
-reset_kind ::= MASTER.
-reset_kind ::= PERSIST.
-reset_kind ::= REPLICA.
-reset_kind ::= SLAVE.
+reset_binary_logs_tail ::= .
+reset_binary_logs_tail ::= TO ATOM.
+
+reset_gtids ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "GTIDS");
+}
+
+reset_persist_tail ::= .
+reset_persist_tail ::= reset_persist_target.
+reset_persist_tail ::= IF reset_exists reset_persist_target.
+
+reset_exists ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "EXISTS");
+}
+
+reset_persist_target ::= reset_persist_name.
+reset_persist_target ::= reset_persist_name DOT reset_persist_name.
+
+reset_persist_name ::= ATOM.
+reset_persist_name ::= LABEL.
+reset_persist_name ::= DEFAULT.
+
+reset_replica_tail ::= .
+reset_replica_tail ::= ALL.
+reset_replica_tail ::= reset_channel_tail.
+reset_replica_tail ::= ALL reset_channel_tail.
+
+reset_channel_tail ::= FOR reset_channel reset_channel_name.
+
+reset_channel ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "CHANNEL");
+}
+
+reset_channel_name ::= ATOM.
+reset_channel_name ::= LABEL.
 
 purge_statement ::= PURGE purge_log_kind LOGS required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);

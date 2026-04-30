@@ -884,7 +884,12 @@ execute_statement ::= EXECUTE prepared_statement_name execute_tail. {
 }
 
 execute_tail ::= .
-execute_tail ::= USING required_statement_tail.
+execute_tail ::= USING execute_using_list.
+
+execute_using_list ::= execute_using_arg.
+execute_using_list ::= execute_using_list import_comma execute_using_arg.
+
+execute_using_arg ::= ATOM.
 
 prepared_statement_name ::= ATOM.
 prepared_statement_name ::= LABEL.

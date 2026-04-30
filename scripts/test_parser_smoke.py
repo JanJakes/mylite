@@ -255,6 +255,8 @@ def main() -> int:
         ("prepare select from 'select 1';", 1, {}),
         ("execute s;", 0, {"statements": "1", "prepared": "1"}),
         ("execute s using @a;", 0, {"statements": "1", "prepared": "1"}),
+        ("execute s using @a, @b;", 0, {"statements": "1", "prepared": "1"}),
+        ("execute s using @a @b;", 1, {}),
         ("execute s extra;", 1, {}),
         ("execute select;", 1, {}),
         ("get diagnostics @n = number;", 0, {"statements": "1", "stored_program": "1"}),

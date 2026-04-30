@@ -142,6 +142,7 @@ static const keyword keywords[] = {
 	{ "SIGNAL", SIGNAL_T },
 	{ "SPATIAL", SPATIAL_T },
 	{ "START", START_T },
+	{ "STOP", STOP_T },
 	{ "TABLE", TABLE_T },
 	{ "TEMPORARY", TEMPORARY_T },
 	{ "THEN", THEN_T },

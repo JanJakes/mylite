@@ -508,6 +508,7 @@ const char *mylite_statement_kind_name(mylite_statement_kind kind)
 	case MYLITE_STATEMENT_EXPLAIN: return "explain";
 	case MYLITE_STATEMENT_HELP: return "help";
 	case MYLITE_STATEMENT_START: return "start";
+	case MYLITE_STATEMENT_STOP: return "stop";
 	case MYLITE_STATEMENT_BEGIN: return "begin";
 	case MYLITE_STATEMENT_COMMIT: return "commit";
 	case MYLITE_STATEMENT_ROLLBACK: return "rollback";
@@ -1973,6 +1974,7 @@ static int token_can_be_unquoted_object_name_keyword(int token)
 	case OPEN_T:
 	case READ_T:
 	case RETURN_T:
+	case STOP_T:
 	case TO_T:
 	case TRANSACTION_T:
 	case WRITE_T:

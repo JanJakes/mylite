@@ -131,6 +131,12 @@ CLONE is classified as its own administrative statement kind:
 ok statements=1 kinds=clone[1:6,0:41]
 ```
 
+STOP replication-control forms are classified as `stop`:
+
+```text
+ok statements=1 kinds=stop[1:2,0:12]
+```
+
 Resource group administration exposes the group name:
 
 ```text

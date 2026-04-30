@@ -239,6 +239,15 @@ case "$clone_output" in
 		;;
 esac
 
+stop_output=$("$parser" 'STOP REPLICA; STOP GROUP_REPLICATION; STOP SLAVE SQL_THREAD; CREATE TABLE stop (id int)')
+case "$stop_output" in
+	*"kinds=stop"*"stop[4:5"*"stop[7:9"*"create"*/table:stop*) ;;
+	*)
+		echo "unexpected STOP output: $stop_output" >&2
+		exit 1
+		;;
+esac
+
 prepared_output=$("$parser" 'PREPARE stmt FROM @sql; EXECUTE stmt USING @a; DEALLOCATE PREPARE stmt; DROP PREPARE stmt')
 case "$prepared_output" in
 	*"prepare"*/prepared_statement:stmt*"execute"*/prepared_statement:stmt*"deallocate"*/prepared_statement:stmt*"drop"*/prepared_statement:stmt*) ;;

@@ -78,6 +78,10 @@ static int classify_describe_or_explain_statement_object(const mylite_parser *pa
 static size_t find_explain_connection_id_token(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
+static size_t find_explainable_statement_token(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index);
+static int token_is_explainable_statement_head(int token);
 static size_t find_describe_or_explain_table_name_token(const mylite_parser *parser,
                                                         size_t token_index,
                                                         size_t last_token_index);
@@ -1526,11 +1530,20 @@ static int classify_describe_or_explain_statement_object(const mylite_parser *pa
 	}
 
 	name_token_index = find_explain_connection_id_token(parser, token_index, last_token_index);
-	return set_statement_direct_object_name(parser,
-	                                        statement,
-	                                        MYLITE_STATEMENT_OBJECT_CONNECTION,
-	                                        name_token_index,
-	                                        last_token_index);
+	if (name_token_index < parser->token_count) {
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_CONNECTION,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	name_token_index = find_explainable_statement_token(parser, token_index, last_token_index);
+	if (name_token_index < parser->token_count) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_QUERY);
+	}
+
+	return 0;
 }
 
 static size_t find_explain_connection_id_token(const mylite_parser *parser,
@@ -1538,13 +1551,7 @@ static size_t find_explain_connection_id_token(const mylite_parser *parser,
                                                size_t last_token_index)
 {
 	while (token_index + 2 <= last_token_index && token_index < parser->token_count) {
-		if (parser->tokens[token_index].parser_token == SELECT_T ||
-		    parser->tokens[token_index].parser_token == TABLE_T ||
-		    parser->tokens[token_index].parser_token == DELETE_T ||
-		    parser->tokens[token_index].parser_token == INSERT_T ||
-		    parser->tokens[token_index].parser_token == REPLACE_T ||
-		    parser->tokens[token_index].parser_token == UPDATE_T ||
-		    parser->tokens[token_index].parser_token == ANALYZE_T) {
+		if (token_is_explainable_statement_head(parser->tokens[token_index].parser_token)) {
 			return parser->token_count;
 		}
 		if (token_text_equals(parser, token_index, "FOR") &&
@@ -1555,6 +1562,35 @@ static size_t find_explain_connection_id_token(const mylite_parser *parser,
 		token_index++;
 	}
 	return parser->token_count;
+}
+
+static size_t find_explainable_statement_token(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (token_is_explainable_statement_head(parser->tokens[token_index].parser_token)) {
+			return token_index;
+		}
+		token_index++;
+	}
+	return parser->token_count;
+}
+
+static int token_is_explainable_statement_head(int token)
+{
+	switch (token) {
+	case SELECT_T:
+	case TABLE_T:
+	case DELETE_T:
+	case INSERT_T:
+	case REPLACE_T:
+	case UPDATE_T:
+	case ANALYZE_T:
+		return 1;
+	default:
+		return 0;
+	}
 }
 
 static size_t find_describe_or_explain_table_name_token(const mylite_parser *parser,
@@ -1616,17 +1652,18 @@ static size_t find_lock_table_name_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index)
 {
-	if (token_index > last_token_index ||
-	    token_index >= parser->token_count ||
-	    (parser->tokens[token_index].parser_token != TABLE_T &&
-	     !token_text_equals(parser, token_index, "TABLES"))) {
+	if (token_index > last_token_index || token_index >= parser->token_count) {
 		return parser->token_count;
 	}
 
-	token_index++;
-	if (token_index <= last_token_index && token_can_start_object_name(&parser->tokens[token_index])) {
-		return token_index;
+	if (parser->tokens[token_index].parser_token == TABLE_T ||
+	    token_text_equals(parser, token_index, "TABLES")) {
+		token_index++;
+		if (token_index <= last_token_index && token_can_start_object_name(&parser->tokens[token_index])) {
+			return token_index;
+		}
 	}
+
 	return parser->token_count;
 }
 

@@ -243,9 +243,18 @@ case "$explain_object_output" in
 		echo "unexpected EXPLAIN/DESCRIBE object output: $explain_object_output" >&2
 		exit 1
 		;;
-	*"describe"*/table:'`db`.`t`'*"describe"*/table:t*"explain"*/table:'`db`.`e`'*"explain[15:17"*"explain[19:24"*"describe[26:28"*"connection:123"*"connection:456"*"explain[43:48"*) ;;
+	*"describe"*/table:'`db`.`t`'*"describe"*/table:t*"explain"*/table:'`db`.`e`'*"explain[15:17"*/query*"explain[19:24"*/query*"describe[26:28"*/query*"connection:123"*"connection:456"*"explain[43:48"*/query*) ;;
 	*)
 		echo "unexpected EXPLAIN/DESCRIBE object output: $explain_object_output" >&2
+		exit 1
+		;;
+esac
+
+explain_query_output=$("$parser" 'EXPLAIN ANALYZE SELECT 1; EXPLAIN FOR SCHEMA db SELECT 1; EXPLAIN INSERT INTO t VALUES (1); EXPLAIN UPDATE t SET c=1; EXPLAIN DELETE FROM t; EXPLAIN TABLE t')
+case "$explain_query_output" in
+	*"explain"*/query*"explain"*/query*"explain"*/query*"explain"*/query*"explain"*/query*"explain"*/query*) ;;
+	*)
+		echo "unexpected EXPLAIN query output: $explain_query_output" >&2
 		exit 1
 		;;
 esac

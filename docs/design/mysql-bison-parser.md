@@ -304,10 +304,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   and file I/O behavior remain unimplemented.
 - Utility object metadata records the first direct target only and does not yet
   expand multi-table maintenance, cache-index lists, load-index lists, or lock
-  lists. `DESCRIBE` and `EXPLAIN` target metadata is deliberately conservative:
-  direct table forms and `EXPLAIN ... FOR CONNECTION` record targets, while
-  query-plan forms such as `EXPLAIN SELECT` and `EXPLAIN FORMAT=... SELECT`
-  remain objectless.
+  lists. `DESCRIBE` and `EXPLAIN` target metadata records direct table forms,
+  `EXPLAIN ... FOR CONNECTION` targets, and documented explainable statement
+  forms as query targets, without modeling optimizer plans or result rows.
   `UNLOCK TABLES` metadata records the table object kind without a name because
   the statement releases the session's table locks rather than naming tables.
   `IMPORT TABLE` metadata records only the first string SDI file target.

@@ -147,7 +147,7 @@ create_statement ::= CREATE create_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-create_tail ::= create_table_prefix create_if_not_exists_tail cache_table_ref required_statement_tail.
+create_tail ::= create_table_prefix create_if_not_exists_tail cache_table_ref create_table_tail.
 create_tail ::= AGGREGATE FUNCTION cache_table_ref create_udf_tail.
 create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
 create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref required_statement_tail.
@@ -187,6 +187,37 @@ create_table_prefix ::= TEMPORARY TABLE.
 
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.
+
+create_table_tail ::= LP create_table_definition_tokens RP create_options_tail.
+create_table_tail ::= LIKE cache_table_ref.
+create_table_tail ::= create_table_query_start required_statement_tail.
+create_table_tail ::= ATOM(A) required_statement_tail. {
+  mylite_parser_require_create_table_tail_atom(ctx, A);
+}
+
+create_table_definition_tokens ::= .
+create_table_definition_tokens ::= create_table_definition_tokens create_table_definition_token.
+
+create_table_definition_token ::= ATOM.
+create_table_definition_token ::= LABEL.
+create_table_definition_token ::= keyword.
+create_table_definition_token ::= DOT.
+create_table_definition_token ::= COMMA.
+create_table_definition_token ::= LP create_table_definition_tokens RP.
+create_table_definition_token ::= LB.
+create_table_definition_token ::= RB.
+create_table_definition_token ::= LC.
+create_table_definition_token ::= RC.
+
+create_table_query_start ::= SELECT.
+create_table_query_start ::= WITH.
+create_table_query_start ::= VALUES.
+create_table_query_start ::= TABLE.
+create_table_query_start ::= CHARACTER.
+create_table_query_start ::= CHARSET.
+create_table_query_start ::= DEFAULT.
+create_table_query_start ::= ENGINE.
+create_table_query_start ::= TABLESPACE.
 
 create_udf_tail ::= create_returns create_udf_return_type create_soname ATOM.
 

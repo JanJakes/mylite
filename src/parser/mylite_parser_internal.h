@@ -47,6 +47,8 @@ void mylite_parser_require_udf_return_type(MyliteParseContext *ctx,
                                            MyliteToken token);
 void mylite_parser_require_event_atom_action(MyliteParseContext *ctx,
                                              MyliteToken token);
+void mylite_parser_require_create_table_tail_atom(MyliteParseContext *ctx,
+                                                  MyliteToken token);
 void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
                                         MyliteToken token,
                                         const char *prefix);

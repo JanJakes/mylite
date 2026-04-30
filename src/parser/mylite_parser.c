@@ -280,6 +280,53 @@ void mylite_parser_require_event_atom_action(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
+void mylite_parser_require_create_table_tail_atom(MyliteParseContext *ctx,
+                                                  MyliteToken token) {
+  static const char *const starters[] = {
+      "AS",
+      "AUTO_INCREMENT",
+      "AVG_ROW_LENGTH",
+      "CHARACTER",
+      "CHARSET",
+      "CHECKSUM",
+      "COLLATE",
+      "COMMENT",
+      "COMPRESSION",
+      "CONNECTION",
+      "DATA",
+      "DELAY_KEY_WRITE",
+      "ENCRYPTION",
+      "ENGINE",
+      "ENGINE_ATTRIBUTE",
+      "INDEX",
+      "INSERT_METHOD",
+      "KEY_BLOCK_SIZE",
+      "LIKE",
+      "MAX_ROWS",
+      "MIN_ROWS",
+      "PACK_KEYS",
+      "PASSWORD",
+      "PARTITION",
+      "ROW_FORMAT",
+      "SECONDARY_ENGINE_ATTRIBUTE",
+      "STATS_AUTO_RECALC",
+      "STATS_PERSISTENT",
+      "STATS_SAMPLE_PAGES",
+      "STORAGE",
+      "TABLESPACE",
+      "UNION",
+  };
+
+  if (ctx->failed ||
+      token_ascii_matches_any(&token, starters,
+                              sizeof(starters) / sizeof(starters[0]))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
 void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
                                         MyliteToken token,
                                         const char *prefix) {

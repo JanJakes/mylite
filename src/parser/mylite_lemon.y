@@ -82,6 +82,7 @@ statement ::= signal_statement.
 statement ::= begin_statement.
 statement ::= commit_statement.
 statement ::= rollback_statement.
+statement ::= set_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -101,7 +102,6 @@ statement_start(A) ::= required_tail_start(B). { A = B; }
 statement_start(A) ::= optional_tail_start(B). { A = B; }
 
 required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= SET. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= GRANT. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= REVOKE. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= HELP. { A = MYLITE_STATEMENT_UTILITY; }
@@ -667,6 +667,25 @@ rollback_to_savepoint_tail ::= WORK TO SAVEPOINT savepoint_reference.
 savepoint_reference ::= ATOM.
 savepoint_reference ::= LABEL.
 
+set_statement ::= SET set_first_token required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+
+set_first_token ::= ATOM.
+set_first_token ::= CHARACTER.
+set_first_token ::= CHARSET.
+set_first_token ::= DEFAULT.
+set_first_token ::= GLOBAL.
+set_first_token ::= LABEL.
+set_first_token ::= LOCAL.
+set_first_token ::= NAMES.
+set_first_token ::= PASSWORD.
+set_first_token ::= PERSIST.
+set_first_token ::= RESOURCE.
+set_first_token ::= ROLE.
+set_first_token ::= SESSION.
+set_first_token ::= TRANSACTION.
+
 optional_tail_start(A) ::= RESIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= ELSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= LOOP. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -893,6 +912,7 @@ keyword ::= USER_RESOURCES.
 keyword ::= VARIABLES.
 keyword ::= WARNINGS.
 keyword ::= DELAYED.
+keyword ::= DEFAULT.
 keyword ::= DIAGNOSTICS.
 keyword ::= AND.
 keyword ::= CHAIN.
@@ -900,7 +920,9 @@ keyword ::= HIGH_PRIORITY.
 keyword ::= IGNORE.
 keyword ::= INTO.
 keyword ::= LOW_PRIORITY.
+keyword ::= NAMES.
 keyword ::= NO.
+keyword ::= PASSWORD.
 keyword ::= QUICK.
 keyword ::= RECURSIVE.
 keyword ::= ROW.
@@ -1068,6 +1090,7 @@ keyword_not_select_clause ::= USER_RESOURCES.
 keyword_not_select_clause ::= VARIABLES.
 keyword_not_select_clause ::= WARNINGS.
 keyword_not_select_clause ::= DELAYED.
+keyword_not_select_clause ::= DEFAULT.
 keyword_not_select_clause ::= DIAGNOSTICS.
 keyword_not_select_clause ::= AND.
 keyword_not_select_clause ::= CHAIN.
@@ -1075,7 +1098,9 @@ keyword_not_select_clause ::= HIGH_PRIORITY.
 keyword_not_select_clause ::= IGNORE.
 keyword_not_select_clause ::= INTO.
 keyword_not_select_clause ::= LOW_PRIORITY.
+keyword_not_select_clause ::= NAMES.
 keyword_not_select_clause ::= NO.
+keyword_not_select_clause ::= PASSWORD.
 keyword_not_select_clause ::= QUICK.
 keyword_not_select_clause ::= RECURSIVE.
 keyword_not_select_clause ::= ROW.

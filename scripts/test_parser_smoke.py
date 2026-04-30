@@ -135,6 +135,10 @@ def main() -> int:
         ("commit nonsense;", 1, {}),
         ("rollback to savepoint s1;", 0, {"statements": "1", "transaction": "1"}),
         ("rollback nonsense;", 1, {}),
+        ("set names utf8mb4;", 0, {"statements": "1", "utility": "1"}),
+        ("set global max_connections = 100;", 0, {"statements": "1", "utility": "1"}),
+        ("set role r1;", 0, {"statements": "1", "utility": "1"}),
+        ("set select;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

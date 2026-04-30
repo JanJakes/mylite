@@ -85,6 +85,15 @@ case "$declare_handler_output" in
 	*)
 		echo "unexpected DECLARE HANDLER output: $declare_handler_output" >&2
 		exit 1
+	;;
+esac
+
+diagnostics_output=$("$parser" 'GET DIAGNOSTICS @n = NUMBER; GET CURRENT DIAGNOSTICS CONDITION 1 @state = RETURNED_SQLSTATE; GET STACKED DIAGNOSTICS CONDITION @i v = MYSQL_ERRNO; GET DIAGNOSTICS CONDITION local_index v = MESSAGE_TEXT')
+case "$diagnostics_output" in
+	*"get[1:5"*"get"*/diagnostics_condition:1*"get"*/diagnostics_condition:@i*"get"*/diagnostics_condition:local_index*) ;;
+	*)
+		echo "unexpected GET DIAGNOSTICS output: $diagnostics_output" >&2
+		exit 1
 		;;
 esac
 

@@ -59,6 +59,11 @@ static int classify_condition_value_statement_object(const mylite_parser *parser
                                                      size_t token_index,
                                                      size_t last_token_index,
                                                      int allow_condition_class);
+static int classify_get_statement_object(const mylite_parser *parser,
+                                         mylite_statement *statement,
+                                         size_t token_index,
+                                         size_t last_token_index);
+static int token_can_start_diagnostics_condition_number(const mylite_token *token);
 static int classify_describe_or_explain_statement_object(const mylite_parser *parser,
                                                          mylite_statement *statement,
                                                          size_t token_index,
@@ -622,6 +627,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_CONNECTION: return "connection";
 	case MYLITE_STATEMENT_OBJECT_CURSOR: return "cursor";
 	case MYLITE_STATEMENT_OBJECT_DATABASE: return "database";
+	case MYLITE_STATEMENT_OBJECT_DIAGNOSTICS_CONDITION: return "diagnostics_condition";
 	case MYLITE_STATEMENT_OBJECT_ENGINE: return "engine";
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
 	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
@@ -1050,6 +1056,8 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	case MYLITE_STATEMENT_SIGNAL:
 	case MYLITE_STATEMENT_RESIGNAL:
 		return classify_signal_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_GET:
+		return classify_get_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_USE:
 		object_kind = MYLITE_STATEMENT_OBJECT_DATABASE;
 		break;
@@ -1257,6 +1265,42 @@ static int classify_condition_value_statement_object(const mylite_parser *parser
 	                                        MYLITE_STATEMENT_OBJECT_CONDITION,
 	                                        token_index,
 	                                        last_token_index);
+}
+
+static int classify_get_statement_object(const mylite_parser *parser,
+                                         mylite_statement *statement,
+                                         size_t token_index,
+                                         size_t last_token_index)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (token_text_equals(parser, token_index, "DIAGNOSTICS")) {
+			token_index++;
+			break;
+		}
+		token_index++;
+	}
+
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if (token_text_equals(parser, token_index, "CONDITION") &&
+		    token_can_start_diagnostics_condition_number(&parser->tokens[token_index + 1])) {
+			return set_statement_direct_object_name_range(parser,
+			                                              statement,
+			                                              MYLITE_STATEMENT_OBJECT_DIAGNOSTICS_CONDITION,
+			                                              token_index + 1,
+			                                              token_index + 1);
+		}
+		token_index++;
+	}
+	return 0;
+}
+
+static int token_can_start_diagnostics_condition_number(const mylite_token *token)
+{
+	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_NUMBER ||
+	       token->kind == MYLITE_TOKEN_USER_VARIABLE ||
+	       token->kind == MYLITE_TOKEN_SYSTEM_VARIABLE;
 }
 
 static int classify_describe_or_explain_statement_object(const mylite_parser *parser,

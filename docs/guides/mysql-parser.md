@@ -226,6 +226,12 @@ DECLARE HANDLER exposes the first handled condition value:
 ok statements=1 kinds=declare[1:9,0:48]/condition:SQLEXCEPTION
 ```
 
+GET DIAGNOSTICS CONDITION exposes the requested condition-area index:
+
+```text
+ok statements=1 kinds=get[1:8,0:62]/diagnostics_condition:1
+```
+
 Resource group administration exposes the group name:
 
 ```text

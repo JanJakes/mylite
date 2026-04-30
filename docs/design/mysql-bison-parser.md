@@ -16,6 +16,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/declare-condition.html`
 - MySQL 8.4 DECLARE ... HANDLER statement:
   `https://dev.mysql.com/doc/refman/8.4/en/declare-handler.html`
+- MySQL 8.4 GET DIAGNOSTICS statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/get-diagnostics.html`
 - MySQL 8.4 IMPORT TABLE statement:
   `https://dev.mysql.com/doc/refman/8.4/en/import-table.html`
 - MySQL 8.4 CALL statement:
@@ -189,7 +191,8 @@ block starts. Cursor names are recorded for `DECLARE ... CURSOR`, `OPEN`,
 `ITERATE`. Label declarations are recorded when they prefix the MySQL-labeled
 constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`. Named condition
 declarations are recorded for `DECLARE ... CONDITION`, and the first handled
-condition value is recorded for `DECLARE ... HANDLER`.
+condition value is recorded for `DECLARE ... HANDLER`. `GET DIAGNOSTICS
+... CONDITION` records the requested diagnostics condition area number.
 
 ## Boundaries
 
@@ -268,6 +271,9 @@ condition value is recorded for `DECLARE ... HANDLER`.
 - Handler declaration metadata records only the first condition value after
   `FOR`. It does not expand multi-condition lists, validate handler action,
   bind named conditions, or execute handler bodies.
+- `GET DIAGNOSTICS` metadata records only the requested condition-area index in
+  `... CONDITION n` forms. Statement-level diagnostics item lists and individual
+  assignment targets remain body tokens only.
 - Label metadata records direct `LEAVE` / `ITERATE` targets and leading label
   declarations. It does not yet validate end labels, duplicate labels, the
   16-character label limit, or label binding.

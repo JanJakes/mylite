@@ -522,6 +522,7 @@ static int keyword_token(const MyliteToken *token) {
       {"SPATIAL", ML_SPATIAL},
       {"START", ML_START},
       {"TABLE", ML_TABLE},
+      {"TABLES", ML_TABLES},
       {"TABLESPACE", ML_TABLESPACE},
       {"TEMPORARY", ML_TEMPORARY},
       {"TRIGGER", ML_TRIGGER},

@@ -22,6 +22,8 @@ def main() -> int:
         ),
         ("create table t (a int);", 0, {"statements": "1", "ddl": "1"}),
         ("create nonsense;", 1, {}),
+        ("drop table if exists t;", 0, {"statements": "1", "ddl": "1"}),
+        ("drop nonsense;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

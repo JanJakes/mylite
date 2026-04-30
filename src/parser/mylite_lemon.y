@@ -37,6 +37,7 @@ statement_chunk ::= statement SEMI.
 
 statement ::= select_statement.
 statement ::= create_statement.
+statement ::= drop_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -61,7 +62,6 @@ required_tail_start(A) ::= REPLACE. { A = MYLITE_STATEMENT_REPLACE; }
 required_tail_start(A) ::= UPDATE. { A = MYLITE_STATEMENT_UPDATE; }
 required_tail_start(A) ::= DELETE. { A = MYLITE_STATEMENT_DELETE; }
 required_tail_start(A) ::= ALTER. { A = MYLITE_STATEMENT_DDL; }
-required_tail_start(A) ::= DROP. { A = MYLITE_STATEMENT_DDL; }
 required_tail_start(A) ::= TRUNCATE. { A = MYLITE_STATEMENT_DDL; }
 required_tail_start(A) ::= RENAME. { A = MYLITE_STATEMENT_DDL; }
 required_tail_start(A) ::= CALL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -160,6 +160,33 @@ create_first_token ::= LOGFILE.
 create_first_token ::= TABLESPACE.
 create_first_token ::= UNDO.
 
+drop_statement ::= DROP drop_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
+}
+
+drop_tail ::= drop_first_token required_statement_tail.
+
+drop_first_token ::= TABLE.
+drop_first_token ::= TABLES.
+drop_first_token ::= TEMPORARY.
+drop_first_token ::= DATABASE.
+drop_first_token ::= SCHEMA.
+drop_first_token ::= VIEW.
+drop_first_token ::= EVENT.
+drop_first_token ::= FUNCTION.
+drop_first_token ::= PROCEDURE.
+drop_first_token ::= PREPARE.
+drop_first_token ::= TRIGGER.
+drop_first_token ::= USER.
+drop_first_token ::= ROLE.
+drop_first_token ::= SERVER.
+drop_first_token ::= INDEX.
+drop_first_token ::= LOGFILE.
+drop_first_token ::= TABLESPACE.
+drop_first_token ::= UNDO.
+drop_first_token ::= SPATIAL.
+drop_first_token ::= RESOURCE.
+
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -246,6 +273,7 @@ keyword ::= CALL.
 keyword ::= DO.
 keyword ::= LOAD.
 keyword ::= TABLE.
+keyword ::= TABLES.
 keyword ::= TABLESPACE.
 keyword ::= VALUES.
 keyword ::= HANDLER.
@@ -350,6 +378,7 @@ keyword_not_select_clause ::= CALL.
 keyword_not_select_clause ::= DO.
 keyword_not_select_clause ::= LOAD.
 keyword_not_select_clause ::= TABLE.
+keyword_not_select_clause ::= TABLES.
 keyword_not_select_clause ::= TABLESPACE.
 keyword_not_select_clause ::= VALUES.
 keyword_not_select_clause ::= HANDLER.

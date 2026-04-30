@@ -85,6 +85,7 @@ static size_t last_qualified_name_token(const mylite_parser *parser,
                                         size_t last_token_index);
 static int token_can_start_object_name(const mylite_token *token);
 static int token_can_continue_object_name(const mylite_token *token);
+static int token_can_be_unquoted_object_name_keyword(int token);
 static int is_optional_name_modifier(int token);
 static int token_text_equals(const mylite_parser *parser, size_t token_index, const char *expected);
 static int statement_kind_uses_object_scan(mylite_statement_kind kind);
@@ -1127,13 +1128,45 @@ static int token_can_start_object_name(const mylite_token *token)
 	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
 	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
 	       token->kind == MYLITE_TOKEN_STRING ||
-	       token->kind == MYLITE_TOKEN_NUMBER;
+	       token->kind == MYLITE_TOKEN_NUMBER ||
+	       token_can_be_unquoted_object_name_keyword(token->parser_token);
 }
 
 static int token_can_continue_object_name(const mylite_token *token)
 {
 	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
-	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER;
+	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
+	       token_can_be_unquoted_object_name_keyword(token->parser_token);
+}
+
+static int token_can_be_unquoted_object_name_keyword(int token)
+{
+	switch (token) {
+	case CHAIN_T:
+	case CLOSE_T:
+	case COLUMNS_T:
+	case DATA_T:
+	case DECLARE_T:
+	case FETCH_T:
+	case FIELDS_T:
+	case FORMAT_T:
+	case FULL_T:
+	case INFILE_T:
+	case ITERATE_T:
+	case JSON_T:
+	case LEAVE_T:
+	case LOCAL_T:
+	case NO_T:
+	case OPEN_T:
+	case READ_T:
+	case RETURN_T:
+	case TO_T:
+	case TRANSACTION_T:
+	case WRITE_T:
+		return 1;
+	default:
+		return 0;
+	}
 }
 
 static int is_optional_name_modifier(int token)

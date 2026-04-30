@@ -33,9 +33,11 @@ endpoints for diagnostics and future AST nodes. Object-name spans preserve
 exact source text, including backtick quoting and schema qualification. Balanced
 structural tokens also carry bidirectional match references for `(...)`,
 `[...]`, `{...}`, `BEGIN ... END`, and `CASE ... END`. The lexer classifies
-statement-leading words, major clause words, common DDL words, boolean/null
-operators, and join/set operators as keywords so the future analyzer does not
-need to rediscover them from identifier text. The grammar validates that
+statement-leading words, major clause words, common DDL/admin/transaction/load
+words, boolean/null operators, and join/set operators as keywords so the future
+analyzer does not need to rediscover them from identifier text. Keyword-like
+nonreserved words that MySQL commonly permits as identifiers remain usable in
+target object-name spans. The grammar validates that
 grouping delimiters, `BEGIN ... END`, and `CASE ... END` blocks are balanced.
 Known statement heads that require a body now reject a bare keyword, while
 transaction statements that MySQL accepts as single-keyword statements remain

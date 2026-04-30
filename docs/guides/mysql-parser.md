@@ -75,6 +75,13 @@ Keyword lookup is table-driven and must remain sorted:
 python3 tests/check_keywords.py
 ```
 
+Some nonreserved MySQL words are emitted as keyword tokens for analyzer
+fidelity but still remain usable in target-name spans:
+
+```text
+ok statements=1 kinds=create[1:7,0:26]/table:json
+```
+
 Run smoke tests:
 
 ```sh

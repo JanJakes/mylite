@@ -141,6 +141,15 @@ case "$token_output" in
 		;;
 esac
 
+keyword_output=$("$parser" --tokens 'SHOW FULL COLUMNS FROM t; EXPLAIN FORMAT = JSON SELECT 1; LOAD DATA LOCAL INFILE "x" REPLACE INTO TABLE data; START TRANSACTION READ WRITE; COMMIT AND CHAIN NO RELEASE; ROLLBACK TO SAVEPOINT s; CREATE TABLE json (id int); INSERT INTO local VALUES (1)')
+case "$keyword_output" in
+	*"show"*/table:t*"load"*/table:data*"create"*/table:json*"insert"*/table:local*"token 2 keyword"*"token 3 keyword"*"token 8 keyword"*"token 10 keyword"*"token 15 keyword"*"token 16 keyword"*"token 17 keyword"*"token 25 keyword"*"token 26 keyword"*"token 27 keyword"*"token 31 keyword"*"token 32 keyword"*"token 36 keyword"*) ;;
+	*)
+		echo "unexpected keyword output: $keyword_output" >&2
+		exit 1
+		;;
+esac
+
 match_output=$("$parser" --tokens "SELECT (1), CASE WHEN a THEN b END")
 case "$match_output" in
 	*"match 2 4"*"match 4 2"*"match 6 11"*"match 11 6"*) ;;

@@ -1,0 +1,55 @@
+# SQL SHOW statements
+
+MySQL SHOW statement result shapes, filters, privileges, and compatibility diagnostics.
+
+| SHOW statement | Status | Notes |
+| --- | --- | --- |
+| `SHOW BINARY LOG STATUS` | ❌ | Result shape, filters, privileges |
+| `SHOW BINARY LOGS` | ❌ | Result shape, filters, privileges |
+| `SHOW BINLOG EVENTS` | ❌ | Result shape, filters, privileges |
+| `SHOW CHARACTER SET` | ❌ | Result shape, filters, privileges |
+| `SHOW COLLATION` | ❌ | Result shape, filters, privileges |
+| `SHOW COLUMNS` / `SHOW FIELDS` | ❌ | Result shape, filters, privileges |
+| `SHOW COUNT(*) ERRORS` | ❌ | Result shape, filters, privileges |
+| `SHOW COUNT(*) WARNINGS` | ❌ | Result shape, filters, privileges |
+| `SHOW CREATE DATABASE` | ❌ | Result shape, filters, privileges |
+| `SHOW CREATE EVENT` | ❌ | Result shape, filters, privileges |
+| `SHOW CREATE FUNCTION` | ❌ | Result shape, filters, privileges |
+| `SHOW CREATE PROCEDURE` | ❌ | Result shape, filters, privileges |
+| `SHOW CREATE TABLE` | ❌ | Result shape, filters, privileges |
+| `SHOW CREATE TRIGGER` | ❌ | Result shape, filters, privileges |
+| `SHOW CREATE USER` | ❌ | Result shape, filters, privileges |
+| `SHOW CREATE VIEW` | ❌ | Result shape, filters, privileges |
+| `SHOW DATABASES` | ❌ | Result shape, filters, privileges |
+| `SHOW ENGINE` | ❌ | Subcommands and result shape |
+| `SHOW ENGINE LOGS` | ❌ | Result shape, filters, privileges |
+| `SHOW ENGINE MUTEX` | ❌ | Result shape, filters, privileges |
+| `SHOW ENGINE STATUS` | ❌ | Result shape, filters, privileges |
+| `SHOW ENGINES` | ❌ | Result shape, filters, privileges |
+| `SHOW ERRORS` | ❌ | Result shape, filters, privileges |
+| `SHOW EVENTS` | ❌ | Result shape, filters, privileges |
+| `SHOW FUNCTION CODE` | ❌ | Debug-only routine bytecode listing |
+| `SHOW FUNCTION STATUS` | ❌ | Result shape, filters, privileges |
+| `SHOW GRANTS` | ❌ | Result shape, filters, privileges |
+| `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` | ❌ | Result shape, filters, privileges |
+| `SHOW MASTER STATUS` | ❌ | Removed; use SHOW BINARY LOG STATUS |
+| `SHOW OPEN TABLES` | ❌ | Result shape, filters, privileges |
+| `SHOW PARSE_TREE` | ❌ | Conditional parse-tree debug output |
+| `SHOW PLUGINS` | ❌ | Result shape, filters, privileges |
+| `SHOW PRIVILEGES` | ❌ | Result shape, filters, privileges |
+| `SHOW PROCEDURE CODE` | ❌ | Debug-only routine bytecode listing |
+| `SHOW PROCEDURE STATUS` | ❌ | Result shape, filters, privileges |
+| `SHOW PROCESSLIST` | ❌ | Result shape, filters, privileges |
+| `SHOW PROFILE` | ❌ | Result shape, filters, privileges |
+| `SHOW PROFILES` | ❌ | Result shape, filters, privileges |
+| `SHOW RELAYLOG EVENTS` | ❌ | Result shape, filters, privileges |
+| `SHOW REPLICA STATUS` | ❌ | Result shape, filters, privileges |
+| `SHOW REPLICAS` | ❌ | Result shape, filters, privileges |
+| `SHOW STATUS` | ❌ | Result shape, filters, privileges |
+| `SHOW TABLE STATUS` | ❌ | Result shape, filters, privileges |
+| `SHOW TABLES` | ❌ | Result shape, filters, privileges |
+| `SHOW TRIGGERS` | ❌ | Result shape, filters, privileges |
+| `SHOW VARIABLES` | ❌ | Result shape, filters, privileges |
+| `SHOW WARNINGS` | ❌ | Result shape, filters, privileges |
+
+[Back to compatibility overview](../../COMPATIBILITY.md)

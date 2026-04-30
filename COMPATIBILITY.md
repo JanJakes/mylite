@@ -1,0 +1,664 @@
+# MyLite ↔ MySQL 8.4.9 compatibility
+
+This document tracks MyLite's first baseline compatibility target against
+MySQL 8 LTS, currently MySQL 8.4.9. The baseline tables below are the focused
+near-term implementation contract. The complete compatibility inventory remains
+in the [detailed compatibility tables](#detailed-compatibility-tables).
+
+## Legend
+
+| Mark | Meaning |
+| :-: | --- |
+| ✅ | Supported with MySQL 8.4.9-compatible behavior and runtime comparison tests for relevant results, errors, warnings, metadata, affected rows, side effects, and protocol details. |
+| 🟡 | Implemented with documented compatibility gaps, reduced fidelity, or MyLite-specific behavior that is covered by tests. |
+| ⚪ | Accepted at parse or API level and intentionally handled as an embedded-compatible no-op, placeholder, warning, or diagnostic. |
+| ❌ | Not implemented, rejected, or not yet MySQL-runtime verified in MyLite. |
+
+## Baseline Compatibility
+
+Each row tracks one baseline behavior or feature. A row moves out of `❌` only
+when the listed surface is implemented and covered by MySQL 8.4.9 comparison
+tests.
+
+### Runtime, Identity, and Diagnostics
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| Dynamic current database | ❌ | Set and observe current database name. | [SQL schemas](docs/compatibility/sql-schemas.md), [runtime session state](docs/compatibility/runtime-session-sql-modes.md), [system functions](docs/compatibility/functions-system.md) |
+| Database listing baseline | ❌ | Lists current database and `INFORMATION_SCHEMA`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md), [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| Current user identity | ❌ | Exposes `root@%`. | [SQL users, roles, and privileges](docs/compatibility/sql-users-privileges.md), [system functions](docs/compatibility/functions-system.md) |
+| SQLSTATE values | ❌ | MySQL-compatible SQLSTATEs. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
+| Error numbers | ❌ | MySQL-compatible error codes. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
+| Warning numbers | ❌ | MySQL-compatible warning codes. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
+| Warning count and order | ❌ | Diagnostics area behavior. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md), [runtime session state](docs/compatibility/runtime-session-sql-modes.md) |
+| Column flags | ❌ | Protocol and result flag bits. | [wire protocol](docs/compatibility/wire-protocol.md), [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| Result column metadata | ❌ | Names, types, lengths, charset, decimals. | [wire protocol](docs/compatibility/wire-protocol.md), [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
+| Origin metadata | ❌ | Schema, table, and origin names. | [wire protocol](docs/compatibility/wire-protocol.md), [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| InnoDB-only engine surface | ❌ | Expose only `InnoDB`. | [embedded-design decisions](docs/compatibility/embedded-design-decisions.md), [mysql schema](docs/compatibility/metadata-mysql-schema.md), [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+
+### Schema Objects
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| Base tables | ❌ | Persistent table objects. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Temporary tables | ❌ | Session-scoped tables and name shadowing. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [runtime session state](docs/compatibility/runtime-session-sql-modes.md) |
+| Views | ❌ | View DDL, metadata, and query behavior. | [SQL views](docs/compatibility/sql-views.md) |
+
+### Table DDL
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `CREATE TABLE` | ❌ | Baseline table creation. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `CREATE TEMPORARY TABLE` | ❌ | Session-scoped creation. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `CREATE TABLE ... LIKE` | ❌ | Metadata cloning. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `CREATE TABLE ... SELECT` | ❌ | CTAS inference and atomicity. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Column definition grammar | ❌ | Column attributes and constraints. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Default expressions | ❌ | Literal and expression defaults. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Table engine options | ❌ | Accept and expose `InnoDB`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Table charset and collation options | ❌ | Table defaults and metadata. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
+| `ADD COLUMN` | ❌ | Positioning, defaults, metadata. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `DROP COLUMN` | ❌ | Dependency checks and errors. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `RENAME COLUMN` | ❌ | Metadata rewrite. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `CHANGE COLUMN` | ❌ | Rename plus definition change. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `MODIFY COLUMN` | ❌ | Definition change without rename. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `ALTER COLUMN SET DEFAULT` | ❌ | Default mutation. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `ALTER COLUMN DROP DEFAULT` | ❌ | Default removal. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `RENAME TO` | ❌ | Table rename via `ALTER TABLE`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `ORDER BY` | ❌ | Accepted table-rebuild syntax. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `DEFAULT CHARACTER SET` / `COLLATE` | ❌ | Table default charset and collation changes. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
+| `TRUNCATE TABLE` | ❌ | DDL truncate semantics. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `DROP TABLE` | ❌ | Drop semantics and warnings. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `RENAME TABLE` | ❌ | Atomic multi-table rename. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Atomic DDL | ❌ | Transactional DDL expectations. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Implicit commit boundaries | ❌ | MySQL DDL commit behavior. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [SQL transactions](docs/compatibility/sql-transactions.md) |
+
+### Auto Increment
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `AUTO_INCREMENT` column DDL | ❌ | Creation and alteration. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `AUTO_INCREMENT` allocation | ❌ | Insert ids and sequence behavior. | [SQL table DML](docs/compatibility/sql-table-dml.md), [system functions](docs/compatibility/functions-system.md) |
+| `AUTO_INCREMENT` table option | ❌ | Counter initialization and alteration. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `AUTO_INCREMENT` in `SHOW CREATE TABLE` | ❌ | MySQL-style DDL output. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `AUTO_INCREMENT` in `SHOW TABLE STATUS` | ❌ | Counter metadata. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `AUTO_INCREMENT` in `INFORMATION_SCHEMA` | ❌ | Table and column metadata. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+
+### Indexes, Constraints, and Foreign Keys
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `CREATE INDEX` | ❌ | Standalone index creation. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `DROP INDEX` | ❌ | Standalone index removal. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| Primary keys | ❌ | Definitions, metadata, errors. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| Unique indexes | ❌ | NULLs, prefixes, functional parts. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| Nonunique indexes | ❌ | BTREE/HASH clauses and metadata. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| Descending indexes | ❌ | DESC key-part syntax. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| Prefix indexes | ❌ | Prefix length semantics. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| Functional key parts | ❌ | Expression key parts. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| Multi-valued indexes | ❌ | JSON array indexes. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| CHECK constraints | ❌ | Enforcement, names, metadata. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| Constraint naming | ❌ | Names, scope, `SHOW CREATE`. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `ADD PRIMARY KEY` | ❌ | Add and validate primary keys. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `DROP PRIMARY KEY` | ❌ | Remove primary keys. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `ADD UNIQUE` | ❌ | Add unique indexes. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `ADD INDEX` / `ADD KEY` | ❌ | Add secondary indexes. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `DROP INDEX` / `DROP KEY` | ❌ | Remove table indexes. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `RENAME INDEX` / `RENAME KEY` | ❌ | Rename indexes. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `ALTER INDEX VISIBLE` / `INVISIBLE` | ❌ | Index visibility metadata. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `ADD CONSTRAINT CHECK` | ❌ | Add check constraints. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `DROP CHECK` | ❌ | Remove check constraints. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `ALTER CHECK ENFORCED` / `NOT ENFORCED` | ❌ | Toggle check enforcement. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| Foreign keys | ❌ | Definitions, actions, metadata. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md), [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `ADD CONSTRAINT FOREIGN KEY` | ❌ | Add and validate foreign keys. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+| `DROP FOREIGN KEY` | ❌ | Remove foreign keys. | [SQL indexes and constraints](docs/compatibility/sql-indexes-constraints.md) |
+
+### Types and Literals
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `TINYINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `SMALLINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `MEDIUMINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `INT` / `INTEGER` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `BIGINT` | ❌ | Ranges, overflow, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Integer type aliases | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `DECIMAL` / `NUMERIC` | ❌ | Exact math and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `FIXED` | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `FLOAT` | ❌ | Approximate numeric metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `DOUBLE` / `REAL` | ❌ | Approximate numeric metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `FLOAT4` / `FLOAT8` | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `BIT` | ❌ | Bit storage and conversion. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `BOOL` / `BOOLEAN` | ❌ | Alias and truth semantics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `SERIAL` | ❌ | BIGINT AUTO_INCREMENT alias. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `DATE` | ❌ | Date range and formatting. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `TIME` | ❌ | Time range and formatting. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `DATETIME` | ❌ | Datetime range and defaults. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `TIMESTAMP` | ❌ | UTC conversion and defaults. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `YEAR` | ❌ | Year storage and display. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `CHAR` | ❌ | Padding, charsets, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `VARCHAR` | ❌ | Length, charsets, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `CHARACTER` / `CHARACTER VARYING` | ❌ | CHAR/VARCHAR aliases. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `NCHAR` / `NATIONAL CHAR` | ❌ | National-character aliases. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `NVARCHAR` / `NATIONAL VARCHAR` | ❌ | National-character aliases. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `BINARY` | ❌ | Fixed-length binary semantics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `VARBINARY` | ❌ | Variable binary semantics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `CHAR BYTE` | ❌ | Alias for `BINARY`. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `TINYBLOB` | ❌ | BLOB length and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `BLOB` | ❌ | BLOB length and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `MEDIUMBLOB` | ❌ | BLOB length and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `LONGBLOB` | ❌ | BLOB length and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `TINYTEXT` | ❌ | TEXT length and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `TEXT` | ❌ | TEXT length and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `MEDIUMTEXT` | ❌ | TEXT length and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `LONGTEXT` | ❌ | TEXT length and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `LONG` / `LONG VARCHAR` | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `LONG VARBINARY` | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `ENUM` | ❌ | Indexing, sorting, invalid values. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `SET` | ❌ | Bitmap membership metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `JSON` | ❌ | Validation and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
+| Numeric literals | ❌ | Formats, signedness, overflow. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| String literals | ❌ | Escapes, introducers, SQL modes. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Temporal literals | ❌ | DATE/TIME/TIMESTAMP syntax. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| JSON path literals | ❌ | Path grammar and errors. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
+| Type conversion | ❌ | Expression and assignment conversion. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Collation coercibility | ❌ | Coercibility and diagnostics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [collations](docs/compatibility/collations.md) |
+
+### Character Sets, Collations, and SET
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `ascii` character set | ❌ | Baseline character set. | [character sets](docs/compatibility/character-sets.md) |
+| `binary` character set | ❌ | Baseline character set. | [character sets](docs/compatibility/character-sets.md) |
+| `utf8mb4` character set | ❌ | Baseline character set. | [character sets](docs/compatibility/character-sets.md) |
+| `ascii_general_ci` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
+| `ascii_bin` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
+| `binary` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
+| `utf8mb4_general_ci` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
+| `utf8mb4_bin` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
+| `utf8mb4_unicode_ci` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
+| `utf8mb4_0900_ai_ci` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
+| `utf8mb4_0900_bin` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
+| `SET` | ❌ | Session variable assignment. | [SQL SET statements](docs/compatibility/sql-set-statements.md), [runtime system variables](docs/compatibility/runtime-system-variables.md) |
+| `SET NAMES` | ❌ | Client character-set state. | [SQL SET statements](docs/compatibility/sql-set-statements.md), [character sets](docs/compatibility/character-sets.md) |
+| `SET CHARACTER SET` | ❌ | Character-set state reset. | [SQL SET statements](docs/compatibility/sql-set-statements.md), [character sets](docs/compatibility/character-sets.md) |
+
+### SQL Modes
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| MySQL default SQL modes | ❌ | Default 8.4.9 mode set. | [runtime session state and SQL modes](docs/compatibility/runtime-session-sql-modes.md) |
+| `NO_AUTO_VALUE_ON_ZERO` | ❌ | On and off behavior. | [runtime session state and SQL modes](docs/compatibility/runtime-session-sql-modes.md) |
+| `NO_BACKSLASH_ESCAPES` | ❌ | On and off behavior. | [runtime session state and SQL modes](docs/compatibility/runtime-session-sql-modes.md) |
+| `NO_ZERO_DATE` | ❌ | On and off behavior. | [runtime session state and SQL modes](docs/compatibility/runtime-session-sql-modes.md) |
+| `NO_ZERO_IN_DATE` | ❌ | On and off behavior. | [runtime session state and SQL modes](docs/compatibility/runtime-session-sql-modes.md) |
+| `ONLY_FULL_GROUP_BY` | ❌ | On and off behavior. | [runtime session state and SQL modes](docs/compatibility/runtime-session-sql-modes.md) |
+| `PIPES_AS_CONCAT` | ❌ | On and off behavior. | [runtime session state and SQL modes](docs/compatibility/runtime-session-sql-modes.md) |
+| `STRICT_ALL_TABLES` | ❌ | On and off behavior. | [runtime session state and SQL modes](docs/compatibility/runtime-session-sql-modes.md) |
+| `STRICT_TRANS_TABLES` | ❌ | On and off behavior. | [runtime session state and SQL modes](docs/compatibility/runtime-session-sql-modes.md) |
+| `ANSI` | ❌ | Composite mode behavior. | [runtime session state and SQL modes](docs/compatibility/runtime-session-sql-modes.md) |
+| `ANSI_QUOTES` | ❌ | Identifier quoting behavior. | [runtime session state and SQL modes](docs/compatibility/runtime-session-sql-modes.md) |
+
+### Operators
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `&` | ❌ | Bitwise AND. | [operators](docs/compatibility/operators.md) |
+| `>` | ❌ | Greater than. | [operators](docs/compatibility/operators.md) |
+| `>>` | ❌ | Right shift. | [operators](docs/compatibility/operators.md) |
+| `>=` | ❌ | Greater than or equal. | [operators](docs/compatibility/operators.md) |
+| `<` | ❌ | Less than. | [operators](docs/compatibility/operators.md) |
+| `<>, !=` | ❌ | Not equal. | [operators](docs/compatibility/operators.md) |
+| `<<` | ❌ | Left shift. | [operators](docs/compatibility/operators.md) |
+| `<=` | ❌ | Less than or equal. | [operators](docs/compatibility/operators.md) |
+| `<=>` | ❌ | NULL-safe equal. | [operators](docs/compatibility/operators.md) |
+| `%, MOD` | ❌ | Modulo. | [operators](docs/compatibility/operators.md), [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `*` | ❌ | Multiplication. | [operators](docs/compatibility/operators.md) |
+| `+` | ❌ | Addition. | [operators](docs/compatibility/operators.md) |
+| `-` (binary) | ❌ | Subtraction. | [operators](docs/compatibility/operators.md) |
+| `-` (unary) | ❌ | Sign negation. | [operators](docs/compatibility/operators.md) |
+| `/` | ❌ | Division. | [operators](docs/compatibility/operators.md) |
+| `:=` | ❌ | Assignment expression. | [operators](docs/compatibility/operators.md), [SQL SET statements](docs/compatibility/sql-set-statements.md) |
+| `=` (assignment) | ❌ | SET and UPDATE assignment. | [operators](docs/compatibility/operators.md), [SQL SET statements](docs/compatibility/sql-set-statements.md) |
+| `=` (comparison) | ❌ | Equality. | [operators](docs/compatibility/operators.md) |
+| `^` | ❌ | Bitwise XOR. | [operators](docs/compatibility/operators.md) |
+| `AND`, `&&` | ❌ | Logical AND. | [operators](docs/compatibility/operators.md) |
+| `BETWEEN ... AND ...` | ❌ | Range test. | [operators](docs/compatibility/operators.md) |
+| `BINARY` | ❌ | Binary-string cast. | [operators](docs/compatibility/operators.md), [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `CASE` | ❌ | Case operator. | [operators](docs/compatibility/operators.md) |
+| `DIV` | ❌ | Integer division. | [operators](docs/compatibility/operators.md) |
+| `EXISTS()` | ❌ | Query existence test. | [operators](docs/compatibility/operators.md), [SQL subqueries](docs/compatibility/sql-subqueries.md) |
+| `IN()` | ❌ | Set membership. | [operators](docs/compatibility/operators.md) |
+| `IS` | ❌ | Boolean/null test. | [operators](docs/compatibility/operators.md) |
+| `IS NOT` | ❌ | Negated boolean/null test. | [operators](docs/compatibility/operators.md) |
+| `IS NOT NULL` | ❌ | NOT NULL test. | [operators](docs/compatibility/operators.md) |
+| `IS NULL` | ❌ | NULL test. | [operators](docs/compatibility/operators.md) |
+| `LIKE` | ❌ | Simple pattern matching. | [operators](docs/compatibility/operators.md) |
+| `NOT`, `!` | ❌ | Logical negation. | [operators](docs/compatibility/operators.md) |
+| `NOT BETWEEN ... AND ...` | ❌ | Negated range test. | [operators](docs/compatibility/operators.md) |
+| `NOT EXISTS()` | ❌ | Negated query existence test. | [operators](docs/compatibility/operators.md), [SQL subqueries](docs/compatibility/sql-subqueries.md) |
+| `NOT IN()` | ❌ | Negated set membership. | [operators](docs/compatibility/operators.md) |
+| `NOT LIKE` | ❌ | Negated pattern matching. | [operators](docs/compatibility/operators.md) |
+| `NOT REGEXP` | ❌ | Negated regular expression match. | [operators](docs/compatibility/operators.md), [string functions](docs/compatibility/functions-string.md) |
+| `OR`, `\|\|` | ❌ | Logical OR. | [operators](docs/compatibility/operators.md) |
+| `REGEXP` | ❌ | Regular expression match. | [operators](docs/compatibility/operators.md), [string functions](docs/compatibility/functions-string.md) |
+| `RLIKE` | ❌ | Regular expression match. | [operators](docs/compatibility/operators.md), [string functions](docs/compatibility/functions-string.md) |
+| `XOR` | ❌ | Logical XOR. | [operators](docs/compatibility/operators.md) |
+| `\|` | ❌ | Bitwise OR. | [operators](docs/compatibility/operators.md) |
+| `~` | ❌ | Bitwise inversion. | [operators](docs/compatibility/operators.md) |
+
+### Table DML
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `DELETE` (single-table) | ❌ | Aliases, partitions, LIMIT, modifiers. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `DELETE` (multi-table) | ❌ | Multi-table forms. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `DELETE` with joins | ❌ | Joined delete target semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md), [SQL joins](docs/compatibility/sql-joins.md) |
+| `INSERT ... VALUES` | ❌ | Values, defaults, insert ids. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `INSERT ... SET` | ❌ | SET-form insert. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `INSERT ... SELECT` | ❌ | Query insert and metadata inference. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | Duplicate-key update semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `INSERT IGNORE` | ❌ | Warning demotion rules. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `REPLACE ... VALUES` | ❌ | Delete-insert semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `REPLACE ... SET` | ❌ | SET-form replace. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `REPLACE ... SELECT` | ❌ | Replace from query expression. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `UPDATE` (single-table) | ❌ | Assignment order, LIMIT, modifiers. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `UPDATE` (multi-table) | ❌ | Joined update semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md), [SQL joins](docs/compatibility/sql-joins.md) |
+| `UPDATE` with joins | ❌ | Joined target and assignment behavior. | [SQL table DML](docs/compatibility/sql-table-dml.md), [SQL joins](docs/compatibility/sql-joins.md) |
+
+### Aggregate Functions
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `AVG()` | ❌ | Average value. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
+| `COUNT()` | ❌ | Row count. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
+| `COUNT(DISTINCT)` | ❌ | Count distinct values. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
+| `GROUP_CONCAT()` | ❌ | Concatenated aggregate string. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
+| `MAX()` | ❌ | Maximum value. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
+| `MIN()` | ❌ | Minimum value. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
+| `SUM()` | ❌ | Sum. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
+
+### Cast, Control-Flow, Comparison, and Default-Value Functions
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `CAST()` | ❌ | Explicit conversion. | [cast functions](docs/compatibility/functions-casts.md) |
+| `COALESCE()` | ❌ | First non-NULL argument. | [control-flow functions](docs/compatibility/functions-control-flow.md) |
+| `CONVERT()` | ❌ | Explicit conversion. | [cast functions](docs/compatibility/functions-casts.md) |
+| `GREATEST()` | ❌ | Largest argument. | [comparison functions](docs/compatibility/functions-comparison.md) |
+| `IF()` | ❌ | If/else expression. | [control-flow functions](docs/compatibility/functions-control-flow.md) |
+| `IFNULL()` | ❌ | NULL fallback expression. | [control-flow functions](docs/compatibility/functions-control-flow.md) |
+| `INTERVAL()` | ❌ | Argument interval index. | [comparison functions](docs/compatibility/functions-comparison.md) |
+| `ISNULL()` | ❌ | NULL test function. | [comparison functions](docs/compatibility/functions-comparison.md) |
+| `LEAST()` | ❌ | Smallest argument. | [comparison functions](docs/compatibility/functions-comparison.md) |
+| `NULLIF()` | ❌ | NULL if arguments compare equal. | [control-flow functions](docs/compatibility/functions-control-flow.md) |
+| `VALUES()` | ❌ | INSERT value reference. | [default-value functions](docs/compatibility/functions-default-values.md) |
+
+### JSON Functions and Operators
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `->` | ❌ | JSON path extraction. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `->>` | ❌ | JSON path extraction and unquote. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_ARRAY()` | ❌ | Create JSON array. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_CONTAINS()` | ❌ | JSON containment test. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_CONTAINS_PATH()` | ❌ | JSON path existence test. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_EXTRACT()` | ❌ | Extract from JSON document. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_INSERT()` | ❌ | Insert JSON value. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_KEYS()` | ❌ | Object key list. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_LENGTH()` | ❌ | JSON element count. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_OBJECT()` | ❌ | Create JSON object. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_QUOTE()` | ❌ | Quote JSON value. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_REMOVE()` | ❌ | Remove JSON value. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_REPLACE()` | ❌ | Replace JSON value. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_SET()` | ❌ | Set JSON value. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_TYPE()` | ❌ | JSON value type. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_UNQUOTE()` | ❌ | Unquote JSON value. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_VALID()` | ❌ | JSON validity check. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+| `JSON_VALUE()` | ❌ | JSON path value extraction. | [JSON functions and operators](docs/compatibility/functions-json.md) |
+
+### Numeric and Math Functions
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `ABS()` | ❌ | Absolute value. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `ACOS()` | ❌ | Arc cosine. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `ASIN()` | ❌ | Arc sine. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `ATAN()` | ❌ | Arc tangent. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `ATAN2(), ATAN()` | ❌ | Two-argument arc tangent. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `BIN()` | ❌ | Binary string for number. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `BIT_COUNT()` | ❌ | Count set bits. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `CEIL()` | ❌ | Ceiling. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `CEILING()` | ❌ | Ceiling synonym. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `CONV()` | ❌ | Convert number base. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `COS()` | ❌ | Cosine. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `COT()` | ❌ | Cotangent. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `CRC32()` | ❌ | CRC32 checksum. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `DEGREES()` | ❌ | Radians to degrees. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `EXP()` | ❌ | Exponential. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `FLOOR()` | ❌ | Floor. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `FORMAT()` | ❌ | Localized decimal formatting. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `LN()` | ❌ | Natural logarithm. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `LOG()` | ❌ | Logarithm. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `LOG10()` | ❌ | Base-10 logarithm. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `LOG2()` | ❌ | Base-2 logarithm. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `MOD()` | ❌ | Remainder. | [numeric and math functions](docs/compatibility/functions-numeric-math.md), [operators](docs/compatibility/operators.md) |
+| `OCT()` | ❌ | Octal string for number. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `PI()` | ❌ | Pi constant. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `POW()` | ❌ | Power. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `POWER()` | ❌ | Power synonym. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `RADIANS()` | ❌ | Degrees to radians. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `RAND()` | ❌ | Random value. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `ROUND()` | ❌ | Round value. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `SIGN()` | ❌ | Sign of argument. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `SIN()` | ❌ | Sine. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `SQRT()` | ❌ | Square root. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `TAN()` | ❌ | Tangent. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+| `TRUNCATE()` | ❌ | Decimal truncation. | [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
+
+### String and Regular Expression Functions
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `ASCII()` | ❌ | Left-most character code. | [string functions](docs/compatibility/functions-string.md) |
+| `BIT_LENGTH()` | ❌ | Length in bits. | [string functions](docs/compatibility/functions-string.md) |
+| `CHAR()` | ❌ | Characters from integers. | [string functions](docs/compatibility/functions-string.md) |
+| `CHAR_LENGTH()` | ❌ | Character count. | [string functions](docs/compatibility/functions-string.md) |
+| `CHARACTER_LENGTH()` | ❌ | Character count synonym. | [string functions](docs/compatibility/functions-string.md) |
+| `CHARSET()` | ❌ | Argument character set. | [string functions](docs/compatibility/functions-string.md) |
+| `COERCIBILITY()` | ❌ | Collation coercibility. | [string functions](docs/compatibility/functions-string.md), [collations](docs/compatibility/collations.md) |
+| `COLLATION()` | ❌ | Argument collation. | [string functions](docs/compatibility/functions-string.md), [collations](docs/compatibility/collations.md) |
+| `CONCAT()` | ❌ | Concatenate strings. | [string functions](docs/compatibility/functions-string.md) |
+| `CONCAT_WS()` | ❌ | Concatenate with separator. | [string functions](docs/compatibility/functions-string.md) |
+| `ELT()` | ❌ | String at index. | [string functions](docs/compatibility/functions-string.md) |
+| `EXPORT_SET()` | ❌ | Bitmask-to-string mapping. | [string functions](docs/compatibility/functions-string.md) |
+| `FIELD()` | ❌ | Argument position. | [string functions](docs/compatibility/functions-string.md) |
+| `FIND_IN_SET()` | ❌ | Comma-list position. | [string functions](docs/compatibility/functions-string.md) |
+| `FROM_BASE64()` | ❌ | Base64 decode. | [string functions](docs/compatibility/functions-string.md) |
+| `HEX()` | ❌ | Hex representation. | [string functions](docs/compatibility/functions-string.md) |
+| `INSERT()` | ❌ | Insert substring. | [string functions](docs/compatibility/functions-string.md) |
+| `INSTR()` | ❌ | First substring index. | [string functions](docs/compatibility/functions-string.md) |
+| `LCASE()` | ❌ | Lowercase synonym. | [string functions](docs/compatibility/functions-string.md) |
+| `LEFT()` | ❌ | Left substring. | [string functions](docs/compatibility/functions-string.md) |
+| `LENGTH()` | ❌ | Byte length. | [string functions](docs/compatibility/functions-string.md) |
+| `LOCATE()` | ❌ | Substring position. | [string functions](docs/compatibility/functions-string.md) |
+| `LOWER()` | ❌ | Lowercase conversion. | [string functions](docs/compatibility/functions-string.md) |
+| `LPAD()` | ❌ | Left padding. | [string functions](docs/compatibility/functions-string.md) |
+| `LTRIM()` | ❌ | Trim leading spaces. | [string functions](docs/compatibility/functions-string.md) |
+| `MAKE_SET()` | ❌ | Bitmask-selected set. | [string functions](docs/compatibility/functions-string.md) |
+| `MID()` | ❌ | Substring synonym. | [string functions](docs/compatibility/functions-string.md) |
+| `OCTET_LENGTH()` | ❌ | Byte length synonym. | [string functions](docs/compatibility/functions-string.md) |
+| `ORD()` | ❌ | Leftmost character code. | [string functions](docs/compatibility/functions-string.md) |
+| `POSITION()` | ❌ | LOCATE synonym. | [string functions](docs/compatibility/functions-string.md) |
+| `QUOTE()` | ❌ | SQL string quoting. | [string functions](docs/compatibility/functions-string.md) |
+| `REGEXP_INSTR()` | ❌ | Regex match index. | [string functions](docs/compatibility/functions-string.md) |
+| `REGEXP_LIKE()` | ❌ | Regex match predicate. | [string functions](docs/compatibility/functions-string.md) |
+| `REGEXP_REPLACE()` | ❌ | Regex replacement. | [string functions](docs/compatibility/functions-string.md) |
+| `REGEXP_SUBSTR()` | ❌ | Regex substring. | [string functions](docs/compatibility/functions-string.md) |
+| `REPEAT()` | ❌ | Repeat string. | [string functions](docs/compatibility/functions-string.md) |
+| `REPLACE()` | ❌ | Replace substrings. | [string functions](docs/compatibility/functions-string.md) |
+| `REVERSE()` | ❌ | Reverse string. | [string functions](docs/compatibility/functions-string.md) |
+| `RIGHT()` | ❌ | Right substring. | [string functions](docs/compatibility/functions-string.md) |
+| `RPAD()` | ❌ | Right padding. | [string functions](docs/compatibility/functions-string.md) |
+| `RTRIM()` | ❌ | Trim trailing spaces. | [string functions](docs/compatibility/functions-string.md) |
+| `SOUNDEX()` | ❌ | Soundex string. | [string functions](docs/compatibility/functions-string.md) |
+| `SPACE()` | ❌ | Repeated spaces. | [string functions](docs/compatibility/functions-string.md) |
+| `STRCMP()` | ❌ | String comparison. | [string functions](docs/compatibility/functions-string.md) |
+| `SUBSTR()` | ❌ | Substring synonym. | [string functions](docs/compatibility/functions-string.md) |
+| `SUBSTRING()` | ❌ | Substring. | [string functions](docs/compatibility/functions-string.md) |
+| `SUBSTRING_INDEX()` | ❌ | Delimiter-count substring. | [string functions](docs/compatibility/functions-string.md) |
+| `TO_BASE64()` | ❌ | Base64 encode. | [string functions](docs/compatibility/functions-string.md) |
+| `TRIM()` | ❌ | Trim spaces. | [string functions](docs/compatibility/functions-string.md) |
+| `UCASE()` | ❌ | Uppercase synonym. | [string functions](docs/compatibility/functions-string.md) |
+| `UNHEX()` | ❌ | Hex decode. | [string functions](docs/compatibility/functions-string.md) |
+| `UPPER()` | ❌ | Uppercase conversion. | [string functions](docs/compatibility/functions-string.md) |
+| `WEIGHT_STRING()` | ❌ | Collation weight string. | [string functions](docs/compatibility/functions-string.md), [collations](docs/compatibility/collations.md) |
+
+### System Functions
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `DATABASE()` | ❌ | Current database name. | [system functions](docs/compatibility/functions-system.md) |
+| `SCHEMA()` | ❌ | Synonym for `DATABASE()`. | [system functions](docs/compatibility/functions-system.md) |
+| `FOUND_ROWS()` | ❌ | Rows before LIMIT. | [system functions](docs/compatibility/functions-system.md) |
+| `CURRENT_USER()` / `CURRENT_USER` | ❌ | Current authenticated user. | [system functions](docs/compatibility/functions-system.md) |
+| `LAST_INSERT_ID()` | ❌ | Last auto-increment value. | [system functions](docs/compatibility/functions-system.md) |
+| `ROW_COUNT()` | ❌ | Rows affected by last statement. | [system functions](docs/compatibility/functions-system.md) |
+| `USER()` | ❌ | Client user identity. | [system functions](docs/compatibility/functions-system.md) |
+| `VERSION()` | ❌ | MySQL-compatible version string. | [system functions](docs/compatibility/functions-system.md) |
+
+### Temporal Functions
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `ADDDATE()` | ❌ | Add interval to date. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `ADDTIME()` | ❌ | Add time. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `CONVERT_TZ()` | ❌ | Convert time zone. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `CURDATE()` | ❌ | Current date. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `CURRENT_DATE()` / `CURRENT_DATE` | ❌ | Current date synonym. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `CURRENT_TIME()` / `CURRENT_TIME` | ❌ | Current time synonym. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `CURRENT_TIMESTAMP()` / `CURRENT_TIMESTAMP` | ❌ | Current timestamp synonym. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `CURTIME()` | ❌ | Current time. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `DATE()` | ❌ | Extract date part. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `DATE_ADD()` | ❌ | Add interval to date. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `DATE_FORMAT()` | ❌ | Format date. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `DATE_SUB()` | ❌ | Subtract interval from date. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `DATEDIFF()` | ❌ | Date difference. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `DAY()` | ❌ | Day-of-month synonym. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `DAYNAME()` | ❌ | Weekday name. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `DAYOFMONTH()` | ❌ | Day of month. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `DAYOFWEEK()` | ❌ | Weekday index. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `DAYOFYEAR()` | ❌ | Day of year. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `EXTRACT()` | ❌ | Extract date part. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `FROM_DAYS()` | ❌ | Day number to date. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `FROM_UNIXTIME()` | ❌ | Unix timestamp to date. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `GET_FORMAT()` | ❌ | Date format string. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `HOUR()` | ❌ | Hour part. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `LAST_DAY()` | ❌ | Last day of month. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `LOCALTIME()` / `LOCALTIME` | ❌ | Current timestamp synonym. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `LOCALTIMESTAMP()` / `LOCALTIMESTAMP` | ❌ | Current timestamp synonym. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `MAKEDATE()` | ❌ | Year plus day-of-year date. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `MAKETIME()` | ❌ | Time from parts. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `MICROSECOND()` | ❌ | Microsecond part. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `MINUTE()` | ❌ | Minute part. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `MONTH()` | ❌ | Month part. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `MONTHNAME()` | ❌ | Month name. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `NOW()` | ❌ | Current date and time. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `PERIOD_ADD()` | ❌ | Add months to period. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `PERIOD_DIFF()` | ❌ | Months between periods. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `QUARTER()` | ❌ | Quarter part. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `SEC_TO_TIME()` | ❌ | Seconds to time. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `SECOND()` | ❌ | Second part. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `STR_TO_DATE()` | ❌ | Parse date string. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `SUBDATE()` | ❌ | Subtract interval synonym. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `SUBTIME()` | ❌ | Subtract time. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `SYSDATE()` | ❌ | Execution-time timestamp. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `TIME()` | ❌ | Extract time part. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `TIME_FORMAT()` | ❌ | Format time. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `TIME_TO_SEC()` | ❌ | Time to seconds. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `TIMEDIFF()` | ❌ | Time difference. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `TIMESTAMP()` | ❌ | Timestamp cast or addition. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `TIMESTAMPADD()` | ❌ | Add timestamp interval. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `TIMESTAMPDIFF()` | ❌ | Timestamp difference. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `TO_DAYS()` | ❌ | Date to day number. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `TO_SECONDS()` | ❌ | Date/time to seconds. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `UNIX_TIMESTAMP()` | ❌ | Unix timestamp. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `UTC_DATE()` | ❌ | Current UTC date. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `UTC_TIME()` | ❌ | Current UTC time. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `UTC_TIMESTAMP()` | ❌ | Current UTC timestamp. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `WEEK()` | ❌ | Week number. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `WEEKDAY()` | ❌ | Weekday index. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `WEEKOFYEAR()` | ❌ | Calendar week. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `YEAR()` | ❌ | Year part. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `YEARWEEK()` | ❌ | Year and week. | [temporal functions](docs/compatibility/functions-temporal.md) |
+
+### Window Functions
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `CUME_DIST()` | ❌ | Cumulative distribution. | [window functions](docs/compatibility/functions-window.md) |
+| `DENSE_RANK()` | ❌ | Rank without gaps. | [window functions](docs/compatibility/functions-window.md) |
+| `FIRST_VALUE()` | ❌ | First frame value. | [window functions](docs/compatibility/functions-window.md) |
+| `LAG()` | ❌ | Previous-row value. | [window functions](docs/compatibility/functions-window.md) |
+| `LAST_VALUE()` | ❌ | Last frame value. | [window functions](docs/compatibility/functions-window.md) |
+| `LEAD()` | ❌ | Next-row value. | [window functions](docs/compatibility/functions-window.md) |
+| `NTH_VALUE()` | ❌ | N-th frame value. | [window functions](docs/compatibility/functions-window.md) |
+| `NTILE()` | ❌ | Bucket number. | [window functions](docs/compatibility/functions-window.md) |
+| `PERCENT_RANK()` | ❌ | Percentage rank. | [window functions](docs/compatibility/functions-window.md) |
+| `RANK()` | ❌ | Rank with gaps. | [window functions](docs/compatibility/functions-window.md) |
+| `ROW_NUMBER()` | ❌ | Row number in partition. | [window functions](docs/compatibility/functions-window.md) |
+
+### Information Schema
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `INFORMATION_SCHEMA.CHARACTER_SETS` | ❌ | Character set catalog. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` | ❌ | Check constraint metadata. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `INFORMATION_SCHEMA.COLLATIONS` | ❌ | Collation catalog. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `INFORMATION_SCHEMA.COLUMNS` | ❌ | Column metadata. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` | ❌ | Key column metadata. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `INFORMATION_SCHEMA.KEYWORDS` | ❌ | Keyword catalog. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `INFORMATION_SCHEMA.SCHEMATA` | ❌ | Schema listing. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `INFORMATION_SCHEMA.STATISTICS` | ❌ | Index metadata. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` | ❌ | Constraint metadata. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `INFORMATION_SCHEMA.TABLES` | ❌ | Table metadata. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `INFORMATION_SCHEMA.VIEWS` | ❌ | View metadata. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` | ❌ | View dependency metadata. | [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+
+### SHOW and Introspection Statements
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `SHOW CHARACTER SET` | ❌ | Result shape and filters. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW COLLATION` | ❌ | Result shape and filters. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW COLUMNS` | ❌ | Column metadata result. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW FIELDS` | ❌ | Alias for `SHOW COLUMNS`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW CREATE TABLE` | ❌ | MySQL-style table DDL. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW DATABASES` | ❌ | Current database and information schema. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW TABLES` | ❌ | Table listing. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW TABLE STATUS` | ❌ | Table metadata result. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `DESCRIBE` | ❌ | Table and column description. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
+| `DESC` | ❌ | Alias for `DESCRIBE`. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
+| `EXPLAIN` for tables | ❌ | Table form only; statements excluded. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
+
+### Transactions, Locking, and Maintenance
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `START TRANSACTION` | ❌ | Start transaction. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `BEGIN` | ❌ | Start transaction. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `BEGIN WORK` | ❌ | Start transaction synonym. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `COMMIT` | ❌ | Commit transaction. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `ROLLBACK` | ❌ | Roll back transaction. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `SAVEPOINT` | ❌ | Create or replace savepoint. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `ROLLBACK TO SAVEPOINT` | ❌ | Partial rollback. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `RELEASE SAVEPOINT` | ❌ | Release savepoint. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `SET TRANSACTION` | ❌ | Isolation and access scope. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `LOCK TABLES` | ❌ | Table lock syntax and behavior. | [SQL locking](docs/compatibility/sql-locking.md) |
+| `UNLOCK TABLES` | ❌ | Release table locks. | [SQL locking](docs/compatibility/sql-locking.md) |
+| `ANALYZE TABLE` | ❌ | Table analysis result shape. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
+| `CHECK TABLE` | ❌ | Table check result shape. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
+| `OPTIMIZE TABLE` | ❌ | Table optimize result shape. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
+| `REPAIR TABLE` | ❌ | Table repair result shape. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
+
+## Detailed Compatibility Tables
+
+These tables track the full MySQL compatibility inventory beyond the baseline
+target above.
+
+| Surface | Full table |
+| --- | --- |
+| SQL table DDL | [docs/compatibility/sql-table-ddl.md](docs/compatibility/sql-table-ddl.md) |
+| SQL table DML | [docs/compatibility/sql-table-dml.md](docs/compatibility/sql-table-dml.md) |
+| SQL table maintenance | [docs/compatibility/sql-table-maintenance.md](docs/compatibility/sql-table-maintenance.md) |
+| SQL utility statements | [docs/compatibility/sql-utility-statements.md](docs/compatibility/sql-utility-statements.md) |
+| SQL indexes and constraints | [docs/compatibility/sql-indexes-constraints.md](docs/compatibility/sql-indexes-constraints.md) |
+| SQL partitioning | [docs/compatibility/sql-partitioning.md](docs/compatibility/sql-partitioning.md) |
+| SQL schemas | [docs/compatibility/sql-schemas.md](docs/compatibility/sql-schemas.md) |
+| SQL views | [docs/compatibility/sql-views.md](docs/compatibility/sql-views.md) |
+| SQL spatial reference systems | [docs/compatibility/sql-spatial-reference-systems.md](docs/compatibility/sql-spatial-reference-systems.md) |
+| SQL routines | [docs/compatibility/sql-routines.md](docs/compatibility/sql-routines.md) |
+| SQL stored programs | [docs/compatibility/sql-stored-programs.md](docs/compatibility/sql-stored-programs.md) |
+| SQL triggers | [docs/compatibility/sql-triggers.md](docs/compatibility/sql-triggers.md) |
+| SQL events | [docs/compatibility/sql-events.md](docs/compatibility/sql-events.md) |
+| SQL users, roles, and privileges | [docs/compatibility/sql-users-privileges.md](docs/compatibility/sql-users-privileges.md) |
+| SQL transactions | [docs/compatibility/sql-transactions.md](docs/compatibility/sql-transactions.md) |
+| SQL locking | [docs/compatibility/sql-locking.md](docs/compatibility/sql-locking.md) |
+| SQL XA transactions | [docs/compatibility/sql-xa-transactions.md](docs/compatibility/sql-xa-transactions.md) |
+| SQL prepared statements | [docs/compatibility/sql-prepared-statements.md](docs/compatibility/sql-prepared-statements.md) |
+| SQL server administration | [docs/compatibility/sql-server-administration.md](docs/compatibility/sql-server-administration.md) |
+| SQL tablespaces | [docs/compatibility/sql-tablespaces.md](docs/compatibility/sql-tablespaces.md) |
+| SQL foreign servers | [docs/compatibility/sql-foreign-servers.md](docs/compatibility/sql-foreign-servers.md) |
+| SQL file output | [docs/compatibility/sql-file-output.md](docs/compatibility/sql-file-output.md) |
+| SQL replication | [docs/compatibility/sql-replication.md](docs/compatibility/sql-replication.md) |
+| SQL resource groups | [docs/compatibility/sql-resource-groups.md](docs/compatibility/sql-resource-groups.md) |
+| SQL components and plugins | [docs/compatibility/sql-components-plugins.md](docs/compatibility/sql-components-plugins.md) |
+| SQL SET statements | [docs/compatibility/sql-set-statements.md](docs/compatibility/sql-set-statements.md) |
+| SQL SHOW statements | [docs/compatibility/sql-show-statements.md](docs/compatibility/sql-show-statements.md) |
+| SQL query expressions | [docs/compatibility/sql-query-expressions.md](docs/compatibility/sql-query-expressions.md) |
+| SQL joins | [docs/compatibility/sql-joins.md](docs/compatibility/sql-joins.md) |
+| SQL common table expressions | [docs/compatibility/sql-ctes.md](docs/compatibility/sql-ctes.md) |
+| SQL subqueries | [docs/compatibility/sql-subqueries.md](docs/compatibility/sql-subqueries.md) |
+| SQL query hints | [docs/compatibility/sql-query-hints.md](docs/compatibility/sql-query-hints.md) |
+| SQL full-text search | [docs/compatibility/sql-fulltext-search.md](docs/compatibility/sql-fulltext-search.md) |
+| Type system, literals, and conversion | [docs/compatibility/type-system-literals-conversion.md](docs/compatibility/type-system-literals-conversion.md) |
+| Character sets | [docs/compatibility/character-sets.md](docs/compatibility/character-sets.md) |
+| Collations and comparison behavior | [docs/compatibility/collations.md](docs/compatibility/collations.md) |
+| Operators | [docs/compatibility/operators.md](docs/compatibility/operators.md) |
+| Cast functions | [docs/compatibility/functions-casts.md](docs/compatibility/functions-casts.md) |
+| Control-flow functions | [docs/compatibility/functions-control-flow.md](docs/compatibility/functions-control-flow.md) |
+| Comparison functions | [docs/compatibility/functions-comparison.md](docs/compatibility/functions-comparison.md) |
+| Default-value functions | [docs/compatibility/functions-default-values.md](docs/compatibility/functions-default-values.md) |
+| Numeric and math functions | [docs/compatibility/functions-numeric-math.md](docs/compatibility/functions-numeric-math.md) |
+| String functions | [docs/compatibility/functions-string.md](docs/compatibility/functions-string.md) |
+| Temporal functions | [docs/compatibility/functions-temporal.md](docs/compatibility/functions-temporal.md) |
+| Aggregate functions | [docs/compatibility/functions-aggregate.md](docs/compatibility/functions-aggregate.md) |
+| Window functions | [docs/compatibility/functions-window.md](docs/compatibility/functions-window.md) |
+| JSON functions and operators | [docs/compatibility/functions-json.md](docs/compatibility/functions-json.md) |
+| Spatial functions | [docs/compatibility/functions-spatial.md](docs/compatibility/functions-spatial.md) |
+| Crypto and password functions | [docs/compatibility/functions-crypto-password.md](docs/compatibility/functions-crypto-password.md) |
+| Compression functions | [docs/compatibility/functions-compression.md](docs/compatibility/functions-compression.md) |
+| UUID functions | [docs/compatibility/functions-uuid.md](docs/compatibility/functions-uuid.md) |
+| System functions | [docs/compatibility/functions-system.md](docs/compatibility/functions-system.md) |
+| Internal functions | [docs/compatibility/functions-internal.md](docs/compatibility/functions-internal.md) |
+| Replication functions | [docs/compatibility/functions-replication.md](docs/compatibility/functions-replication.md) |
+| INFORMATION_SCHEMA tables | [docs/compatibility/metadata-information-schema.md](docs/compatibility/metadata-information-schema.md) |
+| Performance Schema tables | [docs/compatibility/metadata-performance-schema.md](docs/compatibility/metadata-performance-schema.md) |
+| sys schema objects | [docs/compatibility/metadata-sys-schema.md](docs/compatibility/metadata-sys-schema.md) |
+| mysql system schema and data dictionary | [docs/compatibility/metadata-mysql-schema.md](docs/compatibility/metadata-mysql-schema.md) |
+| Runtime session state and SQL modes | [docs/compatibility/runtime-session-sql-modes.md](docs/compatibility/runtime-session-sql-modes.md) |
+| Server system variables | [docs/compatibility/runtime-system-variables.md](docs/compatibility/runtime-system-variables.md) |
+| Server status variables | [docs/compatibility/runtime-status-variables.md](docs/compatibility/runtime-status-variables.md) |
+| Wire protocol | [docs/compatibility/wire-protocol.md](docs/compatibility/wire-protocol.md) |
+| Error, warning, and result semantics | [docs/compatibility/error-warning-result-semantics.md](docs/compatibility/error-warning-result-semantics.md) |
+| Embedded-design compatibility decisions | [docs/compatibility/embedded-design-decisions.md](docs/compatibility/embedded-design-decisions.md) |
+
+## Source inventory
+
+- [MySQL 8.4 Reference Manual](https://dev.mysql.com/doc/refman/8.4/en/)
+- [MySQL 8.4.9 release notes](https://dev.mysql.com/doc/relnotes/mysql/8.4/en/news-8-4-9.html)
+- [What Is New in MySQL 8.4 since MySQL 8.0](https://dev.mysql.com/doc/refman/8.4/en/mysql-nutshell.html)
+- [MySQL 8.4 supported character sets and collations](https://dev.mysql.com/doc/refman/8.4/en/charset-charsets.html)
+- [MySQL 8.4 `SHOW COLLATION` statement](https://dev.mysql.com/doc/refman/8.4/en/show-collation.html)
+- [MySQL 8.4 SQL statement manual](https://dev.mysql.com/doc/refman/8.4/en/sql-statements.html)
+- [MySQL 8.4 built-in function and operator reference](https://dev.mysql.com/doc/refman/8.4/en/built-in-function-reference.html)
+- [MySQL 8.4 data type manual](https://dev.mysql.com/doc/refman/8.4/en/data-types.html)
+- [MySQL 8.4 `INFORMATION_SCHEMA` table reference](https://dev.mysql.com/doc/refman/8.4/en/information-schema-table-reference.html)
+- [MySQL 8.4 Performance Schema table descriptions](https://dev.mysql.com/doc/refman/8.4/en/performance-schema-table-descriptions.html)
+- [MySQL 8.4 Performance Schema table reference](https://dev.mysql.com/doc/refman/8.4/en/performance-schema-table-reference.html)
+- [MySQL 8.4 `sys` schema object reference](https://dev.mysql.com/doc/refman/8.4/en/sys-schema-reference.html)
+- [MySQL 8.4 `mysql` system schema reference](https://dev.mysql.com/doc/refman/8.4/en/system-schema.html)
+- [MySQL 8.4 server system variable reference](https://dev.mysql.com/doc/refman/8.4/en/server-system-variable-reference.html)
+- [MySQL 8.4 server status variable reference](https://dev.mysql.com/doc/refman/8.4/en/server-status-variable-reference.html)
+
+## Maintenance rules
+
+- Keep this file as an implementation contract, not a marketing scorecard.
+- Split rows when syntax, behavior, metadata, warnings, or side effects need independent tests.
+- Document deliberate embedded-design incompatibilities explicitly instead of silently dropping them.
+- Keep this baseline tracker, `docs/compatibility/`, feature guides, design notes, and MySQL-runtime tests in sync.
+- Prefer MySQL 8.4.9 behavior over convenience, SQLite defaults, or older MySQL/MariaDB behavior.
+- Every implemented row needs MySQL 8.4.9 comparison tests.
+- Tests must cover results, errors, warnings, metadata, affected rows, inserted ids, session state, and side effects.
+- Syntax-only compatibility must still test parser acceptance and exact warning, error, or placeholder behavior.
+- Add focused guide documentation when behavior needs design rationale.
+- When MySQL behavior depends on platform or storage engine, tests must document the MyLite contract and observed MySQL baseline.

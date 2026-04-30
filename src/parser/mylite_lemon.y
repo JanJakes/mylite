@@ -60,6 +60,8 @@ statement ::= xa_statement.
 statement ::= show_statement.
 statement ::= describe_statement.
 statement ::= explain_statement.
+statement ::= use_statement.
+statement ::= handler_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -87,7 +89,6 @@ required_tail_start(A) ::= CALL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= TABLE. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= VALUES. { A = MYLITE_STATEMENT_SELECT; }
-required_tail_start(A) ::= HANDLER. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= SET. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= BINLOG. { A = MYLITE_STATEMENT_REPLICATION; }
 required_tail_start(A) ::= PREPARE. { A = MYLITE_STATEMENT_PREPARED; }
@@ -95,7 +96,6 @@ required_tail_start(A) ::= EXECUTE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= GRANT. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= REVOKE. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= HELP. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= USE. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= CLONE. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= GET. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= SIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -460,6 +460,20 @@ explain_first_token ::= UPDATE.
 explain_first_token ::= WITH.
 explain_first_token ::= ATOM.
 explain_first_token ::= LABEL.
+
+use_statement ::= USE use_target statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+
+use_target ::= ATOM.
+use_target ::= LABEL.
+
+handler_statement ::= HANDLER handler_target required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+
+handler_target ::= ATOM.
+handler_target ::= LABEL.
 
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }

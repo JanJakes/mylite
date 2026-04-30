@@ -86,6 +86,10 @@ def main() -> int:
         ("explain format=tree select * from t;", 0, {"statements": "1", "show": "1"}),
         ("explain for connection 1;", 0, {"statements": "1", "show": "1"}),
         ("explain from;", 1, {}),
+        ("use test;", 0, {"statements": "1", "utility": "1"}),
+        ("use select;", 1, {}),
+        ("handler t open;", 0, {"statements": "1", "utility": "1"}),
+        ("handler select open;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

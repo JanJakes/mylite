@@ -425,7 +425,7 @@ alter_statement ::= ALTER alter_tail. {
 alter_tail ::= TABLE cache_table_ref.
 alter_tail ::= TABLE cache_table_ref required_statement_tail.
 alter_tail ::= LOGFILE create_logfile_group cache_name_part create_logfile_group_tail.
-alter_tail ::= RESOURCE create_resource_group cache_name_part required_statement_tail.
+alter_tail ::= RESOURCE create_resource_group cache_name_part alter_resource_group_actions.
 alter_tail ::= SERVER cache_name_part create_server_options.
 alter_tail ::= TABLESPACE cache_name_part alter_tablespace_action.
 alter_tail ::= UNDO TABLESPACE cache_name_part alter_undo_tablespace_action.
@@ -452,6 +452,12 @@ alter_view_prefix ::= create_definer_clause create_view_sql_security_tail.
 alter_view_prefix ::= create_view_sql_security.
 
 alter_definer_object_tail ::= EVENT cache_table_ref required_statement_tail.
+
+alter_resource_group_actions ::= alter_resource_group_action create_options_tail.
+
+alter_resource_group_action ::= ATOM(A). {
+  mylite_parser_require_resource_group_action(ctx, A);
+}
 
 alter_tablespace_action ::= RENAME TO cache_name_part.
 alter_tablespace_action ::= alter_tablespace_option_name diagnostics_equals alter_tablespace_option_value.

@@ -289,12 +289,30 @@ start_statement ::= START start_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
 
-start_tail ::= start_first_token statement_tail.
+start_tail ::= TRANSACTION start_transaction_tail.
+start_tail ::= REPLICA statement_tail.
+start_tail ::= SLAVE statement_tail.
+start_tail ::= GROUP_REPLICATION statement_tail.
 
-start_first_token ::= TRANSACTION.
-start_first_token ::= REPLICA.
-start_first_token ::= SLAVE.
-start_first_token ::= GROUP_REPLICATION.
+start_transaction_tail ::= .
+start_transaction_tail ::= transaction_characteristics.
+
+transaction_characteristics ::= transaction_characteristic.
+transaction_characteristics ::= transaction_characteristics import_comma transaction_characteristic.
+
+transaction_characteristic ::= READ transaction_access_mode.
+transaction_characteristic ::= WITH transaction_consistent transaction_snapshot.
+
+transaction_access_mode ::= ATOM(A). {
+  mylite_parser_require_token_text_any(ctx, A, "ONLY", "WRITE");
+}
+
+transaction_consistent ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "CONSISTENT");
+}
+transaction_snapshot ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "SNAPSHOT");
+}
 
 savepoint_statement ::= SAVEPOINT savepoint_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);

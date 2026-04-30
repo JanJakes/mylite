@@ -168,6 +168,19 @@ void mylite_parser_require_token_text(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
+void mylite_parser_require_token_text_any(MyliteParseContext *ctx,
+                                          MyliteToken token,
+                                          const char *first,
+                                          const char *second) {
+  if (ctx->failed || token_ascii_equals(&token, first) ||
+      token_ascii_equals(&token, second)) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {

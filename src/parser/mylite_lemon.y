@@ -622,28 +622,38 @@ update_statement ::= UPDATE update_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UPDATE);
 }
 
-update_tail ::= dml_update_first_token required_statement_tail.
+update_tail ::= dml_update_target required_statement_tail.
+update_tail ::= dml_update_modifiers dml_update_target required_statement_tail.
 
-dml_update_first_token ::= ATOM.
-dml_update_first_token ::= IGNORE.
-dml_update_first_token ::= LABEL.
-dml_update_first_token ::= LOW_PRIORITY.
-dml_update_first_token ::= LP.
-dml_update_first_token ::= TRIGGERS.
-dml_update_first_token ::= USER.
+dml_update_modifiers ::= dml_update_modifier.
+dml_update_modifiers ::= dml_update_modifiers dml_update_modifier.
+
+dml_update_modifier ::= IGNORE.
+dml_update_modifier ::= LOW_PRIORITY.
+
+dml_update_target ::= ATOM.
+dml_update_target ::= LABEL.
+dml_update_target ::= LP.
+dml_update_target ::= TRIGGERS.
+dml_update_target ::= USER.
 
 delete_statement ::= DELETE delete_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DELETE);
 }
 
-delete_tail ::= dml_delete_first_token required_statement_tail.
+delete_tail ::= dml_delete_target required_statement_tail.
+delete_tail ::= dml_delete_modifiers dml_delete_target required_statement_tail.
 
-dml_delete_first_token ::= ATOM.
-dml_delete_first_token ::= FROM.
-dml_delete_first_token ::= IGNORE.
-dml_delete_first_token ::= LABEL.
-dml_delete_first_token ::= LOW_PRIORITY.
-dml_delete_first_token ::= QUICK.
+dml_delete_modifiers ::= dml_delete_modifier.
+dml_delete_modifiers ::= dml_delete_modifiers dml_delete_modifier.
+
+dml_delete_modifier ::= IGNORE.
+dml_delete_modifier ::= LOW_PRIORITY.
+dml_delete_modifier ::= QUICK.
+
+dml_delete_target ::= ATOM.
+dml_delete_target ::= FROM.
+dml_delete_target ::= LABEL.
 
 with_statement ::= WITH with_first_token required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);

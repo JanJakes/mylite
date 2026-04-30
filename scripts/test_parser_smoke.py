@@ -97,6 +97,7 @@ def main() -> int:
         ("create logfile group lg add datafile 'u.dat';", 1, {}),
         ("create event if not exists;", 1, {}),
         ("create event e1 every 1 second do select 1;", 1, {}),
+        ("create event e1 on schedule later do select 1;", 1, {}),
         ("create trigger tr1;", 1, {}),
         ("create trigger tr1 before insert on t set @a=1;", 1, {}),
         ("create function;", 1, {}),

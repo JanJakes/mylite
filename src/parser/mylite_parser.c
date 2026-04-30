@@ -262,6 +262,23 @@ void mylite_parser_require_udf_return_type(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
+void mylite_parser_require_event_schedule_start(MyliteParseContext *ctx,
+                                                MyliteToken token) {
+  static const char *const starters[] = {
+      "AT",
+      "EVERY",
+  };
+
+  if (ctx->failed ||
+      token_ascii_matches_any(&token, starters,
+                              sizeof(starters) / sizeof(starters[0]))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
 void mylite_parser_require_event_atom_action(MyliteParseContext *ctx,
                                              MyliteToken token) {
   static const char *const actions[] = {

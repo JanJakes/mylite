@@ -304,10 +304,14 @@ create_definer_object_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref
 create_definer_object_tail ::= FUNCTION create_if_not_exists_tail cache_table_ref create_function_tail.
 create_definer_object_tail ::= PROCEDURE create_if_not_exists_tail cache_table_ref create_procedure_tail.
 
-create_event_body ::= ON create_schedule required_statement_tail.
+create_event_body ::= ON create_schedule event_schedule_start required_statement_tail.
 
 create_schedule ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "SCHEDULE");
+}
+
+event_schedule_start ::= ATOM(A). {
+  mylite_parser_require_event_schedule_start(ctx, A);
 }
 
 create_trigger_body ::= create_trigger_time create_trigger_event ON cache_table_ref FOR create_each ROW required_statement_tail.

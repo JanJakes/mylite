@@ -534,6 +534,7 @@ const char *mylite_statement_kind_name(mylite_statement_kind kind)
 	case MYLITE_STATEMENT_INSTALL: return "install";
 	case MYLITE_STATEMENT_UNINSTALL: return "uninstall";
 	case MYLITE_STATEMENT_CACHE: return "cache";
+	case MYLITE_STATEMENT_CLONE: return "clone";
 	case MYLITE_STATEMENT_CHANGE: return "change";
 	case MYLITE_STATEMENT_BINLOG: return "binlog";
 	case MYLITE_STATEMENT_PURGE: return "purge";

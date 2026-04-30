@@ -31,6 +31,7 @@ static const keyword keywords[] = {
 	{ "CHARSET", CHARSET_T },
 	{ "CHECK", CHECK_T },
 	{ "CHECKSUM", CHECKSUM_T },
+	{ "CLONE", CLONE_T },
 	{ "CLOSE", CLOSE_T },
 	{ "COLLATE", COLLATE_T },
 	{ "COLUMNS", COLUMNS_T },

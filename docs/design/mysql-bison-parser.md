@@ -32,6 +32,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/table-maintenance-statements.html`
 - MySQL 8.4 RESET PERSIST statement:
   `https://dev.mysql.com/doc/refman/8.4/en/reset-persist.html`
+- MySQL 8.4 CLONE statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/clone.html`
 - MySQL 8.4 component and plugin statements:
   `https://dev.mysql.com/doc/refman/8.4/en/install-component.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/uninstall-component.html`,
@@ -113,6 +115,8 @@ table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Persisted
 system-variable targets are recorded for `RESET PERSIST`. Component and plugin
 targets are recorded for `INSTALL` and `UNINSTALL` administrative statements.
+`CLONE` has an explicit statement kind while its local-directory and remote
+instance endpoints remain body tokens.
 Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`, and
 `SET RESOURCE GROUP`. Server, logfile-group, and tablespace DDL targets are
 recorded for the low-level storage/metadata statements that expose a direct

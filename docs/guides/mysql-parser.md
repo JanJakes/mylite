@@ -125,6 +125,12 @@ RESET PERSIST exposes explicit persisted system-variable targets:
 ok statements=1 kinds=reset[1:3,0:29]/system_variable:max_connections
 ```
 
+CLONE is classified as its own administrative statement kind:
+
+```text
+ok statements=1 kinds=clone[1:6,0:41]
+```
+
 Resource group administration exposes the group name:
 
 ```text

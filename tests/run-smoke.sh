@@ -203,6 +203,15 @@ case "$resource_group_output" in
 		;;
 esac
 
+server_logfile_output=$("$parser" 'CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (HOST "h"); ALTER SERVER s OPTIONS (USER "u"); DROP SERVER s; CREATE LOGFILE GROUP lg ADD UNDOFILE "u.dat"; ALTER LOGFILE GROUP lg ADD UNDOFILE "v.dat"; DROP LOGFILE GROUP lg ENGINE NDB; CREATE TABLESPACE ts ADD DATAFILE "ts.ibd"')
+case "$server_logfile_output" in
+	*"create"*/server:s*"alter"*/server:s*"drop"*/server:s*"create"*/logfile_group:lg*"alter"*/logfile_group:lg*"drop"*/logfile_group:lg*"create"*/tablespace:ts*) ;;
+	*)
+		echo "unexpected server/logfile output: $server_logfile_output" >&2
+		exit 1
+		;;
+esac
+
 install_output=$("$parser" "INSTALL PLUGIN p SONAME 'x.so'; UNINSTALL PLUGIN p; INSTALL COMPONENT 'file://component'; UNINSTALL COMPONENT 'file://component'")
 case "$install_output" in
 	*"install"*/plugin:p*"uninstall"*/plugin:p*"install"*/component:"'file://component'"*"uninstall"*/component:"'file://component'"*) ;;

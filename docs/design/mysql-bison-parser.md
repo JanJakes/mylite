@@ -32,6 +32,13 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/alter-resource-group.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/drop-resource-group.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/set-resource-group.html`
+- MySQL 8.4 server and logfile-group DDL:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-server.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/alter-server.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/drop-server.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/create-logfile-group.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/alter-logfile-group.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/drop-logfile-group.html`
 - WordPress SQLite Database Integration query corpus:
   `packages/mysql-on-sqlite/tests/mysql/data/mysql-server-tests-queries.csv`
 
@@ -83,7 +90,9 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Component and
 plugin targets are recorded for `INSTALL` and `UNINSTALL` administrative
 statements. Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`,
-and `SET RESOURCE GROUP`. Principal targets are recorded for `GRANT ... TO` and
+and `SET RESOURCE GROUP`. Server, logfile-group, and tablespace DDL targets are
+recorded for the low-level storage/metadata statements that expose a direct
+name. Principal targets are recorded for `GRANT ... TO` and
 `REVOKE ... FROM`, including the first `user@host` span when present. Account
 and role DDL target spans also
 preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
@@ -123,7 +132,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   handle name, not the SQL text referenced by `PREPARE`. Component/plugin
   metadata records only the first target in multi-target statements. Resource
   group metadata records only the named group, not VCPU, priority, or thread
-  assignment lists.
+  assignment lists. Server, logfile-group, and tablespace metadata records only
+  the named object, not engine-specific options or rename destinations.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

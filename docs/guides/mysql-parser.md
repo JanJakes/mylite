@@ -83,6 +83,12 @@ Resource group administration exposes the group name:
 ok statements=1 kinds=create[1:7,0:36]/resource_group:rg
 ```
 
+Low-level DDL targets such as server and logfile-group names are reported too:
+
+```text
+ok statements=1 kinds=create[1:12,0:61]/server:s
+```
+
 Transaction savepoint statements expose the savepoint handle:
 
 ```text

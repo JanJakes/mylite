@@ -71,7 +71,8 @@ kinds. Compound-control tokens are structurally matched for `IF ... END IF`,
 `LOOP ... END LOOP`, `REPEAT ... END REPEAT`, and `WHILE ... END WHILE` without
 misclassifying `IF(...)` expressions or `IF [NOT] EXISTS` clauses as compound
 block starts. Cursor names are recorded for `DECLARE ... CURSOR`, `OPEN`,
-`FETCH`, and `CLOSE`.
+`FETCH`, and `CLOSE`. Jump target labels are recorded for `LEAVE` and
+`ITERATE`.
 
 ## Boundaries
 
@@ -101,6 +102,8 @@ block starts. Cursor names are recorded for `DECLARE ... CURSOR`, `OPEN`,
   semantics.
 - Cursor metadata records the first cursor handle only. It does not yet validate
   declaration scope, result shape, fetch target lists, or cursor lifecycle.
+- Label metadata records the direct `LEAVE` / `ITERATE` target only. It does not
+  yet record label declarations or validate label binding.
 - Skips ordinary comments. MySQL executable `/*! ... */` comments are tokenized
   as SQL because they can carry required syntax.
 - Accepts unknown statement starts as `unknown`; later grammar work should

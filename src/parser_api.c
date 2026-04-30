@@ -512,6 +512,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
 	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
 	case MYLITE_STATEMENT_OBJECT_INDEX: return "index";
+	case MYLITE_STATEMENT_OBJECT_LABEL: return "label";
 	case MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT: return "prepared_statement";
 	case MYLITE_STATEMENT_OBJECT_PROCEDURE: return "procedure";
 	case MYLITE_STATEMENT_OBJECT_ROLE: return "role";
@@ -897,6 +898,13 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	case MYLITE_STATEMENT_FETCH:
 	case MYLITE_STATEMENT_CLOSE:
 		return classify_cursor_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_LEAVE:
+	case MYLITE_STATEMENT_ITERATE:
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_LABEL,
+		                                        name_token_index,
+		                                        last_token_index);
 	case MYLITE_STATEMENT_SHOW:
 		return classify_show_statement_object(parser, statement, name_token_index, last_token_index);
 	default:

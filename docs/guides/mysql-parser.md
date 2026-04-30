@@ -97,6 +97,12 @@ Cursor operations expose their cursor handle:
 ok statements=1 kinds=open[1:2,0:6]/cursor:c
 ```
 
+`LEAVE` and `ITERATE` expose their target label:
+
+```text
+ok statements=1 kinds=leave[1:2,0:10]/label:done
+```
+
 Keyword lookup is table-driven and must remain sorted:
 
 ```sh

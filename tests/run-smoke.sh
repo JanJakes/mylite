@@ -53,6 +53,15 @@ case "$cursor_output" in
 		;;
 esac
 
+label_output=$("$parser" 'LEAVE done; ITERATE done; RETURN done')
+case "$label_output" in
+	*"leave"*/label:done*"iterate"*/label:done*"return[7:8"*) ;;
+	*)
+		echo "unexpected label output: $label_output" >&2
+		exit 1
+		;;
+esac
+
 object_output=$("$parser" 'CREATE TABLE IF NOT EXISTS `db`.`t` (id int); ALTER VIEW v AS SELECT 1; DROP FUNCTION f')
 case "$object_output" in
 	*"create"*/table:'`db`.`t`'*"alter"*/view:v*"drop"*/function:f*) ;;

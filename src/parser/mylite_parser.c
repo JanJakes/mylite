@@ -397,6 +397,23 @@ void mylite_parser_require_alter_table_action_start(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
+void mylite_parser_require_dml_write_atom_start(MyliteParseContext *ctx,
+                                                MyliteToken token) {
+  static const char *const starters[] = {
+      "PARTITION",
+      "VALUE",
+  };
+
+  if (ctx->failed ||
+      token_ascii_matches_any(&token, starters,
+                              sizeof(starters) / sizeof(starters[0]))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
 void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
                                         MyliteToken token,
                                         const char *prefix) {

@@ -53,6 +53,8 @@ void mylite_parser_require_create_tablespace_tail_atom(MyliteParseContext *ctx,
                                                        MyliteToken token);
 void mylite_parser_require_alter_table_action_start(MyliteParseContext *ctx,
                                                     MyliteToken token);
+void mylite_parser_require_dml_write_atom_start(MyliteParseContext *ctx,
+                                                MyliteToken token);
 void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
                                         MyliteToken token,
                                         const char *prefix);

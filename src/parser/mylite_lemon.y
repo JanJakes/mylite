@@ -1705,8 +1705,8 @@ insert_statement ::= INSERT insert_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_INSERT);
 }
 
-insert_tail ::= dml_insert_target required_statement_tail.
-insert_tail ::= dml_insert_modifiers dml_insert_target required_statement_tail.
+insert_tail ::= dml_insert_target dml_write_body.
+insert_tail ::= dml_insert_modifiers dml_insert_target dml_write_body.
 
 dml_insert_modifiers ::= dml_insert_modifier.
 dml_insert_modifiers ::= dml_insert_modifiers dml_insert_modifier.
@@ -1723,8 +1723,8 @@ replace_statement ::= REPLACE replace_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLACE);
 }
 
-replace_tail ::= dml_replace_target required_statement_tail.
-replace_tail ::= dml_replace_modifiers dml_replace_target required_statement_tail.
+replace_tail ::= dml_replace_target dml_write_body.
+replace_tail ::= dml_replace_modifiers dml_replace_target dml_write_body.
 
 dml_replace_modifiers ::= dml_replace_modifier.
 dml_replace_modifiers ::= dml_replace_modifiers dml_replace_modifier.
@@ -1734,6 +1734,20 @@ dml_replace_modifier ::= LOW_PRIORITY.
 
 dml_replace_target ::= cache_table_ref.
 dml_replace_target ::= INTO cache_table_ref.
+
+dml_write_body ::= dml_write_payload.
+
+dml_write_payload ::= LP required_statement_tail.
+dml_write_payload ::= dml_write_start required_statement_tail.
+
+dml_write_start ::= VALUES.
+dml_write_start ::= SELECT.
+dml_write_start ::= SET.
+dml_write_start ::= WITH.
+dml_write_start ::= TABLE.
+dml_write_start ::= ATOM(A). {
+  mylite_parser_require_dml_write_atom_start(ctx, A);
+}
 
 update_statement ::= UPDATE update_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UPDATE);

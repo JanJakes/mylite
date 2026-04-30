@@ -85,3 +85,15 @@
 #define ML_RB                              85
 #define ML_LC                              86
 #define ML_RC                              87
+#define ML_DATABASE                        88
+#define ML_TABLESPACE                      89
+#define ML_PROCEDURE                       90
+#define ML_ROLE                            91
+#define ML_SCHEMA                          92
+#define ML_SERVER                          93
+#define ML_EVENT                           94
+#define ML_FUNCTION                        95
+#define ML_INDEX                           96
+#define ML_TRIGGER                         97
+#define ML_USER                            98
+#define ML_VIEW                            99

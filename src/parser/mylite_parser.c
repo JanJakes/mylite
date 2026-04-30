@@ -160,7 +160,6 @@ void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {
     ctx->permissive_fallbacks++;
-    ctx->result->statement_kind_counts[MYLITE_STATEMENT_PERMISSIVE]++;
     return;
   }
 

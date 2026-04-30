@@ -20,6 +20,11 @@ static int lexer_dollar_quoted_string(MyliteLexer *lexer,
 static int lexer_number(MyliteLexer *lexer, MyliteToken *token);
 static int lexer_identifier(MyliteLexer *lexer, MyliteToken *token);
 static int lexer_operator(MyliteLexer *lexer, MyliteToken *token);
+static int lexer_semicolon(MyliteLexer *lexer, MyliteToken *token);
+static void lexer_note_token(MyliteLexer *lexer, int token_id);
+static int is_routine_object_token(int token_id);
+static int is_nonroutine_create_object_token(int token_id);
+static int is_compound_opener_token(int token_id);
 static int keyword_token(const MyliteToken *token);
 static int keyword_equals(const MyliteToken *token, const char *keyword);
 static unsigned char ascii_upper(unsigned char c);
@@ -36,6 +41,9 @@ void mylite_lexer_init(MyliteLexer *lexer, const char *sql, size_t length,
   lexer->offset = 0;
   lexer->line = 1;
   lexer->column = 1;
+  lexer->create_scan = 0;
+  lexer->in_compound_definition = 0;
+  lexer->compound_depth = 0;
   lexer->result = result;
 }
 
@@ -77,9 +85,7 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
       token->length = 1;
       return ML_RC;
     case ';':
-      lexer_advance(lexer);
-      token->length = 1;
-      return ML_SEMI;
+      return lexer_semicolon(lexer, token);
     case ':':
       lexer_advance(lexer);
       if (lexer_peek(lexer, 0) == '=') {
@@ -353,13 +359,77 @@ static int lexer_identifier(MyliteLexer *lexer, MyliteToken *token) {
 
   token->length = lexer->offset - token->offset;
   keyword = keyword_token(token);
-  return keyword == 0 ? ML_ATOM : keyword;
+  if (keyword == 0) {
+    return ML_ATOM;
+  }
+
+  lexer_note_token(lexer, keyword);
+  return keyword;
 }
 
 static int lexer_operator(MyliteLexer *lexer, MyliteToken *token) {
   lexer_advance(lexer);
   token->length = lexer->offset - token->offset;
   return ML_ATOM;
+}
+
+static int lexer_semicolon(MyliteLexer *lexer, MyliteToken *token) {
+  lexer_advance(lexer);
+  token->length = 1;
+
+  if (lexer->in_compound_definition && lexer->compound_depth > 0) {
+    return ML_ATOM;
+  }
+
+  lexer->in_compound_definition = 0;
+  lexer->create_scan = 0;
+  return ML_SEMI;
+}
+
+static void lexer_note_token(MyliteLexer *lexer, int token_id) {
+  if (token_id == ML_CREATE) {
+    lexer->create_scan = 32;
+    return;
+  }
+
+  if (lexer->create_scan > 0) {
+    if (is_routine_object_token(token_id)) {
+      lexer->in_compound_definition = 1;
+      lexer->compound_depth = 0;
+      lexer->create_scan = 0;
+    } else if (is_nonroutine_create_object_token(token_id)) {
+      lexer->create_scan = 0;
+    } else {
+      lexer->create_scan--;
+    }
+  }
+
+  if (!lexer->in_compound_definition) {
+    return;
+  }
+
+  if (is_compound_opener_token(token_id)) {
+    lexer->compound_depth++;
+  } else if (token_id == ML_END && lexer->compound_depth > 0) {
+    lexer->compound_depth--;
+  }
+}
+
+static int is_routine_object_token(int token_id) {
+  return token_id == ML_PROCEDURE || token_id == ML_FUNCTION ||
+         token_id == ML_TRIGGER || token_id == ML_EVENT;
+}
+
+static int is_nonroutine_create_object_token(int token_id) {
+  return token_id == ML_TABLE || token_id == ML_VIEW || token_id == ML_INDEX ||
+         token_id == ML_DATABASE || token_id == ML_SCHEMA ||
+         token_id == ML_USER || token_id == ML_ROLE ||
+         token_id == ML_TABLESPACE || token_id == ML_SERVER;
+}
+
+static int is_compound_opener_token(int token_id) {
+  return token_id == ML_BEGIN || token_id == ML_IF || token_id == ML_LOOP ||
+         token_id == ML_REPEAT || token_id == ML_WHILE || token_id == ML_CASE;
 }
 
 static int keyword_token(const MyliteToken *token) {
@@ -381,6 +451,7 @@ static int keyword_token(const MyliteToken *token) {
       {"CLOSE", ML_CLOSE},
       {"COMMIT", ML_COMMIT},
       {"CREATE", ML_CREATE},
+      {"DATABASE", ML_DATABASE},
       {"DECLARE", ML_DECLARE},
       {"DEALLOCATE", ML_DEALLOCATE},
       {"DELETE", ML_DELETE},
@@ -391,11 +462,13 @@ static int keyword_token(const MyliteToken *token) {
       {"ELSE", ML_ELSE},
       {"ELSEIF", ML_ELSEIF},
       {"END", ML_END},
+      {"EVENT", ML_EVENT},
       {"EXECUTE", ML_EXECUTE},
       {"EXPLAIN", ML_EXPLAIN},
       {"FETCH", ML_FETCH},
       {"FLUSH", ML_FLUSH},
       {"FROM", ML_FROM},
+      {"FUNCTION", ML_FUNCTION},
       {"GET", ML_GET},
       {"GRANT", ML_GRANT},
       {"HANDLER", ML_HANDLER},
@@ -403,6 +476,7 @@ static int keyword_token(const MyliteToken *token) {
       {"HELP", ML_HELP},
       {"IF", ML_IF},
       {"IMPORT", ML_IMPORT},
+      {"INDEX", ML_INDEX},
       {"INSERT", ML_INSERT},
       {"INSTALL", ML_INSTALL},
       {"ITERATE", ML_ITERATE},
@@ -415,6 +489,7 @@ static int keyword_token(const MyliteToken *token) {
       {"OPTIMIZE", ML_OPTIMIZE},
       {"PURGE", ML_PURGE},
       {"PREPARE", ML_PREPARE},
+      {"PROCEDURE", ML_PROCEDURE},
       {"RELEASE", ML_RELEASE},
       {"RENAME", ML_RENAME},
       {"REPAIR", ML_REPAIR},
@@ -425,22 +500,29 @@ static int keyword_token(const MyliteToken *token) {
       {"RESTART", ML_RESTART},
       {"RETURN", ML_RETURN},
       {"REVOKE", ML_REVOKE},
+      {"ROLE", ML_ROLE},
       {"ROLLBACK", ML_ROLLBACK},
       {"SAVEPOINT", ML_SAVEPOINT},
+      {"SCHEMA", ML_SCHEMA},
       {"SELECT", ML_SELECT},
+      {"SERVER", ML_SERVER},
       {"SET", ML_SET},
       {"SHOW", ML_SHOW},
       {"SHUTDOWN", ML_SHUTDOWN},
       {"SIGNAL", ML_SIGNAL},
       {"START", ML_START},
       {"TABLE", ML_TABLE},
+      {"TABLESPACE", ML_TABLESPACE},
+      {"TRIGGER", ML_TRIGGER},
       {"TRUNCATE", ML_TRUNCATE},
       {"UNTIL", ML_UNTIL},
       {"UNINSTALL", ML_UNINSTALL},
       {"UNLOCK", ML_UNLOCK},
       {"UPDATE", ML_UPDATE},
       {"USE", ML_USE},
+      {"USER", ML_USER},
       {"VALUES", ML_VALUES},
+      {"VIEW", ML_VIEW},
       {"WHEN", ML_WHEN},
       {"WHILE", ML_WHILE},
       {"WITH", ML_WITH},

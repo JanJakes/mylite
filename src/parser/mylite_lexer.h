@@ -11,6 +11,9 @@ typedef struct MyliteLexer {
   size_t offset;
   size_t line;
   size_t column;
+  int create_scan;
+  int in_compound_definition;
+  int compound_depth;
   MyliteParseResult *result;
 } MyliteLexer;
 
@@ -19,4 +22,3 @@ void mylite_lexer_init(MyliteLexer *lexer, const char *sql, size_t length,
 int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token);
 
 #endif
-

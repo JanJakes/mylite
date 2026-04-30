@@ -113,6 +113,21 @@ def main() -> int:
         ("delete from t;", 0, {"statements": "1", "delete": "1"}),
         ("delete quick from t;", 0, {"statements": "1", "delete": "1"}),
         ("delete select;", 1, {}),
+        ("with cte as (select 1) select * from cte;", 0, {"statements": "1", "select": "1"}),
+        ("with recursive cte as (select 1) select * from cte;", 0, {"statements": "1", "select": "1"}),
+        ("with select;", 1, {}),
+        ("table t;", 0, {"statements": "1", "select": "1"}),
+        ("table select;", 1, {}),
+        ("values row(1);", 0, {"statements": "1", "select": "1"}),
+        ("values select;", 1, {}),
+        ("prepare s from 'select 1';", 0, {"statements": "1", "prepared": "1"}),
+        ("prepare select from 'select 1';", 1, {}),
+        ("execute s;", 0, {"statements": "1", "prepared": "1"}),
+        ("execute select;", 1, {}),
+        ("get diagnostics @n = number;", 0, {"statements": "1", "stored_program": "1"}),
+        ("get nonsense;", 1, {}),
+        ("signal sqlstate '01000';", 0, {"statements": "1", "stored_program": "1"}),
+        ("signal select;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

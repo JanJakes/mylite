@@ -72,6 +72,13 @@ statement ::= insert_statement.
 statement ::= replace_statement.
 statement ::= update_statement.
 statement ::= delete_statement.
+statement ::= with_statement.
+statement ::= table_statement.
+statement ::= values_statement.
+statement ::= prepare_statement.
+statement ::= execute_statement.
+statement ::= get_statement.
+statement ::= signal_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -90,18 +97,11 @@ statement_start(A) ::= CREATE. { A = MYLITE_STATEMENT_DDL; }
 statement_start(A) ::= required_tail_start(B). { A = B; }
 statement_start(A) ::= optional_tail_start(B). { A = B; }
 
-required_tail_start(A) ::= WITH. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= TABLE. { A = MYLITE_STATEMENT_SELECT; }
-required_tail_start(A) ::= VALUES. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= SET. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= PREPARE. { A = MYLITE_STATEMENT_PREPARED; }
-required_tail_start(A) ::= EXECUTE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= GRANT. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= REVOKE. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= HELP. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= GET. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
-required_tail_start(A) ::= SIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= IF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= ELSEIF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= RETURN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -577,6 +577,48 @@ dml_delete_first_token ::= LABEL.
 dml_delete_first_token ::= LOW_PRIORITY.
 dml_delete_first_token ::= QUICK.
 
+with_statement ::= WITH with_first_token required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+}
+
+with_first_token ::= ATOM.
+with_first_token ::= LABEL.
+with_first_token ::= RECURSIVE.
+
+table_statement ::= TABLE table_statement_target statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+}
+
+table_statement_target ::= ATOM.
+table_statement_target ::= LABEL.
+
+values_statement ::= VALUES ROW required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+}
+
+prepare_statement ::= PREPARE prepared_statement_name required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
+}
+
+execute_statement ::= EXECUTE prepared_statement_name statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
+}
+
+prepared_statement_name ::= ATOM.
+prepared_statement_name ::= LABEL.
+
+get_statement ::= GET DIAGNOSTICS required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+signal_statement ::= SIGNAL signal_condition statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+signal_condition ::= ATOM.
+signal_condition ::= LABEL.
+signal_condition ::= SQLSTATE.
+
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -806,11 +848,15 @@ keyword ::= USER_RESOURCES.
 keyword ::= VARIABLES.
 keyword ::= WARNINGS.
 keyword ::= DELAYED.
+keyword ::= DIAGNOSTICS.
 keyword ::= HIGH_PRIORITY.
 keyword ::= IGNORE.
 keyword ::= INTO.
 keyword ::= LOW_PRIORITY.
 keyword ::= QUICK.
+keyword ::= RECURSIVE.
+keyword ::= ROW.
+keyword ::= SQLSTATE.
 
 keyword_not_select_clause ::= SELECT.
 keyword_not_select_clause ::= WITH.
@@ -972,8 +1018,12 @@ keyword_not_select_clause ::= USER_RESOURCES.
 keyword_not_select_clause ::= VARIABLES.
 keyword_not_select_clause ::= WARNINGS.
 keyword_not_select_clause ::= DELAYED.
+keyword_not_select_clause ::= DIAGNOSTICS.
 keyword_not_select_clause ::= HIGH_PRIORITY.
 keyword_not_select_clause ::= IGNORE.
 keyword_not_select_clause ::= INTO.
 keyword_not_select_clause ::= LOW_PRIORITY.
 keyword_not_select_clause ::= QUICK.
+keyword_not_select_clause ::= RECURSIVE.
+keyword_not_select_clause ::= ROW.
+keyword_not_select_clause ::= SQLSTATE.

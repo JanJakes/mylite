@@ -249,6 +249,7 @@ def main() -> int:
         ("iterate select;", 1, {}),
         ("help 'select';", 0, {"statements": "1", "utility": "1"}),
         ("help select;", 0, {"statements": "1", "utility": "1"}),
+        ("help select extra;", 1, {}),
         ("help;", 1, {}),
         ("do 1 + 1;", 0, {"statements": "1", "utility": "1"}),
         ("do (select 1);", 0, {"statements": "1", "utility": "1"}),

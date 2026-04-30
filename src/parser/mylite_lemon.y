@@ -832,7 +832,7 @@ iterate_statement ::= ITERATE stored_program_label_ref. {
 stored_program_label_ref ::= ATOM.
 stored_program_label_ref ::= LABEL.
 
-help_statement ::= HELP help_topic statement_tail. {
+help_statement ::= HELP help_topic. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 

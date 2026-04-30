@@ -340,14 +340,30 @@ table_admin_table_keyword ::= TABLES.
 plugin_admin_statement ::= INSTALL plugin_admin_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
-plugin_admin_statement ::= UNINSTALL plugin_admin_tail. {
+plugin_admin_statement ::= UNINSTALL plugin_uninstall_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-plugin_admin_tail ::= plugin_admin_object required_statement_tail.
+plugin_admin_tail ::= PLUGIN plugin_name plugin_soname ATOM.
+plugin_admin_tail ::= COMPONENT component_file_list component_install_tail.
 
-plugin_admin_object ::= COMPONENT.
-plugin_admin_object ::= PLUGIN.
+plugin_uninstall_tail ::= PLUGIN plugin_name.
+plugin_uninstall_tail ::= COMPONENT component_file_list.
+
+component_install_tail ::= .
+component_install_tail ::= SET required_statement_tail.
+
+component_file_list ::= component_file.
+component_file_list ::= component_file_list import_comma component_file.
+
+component_file ::= ATOM.
+
+plugin_soname ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "SONAME");
+}
+
+plugin_name ::= ATOM.
+plugin_name ::= LABEL.
 
 import_statement ::= IMPORT TABLE FROM import_file_list. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);

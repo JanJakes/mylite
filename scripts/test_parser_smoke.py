@@ -61,6 +61,8 @@ def main() -> int:
         ("load data infile 'x' into table t;", 0, {"statements": "1", "utility": "1"}),
         ("load xml infile 'x' into table t;", 0, {"statements": "1", "utility": "1"}),
         ("load index into cache t;", 0, {"statements": "1", "utility": "1"}),
+        ("load data;", 1, {}),
+        ("load index t;", 1, {}),
         ("load nonsense;", 1, {}),
         ("start transaction read only;", 0, {"statements": "1", "transaction": "1"}),
         ("start nonsense;", 1, {}),

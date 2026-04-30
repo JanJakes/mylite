@@ -249,11 +249,9 @@ load_statement ::= LOAD load_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 
-load_tail ::= load_first_token required_statement_tail.
-
-load_first_token ::= DATA.
-load_first_token ::= XML.
-load_first_token ::= INDEX.
+load_tail ::= DATA ATOM required_statement_tail.
+load_tail ::= XML ATOM required_statement_tail.
+load_tail ::= INDEX INTO CACHE required_statement_tail.
 
 start_statement ::= START start_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);

@@ -39,6 +39,8 @@ statement ::= select_statement.
 statement ::= create_statement.
 statement ::= drop_statement.
 statement ::= alter_statement.
+statement ::= rename_statement.
+statement ::= truncate_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -62,8 +64,6 @@ required_tail_start(A) ::= INSERT. { A = MYLITE_STATEMENT_INSERT; }
 required_tail_start(A) ::= REPLACE. { A = MYLITE_STATEMENT_REPLACE; }
 required_tail_start(A) ::= UPDATE. { A = MYLITE_STATEMENT_UPDATE; }
 required_tail_start(A) ::= DELETE. { A = MYLITE_STATEMENT_DELETE; }
-required_tail_start(A) ::= TRUNCATE. { A = MYLITE_STATEMENT_DDL; }
-required_tail_start(A) ::= RENAME. { A = MYLITE_STATEMENT_DDL; }
 required_tail_start(A) ::= CALL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= LOAD. { A = MYLITE_STATEMENT_UTILITY; }
@@ -209,6 +209,26 @@ alter_first_token ::= RESOURCE.
 alter_first_token ::= SERVER.
 alter_first_token ::= TABLESPACE.
 alter_first_token ::= UNDO.
+
+rename_statement ::= RENAME rename_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
+}
+
+rename_tail ::= rename_first_token required_statement_tail.
+
+rename_first_token ::= TABLE.
+rename_first_token ::= TABLES.
+rename_first_token ::= USER.
+
+truncate_statement ::= TRUNCATE truncate_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
+}
+
+truncate_tail ::= TABLE required_statement_tail.
+truncate_tail ::= truncate_table_name statement_tail.
+
+truncate_table_name ::= ATOM.
+truncate_table_name ::= LABEL.
 
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }

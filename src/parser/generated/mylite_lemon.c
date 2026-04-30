@@ -43,89 +43,89 @@
 #define ML_REPLACE                         7
 #define ML_UPDATE                          8
 #define ML_DELETE                          9
-#define ML_TRUNCATE                       10
-#define ML_RENAME                         11
-#define ML_CALL                           12
-#define ML_DO                             13
-#define ML_LOAD                           14
-#define ML_TABLE                          15
-#define ML_VALUES                         16
-#define ML_HANDLER                        17
-#define ML_IMPORT                         18
-#define ML_START                          19
-#define ML_SAVEPOINT                      20
-#define ML_RELEASE                        21
-#define ML_SET                            22
-#define ML_LOCK                           23
-#define ML_UNLOCK                         24
-#define ML_XA                             25
-#define ML_BINLOG                         26
-#define ML_PURGE                          27
-#define ML_RESET                          28
-#define ML_CHANGE                         29
-#define ML_PREPARE                        30
-#define ML_EXECUTE                        31
-#define ML_DEALLOCATE                     32
-#define ML_GRANT                          33
-#define ML_REVOKE                         34
-#define ML_SHOW                           35
-#define ML_DESCRIBE                       36
-#define ML_DESC                           37
-#define ML_EXPLAIN                        38
-#define ML_HELP                           39
-#define ML_USE                            40
-#define ML_ANALYZE                        41
-#define ML_CHECK                          42
-#define ML_CHECKSUM                       43
-#define ML_OPTIMIZE                       44
-#define ML_REPAIR                         45
-#define ML_INSTALL                        46
-#define ML_UNINSTALL                      47
-#define ML_CLONE                          48
-#define ML_CACHE                          49
-#define ML_KILL                           50
-#define ML_GET                            51
-#define ML_SIGNAL                         52
-#define ML_IF                             53
-#define ML_ELSEIF                         54
-#define ML_RETURN                         55
-#define ML_LEAVE                          56
-#define ML_ITERATE                        57
-#define ML_ATOM                           58
-#define ML_LP                             59
-#define ML_RP                             60
-#define ML_LB                             61
-#define ML_RB                             62
-#define ML_LC                             63
-#define ML_RC                             64
-#define ML_TEMPORARY                      65
-#define ML_VIEW                           66
-#define ML_OR                             67
-#define ML_ALGORITHM                      68
-#define ML_SQL                            69
-#define ML_DEFINER                        70
-#define ML_DATABASE                       71
-#define ML_SCHEMA                         72
-#define ML_INDEX                          73
-#define ML_UNIQUE                         74
-#define ML_FULLTEXT                       75
-#define ML_SPATIAL                        76
-#define ML_EVENT                          77
-#define ML_FUNCTION                       78
-#define ML_AGGREGATE                      79
-#define ML_PROCEDURE                      80
-#define ML_TRIGGER                        81
-#define ML_USER                           82
-#define ML_ROLE                           83
-#define ML_RESOURCE                       84
-#define ML_SERVER                         85
-#define ML_LOGFILE                        86
-#define ML_TABLESPACE                     87
-#define ML_UNDO                           88
-#define ML_DROP                           89
-#define ML_TABLES                         90
-#define ML_ALTER                          91
-#define ML_INSTANCE                       92
+#define ML_CALL                           10
+#define ML_DO                             11
+#define ML_LOAD                           12
+#define ML_TABLE                          13
+#define ML_VALUES                         14
+#define ML_HANDLER                        15
+#define ML_IMPORT                         16
+#define ML_START                          17
+#define ML_SAVEPOINT                      18
+#define ML_RELEASE                        19
+#define ML_SET                            20
+#define ML_LOCK                           21
+#define ML_UNLOCK                         22
+#define ML_XA                             23
+#define ML_BINLOG                         24
+#define ML_PURGE                          25
+#define ML_RESET                          26
+#define ML_CHANGE                         27
+#define ML_PREPARE                        28
+#define ML_EXECUTE                        29
+#define ML_DEALLOCATE                     30
+#define ML_GRANT                          31
+#define ML_REVOKE                         32
+#define ML_SHOW                           33
+#define ML_DESCRIBE                       34
+#define ML_DESC                           35
+#define ML_EXPLAIN                        36
+#define ML_HELP                           37
+#define ML_USE                            38
+#define ML_ANALYZE                        39
+#define ML_CHECK                          40
+#define ML_CHECKSUM                       41
+#define ML_OPTIMIZE                       42
+#define ML_REPAIR                         43
+#define ML_INSTALL                        44
+#define ML_UNINSTALL                      45
+#define ML_CLONE                          46
+#define ML_CACHE                          47
+#define ML_KILL                           48
+#define ML_GET                            49
+#define ML_SIGNAL                         50
+#define ML_IF                             51
+#define ML_ELSEIF                         52
+#define ML_RETURN                         53
+#define ML_LEAVE                          54
+#define ML_ITERATE                        55
+#define ML_ATOM                           56
+#define ML_LP                             57
+#define ML_RP                             58
+#define ML_LB                             59
+#define ML_RB                             60
+#define ML_LC                             61
+#define ML_RC                             62
+#define ML_TEMPORARY                      63
+#define ML_VIEW                           64
+#define ML_OR                             65
+#define ML_ALGORITHM                      66
+#define ML_SQL                            67
+#define ML_DEFINER                        68
+#define ML_DATABASE                       69
+#define ML_SCHEMA                         70
+#define ML_INDEX                          71
+#define ML_UNIQUE                         72
+#define ML_FULLTEXT                       73
+#define ML_SPATIAL                        74
+#define ML_EVENT                          75
+#define ML_FUNCTION                       76
+#define ML_AGGREGATE                      77
+#define ML_PROCEDURE                      78
+#define ML_TRIGGER                        79
+#define ML_USER                           80
+#define ML_ROLE                           81
+#define ML_RESOURCE                       82
+#define ML_SERVER                         83
+#define ML_LOGFILE                        84
+#define ML_TABLESPACE                     85
+#define ML_UNDO                           86
+#define ML_DROP                           87
+#define ML_TABLES                         88
+#define ML_ALTER                          89
+#define ML_INSTANCE                       90
+#define ML_RENAME                         91
+#define ML_TRUNCATE                       92
 #define ML_BEGIN                          93
 #define ML_COMMIT                         94
 #define ML_ROLLBACK                       95
@@ -212,13 +212,13 @@
 #endif
 /************* Begin control #defines *****************************************/
 #define YYCODETYPE unsigned char
-#define YYNOCODE 140
+#define YYNOCODE 146
 #define YYACTIONTYPE unsigned short int
 #define MyLiteLemonTOKENTYPE MyliteToken
 typedef union {
   int yyinit;
   MyLiteLemonTOKENTYPE yy0;
-  MyliteStatementKind yy36;
+  MyliteStatementKind yy80;
 } YYMINORTYPE;
 #ifndef YYSTACKDEPTH
 #define YYSTACKDEPTH 100
@@ -244,20 +244,20 @@ typedef union {
 #undef YYERRORSYMBOL
 #undef YYERRSYMDT
 #undef YYFALLBACK
-#define YYNSTATE             23
-#define YYNRULE              399
+#define YYNSTATE             31
+#define YYNRULE              409
 #define YYNRULE_WITH_ACTION  96
 #define YYNTOKEN             115
-#define YY_MAX_SHIFT         22
-#define YY_MIN_SHIFTREDUCE   411
-#define YY_MAX_SHIFTREDUCE   809
-#define YY_ERROR_ACTION      810
-#define YY_ACCEPT_ACTION     811
-#define YY_NO_ACTION         812
-#define YY_MIN_REDUCE        813
-#define YY_MAX_REDUCE        1211
+#define YY_MAX_SHIFT         30
+#define YY_MIN_SHIFTREDUCE   426
+#define YY_MAX_SHIFTREDUCE   834
+#define YY_ERROR_ACTION      835
+#define YY_ACCEPT_ACTION     836
+#define YY_NO_ACTION         837
+#define YY_MIN_REDUCE        838
+#define YY_MAX_REDUCE        1246
 #define YY_MIN_DSTRCTR       0
-#define YY_MAX_DSTRCTR       139
+#define YY_MAX_DSTRCTR       145
 /************* End control #defines *******************************************/
 #define YY_NLOOKAHEAD ((int)(sizeof(yy_lookahead)/sizeof(yy_lookahead[0])))
 
@@ -340,81 +340,81 @@ typedef union {
 **  yy_default[]       Default action for each state.
 **
 *********** Begin parsing tables **********************************************/
-#define YY_ACTTAB_COUNT (698)
+#define YY_ACTTAB_COUNT (696)
 static const YYACTIONTYPE yy_action[] = {
- /*     0 */   878,    4,  594,  602,  608,  603,  604,  605,  606,  607,
- /*    10 */   612,  613,  614,  615,  616,  617,  620,  621,  622,  623,
- /*    20 */   627,  628,  629,  630,  631,  632,  633,  634,  635,  636,
- /*    30 */   637,  639,  640,  641,  642,  644,  647,  648,  649,  652,
- /*    40 */   653,  654,  655,  656,  657,  658,  659,  662,  663,  664,
- /*    50 */   666,  669,  670,  672,  673,  685,  686,  687,  593,  596,
- /*    60 */   597,  598,  599,  600,  601,  704,  690,  699,  695,  702,
- /*    70 */   696,  609,  645,  660,  706,  697,  703,  650,  651,  694,
- /*    80 */   638,  680,  689,  643,  700,  646,  698,  619,  705,  611,
- /*    90 */   618,  610,  661,  624,  625,  626,  665,  667,  668,  671,
- /*   100 */   692,  674,  675,  676,  677,  678,  679,  681,  693,  682,
- /*   110 */   683,  684,  688,  691,  701,  517,  707,  713,  708,  709,
- /*   120 */   710,  711,  712,  717,  718,  719,  720,  721,  722,  725,
- /*   130 */   726,  727,  728,  732,  733,  734,  735,  736,  737,  738,
- /*   140 */   739,  740,  741,  742,  744,  745,  746,  747,  749,  752,
- /*   150 */   753,  754,  757,  758,  759,  760,  761,  762,  763,  764,
- /*   160 */   767,  768,  769,  771,  774,  775,  777,  778,  790,  791,
- /*   170 */   792,  516,  519,  520,  521,  522,  523,  524,  807,  794,
- /*   180 */   802,  798,  805,  799,  714,  750,  765,  809,  800,  806,
- /*   190 */   755,  756,  797,  743,  785,  793,  748,  803,  751,  801,
- /*   200 */   724,  808,  716,  723,  715,  766,  729,  730,  731,  770,
- /*   210 */   772,  773,  776,  795,  779,  780,  781,  782,  783,  784,
- /*   220 */   786,  796,  787,  788,  789,  879,    3,  804,  813,  413,
- /*   230 */     7,    6,   16,  422,  423,  424,  425,  426,  427,  428,
- /*   240 */   429,  430,  431,  432,  433,  434,  435,  436,  437,  438,
- /*   250 */   439,  440,  441,  442,  443,  444,  445,  446,  447,  448,
- /*   260 */   449,  450,  451,  452,  453,  454,  455,  456,  457,  458,
- /*   270 */   459,  460,  461,  462,  463,  464,  465,  466,  467,  468,
- /*   280 */   469,  470,  471,  472,  473,  474,  499,  498,  502,  503,
- /*   290 */   504,  505,  506,    5,   21,   12,   19,  811,    1,    1,
- /*   300 */    22,   22,   22,   22,   22,    5,   21,  509,   19,   13,
- /*   310 */   994,  910,   22,   22,   22,   22,   22,   17,  994,   18,
- /*   320 */    14,  479,  480,  481,  482,  483,  484,  485,  486,  487,
- /*   330 */   488,  489,  490,  491,  492,  493,  494,  495,  496,  497,
- /*   340 */   500,  501,  814,  413,    7,    6,   16,  422,  423,  424,
- /*   350 */   425,  426,  427,  428,  429,  430,  431,  432,  433,  434,
- /*   360 */   435,  436,  437,  438,  439,  440,  441,  442,  443,  444,
- /*   370 */   445,  446,  447,  448,  449,  450,  451,  452,  453,  454,
- /*   380 */   455,  456,  457,  458,  459,  460,  461,  462,  463,  464,
- /*   390 */   465,  466,  467,  468,  469,  470,  471,  472,  473,  474,
- /*   400 */   499,  498,  502,  503,  504,  505,  506,    8,    9,   10,
- /*   410 */    15,    8,    9,   10,   15,   11,   11,  812,   11,    8,
- /*   420 */     9,   10,   15,  812,  822,  823,   20,  880,    2,  812,
- /*   430 */   812,   17,  812,   18,  812,  479,  480,  481,  482,  483,
- /*   440 */   484,  485,  486,  487,  488,  489,  490,  491,  492,  493,
- /*   450 */   494,  495,  496,  497,  500,  501,  418,  419,  422,  423,
- /*   460 */   424,  425,  426,  427,  428,  429,  430,  431,  432,  433,
- /*   470 */   434,  435,  436,  437,  438,  439,  440,  441,  442,  443,
- /*   480 */   444,  445,  446,  447,  448,  449,  450,  451,  452,  453,
- /*   490 */   454,  455,  456,  457,  458,  459,  460,  461,  462,  463,
- /*   500 */   464,  465,  466,  467,  468,  469,  470,  471,  472,  473,
- /*   510 */   474,  917,  498,  992,  812,  526,  812,  812,  812,  917,
- /*   520 */   812,  992,  812,  812,  812,  812,  812,  812,  812,  812,
- /*   530 */   812,  812,  812,  812,  812,  812,  812,  812,  812,  812,
- /*   540 */   812,  812,  812,  812,  812,  812,  479,  480,  481,  482,
- /*   550 */   483,  484,  485,  486,  487,  488,  489,  490,  491,  492,
- /*   560 */   493,  494,  495,  496,  497,  527,  528,  529,  530,  531,
- /*   570 */   532,  533,  534,  535,  536,  537,  538,  539,  540,  541,
- /*   580 */   542,  543,  544,  545,  546,  547,  548,  549,  550,  552,
- /*   590 */   812,  812,  812,  812,  812,  812,  812,  812,  812,  812,
- /*   600 */   812,  812,  812,  812,  561,  812,  812,  812,  812,  812,
- /*   610 */   812,  812,  812,  812,  812,  812,  812,  812,  812,  812,
- /*   620 */   573,  812,  812,  812,  812,  812,  812,  812,  812,  812,
- /*   630 */   812,  812,  812,  812,  812,  812,  812,  812,  812,  554,
- /*   640 */   557,  812,  812,  812,  812,  555,  556,  566,  812,  812,
- /*   650 */   570,  558,  559,  812,  560,  562,  563,  564,  571,  565,
- /*   660 */   567,  568,  569,  812,  553,  812,  812,  812,  812,  812,
- /*   670 */   812,  578,  812,  574,  812,  576,  575,  577,  812,  812,
- /*   680 */   812,  812,  579,  580,  812,  581,  812,  582,  812,  585,
- /*   690 */   586,  584,  587,  588,  812,  812,  812,  583,
+ /*     0 */   901,    6,  619,  627,  633,  628,  629,  630,  631,  632,
+ /*    10 */   639,  640,  641,  642,  645,  646,  647,  648,  652,  653,
+ /*    20 */   654,  655,  656,  657,  658,  659,  660,  661,  662,  664,
+ /*    30 */   665,  666,  667,  669,  672,  673,  674,  677,  678,  679,
+ /*    40 */   680,  681,  682,  683,  684,  687,  688,  689,  691,  694,
+ /*    50 */   695,  697,  698,  710,  711,  712,  618,  621,  622,  623,
+ /*    60 */   624,  625,  626,  729,  715,  724,  720,  727,  721,  634,
+ /*    70 */   670,  685,  731,  722,  728,  675,  676,  719,  663,  705,
+ /*    80 */   714,  668,  725,  671,  723,  644,  730,  636,  643,  635,
+ /*    90 */   686,  638,  637,  649,  650,  651,  690,  692,  693,  696,
+ /*   100 */   717,  699,  700,  701,  702,  703,  704,  706,  718,  707,
+ /*   110 */   708,  709,  713,  716,  726,  534,  732,  738,  733,  734,
+ /*   120 */   735,  736,  737,  744,  745,  746,  747,  750,  751,  752,
+ /*   130 */   753,  757,  758,  759,  760,  761,  762,  763,  764,  765,
+ /*   140 */   766,  767,  769,  770,  771,  772,  774,  777,  778,  779,
+ /*   150 */   782,  783,  784,  785,  786,  787,  788,  789,  792,  793,
+ /*   160 */   794,  796,  799,  800,  802,  803,  815,  816,  817,  533,
+ /*   170 */   536,  537,  538,  539,  540,  541,  832,  819,  827,  823,
+ /*   180 */   830,  824,  739,  775,  790,  834,  825,  831,  780,  781,
+ /*   190 */   822,  768,  810,  818,  773,  828,  776,  826,  749,  833,
+ /*   200 */   741,  748,  740,  791,  743,  742,  754,  755,  756,  795,
+ /*   210 */   797,  798,  801,  820,  804,  805,  806,  807,  808,  809,
+ /*   220 */   811,  821,  812,  813,  814,  902,    5,  829,  838,  428,
+ /*   230 */     9,    8,   21,  437,  438,  439,  440,  441,  442,  443,
+ /*   240 */   444,  445,  446,  447,  448,  449,  450,  451,  452,  453,
+ /*   250 */   454,  455,  456,  457,  458,  459,  460,  461,  462,  463,
+ /*   260 */   464,  465,  466,  467,  468,  469,  470,  471,  472,  473,
+ /*   270 */   474,  475,  476,  477,  478,  479,  480,  481,  482,  483,
+ /*   280 */   484,  485,  486,  487,  514,  513,  517,  518,  519,  520,
+ /*   290 */   521,    7,   29,   10,   27,  836,    1,    1,   30,   30,
+ /*   300 */    30,   30,   30,   30,   30,   16,   16,   17,   16,  847,
+ /*   310 */   848,   28,  903,    4,   18,   22,   19,   23,  524,   25,
+ /*   320 */    24,  494,  495,  496,  497,  498,  499,  500,  501,  502,
+ /*   330 */   503,  504,  505,  506,  507,  508,  509,  510,  511,  512,
+ /*   340 */   515,  516,  839,  428,    9,    8,   21,  437,  438,  439,
+ /*   350 */   440,  441,  442,  443,  444,  445,  446,  447,  448,  449,
+ /*   360 */   450,  451,  452,  453,  454,  455,  456,  457,  458,  459,
+ /*   370 */   460,  461,  462,  463,  464,  465,  466,  467,  468,  469,
+ /*   380 */   470,  471,  472,  473,  474,  475,  476,  477,  478,  479,
+ /*   390 */   480,  481,  482,  483,  484,  485,  486,  487,  514,  513,
+ /*   400 */   517,  518,  519,  520,  521,    7,   29, 1027,   27, 1029,
+ /*   410 */   944,  935,   30,   30,   30,   30,   30,   30,   30, 1027,
+ /*   420 */   837, 1029,  944,  905,   26,  904,    3,  837,  837,   22,
+ /*   430 */   837,   23,  837,   25,   24,  494,  495,  496,  497,  498,
+ /*   440 */   499,  500,  501,  502,  503,  504,  505,  506,  507,  508,
+ /*   450 */   509,  510,  511,  512,  515,  516,  433,  434,  437,  438,
+ /*   460 */   439,  440,  441,  442,  443,  444,  445,  446,  447,  448,
+ /*   470 */   449,  450,  451,  452,  453,  454,  455,  456,  457,  458,
+ /*   480 */   459,  460,  461,  462,  463,  464,  465,  466,  467,  468,
+ /*   490 */   469,  470,  471,  472,  473,  474,  475,  476,  477,  478,
+ /*   500 */   479,  480,  481,  482,  483,  484,  485,  486,  487,   11,
+ /*   510 */   513,  837,   12,   11,   13,  543,   12,   14,   13,   15,
+ /*   520 */    20,   14,  837,   15,   20,   11,  837,  607,   12,  837,
+ /*   530 */    13,  837,  837,   14,  837,   15,   20,  837,  837,  837,
+ /*   540 */   837,  837,  837,  837,  837,  837,  494,  495,  496,  497,
+ /*   550 */   498,  499,  500,  501,  502,  503,  504,  505,  506,  507,
+ /*   560 */   508,  509,  510,  511,  512,  544,  545,  546,  547,  548,
+ /*   570 */   549,  550,  551,  552,  553,  554,  555,  556,  557,  558,
+ /*   580 */   559,  560,  561,  562,  563,  564,  565,  566,  567,  569,
+ /*   590 */   613,  837,  837,  837,  609,  837,  837,  837,  837,  837,
+ /*   600 */   837,    2,  608,  837,  578,  837,  837,  837,  837,  837,
+ /*   610 */   837,  837,  837,  837,  837,  837,  837,  837,  590,  837,
+ /*   620 */   837,  837,  837,  837,  837,  837,  837,  837,  837,  837,
+ /*   630 */   837,  837,  837,  837,  837,  837,  837,  837,  837,  571,
+ /*   640 */   574,  837,  837,  837,  612,  572,  573,  583,  837,  837,
+ /*   650 */   587,  575,  576,  837,  577,  579,  580,  581,  588,  582,
+ /*   660 */   584,  585,  586,  837,  570,  837,  837,  837,  837,  595,
+ /*   670 */   837,  591,  837,  593,  592,  594,  837,  837,  837,  837,
+ /*   680 */   596,  597,  837,  598,  837,  599,  837,  602,  603,  601,
+ /*   690 */   604,  605,  837,  837,  837,  600,
 };
 static const YYCODETYPE yy_lookahead[] = {
- /*     0 */   133,  134,    2,    3,    4,    5,    6,    7,    8,    9,
+ /*     0 */   135,  136,    2,    3,    4,    5,    6,    7,    8,    9,
  /*    10 */    10,   11,   12,   13,   14,   15,   16,   17,   18,   19,
  /*    20 */    20,   21,   22,   23,   24,   25,   26,   27,   28,   29,
  /*    30 */    30,   31,   32,   33,   34,   35,   36,   37,   38,   39,
@@ -436,17 +436,17 @@ static const YYCODETYPE yy_lookahead[] = {
  /*   190 */    77,   78,   79,   80,   81,   82,   83,   84,   85,   86,
  /*   200 */    87,   88,   89,   90,   91,   92,   93,   94,   95,   96,
  /*   210 */    97,   98,   99,  100,  101,  102,  103,  104,  105,  106,
- /*   220 */   107,  108,  109,  110,  111,  135,  136,  114,    0,    1,
+ /*   220 */   107,  108,  109,  110,  111,  137,  138,  114,    0,    1,
  /*   230 */     2,    3,    4,    5,    6,    7,    8,    9,   10,   11,
  /*   240 */    12,   13,   14,   15,   16,   17,   18,   19,   20,   21,
  /*   250 */    22,   23,   24,   25,   26,   27,   28,   29,   30,   31,
  /*   260 */    32,   33,   34,   35,   36,   37,   38,   39,   40,   41,
  /*   270 */    42,   43,   44,   45,   46,   47,   48,   49,   50,   51,
  /*   280 */    52,   53,   54,   55,   56,   57,   58,   59,   60,   61,
- /*   290 */    62,   63,   64,  115,  116,  128,  118,  119,  120,  121,
- /*   300 */   122,  123,  124,  125,  126,  115,  116,    1,  118,  128,
- /*   310 */   131,  121,  122,  123,  124,  125,  126,   89,  139,   91,
- /*   320 */   128,   93,   94,   95,   96,   97,   98,   99,  100,  101,
+ /*   290 */    62,  115,  116,  130,  118,  119,  120,  121,  122,  123,
+ /*   300 */   124,  125,  126,  127,  128,  131,  132,  130,  134,  115,
+ /*   310 */   116,  117,  139,  140,  130,   87,  130,   89,    1,   91,
+ /*   320 */    92,   93,   94,   95,   96,   97,   98,   99,  100,  101,
  /*   330 */   102,  103,  104,  105,  106,  107,  108,  109,  110,  111,
  /*   340 */   112,  113,    0,    1,    2,    3,    4,    5,    6,    7,
  /*   350 */     8,    9,   10,   11,   12,   13,   14,   15,   16,   17,
@@ -454,40 +454,40 @@ static const YYCODETYPE yy_lookahead[] = {
  /*   370 */    28,   29,   30,   31,   32,   33,   34,   35,   36,   37,
  /*   380 */    38,   39,   40,   41,   42,   43,   44,   45,   46,   47,
  /*   390 */    48,   49,   50,   51,   52,   53,   54,   55,   56,   57,
- /*   400 */    58,   59,   60,   61,   62,   63,   64,  127,  127,  127,
- /*   410 */   127,  131,  131,  131,  131,  129,  130,  140,  132,  139,
- /*   420 */   139,  139,  139,  140,  115,  116,  117,  137,  138,  140,
- /*   430 */   140,   89,  140,   91,  140,   93,   94,   95,   96,   97,
+ /*   400 */    58,   59,   60,   61,   62,  115,  116,  133,  118,  133,
+ /*   410 */   133,  121,  122,  123,  124,  125,  126,  127,  128,  145,
+ /*   420 */   146,  145,  145,  143,  144,  141,  142,  146,  146,   87,
+ /*   430 */   146,   89,  146,   91,   92,   93,   94,   95,   96,   97,
  /*   440 */    98,   99,  100,  101,  102,  103,  104,  105,  106,  107,
  /*   450 */   108,  109,  110,  111,  112,  113,    3,    4,    5,    6,
  /*   460 */     7,    8,    9,   10,   11,   12,   13,   14,   15,   16,
  /*   470 */    17,   18,   19,   20,   21,   22,   23,   24,   25,   26,
  /*   480 */    27,   28,   29,   30,   31,   32,   33,   34,   35,   36,
  /*   490 */    37,   38,   39,   40,   41,   42,   43,   44,   45,   46,
- /*   500 */    47,   48,   49,   50,   51,   52,   53,   54,   55,   56,
- /*   510 */    57,  131,   59,  131,  140,   15,  140,  140,  140,  139,
- /*   520 */   140,  139,  140,  140,  140,  140,  140,  140,  140,  140,
- /*   530 */   140,  140,  140,  140,  140,  140,  140,  140,  140,  140,
- /*   540 */   140,  140,  140,  140,  140,  140,   93,   94,   95,   96,
+ /*   500 */    47,   48,   49,   50,   51,   52,   53,   54,   55,  129,
+ /*   510 */    57,  146,  129,  133,  129,   13,  133,  129,  133,  129,
+ /*   520 */   129,  133,  146,  133,  133,  145,  146,   13,  145,  146,
+ /*   530 */   145,  146,  146,  145,  146,  145,  145,  146,  146,  146,
+ /*   540 */   146,  146,  146,  146,  146,  146,   93,   94,   95,   96,
  /*   550 */    97,   98,   99,  100,  101,  102,  103,  104,  105,  106,
- /*   560 */   107,  108,  109,  110,  111,   65,   66,   67,   68,   69,
- /*   570 */    70,   71,   72,   73,   74,   75,   76,   77,   78,   79,
- /*   580 */    80,   81,   82,   83,   84,   85,   86,   87,   88,   15,
- /*   590 */   140,  140,  140,  140,  140,  140,  140,  140,  140,  140,
- /*   600 */   140,  140,  140,  140,   30,  140,  140,  140,  140,  140,
- /*   610 */   140,  140,  140,  140,  140,  140,  140,  140,  140,  140,
- /*   620 */    15,  140,  140,  140,  140,  140,  140,  140,  140,  140,
- /*   630 */   140,  140,  140,  140,  140,  140,  140,  140,  140,   65,
- /*   640 */    66,  140,  140,  140,  140,   71,   72,   73,  140,  140,
- /*   650 */    76,   77,   78,  140,   80,   81,   82,   83,   84,   85,
- /*   660 */    86,   87,   88,  140,   90,  140,  140,  140,  140,  140,
- /*   670 */   140,   66,  140,   68,  140,   70,   71,   72,  140,  140,
- /*   680 */   140,  140,   77,   78,  140,   80,  140,   82,  140,   84,
- /*   690 */    85,   86,   87,   88,  140,  140,  140,   92,  140,  140,
- /*   700 */   140,  140,  140,  140,  140,  140,  140,  140,  140,  140,
- /*   710 */   140,  140,  140,  140,  140,  140,  140,  140,  140,  140,
- /*   720 */   140,  140,  140,  140,  140,  140,  140,  140,  140,  140,
- /*   730 */   140,  140,  140,  140,  140,  140,  115,  115,  115,  115,
+ /*   560 */   107,  108,  109,  110,  111,   63,   64,   65,   66,   67,
+ /*   570 */    68,   69,   70,   71,   72,   73,   74,   75,   76,   77,
+ /*   580 */    78,   79,   80,   81,   82,   83,   84,   85,   86,   13,
+ /*   590 */     2,  146,  146,  146,   80,  146,  146,  146,  146,  146,
+ /*   600 */   146,   13,   88,  146,   28,  146,  146,  146,  146,  146,
+ /*   610 */   146,  146,  146,  146,  146,  146,  146,  146,   13,  146,
+ /*   620 */   146,  146,  146,  146,  146,  146,  146,  146,  146,  146,
+ /*   630 */   146,  146,  146,  146,  146,  146,  146,  146,  146,   63,
+ /*   640 */    64,  146,  146,  146,   56,   69,   70,   71,  146,  146,
+ /*   650 */    74,   75,   76,  146,   78,   79,   80,   81,   82,   83,
+ /*   660 */    84,   85,   86,  146,   88,  146,  146,  146,  146,   64,
+ /*   670 */   146,   66,  146,   68,   69,   70,  146,  146,  146,  146,
+ /*   680 */    75,   76,  146,   78,  146,   80,  146,   82,   83,   84,
+ /*   690 */    85,   86,  146,  146,  146,   90,  146,  146,  146,  146,
+ /*   700 */   146,  146,  146,  146,  146,  146,  146,  146,  146,  146,
+ /*   710 */   146,  146,  146,  146,  146,  146,  146,  146,  146,  146,
+ /*   720 */   146,  146,  146,  146,  146,  146,  146,  146,  146,  146,
+ /*   730 */   146,  146,  146,  146,  115,  115,  115,  115,  115,  115,
  /*   740 */   115,  115,  115,  115,  115,  115,  115,  115,  115,  115,
  /*   750 */   115,  115,  115,  115,  115,  115,  115,  115,  115,  115,
  /*   760 */   115,  115,  115,  115,  115,  115,  115,  115,  115,  115,
@@ -495,28 +495,30 @@ static const YYCODETYPE yy_lookahead[] = {
  /*   780 */   115,  115,  115,  115,  115,  115,  115,  115,  115,  115,
  /*   790 */   115,  115,  115,  115,  115,  115,  115,  115,  115,  115,
  /*   800 */   115,  115,  115,  115,  115,  115,  115,  115,  115,  115,
- /*   810 */   115,  115,  115,
+ /*   810 */   115,
 };
-#define YY_SHIFT_COUNT    (22)
+#define YY_SHIFT_COUNT    (30)
 #define YY_SHIFT_MIN      (0)
 #define YY_SHIFT_MAX      (605)
 static const unsigned short int yy_shift_ofst[] = {
- /*     0 */   228,  342,    0,    0,    0,    0,  113,  453,    0,    0,
- /*    10 */     0,    0,    0,    0,    0,    0,  500,  574,  605,  698,
- /*    20 */   698,  698,  306,
+ /*     0 */   228,  342,    0,    0,    0,    0,    0,    0,  113,  453,
+ /*    10 */     0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
+ /*    20 */     0,  502,  576,  605,  588,  514,  696,  696,  696,  696,
+ /*    30 */   317,
 };
-#define YY_REDUCE_COUNT (21)
-#define YY_REDUCE_MIN   (-133)
-#define YY_REDUCE_MAX   (382)
+#define YY_REDUCE_COUNT (29)
+#define YY_REDUCE_MIN   (-135)
+#define YY_REDUCE_MAX   (391)
 static const short yy_reduce_ofst[] = {
- /*     0 */   178,  190,  280,  281,  282,  283,  286,  309,  179,  179,
- /*    10 */   179,  380,  382,  382,  382,  179, -133,   90,  290,  167,
- /*    20 */   181,  192,
+ /*     0 */   176,  290,  380,  383,  385,  388,  390,  391,  174,  194,
+ /*    10 */   274,  276,  276,  276,  276,  276,  277,  274,  274,  274,
+ /*    20 */   276, -135,   88,  173,  280,  284,  163,  177,  184,  186,
 };
 static const YYACTIONTYPE yy_default[] = {
- /*     0 */   810,  810,  810,  810,  810,  810,  810,  810,  974,  953,
- /*    10 */   927,  877,  819,  818,  817,  816,  810,  810,  810,  991,
- /*    20 */   991,  991,  810,
+ /*     0 */   835,  835,  835,  835,  835,  835,  835,  835,  835,  835,
+ /*    10 */  1023, 1022, 1018, 1001,  980,  954,  900,  844,  843,  842,
+ /*    20 */   841,  835,  835,  835,  835,  835, 1026, 1026, 1026, 1026,
+ /*    30 */   835,
 };
 /********** End of lemon-generated parsing tables *****************************/
 
@@ -629,89 +631,89 @@ static const char *const yyTokenName[] = {
   /*    7 */ "REPLACE",
   /*    8 */ "UPDATE",
   /*    9 */ "DELETE",
-  /*   10 */ "TRUNCATE",
-  /*   11 */ "RENAME",
-  /*   12 */ "CALL",
-  /*   13 */ "DO",
-  /*   14 */ "LOAD",
-  /*   15 */ "TABLE",
-  /*   16 */ "VALUES",
-  /*   17 */ "HANDLER",
-  /*   18 */ "IMPORT",
-  /*   19 */ "START",
-  /*   20 */ "SAVEPOINT",
-  /*   21 */ "RELEASE",
-  /*   22 */ "SET",
-  /*   23 */ "LOCK",
-  /*   24 */ "UNLOCK",
-  /*   25 */ "XA",
-  /*   26 */ "BINLOG",
-  /*   27 */ "PURGE",
-  /*   28 */ "RESET",
-  /*   29 */ "CHANGE",
-  /*   30 */ "PREPARE",
-  /*   31 */ "EXECUTE",
-  /*   32 */ "DEALLOCATE",
-  /*   33 */ "GRANT",
-  /*   34 */ "REVOKE",
-  /*   35 */ "SHOW",
-  /*   36 */ "DESCRIBE",
-  /*   37 */ "DESC",
-  /*   38 */ "EXPLAIN",
-  /*   39 */ "HELP",
-  /*   40 */ "USE",
-  /*   41 */ "ANALYZE",
-  /*   42 */ "CHECK",
-  /*   43 */ "CHECKSUM",
-  /*   44 */ "OPTIMIZE",
-  /*   45 */ "REPAIR",
-  /*   46 */ "INSTALL",
-  /*   47 */ "UNINSTALL",
-  /*   48 */ "CLONE",
-  /*   49 */ "CACHE",
-  /*   50 */ "KILL",
-  /*   51 */ "GET",
-  /*   52 */ "SIGNAL",
-  /*   53 */ "IF",
-  /*   54 */ "ELSEIF",
-  /*   55 */ "RETURN",
-  /*   56 */ "LEAVE",
-  /*   57 */ "ITERATE",
-  /*   58 */ "ATOM",
-  /*   59 */ "LP",
-  /*   60 */ "RP",
-  /*   61 */ "LB",
-  /*   62 */ "RB",
-  /*   63 */ "LC",
-  /*   64 */ "RC",
-  /*   65 */ "TEMPORARY",
-  /*   66 */ "VIEW",
-  /*   67 */ "OR",
-  /*   68 */ "ALGORITHM",
-  /*   69 */ "SQL",
-  /*   70 */ "DEFINER",
-  /*   71 */ "DATABASE",
-  /*   72 */ "SCHEMA",
-  /*   73 */ "INDEX",
-  /*   74 */ "UNIQUE",
-  /*   75 */ "FULLTEXT",
-  /*   76 */ "SPATIAL",
-  /*   77 */ "EVENT",
-  /*   78 */ "FUNCTION",
-  /*   79 */ "AGGREGATE",
-  /*   80 */ "PROCEDURE",
-  /*   81 */ "TRIGGER",
-  /*   82 */ "USER",
-  /*   83 */ "ROLE",
-  /*   84 */ "RESOURCE",
-  /*   85 */ "SERVER",
-  /*   86 */ "LOGFILE",
-  /*   87 */ "TABLESPACE",
-  /*   88 */ "UNDO",
-  /*   89 */ "DROP",
-  /*   90 */ "TABLES",
-  /*   91 */ "ALTER",
-  /*   92 */ "INSTANCE",
+  /*   10 */ "CALL",
+  /*   11 */ "DO",
+  /*   12 */ "LOAD",
+  /*   13 */ "TABLE",
+  /*   14 */ "VALUES",
+  /*   15 */ "HANDLER",
+  /*   16 */ "IMPORT",
+  /*   17 */ "START",
+  /*   18 */ "SAVEPOINT",
+  /*   19 */ "RELEASE",
+  /*   20 */ "SET",
+  /*   21 */ "LOCK",
+  /*   22 */ "UNLOCK",
+  /*   23 */ "XA",
+  /*   24 */ "BINLOG",
+  /*   25 */ "PURGE",
+  /*   26 */ "RESET",
+  /*   27 */ "CHANGE",
+  /*   28 */ "PREPARE",
+  /*   29 */ "EXECUTE",
+  /*   30 */ "DEALLOCATE",
+  /*   31 */ "GRANT",
+  /*   32 */ "REVOKE",
+  /*   33 */ "SHOW",
+  /*   34 */ "DESCRIBE",
+  /*   35 */ "DESC",
+  /*   36 */ "EXPLAIN",
+  /*   37 */ "HELP",
+  /*   38 */ "USE",
+  /*   39 */ "ANALYZE",
+  /*   40 */ "CHECK",
+  /*   41 */ "CHECKSUM",
+  /*   42 */ "OPTIMIZE",
+  /*   43 */ "REPAIR",
+  /*   44 */ "INSTALL",
+  /*   45 */ "UNINSTALL",
+  /*   46 */ "CLONE",
+  /*   47 */ "CACHE",
+  /*   48 */ "KILL",
+  /*   49 */ "GET",
+  /*   50 */ "SIGNAL",
+  /*   51 */ "IF",
+  /*   52 */ "ELSEIF",
+  /*   53 */ "RETURN",
+  /*   54 */ "LEAVE",
+  /*   55 */ "ITERATE",
+  /*   56 */ "ATOM",
+  /*   57 */ "LP",
+  /*   58 */ "RP",
+  /*   59 */ "LB",
+  /*   60 */ "RB",
+  /*   61 */ "LC",
+  /*   62 */ "RC",
+  /*   63 */ "TEMPORARY",
+  /*   64 */ "VIEW",
+  /*   65 */ "OR",
+  /*   66 */ "ALGORITHM",
+  /*   67 */ "SQL",
+  /*   68 */ "DEFINER",
+  /*   69 */ "DATABASE",
+  /*   70 */ "SCHEMA",
+  /*   71 */ "INDEX",
+  /*   72 */ "UNIQUE",
+  /*   73 */ "FULLTEXT",
+  /*   74 */ "SPATIAL",
+  /*   75 */ "EVENT",
+  /*   76 */ "FUNCTION",
+  /*   77 */ "AGGREGATE",
+  /*   78 */ "PROCEDURE",
+  /*   79 */ "TRIGGER",
+  /*   80 */ "USER",
+  /*   81 */ "ROLE",
+  /*   82 */ "RESOURCE",
+  /*   83 */ "SERVER",
+  /*   84 */ "LOGFILE",
+  /*   85 */ "TABLESPACE",
+  /*   86 */ "UNDO",
+  /*   87 */ "DROP",
+  /*   88 */ "TABLES",
+  /*   89 */ "ALTER",
+  /*   90 */ "INSTANCE",
+  /*   91 */ "RENAME",
+  /*   92 */ "TRUNCATE",
   /*   93 */ "BEGIN",
   /*   94 */ "COMMIT",
   /*   95 */ "ROLLBACK",
@@ -746,19 +748,25 @@ static const char *const yyTokenName[] = {
   /*  124 */ "create_statement",
   /*  125 */ "drop_statement",
   /*  126 */ "alter_statement",
-  /*  127 */ "required_statement_tail",
-  /*  128 */ "statement_tail",
-  /*  129 */ "select_tail",
-  /*  130 */ "select_first_token",
-  /*  131 */ "statement_token",
-  /*  132 */ "keyword_not_select_clause",
-  /*  133 */ "create_tail",
-  /*  134 */ "create_first_token",
-  /*  135 */ "drop_tail",
-  /*  136 */ "drop_first_token",
-  /*  137 */ "alter_tail",
-  /*  138 */ "alter_first_token",
-  /*  139 */ "keyword",
+  /*  127 */ "rename_statement",
+  /*  128 */ "truncate_statement",
+  /*  129 */ "required_statement_tail",
+  /*  130 */ "statement_tail",
+  /*  131 */ "select_tail",
+  /*  132 */ "select_first_token",
+  /*  133 */ "statement_token",
+  /*  134 */ "keyword_not_select_clause",
+  /*  135 */ "create_tail",
+  /*  136 */ "create_first_token",
+  /*  137 */ "drop_tail",
+  /*  138 */ "drop_first_token",
+  /*  139 */ "alter_tail",
+  /*  140 */ "alter_first_token",
+  /*  141 */ "rename_tail",
+  /*  142 */ "rename_first_token",
+  /*  143 */ "truncate_tail",
+  /*  144 */ "truncate_table_name",
+  /*  145 */ "keyword",
 };
 #endif /* defined(YYCOVERAGE) || !defined(NDEBUG) */
 
@@ -782,58 +790,58 @@ static const char *const yyRuleName[] = {
  /*  13 */ "required_tail_start ::= REPLACE",
  /*  14 */ "required_tail_start ::= UPDATE",
  /*  15 */ "required_tail_start ::= DELETE",
- /*  16 */ "required_tail_start ::= TRUNCATE",
- /*  17 */ "required_tail_start ::= RENAME",
- /*  18 */ "required_tail_start ::= CALL",
- /*  19 */ "required_tail_start ::= DO",
- /*  20 */ "required_tail_start ::= LOAD",
- /*  21 */ "required_tail_start ::= TABLE",
- /*  22 */ "required_tail_start ::= VALUES",
- /*  23 */ "required_tail_start ::= HANDLER",
- /*  24 */ "required_tail_start ::= IMPORT",
- /*  25 */ "required_tail_start ::= START",
- /*  26 */ "required_tail_start ::= SAVEPOINT",
- /*  27 */ "required_tail_start ::= RELEASE",
- /*  28 */ "required_tail_start ::= SET",
- /*  29 */ "required_tail_start ::= LOCK",
- /*  30 */ "required_tail_start ::= UNLOCK",
- /*  31 */ "required_tail_start ::= XA",
- /*  32 */ "required_tail_start ::= BINLOG",
- /*  33 */ "required_tail_start ::= PURGE",
- /*  34 */ "required_tail_start ::= RESET",
- /*  35 */ "required_tail_start ::= CHANGE",
- /*  36 */ "required_tail_start ::= PREPARE",
- /*  37 */ "required_tail_start ::= EXECUTE",
- /*  38 */ "required_tail_start ::= DEALLOCATE",
- /*  39 */ "required_tail_start ::= GRANT",
- /*  40 */ "required_tail_start ::= REVOKE",
- /*  41 */ "required_tail_start ::= SHOW",
- /*  42 */ "required_tail_start ::= DESCRIBE",
- /*  43 */ "required_tail_start ::= DESC",
- /*  44 */ "required_tail_start ::= EXPLAIN",
- /*  45 */ "required_tail_start ::= HELP",
- /*  46 */ "required_tail_start ::= USE",
- /*  47 */ "required_tail_start ::= ANALYZE",
- /*  48 */ "required_tail_start ::= CHECK",
- /*  49 */ "required_tail_start ::= CHECKSUM",
- /*  50 */ "required_tail_start ::= OPTIMIZE",
- /*  51 */ "required_tail_start ::= REPAIR",
- /*  52 */ "required_tail_start ::= INSTALL",
- /*  53 */ "required_tail_start ::= UNINSTALL",
- /*  54 */ "required_tail_start ::= CLONE",
- /*  55 */ "required_tail_start ::= CACHE",
- /*  56 */ "required_tail_start ::= KILL",
- /*  57 */ "required_tail_start ::= GET",
- /*  58 */ "required_tail_start ::= SIGNAL",
- /*  59 */ "required_tail_start ::= IF",
- /*  60 */ "required_tail_start ::= ELSEIF",
- /*  61 */ "required_tail_start ::= RETURN",
- /*  62 */ "required_tail_start ::= LEAVE",
- /*  63 */ "required_tail_start ::= ITERATE",
- /*  64 */ "select_statement ::= SELECT select_tail",
- /*  65 */ "create_statement ::= CREATE create_tail",
- /*  66 */ "drop_statement ::= DROP drop_tail",
- /*  67 */ "alter_statement ::= ALTER alter_tail",
+ /*  16 */ "required_tail_start ::= CALL",
+ /*  17 */ "required_tail_start ::= DO",
+ /*  18 */ "required_tail_start ::= LOAD",
+ /*  19 */ "required_tail_start ::= TABLE",
+ /*  20 */ "required_tail_start ::= VALUES",
+ /*  21 */ "required_tail_start ::= HANDLER",
+ /*  22 */ "required_tail_start ::= IMPORT",
+ /*  23 */ "required_tail_start ::= START",
+ /*  24 */ "required_tail_start ::= SAVEPOINT",
+ /*  25 */ "required_tail_start ::= RELEASE",
+ /*  26 */ "required_tail_start ::= SET",
+ /*  27 */ "required_tail_start ::= LOCK",
+ /*  28 */ "required_tail_start ::= UNLOCK",
+ /*  29 */ "required_tail_start ::= XA",
+ /*  30 */ "required_tail_start ::= BINLOG",
+ /*  31 */ "required_tail_start ::= PURGE",
+ /*  32 */ "required_tail_start ::= RESET",
+ /*  33 */ "required_tail_start ::= CHANGE",
+ /*  34 */ "required_tail_start ::= PREPARE",
+ /*  35 */ "required_tail_start ::= EXECUTE",
+ /*  36 */ "required_tail_start ::= DEALLOCATE",
+ /*  37 */ "required_tail_start ::= GRANT",
+ /*  38 */ "required_tail_start ::= REVOKE",
+ /*  39 */ "required_tail_start ::= SHOW",
+ /*  40 */ "required_tail_start ::= DESCRIBE",
+ /*  41 */ "required_tail_start ::= DESC",
+ /*  42 */ "required_tail_start ::= EXPLAIN",
+ /*  43 */ "required_tail_start ::= HELP",
+ /*  44 */ "required_tail_start ::= USE",
+ /*  45 */ "required_tail_start ::= ANALYZE",
+ /*  46 */ "required_tail_start ::= CHECK",
+ /*  47 */ "required_tail_start ::= CHECKSUM",
+ /*  48 */ "required_tail_start ::= OPTIMIZE",
+ /*  49 */ "required_tail_start ::= REPAIR",
+ /*  50 */ "required_tail_start ::= INSTALL",
+ /*  51 */ "required_tail_start ::= UNINSTALL",
+ /*  52 */ "required_tail_start ::= CLONE",
+ /*  53 */ "required_tail_start ::= CACHE",
+ /*  54 */ "required_tail_start ::= KILL",
+ /*  55 */ "required_tail_start ::= GET",
+ /*  56 */ "required_tail_start ::= SIGNAL",
+ /*  57 */ "required_tail_start ::= IF",
+ /*  58 */ "required_tail_start ::= ELSEIF",
+ /*  59 */ "required_tail_start ::= RETURN",
+ /*  60 */ "required_tail_start ::= LEAVE",
+ /*  61 */ "required_tail_start ::= ITERATE",
+ /*  62 */ "select_statement ::= SELECT select_tail",
+ /*  63 */ "create_statement ::= CREATE create_tail",
+ /*  64 */ "drop_statement ::= DROP drop_tail",
+ /*  65 */ "alter_statement ::= ALTER alter_tail",
+ /*  66 */ "rename_statement ::= RENAME rename_tail",
+ /*  67 */ "truncate_statement ::= TRUNCATE truncate_tail",
  /*  68 */ "optional_tail_start ::= BEGIN",
  /*  69 */ "optional_tail_start ::= COMMIT",
  /*  70 */ "optional_tail_start ::= ROLLBACK",
@@ -869,302 +877,312 @@ static const char *const yyRuleName[] = {
  /* 100 */ "statement ::= create_statement",
  /* 101 */ "statement ::= drop_statement",
  /* 102 */ "statement ::= alter_statement",
- /* 103 */ "select_tail ::= select_first_token",
- /* 104 */ "select_tail ::= select_tail statement_token",
- /* 105 */ "select_first_token ::= ATOM",
- /* 106 */ "select_first_token ::= LABEL",
- /* 107 */ "select_first_token ::= keyword_not_select_clause",
- /* 108 */ "select_first_token ::= LP",
- /* 109 */ "select_first_token ::= RP",
- /* 110 */ "select_first_token ::= LB",
- /* 111 */ "select_first_token ::= RB",
- /* 112 */ "select_first_token ::= LC",
- /* 113 */ "select_first_token ::= RC",
- /* 114 */ "create_tail ::= create_first_token required_statement_tail",
- /* 115 */ "create_first_token ::= TABLE",
- /* 116 */ "create_first_token ::= TEMPORARY",
- /* 117 */ "create_first_token ::= VIEW",
- /* 118 */ "create_first_token ::= OR",
- /* 119 */ "create_first_token ::= ALGORITHM",
- /* 120 */ "create_first_token ::= SQL",
- /* 121 */ "create_first_token ::= DEFINER",
- /* 122 */ "create_first_token ::= DATABASE",
- /* 123 */ "create_first_token ::= SCHEMA",
- /* 124 */ "create_first_token ::= INDEX",
- /* 125 */ "create_first_token ::= UNIQUE",
- /* 126 */ "create_first_token ::= FULLTEXT",
- /* 127 */ "create_first_token ::= SPATIAL",
- /* 128 */ "create_first_token ::= EVENT",
- /* 129 */ "create_first_token ::= FUNCTION",
- /* 130 */ "create_first_token ::= AGGREGATE",
- /* 131 */ "create_first_token ::= PROCEDURE",
- /* 132 */ "create_first_token ::= TRIGGER",
- /* 133 */ "create_first_token ::= USER",
- /* 134 */ "create_first_token ::= ROLE",
- /* 135 */ "create_first_token ::= RESOURCE",
- /* 136 */ "create_first_token ::= SERVER",
- /* 137 */ "create_first_token ::= LOGFILE",
- /* 138 */ "create_first_token ::= TABLESPACE",
- /* 139 */ "create_first_token ::= UNDO",
- /* 140 */ "drop_tail ::= drop_first_token required_statement_tail",
- /* 141 */ "drop_first_token ::= TABLE",
- /* 142 */ "drop_first_token ::= TABLES",
- /* 143 */ "drop_first_token ::= TEMPORARY",
- /* 144 */ "drop_first_token ::= DATABASE",
- /* 145 */ "drop_first_token ::= SCHEMA",
- /* 146 */ "drop_first_token ::= VIEW",
- /* 147 */ "drop_first_token ::= EVENT",
- /* 148 */ "drop_first_token ::= FUNCTION",
- /* 149 */ "drop_first_token ::= PROCEDURE",
- /* 150 */ "drop_first_token ::= PREPARE",
- /* 151 */ "drop_first_token ::= TRIGGER",
- /* 152 */ "drop_first_token ::= USER",
- /* 153 */ "drop_first_token ::= ROLE",
- /* 154 */ "drop_first_token ::= SERVER",
- /* 155 */ "drop_first_token ::= INDEX",
- /* 156 */ "drop_first_token ::= LOGFILE",
- /* 157 */ "drop_first_token ::= TABLESPACE",
- /* 158 */ "drop_first_token ::= UNDO",
- /* 159 */ "drop_first_token ::= SPATIAL",
- /* 160 */ "drop_first_token ::= RESOURCE",
- /* 161 */ "alter_tail ::= alter_first_token required_statement_tail",
- /* 162 */ "alter_first_token ::= TABLE",
- /* 163 */ "alter_first_token ::= ALGORITHM",
- /* 164 */ "alter_first_token ::= DATABASE",
- /* 165 */ "alter_first_token ::= DEFINER",
- /* 166 */ "alter_first_token ::= SCHEMA",
- /* 167 */ "alter_first_token ::= VIEW",
- /* 168 */ "alter_first_token ::= EVENT",
- /* 169 */ "alter_first_token ::= FUNCTION",
- /* 170 */ "alter_first_token ::= PROCEDURE",
- /* 171 */ "alter_first_token ::= USER",
- /* 172 */ "alter_first_token ::= INSTANCE",
- /* 173 */ "alter_first_token ::= LOGFILE",
- /* 174 */ "alter_first_token ::= RESOURCE",
- /* 175 */ "alter_first_token ::= SERVER",
- /* 176 */ "alter_first_token ::= TABLESPACE",
- /* 177 */ "alter_first_token ::= UNDO",
- /* 178 */ "statement_tail ::=",
- /* 179 */ "statement_tail ::= statement_tail statement_token",
- /* 180 */ "required_statement_tail ::= statement_token",
- /* 181 */ "required_statement_tail ::= required_statement_tail statement_token",
- /* 182 */ "statement_token ::= ATOM",
- /* 183 */ "statement_token ::= LABEL",
- /* 184 */ "statement_token ::= keyword",
- /* 185 */ "statement_token ::= LP",
- /* 186 */ "statement_token ::= RP",
- /* 187 */ "statement_token ::= LB",
- /* 188 */ "statement_token ::= RB",
- /* 189 */ "statement_token ::= LC",
- /* 190 */ "statement_token ::= RC",
- /* 191 */ "keyword ::= SELECT",
- /* 192 */ "keyword ::= WITH",
- /* 193 */ "keyword ::= INSERT",
- /* 194 */ "keyword ::= REPLACE",
- /* 195 */ "keyword ::= UPDATE",
- /* 196 */ "keyword ::= DELETE",
- /* 197 */ "keyword ::= CREATE",
- /* 198 */ "keyword ::= DATABASE",
- /* 199 */ "keyword ::= ALTER",
- /* 200 */ "keyword ::= DROP",
- /* 201 */ "keyword ::= TRUNCATE",
- /* 202 */ "keyword ::= RENAME",
- /* 203 */ "keyword ::= CALL",
- /* 204 */ "keyword ::= DO",
- /* 205 */ "keyword ::= LOAD",
- /* 206 */ "keyword ::= TABLE",
- /* 207 */ "keyword ::= TABLES",
- /* 208 */ "keyword ::= TABLESPACE",
- /* 209 */ "keyword ::= VALUES",
- /* 210 */ "keyword ::= HANDLER",
- /* 211 */ "keyword ::= IMPORT",
- /* 212 */ "keyword ::= START",
- /* 213 */ "keyword ::= BEGIN",
- /* 214 */ "keyword ::= COMMIT",
- /* 215 */ "keyword ::= ROLLBACK",
- /* 216 */ "keyword ::= SAVEPOINT",
- /* 217 */ "keyword ::= RELEASE",
- /* 218 */ "keyword ::= SET",
- /* 219 */ "keyword ::= LOCK",
- /* 220 */ "keyword ::= UNLOCK",
- /* 221 */ "keyword ::= XA",
- /* 222 */ "keyword ::= BINLOG",
- /* 223 */ "keyword ::= PURGE",
- /* 224 */ "keyword ::= RESET",
- /* 225 */ "keyword ::= CHANGE",
- /* 226 */ "keyword ::= PREPARE",
- /* 227 */ "keyword ::= PROCEDURE",
- /* 228 */ "keyword ::= EXECUTE",
- /* 229 */ "keyword ::= DEALLOCATE",
- /* 230 */ "keyword ::= GRANT",
- /* 231 */ "keyword ::= REVOKE",
- /* 232 */ "keyword ::= ROLE",
- /* 233 */ "keyword ::= SHOW",
- /* 234 */ "keyword ::= SCHEMA",
- /* 235 */ "keyword ::= SERVER",
- /* 236 */ "keyword ::= DESCRIBE",
- /* 237 */ "keyword ::= DESC",
- /* 238 */ "keyword ::= EXPLAIN",
- /* 239 */ "keyword ::= EVENT",
- /* 240 */ "keyword ::= FUNCTION",
- /* 241 */ "keyword ::= HELP",
- /* 242 */ "keyword ::= USE",
- /* 243 */ "keyword ::= ANALYZE",
- /* 244 */ "keyword ::= CHECK",
- /* 245 */ "keyword ::= CHECKSUM",
- /* 246 */ "keyword ::= OPTIMIZE",
- /* 247 */ "keyword ::= REPAIR",
- /* 248 */ "keyword ::= INSTALL",
- /* 249 */ "keyword ::= INDEX",
- /* 250 */ "keyword ::= INSTANCE",
- /* 251 */ "keyword ::= UNINSTALL",
- /* 252 */ "keyword ::= CLONE",
- /* 253 */ "keyword ::= CACHE",
- /* 254 */ "keyword ::= FLUSH",
- /* 255 */ "keyword ::= KILL",
- /* 256 */ "keyword ::= RESTART",
- /* 257 */ "keyword ::= SHUTDOWN",
- /* 258 */ "keyword ::= GET",
- /* 259 */ "keyword ::= SIGNAL",
- /* 260 */ "keyword ::= RESIGNAL",
- /* 261 */ "keyword ::= IF",
- /* 262 */ "keyword ::= ELSEIF",
- /* 263 */ "keyword ::= LOOP",
- /* 264 */ "keyword ::= REPEAT",
- /* 265 */ "keyword ::= UNTIL",
- /* 266 */ "keyword ::= WHILE",
- /* 267 */ "keyword ::= CASE",
- /* 268 */ "keyword ::= WHEN",
- /* 269 */ "keyword ::= TRIGGER",
- /* 270 */ "keyword ::= DECLARE",
- /* 271 */ "keyword ::= OPEN",
- /* 272 */ "keyword ::= FETCH",
- /* 273 */ "keyword ::= CLOSE",
- /* 274 */ "keyword ::= RETURN",
- /* 275 */ "keyword ::= LEAVE",
- /* 276 */ "keyword ::= ITERATE",
- /* 277 */ "keyword ::= FROM",
- /* 278 */ "keyword ::= USER",
- /* 279 */ "keyword ::= VIEW",
- /* 280 */ "keyword ::= HAVING",
- /* 281 */ "keyword ::= ELSE",
- /* 282 */ "keyword ::= END",
- /* 283 */ "keyword ::= AGGREGATE",
- /* 284 */ "keyword ::= ALGORITHM",
- /* 285 */ "keyword ::= DEFINER",
- /* 286 */ "keyword ::= FULLTEXT",
- /* 287 */ "keyword ::= LOGFILE",
- /* 288 */ "keyword ::= OR",
- /* 289 */ "keyword ::= RESOURCE",
- /* 290 */ "keyword ::= SECURITY",
- /* 291 */ "keyword ::= SQL",
- /* 292 */ "keyword ::= SPATIAL",
- /* 293 */ "keyword ::= TEMPORARY",
- /* 294 */ "keyword ::= UNDO",
- /* 295 */ "keyword ::= UNIQUE",
- /* 296 */ "keyword_not_select_clause ::= SELECT",
- /* 297 */ "keyword_not_select_clause ::= WITH",
- /* 298 */ "keyword_not_select_clause ::= INSERT",
- /* 299 */ "keyword_not_select_clause ::= REPLACE",
- /* 300 */ "keyword_not_select_clause ::= UPDATE",
- /* 301 */ "keyword_not_select_clause ::= DELETE",
- /* 302 */ "keyword_not_select_clause ::= CREATE",
- /* 303 */ "keyword_not_select_clause ::= DATABASE",
- /* 304 */ "keyword_not_select_clause ::= ALTER",
- /* 305 */ "keyword_not_select_clause ::= DROP",
- /* 306 */ "keyword_not_select_clause ::= TRUNCATE",
- /* 307 */ "keyword_not_select_clause ::= RENAME",
- /* 308 */ "keyword_not_select_clause ::= CALL",
- /* 309 */ "keyword_not_select_clause ::= DO",
- /* 310 */ "keyword_not_select_clause ::= LOAD",
- /* 311 */ "keyword_not_select_clause ::= TABLE",
- /* 312 */ "keyword_not_select_clause ::= TABLES",
- /* 313 */ "keyword_not_select_clause ::= TABLESPACE",
- /* 314 */ "keyword_not_select_clause ::= VALUES",
- /* 315 */ "keyword_not_select_clause ::= HANDLER",
- /* 316 */ "keyword_not_select_clause ::= IMPORT",
- /* 317 */ "keyword_not_select_clause ::= START",
- /* 318 */ "keyword_not_select_clause ::= BEGIN",
- /* 319 */ "keyword_not_select_clause ::= COMMIT",
- /* 320 */ "keyword_not_select_clause ::= ROLLBACK",
- /* 321 */ "keyword_not_select_clause ::= SAVEPOINT",
- /* 322 */ "keyword_not_select_clause ::= RELEASE",
- /* 323 */ "keyword_not_select_clause ::= SET",
- /* 324 */ "keyword_not_select_clause ::= LOCK",
- /* 325 */ "keyword_not_select_clause ::= UNLOCK",
- /* 326 */ "keyword_not_select_clause ::= XA",
- /* 327 */ "keyword_not_select_clause ::= BINLOG",
- /* 328 */ "keyword_not_select_clause ::= PURGE",
- /* 329 */ "keyword_not_select_clause ::= RESET",
- /* 330 */ "keyword_not_select_clause ::= CHANGE",
- /* 331 */ "keyword_not_select_clause ::= PREPARE",
- /* 332 */ "keyword_not_select_clause ::= PROCEDURE",
- /* 333 */ "keyword_not_select_clause ::= EXECUTE",
- /* 334 */ "keyword_not_select_clause ::= DEALLOCATE",
- /* 335 */ "keyword_not_select_clause ::= GRANT",
- /* 336 */ "keyword_not_select_clause ::= REVOKE",
- /* 337 */ "keyword_not_select_clause ::= ROLE",
- /* 338 */ "keyword_not_select_clause ::= SHOW",
- /* 339 */ "keyword_not_select_clause ::= SCHEMA",
- /* 340 */ "keyword_not_select_clause ::= SERVER",
- /* 341 */ "keyword_not_select_clause ::= DESCRIBE",
- /* 342 */ "keyword_not_select_clause ::= DESC",
- /* 343 */ "keyword_not_select_clause ::= EXPLAIN",
- /* 344 */ "keyword_not_select_clause ::= EVENT",
- /* 345 */ "keyword_not_select_clause ::= FUNCTION",
- /* 346 */ "keyword_not_select_clause ::= HELP",
- /* 347 */ "keyword_not_select_clause ::= USE",
- /* 348 */ "keyword_not_select_clause ::= ANALYZE",
- /* 349 */ "keyword_not_select_clause ::= CHECK",
- /* 350 */ "keyword_not_select_clause ::= CHECKSUM",
- /* 351 */ "keyword_not_select_clause ::= OPTIMIZE",
- /* 352 */ "keyword_not_select_clause ::= REPAIR",
- /* 353 */ "keyword_not_select_clause ::= INSTALL",
- /* 354 */ "keyword_not_select_clause ::= INDEX",
- /* 355 */ "keyword_not_select_clause ::= INSTANCE",
- /* 356 */ "keyword_not_select_clause ::= UNINSTALL",
- /* 357 */ "keyword_not_select_clause ::= CLONE",
- /* 358 */ "keyword_not_select_clause ::= CACHE",
- /* 359 */ "keyword_not_select_clause ::= FLUSH",
- /* 360 */ "keyword_not_select_clause ::= KILL",
- /* 361 */ "keyword_not_select_clause ::= RESTART",
- /* 362 */ "keyword_not_select_clause ::= SHUTDOWN",
- /* 363 */ "keyword_not_select_clause ::= GET",
- /* 364 */ "keyword_not_select_clause ::= SIGNAL",
- /* 365 */ "keyword_not_select_clause ::= RESIGNAL",
- /* 366 */ "keyword_not_select_clause ::= IF",
- /* 367 */ "keyword_not_select_clause ::= ELSEIF",
- /* 368 */ "keyword_not_select_clause ::= LOOP",
- /* 369 */ "keyword_not_select_clause ::= REPEAT",
- /* 370 */ "keyword_not_select_clause ::= UNTIL",
- /* 371 */ "keyword_not_select_clause ::= WHILE",
- /* 372 */ "keyword_not_select_clause ::= CASE",
- /* 373 */ "keyword_not_select_clause ::= WHEN",
- /* 374 */ "keyword_not_select_clause ::= TRIGGER",
- /* 375 */ "keyword_not_select_clause ::= DECLARE",
- /* 376 */ "keyword_not_select_clause ::= OPEN",
- /* 377 */ "keyword_not_select_clause ::= FETCH",
- /* 378 */ "keyword_not_select_clause ::= CLOSE",
- /* 379 */ "keyword_not_select_clause ::= RETURN",
- /* 380 */ "keyword_not_select_clause ::= LEAVE",
- /* 381 */ "keyword_not_select_clause ::= ITERATE",
- /* 382 */ "keyword_not_select_clause ::= USER",
- /* 383 */ "keyword_not_select_clause ::= VIEW",
- /* 384 */ "keyword_not_select_clause ::= ELSE",
- /* 385 */ "keyword_not_select_clause ::= END",
- /* 386 */ "keyword_not_select_clause ::= AGGREGATE",
- /* 387 */ "keyword_not_select_clause ::= ALGORITHM",
- /* 388 */ "keyword_not_select_clause ::= DEFINER",
- /* 389 */ "keyword_not_select_clause ::= FULLTEXT",
- /* 390 */ "keyword_not_select_clause ::= LOGFILE",
- /* 391 */ "keyword_not_select_clause ::= OR",
- /* 392 */ "keyword_not_select_clause ::= RESOURCE",
- /* 393 */ "keyword_not_select_clause ::= SECURITY",
- /* 394 */ "keyword_not_select_clause ::= SQL",
- /* 395 */ "keyword_not_select_clause ::= SPATIAL",
- /* 396 */ "keyword_not_select_clause ::= TEMPORARY",
- /* 397 */ "keyword_not_select_clause ::= UNDO",
- /* 398 */ "keyword_not_select_clause ::= UNIQUE",
+ /* 103 */ "statement ::= rename_statement",
+ /* 104 */ "statement ::= truncate_statement",
+ /* 105 */ "select_tail ::= select_first_token",
+ /* 106 */ "select_tail ::= select_tail statement_token",
+ /* 107 */ "select_first_token ::= ATOM",
+ /* 108 */ "select_first_token ::= LABEL",
+ /* 109 */ "select_first_token ::= keyword_not_select_clause",
+ /* 110 */ "select_first_token ::= LP",
+ /* 111 */ "select_first_token ::= RP",
+ /* 112 */ "select_first_token ::= LB",
+ /* 113 */ "select_first_token ::= RB",
+ /* 114 */ "select_first_token ::= LC",
+ /* 115 */ "select_first_token ::= RC",
+ /* 116 */ "create_tail ::= create_first_token required_statement_tail",
+ /* 117 */ "create_first_token ::= TABLE",
+ /* 118 */ "create_first_token ::= TEMPORARY",
+ /* 119 */ "create_first_token ::= VIEW",
+ /* 120 */ "create_first_token ::= OR",
+ /* 121 */ "create_first_token ::= ALGORITHM",
+ /* 122 */ "create_first_token ::= SQL",
+ /* 123 */ "create_first_token ::= DEFINER",
+ /* 124 */ "create_first_token ::= DATABASE",
+ /* 125 */ "create_first_token ::= SCHEMA",
+ /* 126 */ "create_first_token ::= INDEX",
+ /* 127 */ "create_first_token ::= UNIQUE",
+ /* 128 */ "create_first_token ::= FULLTEXT",
+ /* 129 */ "create_first_token ::= SPATIAL",
+ /* 130 */ "create_first_token ::= EVENT",
+ /* 131 */ "create_first_token ::= FUNCTION",
+ /* 132 */ "create_first_token ::= AGGREGATE",
+ /* 133 */ "create_first_token ::= PROCEDURE",
+ /* 134 */ "create_first_token ::= TRIGGER",
+ /* 135 */ "create_first_token ::= USER",
+ /* 136 */ "create_first_token ::= ROLE",
+ /* 137 */ "create_first_token ::= RESOURCE",
+ /* 138 */ "create_first_token ::= SERVER",
+ /* 139 */ "create_first_token ::= LOGFILE",
+ /* 140 */ "create_first_token ::= TABLESPACE",
+ /* 141 */ "create_first_token ::= UNDO",
+ /* 142 */ "drop_tail ::= drop_first_token required_statement_tail",
+ /* 143 */ "drop_first_token ::= TABLE",
+ /* 144 */ "drop_first_token ::= TABLES",
+ /* 145 */ "drop_first_token ::= TEMPORARY",
+ /* 146 */ "drop_first_token ::= DATABASE",
+ /* 147 */ "drop_first_token ::= SCHEMA",
+ /* 148 */ "drop_first_token ::= VIEW",
+ /* 149 */ "drop_first_token ::= EVENT",
+ /* 150 */ "drop_first_token ::= FUNCTION",
+ /* 151 */ "drop_first_token ::= PROCEDURE",
+ /* 152 */ "drop_first_token ::= PREPARE",
+ /* 153 */ "drop_first_token ::= TRIGGER",
+ /* 154 */ "drop_first_token ::= USER",
+ /* 155 */ "drop_first_token ::= ROLE",
+ /* 156 */ "drop_first_token ::= SERVER",
+ /* 157 */ "drop_first_token ::= INDEX",
+ /* 158 */ "drop_first_token ::= LOGFILE",
+ /* 159 */ "drop_first_token ::= TABLESPACE",
+ /* 160 */ "drop_first_token ::= UNDO",
+ /* 161 */ "drop_first_token ::= SPATIAL",
+ /* 162 */ "drop_first_token ::= RESOURCE",
+ /* 163 */ "alter_tail ::= alter_first_token required_statement_tail",
+ /* 164 */ "alter_first_token ::= TABLE",
+ /* 165 */ "alter_first_token ::= ALGORITHM",
+ /* 166 */ "alter_first_token ::= DATABASE",
+ /* 167 */ "alter_first_token ::= DEFINER",
+ /* 168 */ "alter_first_token ::= SCHEMA",
+ /* 169 */ "alter_first_token ::= VIEW",
+ /* 170 */ "alter_first_token ::= EVENT",
+ /* 171 */ "alter_first_token ::= FUNCTION",
+ /* 172 */ "alter_first_token ::= PROCEDURE",
+ /* 173 */ "alter_first_token ::= USER",
+ /* 174 */ "alter_first_token ::= INSTANCE",
+ /* 175 */ "alter_first_token ::= LOGFILE",
+ /* 176 */ "alter_first_token ::= RESOURCE",
+ /* 177 */ "alter_first_token ::= SERVER",
+ /* 178 */ "alter_first_token ::= TABLESPACE",
+ /* 179 */ "alter_first_token ::= UNDO",
+ /* 180 */ "rename_tail ::= rename_first_token required_statement_tail",
+ /* 181 */ "rename_first_token ::= TABLE",
+ /* 182 */ "rename_first_token ::= TABLES",
+ /* 183 */ "rename_first_token ::= USER",
+ /* 184 */ "truncate_tail ::= TABLE required_statement_tail",
+ /* 185 */ "truncate_tail ::= truncate_table_name statement_tail",
+ /* 186 */ "truncate_table_name ::= ATOM",
+ /* 187 */ "truncate_table_name ::= LABEL",
+ /* 188 */ "statement_tail ::=",
+ /* 189 */ "statement_tail ::= statement_tail statement_token",
+ /* 190 */ "required_statement_tail ::= statement_token",
+ /* 191 */ "required_statement_tail ::= required_statement_tail statement_token",
+ /* 192 */ "statement_token ::= ATOM",
+ /* 193 */ "statement_token ::= LABEL",
+ /* 194 */ "statement_token ::= keyword",
+ /* 195 */ "statement_token ::= LP",
+ /* 196 */ "statement_token ::= RP",
+ /* 197 */ "statement_token ::= LB",
+ /* 198 */ "statement_token ::= RB",
+ /* 199 */ "statement_token ::= LC",
+ /* 200 */ "statement_token ::= RC",
+ /* 201 */ "keyword ::= SELECT",
+ /* 202 */ "keyword ::= WITH",
+ /* 203 */ "keyword ::= INSERT",
+ /* 204 */ "keyword ::= REPLACE",
+ /* 205 */ "keyword ::= UPDATE",
+ /* 206 */ "keyword ::= DELETE",
+ /* 207 */ "keyword ::= CREATE",
+ /* 208 */ "keyword ::= DATABASE",
+ /* 209 */ "keyword ::= ALTER",
+ /* 210 */ "keyword ::= DROP",
+ /* 211 */ "keyword ::= TRUNCATE",
+ /* 212 */ "keyword ::= RENAME",
+ /* 213 */ "keyword ::= CALL",
+ /* 214 */ "keyword ::= DO",
+ /* 215 */ "keyword ::= LOAD",
+ /* 216 */ "keyword ::= TABLE",
+ /* 217 */ "keyword ::= TABLES",
+ /* 218 */ "keyword ::= TABLESPACE",
+ /* 219 */ "keyword ::= VALUES",
+ /* 220 */ "keyword ::= HANDLER",
+ /* 221 */ "keyword ::= IMPORT",
+ /* 222 */ "keyword ::= START",
+ /* 223 */ "keyword ::= BEGIN",
+ /* 224 */ "keyword ::= COMMIT",
+ /* 225 */ "keyword ::= ROLLBACK",
+ /* 226 */ "keyword ::= SAVEPOINT",
+ /* 227 */ "keyword ::= RELEASE",
+ /* 228 */ "keyword ::= SET",
+ /* 229 */ "keyword ::= LOCK",
+ /* 230 */ "keyword ::= UNLOCK",
+ /* 231 */ "keyword ::= XA",
+ /* 232 */ "keyword ::= BINLOG",
+ /* 233 */ "keyword ::= PURGE",
+ /* 234 */ "keyword ::= RESET",
+ /* 235 */ "keyword ::= CHANGE",
+ /* 236 */ "keyword ::= PREPARE",
+ /* 237 */ "keyword ::= PROCEDURE",
+ /* 238 */ "keyword ::= EXECUTE",
+ /* 239 */ "keyword ::= DEALLOCATE",
+ /* 240 */ "keyword ::= GRANT",
+ /* 241 */ "keyword ::= REVOKE",
+ /* 242 */ "keyword ::= ROLE",
+ /* 243 */ "keyword ::= SHOW",
+ /* 244 */ "keyword ::= SCHEMA",
+ /* 245 */ "keyword ::= SERVER",
+ /* 246 */ "keyword ::= DESCRIBE",
+ /* 247 */ "keyword ::= DESC",
+ /* 248 */ "keyword ::= EXPLAIN",
+ /* 249 */ "keyword ::= EVENT",
+ /* 250 */ "keyword ::= FUNCTION",
+ /* 251 */ "keyword ::= HELP",
+ /* 252 */ "keyword ::= USE",
+ /* 253 */ "keyword ::= ANALYZE",
+ /* 254 */ "keyword ::= CHECK",
+ /* 255 */ "keyword ::= CHECKSUM",
+ /* 256 */ "keyword ::= OPTIMIZE",
+ /* 257 */ "keyword ::= REPAIR",
+ /* 258 */ "keyword ::= INSTALL",
+ /* 259 */ "keyword ::= INDEX",
+ /* 260 */ "keyword ::= INSTANCE",
+ /* 261 */ "keyword ::= UNINSTALL",
+ /* 262 */ "keyword ::= CLONE",
+ /* 263 */ "keyword ::= CACHE",
+ /* 264 */ "keyword ::= FLUSH",
+ /* 265 */ "keyword ::= KILL",
+ /* 266 */ "keyword ::= RESTART",
+ /* 267 */ "keyword ::= SHUTDOWN",
+ /* 268 */ "keyword ::= GET",
+ /* 269 */ "keyword ::= SIGNAL",
+ /* 270 */ "keyword ::= RESIGNAL",
+ /* 271 */ "keyword ::= IF",
+ /* 272 */ "keyword ::= ELSEIF",
+ /* 273 */ "keyword ::= LOOP",
+ /* 274 */ "keyword ::= REPEAT",
+ /* 275 */ "keyword ::= UNTIL",
+ /* 276 */ "keyword ::= WHILE",
+ /* 277 */ "keyword ::= CASE",
+ /* 278 */ "keyword ::= WHEN",
+ /* 279 */ "keyword ::= TRIGGER",
+ /* 280 */ "keyword ::= DECLARE",
+ /* 281 */ "keyword ::= OPEN",
+ /* 282 */ "keyword ::= FETCH",
+ /* 283 */ "keyword ::= CLOSE",
+ /* 284 */ "keyword ::= RETURN",
+ /* 285 */ "keyword ::= LEAVE",
+ /* 286 */ "keyword ::= ITERATE",
+ /* 287 */ "keyword ::= FROM",
+ /* 288 */ "keyword ::= USER",
+ /* 289 */ "keyword ::= VIEW",
+ /* 290 */ "keyword ::= HAVING",
+ /* 291 */ "keyword ::= ELSE",
+ /* 292 */ "keyword ::= END",
+ /* 293 */ "keyword ::= AGGREGATE",
+ /* 294 */ "keyword ::= ALGORITHM",
+ /* 295 */ "keyword ::= DEFINER",
+ /* 296 */ "keyword ::= FULLTEXT",
+ /* 297 */ "keyword ::= LOGFILE",
+ /* 298 */ "keyword ::= OR",
+ /* 299 */ "keyword ::= RESOURCE",
+ /* 300 */ "keyword ::= SECURITY",
+ /* 301 */ "keyword ::= SQL",
+ /* 302 */ "keyword ::= SPATIAL",
+ /* 303 */ "keyword ::= TEMPORARY",
+ /* 304 */ "keyword ::= UNDO",
+ /* 305 */ "keyword ::= UNIQUE",
+ /* 306 */ "keyword_not_select_clause ::= SELECT",
+ /* 307 */ "keyword_not_select_clause ::= WITH",
+ /* 308 */ "keyword_not_select_clause ::= INSERT",
+ /* 309 */ "keyword_not_select_clause ::= REPLACE",
+ /* 310 */ "keyword_not_select_clause ::= UPDATE",
+ /* 311 */ "keyword_not_select_clause ::= DELETE",
+ /* 312 */ "keyword_not_select_clause ::= CREATE",
+ /* 313 */ "keyword_not_select_clause ::= DATABASE",
+ /* 314 */ "keyword_not_select_clause ::= ALTER",
+ /* 315 */ "keyword_not_select_clause ::= DROP",
+ /* 316 */ "keyword_not_select_clause ::= TRUNCATE",
+ /* 317 */ "keyword_not_select_clause ::= RENAME",
+ /* 318 */ "keyword_not_select_clause ::= CALL",
+ /* 319 */ "keyword_not_select_clause ::= DO",
+ /* 320 */ "keyword_not_select_clause ::= LOAD",
+ /* 321 */ "keyword_not_select_clause ::= TABLE",
+ /* 322 */ "keyword_not_select_clause ::= TABLES",
+ /* 323 */ "keyword_not_select_clause ::= TABLESPACE",
+ /* 324 */ "keyword_not_select_clause ::= VALUES",
+ /* 325 */ "keyword_not_select_clause ::= HANDLER",
+ /* 326 */ "keyword_not_select_clause ::= IMPORT",
+ /* 327 */ "keyword_not_select_clause ::= START",
+ /* 328 */ "keyword_not_select_clause ::= BEGIN",
+ /* 329 */ "keyword_not_select_clause ::= COMMIT",
+ /* 330 */ "keyword_not_select_clause ::= ROLLBACK",
+ /* 331 */ "keyword_not_select_clause ::= SAVEPOINT",
+ /* 332 */ "keyword_not_select_clause ::= RELEASE",
+ /* 333 */ "keyword_not_select_clause ::= SET",
+ /* 334 */ "keyword_not_select_clause ::= LOCK",
+ /* 335 */ "keyword_not_select_clause ::= UNLOCK",
+ /* 336 */ "keyword_not_select_clause ::= XA",
+ /* 337 */ "keyword_not_select_clause ::= BINLOG",
+ /* 338 */ "keyword_not_select_clause ::= PURGE",
+ /* 339 */ "keyword_not_select_clause ::= RESET",
+ /* 340 */ "keyword_not_select_clause ::= CHANGE",
+ /* 341 */ "keyword_not_select_clause ::= PREPARE",
+ /* 342 */ "keyword_not_select_clause ::= PROCEDURE",
+ /* 343 */ "keyword_not_select_clause ::= EXECUTE",
+ /* 344 */ "keyword_not_select_clause ::= DEALLOCATE",
+ /* 345 */ "keyword_not_select_clause ::= GRANT",
+ /* 346 */ "keyword_not_select_clause ::= REVOKE",
+ /* 347 */ "keyword_not_select_clause ::= ROLE",
+ /* 348 */ "keyword_not_select_clause ::= SHOW",
+ /* 349 */ "keyword_not_select_clause ::= SCHEMA",
+ /* 350 */ "keyword_not_select_clause ::= SERVER",
+ /* 351 */ "keyword_not_select_clause ::= DESCRIBE",
+ /* 352 */ "keyword_not_select_clause ::= DESC",
+ /* 353 */ "keyword_not_select_clause ::= EXPLAIN",
+ /* 354 */ "keyword_not_select_clause ::= EVENT",
+ /* 355 */ "keyword_not_select_clause ::= FUNCTION",
+ /* 356 */ "keyword_not_select_clause ::= HELP",
+ /* 357 */ "keyword_not_select_clause ::= USE",
+ /* 358 */ "keyword_not_select_clause ::= ANALYZE",
+ /* 359 */ "keyword_not_select_clause ::= CHECK",
+ /* 360 */ "keyword_not_select_clause ::= CHECKSUM",
+ /* 361 */ "keyword_not_select_clause ::= OPTIMIZE",
+ /* 362 */ "keyword_not_select_clause ::= REPAIR",
+ /* 363 */ "keyword_not_select_clause ::= INSTALL",
+ /* 364 */ "keyword_not_select_clause ::= INDEX",
+ /* 365 */ "keyword_not_select_clause ::= INSTANCE",
+ /* 366 */ "keyword_not_select_clause ::= UNINSTALL",
+ /* 367 */ "keyword_not_select_clause ::= CLONE",
+ /* 368 */ "keyword_not_select_clause ::= CACHE",
+ /* 369 */ "keyword_not_select_clause ::= FLUSH",
+ /* 370 */ "keyword_not_select_clause ::= KILL",
+ /* 371 */ "keyword_not_select_clause ::= RESTART",
+ /* 372 */ "keyword_not_select_clause ::= SHUTDOWN",
+ /* 373 */ "keyword_not_select_clause ::= GET",
+ /* 374 */ "keyword_not_select_clause ::= SIGNAL",
+ /* 375 */ "keyword_not_select_clause ::= RESIGNAL",
+ /* 376 */ "keyword_not_select_clause ::= IF",
+ /* 377 */ "keyword_not_select_clause ::= ELSEIF",
+ /* 378 */ "keyword_not_select_clause ::= LOOP",
+ /* 379 */ "keyword_not_select_clause ::= REPEAT",
+ /* 380 */ "keyword_not_select_clause ::= UNTIL",
+ /* 381 */ "keyword_not_select_clause ::= WHILE",
+ /* 382 */ "keyword_not_select_clause ::= CASE",
+ /* 383 */ "keyword_not_select_clause ::= WHEN",
+ /* 384 */ "keyword_not_select_clause ::= TRIGGER",
+ /* 385 */ "keyword_not_select_clause ::= DECLARE",
+ /* 386 */ "keyword_not_select_clause ::= OPEN",
+ /* 387 */ "keyword_not_select_clause ::= FETCH",
+ /* 388 */ "keyword_not_select_clause ::= CLOSE",
+ /* 389 */ "keyword_not_select_clause ::= RETURN",
+ /* 390 */ "keyword_not_select_clause ::= LEAVE",
+ /* 391 */ "keyword_not_select_clause ::= ITERATE",
+ /* 392 */ "keyword_not_select_clause ::= USER",
+ /* 393 */ "keyword_not_select_clause ::= VIEW",
+ /* 394 */ "keyword_not_select_clause ::= ELSE",
+ /* 395 */ "keyword_not_select_clause ::= END",
+ /* 396 */ "keyword_not_select_clause ::= AGGREGATE",
+ /* 397 */ "keyword_not_select_clause ::= ALGORITHM",
+ /* 398 */ "keyword_not_select_clause ::= DEFINER",
+ /* 399 */ "keyword_not_select_clause ::= FULLTEXT",
+ /* 400 */ "keyword_not_select_clause ::= LOGFILE",
+ /* 401 */ "keyword_not_select_clause ::= OR",
+ /* 402 */ "keyword_not_select_clause ::= RESOURCE",
+ /* 403 */ "keyword_not_select_clause ::= SECURITY",
+ /* 404 */ "keyword_not_select_clause ::= SQL",
+ /* 405 */ "keyword_not_select_clause ::= SPATIAL",
+ /* 406 */ "keyword_not_select_clause ::= TEMPORARY",
+ /* 407 */ "keyword_not_select_clause ::= UNDO",
+ /* 408 */ "keyword_not_select_clause ::= UNIQUE",
 };
 #endif /* NDEBUG */
 
@@ -1307,89 +1325,89 @@ static void yy_destructor(
     case 7: /* REPLACE */
     case 8: /* UPDATE */
     case 9: /* DELETE */
-    case 10: /* TRUNCATE */
-    case 11: /* RENAME */
-    case 12: /* CALL */
-    case 13: /* DO */
-    case 14: /* LOAD */
-    case 15: /* TABLE */
-    case 16: /* VALUES */
-    case 17: /* HANDLER */
-    case 18: /* IMPORT */
-    case 19: /* START */
-    case 20: /* SAVEPOINT */
-    case 21: /* RELEASE */
-    case 22: /* SET */
-    case 23: /* LOCK */
-    case 24: /* UNLOCK */
-    case 25: /* XA */
-    case 26: /* BINLOG */
-    case 27: /* PURGE */
-    case 28: /* RESET */
-    case 29: /* CHANGE */
-    case 30: /* PREPARE */
-    case 31: /* EXECUTE */
-    case 32: /* DEALLOCATE */
-    case 33: /* GRANT */
-    case 34: /* REVOKE */
-    case 35: /* SHOW */
-    case 36: /* DESCRIBE */
-    case 37: /* DESC */
-    case 38: /* EXPLAIN */
-    case 39: /* HELP */
-    case 40: /* USE */
-    case 41: /* ANALYZE */
-    case 42: /* CHECK */
-    case 43: /* CHECKSUM */
-    case 44: /* OPTIMIZE */
-    case 45: /* REPAIR */
-    case 46: /* INSTALL */
-    case 47: /* UNINSTALL */
-    case 48: /* CLONE */
-    case 49: /* CACHE */
-    case 50: /* KILL */
-    case 51: /* GET */
-    case 52: /* SIGNAL */
-    case 53: /* IF */
-    case 54: /* ELSEIF */
-    case 55: /* RETURN */
-    case 56: /* LEAVE */
-    case 57: /* ITERATE */
-    case 58: /* ATOM */
-    case 59: /* LP */
-    case 60: /* RP */
-    case 61: /* LB */
-    case 62: /* RB */
-    case 63: /* LC */
-    case 64: /* RC */
-    case 65: /* TEMPORARY */
-    case 66: /* VIEW */
-    case 67: /* OR */
-    case 68: /* ALGORITHM */
-    case 69: /* SQL */
-    case 70: /* DEFINER */
-    case 71: /* DATABASE */
-    case 72: /* SCHEMA */
-    case 73: /* INDEX */
-    case 74: /* UNIQUE */
-    case 75: /* FULLTEXT */
-    case 76: /* SPATIAL */
-    case 77: /* EVENT */
-    case 78: /* FUNCTION */
-    case 79: /* AGGREGATE */
-    case 80: /* PROCEDURE */
-    case 81: /* TRIGGER */
-    case 82: /* USER */
-    case 83: /* ROLE */
-    case 84: /* RESOURCE */
-    case 85: /* SERVER */
-    case 86: /* LOGFILE */
-    case 87: /* TABLESPACE */
-    case 88: /* UNDO */
-    case 89: /* DROP */
-    case 90: /* TABLES */
-    case 91: /* ALTER */
-    case 92: /* INSTANCE */
+    case 10: /* CALL */
+    case 11: /* DO */
+    case 12: /* LOAD */
+    case 13: /* TABLE */
+    case 14: /* VALUES */
+    case 15: /* HANDLER */
+    case 16: /* IMPORT */
+    case 17: /* START */
+    case 18: /* SAVEPOINT */
+    case 19: /* RELEASE */
+    case 20: /* SET */
+    case 21: /* LOCK */
+    case 22: /* UNLOCK */
+    case 23: /* XA */
+    case 24: /* BINLOG */
+    case 25: /* PURGE */
+    case 26: /* RESET */
+    case 27: /* CHANGE */
+    case 28: /* PREPARE */
+    case 29: /* EXECUTE */
+    case 30: /* DEALLOCATE */
+    case 31: /* GRANT */
+    case 32: /* REVOKE */
+    case 33: /* SHOW */
+    case 34: /* DESCRIBE */
+    case 35: /* DESC */
+    case 36: /* EXPLAIN */
+    case 37: /* HELP */
+    case 38: /* USE */
+    case 39: /* ANALYZE */
+    case 40: /* CHECK */
+    case 41: /* CHECKSUM */
+    case 42: /* OPTIMIZE */
+    case 43: /* REPAIR */
+    case 44: /* INSTALL */
+    case 45: /* UNINSTALL */
+    case 46: /* CLONE */
+    case 47: /* CACHE */
+    case 48: /* KILL */
+    case 49: /* GET */
+    case 50: /* SIGNAL */
+    case 51: /* IF */
+    case 52: /* ELSEIF */
+    case 53: /* RETURN */
+    case 54: /* LEAVE */
+    case 55: /* ITERATE */
+    case 56: /* ATOM */
+    case 57: /* LP */
+    case 58: /* RP */
+    case 59: /* LB */
+    case 60: /* RB */
+    case 61: /* LC */
+    case 62: /* RC */
+    case 63: /* TEMPORARY */
+    case 64: /* VIEW */
+    case 65: /* OR */
+    case 66: /* ALGORITHM */
+    case 67: /* SQL */
+    case 68: /* DEFINER */
+    case 69: /* DATABASE */
+    case 70: /* SCHEMA */
+    case 71: /* INDEX */
+    case 72: /* UNIQUE */
+    case 73: /* FULLTEXT */
+    case 74: /* SPATIAL */
+    case 75: /* EVENT */
+    case 76: /* FUNCTION */
+    case 77: /* AGGREGATE */
+    case 78: /* PROCEDURE */
+    case 79: /* TRIGGER */
+    case 80: /* USER */
+    case 81: /* ROLE */
+    case 82: /* RESOURCE */
+    case 83: /* SERVER */
+    case 84: /* LOGFILE */
+    case 85: /* TABLESPACE */
+    case 86: /* UNDO */
+    case 87: /* DROP */
+    case 88: /* TABLES */
+    case 89: /* ALTER */
+    case 90: /* INSTANCE */
+    case 91: /* RENAME */
+    case 92: /* TRUNCATE */
     case 93: /* BEGIN */
     case 94: /* COMMIT */
     case 95: /* ROLLBACK */
@@ -1415,7 +1433,7 @@ static void yy_destructor(
 {
 #line 10 "src/parser/mylite_lemon.y"
  (void)ctx; (void)yypminor; 
-#line 1419 "src/parser/generated/mylite_lemon.c"
+#line 1437 "src/parser/generated/mylite_lemon.c"
 }
       break;
       /* Default NON-TERMINAL Destructor */
@@ -1431,23 +1449,29 @@ static void yy_destructor(
     case 124: /* create_statement */
     case 125: /* drop_statement */
     case 126: /* alter_statement */
-    case 127: /* required_statement_tail */
-    case 128: /* statement_tail */
-    case 129: /* select_tail */
-    case 130: /* select_first_token */
-    case 131: /* statement_token */
-    case 132: /* keyword_not_select_clause */
-    case 133: /* create_tail */
-    case 134: /* create_first_token */
-    case 135: /* drop_tail */
-    case 136: /* drop_first_token */
-    case 137: /* alter_tail */
-    case 138: /* alter_first_token */
-    case 139: /* keyword */
+    case 127: /* rename_statement */
+    case 128: /* truncate_statement */
+    case 129: /* required_statement_tail */
+    case 130: /* statement_tail */
+    case 131: /* select_tail */
+    case 132: /* select_first_token */
+    case 133: /* statement_token */
+    case 134: /* keyword_not_select_clause */
+    case 135: /* create_tail */
+    case 136: /* create_first_token */
+    case 137: /* drop_tail */
+    case 138: /* drop_first_token */
+    case 139: /* alter_tail */
+    case 140: /* alter_first_token */
+    case 141: /* rename_tail */
+    case 142: /* rename_first_token */
+    case 143: /* truncate_tail */
+    case 144: /* truncate_table_name */
+    case 145: /* keyword */
 {
 #line 11 "src/parser/mylite_lemon.y"
  (void)ctx; (void)yypminor; 
-#line 1451 "src/parser/generated/mylite_lemon.c"
+#line 1475 "src/parser/generated/mylite_lemon.c"
 }
       break;
 /********* End destructor definitions *****************************************/
@@ -1765,58 +1789,58 @@ static const YYCODETYPE yyRuleInfoLhs[] = {
    115,  /* (13) required_tail_start ::= REPLACE */
    115,  /* (14) required_tail_start ::= UPDATE */
    115,  /* (15) required_tail_start ::= DELETE */
-   115,  /* (16) required_tail_start ::= TRUNCATE */
-   115,  /* (17) required_tail_start ::= RENAME */
-   115,  /* (18) required_tail_start ::= CALL */
-   115,  /* (19) required_tail_start ::= DO */
-   115,  /* (20) required_tail_start ::= LOAD */
-   115,  /* (21) required_tail_start ::= TABLE */
-   115,  /* (22) required_tail_start ::= VALUES */
-   115,  /* (23) required_tail_start ::= HANDLER */
-   115,  /* (24) required_tail_start ::= IMPORT */
-   115,  /* (25) required_tail_start ::= START */
-   115,  /* (26) required_tail_start ::= SAVEPOINT */
-   115,  /* (27) required_tail_start ::= RELEASE */
-   115,  /* (28) required_tail_start ::= SET */
-   115,  /* (29) required_tail_start ::= LOCK */
-   115,  /* (30) required_tail_start ::= UNLOCK */
-   115,  /* (31) required_tail_start ::= XA */
-   115,  /* (32) required_tail_start ::= BINLOG */
-   115,  /* (33) required_tail_start ::= PURGE */
-   115,  /* (34) required_tail_start ::= RESET */
-   115,  /* (35) required_tail_start ::= CHANGE */
-   115,  /* (36) required_tail_start ::= PREPARE */
-   115,  /* (37) required_tail_start ::= EXECUTE */
-   115,  /* (38) required_tail_start ::= DEALLOCATE */
-   115,  /* (39) required_tail_start ::= GRANT */
-   115,  /* (40) required_tail_start ::= REVOKE */
-   115,  /* (41) required_tail_start ::= SHOW */
-   115,  /* (42) required_tail_start ::= DESCRIBE */
-   115,  /* (43) required_tail_start ::= DESC */
-   115,  /* (44) required_tail_start ::= EXPLAIN */
-   115,  /* (45) required_tail_start ::= HELP */
-   115,  /* (46) required_tail_start ::= USE */
-   115,  /* (47) required_tail_start ::= ANALYZE */
-   115,  /* (48) required_tail_start ::= CHECK */
-   115,  /* (49) required_tail_start ::= CHECKSUM */
-   115,  /* (50) required_tail_start ::= OPTIMIZE */
-   115,  /* (51) required_tail_start ::= REPAIR */
-   115,  /* (52) required_tail_start ::= INSTALL */
-   115,  /* (53) required_tail_start ::= UNINSTALL */
-   115,  /* (54) required_tail_start ::= CLONE */
-   115,  /* (55) required_tail_start ::= CACHE */
-   115,  /* (56) required_tail_start ::= KILL */
-   115,  /* (57) required_tail_start ::= GET */
-   115,  /* (58) required_tail_start ::= SIGNAL */
-   115,  /* (59) required_tail_start ::= IF */
-   115,  /* (60) required_tail_start ::= ELSEIF */
-   115,  /* (61) required_tail_start ::= RETURN */
-   115,  /* (62) required_tail_start ::= LEAVE */
-   115,  /* (63) required_tail_start ::= ITERATE */
-   123,  /* (64) select_statement ::= SELECT select_tail */
-   124,  /* (65) create_statement ::= CREATE create_tail */
-   125,  /* (66) drop_statement ::= DROP drop_tail */
-   126,  /* (67) alter_statement ::= ALTER alter_tail */
+   115,  /* (16) required_tail_start ::= CALL */
+   115,  /* (17) required_tail_start ::= DO */
+   115,  /* (18) required_tail_start ::= LOAD */
+   115,  /* (19) required_tail_start ::= TABLE */
+   115,  /* (20) required_tail_start ::= VALUES */
+   115,  /* (21) required_tail_start ::= HANDLER */
+   115,  /* (22) required_tail_start ::= IMPORT */
+   115,  /* (23) required_tail_start ::= START */
+   115,  /* (24) required_tail_start ::= SAVEPOINT */
+   115,  /* (25) required_tail_start ::= RELEASE */
+   115,  /* (26) required_tail_start ::= SET */
+   115,  /* (27) required_tail_start ::= LOCK */
+   115,  /* (28) required_tail_start ::= UNLOCK */
+   115,  /* (29) required_tail_start ::= XA */
+   115,  /* (30) required_tail_start ::= BINLOG */
+   115,  /* (31) required_tail_start ::= PURGE */
+   115,  /* (32) required_tail_start ::= RESET */
+   115,  /* (33) required_tail_start ::= CHANGE */
+   115,  /* (34) required_tail_start ::= PREPARE */
+   115,  /* (35) required_tail_start ::= EXECUTE */
+   115,  /* (36) required_tail_start ::= DEALLOCATE */
+   115,  /* (37) required_tail_start ::= GRANT */
+   115,  /* (38) required_tail_start ::= REVOKE */
+   115,  /* (39) required_tail_start ::= SHOW */
+   115,  /* (40) required_tail_start ::= DESCRIBE */
+   115,  /* (41) required_tail_start ::= DESC */
+   115,  /* (42) required_tail_start ::= EXPLAIN */
+   115,  /* (43) required_tail_start ::= HELP */
+   115,  /* (44) required_tail_start ::= USE */
+   115,  /* (45) required_tail_start ::= ANALYZE */
+   115,  /* (46) required_tail_start ::= CHECK */
+   115,  /* (47) required_tail_start ::= CHECKSUM */
+   115,  /* (48) required_tail_start ::= OPTIMIZE */
+   115,  /* (49) required_tail_start ::= REPAIR */
+   115,  /* (50) required_tail_start ::= INSTALL */
+   115,  /* (51) required_tail_start ::= UNINSTALL */
+   115,  /* (52) required_tail_start ::= CLONE */
+   115,  /* (53) required_tail_start ::= CACHE */
+   115,  /* (54) required_tail_start ::= KILL */
+   115,  /* (55) required_tail_start ::= GET */
+   115,  /* (56) required_tail_start ::= SIGNAL */
+   115,  /* (57) required_tail_start ::= IF */
+   115,  /* (58) required_tail_start ::= ELSEIF */
+   115,  /* (59) required_tail_start ::= RETURN */
+   115,  /* (60) required_tail_start ::= LEAVE */
+   115,  /* (61) required_tail_start ::= ITERATE */
+   123,  /* (62) select_statement ::= SELECT select_tail */
+   124,  /* (63) create_statement ::= CREATE create_tail */
+   125,  /* (64) drop_statement ::= DROP drop_tail */
+   126,  /* (65) alter_statement ::= ALTER alter_tail */
+   127,  /* (66) rename_statement ::= RENAME rename_tail */
+   128,  /* (67) truncate_statement ::= TRUNCATE truncate_tail */
    116,  /* (68) optional_tail_start ::= BEGIN */
    116,  /* (69) optional_tail_start ::= COMMIT */
    116,  /* (70) optional_tail_start ::= ROLLBACK */
@@ -1852,302 +1876,312 @@ static const YYCODETYPE yyRuleInfoLhs[] = {
    122,  /* (100) statement ::= create_statement */
    122,  /* (101) statement ::= drop_statement */
    122,  /* (102) statement ::= alter_statement */
-   129,  /* (103) select_tail ::= select_first_token */
-   129,  /* (104) select_tail ::= select_tail statement_token */
-   130,  /* (105) select_first_token ::= ATOM */
-   130,  /* (106) select_first_token ::= LABEL */
-   130,  /* (107) select_first_token ::= keyword_not_select_clause */
-   130,  /* (108) select_first_token ::= LP */
-   130,  /* (109) select_first_token ::= RP */
-   130,  /* (110) select_first_token ::= LB */
-   130,  /* (111) select_first_token ::= RB */
-   130,  /* (112) select_first_token ::= LC */
-   130,  /* (113) select_first_token ::= RC */
-   133,  /* (114) create_tail ::= create_first_token required_statement_tail */
-   134,  /* (115) create_first_token ::= TABLE */
-   134,  /* (116) create_first_token ::= TEMPORARY */
-   134,  /* (117) create_first_token ::= VIEW */
-   134,  /* (118) create_first_token ::= OR */
-   134,  /* (119) create_first_token ::= ALGORITHM */
-   134,  /* (120) create_first_token ::= SQL */
-   134,  /* (121) create_first_token ::= DEFINER */
-   134,  /* (122) create_first_token ::= DATABASE */
-   134,  /* (123) create_first_token ::= SCHEMA */
-   134,  /* (124) create_first_token ::= INDEX */
-   134,  /* (125) create_first_token ::= UNIQUE */
-   134,  /* (126) create_first_token ::= FULLTEXT */
-   134,  /* (127) create_first_token ::= SPATIAL */
-   134,  /* (128) create_first_token ::= EVENT */
-   134,  /* (129) create_first_token ::= FUNCTION */
-   134,  /* (130) create_first_token ::= AGGREGATE */
-   134,  /* (131) create_first_token ::= PROCEDURE */
-   134,  /* (132) create_first_token ::= TRIGGER */
-   134,  /* (133) create_first_token ::= USER */
-   134,  /* (134) create_first_token ::= ROLE */
-   134,  /* (135) create_first_token ::= RESOURCE */
-   134,  /* (136) create_first_token ::= SERVER */
-   134,  /* (137) create_first_token ::= LOGFILE */
-   134,  /* (138) create_first_token ::= TABLESPACE */
-   134,  /* (139) create_first_token ::= UNDO */
-   135,  /* (140) drop_tail ::= drop_first_token required_statement_tail */
-   136,  /* (141) drop_first_token ::= TABLE */
-   136,  /* (142) drop_first_token ::= TABLES */
-   136,  /* (143) drop_first_token ::= TEMPORARY */
-   136,  /* (144) drop_first_token ::= DATABASE */
-   136,  /* (145) drop_first_token ::= SCHEMA */
-   136,  /* (146) drop_first_token ::= VIEW */
-   136,  /* (147) drop_first_token ::= EVENT */
-   136,  /* (148) drop_first_token ::= FUNCTION */
-   136,  /* (149) drop_first_token ::= PROCEDURE */
-   136,  /* (150) drop_first_token ::= PREPARE */
-   136,  /* (151) drop_first_token ::= TRIGGER */
-   136,  /* (152) drop_first_token ::= USER */
-   136,  /* (153) drop_first_token ::= ROLE */
-   136,  /* (154) drop_first_token ::= SERVER */
-   136,  /* (155) drop_first_token ::= INDEX */
-   136,  /* (156) drop_first_token ::= LOGFILE */
-   136,  /* (157) drop_first_token ::= TABLESPACE */
-   136,  /* (158) drop_first_token ::= UNDO */
-   136,  /* (159) drop_first_token ::= SPATIAL */
-   136,  /* (160) drop_first_token ::= RESOURCE */
-   137,  /* (161) alter_tail ::= alter_first_token required_statement_tail */
-   138,  /* (162) alter_first_token ::= TABLE */
-   138,  /* (163) alter_first_token ::= ALGORITHM */
-   138,  /* (164) alter_first_token ::= DATABASE */
-   138,  /* (165) alter_first_token ::= DEFINER */
-   138,  /* (166) alter_first_token ::= SCHEMA */
-   138,  /* (167) alter_first_token ::= VIEW */
-   138,  /* (168) alter_first_token ::= EVENT */
-   138,  /* (169) alter_first_token ::= FUNCTION */
-   138,  /* (170) alter_first_token ::= PROCEDURE */
-   138,  /* (171) alter_first_token ::= USER */
-   138,  /* (172) alter_first_token ::= INSTANCE */
-   138,  /* (173) alter_first_token ::= LOGFILE */
-   138,  /* (174) alter_first_token ::= RESOURCE */
-   138,  /* (175) alter_first_token ::= SERVER */
-   138,  /* (176) alter_first_token ::= TABLESPACE */
-   138,  /* (177) alter_first_token ::= UNDO */
-   128,  /* (178) statement_tail ::= */
-   128,  /* (179) statement_tail ::= statement_tail statement_token */
-   127,  /* (180) required_statement_tail ::= statement_token */
-   127,  /* (181) required_statement_tail ::= required_statement_tail statement_token */
-   131,  /* (182) statement_token ::= ATOM */
-   131,  /* (183) statement_token ::= LABEL */
-   131,  /* (184) statement_token ::= keyword */
-   131,  /* (185) statement_token ::= LP */
-   131,  /* (186) statement_token ::= RP */
-   131,  /* (187) statement_token ::= LB */
-   131,  /* (188) statement_token ::= RB */
-   131,  /* (189) statement_token ::= LC */
-   131,  /* (190) statement_token ::= RC */
-   139,  /* (191) keyword ::= SELECT */
-   139,  /* (192) keyword ::= WITH */
-   139,  /* (193) keyword ::= INSERT */
-   139,  /* (194) keyword ::= REPLACE */
-   139,  /* (195) keyword ::= UPDATE */
-   139,  /* (196) keyword ::= DELETE */
-   139,  /* (197) keyword ::= CREATE */
-   139,  /* (198) keyword ::= DATABASE */
-   139,  /* (199) keyword ::= ALTER */
-   139,  /* (200) keyword ::= DROP */
-   139,  /* (201) keyword ::= TRUNCATE */
-   139,  /* (202) keyword ::= RENAME */
-   139,  /* (203) keyword ::= CALL */
-   139,  /* (204) keyword ::= DO */
-   139,  /* (205) keyword ::= LOAD */
-   139,  /* (206) keyword ::= TABLE */
-   139,  /* (207) keyword ::= TABLES */
-   139,  /* (208) keyword ::= TABLESPACE */
-   139,  /* (209) keyword ::= VALUES */
-   139,  /* (210) keyword ::= HANDLER */
-   139,  /* (211) keyword ::= IMPORT */
-   139,  /* (212) keyword ::= START */
-   139,  /* (213) keyword ::= BEGIN */
-   139,  /* (214) keyword ::= COMMIT */
-   139,  /* (215) keyword ::= ROLLBACK */
-   139,  /* (216) keyword ::= SAVEPOINT */
-   139,  /* (217) keyword ::= RELEASE */
-   139,  /* (218) keyword ::= SET */
-   139,  /* (219) keyword ::= LOCK */
-   139,  /* (220) keyword ::= UNLOCK */
-   139,  /* (221) keyword ::= XA */
-   139,  /* (222) keyword ::= BINLOG */
-   139,  /* (223) keyword ::= PURGE */
-   139,  /* (224) keyword ::= RESET */
-   139,  /* (225) keyword ::= CHANGE */
-   139,  /* (226) keyword ::= PREPARE */
-   139,  /* (227) keyword ::= PROCEDURE */
-   139,  /* (228) keyword ::= EXECUTE */
-   139,  /* (229) keyword ::= DEALLOCATE */
-   139,  /* (230) keyword ::= GRANT */
-   139,  /* (231) keyword ::= REVOKE */
-   139,  /* (232) keyword ::= ROLE */
-   139,  /* (233) keyword ::= SHOW */
-   139,  /* (234) keyword ::= SCHEMA */
-   139,  /* (235) keyword ::= SERVER */
-   139,  /* (236) keyword ::= DESCRIBE */
-   139,  /* (237) keyword ::= DESC */
-   139,  /* (238) keyword ::= EXPLAIN */
-   139,  /* (239) keyword ::= EVENT */
-   139,  /* (240) keyword ::= FUNCTION */
-   139,  /* (241) keyword ::= HELP */
-   139,  /* (242) keyword ::= USE */
-   139,  /* (243) keyword ::= ANALYZE */
-   139,  /* (244) keyword ::= CHECK */
-   139,  /* (245) keyword ::= CHECKSUM */
-   139,  /* (246) keyword ::= OPTIMIZE */
-   139,  /* (247) keyword ::= REPAIR */
-   139,  /* (248) keyword ::= INSTALL */
-   139,  /* (249) keyword ::= INDEX */
-   139,  /* (250) keyword ::= INSTANCE */
-   139,  /* (251) keyword ::= UNINSTALL */
-   139,  /* (252) keyword ::= CLONE */
-   139,  /* (253) keyword ::= CACHE */
-   139,  /* (254) keyword ::= FLUSH */
-   139,  /* (255) keyword ::= KILL */
-   139,  /* (256) keyword ::= RESTART */
-   139,  /* (257) keyword ::= SHUTDOWN */
-   139,  /* (258) keyword ::= GET */
-   139,  /* (259) keyword ::= SIGNAL */
-   139,  /* (260) keyword ::= RESIGNAL */
-   139,  /* (261) keyword ::= IF */
-   139,  /* (262) keyword ::= ELSEIF */
-   139,  /* (263) keyword ::= LOOP */
-   139,  /* (264) keyword ::= REPEAT */
-   139,  /* (265) keyword ::= UNTIL */
-   139,  /* (266) keyword ::= WHILE */
-   139,  /* (267) keyword ::= CASE */
-   139,  /* (268) keyword ::= WHEN */
-   139,  /* (269) keyword ::= TRIGGER */
-   139,  /* (270) keyword ::= DECLARE */
-   139,  /* (271) keyword ::= OPEN */
-   139,  /* (272) keyword ::= FETCH */
-   139,  /* (273) keyword ::= CLOSE */
-   139,  /* (274) keyword ::= RETURN */
-   139,  /* (275) keyword ::= LEAVE */
-   139,  /* (276) keyword ::= ITERATE */
-   139,  /* (277) keyword ::= FROM */
-   139,  /* (278) keyword ::= USER */
-   139,  /* (279) keyword ::= VIEW */
-   139,  /* (280) keyword ::= HAVING */
-   139,  /* (281) keyword ::= ELSE */
-   139,  /* (282) keyword ::= END */
-   139,  /* (283) keyword ::= AGGREGATE */
-   139,  /* (284) keyword ::= ALGORITHM */
-   139,  /* (285) keyword ::= DEFINER */
-   139,  /* (286) keyword ::= FULLTEXT */
-   139,  /* (287) keyword ::= LOGFILE */
-   139,  /* (288) keyword ::= OR */
-   139,  /* (289) keyword ::= RESOURCE */
-   139,  /* (290) keyword ::= SECURITY */
-   139,  /* (291) keyword ::= SQL */
-   139,  /* (292) keyword ::= SPATIAL */
-   139,  /* (293) keyword ::= TEMPORARY */
-   139,  /* (294) keyword ::= UNDO */
-   139,  /* (295) keyword ::= UNIQUE */
-   132,  /* (296) keyword_not_select_clause ::= SELECT */
-   132,  /* (297) keyword_not_select_clause ::= WITH */
-   132,  /* (298) keyword_not_select_clause ::= INSERT */
-   132,  /* (299) keyword_not_select_clause ::= REPLACE */
-   132,  /* (300) keyword_not_select_clause ::= UPDATE */
-   132,  /* (301) keyword_not_select_clause ::= DELETE */
-   132,  /* (302) keyword_not_select_clause ::= CREATE */
-   132,  /* (303) keyword_not_select_clause ::= DATABASE */
-   132,  /* (304) keyword_not_select_clause ::= ALTER */
-   132,  /* (305) keyword_not_select_clause ::= DROP */
-   132,  /* (306) keyword_not_select_clause ::= TRUNCATE */
-   132,  /* (307) keyword_not_select_clause ::= RENAME */
-   132,  /* (308) keyword_not_select_clause ::= CALL */
-   132,  /* (309) keyword_not_select_clause ::= DO */
-   132,  /* (310) keyword_not_select_clause ::= LOAD */
-   132,  /* (311) keyword_not_select_clause ::= TABLE */
-   132,  /* (312) keyword_not_select_clause ::= TABLES */
-   132,  /* (313) keyword_not_select_clause ::= TABLESPACE */
-   132,  /* (314) keyword_not_select_clause ::= VALUES */
-   132,  /* (315) keyword_not_select_clause ::= HANDLER */
-   132,  /* (316) keyword_not_select_clause ::= IMPORT */
-   132,  /* (317) keyword_not_select_clause ::= START */
-   132,  /* (318) keyword_not_select_clause ::= BEGIN */
-   132,  /* (319) keyword_not_select_clause ::= COMMIT */
-   132,  /* (320) keyword_not_select_clause ::= ROLLBACK */
-   132,  /* (321) keyword_not_select_clause ::= SAVEPOINT */
-   132,  /* (322) keyword_not_select_clause ::= RELEASE */
-   132,  /* (323) keyword_not_select_clause ::= SET */
-   132,  /* (324) keyword_not_select_clause ::= LOCK */
-   132,  /* (325) keyword_not_select_clause ::= UNLOCK */
-   132,  /* (326) keyword_not_select_clause ::= XA */
-   132,  /* (327) keyword_not_select_clause ::= BINLOG */
-   132,  /* (328) keyword_not_select_clause ::= PURGE */
-   132,  /* (329) keyword_not_select_clause ::= RESET */
-   132,  /* (330) keyword_not_select_clause ::= CHANGE */
-   132,  /* (331) keyword_not_select_clause ::= PREPARE */
-   132,  /* (332) keyword_not_select_clause ::= PROCEDURE */
-   132,  /* (333) keyword_not_select_clause ::= EXECUTE */
-   132,  /* (334) keyword_not_select_clause ::= DEALLOCATE */
-   132,  /* (335) keyword_not_select_clause ::= GRANT */
-   132,  /* (336) keyword_not_select_clause ::= REVOKE */
-   132,  /* (337) keyword_not_select_clause ::= ROLE */
-   132,  /* (338) keyword_not_select_clause ::= SHOW */
-   132,  /* (339) keyword_not_select_clause ::= SCHEMA */
-   132,  /* (340) keyword_not_select_clause ::= SERVER */
-   132,  /* (341) keyword_not_select_clause ::= DESCRIBE */
-   132,  /* (342) keyword_not_select_clause ::= DESC */
-   132,  /* (343) keyword_not_select_clause ::= EXPLAIN */
-   132,  /* (344) keyword_not_select_clause ::= EVENT */
-   132,  /* (345) keyword_not_select_clause ::= FUNCTION */
-   132,  /* (346) keyword_not_select_clause ::= HELP */
-   132,  /* (347) keyword_not_select_clause ::= USE */
-   132,  /* (348) keyword_not_select_clause ::= ANALYZE */
-   132,  /* (349) keyword_not_select_clause ::= CHECK */
-   132,  /* (350) keyword_not_select_clause ::= CHECKSUM */
-   132,  /* (351) keyword_not_select_clause ::= OPTIMIZE */
-   132,  /* (352) keyword_not_select_clause ::= REPAIR */
-   132,  /* (353) keyword_not_select_clause ::= INSTALL */
-   132,  /* (354) keyword_not_select_clause ::= INDEX */
-   132,  /* (355) keyword_not_select_clause ::= INSTANCE */
-   132,  /* (356) keyword_not_select_clause ::= UNINSTALL */
-   132,  /* (357) keyword_not_select_clause ::= CLONE */
-   132,  /* (358) keyword_not_select_clause ::= CACHE */
-   132,  /* (359) keyword_not_select_clause ::= FLUSH */
-   132,  /* (360) keyword_not_select_clause ::= KILL */
-   132,  /* (361) keyword_not_select_clause ::= RESTART */
-   132,  /* (362) keyword_not_select_clause ::= SHUTDOWN */
-   132,  /* (363) keyword_not_select_clause ::= GET */
-   132,  /* (364) keyword_not_select_clause ::= SIGNAL */
-   132,  /* (365) keyword_not_select_clause ::= RESIGNAL */
-   132,  /* (366) keyword_not_select_clause ::= IF */
-   132,  /* (367) keyword_not_select_clause ::= ELSEIF */
-   132,  /* (368) keyword_not_select_clause ::= LOOP */
-   132,  /* (369) keyword_not_select_clause ::= REPEAT */
-   132,  /* (370) keyword_not_select_clause ::= UNTIL */
-   132,  /* (371) keyword_not_select_clause ::= WHILE */
-   132,  /* (372) keyword_not_select_clause ::= CASE */
-   132,  /* (373) keyword_not_select_clause ::= WHEN */
-   132,  /* (374) keyword_not_select_clause ::= TRIGGER */
-   132,  /* (375) keyword_not_select_clause ::= DECLARE */
-   132,  /* (376) keyword_not_select_clause ::= OPEN */
-   132,  /* (377) keyword_not_select_clause ::= FETCH */
-   132,  /* (378) keyword_not_select_clause ::= CLOSE */
-   132,  /* (379) keyword_not_select_clause ::= RETURN */
-   132,  /* (380) keyword_not_select_clause ::= LEAVE */
-   132,  /* (381) keyword_not_select_clause ::= ITERATE */
-   132,  /* (382) keyword_not_select_clause ::= USER */
-   132,  /* (383) keyword_not_select_clause ::= VIEW */
-   132,  /* (384) keyword_not_select_clause ::= ELSE */
-   132,  /* (385) keyword_not_select_clause ::= END */
-   132,  /* (386) keyword_not_select_clause ::= AGGREGATE */
-   132,  /* (387) keyword_not_select_clause ::= ALGORITHM */
-   132,  /* (388) keyword_not_select_clause ::= DEFINER */
-   132,  /* (389) keyword_not_select_clause ::= FULLTEXT */
-   132,  /* (390) keyword_not_select_clause ::= LOGFILE */
-   132,  /* (391) keyword_not_select_clause ::= OR */
-   132,  /* (392) keyword_not_select_clause ::= RESOURCE */
-   132,  /* (393) keyword_not_select_clause ::= SECURITY */
-   132,  /* (394) keyword_not_select_clause ::= SQL */
-   132,  /* (395) keyword_not_select_clause ::= SPATIAL */
-   132,  /* (396) keyword_not_select_clause ::= TEMPORARY */
-   132,  /* (397) keyword_not_select_clause ::= UNDO */
-   132,  /* (398) keyword_not_select_clause ::= UNIQUE */
+   122,  /* (103) statement ::= rename_statement */
+   122,  /* (104) statement ::= truncate_statement */
+   131,  /* (105) select_tail ::= select_first_token */
+   131,  /* (106) select_tail ::= select_tail statement_token */
+   132,  /* (107) select_first_token ::= ATOM */
+   132,  /* (108) select_first_token ::= LABEL */
+   132,  /* (109) select_first_token ::= keyword_not_select_clause */
+   132,  /* (110) select_first_token ::= LP */
+   132,  /* (111) select_first_token ::= RP */
+   132,  /* (112) select_first_token ::= LB */
+   132,  /* (113) select_first_token ::= RB */
+   132,  /* (114) select_first_token ::= LC */
+   132,  /* (115) select_first_token ::= RC */
+   135,  /* (116) create_tail ::= create_first_token required_statement_tail */
+   136,  /* (117) create_first_token ::= TABLE */
+   136,  /* (118) create_first_token ::= TEMPORARY */
+   136,  /* (119) create_first_token ::= VIEW */
+   136,  /* (120) create_first_token ::= OR */
+   136,  /* (121) create_first_token ::= ALGORITHM */
+   136,  /* (122) create_first_token ::= SQL */
+   136,  /* (123) create_first_token ::= DEFINER */
+   136,  /* (124) create_first_token ::= DATABASE */
+   136,  /* (125) create_first_token ::= SCHEMA */
+   136,  /* (126) create_first_token ::= INDEX */
+   136,  /* (127) create_first_token ::= UNIQUE */
+   136,  /* (128) create_first_token ::= FULLTEXT */
+   136,  /* (129) create_first_token ::= SPATIAL */
+   136,  /* (130) create_first_token ::= EVENT */
+   136,  /* (131) create_first_token ::= FUNCTION */
+   136,  /* (132) create_first_token ::= AGGREGATE */
+   136,  /* (133) create_first_token ::= PROCEDURE */
+   136,  /* (134) create_first_token ::= TRIGGER */
+   136,  /* (135) create_first_token ::= USER */
+   136,  /* (136) create_first_token ::= ROLE */
+   136,  /* (137) create_first_token ::= RESOURCE */
+   136,  /* (138) create_first_token ::= SERVER */
+   136,  /* (139) create_first_token ::= LOGFILE */
+   136,  /* (140) create_first_token ::= TABLESPACE */
+   136,  /* (141) create_first_token ::= UNDO */
+   137,  /* (142) drop_tail ::= drop_first_token required_statement_tail */
+   138,  /* (143) drop_first_token ::= TABLE */
+   138,  /* (144) drop_first_token ::= TABLES */
+   138,  /* (145) drop_first_token ::= TEMPORARY */
+   138,  /* (146) drop_first_token ::= DATABASE */
+   138,  /* (147) drop_first_token ::= SCHEMA */
+   138,  /* (148) drop_first_token ::= VIEW */
+   138,  /* (149) drop_first_token ::= EVENT */
+   138,  /* (150) drop_first_token ::= FUNCTION */
+   138,  /* (151) drop_first_token ::= PROCEDURE */
+   138,  /* (152) drop_first_token ::= PREPARE */
+   138,  /* (153) drop_first_token ::= TRIGGER */
+   138,  /* (154) drop_first_token ::= USER */
+   138,  /* (155) drop_first_token ::= ROLE */
+   138,  /* (156) drop_first_token ::= SERVER */
+   138,  /* (157) drop_first_token ::= INDEX */
+   138,  /* (158) drop_first_token ::= LOGFILE */
+   138,  /* (159) drop_first_token ::= TABLESPACE */
+   138,  /* (160) drop_first_token ::= UNDO */
+   138,  /* (161) drop_first_token ::= SPATIAL */
+   138,  /* (162) drop_first_token ::= RESOURCE */
+   139,  /* (163) alter_tail ::= alter_first_token required_statement_tail */
+   140,  /* (164) alter_first_token ::= TABLE */
+   140,  /* (165) alter_first_token ::= ALGORITHM */
+   140,  /* (166) alter_first_token ::= DATABASE */
+   140,  /* (167) alter_first_token ::= DEFINER */
+   140,  /* (168) alter_first_token ::= SCHEMA */
+   140,  /* (169) alter_first_token ::= VIEW */
+   140,  /* (170) alter_first_token ::= EVENT */
+   140,  /* (171) alter_first_token ::= FUNCTION */
+   140,  /* (172) alter_first_token ::= PROCEDURE */
+   140,  /* (173) alter_first_token ::= USER */
+   140,  /* (174) alter_first_token ::= INSTANCE */
+   140,  /* (175) alter_first_token ::= LOGFILE */
+   140,  /* (176) alter_first_token ::= RESOURCE */
+   140,  /* (177) alter_first_token ::= SERVER */
+   140,  /* (178) alter_first_token ::= TABLESPACE */
+   140,  /* (179) alter_first_token ::= UNDO */
+   141,  /* (180) rename_tail ::= rename_first_token required_statement_tail */
+   142,  /* (181) rename_first_token ::= TABLE */
+   142,  /* (182) rename_first_token ::= TABLES */
+   142,  /* (183) rename_first_token ::= USER */
+   143,  /* (184) truncate_tail ::= TABLE required_statement_tail */
+   143,  /* (185) truncate_tail ::= truncate_table_name statement_tail */
+   144,  /* (186) truncate_table_name ::= ATOM */
+   144,  /* (187) truncate_table_name ::= LABEL */
+   130,  /* (188) statement_tail ::= */
+   130,  /* (189) statement_tail ::= statement_tail statement_token */
+   129,  /* (190) required_statement_tail ::= statement_token */
+   129,  /* (191) required_statement_tail ::= required_statement_tail statement_token */
+   133,  /* (192) statement_token ::= ATOM */
+   133,  /* (193) statement_token ::= LABEL */
+   133,  /* (194) statement_token ::= keyword */
+   133,  /* (195) statement_token ::= LP */
+   133,  /* (196) statement_token ::= RP */
+   133,  /* (197) statement_token ::= LB */
+   133,  /* (198) statement_token ::= RB */
+   133,  /* (199) statement_token ::= LC */
+   133,  /* (200) statement_token ::= RC */
+   145,  /* (201) keyword ::= SELECT */
+   145,  /* (202) keyword ::= WITH */
+   145,  /* (203) keyword ::= INSERT */
+   145,  /* (204) keyword ::= REPLACE */
+   145,  /* (205) keyword ::= UPDATE */
+   145,  /* (206) keyword ::= DELETE */
+   145,  /* (207) keyword ::= CREATE */
+   145,  /* (208) keyword ::= DATABASE */
+   145,  /* (209) keyword ::= ALTER */
+   145,  /* (210) keyword ::= DROP */
+   145,  /* (211) keyword ::= TRUNCATE */
+   145,  /* (212) keyword ::= RENAME */
+   145,  /* (213) keyword ::= CALL */
+   145,  /* (214) keyword ::= DO */
+   145,  /* (215) keyword ::= LOAD */
+   145,  /* (216) keyword ::= TABLE */
+   145,  /* (217) keyword ::= TABLES */
+   145,  /* (218) keyword ::= TABLESPACE */
+   145,  /* (219) keyword ::= VALUES */
+   145,  /* (220) keyword ::= HANDLER */
+   145,  /* (221) keyword ::= IMPORT */
+   145,  /* (222) keyword ::= START */
+   145,  /* (223) keyword ::= BEGIN */
+   145,  /* (224) keyword ::= COMMIT */
+   145,  /* (225) keyword ::= ROLLBACK */
+   145,  /* (226) keyword ::= SAVEPOINT */
+   145,  /* (227) keyword ::= RELEASE */
+   145,  /* (228) keyword ::= SET */
+   145,  /* (229) keyword ::= LOCK */
+   145,  /* (230) keyword ::= UNLOCK */
+   145,  /* (231) keyword ::= XA */
+   145,  /* (232) keyword ::= BINLOG */
+   145,  /* (233) keyword ::= PURGE */
+   145,  /* (234) keyword ::= RESET */
+   145,  /* (235) keyword ::= CHANGE */
+   145,  /* (236) keyword ::= PREPARE */
+   145,  /* (237) keyword ::= PROCEDURE */
+   145,  /* (238) keyword ::= EXECUTE */
+   145,  /* (239) keyword ::= DEALLOCATE */
+   145,  /* (240) keyword ::= GRANT */
+   145,  /* (241) keyword ::= REVOKE */
+   145,  /* (242) keyword ::= ROLE */
+   145,  /* (243) keyword ::= SHOW */
+   145,  /* (244) keyword ::= SCHEMA */
+   145,  /* (245) keyword ::= SERVER */
+   145,  /* (246) keyword ::= DESCRIBE */
+   145,  /* (247) keyword ::= DESC */
+   145,  /* (248) keyword ::= EXPLAIN */
+   145,  /* (249) keyword ::= EVENT */
+   145,  /* (250) keyword ::= FUNCTION */
+   145,  /* (251) keyword ::= HELP */
+   145,  /* (252) keyword ::= USE */
+   145,  /* (253) keyword ::= ANALYZE */
+   145,  /* (254) keyword ::= CHECK */
+   145,  /* (255) keyword ::= CHECKSUM */
+   145,  /* (256) keyword ::= OPTIMIZE */
+   145,  /* (257) keyword ::= REPAIR */
+   145,  /* (258) keyword ::= INSTALL */
+   145,  /* (259) keyword ::= INDEX */
+   145,  /* (260) keyword ::= INSTANCE */
+   145,  /* (261) keyword ::= UNINSTALL */
+   145,  /* (262) keyword ::= CLONE */
+   145,  /* (263) keyword ::= CACHE */
+   145,  /* (264) keyword ::= FLUSH */
+   145,  /* (265) keyword ::= KILL */
+   145,  /* (266) keyword ::= RESTART */
+   145,  /* (267) keyword ::= SHUTDOWN */
+   145,  /* (268) keyword ::= GET */
+   145,  /* (269) keyword ::= SIGNAL */
+   145,  /* (270) keyword ::= RESIGNAL */
+   145,  /* (271) keyword ::= IF */
+   145,  /* (272) keyword ::= ELSEIF */
+   145,  /* (273) keyword ::= LOOP */
+   145,  /* (274) keyword ::= REPEAT */
+   145,  /* (275) keyword ::= UNTIL */
+   145,  /* (276) keyword ::= WHILE */
+   145,  /* (277) keyword ::= CASE */
+   145,  /* (278) keyword ::= WHEN */
+   145,  /* (279) keyword ::= TRIGGER */
+   145,  /* (280) keyword ::= DECLARE */
+   145,  /* (281) keyword ::= OPEN */
+   145,  /* (282) keyword ::= FETCH */
+   145,  /* (283) keyword ::= CLOSE */
+   145,  /* (284) keyword ::= RETURN */
+   145,  /* (285) keyword ::= LEAVE */
+   145,  /* (286) keyword ::= ITERATE */
+   145,  /* (287) keyword ::= FROM */
+   145,  /* (288) keyword ::= USER */
+   145,  /* (289) keyword ::= VIEW */
+   145,  /* (290) keyword ::= HAVING */
+   145,  /* (291) keyword ::= ELSE */
+   145,  /* (292) keyword ::= END */
+   145,  /* (293) keyword ::= AGGREGATE */
+   145,  /* (294) keyword ::= ALGORITHM */
+   145,  /* (295) keyword ::= DEFINER */
+   145,  /* (296) keyword ::= FULLTEXT */
+   145,  /* (297) keyword ::= LOGFILE */
+   145,  /* (298) keyword ::= OR */
+   145,  /* (299) keyword ::= RESOURCE */
+   145,  /* (300) keyword ::= SECURITY */
+   145,  /* (301) keyword ::= SQL */
+   145,  /* (302) keyword ::= SPATIAL */
+   145,  /* (303) keyword ::= TEMPORARY */
+   145,  /* (304) keyword ::= UNDO */
+   145,  /* (305) keyword ::= UNIQUE */
+   134,  /* (306) keyword_not_select_clause ::= SELECT */
+   134,  /* (307) keyword_not_select_clause ::= WITH */
+   134,  /* (308) keyword_not_select_clause ::= INSERT */
+   134,  /* (309) keyword_not_select_clause ::= REPLACE */
+   134,  /* (310) keyword_not_select_clause ::= UPDATE */
+   134,  /* (311) keyword_not_select_clause ::= DELETE */
+   134,  /* (312) keyword_not_select_clause ::= CREATE */
+   134,  /* (313) keyword_not_select_clause ::= DATABASE */
+   134,  /* (314) keyword_not_select_clause ::= ALTER */
+   134,  /* (315) keyword_not_select_clause ::= DROP */
+   134,  /* (316) keyword_not_select_clause ::= TRUNCATE */
+   134,  /* (317) keyword_not_select_clause ::= RENAME */
+   134,  /* (318) keyword_not_select_clause ::= CALL */
+   134,  /* (319) keyword_not_select_clause ::= DO */
+   134,  /* (320) keyword_not_select_clause ::= LOAD */
+   134,  /* (321) keyword_not_select_clause ::= TABLE */
+   134,  /* (322) keyword_not_select_clause ::= TABLES */
+   134,  /* (323) keyword_not_select_clause ::= TABLESPACE */
+   134,  /* (324) keyword_not_select_clause ::= VALUES */
+   134,  /* (325) keyword_not_select_clause ::= HANDLER */
+   134,  /* (326) keyword_not_select_clause ::= IMPORT */
+   134,  /* (327) keyword_not_select_clause ::= START */
+   134,  /* (328) keyword_not_select_clause ::= BEGIN */
+   134,  /* (329) keyword_not_select_clause ::= COMMIT */
+   134,  /* (330) keyword_not_select_clause ::= ROLLBACK */
+   134,  /* (331) keyword_not_select_clause ::= SAVEPOINT */
+   134,  /* (332) keyword_not_select_clause ::= RELEASE */
+   134,  /* (333) keyword_not_select_clause ::= SET */
+   134,  /* (334) keyword_not_select_clause ::= LOCK */
+   134,  /* (335) keyword_not_select_clause ::= UNLOCK */
+   134,  /* (336) keyword_not_select_clause ::= XA */
+   134,  /* (337) keyword_not_select_clause ::= BINLOG */
+   134,  /* (338) keyword_not_select_clause ::= PURGE */
+   134,  /* (339) keyword_not_select_clause ::= RESET */
+   134,  /* (340) keyword_not_select_clause ::= CHANGE */
+   134,  /* (341) keyword_not_select_clause ::= PREPARE */
+   134,  /* (342) keyword_not_select_clause ::= PROCEDURE */
+   134,  /* (343) keyword_not_select_clause ::= EXECUTE */
+   134,  /* (344) keyword_not_select_clause ::= DEALLOCATE */
+   134,  /* (345) keyword_not_select_clause ::= GRANT */
+   134,  /* (346) keyword_not_select_clause ::= REVOKE */
+   134,  /* (347) keyword_not_select_clause ::= ROLE */
+   134,  /* (348) keyword_not_select_clause ::= SHOW */
+   134,  /* (349) keyword_not_select_clause ::= SCHEMA */
+   134,  /* (350) keyword_not_select_clause ::= SERVER */
+   134,  /* (351) keyword_not_select_clause ::= DESCRIBE */
+   134,  /* (352) keyword_not_select_clause ::= DESC */
+   134,  /* (353) keyword_not_select_clause ::= EXPLAIN */
+   134,  /* (354) keyword_not_select_clause ::= EVENT */
+   134,  /* (355) keyword_not_select_clause ::= FUNCTION */
+   134,  /* (356) keyword_not_select_clause ::= HELP */
+   134,  /* (357) keyword_not_select_clause ::= USE */
+   134,  /* (358) keyword_not_select_clause ::= ANALYZE */
+   134,  /* (359) keyword_not_select_clause ::= CHECK */
+   134,  /* (360) keyword_not_select_clause ::= CHECKSUM */
+   134,  /* (361) keyword_not_select_clause ::= OPTIMIZE */
+   134,  /* (362) keyword_not_select_clause ::= REPAIR */
+   134,  /* (363) keyword_not_select_clause ::= INSTALL */
+   134,  /* (364) keyword_not_select_clause ::= INDEX */
+   134,  /* (365) keyword_not_select_clause ::= INSTANCE */
+   134,  /* (366) keyword_not_select_clause ::= UNINSTALL */
+   134,  /* (367) keyword_not_select_clause ::= CLONE */
+   134,  /* (368) keyword_not_select_clause ::= CACHE */
+   134,  /* (369) keyword_not_select_clause ::= FLUSH */
+   134,  /* (370) keyword_not_select_clause ::= KILL */
+   134,  /* (371) keyword_not_select_clause ::= RESTART */
+   134,  /* (372) keyword_not_select_clause ::= SHUTDOWN */
+   134,  /* (373) keyword_not_select_clause ::= GET */
+   134,  /* (374) keyword_not_select_clause ::= SIGNAL */
+   134,  /* (375) keyword_not_select_clause ::= RESIGNAL */
+   134,  /* (376) keyword_not_select_clause ::= IF */
+   134,  /* (377) keyword_not_select_clause ::= ELSEIF */
+   134,  /* (378) keyword_not_select_clause ::= LOOP */
+   134,  /* (379) keyword_not_select_clause ::= REPEAT */
+   134,  /* (380) keyword_not_select_clause ::= UNTIL */
+   134,  /* (381) keyword_not_select_clause ::= WHILE */
+   134,  /* (382) keyword_not_select_clause ::= CASE */
+   134,  /* (383) keyword_not_select_clause ::= WHEN */
+   134,  /* (384) keyword_not_select_clause ::= TRIGGER */
+   134,  /* (385) keyword_not_select_clause ::= DECLARE */
+   134,  /* (386) keyword_not_select_clause ::= OPEN */
+   134,  /* (387) keyword_not_select_clause ::= FETCH */
+   134,  /* (388) keyword_not_select_clause ::= CLOSE */
+   134,  /* (389) keyword_not_select_clause ::= RETURN */
+   134,  /* (390) keyword_not_select_clause ::= LEAVE */
+   134,  /* (391) keyword_not_select_clause ::= ITERATE */
+   134,  /* (392) keyword_not_select_clause ::= USER */
+   134,  /* (393) keyword_not_select_clause ::= VIEW */
+   134,  /* (394) keyword_not_select_clause ::= ELSE */
+   134,  /* (395) keyword_not_select_clause ::= END */
+   134,  /* (396) keyword_not_select_clause ::= AGGREGATE */
+   134,  /* (397) keyword_not_select_clause ::= ALGORITHM */
+   134,  /* (398) keyword_not_select_clause ::= DEFINER */
+   134,  /* (399) keyword_not_select_clause ::= FULLTEXT */
+   134,  /* (400) keyword_not_select_clause ::= LOGFILE */
+   134,  /* (401) keyword_not_select_clause ::= OR */
+   134,  /* (402) keyword_not_select_clause ::= RESOURCE */
+   134,  /* (403) keyword_not_select_clause ::= SECURITY */
+   134,  /* (404) keyword_not_select_clause ::= SQL */
+   134,  /* (405) keyword_not_select_clause ::= SPATIAL */
+   134,  /* (406) keyword_not_select_clause ::= TEMPORARY */
+   134,  /* (407) keyword_not_select_clause ::= UNDO */
+   134,  /* (408) keyword_not_select_clause ::= UNIQUE */
 };
 
 /* For rule J, yyRuleInfoNRhs[J] contains the negative of the number
@@ -2169,58 +2203,58 @@ static const signed char yyRuleInfoNRhs[] = {
    -1,  /* (13) required_tail_start ::= REPLACE */
    -1,  /* (14) required_tail_start ::= UPDATE */
    -1,  /* (15) required_tail_start ::= DELETE */
-   -1,  /* (16) required_tail_start ::= TRUNCATE */
-   -1,  /* (17) required_tail_start ::= RENAME */
-   -1,  /* (18) required_tail_start ::= CALL */
-   -1,  /* (19) required_tail_start ::= DO */
-   -1,  /* (20) required_tail_start ::= LOAD */
-   -1,  /* (21) required_tail_start ::= TABLE */
-   -1,  /* (22) required_tail_start ::= VALUES */
-   -1,  /* (23) required_tail_start ::= HANDLER */
-   -1,  /* (24) required_tail_start ::= IMPORT */
-   -1,  /* (25) required_tail_start ::= START */
-   -1,  /* (26) required_tail_start ::= SAVEPOINT */
-   -1,  /* (27) required_tail_start ::= RELEASE */
-   -1,  /* (28) required_tail_start ::= SET */
-   -1,  /* (29) required_tail_start ::= LOCK */
-   -1,  /* (30) required_tail_start ::= UNLOCK */
-   -1,  /* (31) required_tail_start ::= XA */
-   -1,  /* (32) required_tail_start ::= BINLOG */
-   -1,  /* (33) required_tail_start ::= PURGE */
-   -1,  /* (34) required_tail_start ::= RESET */
-   -1,  /* (35) required_tail_start ::= CHANGE */
-   -1,  /* (36) required_tail_start ::= PREPARE */
-   -1,  /* (37) required_tail_start ::= EXECUTE */
-   -1,  /* (38) required_tail_start ::= DEALLOCATE */
-   -1,  /* (39) required_tail_start ::= GRANT */
-   -1,  /* (40) required_tail_start ::= REVOKE */
-   -1,  /* (41) required_tail_start ::= SHOW */
-   -1,  /* (42) required_tail_start ::= DESCRIBE */
-   -1,  /* (43) required_tail_start ::= DESC */
-   -1,  /* (44) required_tail_start ::= EXPLAIN */
-   -1,  /* (45) required_tail_start ::= HELP */
-   -1,  /* (46) required_tail_start ::= USE */
-   -1,  /* (47) required_tail_start ::= ANALYZE */
-   -1,  /* (48) required_tail_start ::= CHECK */
-   -1,  /* (49) required_tail_start ::= CHECKSUM */
-   -1,  /* (50) required_tail_start ::= OPTIMIZE */
-   -1,  /* (51) required_tail_start ::= REPAIR */
-   -1,  /* (52) required_tail_start ::= INSTALL */
-   -1,  /* (53) required_tail_start ::= UNINSTALL */
-   -1,  /* (54) required_tail_start ::= CLONE */
-   -1,  /* (55) required_tail_start ::= CACHE */
-   -1,  /* (56) required_tail_start ::= KILL */
-   -1,  /* (57) required_tail_start ::= GET */
-   -1,  /* (58) required_tail_start ::= SIGNAL */
-   -1,  /* (59) required_tail_start ::= IF */
-   -1,  /* (60) required_tail_start ::= ELSEIF */
-   -1,  /* (61) required_tail_start ::= RETURN */
-   -1,  /* (62) required_tail_start ::= LEAVE */
-   -1,  /* (63) required_tail_start ::= ITERATE */
-   -2,  /* (64) select_statement ::= SELECT select_tail */
-   -2,  /* (65) create_statement ::= CREATE create_tail */
-   -2,  /* (66) drop_statement ::= DROP drop_tail */
-   -2,  /* (67) alter_statement ::= ALTER alter_tail */
+   -1,  /* (16) required_tail_start ::= CALL */
+   -1,  /* (17) required_tail_start ::= DO */
+   -1,  /* (18) required_tail_start ::= LOAD */
+   -1,  /* (19) required_tail_start ::= TABLE */
+   -1,  /* (20) required_tail_start ::= VALUES */
+   -1,  /* (21) required_tail_start ::= HANDLER */
+   -1,  /* (22) required_tail_start ::= IMPORT */
+   -1,  /* (23) required_tail_start ::= START */
+   -1,  /* (24) required_tail_start ::= SAVEPOINT */
+   -1,  /* (25) required_tail_start ::= RELEASE */
+   -1,  /* (26) required_tail_start ::= SET */
+   -1,  /* (27) required_tail_start ::= LOCK */
+   -1,  /* (28) required_tail_start ::= UNLOCK */
+   -1,  /* (29) required_tail_start ::= XA */
+   -1,  /* (30) required_tail_start ::= BINLOG */
+   -1,  /* (31) required_tail_start ::= PURGE */
+   -1,  /* (32) required_tail_start ::= RESET */
+   -1,  /* (33) required_tail_start ::= CHANGE */
+   -1,  /* (34) required_tail_start ::= PREPARE */
+   -1,  /* (35) required_tail_start ::= EXECUTE */
+   -1,  /* (36) required_tail_start ::= DEALLOCATE */
+   -1,  /* (37) required_tail_start ::= GRANT */
+   -1,  /* (38) required_tail_start ::= REVOKE */
+   -1,  /* (39) required_tail_start ::= SHOW */
+   -1,  /* (40) required_tail_start ::= DESCRIBE */
+   -1,  /* (41) required_tail_start ::= DESC */
+   -1,  /* (42) required_tail_start ::= EXPLAIN */
+   -1,  /* (43) required_tail_start ::= HELP */
+   -1,  /* (44) required_tail_start ::= USE */
+   -1,  /* (45) required_tail_start ::= ANALYZE */
+   -1,  /* (46) required_tail_start ::= CHECK */
+   -1,  /* (47) required_tail_start ::= CHECKSUM */
+   -1,  /* (48) required_tail_start ::= OPTIMIZE */
+   -1,  /* (49) required_tail_start ::= REPAIR */
+   -1,  /* (50) required_tail_start ::= INSTALL */
+   -1,  /* (51) required_tail_start ::= UNINSTALL */
+   -1,  /* (52) required_tail_start ::= CLONE */
+   -1,  /* (53) required_tail_start ::= CACHE */
+   -1,  /* (54) required_tail_start ::= KILL */
+   -1,  /* (55) required_tail_start ::= GET */
+   -1,  /* (56) required_tail_start ::= SIGNAL */
+   -1,  /* (57) required_tail_start ::= IF */
+   -1,  /* (58) required_tail_start ::= ELSEIF */
+   -1,  /* (59) required_tail_start ::= RETURN */
+   -1,  /* (60) required_tail_start ::= LEAVE */
+   -1,  /* (61) required_tail_start ::= ITERATE */
+   -2,  /* (62) select_statement ::= SELECT select_tail */
+   -2,  /* (63) create_statement ::= CREATE create_tail */
+   -2,  /* (64) drop_statement ::= DROP drop_tail */
+   -2,  /* (65) alter_statement ::= ALTER alter_tail */
+   -2,  /* (66) rename_statement ::= RENAME rename_tail */
+   -2,  /* (67) truncate_statement ::= TRUNCATE truncate_tail */
    -1,  /* (68) optional_tail_start ::= BEGIN */
    -1,  /* (69) optional_tail_start ::= COMMIT */
    -1,  /* (70) optional_tail_start ::= ROLLBACK */
@@ -2256,302 +2290,312 @@ static const signed char yyRuleInfoNRhs[] = {
    -1,  /* (100) statement ::= create_statement */
    -1,  /* (101) statement ::= drop_statement */
    -1,  /* (102) statement ::= alter_statement */
-   -1,  /* (103) select_tail ::= select_first_token */
-   -2,  /* (104) select_tail ::= select_tail statement_token */
-   -1,  /* (105) select_first_token ::= ATOM */
-   -1,  /* (106) select_first_token ::= LABEL */
-   -1,  /* (107) select_first_token ::= keyword_not_select_clause */
-   -1,  /* (108) select_first_token ::= LP */
-   -1,  /* (109) select_first_token ::= RP */
-   -1,  /* (110) select_first_token ::= LB */
-   -1,  /* (111) select_first_token ::= RB */
-   -1,  /* (112) select_first_token ::= LC */
-   -1,  /* (113) select_first_token ::= RC */
-   -2,  /* (114) create_tail ::= create_first_token required_statement_tail */
-   -1,  /* (115) create_first_token ::= TABLE */
-   -1,  /* (116) create_first_token ::= TEMPORARY */
-   -1,  /* (117) create_first_token ::= VIEW */
-   -1,  /* (118) create_first_token ::= OR */
-   -1,  /* (119) create_first_token ::= ALGORITHM */
-   -1,  /* (120) create_first_token ::= SQL */
-   -1,  /* (121) create_first_token ::= DEFINER */
-   -1,  /* (122) create_first_token ::= DATABASE */
-   -1,  /* (123) create_first_token ::= SCHEMA */
-   -1,  /* (124) create_first_token ::= INDEX */
-   -1,  /* (125) create_first_token ::= UNIQUE */
-   -1,  /* (126) create_first_token ::= FULLTEXT */
-   -1,  /* (127) create_first_token ::= SPATIAL */
-   -1,  /* (128) create_first_token ::= EVENT */
-   -1,  /* (129) create_first_token ::= FUNCTION */
-   -1,  /* (130) create_first_token ::= AGGREGATE */
-   -1,  /* (131) create_first_token ::= PROCEDURE */
-   -1,  /* (132) create_first_token ::= TRIGGER */
-   -1,  /* (133) create_first_token ::= USER */
-   -1,  /* (134) create_first_token ::= ROLE */
-   -1,  /* (135) create_first_token ::= RESOURCE */
-   -1,  /* (136) create_first_token ::= SERVER */
-   -1,  /* (137) create_first_token ::= LOGFILE */
-   -1,  /* (138) create_first_token ::= TABLESPACE */
-   -1,  /* (139) create_first_token ::= UNDO */
-   -2,  /* (140) drop_tail ::= drop_first_token required_statement_tail */
-   -1,  /* (141) drop_first_token ::= TABLE */
-   -1,  /* (142) drop_first_token ::= TABLES */
-   -1,  /* (143) drop_first_token ::= TEMPORARY */
-   -1,  /* (144) drop_first_token ::= DATABASE */
-   -1,  /* (145) drop_first_token ::= SCHEMA */
-   -1,  /* (146) drop_first_token ::= VIEW */
-   -1,  /* (147) drop_first_token ::= EVENT */
-   -1,  /* (148) drop_first_token ::= FUNCTION */
-   -1,  /* (149) drop_first_token ::= PROCEDURE */
-   -1,  /* (150) drop_first_token ::= PREPARE */
-   -1,  /* (151) drop_first_token ::= TRIGGER */
-   -1,  /* (152) drop_first_token ::= USER */
-   -1,  /* (153) drop_first_token ::= ROLE */
-   -1,  /* (154) drop_first_token ::= SERVER */
-   -1,  /* (155) drop_first_token ::= INDEX */
-   -1,  /* (156) drop_first_token ::= LOGFILE */
-   -1,  /* (157) drop_first_token ::= TABLESPACE */
-   -1,  /* (158) drop_first_token ::= UNDO */
-   -1,  /* (159) drop_first_token ::= SPATIAL */
-   -1,  /* (160) drop_first_token ::= RESOURCE */
-   -2,  /* (161) alter_tail ::= alter_first_token required_statement_tail */
-   -1,  /* (162) alter_first_token ::= TABLE */
-   -1,  /* (163) alter_first_token ::= ALGORITHM */
-   -1,  /* (164) alter_first_token ::= DATABASE */
-   -1,  /* (165) alter_first_token ::= DEFINER */
-   -1,  /* (166) alter_first_token ::= SCHEMA */
-   -1,  /* (167) alter_first_token ::= VIEW */
-   -1,  /* (168) alter_first_token ::= EVENT */
-   -1,  /* (169) alter_first_token ::= FUNCTION */
-   -1,  /* (170) alter_first_token ::= PROCEDURE */
-   -1,  /* (171) alter_first_token ::= USER */
-   -1,  /* (172) alter_first_token ::= INSTANCE */
-   -1,  /* (173) alter_first_token ::= LOGFILE */
-   -1,  /* (174) alter_first_token ::= RESOURCE */
-   -1,  /* (175) alter_first_token ::= SERVER */
-   -1,  /* (176) alter_first_token ::= TABLESPACE */
-   -1,  /* (177) alter_first_token ::= UNDO */
-    0,  /* (178) statement_tail ::= */
-   -2,  /* (179) statement_tail ::= statement_tail statement_token */
-   -1,  /* (180) required_statement_tail ::= statement_token */
-   -2,  /* (181) required_statement_tail ::= required_statement_tail statement_token */
-   -1,  /* (182) statement_token ::= ATOM */
-   -1,  /* (183) statement_token ::= LABEL */
-   -1,  /* (184) statement_token ::= keyword */
-   -1,  /* (185) statement_token ::= LP */
-   -1,  /* (186) statement_token ::= RP */
-   -1,  /* (187) statement_token ::= LB */
-   -1,  /* (188) statement_token ::= RB */
-   -1,  /* (189) statement_token ::= LC */
-   -1,  /* (190) statement_token ::= RC */
-   -1,  /* (191) keyword ::= SELECT */
-   -1,  /* (192) keyword ::= WITH */
-   -1,  /* (193) keyword ::= INSERT */
-   -1,  /* (194) keyword ::= REPLACE */
-   -1,  /* (195) keyword ::= UPDATE */
-   -1,  /* (196) keyword ::= DELETE */
-   -1,  /* (197) keyword ::= CREATE */
-   -1,  /* (198) keyword ::= DATABASE */
-   -1,  /* (199) keyword ::= ALTER */
-   -1,  /* (200) keyword ::= DROP */
-   -1,  /* (201) keyword ::= TRUNCATE */
-   -1,  /* (202) keyword ::= RENAME */
-   -1,  /* (203) keyword ::= CALL */
-   -1,  /* (204) keyword ::= DO */
-   -1,  /* (205) keyword ::= LOAD */
-   -1,  /* (206) keyword ::= TABLE */
-   -1,  /* (207) keyword ::= TABLES */
-   -1,  /* (208) keyword ::= TABLESPACE */
-   -1,  /* (209) keyword ::= VALUES */
-   -1,  /* (210) keyword ::= HANDLER */
-   -1,  /* (211) keyword ::= IMPORT */
-   -1,  /* (212) keyword ::= START */
-   -1,  /* (213) keyword ::= BEGIN */
-   -1,  /* (214) keyword ::= COMMIT */
-   -1,  /* (215) keyword ::= ROLLBACK */
-   -1,  /* (216) keyword ::= SAVEPOINT */
-   -1,  /* (217) keyword ::= RELEASE */
-   -1,  /* (218) keyword ::= SET */
-   -1,  /* (219) keyword ::= LOCK */
-   -1,  /* (220) keyword ::= UNLOCK */
-   -1,  /* (221) keyword ::= XA */
-   -1,  /* (222) keyword ::= BINLOG */
-   -1,  /* (223) keyword ::= PURGE */
-   -1,  /* (224) keyword ::= RESET */
-   -1,  /* (225) keyword ::= CHANGE */
-   -1,  /* (226) keyword ::= PREPARE */
-   -1,  /* (227) keyword ::= PROCEDURE */
-   -1,  /* (228) keyword ::= EXECUTE */
-   -1,  /* (229) keyword ::= DEALLOCATE */
-   -1,  /* (230) keyword ::= GRANT */
-   -1,  /* (231) keyword ::= REVOKE */
-   -1,  /* (232) keyword ::= ROLE */
-   -1,  /* (233) keyword ::= SHOW */
-   -1,  /* (234) keyword ::= SCHEMA */
-   -1,  /* (235) keyword ::= SERVER */
-   -1,  /* (236) keyword ::= DESCRIBE */
-   -1,  /* (237) keyword ::= DESC */
-   -1,  /* (238) keyword ::= EXPLAIN */
-   -1,  /* (239) keyword ::= EVENT */
-   -1,  /* (240) keyword ::= FUNCTION */
-   -1,  /* (241) keyword ::= HELP */
-   -1,  /* (242) keyword ::= USE */
-   -1,  /* (243) keyword ::= ANALYZE */
-   -1,  /* (244) keyword ::= CHECK */
-   -1,  /* (245) keyword ::= CHECKSUM */
-   -1,  /* (246) keyword ::= OPTIMIZE */
-   -1,  /* (247) keyword ::= REPAIR */
-   -1,  /* (248) keyword ::= INSTALL */
-   -1,  /* (249) keyword ::= INDEX */
-   -1,  /* (250) keyword ::= INSTANCE */
-   -1,  /* (251) keyword ::= UNINSTALL */
-   -1,  /* (252) keyword ::= CLONE */
-   -1,  /* (253) keyword ::= CACHE */
-   -1,  /* (254) keyword ::= FLUSH */
-   -1,  /* (255) keyword ::= KILL */
-   -1,  /* (256) keyword ::= RESTART */
-   -1,  /* (257) keyword ::= SHUTDOWN */
-   -1,  /* (258) keyword ::= GET */
-   -1,  /* (259) keyword ::= SIGNAL */
-   -1,  /* (260) keyword ::= RESIGNAL */
-   -1,  /* (261) keyword ::= IF */
-   -1,  /* (262) keyword ::= ELSEIF */
-   -1,  /* (263) keyword ::= LOOP */
-   -1,  /* (264) keyword ::= REPEAT */
-   -1,  /* (265) keyword ::= UNTIL */
-   -1,  /* (266) keyword ::= WHILE */
-   -1,  /* (267) keyword ::= CASE */
-   -1,  /* (268) keyword ::= WHEN */
-   -1,  /* (269) keyword ::= TRIGGER */
-   -1,  /* (270) keyword ::= DECLARE */
-   -1,  /* (271) keyword ::= OPEN */
-   -1,  /* (272) keyword ::= FETCH */
-   -1,  /* (273) keyword ::= CLOSE */
-   -1,  /* (274) keyword ::= RETURN */
-   -1,  /* (275) keyword ::= LEAVE */
-   -1,  /* (276) keyword ::= ITERATE */
-   -1,  /* (277) keyword ::= FROM */
-   -1,  /* (278) keyword ::= USER */
-   -1,  /* (279) keyword ::= VIEW */
-   -1,  /* (280) keyword ::= HAVING */
-   -1,  /* (281) keyword ::= ELSE */
-   -1,  /* (282) keyword ::= END */
-   -1,  /* (283) keyword ::= AGGREGATE */
-   -1,  /* (284) keyword ::= ALGORITHM */
-   -1,  /* (285) keyword ::= DEFINER */
-   -1,  /* (286) keyword ::= FULLTEXT */
-   -1,  /* (287) keyword ::= LOGFILE */
-   -1,  /* (288) keyword ::= OR */
-   -1,  /* (289) keyword ::= RESOURCE */
-   -1,  /* (290) keyword ::= SECURITY */
-   -1,  /* (291) keyword ::= SQL */
-   -1,  /* (292) keyword ::= SPATIAL */
-   -1,  /* (293) keyword ::= TEMPORARY */
-   -1,  /* (294) keyword ::= UNDO */
-   -1,  /* (295) keyword ::= UNIQUE */
-   -1,  /* (296) keyword_not_select_clause ::= SELECT */
-   -1,  /* (297) keyword_not_select_clause ::= WITH */
-   -1,  /* (298) keyword_not_select_clause ::= INSERT */
-   -1,  /* (299) keyword_not_select_clause ::= REPLACE */
-   -1,  /* (300) keyword_not_select_clause ::= UPDATE */
-   -1,  /* (301) keyword_not_select_clause ::= DELETE */
-   -1,  /* (302) keyword_not_select_clause ::= CREATE */
-   -1,  /* (303) keyword_not_select_clause ::= DATABASE */
-   -1,  /* (304) keyword_not_select_clause ::= ALTER */
-   -1,  /* (305) keyword_not_select_clause ::= DROP */
-   -1,  /* (306) keyword_not_select_clause ::= TRUNCATE */
-   -1,  /* (307) keyword_not_select_clause ::= RENAME */
-   -1,  /* (308) keyword_not_select_clause ::= CALL */
-   -1,  /* (309) keyword_not_select_clause ::= DO */
-   -1,  /* (310) keyword_not_select_clause ::= LOAD */
-   -1,  /* (311) keyword_not_select_clause ::= TABLE */
-   -1,  /* (312) keyword_not_select_clause ::= TABLES */
-   -1,  /* (313) keyword_not_select_clause ::= TABLESPACE */
-   -1,  /* (314) keyword_not_select_clause ::= VALUES */
-   -1,  /* (315) keyword_not_select_clause ::= HANDLER */
-   -1,  /* (316) keyword_not_select_clause ::= IMPORT */
-   -1,  /* (317) keyword_not_select_clause ::= START */
-   -1,  /* (318) keyword_not_select_clause ::= BEGIN */
-   -1,  /* (319) keyword_not_select_clause ::= COMMIT */
-   -1,  /* (320) keyword_not_select_clause ::= ROLLBACK */
-   -1,  /* (321) keyword_not_select_clause ::= SAVEPOINT */
-   -1,  /* (322) keyword_not_select_clause ::= RELEASE */
-   -1,  /* (323) keyword_not_select_clause ::= SET */
-   -1,  /* (324) keyword_not_select_clause ::= LOCK */
-   -1,  /* (325) keyword_not_select_clause ::= UNLOCK */
-   -1,  /* (326) keyword_not_select_clause ::= XA */
-   -1,  /* (327) keyword_not_select_clause ::= BINLOG */
-   -1,  /* (328) keyword_not_select_clause ::= PURGE */
-   -1,  /* (329) keyword_not_select_clause ::= RESET */
-   -1,  /* (330) keyword_not_select_clause ::= CHANGE */
-   -1,  /* (331) keyword_not_select_clause ::= PREPARE */
-   -1,  /* (332) keyword_not_select_clause ::= PROCEDURE */
-   -1,  /* (333) keyword_not_select_clause ::= EXECUTE */
-   -1,  /* (334) keyword_not_select_clause ::= DEALLOCATE */
-   -1,  /* (335) keyword_not_select_clause ::= GRANT */
-   -1,  /* (336) keyword_not_select_clause ::= REVOKE */
-   -1,  /* (337) keyword_not_select_clause ::= ROLE */
-   -1,  /* (338) keyword_not_select_clause ::= SHOW */
-   -1,  /* (339) keyword_not_select_clause ::= SCHEMA */
-   -1,  /* (340) keyword_not_select_clause ::= SERVER */
-   -1,  /* (341) keyword_not_select_clause ::= DESCRIBE */
-   -1,  /* (342) keyword_not_select_clause ::= DESC */
-   -1,  /* (343) keyword_not_select_clause ::= EXPLAIN */
-   -1,  /* (344) keyword_not_select_clause ::= EVENT */
-   -1,  /* (345) keyword_not_select_clause ::= FUNCTION */
-   -1,  /* (346) keyword_not_select_clause ::= HELP */
-   -1,  /* (347) keyword_not_select_clause ::= USE */
-   -1,  /* (348) keyword_not_select_clause ::= ANALYZE */
-   -1,  /* (349) keyword_not_select_clause ::= CHECK */
-   -1,  /* (350) keyword_not_select_clause ::= CHECKSUM */
-   -1,  /* (351) keyword_not_select_clause ::= OPTIMIZE */
-   -1,  /* (352) keyword_not_select_clause ::= REPAIR */
-   -1,  /* (353) keyword_not_select_clause ::= INSTALL */
-   -1,  /* (354) keyword_not_select_clause ::= INDEX */
-   -1,  /* (355) keyword_not_select_clause ::= INSTANCE */
-   -1,  /* (356) keyword_not_select_clause ::= UNINSTALL */
-   -1,  /* (357) keyword_not_select_clause ::= CLONE */
-   -1,  /* (358) keyword_not_select_clause ::= CACHE */
-   -1,  /* (359) keyword_not_select_clause ::= FLUSH */
-   -1,  /* (360) keyword_not_select_clause ::= KILL */
-   -1,  /* (361) keyword_not_select_clause ::= RESTART */
-   -1,  /* (362) keyword_not_select_clause ::= SHUTDOWN */
-   -1,  /* (363) keyword_not_select_clause ::= GET */
-   -1,  /* (364) keyword_not_select_clause ::= SIGNAL */
-   -1,  /* (365) keyword_not_select_clause ::= RESIGNAL */
-   -1,  /* (366) keyword_not_select_clause ::= IF */
-   -1,  /* (367) keyword_not_select_clause ::= ELSEIF */
-   -1,  /* (368) keyword_not_select_clause ::= LOOP */
-   -1,  /* (369) keyword_not_select_clause ::= REPEAT */
-   -1,  /* (370) keyword_not_select_clause ::= UNTIL */
-   -1,  /* (371) keyword_not_select_clause ::= WHILE */
-   -1,  /* (372) keyword_not_select_clause ::= CASE */
-   -1,  /* (373) keyword_not_select_clause ::= WHEN */
-   -1,  /* (374) keyword_not_select_clause ::= TRIGGER */
-   -1,  /* (375) keyword_not_select_clause ::= DECLARE */
-   -1,  /* (376) keyword_not_select_clause ::= OPEN */
-   -1,  /* (377) keyword_not_select_clause ::= FETCH */
-   -1,  /* (378) keyword_not_select_clause ::= CLOSE */
-   -1,  /* (379) keyword_not_select_clause ::= RETURN */
-   -1,  /* (380) keyword_not_select_clause ::= LEAVE */
-   -1,  /* (381) keyword_not_select_clause ::= ITERATE */
-   -1,  /* (382) keyword_not_select_clause ::= USER */
-   -1,  /* (383) keyword_not_select_clause ::= VIEW */
-   -1,  /* (384) keyword_not_select_clause ::= ELSE */
-   -1,  /* (385) keyword_not_select_clause ::= END */
-   -1,  /* (386) keyword_not_select_clause ::= AGGREGATE */
-   -1,  /* (387) keyword_not_select_clause ::= ALGORITHM */
-   -1,  /* (388) keyword_not_select_clause ::= DEFINER */
-   -1,  /* (389) keyword_not_select_clause ::= FULLTEXT */
-   -1,  /* (390) keyword_not_select_clause ::= LOGFILE */
-   -1,  /* (391) keyword_not_select_clause ::= OR */
-   -1,  /* (392) keyword_not_select_clause ::= RESOURCE */
-   -1,  /* (393) keyword_not_select_clause ::= SECURITY */
-   -1,  /* (394) keyword_not_select_clause ::= SQL */
-   -1,  /* (395) keyword_not_select_clause ::= SPATIAL */
-   -1,  /* (396) keyword_not_select_clause ::= TEMPORARY */
-   -1,  /* (397) keyword_not_select_clause ::= UNDO */
-   -1,  /* (398) keyword_not_select_clause ::= UNIQUE */
+   -1,  /* (103) statement ::= rename_statement */
+   -1,  /* (104) statement ::= truncate_statement */
+   -1,  /* (105) select_tail ::= select_first_token */
+   -2,  /* (106) select_tail ::= select_tail statement_token */
+   -1,  /* (107) select_first_token ::= ATOM */
+   -1,  /* (108) select_first_token ::= LABEL */
+   -1,  /* (109) select_first_token ::= keyword_not_select_clause */
+   -1,  /* (110) select_first_token ::= LP */
+   -1,  /* (111) select_first_token ::= RP */
+   -1,  /* (112) select_first_token ::= LB */
+   -1,  /* (113) select_first_token ::= RB */
+   -1,  /* (114) select_first_token ::= LC */
+   -1,  /* (115) select_first_token ::= RC */
+   -2,  /* (116) create_tail ::= create_first_token required_statement_tail */
+   -1,  /* (117) create_first_token ::= TABLE */
+   -1,  /* (118) create_first_token ::= TEMPORARY */
+   -1,  /* (119) create_first_token ::= VIEW */
+   -1,  /* (120) create_first_token ::= OR */
+   -1,  /* (121) create_first_token ::= ALGORITHM */
+   -1,  /* (122) create_first_token ::= SQL */
+   -1,  /* (123) create_first_token ::= DEFINER */
+   -1,  /* (124) create_first_token ::= DATABASE */
+   -1,  /* (125) create_first_token ::= SCHEMA */
+   -1,  /* (126) create_first_token ::= INDEX */
+   -1,  /* (127) create_first_token ::= UNIQUE */
+   -1,  /* (128) create_first_token ::= FULLTEXT */
+   -1,  /* (129) create_first_token ::= SPATIAL */
+   -1,  /* (130) create_first_token ::= EVENT */
+   -1,  /* (131) create_first_token ::= FUNCTION */
+   -1,  /* (132) create_first_token ::= AGGREGATE */
+   -1,  /* (133) create_first_token ::= PROCEDURE */
+   -1,  /* (134) create_first_token ::= TRIGGER */
+   -1,  /* (135) create_first_token ::= USER */
+   -1,  /* (136) create_first_token ::= ROLE */
+   -1,  /* (137) create_first_token ::= RESOURCE */
+   -1,  /* (138) create_first_token ::= SERVER */
+   -1,  /* (139) create_first_token ::= LOGFILE */
+   -1,  /* (140) create_first_token ::= TABLESPACE */
+   -1,  /* (141) create_first_token ::= UNDO */
+   -2,  /* (142) drop_tail ::= drop_first_token required_statement_tail */
+   -1,  /* (143) drop_first_token ::= TABLE */
+   -1,  /* (144) drop_first_token ::= TABLES */
+   -1,  /* (145) drop_first_token ::= TEMPORARY */
+   -1,  /* (146) drop_first_token ::= DATABASE */
+   -1,  /* (147) drop_first_token ::= SCHEMA */
+   -1,  /* (148) drop_first_token ::= VIEW */
+   -1,  /* (149) drop_first_token ::= EVENT */
+   -1,  /* (150) drop_first_token ::= FUNCTION */
+   -1,  /* (151) drop_first_token ::= PROCEDURE */
+   -1,  /* (152) drop_first_token ::= PREPARE */
+   -1,  /* (153) drop_first_token ::= TRIGGER */
+   -1,  /* (154) drop_first_token ::= USER */
+   -1,  /* (155) drop_first_token ::= ROLE */
+   -1,  /* (156) drop_first_token ::= SERVER */
+   -1,  /* (157) drop_first_token ::= INDEX */
+   -1,  /* (158) drop_first_token ::= LOGFILE */
+   -1,  /* (159) drop_first_token ::= TABLESPACE */
+   -1,  /* (160) drop_first_token ::= UNDO */
+   -1,  /* (161) drop_first_token ::= SPATIAL */
+   -1,  /* (162) drop_first_token ::= RESOURCE */
+   -2,  /* (163) alter_tail ::= alter_first_token required_statement_tail */
+   -1,  /* (164) alter_first_token ::= TABLE */
+   -1,  /* (165) alter_first_token ::= ALGORITHM */
+   -1,  /* (166) alter_first_token ::= DATABASE */
+   -1,  /* (167) alter_first_token ::= DEFINER */
+   -1,  /* (168) alter_first_token ::= SCHEMA */
+   -1,  /* (169) alter_first_token ::= VIEW */
+   -1,  /* (170) alter_first_token ::= EVENT */
+   -1,  /* (171) alter_first_token ::= FUNCTION */
+   -1,  /* (172) alter_first_token ::= PROCEDURE */
+   -1,  /* (173) alter_first_token ::= USER */
+   -1,  /* (174) alter_first_token ::= INSTANCE */
+   -1,  /* (175) alter_first_token ::= LOGFILE */
+   -1,  /* (176) alter_first_token ::= RESOURCE */
+   -1,  /* (177) alter_first_token ::= SERVER */
+   -1,  /* (178) alter_first_token ::= TABLESPACE */
+   -1,  /* (179) alter_first_token ::= UNDO */
+   -2,  /* (180) rename_tail ::= rename_first_token required_statement_tail */
+   -1,  /* (181) rename_first_token ::= TABLE */
+   -1,  /* (182) rename_first_token ::= TABLES */
+   -1,  /* (183) rename_first_token ::= USER */
+   -2,  /* (184) truncate_tail ::= TABLE required_statement_tail */
+   -2,  /* (185) truncate_tail ::= truncate_table_name statement_tail */
+   -1,  /* (186) truncate_table_name ::= ATOM */
+   -1,  /* (187) truncate_table_name ::= LABEL */
+    0,  /* (188) statement_tail ::= */
+   -2,  /* (189) statement_tail ::= statement_tail statement_token */
+   -1,  /* (190) required_statement_tail ::= statement_token */
+   -2,  /* (191) required_statement_tail ::= required_statement_tail statement_token */
+   -1,  /* (192) statement_token ::= ATOM */
+   -1,  /* (193) statement_token ::= LABEL */
+   -1,  /* (194) statement_token ::= keyword */
+   -1,  /* (195) statement_token ::= LP */
+   -1,  /* (196) statement_token ::= RP */
+   -1,  /* (197) statement_token ::= LB */
+   -1,  /* (198) statement_token ::= RB */
+   -1,  /* (199) statement_token ::= LC */
+   -1,  /* (200) statement_token ::= RC */
+   -1,  /* (201) keyword ::= SELECT */
+   -1,  /* (202) keyword ::= WITH */
+   -1,  /* (203) keyword ::= INSERT */
+   -1,  /* (204) keyword ::= REPLACE */
+   -1,  /* (205) keyword ::= UPDATE */
+   -1,  /* (206) keyword ::= DELETE */
+   -1,  /* (207) keyword ::= CREATE */
+   -1,  /* (208) keyword ::= DATABASE */
+   -1,  /* (209) keyword ::= ALTER */
+   -1,  /* (210) keyword ::= DROP */
+   -1,  /* (211) keyword ::= TRUNCATE */
+   -1,  /* (212) keyword ::= RENAME */
+   -1,  /* (213) keyword ::= CALL */
+   -1,  /* (214) keyword ::= DO */
+   -1,  /* (215) keyword ::= LOAD */
+   -1,  /* (216) keyword ::= TABLE */
+   -1,  /* (217) keyword ::= TABLES */
+   -1,  /* (218) keyword ::= TABLESPACE */
+   -1,  /* (219) keyword ::= VALUES */
+   -1,  /* (220) keyword ::= HANDLER */
+   -1,  /* (221) keyword ::= IMPORT */
+   -1,  /* (222) keyword ::= START */
+   -1,  /* (223) keyword ::= BEGIN */
+   -1,  /* (224) keyword ::= COMMIT */
+   -1,  /* (225) keyword ::= ROLLBACK */
+   -1,  /* (226) keyword ::= SAVEPOINT */
+   -1,  /* (227) keyword ::= RELEASE */
+   -1,  /* (228) keyword ::= SET */
+   -1,  /* (229) keyword ::= LOCK */
+   -1,  /* (230) keyword ::= UNLOCK */
+   -1,  /* (231) keyword ::= XA */
+   -1,  /* (232) keyword ::= BINLOG */
+   -1,  /* (233) keyword ::= PURGE */
+   -1,  /* (234) keyword ::= RESET */
+   -1,  /* (235) keyword ::= CHANGE */
+   -1,  /* (236) keyword ::= PREPARE */
+   -1,  /* (237) keyword ::= PROCEDURE */
+   -1,  /* (238) keyword ::= EXECUTE */
+   -1,  /* (239) keyword ::= DEALLOCATE */
+   -1,  /* (240) keyword ::= GRANT */
+   -1,  /* (241) keyword ::= REVOKE */
+   -1,  /* (242) keyword ::= ROLE */
+   -1,  /* (243) keyword ::= SHOW */
+   -1,  /* (244) keyword ::= SCHEMA */
+   -1,  /* (245) keyword ::= SERVER */
+   -1,  /* (246) keyword ::= DESCRIBE */
+   -1,  /* (247) keyword ::= DESC */
+   -1,  /* (248) keyword ::= EXPLAIN */
+   -1,  /* (249) keyword ::= EVENT */
+   -1,  /* (250) keyword ::= FUNCTION */
+   -1,  /* (251) keyword ::= HELP */
+   -1,  /* (252) keyword ::= USE */
+   -1,  /* (253) keyword ::= ANALYZE */
+   -1,  /* (254) keyword ::= CHECK */
+   -1,  /* (255) keyword ::= CHECKSUM */
+   -1,  /* (256) keyword ::= OPTIMIZE */
+   -1,  /* (257) keyword ::= REPAIR */
+   -1,  /* (258) keyword ::= INSTALL */
+   -1,  /* (259) keyword ::= INDEX */
+   -1,  /* (260) keyword ::= INSTANCE */
+   -1,  /* (261) keyword ::= UNINSTALL */
+   -1,  /* (262) keyword ::= CLONE */
+   -1,  /* (263) keyword ::= CACHE */
+   -1,  /* (264) keyword ::= FLUSH */
+   -1,  /* (265) keyword ::= KILL */
+   -1,  /* (266) keyword ::= RESTART */
+   -1,  /* (267) keyword ::= SHUTDOWN */
+   -1,  /* (268) keyword ::= GET */
+   -1,  /* (269) keyword ::= SIGNAL */
+   -1,  /* (270) keyword ::= RESIGNAL */
+   -1,  /* (271) keyword ::= IF */
+   -1,  /* (272) keyword ::= ELSEIF */
+   -1,  /* (273) keyword ::= LOOP */
+   -1,  /* (274) keyword ::= REPEAT */
+   -1,  /* (275) keyword ::= UNTIL */
+   -1,  /* (276) keyword ::= WHILE */
+   -1,  /* (277) keyword ::= CASE */
+   -1,  /* (278) keyword ::= WHEN */
+   -1,  /* (279) keyword ::= TRIGGER */
+   -1,  /* (280) keyword ::= DECLARE */
+   -1,  /* (281) keyword ::= OPEN */
+   -1,  /* (282) keyword ::= FETCH */
+   -1,  /* (283) keyword ::= CLOSE */
+   -1,  /* (284) keyword ::= RETURN */
+   -1,  /* (285) keyword ::= LEAVE */
+   -1,  /* (286) keyword ::= ITERATE */
+   -1,  /* (287) keyword ::= FROM */
+   -1,  /* (288) keyword ::= USER */
+   -1,  /* (289) keyword ::= VIEW */
+   -1,  /* (290) keyword ::= HAVING */
+   -1,  /* (291) keyword ::= ELSE */
+   -1,  /* (292) keyword ::= END */
+   -1,  /* (293) keyword ::= AGGREGATE */
+   -1,  /* (294) keyword ::= ALGORITHM */
+   -1,  /* (295) keyword ::= DEFINER */
+   -1,  /* (296) keyword ::= FULLTEXT */
+   -1,  /* (297) keyword ::= LOGFILE */
+   -1,  /* (298) keyword ::= OR */
+   -1,  /* (299) keyword ::= RESOURCE */
+   -1,  /* (300) keyword ::= SECURITY */
+   -1,  /* (301) keyword ::= SQL */
+   -1,  /* (302) keyword ::= SPATIAL */
+   -1,  /* (303) keyword ::= TEMPORARY */
+   -1,  /* (304) keyword ::= UNDO */
+   -1,  /* (305) keyword ::= UNIQUE */
+   -1,  /* (306) keyword_not_select_clause ::= SELECT */
+   -1,  /* (307) keyword_not_select_clause ::= WITH */
+   -1,  /* (308) keyword_not_select_clause ::= INSERT */
+   -1,  /* (309) keyword_not_select_clause ::= REPLACE */
+   -1,  /* (310) keyword_not_select_clause ::= UPDATE */
+   -1,  /* (311) keyword_not_select_clause ::= DELETE */
+   -1,  /* (312) keyword_not_select_clause ::= CREATE */
+   -1,  /* (313) keyword_not_select_clause ::= DATABASE */
+   -1,  /* (314) keyword_not_select_clause ::= ALTER */
+   -1,  /* (315) keyword_not_select_clause ::= DROP */
+   -1,  /* (316) keyword_not_select_clause ::= TRUNCATE */
+   -1,  /* (317) keyword_not_select_clause ::= RENAME */
+   -1,  /* (318) keyword_not_select_clause ::= CALL */
+   -1,  /* (319) keyword_not_select_clause ::= DO */
+   -1,  /* (320) keyword_not_select_clause ::= LOAD */
+   -1,  /* (321) keyword_not_select_clause ::= TABLE */
+   -1,  /* (322) keyword_not_select_clause ::= TABLES */
+   -1,  /* (323) keyword_not_select_clause ::= TABLESPACE */
+   -1,  /* (324) keyword_not_select_clause ::= VALUES */
+   -1,  /* (325) keyword_not_select_clause ::= HANDLER */
+   -1,  /* (326) keyword_not_select_clause ::= IMPORT */
+   -1,  /* (327) keyword_not_select_clause ::= START */
+   -1,  /* (328) keyword_not_select_clause ::= BEGIN */
+   -1,  /* (329) keyword_not_select_clause ::= COMMIT */
+   -1,  /* (330) keyword_not_select_clause ::= ROLLBACK */
+   -1,  /* (331) keyword_not_select_clause ::= SAVEPOINT */
+   -1,  /* (332) keyword_not_select_clause ::= RELEASE */
+   -1,  /* (333) keyword_not_select_clause ::= SET */
+   -1,  /* (334) keyword_not_select_clause ::= LOCK */
+   -1,  /* (335) keyword_not_select_clause ::= UNLOCK */
+   -1,  /* (336) keyword_not_select_clause ::= XA */
+   -1,  /* (337) keyword_not_select_clause ::= BINLOG */
+   -1,  /* (338) keyword_not_select_clause ::= PURGE */
+   -1,  /* (339) keyword_not_select_clause ::= RESET */
+   -1,  /* (340) keyword_not_select_clause ::= CHANGE */
+   -1,  /* (341) keyword_not_select_clause ::= PREPARE */
+   -1,  /* (342) keyword_not_select_clause ::= PROCEDURE */
+   -1,  /* (343) keyword_not_select_clause ::= EXECUTE */
+   -1,  /* (344) keyword_not_select_clause ::= DEALLOCATE */
+   -1,  /* (345) keyword_not_select_clause ::= GRANT */
+   -1,  /* (346) keyword_not_select_clause ::= REVOKE */
+   -1,  /* (347) keyword_not_select_clause ::= ROLE */
+   -1,  /* (348) keyword_not_select_clause ::= SHOW */
+   -1,  /* (349) keyword_not_select_clause ::= SCHEMA */
+   -1,  /* (350) keyword_not_select_clause ::= SERVER */
+   -1,  /* (351) keyword_not_select_clause ::= DESCRIBE */
+   -1,  /* (352) keyword_not_select_clause ::= DESC */
+   -1,  /* (353) keyword_not_select_clause ::= EXPLAIN */
+   -1,  /* (354) keyword_not_select_clause ::= EVENT */
+   -1,  /* (355) keyword_not_select_clause ::= FUNCTION */
+   -1,  /* (356) keyword_not_select_clause ::= HELP */
+   -1,  /* (357) keyword_not_select_clause ::= USE */
+   -1,  /* (358) keyword_not_select_clause ::= ANALYZE */
+   -1,  /* (359) keyword_not_select_clause ::= CHECK */
+   -1,  /* (360) keyword_not_select_clause ::= CHECKSUM */
+   -1,  /* (361) keyword_not_select_clause ::= OPTIMIZE */
+   -1,  /* (362) keyword_not_select_clause ::= REPAIR */
+   -1,  /* (363) keyword_not_select_clause ::= INSTALL */
+   -1,  /* (364) keyword_not_select_clause ::= INDEX */
+   -1,  /* (365) keyword_not_select_clause ::= INSTANCE */
+   -1,  /* (366) keyword_not_select_clause ::= UNINSTALL */
+   -1,  /* (367) keyword_not_select_clause ::= CLONE */
+   -1,  /* (368) keyword_not_select_clause ::= CACHE */
+   -1,  /* (369) keyword_not_select_clause ::= FLUSH */
+   -1,  /* (370) keyword_not_select_clause ::= KILL */
+   -1,  /* (371) keyword_not_select_clause ::= RESTART */
+   -1,  /* (372) keyword_not_select_clause ::= SHUTDOWN */
+   -1,  /* (373) keyword_not_select_clause ::= GET */
+   -1,  /* (374) keyword_not_select_clause ::= SIGNAL */
+   -1,  /* (375) keyword_not_select_clause ::= RESIGNAL */
+   -1,  /* (376) keyword_not_select_clause ::= IF */
+   -1,  /* (377) keyword_not_select_clause ::= ELSEIF */
+   -1,  /* (378) keyword_not_select_clause ::= LOOP */
+   -1,  /* (379) keyword_not_select_clause ::= REPEAT */
+   -1,  /* (380) keyword_not_select_clause ::= UNTIL */
+   -1,  /* (381) keyword_not_select_clause ::= WHILE */
+   -1,  /* (382) keyword_not_select_clause ::= CASE */
+   -1,  /* (383) keyword_not_select_clause ::= WHEN */
+   -1,  /* (384) keyword_not_select_clause ::= TRIGGER */
+   -1,  /* (385) keyword_not_select_clause ::= DECLARE */
+   -1,  /* (386) keyword_not_select_clause ::= OPEN */
+   -1,  /* (387) keyword_not_select_clause ::= FETCH */
+   -1,  /* (388) keyword_not_select_clause ::= CLOSE */
+   -1,  /* (389) keyword_not_select_clause ::= RETURN */
+   -1,  /* (390) keyword_not_select_clause ::= LEAVE */
+   -1,  /* (391) keyword_not_select_clause ::= ITERATE */
+   -1,  /* (392) keyword_not_select_clause ::= USER */
+   -1,  /* (393) keyword_not_select_clause ::= VIEW */
+   -1,  /* (394) keyword_not_select_clause ::= ELSE */
+   -1,  /* (395) keyword_not_select_clause ::= END */
+   -1,  /* (396) keyword_not_select_clause ::= AGGREGATE */
+   -1,  /* (397) keyword_not_select_clause ::= ALGORITHM */
+   -1,  /* (398) keyword_not_select_clause ::= DEFINER */
+   -1,  /* (399) keyword_not_select_clause ::= FULLTEXT */
+   -1,  /* (400) keyword_not_select_clause ::= LOGFILE */
+   -1,  /* (401) keyword_not_select_clause ::= OR */
+   -1,  /* (402) keyword_not_select_clause ::= RESOURCE */
+   -1,  /* (403) keyword_not_select_clause ::= SECURITY */
+   -1,  /* (404) keyword_not_select_clause ::= SQL */
+   -1,  /* (405) keyword_not_select_clause ::= SPATIAL */
+   -1,  /* (406) keyword_not_select_clause ::= TEMPORARY */
+   -1,  /* (407) keyword_not_select_clause ::= UNDO */
+   -1,  /* (408) keyword_not_select_clause ::= UNIQUE */
 };
 
 static void yy_accept(yyParser*);  /* Forward Declaration */
@@ -2596,619 +2640,625 @@ static YYACTIONTYPE yy_reduce(
       case 0: /* input ::= */
 #line 29 "src/parser/mylite_lemon.y"
 { (void)ctx; }
-#line 2600 "src/parser/generated/mylite_lemon.c"
+#line 2644 "src/parser/generated/mylite_lemon.c"
         break;
       case 1: /* input ::= statement_chunks */
 {  yy_destructor(yypParser,120,&yymsp[0].minor);
 #line 30 "src/parser/mylite_lemon.y"
 { (void)ctx; }
-#line 2606 "src/parser/generated/mylite_lemon.c"
+#line 2650 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2: /* statement_chunk ::= SEMI */
 {  yy_destructor(yypParser,1,&yymsp[0].minor);
 #line 35 "src/parser/mylite_lemon.y"
 { mylite_parser_record_empty_statement(ctx); }
-#line 2613 "src/parser/generated/mylite_lemon.c"
+#line 2657 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3: /* statement ::= required_tail_start required_statement_tail */
-#line 42 "src/parser/mylite_lemon.y"
+#line 44 "src/parser/mylite_lemon.y"
 {
-  mylite_parser_record_statement(ctx, yymsp[-1].minor.yy36);
+  mylite_parser_record_statement(ctx, yymsp[-1].minor.yy80);
 }
-#line 2621 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,127,&yymsp[0].minor);
+#line 2665 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,129,&yymsp[0].minor);
         break;
       case 4: /* statement ::= optional_tail_start statement_tail */
       case 6: /* statement ::= permissive_start statement_tail */ yytestcase(yyruleno==6);
-#line 45 "src/parser/mylite_lemon.y"
+#line 47 "src/parser/mylite_lemon.y"
 {
-  mylite_parser_record_statement(ctx, yymsp[-1].minor.yy36);
+  mylite_parser_record_statement(ctx, yymsp[-1].minor.yy80);
 }
-#line 2630 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,128,&yymsp[0].minor);
+#line 2674 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,130,&yymsp[0].minor);
         break;
       case 5: /* statement ::= LABEL statement_start statement_tail */
 {  yy_destructor(yypParser,2,&yymsp[-2].minor);
-#line 48 "src/parser/mylite_lemon.y"
+#line 50 "src/parser/mylite_lemon.y"
 {
-  mylite_parser_record_statement(ctx, yymsp[-1].minor.yy36);
+  mylite_parser_record_statement(ctx, yymsp[-1].minor.yy80);
 }
-#line 2639 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,128,&yymsp[0].minor);
+#line 2683 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,130,&yymsp[0].minor);
 }
         break;
       case 7: /* statement_start ::= SELECT */
 {  yy_destructor(yypParser,3,&yymsp[0].minor);
-#line 55 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_SELECT; }
-#line 2647 "src/parser/generated/mylite_lemon.c"
+#line 57 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_SELECT; }
+#line 2691 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 8: /* statement_start ::= CREATE */
 {  yy_destructor(yypParser,4,&yymsp[0].minor);
-#line 56 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_DDL; }
-#line 2654 "src/parser/generated/mylite_lemon.c"
+#line 58 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_DDL; }
+#line 2698 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 9: /* statement_start ::= required_tail_start */
       case 10: /* statement_start ::= optional_tail_start */ yytestcase(yyruleno==10);
-#line 57 "src/parser/mylite_lemon.y"
-{ yylhsminor.yy36 = yymsp[0].minor.yy36; }
-#line 2661 "src/parser/generated/mylite_lemon.c"
-  yymsp[0].minor.yy36 = yylhsminor.yy36;
+#line 59 "src/parser/mylite_lemon.y"
+{ yylhsminor.yy80 = yymsp[0].minor.yy80; }
+#line 2705 "src/parser/generated/mylite_lemon.c"
+  yymsp[0].minor.yy80 = yylhsminor.yy80;
         break;
       case 11: /* required_tail_start ::= WITH */
 {  yy_destructor(yypParser,5,&yymsp[0].minor);
-#line 60 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_SELECT; }
-#line 2668 "src/parser/generated/mylite_lemon.c"
+#line 62 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_SELECT; }
+#line 2712 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 12: /* required_tail_start ::= INSERT */
 {  yy_destructor(yypParser,6,&yymsp[0].minor);
-#line 61 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_INSERT; }
-#line 2675 "src/parser/generated/mylite_lemon.c"
+#line 63 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_INSERT; }
+#line 2719 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 13: /* required_tail_start ::= REPLACE */
 {  yy_destructor(yypParser,7,&yymsp[0].minor);
-#line 62 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_REPLACE; }
-#line 2682 "src/parser/generated/mylite_lemon.c"
+#line 64 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_REPLACE; }
+#line 2726 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 14: /* required_tail_start ::= UPDATE */
 {  yy_destructor(yypParser,8,&yymsp[0].minor);
-#line 63 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_UPDATE; }
-#line 2689 "src/parser/generated/mylite_lemon.c"
+#line 65 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_UPDATE; }
+#line 2733 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 15: /* required_tail_start ::= DELETE */
 {  yy_destructor(yypParser,9,&yymsp[0].minor);
-#line 64 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_DELETE; }
-#line 2696 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 16: /* required_tail_start ::= TRUNCATE */
-{  yy_destructor(yypParser,10,&yymsp[0].minor);
-#line 65 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_DDL; }
-#line 2703 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 17: /* required_tail_start ::= RENAME */
-{  yy_destructor(yypParser,11,&yymsp[0].minor);
 #line 66 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_DDL; }
-#line 2710 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_DELETE; }
+#line 2740 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 18: /* required_tail_start ::= CALL */
-{  yy_destructor(yypParser,12,&yymsp[0].minor);
+      case 16: /* required_tail_start ::= CALL */
+{  yy_destructor(yypParser,10,&yymsp[0].minor);
 #line 67 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 2717 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 2747 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 19: /* required_tail_start ::= DO */
-{  yy_destructor(yypParser,13,&yymsp[0].minor);
+      case 17: /* required_tail_start ::= DO */
+{  yy_destructor(yypParser,11,&yymsp[0].minor);
 #line 68 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_UTILITY; }
-#line 2724 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_UTILITY; }
+#line 2754 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 20: /* required_tail_start ::= LOAD */
-{  yy_destructor(yypParser,14,&yymsp[0].minor);
+      case 18: /* required_tail_start ::= LOAD */
+{  yy_destructor(yypParser,12,&yymsp[0].minor);
 #line 69 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_UTILITY; }
-#line 2731 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_UTILITY; }
+#line 2761 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 21: /* required_tail_start ::= TABLE */
-{  yy_destructor(yypParser,15,&yymsp[0].minor);
+      case 19: /* required_tail_start ::= TABLE */
+{  yy_destructor(yypParser,13,&yymsp[0].minor);
 #line 70 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_SELECT; }
-#line 2738 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_SELECT; }
+#line 2768 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 22: /* required_tail_start ::= VALUES */
-{  yy_destructor(yypParser,16,&yymsp[0].minor);
+      case 20: /* required_tail_start ::= VALUES */
+{  yy_destructor(yypParser,14,&yymsp[0].minor);
 #line 71 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_SELECT; }
-#line 2745 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_SELECT; }
+#line 2775 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 23: /* required_tail_start ::= HANDLER */
-{  yy_destructor(yypParser,17,&yymsp[0].minor);
+      case 21: /* required_tail_start ::= HANDLER */
+{  yy_destructor(yypParser,15,&yymsp[0].minor);
 #line 72 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_UTILITY; }
-#line 2752 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_UTILITY; }
+#line 2782 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 24: /* required_tail_start ::= IMPORT */
-{  yy_destructor(yypParser,18,&yymsp[0].minor);
+      case 22: /* required_tail_start ::= IMPORT */
+{  yy_destructor(yypParser,16,&yymsp[0].minor);
 #line 73 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_UTILITY; }
-#line 2759 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_UTILITY; }
+#line 2789 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 25: /* required_tail_start ::= START */
-{  yy_destructor(yypParser,19,&yymsp[0].minor);
+      case 23: /* required_tail_start ::= START */
+{  yy_destructor(yypParser,17,&yymsp[0].minor);
 #line 74 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_TRANSACTION; }
-#line 2766 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_TRANSACTION; }
+#line 2796 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 26: /* required_tail_start ::= SAVEPOINT */
-{  yy_destructor(yypParser,20,&yymsp[0].minor);
+      case 24: /* required_tail_start ::= SAVEPOINT */
+{  yy_destructor(yypParser,18,&yymsp[0].minor);
 #line 75 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_TRANSACTION; }
-#line 2773 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_TRANSACTION; }
+#line 2803 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 27: /* required_tail_start ::= RELEASE */
-{  yy_destructor(yypParser,21,&yymsp[0].minor);
+      case 25: /* required_tail_start ::= RELEASE */
+{  yy_destructor(yypParser,19,&yymsp[0].minor);
 #line 76 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_TRANSACTION; }
-#line 2780 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_TRANSACTION; }
+#line 2810 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 28: /* required_tail_start ::= SET */
-{  yy_destructor(yypParser,22,&yymsp[0].minor);
+      case 26: /* required_tail_start ::= SET */
+{  yy_destructor(yypParser,20,&yymsp[0].minor);
 #line 77 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_UTILITY; }
-#line 2787 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_UTILITY; }
+#line 2817 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 29: /* required_tail_start ::= LOCK */
-{  yy_destructor(yypParser,23,&yymsp[0].minor);
+      case 27: /* required_tail_start ::= LOCK */
+{  yy_destructor(yypParser,21,&yymsp[0].minor);
 #line 78 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_TRANSACTION; }
-#line 2794 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_TRANSACTION; }
+#line 2824 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 30: /* required_tail_start ::= UNLOCK */
-{  yy_destructor(yypParser,24,&yymsp[0].minor);
+      case 28: /* required_tail_start ::= UNLOCK */
+{  yy_destructor(yypParser,22,&yymsp[0].minor);
 #line 79 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_TRANSACTION; }
-#line 2801 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_TRANSACTION; }
+#line 2831 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 31: /* required_tail_start ::= XA */
-{  yy_destructor(yypParser,25,&yymsp[0].minor);
+      case 29: /* required_tail_start ::= XA */
+{  yy_destructor(yypParser,23,&yymsp[0].minor);
 #line 80 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_REPLICATION; }
-#line 2808 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_REPLICATION; }
+#line 2838 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 32: /* required_tail_start ::= BINLOG */
-{  yy_destructor(yypParser,26,&yymsp[0].minor);
+      case 30: /* required_tail_start ::= BINLOG */
+{  yy_destructor(yypParser,24,&yymsp[0].minor);
 #line 81 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_REPLICATION; }
-#line 2815 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_REPLICATION; }
+#line 2845 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 33: /* required_tail_start ::= PURGE */
-{  yy_destructor(yypParser,27,&yymsp[0].minor);
+      case 31: /* required_tail_start ::= PURGE */
+{  yy_destructor(yypParser,25,&yymsp[0].minor);
 #line 82 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_REPLICATION; }
-#line 2822 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_REPLICATION; }
+#line 2852 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 34: /* required_tail_start ::= RESET */
-{  yy_destructor(yypParser,28,&yymsp[0].minor);
+      case 32: /* required_tail_start ::= RESET */
+{  yy_destructor(yypParser,26,&yymsp[0].minor);
 #line 83 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2829 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 2859 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 35: /* required_tail_start ::= CHANGE */
-{  yy_destructor(yypParser,29,&yymsp[0].minor);
+      case 33: /* required_tail_start ::= CHANGE */
+{  yy_destructor(yypParser,27,&yymsp[0].minor);
 #line 84 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_REPLICATION; }
-#line 2836 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_REPLICATION; }
+#line 2866 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 36: /* required_tail_start ::= PREPARE */
-{  yy_destructor(yypParser,30,&yymsp[0].minor);
+      case 34: /* required_tail_start ::= PREPARE */
+{  yy_destructor(yypParser,28,&yymsp[0].minor);
 #line 85 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_PREPARED; }
-#line 2843 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_PREPARED; }
+#line 2873 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 37: /* required_tail_start ::= EXECUTE */
-{  yy_destructor(yypParser,31,&yymsp[0].minor);
+      case 35: /* required_tail_start ::= EXECUTE */
+{  yy_destructor(yypParser,29,&yymsp[0].minor);
 #line 86 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_PREPARED; }
-#line 2850 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_PREPARED; }
+#line 2880 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 38: /* required_tail_start ::= DEALLOCATE */
-{  yy_destructor(yypParser,32,&yymsp[0].minor);
+      case 36: /* required_tail_start ::= DEALLOCATE */
+{  yy_destructor(yypParser,30,&yymsp[0].minor);
 #line 87 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_PREPARED; }
-#line 2857 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_PREPARED; }
+#line 2887 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 39: /* required_tail_start ::= GRANT */
-{  yy_destructor(yypParser,33,&yymsp[0].minor);
+      case 37: /* required_tail_start ::= GRANT */
+{  yy_destructor(yypParser,31,&yymsp[0].minor);
 #line 88 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2864 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 2894 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 40: /* required_tail_start ::= REVOKE */
-{  yy_destructor(yypParser,34,&yymsp[0].minor);
+      case 38: /* required_tail_start ::= REVOKE */
+{  yy_destructor(yypParser,32,&yymsp[0].minor);
 #line 89 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2871 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 2901 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 41: /* required_tail_start ::= SHOW */
-{  yy_destructor(yypParser,35,&yymsp[0].minor);
+      case 39: /* required_tail_start ::= SHOW */
+{  yy_destructor(yypParser,33,&yymsp[0].minor);
 #line 90 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_SHOW; }
-#line 2878 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_SHOW; }
+#line 2908 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 42: /* required_tail_start ::= DESCRIBE */
-{  yy_destructor(yypParser,36,&yymsp[0].minor);
+      case 40: /* required_tail_start ::= DESCRIBE */
+{  yy_destructor(yypParser,34,&yymsp[0].minor);
 #line 91 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_SHOW; }
-#line 2885 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_SHOW; }
+#line 2915 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 43: /* required_tail_start ::= DESC */
-{  yy_destructor(yypParser,37,&yymsp[0].minor);
+      case 41: /* required_tail_start ::= DESC */
+{  yy_destructor(yypParser,35,&yymsp[0].minor);
 #line 92 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_SHOW; }
-#line 2892 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_SHOW; }
+#line 2922 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 44: /* required_tail_start ::= EXPLAIN */
-{  yy_destructor(yypParser,38,&yymsp[0].minor);
+      case 42: /* required_tail_start ::= EXPLAIN */
+{  yy_destructor(yypParser,36,&yymsp[0].minor);
 #line 93 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_SHOW; }
-#line 2899 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_SHOW; }
+#line 2929 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 45: /* required_tail_start ::= HELP */
-{  yy_destructor(yypParser,39,&yymsp[0].minor);
+      case 43: /* required_tail_start ::= HELP */
+{  yy_destructor(yypParser,37,&yymsp[0].minor);
 #line 94 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_UTILITY; }
-#line 2906 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_UTILITY; }
+#line 2936 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 46: /* required_tail_start ::= USE */
-{  yy_destructor(yypParser,40,&yymsp[0].minor);
+      case 44: /* required_tail_start ::= USE */
+{  yy_destructor(yypParser,38,&yymsp[0].minor);
 #line 95 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_UTILITY; }
-#line 2913 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_UTILITY; }
+#line 2943 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 47: /* required_tail_start ::= ANALYZE */
-{  yy_destructor(yypParser,41,&yymsp[0].minor);
+      case 45: /* required_tail_start ::= ANALYZE */
+{  yy_destructor(yypParser,39,&yymsp[0].minor);
 #line 96 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2920 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 2950 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 48: /* required_tail_start ::= CHECK */
-{  yy_destructor(yypParser,42,&yymsp[0].minor);
+      case 46: /* required_tail_start ::= CHECK */
+{  yy_destructor(yypParser,40,&yymsp[0].minor);
 #line 97 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2927 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 2957 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 49: /* required_tail_start ::= CHECKSUM */
-{  yy_destructor(yypParser,43,&yymsp[0].minor);
+      case 47: /* required_tail_start ::= CHECKSUM */
+{  yy_destructor(yypParser,41,&yymsp[0].minor);
 #line 98 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2934 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 2964 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 50: /* required_tail_start ::= OPTIMIZE */
-{  yy_destructor(yypParser,44,&yymsp[0].minor);
+      case 48: /* required_tail_start ::= OPTIMIZE */
+{  yy_destructor(yypParser,42,&yymsp[0].minor);
 #line 99 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2941 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 2971 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 51: /* required_tail_start ::= REPAIR */
-{  yy_destructor(yypParser,45,&yymsp[0].minor);
+      case 49: /* required_tail_start ::= REPAIR */
+{  yy_destructor(yypParser,43,&yymsp[0].minor);
 #line 100 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2948 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 2978 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 52: /* required_tail_start ::= INSTALL */
-{  yy_destructor(yypParser,46,&yymsp[0].minor);
+      case 50: /* required_tail_start ::= INSTALL */
+{  yy_destructor(yypParser,44,&yymsp[0].minor);
 #line 101 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2955 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 2985 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 53: /* required_tail_start ::= UNINSTALL */
-{  yy_destructor(yypParser,47,&yymsp[0].minor);
+      case 51: /* required_tail_start ::= UNINSTALL */
+{  yy_destructor(yypParser,45,&yymsp[0].minor);
 #line 102 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2962 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 2992 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 54: /* required_tail_start ::= CLONE */
-{  yy_destructor(yypParser,48,&yymsp[0].minor);
+      case 52: /* required_tail_start ::= CLONE */
+{  yy_destructor(yypParser,46,&yymsp[0].minor);
 #line 103 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2969 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 2999 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 55: /* required_tail_start ::= CACHE */
-{  yy_destructor(yypParser,49,&yymsp[0].minor);
+      case 53: /* required_tail_start ::= CACHE */
+{  yy_destructor(yypParser,47,&yymsp[0].minor);
 #line 104 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2976 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 3006 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 56: /* required_tail_start ::= KILL */
-{  yy_destructor(yypParser,50,&yymsp[0].minor);
+      case 54: /* required_tail_start ::= KILL */
+{  yy_destructor(yypParser,48,&yymsp[0].minor);
 #line 105 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 2983 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 3013 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 57: /* required_tail_start ::= GET */
-{  yy_destructor(yypParser,51,&yymsp[0].minor);
+      case 55: /* required_tail_start ::= GET */
+{  yy_destructor(yypParser,49,&yymsp[0].minor);
 #line 106 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 2990 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3020 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 58: /* required_tail_start ::= SIGNAL */
-{  yy_destructor(yypParser,52,&yymsp[0].minor);
+      case 56: /* required_tail_start ::= SIGNAL */
+{  yy_destructor(yypParser,50,&yymsp[0].minor);
 #line 107 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 2997 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3027 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 59: /* required_tail_start ::= IF */
-{  yy_destructor(yypParser,53,&yymsp[0].minor);
+      case 57: /* required_tail_start ::= IF */
+{  yy_destructor(yypParser,51,&yymsp[0].minor);
 #line 108 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3004 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3034 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 60: /* required_tail_start ::= ELSEIF */
-{  yy_destructor(yypParser,54,&yymsp[0].minor);
+      case 58: /* required_tail_start ::= ELSEIF */
+{  yy_destructor(yypParser,52,&yymsp[0].minor);
 #line 109 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3011 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3041 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 61: /* required_tail_start ::= RETURN */
-{  yy_destructor(yypParser,55,&yymsp[0].minor);
+      case 59: /* required_tail_start ::= RETURN */
+{  yy_destructor(yypParser,53,&yymsp[0].minor);
 #line 110 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3018 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3048 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 62: /* required_tail_start ::= LEAVE */
-{  yy_destructor(yypParser,56,&yymsp[0].minor);
+      case 60: /* required_tail_start ::= LEAVE */
+{  yy_destructor(yypParser,54,&yymsp[0].minor);
 #line 111 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3025 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3055 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 63: /* required_tail_start ::= ITERATE */
-{  yy_destructor(yypParser,57,&yymsp[0].minor);
+      case 61: /* required_tail_start ::= ITERATE */
+{  yy_destructor(yypParser,55,&yymsp[0].minor);
 #line 112 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3032 "src/parser/generated/mylite_lemon.c"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3062 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 64: /* select_statement ::= SELECT select_tail */
+      case 62: /* select_statement ::= SELECT select_tail */
 {  yy_destructor(yypParser,3,&yymsp[-1].minor);
 #line 114 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
 }
-#line 3041 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,129,&yymsp[0].minor);
+#line 3071 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,131,&yymsp[0].minor);
 }
         break;
-      case 65: /* create_statement ::= CREATE create_tail */
+      case 63: /* create_statement ::= CREATE create_tail */
 {  yy_destructor(yypParser,4,&yymsp[-1].minor);
 #line 131 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
-#line 3051 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,133,&yymsp[0].minor);
+#line 3081 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,135,&yymsp[0].minor);
 }
         break;
-      case 66: /* drop_statement ::= DROP drop_tail */
-{  yy_destructor(yypParser,89,&yymsp[-1].minor);
+      case 64: /* drop_statement ::= DROP drop_tail */
+{  yy_destructor(yypParser,87,&yymsp[-1].minor);
 #line 163 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
-#line 3061 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,135,&yymsp[0].minor);
+#line 3091 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,137,&yymsp[0].minor);
 }
         break;
-      case 67: /* alter_statement ::= ALTER alter_tail */
-{  yy_destructor(yypParser,91,&yymsp[-1].minor);
+      case 65: /* alter_statement ::= ALTER alter_tail */
+{  yy_destructor(yypParser,89,&yymsp[-1].minor);
 #line 190 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
-#line 3071 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,137,&yymsp[0].minor);
+#line 3101 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,139,&yymsp[0].minor);
+}
+        break;
+      case 66: /* rename_statement ::= RENAME rename_tail */
+{  yy_destructor(yypParser,91,&yymsp[-1].minor);
+#line 213 "src/parser/mylite_lemon.y"
+{
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
+}
+#line 3111 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,141,&yymsp[0].minor);
+}
+        break;
+      case 67: /* truncate_statement ::= TRUNCATE truncate_tail */
+{  yy_destructor(yypParser,92,&yymsp[-1].minor);
+#line 223 "src/parser/mylite_lemon.y"
+{
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
+}
+#line 3121 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,143,&yymsp[0].minor);
 }
         break;
       case 68: /* optional_tail_start ::= BEGIN */
 {  yy_destructor(yypParser,93,&yymsp[0].minor);
-#line 213 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_TRANSACTION; }
-#line 3079 "src/parser/generated/mylite_lemon.c"
+#line 233 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_TRANSACTION; }
+#line 3129 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 69: /* optional_tail_start ::= COMMIT */
 {  yy_destructor(yypParser,94,&yymsp[0].minor);
-#line 214 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_TRANSACTION; }
-#line 3086 "src/parser/generated/mylite_lemon.c"
+#line 234 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_TRANSACTION; }
+#line 3136 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 70: /* optional_tail_start ::= ROLLBACK */
 {  yy_destructor(yypParser,95,&yymsp[0].minor);
-#line 215 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_TRANSACTION; }
-#line 3093 "src/parser/generated/mylite_lemon.c"
+#line 235 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_TRANSACTION; }
+#line 3143 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 71: /* optional_tail_start ::= FLUSH */
 {  yy_destructor(yypParser,96,&yymsp[0].minor);
-#line 216 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 3100 "src/parser/generated/mylite_lemon.c"
+#line 236 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 3150 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 72: /* optional_tail_start ::= RESTART */
 {  yy_destructor(yypParser,97,&yymsp[0].minor);
-#line 217 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 3107 "src/parser/generated/mylite_lemon.c"
+#line 237 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 3157 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 73: /* optional_tail_start ::= SHUTDOWN */
 {  yy_destructor(yypParser,98,&yymsp[0].minor);
-#line 218 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_ADMIN; }
-#line 3114 "src/parser/generated/mylite_lemon.c"
+#line 238 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_ADMIN; }
+#line 3164 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 74: /* optional_tail_start ::= RESIGNAL */
 {  yy_destructor(yypParser,99,&yymsp[0].minor);
-#line 219 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3121 "src/parser/generated/mylite_lemon.c"
+#line 239 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3171 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 75: /* optional_tail_start ::= ELSE */
 {  yy_destructor(yypParser,100,&yymsp[0].minor);
-#line 220 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3128 "src/parser/generated/mylite_lemon.c"
+#line 240 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3178 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 76: /* optional_tail_start ::= LOOP */
 {  yy_destructor(yypParser,101,&yymsp[0].minor);
-#line 221 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3135 "src/parser/generated/mylite_lemon.c"
+#line 241 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3185 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 77: /* optional_tail_start ::= REPEAT */
 {  yy_destructor(yypParser,102,&yymsp[0].minor);
-#line 222 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3142 "src/parser/generated/mylite_lemon.c"
+#line 242 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3192 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 78: /* optional_tail_start ::= UNTIL */
 {  yy_destructor(yypParser,103,&yymsp[0].minor);
-#line 223 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3149 "src/parser/generated/mylite_lemon.c"
+#line 243 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3199 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 79: /* optional_tail_start ::= WHILE */
 {  yy_destructor(yypParser,104,&yymsp[0].minor);
-#line 224 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3156 "src/parser/generated/mylite_lemon.c"
+#line 244 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3206 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 80: /* optional_tail_start ::= CASE */
 {  yy_destructor(yypParser,105,&yymsp[0].minor);
-#line 225 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3163 "src/parser/generated/mylite_lemon.c"
+#line 245 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3213 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 81: /* optional_tail_start ::= WHEN */
 {  yy_destructor(yypParser,106,&yymsp[0].minor);
-#line 226 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3170 "src/parser/generated/mylite_lemon.c"
+#line 246 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3220 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 82: /* optional_tail_start ::= DECLARE */
 {  yy_destructor(yypParser,107,&yymsp[0].minor);
-#line 227 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3177 "src/parser/generated/mylite_lemon.c"
+#line 247 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3227 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 83: /* optional_tail_start ::= END */
 {  yy_destructor(yypParser,108,&yymsp[0].minor);
-#line 228 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3184 "src/parser/generated/mylite_lemon.c"
+#line 248 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3234 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 84: /* optional_tail_start ::= OPEN */
 {  yy_destructor(yypParser,109,&yymsp[0].minor);
-#line 229 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3191 "src/parser/generated/mylite_lemon.c"
+#line 249 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3241 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 85: /* optional_tail_start ::= FETCH */
 {  yy_destructor(yypParser,110,&yymsp[0].minor);
-#line 230 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3198 "src/parser/generated/mylite_lemon.c"
+#line 250 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3248 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 86: /* optional_tail_start ::= CLOSE */
 {  yy_destructor(yypParser,111,&yymsp[0].minor);
-#line 231 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_STORED_PROGRAM; }
-#line 3205 "src/parser/generated/mylite_lemon.c"
+#line 251 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_STORED_PROGRAM; }
+#line 3255 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 87: /* optional_tail_start ::= LP */
-{  yy_destructor(yypParser,59,&yymsp[0].minor);
-#line 232 "src/parser/mylite_lemon.y"
-{ yymsp[0].minor.yy36 = MYLITE_STATEMENT_SELECT; }
-#line 3212 "src/parser/generated/mylite_lemon.c"
+{  yy_destructor(yypParser,57,&yymsp[0].minor);
+#line 252 "src/parser/mylite_lemon.y"
+{ yymsp[0].minor.yy80 = MYLITE_STATEMENT_SELECT; }
+#line 3262 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 88: /* permissive_start ::= ATOM */
@@ -3219,20 +3269,20 @@ static YYACTIONTYPE yy_reduce(
       case 93: /* permissive_start ::= RB */ yytestcase(yyruleno==93);
       case 94: /* permissive_start ::= LC */ yytestcase(yyruleno==94);
       case 95: /* permissive_start ::= RC */ yytestcase(yyruleno==95);
-#line 234 "src/parser/mylite_lemon.y"
+#line 254 "src/parser/mylite_lemon.y"
 {
   mylite_parser_require_permissive(ctx, yymsp[0].minor.yy0);
-  yylhsminor.yy36 = MYLITE_STATEMENT_PERMISSIVE;
+  yylhsminor.yy80 = MYLITE_STATEMENT_PERMISSIVE;
 }
-#line 3228 "src/parser/generated/mylite_lemon.c"
-  yymsp[0].minor.yy36 = yylhsminor.yy36;
+#line 3278 "src/parser/generated/mylite_lemon.c"
+  yymsp[0].minor.yy80 = yylhsminor.yy80;
         break;
       case 96: /* statement_chunks ::= statement_chunk */
 {  yy_destructor(yypParser,121,&yymsp[0].minor);
 #line 32 "src/parser/mylite_lemon.y"
 {
 }
-#line 3236 "src/parser/generated/mylite_lemon.c"
+#line 3286 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 97: /* statement_chunks ::= statement_chunks statement_chunk */
@@ -3240,7 +3290,7 @@ static YYACTIONTYPE yy_reduce(
 #line 33 "src/parser/mylite_lemon.y"
 {
 }
-#line 3244 "src/parser/generated/mylite_lemon.c"
+#line 3294 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,121,&yymsp[0].minor);
 }
         break;
@@ -3249,7 +3299,7 @@ static YYACTIONTYPE yy_reduce(
 #line 36 "src/parser/mylite_lemon.y"
 {
 }
-#line 3253 "src/parser/generated/mylite_lemon.c"
+#line 3303 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1,&yymsp[0].minor);
 }
         break;
@@ -3258,7 +3308,7 @@ static YYACTIONTYPE yy_reduce(
 #line 38 "src/parser/mylite_lemon.y"
 {
 }
-#line 3262 "src/parser/generated/mylite_lemon.c"
+#line 3312 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 100: /* statement ::= create_statement */
@@ -3266,7 +3316,7 @@ static YYACTIONTYPE yy_reduce(
 #line 39 "src/parser/mylite_lemon.y"
 {
 }
-#line 3270 "src/parser/generated/mylite_lemon.c"
+#line 3320 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 101: /* statement ::= drop_statement */
@@ -3274,7 +3324,7 @@ static YYACTIONTYPE yy_reduce(
 #line 40 "src/parser/mylite_lemon.y"
 {
 }
-#line 3278 "src/parser/generated/mylite_lemon.c"
+#line 3328 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 102: /* statement ::= alter_statement */
@@ -3282,1173 +3332,1221 @@ static YYACTIONTYPE yy_reduce(
 #line 41 "src/parser/mylite_lemon.y"
 {
 }
-#line 3286 "src/parser/generated/mylite_lemon.c"
+#line 3336 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 103: /* select_tail ::= select_first_token */
-{  yy_destructor(yypParser,130,&yymsp[0].minor);
+      case 103: /* statement ::= rename_statement */
+{  yy_destructor(yypParser,127,&yymsp[0].minor);
+#line 42 "src/parser/mylite_lemon.y"
+{
+}
+#line 3344 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 104: /* statement ::= truncate_statement */
+{  yy_destructor(yypParser,128,&yymsp[0].minor);
+#line 43 "src/parser/mylite_lemon.y"
+{
+}
+#line 3352 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 105: /* select_tail ::= select_first_token */
+{  yy_destructor(yypParser,132,&yymsp[0].minor);
 #line 118 "src/parser/mylite_lemon.y"
 {
 }
-#line 3294 "src/parser/generated/mylite_lemon.c"
+#line 3360 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 104: /* select_tail ::= select_tail statement_token */
-{  yy_destructor(yypParser,129,&yymsp[-1].minor);
+      case 106: /* select_tail ::= select_tail statement_token */
+{  yy_destructor(yypParser,131,&yymsp[-1].minor);
 #line 119 "src/parser/mylite_lemon.y"
 {
 }
-#line 3302 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,131,&yymsp[0].minor);
+#line 3368 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,133,&yymsp[0].minor);
 }
         break;
-      case 105: /* select_first_token ::= ATOM */
-      case 182: /* statement_token ::= ATOM */ yytestcase(yyruleno==182);
-{  yy_destructor(yypParser,58,&yymsp[0].minor);
+      case 107: /* select_first_token ::= ATOM */
+      case 186: /* truncate_table_name ::= ATOM */ yytestcase(yyruleno==186);
+      case 192: /* statement_token ::= ATOM */ yytestcase(yyruleno==192);
+{  yy_destructor(yypParser,56,&yymsp[0].minor);
 #line 121 "src/parser/mylite_lemon.y"
 {
 }
-#line 3312 "src/parser/generated/mylite_lemon.c"
+#line 3379 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 106: /* select_first_token ::= LABEL */
-      case 183: /* statement_token ::= LABEL */ yytestcase(yyruleno==183);
+      case 108: /* select_first_token ::= LABEL */
+      case 187: /* truncate_table_name ::= LABEL */ yytestcase(yyruleno==187);
+      case 193: /* statement_token ::= LABEL */ yytestcase(yyruleno==193);
 {  yy_destructor(yypParser,2,&yymsp[0].minor);
 #line 122 "src/parser/mylite_lemon.y"
 {
 }
-#line 3321 "src/parser/generated/mylite_lemon.c"
+#line 3389 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 107: /* select_first_token ::= keyword_not_select_clause */
-{  yy_destructor(yypParser,132,&yymsp[0].minor);
+      case 109: /* select_first_token ::= keyword_not_select_clause */
+{  yy_destructor(yypParser,134,&yymsp[0].minor);
 #line 123 "src/parser/mylite_lemon.y"
 {
 }
-#line 3329 "src/parser/generated/mylite_lemon.c"
+#line 3397 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 108: /* select_first_token ::= LP */
-      case 185: /* statement_token ::= LP */ yytestcase(yyruleno==185);
-{  yy_destructor(yypParser,59,&yymsp[0].minor);
+      case 110: /* select_first_token ::= LP */
+      case 195: /* statement_token ::= LP */ yytestcase(yyruleno==195);
+{  yy_destructor(yypParser,57,&yymsp[0].minor);
 #line 124 "src/parser/mylite_lemon.y"
 {
 }
-#line 3338 "src/parser/generated/mylite_lemon.c"
+#line 3406 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 109: /* select_first_token ::= RP */
-      case 186: /* statement_token ::= RP */ yytestcase(yyruleno==186);
-{  yy_destructor(yypParser,60,&yymsp[0].minor);
+      case 111: /* select_first_token ::= RP */
+      case 196: /* statement_token ::= RP */ yytestcase(yyruleno==196);
+{  yy_destructor(yypParser,58,&yymsp[0].minor);
 #line 125 "src/parser/mylite_lemon.y"
-{
-}
-#line 3347 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 110: /* select_first_token ::= LB */
-      case 187: /* statement_token ::= LB */ yytestcase(yyruleno==187);
-{  yy_destructor(yypParser,61,&yymsp[0].minor);
-#line 126 "src/parser/mylite_lemon.y"
-{
-}
-#line 3356 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 111: /* select_first_token ::= RB */
-      case 188: /* statement_token ::= RB */ yytestcase(yyruleno==188);
-{  yy_destructor(yypParser,62,&yymsp[0].minor);
-#line 127 "src/parser/mylite_lemon.y"
-{
-}
-#line 3365 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 112: /* select_first_token ::= LC */
-      case 189: /* statement_token ::= LC */ yytestcase(yyruleno==189);
-{  yy_destructor(yypParser,63,&yymsp[0].minor);
-#line 128 "src/parser/mylite_lemon.y"
-{
-}
-#line 3374 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 113: /* select_first_token ::= RC */
-      case 190: /* statement_token ::= RC */ yytestcase(yyruleno==190);
-{  yy_destructor(yypParser,64,&yymsp[0].minor);
-#line 129 "src/parser/mylite_lemon.y"
-{
-}
-#line 3383 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 114: /* create_tail ::= create_first_token required_statement_tail */
-{  yy_destructor(yypParser,134,&yymsp[-1].minor);
-#line 135 "src/parser/mylite_lemon.y"
-{
-}
-#line 3391 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,127,&yymsp[0].minor);
-}
-        break;
-      case 115: /* create_first_token ::= TABLE */
-      case 141: /* drop_first_token ::= TABLE */ yytestcase(yyruleno==141);
-      case 162: /* alter_first_token ::= TABLE */ yytestcase(yyruleno==162);
-      case 206: /* keyword ::= TABLE */ yytestcase(yyruleno==206);
-      case 311: /* keyword_not_select_clause ::= TABLE */ yytestcase(yyruleno==311);
-{  yy_destructor(yypParser,15,&yymsp[0].minor);
-#line 137 "src/parser/mylite_lemon.y"
-{
-}
-#line 3404 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 116: /* create_first_token ::= TEMPORARY */
-      case 143: /* drop_first_token ::= TEMPORARY */ yytestcase(yyruleno==143);
-      case 293: /* keyword ::= TEMPORARY */ yytestcase(yyruleno==293);
-      case 396: /* keyword_not_select_clause ::= TEMPORARY */ yytestcase(yyruleno==396);
-{  yy_destructor(yypParser,65,&yymsp[0].minor);
-#line 138 "src/parser/mylite_lemon.y"
 {
 }
 #line 3415 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 117: /* create_first_token ::= VIEW */
-      case 146: /* drop_first_token ::= VIEW */ yytestcase(yyruleno==146);
-      case 167: /* alter_first_token ::= VIEW */ yytestcase(yyruleno==167);
-      case 279: /* keyword ::= VIEW */ yytestcase(yyruleno==279);
-      case 383: /* keyword_not_select_clause ::= VIEW */ yytestcase(yyruleno==383);
-{  yy_destructor(yypParser,66,&yymsp[0].minor);
+      case 112: /* select_first_token ::= LB */
+      case 197: /* statement_token ::= LB */ yytestcase(yyruleno==197);
+{  yy_destructor(yypParser,59,&yymsp[0].minor);
+#line 126 "src/parser/mylite_lemon.y"
+{
+}
+#line 3424 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 113: /* select_first_token ::= RB */
+      case 198: /* statement_token ::= RB */ yytestcase(yyruleno==198);
+{  yy_destructor(yypParser,60,&yymsp[0].minor);
+#line 127 "src/parser/mylite_lemon.y"
+{
+}
+#line 3433 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 114: /* select_first_token ::= LC */
+      case 199: /* statement_token ::= LC */ yytestcase(yyruleno==199);
+{  yy_destructor(yypParser,61,&yymsp[0].minor);
+#line 128 "src/parser/mylite_lemon.y"
+{
+}
+#line 3442 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 115: /* select_first_token ::= RC */
+      case 200: /* statement_token ::= RC */ yytestcase(yyruleno==200);
+{  yy_destructor(yypParser,62,&yymsp[0].minor);
+#line 129 "src/parser/mylite_lemon.y"
+{
+}
+#line 3451 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 116: /* create_tail ::= create_first_token required_statement_tail */
+{  yy_destructor(yypParser,136,&yymsp[-1].minor);
+#line 135 "src/parser/mylite_lemon.y"
+{
+}
+#line 3459 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,129,&yymsp[0].minor);
+}
+        break;
+      case 117: /* create_first_token ::= TABLE */
+      case 143: /* drop_first_token ::= TABLE */ yytestcase(yyruleno==143);
+      case 164: /* alter_first_token ::= TABLE */ yytestcase(yyruleno==164);
+      case 181: /* rename_first_token ::= TABLE */ yytestcase(yyruleno==181);
+      case 216: /* keyword ::= TABLE */ yytestcase(yyruleno==216);
+      case 321: /* keyword_not_select_clause ::= TABLE */ yytestcase(yyruleno==321);
+{  yy_destructor(yypParser,13,&yymsp[0].minor);
+#line 137 "src/parser/mylite_lemon.y"
+{
+}
+#line 3473 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 118: /* create_first_token ::= TEMPORARY */
+      case 145: /* drop_first_token ::= TEMPORARY */ yytestcase(yyruleno==145);
+      case 303: /* keyword ::= TEMPORARY */ yytestcase(yyruleno==303);
+      case 406: /* keyword_not_select_clause ::= TEMPORARY */ yytestcase(yyruleno==406);
+{  yy_destructor(yypParser,63,&yymsp[0].minor);
+#line 138 "src/parser/mylite_lemon.y"
+{
+}
+#line 3484 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 119: /* create_first_token ::= VIEW */
+      case 148: /* drop_first_token ::= VIEW */ yytestcase(yyruleno==148);
+      case 169: /* alter_first_token ::= VIEW */ yytestcase(yyruleno==169);
+      case 289: /* keyword ::= VIEW */ yytestcase(yyruleno==289);
+      case 393: /* keyword_not_select_clause ::= VIEW */ yytestcase(yyruleno==393);
+{  yy_destructor(yypParser,64,&yymsp[0].minor);
 #line 139 "src/parser/mylite_lemon.y"
 {
 }
-#line 3427 "src/parser/generated/mylite_lemon.c"
+#line 3496 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 118: /* create_first_token ::= OR */
-      case 288: /* keyword ::= OR */ yytestcase(yyruleno==288);
-      case 391: /* keyword_not_select_clause ::= OR */ yytestcase(yyruleno==391);
-{  yy_destructor(yypParser,67,&yymsp[0].minor);
+      case 120: /* create_first_token ::= OR */
+      case 298: /* keyword ::= OR */ yytestcase(yyruleno==298);
+      case 401: /* keyword_not_select_clause ::= OR */ yytestcase(yyruleno==401);
+{  yy_destructor(yypParser,65,&yymsp[0].minor);
 #line 140 "src/parser/mylite_lemon.y"
 {
 }
-#line 3437 "src/parser/generated/mylite_lemon.c"
+#line 3506 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 119: /* create_first_token ::= ALGORITHM */
-      case 163: /* alter_first_token ::= ALGORITHM */ yytestcase(yyruleno==163);
-      case 284: /* keyword ::= ALGORITHM */ yytestcase(yyruleno==284);
-      case 387: /* keyword_not_select_clause ::= ALGORITHM */ yytestcase(yyruleno==387);
-{  yy_destructor(yypParser,68,&yymsp[0].minor);
+      case 121: /* create_first_token ::= ALGORITHM */
+      case 165: /* alter_first_token ::= ALGORITHM */ yytestcase(yyruleno==165);
+      case 294: /* keyword ::= ALGORITHM */ yytestcase(yyruleno==294);
+      case 397: /* keyword_not_select_clause ::= ALGORITHM */ yytestcase(yyruleno==397);
+{  yy_destructor(yypParser,66,&yymsp[0].minor);
 #line 141 "src/parser/mylite_lemon.y"
 {
 }
-#line 3448 "src/parser/generated/mylite_lemon.c"
+#line 3517 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 120: /* create_first_token ::= SQL */
-      case 291: /* keyword ::= SQL */ yytestcase(yyruleno==291);
-      case 394: /* keyword_not_select_clause ::= SQL */ yytestcase(yyruleno==394);
-{  yy_destructor(yypParser,69,&yymsp[0].minor);
+      case 122: /* create_first_token ::= SQL */
+      case 301: /* keyword ::= SQL */ yytestcase(yyruleno==301);
+      case 404: /* keyword_not_select_clause ::= SQL */ yytestcase(yyruleno==404);
+{  yy_destructor(yypParser,67,&yymsp[0].minor);
 #line 142 "src/parser/mylite_lemon.y"
 {
 }
-#line 3458 "src/parser/generated/mylite_lemon.c"
+#line 3527 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 121: /* create_first_token ::= DEFINER */
-      case 165: /* alter_first_token ::= DEFINER */ yytestcase(yyruleno==165);
-      case 285: /* keyword ::= DEFINER */ yytestcase(yyruleno==285);
-      case 388: /* keyword_not_select_clause ::= DEFINER */ yytestcase(yyruleno==388);
-{  yy_destructor(yypParser,70,&yymsp[0].minor);
+      case 123: /* create_first_token ::= DEFINER */
+      case 167: /* alter_first_token ::= DEFINER */ yytestcase(yyruleno==167);
+      case 295: /* keyword ::= DEFINER */ yytestcase(yyruleno==295);
+      case 398: /* keyword_not_select_clause ::= DEFINER */ yytestcase(yyruleno==398);
+{  yy_destructor(yypParser,68,&yymsp[0].minor);
 #line 143 "src/parser/mylite_lemon.y"
 {
 }
-#line 3469 "src/parser/generated/mylite_lemon.c"
+#line 3538 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 122: /* create_first_token ::= DATABASE */
-      case 144: /* drop_first_token ::= DATABASE */ yytestcase(yyruleno==144);
-      case 164: /* alter_first_token ::= DATABASE */ yytestcase(yyruleno==164);
-      case 198: /* keyword ::= DATABASE */ yytestcase(yyruleno==198);
-      case 303: /* keyword_not_select_clause ::= DATABASE */ yytestcase(yyruleno==303);
-{  yy_destructor(yypParser,71,&yymsp[0].minor);
+      case 124: /* create_first_token ::= DATABASE */
+      case 146: /* drop_first_token ::= DATABASE */ yytestcase(yyruleno==146);
+      case 166: /* alter_first_token ::= DATABASE */ yytestcase(yyruleno==166);
+      case 208: /* keyword ::= DATABASE */ yytestcase(yyruleno==208);
+      case 313: /* keyword_not_select_clause ::= DATABASE */ yytestcase(yyruleno==313);
+{  yy_destructor(yypParser,69,&yymsp[0].minor);
 #line 144 "src/parser/mylite_lemon.y"
 {
 }
-#line 3481 "src/parser/generated/mylite_lemon.c"
+#line 3550 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 123: /* create_first_token ::= SCHEMA */
-      case 145: /* drop_first_token ::= SCHEMA */ yytestcase(yyruleno==145);
-      case 166: /* alter_first_token ::= SCHEMA */ yytestcase(yyruleno==166);
-      case 234: /* keyword ::= SCHEMA */ yytestcase(yyruleno==234);
-      case 339: /* keyword_not_select_clause ::= SCHEMA */ yytestcase(yyruleno==339);
-{  yy_destructor(yypParser,72,&yymsp[0].minor);
+      case 125: /* create_first_token ::= SCHEMA */
+      case 147: /* drop_first_token ::= SCHEMA */ yytestcase(yyruleno==147);
+      case 168: /* alter_first_token ::= SCHEMA */ yytestcase(yyruleno==168);
+      case 244: /* keyword ::= SCHEMA */ yytestcase(yyruleno==244);
+      case 349: /* keyword_not_select_clause ::= SCHEMA */ yytestcase(yyruleno==349);
+{  yy_destructor(yypParser,70,&yymsp[0].minor);
 #line 145 "src/parser/mylite_lemon.y"
 {
 }
-#line 3493 "src/parser/generated/mylite_lemon.c"
+#line 3562 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 124: /* create_first_token ::= INDEX */
-      case 155: /* drop_first_token ::= INDEX */ yytestcase(yyruleno==155);
-      case 249: /* keyword ::= INDEX */ yytestcase(yyruleno==249);
-      case 354: /* keyword_not_select_clause ::= INDEX */ yytestcase(yyruleno==354);
-{  yy_destructor(yypParser,73,&yymsp[0].minor);
+      case 126: /* create_first_token ::= INDEX */
+      case 157: /* drop_first_token ::= INDEX */ yytestcase(yyruleno==157);
+      case 259: /* keyword ::= INDEX */ yytestcase(yyruleno==259);
+      case 364: /* keyword_not_select_clause ::= INDEX */ yytestcase(yyruleno==364);
+{  yy_destructor(yypParser,71,&yymsp[0].minor);
 #line 146 "src/parser/mylite_lemon.y"
 {
 }
-#line 3504 "src/parser/generated/mylite_lemon.c"
+#line 3573 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 125: /* create_first_token ::= UNIQUE */
-      case 295: /* keyword ::= UNIQUE */ yytestcase(yyruleno==295);
-      case 398: /* keyword_not_select_clause ::= UNIQUE */ yytestcase(yyruleno==398);
-{  yy_destructor(yypParser,74,&yymsp[0].minor);
+      case 127: /* create_first_token ::= UNIQUE */
+      case 305: /* keyword ::= UNIQUE */ yytestcase(yyruleno==305);
+      case 408: /* keyword_not_select_clause ::= UNIQUE */ yytestcase(yyruleno==408);
+{  yy_destructor(yypParser,72,&yymsp[0].minor);
 #line 147 "src/parser/mylite_lemon.y"
 {
 }
-#line 3514 "src/parser/generated/mylite_lemon.c"
+#line 3583 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 126: /* create_first_token ::= FULLTEXT */
-      case 286: /* keyword ::= FULLTEXT */ yytestcase(yyruleno==286);
-      case 389: /* keyword_not_select_clause ::= FULLTEXT */ yytestcase(yyruleno==389);
-{  yy_destructor(yypParser,75,&yymsp[0].minor);
+      case 128: /* create_first_token ::= FULLTEXT */
+      case 296: /* keyword ::= FULLTEXT */ yytestcase(yyruleno==296);
+      case 399: /* keyword_not_select_clause ::= FULLTEXT */ yytestcase(yyruleno==399);
+{  yy_destructor(yypParser,73,&yymsp[0].minor);
 #line 148 "src/parser/mylite_lemon.y"
 {
 }
-#line 3524 "src/parser/generated/mylite_lemon.c"
+#line 3593 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 127: /* create_first_token ::= SPATIAL */
-      case 159: /* drop_first_token ::= SPATIAL */ yytestcase(yyruleno==159);
-      case 292: /* keyword ::= SPATIAL */ yytestcase(yyruleno==292);
-      case 395: /* keyword_not_select_clause ::= SPATIAL */ yytestcase(yyruleno==395);
-{  yy_destructor(yypParser,76,&yymsp[0].minor);
+      case 129: /* create_first_token ::= SPATIAL */
+      case 161: /* drop_first_token ::= SPATIAL */ yytestcase(yyruleno==161);
+      case 302: /* keyword ::= SPATIAL */ yytestcase(yyruleno==302);
+      case 405: /* keyword_not_select_clause ::= SPATIAL */ yytestcase(yyruleno==405);
+{  yy_destructor(yypParser,74,&yymsp[0].minor);
 #line 149 "src/parser/mylite_lemon.y"
-{
-}
-#line 3535 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 128: /* create_first_token ::= EVENT */
-      case 147: /* drop_first_token ::= EVENT */ yytestcase(yyruleno==147);
-      case 168: /* alter_first_token ::= EVENT */ yytestcase(yyruleno==168);
-      case 239: /* keyword ::= EVENT */ yytestcase(yyruleno==239);
-      case 344: /* keyword_not_select_clause ::= EVENT */ yytestcase(yyruleno==344);
-{  yy_destructor(yypParser,77,&yymsp[0].minor);
-#line 150 "src/parser/mylite_lemon.y"
-{
-}
-#line 3547 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 129: /* create_first_token ::= FUNCTION */
-      case 148: /* drop_first_token ::= FUNCTION */ yytestcase(yyruleno==148);
-      case 169: /* alter_first_token ::= FUNCTION */ yytestcase(yyruleno==169);
-      case 240: /* keyword ::= FUNCTION */ yytestcase(yyruleno==240);
-      case 345: /* keyword_not_select_clause ::= FUNCTION */ yytestcase(yyruleno==345);
-{  yy_destructor(yypParser,78,&yymsp[0].minor);
-#line 151 "src/parser/mylite_lemon.y"
-{
-}
-#line 3559 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 130: /* create_first_token ::= AGGREGATE */
-      case 283: /* keyword ::= AGGREGATE */ yytestcase(yyruleno==283);
-      case 386: /* keyword_not_select_clause ::= AGGREGATE */ yytestcase(yyruleno==386);
-{  yy_destructor(yypParser,79,&yymsp[0].minor);
-#line 152 "src/parser/mylite_lemon.y"
-{
-}
-#line 3569 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 131: /* create_first_token ::= PROCEDURE */
-      case 149: /* drop_first_token ::= PROCEDURE */ yytestcase(yyruleno==149);
-      case 170: /* alter_first_token ::= PROCEDURE */ yytestcase(yyruleno==170);
-      case 227: /* keyword ::= PROCEDURE */ yytestcase(yyruleno==227);
-      case 332: /* keyword_not_select_clause ::= PROCEDURE */ yytestcase(yyruleno==332);
-{  yy_destructor(yypParser,80,&yymsp[0].minor);
-#line 153 "src/parser/mylite_lemon.y"
-{
-}
-#line 3581 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 132: /* create_first_token ::= TRIGGER */
-      case 151: /* drop_first_token ::= TRIGGER */ yytestcase(yyruleno==151);
-      case 269: /* keyword ::= TRIGGER */ yytestcase(yyruleno==269);
-      case 374: /* keyword_not_select_clause ::= TRIGGER */ yytestcase(yyruleno==374);
-{  yy_destructor(yypParser,81,&yymsp[0].minor);
-#line 154 "src/parser/mylite_lemon.y"
-{
-}
-#line 3592 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 133: /* create_first_token ::= USER */
-      case 152: /* drop_first_token ::= USER */ yytestcase(yyruleno==152);
-      case 171: /* alter_first_token ::= USER */ yytestcase(yyruleno==171);
-      case 278: /* keyword ::= USER */ yytestcase(yyruleno==278);
-      case 382: /* keyword_not_select_clause ::= USER */ yytestcase(yyruleno==382);
-{  yy_destructor(yypParser,82,&yymsp[0].minor);
-#line 155 "src/parser/mylite_lemon.y"
 {
 }
 #line 3604 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 134: /* create_first_token ::= ROLE */
-      case 153: /* drop_first_token ::= ROLE */ yytestcase(yyruleno==153);
-      case 232: /* keyword ::= ROLE */ yytestcase(yyruleno==232);
-      case 337: /* keyword_not_select_clause ::= ROLE */ yytestcase(yyruleno==337);
-{  yy_destructor(yypParser,83,&yymsp[0].minor);
+      case 130: /* create_first_token ::= EVENT */
+      case 149: /* drop_first_token ::= EVENT */ yytestcase(yyruleno==149);
+      case 170: /* alter_first_token ::= EVENT */ yytestcase(yyruleno==170);
+      case 249: /* keyword ::= EVENT */ yytestcase(yyruleno==249);
+      case 354: /* keyword_not_select_clause ::= EVENT */ yytestcase(yyruleno==354);
+{  yy_destructor(yypParser,75,&yymsp[0].minor);
+#line 150 "src/parser/mylite_lemon.y"
+{
+}
+#line 3616 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 131: /* create_first_token ::= FUNCTION */
+      case 150: /* drop_first_token ::= FUNCTION */ yytestcase(yyruleno==150);
+      case 171: /* alter_first_token ::= FUNCTION */ yytestcase(yyruleno==171);
+      case 250: /* keyword ::= FUNCTION */ yytestcase(yyruleno==250);
+      case 355: /* keyword_not_select_clause ::= FUNCTION */ yytestcase(yyruleno==355);
+{  yy_destructor(yypParser,76,&yymsp[0].minor);
+#line 151 "src/parser/mylite_lemon.y"
+{
+}
+#line 3628 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 132: /* create_first_token ::= AGGREGATE */
+      case 293: /* keyword ::= AGGREGATE */ yytestcase(yyruleno==293);
+      case 396: /* keyword_not_select_clause ::= AGGREGATE */ yytestcase(yyruleno==396);
+{  yy_destructor(yypParser,77,&yymsp[0].minor);
+#line 152 "src/parser/mylite_lemon.y"
+{
+}
+#line 3638 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 133: /* create_first_token ::= PROCEDURE */
+      case 151: /* drop_first_token ::= PROCEDURE */ yytestcase(yyruleno==151);
+      case 172: /* alter_first_token ::= PROCEDURE */ yytestcase(yyruleno==172);
+      case 237: /* keyword ::= PROCEDURE */ yytestcase(yyruleno==237);
+      case 342: /* keyword_not_select_clause ::= PROCEDURE */ yytestcase(yyruleno==342);
+{  yy_destructor(yypParser,78,&yymsp[0].minor);
+#line 153 "src/parser/mylite_lemon.y"
+{
+}
+#line 3650 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 134: /* create_first_token ::= TRIGGER */
+      case 153: /* drop_first_token ::= TRIGGER */ yytestcase(yyruleno==153);
+      case 279: /* keyword ::= TRIGGER */ yytestcase(yyruleno==279);
+      case 384: /* keyword_not_select_clause ::= TRIGGER */ yytestcase(yyruleno==384);
+{  yy_destructor(yypParser,79,&yymsp[0].minor);
+#line 154 "src/parser/mylite_lemon.y"
+{
+}
+#line 3661 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 135: /* create_first_token ::= USER */
+      case 154: /* drop_first_token ::= USER */ yytestcase(yyruleno==154);
+      case 173: /* alter_first_token ::= USER */ yytestcase(yyruleno==173);
+      case 183: /* rename_first_token ::= USER */ yytestcase(yyruleno==183);
+      case 288: /* keyword ::= USER */ yytestcase(yyruleno==288);
+      case 392: /* keyword_not_select_clause ::= USER */ yytestcase(yyruleno==392);
+{  yy_destructor(yypParser,80,&yymsp[0].minor);
+#line 155 "src/parser/mylite_lemon.y"
+{
+}
+#line 3674 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 136: /* create_first_token ::= ROLE */
+      case 155: /* drop_first_token ::= ROLE */ yytestcase(yyruleno==155);
+      case 242: /* keyword ::= ROLE */ yytestcase(yyruleno==242);
+      case 347: /* keyword_not_select_clause ::= ROLE */ yytestcase(yyruleno==347);
+{  yy_destructor(yypParser,81,&yymsp[0].minor);
 #line 156 "src/parser/mylite_lemon.y"
 {
 }
-#line 3615 "src/parser/generated/mylite_lemon.c"
+#line 3685 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 135: /* create_first_token ::= RESOURCE */
-      case 160: /* drop_first_token ::= RESOURCE */ yytestcase(yyruleno==160);
-      case 174: /* alter_first_token ::= RESOURCE */ yytestcase(yyruleno==174);
-      case 289: /* keyword ::= RESOURCE */ yytestcase(yyruleno==289);
-      case 392: /* keyword_not_select_clause ::= RESOURCE */ yytestcase(yyruleno==392);
-{  yy_destructor(yypParser,84,&yymsp[0].minor);
+      case 137: /* create_first_token ::= RESOURCE */
+      case 162: /* drop_first_token ::= RESOURCE */ yytestcase(yyruleno==162);
+      case 176: /* alter_first_token ::= RESOURCE */ yytestcase(yyruleno==176);
+      case 299: /* keyword ::= RESOURCE */ yytestcase(yyruleno==299);
+      case 402: /* keyword_not_select_clause ::= RESOURCE */ yytestcase(yyruleno==402);
+{  yy_destructor(yypParser,82,&yymsp[0].minor);
 #line 157 "src/parser/mylite_lemon.y"
 {
 }
-#line 3627 "src/parser/generated/mylite_lemon.c"
+#line 3697 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 136: /* create_first_token ::= SERVER */
-      case 154: /* drop_first_token ::= SERVER */ yytestcase(yyruleno==154);
-      case 175: /* alter_first_token ::= SERVER */ yytestcase(yyruleno==175);
-      case 235: /* keyword ::= SERVER */ yytestcase(yyruleno==235);
-      case 340: /* keyword_not_select_clause ::= SERVER */ yytestcase(yyruleno==340);
-{  yy_destructor(yypParser,85,&yymsp[0].minor);
+      case 138: /* create_first_token ::= SERVER */
+      case 156: /* drop_first_token ::= SERVER */ yytestcase(yyruleno==156);
+      case 177: /* alter_first_token ::= SERVER */ yytestcase(yyruleno==177);
+      case 245: /* keyword ::= SERVER */ yytestcase(yyruleno==245);
+      case 350: /* keyword_not_select_clause ::= SERVER */ yytestcase(yyruleno==350);
+{  yy_destructor(yypParser,83,&yymsp[0].minor);
 #line 158 "src/parser/mylite_lemon.y"
 {
 }
-#line 3639 "src/parser/generated/mylite_lemon.c"
+#line 3709 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 137: /* create_first_token ::= LOGFILE */
-      case 156: /* drop_first_token ::= LOGFILE */ yytestcase(yyruleno==156);
-      case 173: /* alter_first_token ::= LOGFILE */ yytestcase(yyruleno==173);
-      case 287: /* keyword ::= LOGFILE */ yytestcase(yyruleno==287);
-      case 390: /* keyword_not_select_clause ::= LOGFILE */ yytestcase(yyruleno==390);
-{  yy_destructor(yypParser,86,&yymsp[0].minor);
+      case 139: /* create_first_token ::= LOGFILE */
+      case 158: /* drop_first_token ::= LOGFILE */ yytestcase(yyruleno==158);
+      case 175: /* alter_first_token ::= LOGFILE */ yytestcase(yyruleno==175);
+      case 297: /* keyword ::= LOGFILE */ yytestcase(yyruleno==297);
+      case 400: /* keyword_not_select_clause ::= LOGFILE */ yytestcase(yyruleno==400);
+{  yy_destructor(yypParser,84,&yymsp[0].minor);
 #line 159 "src/parser/mylite_lemon.y"
 {
 }
-#line 3651 "src/parser/generated/mylite_lemon.c"
+#line 3721 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 138: /* create_first_token ::= TABLESPACE */
-      case 157: /* drop_first_token ::= TABLESPACE */ yytestcase(yyruleno==157);
-      case 176: /* alter_first_token ::= TABLESPACE */ yytestcase(yyruleno==176);
-      case 208: /* keyword ::= TABLESPACE */ yytestcase(yyruleno==208);
-      case 313: /* keyword_not_select_clause ::= TABLESPACE */ yytestcase(yyruleno==313);
-{  yy_destructor(yypParser,87,&yymsp[0].minor);
+      case 140: /* create_first_token ::= TABLESPACE */
+      case 159: /* drop_first_token ::= TABLESPACE */ yytestcase(yyruleno==159);
+      case 178: /* alter_first_token ::= TABLESPACE */ yytestcase(yyruleno==178);
+      case 218: /* keyword ::= TABLESPACE */ yytestcase(yyruleno==218);
+      case 323: /* keyword_not_select_clause ::= TABLESPACE */ yytestcase(yyruleno==323);
+{  yy_destructor(yypParser,85,&yymsp[0].minor);
 #line 160 "src/parser/mylite_lemon.y"
 {
 }
-#line 3663 "src/parser/generated/mylite_lemon.c"
+#line 3733 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 139: /* create_first_token ::= UNDO */
-      case 158: /* drop_first_token ::= UNDO */ yytestcase(yyruleno==158);
-      case 177: /* alter_first_token ::= UNDO */ yytestcase(yyruleno==177);
-      case 294: /* keyword ::= UNDO */ yytestcase(yyruleno==294);
-      case 397: /* keyword_not_select_clause ::= UNDO */ yytestcase(yyruleno==397);
-{  yy_destructor(yypParser,88,&yymsp[0].minor);
+      case 141: /* create_first_token ::= UNDO */
+      case 160: /* drop_first_token ::= UNDO */ yytestcase(yyruleno==160);
+      case 179: /* alter_first_token ::= UNDO */ yytestcase(yyruleno==179);
+      case 304: /* keyword ::= UNDO */ yytestcase(yyruleno==304);
+      case 407: /* keyword_not_select_clause ::= UNDO */ yytestcase(yyruleno==407);
+{  yy_destructor(yypParser,86,&yymsp[0].minor);
 #line 161 "src/parser/mylite_lemon.y"
 {
 }
-#line 3675 "src/parser/generated/mylite_lemon.c"
+#line 3745 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 140: /* drop_tail ::= drop_first_token required_statement_tail */
-{  yy_destructor(yypParser,136,&yymsp[-1].minor);
+      case 142: /* drop_tail ::= drop_first_token required_statement_tail */
+{  yy_destructor(yypParser,138,&yymsp[-1].minor);
 #line 167 "src/parser/mylite_lemon.y"
 {
 }
-#line 3683 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,127,&yymsp[0].minor);
+#line 3753 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,129,&yymsp[0].minor);
 }
         break;
-      case 142: /* drop_first_token ::= TABLES */
-      case 207: /* keyword ::= TABLES */ yytestcase(yyruleno==207);
-      case 312: /* keyword_not_select_clause ::= TABLES */ yytestcase(yyruleno==312);
-{  yy_destructor(yypParser,90,&yymsp[0].minor);
+      case 144: /* drop_first_token ::= TABLES */
+      case 182: /* rename_first_token ::= TABLES */ yytestcase(yyruleno==182);
+      case 217: /* keyword ::= TABLES */ yytestcase(yyruleno==217);
+      case 322: /* keyword_not_select_clause ::= TABLES */ yytestcase(yyruleno==322);
+{  yy_destructor(yypParser,88,&yymsp[0].minor);
 #line 170 "src/parser/mylite_lemon.y"
 {
 }
-#line 3694 "src/parser/generated/mylite_lemon.c"
+#line 3765 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 150: /* drop_first_token ::= PREPARE */
-      case 226: /* keyword ::= PREPARE */ yytestcase(yyruleno==226);
-      case 331: /* keyword_not_select_clause ::= PREPARE */ yytestcase(yyruleno==331);
-{  yy_destructor(yypParser,30,&yymsp[0].minor);
+      case 152: /* drop_first_token ::= PREPARE */
+      case 236: /* keyword ::= PREPARE */ yytestcase(yyruleno==236);
+      case 341: /* keyword_not_select_clause ::= PREPARE */ yytestcase(yyruleno==341);
+{  yy_destructor(yypParser,28,&yymsp[0].minor);
 #line 178 "src/parser/mylite_lemon.y"
-{
-}
-#line 3704 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 161: /* alter_tail ::= alter_first_token required_statement_tail */
-{  yy_destructor(yypParser,138,&yymsp[-1].minor);
-#line 194 "src/parser/mylite_lemon.y"
-{
-}
-#line 3712 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,127,&yymsp[0].minor);
-}
-        break;
-      case 172: /* alter_first_token ::= INSTANCE */
-      case 250: /* keyword ::= INSTANCE */ yytestcase(yyruleno==250);
-      case 355: /* keyword_not_select_clause ::= INSTANCE */ yytestcase(yyruleno==355);
-{  yy_destructor(yypParser,92,&yymsp[0].minor);
-#line 206 "src/parser/mylite_lemon.y"
-{
-}
-#line 3723 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 179: /* statement_tail ::= statement_tail statement_token */
-{  yy_destructor(yypParser,128,&yymsp[-1].minor);
-#line 268 "src/parser/mylite_lemon.y"
-{
-}
-#line 3731 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,131,&yymsp[0].minor);
-}
-        break;
-      case 180: /* required_statement_tail ::= statement_token */
-{  yy_destructor(yypParser,131,&yymsp[0].minor);
-#line 270 "src/parser/mylite_lemon.y"
-{
-}
-#line 3740 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 181: /* required_statement_tail ::= required_statement_tail statement_token */
-{  yy_destructor(yypParser,127,&yymsp[-1].minor);
-#line 271 "src/parser/mylite_lemon.y"
-{
-}
-#line 3748 "src/parser/generated/mylite_lemon.c"
-  yy_destructor(yypParser,131,&yymsp[0].minor);
-}
-        break;
-      case 184: /* statement_token ::= keyword */
-{  yy_destructor(yypParser,139,&yymsp[0].minor);
-#line 275 "src/parser/mylite_lemon.y"
-{
-}
-#line 3757 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 191: /* keyword ::= SELECT */
-      case 296: /* keyword_not_select_clause ::= SELECT */ yytestcase(yyruleno==296);
-{  yy_destructor(yypParser,3,&yymsp[0].minor);
-#line 283 "src/parser/mylite_lemon.y"
-{
-}
-#line 3766 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 192: /* keyword ::= WITH */
-      case 297: /* keyword_not_select_clause ::= WITH */ yytestcase(yyruleno==297);
-{  yy_destructor(yypParser,5,&yymsp[0].minor);
-#line 284 "src/parser/mylite_lemon.y"
 {
 }
 #line 3775 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 193: /* keyword ::= INSERT */
-      case 298: /* keyword_not_select_clause ::= INSERT */ yytestcase(yyruleno==298);
-{  yy_destructor(yypParser,6,&yymsp[0].minor);
-#line 285 "src/parser/mylite_lemon.y"
+      case 163: /* alter_tail ::= alter_first_token required_statement_tail */
+{  yy_destructor(yypParser,140,&yymsp[-1].minor);
+#line 194 "src/parser/mylite_lemon.y"
 {
 }
-#line 3784 "src/parser/generated/mylite_lemon.c"
+#line 3783 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,129,&yymsp[0].minor);
 }
         break;
-      case 194: /* keyword ::= REPLACE */
-      case 299: /* keyword_not_select_clause ::= REPLACE */ yytestcase(yyruleno==299);
-{  yy_destructor(yypParser,7,&yymsp[0].minor);
-#line 286 "src/parser/mylite_lemon.y"
+      case 174: /* alter_first_token ::= INSTANCE */
+      case 260: /* keyword ::= INSTANCE */ yytestcase(yyruleno==260);
+      case 365: /* keyword_not_select_clause ::= INSTANCE */ yytestcase(yyruleno==365);
+{  yy_destructor(yypParser,90,&yymsp[0].minor);
+#line 206 "src/parser/mylite_lemon.y"
 {
 }
-#line 3793 "src/parser/generated/mylite_lemon.c"
+#line 3794 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 195: /* keyword ::= UPDATE */
-      case 300: /* keyword_not_select_clause ::= UPDATE */ yytestcase(yyruleno==300);
-{  yy_destructor(yypParser,8,&yymsp[0].minor);
-#line 287 "src/parser/mylite_lemon.y"
+      case 180: /* rename_tail ::= rename_first_token required_statement_tail */
+{  yy_destructor(yypParser,142,&yymsp[-1].minor);
+#line 217 "src/parser/mylite_lemon.y"
 {
 }
 #line 3802 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,129,&yymsp[0].minor);
 }
         break;
-      case 196: /* keyword ::= DELETE */
-      case 301: /* keyword_not_select_clause ::= DELETE */ yytestcase(yyruleno==301);
-{  yy_destructor(yypParser,9,&yymsp[0].minor);
-#line 288 "src/parser/mylite_lemon.y"
+      case 184: /* truncate_tail ::= TABLE required_statement_tail */
+{  yy_destructor(yypParser,13,&yymsp[-1].minor);
+#line 227 "src/parser/mylite_lemon.y"
 {
 }
 #line 3811 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,129,&yymsp[0].minor);
 }
         break;
-      case 197: /* keyword ::= CREATE */
-      case 302: /* keyword_not_select_clause ::= CREATE */ yytestcase(yyruleno==302);
-{  yy_destructor(yypParser,4,&yymsp[0].minor);
-#line 289 "src/parser/mylite_lemon.y"
+      case 185: /* truncate_tail ::= truncate_table_name statement_tail */
+{  yy_destructor(yypParser,144,&yymsp[-1].minor);
+#line 228 "src/parser/mylite_lemon.y"
 {
 }
 #line 3820 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,130,&yymsp[0].minor);
 }
         break;
-      case 199: /* keyword ::= ALTER */
-      case 304: /* keyword_not_select_clause ::= ALTER */ yytestcase(yyruleno==304);
-{  yy_destructor(yypParser,91,&yymsp[0].minor);
-#line 291 "src/parser/mylite_lemon.y"
+      case 189: /* statement_tail ::= statement_tail statement_token */
+{  yy_destructor(yypParser,130,&yymsp[-1].minor);
+#line 288 "src/parser/mylite_lemon.y"
 {
 }
 #line 3829 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,133,&yymsp[0].minor);
 }
         break;
-      case 200: /* keyword ::= DROP */
-      case 305: /* keyword_not_select_clause ::= DROP */ yytestcase(yyruleno==305);
-{  yy_destructor(yypParser,89,&yymsp[0].minor);
-#line 292 "src/parser/mylite_lemon.y"
+      case 190: /* required_statement_tail ::= statement_token */
+{  yy_destructor(yypParser,133,&yymsp[0].minor);
+#line 290 "src/parser/mylite_lemon.y"
 {
 }
 #line 3838 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 201: /* keyword ::= TRUNCATE */
-      case 306: /* keyword_not_select_clause ::= TRUNCATE */ yytestcase(yyruleno==306);
-{  yy_destructor(yypParser,10,&yymsp[0].minor);
-#line 293 "src/parser/mylite_lemon.y"
+      case 191: /* required_statement_tail ::= required_statement_tail statement_token */
+{  yy_destructor(yypParser,129,&yymsp[-1].minor);
+#line 291 "src/parser/mylite_lemon.y"
 {
 }
-#line 3847 "src/parser/generated/mylite_lemon.c"
+#line 3846 "src/parser/generated/mylite_lemon.c"
+  yy_destructor(yypParser,133,&yymsp[0].minor);
 }
         break;
-      case 202: /* keyword ::= RENAME */
-      case 307: /* keyword_not_select_clause ::= RENAME */ yytestcase(yyruleno==307);
-{  yy_destructor(yypParser,11,&yymsp[0].minor);
-#line 294 "src/parser/mylite_lemon.y"
-{
-}
-#line 3856 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 203: /* keyword ::= CALL */
-      case 308: /* keyword_not_select_clause ::= CALL */ yytestcase(yyruleno==308);
-{  yy_destructor(yypParser,12,&yymsp[0].minor);
+      case 194: /* statement_token ::= keyword */
+{  yy_destructor(yypParser,145,&yymsp[0].minor);
 #line 295 "src/parser/mylite_lemon.y"
 {
 }
-#line 3865 "src/parser/generated/mylite_lemon.c"
+#line 3855 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 204: /* keyword ::= DO */
-      case 309: /* keyword_not_select_clause ::= DO */ yytestcase(yyruleno==309);
-{  yy_destructor(yypParser,13,&yymsp[0].minor);
-#line 296 "src/parser/mylite_lemon.y"
-{
-}
-#line 3874 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 205: /* keyword ::= LOAD */
-      case 310: /* keyword_not_select_clause ::= LOAD */ yytestcase(yyruleno==310);
-{  yy_destructor(yypParser,14,&yymsp[0].minor);
-#line 297 "src/parser/mylite_lemon.y"
-{
-}
-#line 3883 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 209: /* keyword ::= VALUES */
-      case 314: /* keyword_not_select_clause ::= VALUES */ yytestcase(yyruleno==314);
-{  yy_destructor(yypParser,16,&yymsp[0].minor);
-#line 301 "src/parser/mylite_lemon.y"
-{
-}
-#line 3892 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 210: /* keyword ::= HANDLER */
-      case 315: /* keyword_not_select_clause ::= HANDLER */ yytestcase(yyruleno==315);
-{  yy_destructor(yypParser,17,&yymsp[0].minor);
-#line 302 "src/parser/mylite_lemon.y"
-{
-}
-#line 3901 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 211: /* keyword ::= IMPORT */
-      case 316: /* keyword_not_select_clause ::= IMPORT */ yytestcase(yyruleno==316);
-{  yy_destructor(yypParser,18,&yymsp[0].minor);
+      case 201: /* keyword ::= SELECT */
+      case 306: /* keyword_not_select_clause ::= SELECT */ yytestcase(yyruleno==306);
+{  yy_destructor(yypParser,3,&yymsp[0].minor);
 #line 303 "src/parser/mylite_lemon.y"
 {
 }
-#line 3910 "src/parser/generated/mylite_lemon.c"
+#line 3864 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 212: /* keyword ::= START */
-      case 317: /* keyword_not_select_clause ::= START */ yytestcase(yyruleno==317);
-{  yy_destructor(yypParser,19,&yymsp[0].minor);
+      case 202: /* keyword ::= WITH */
+      case 307: /* keyword_not_select_clause ::= WITH */ yytestcase(yyruleno==307);
+{  yy_destructor(yypParser,5,&yymsp[0].minor);
 #line 304 "src/parser/mylite_lemon.y"
 {
 }
-#line 3919 "src/parser/generated/mylite_lemon.c"
+#line 3873 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 213: /* keyword ::= BEGIN */
-      case 318: /* keyword_not_select_clause ::= BEGIN */ yytestcase(yyruleno==318);
-{  yy_destructor(yypParser,93,&yymsp[0].minor);
+      case 203: /* keyword ::= INSERT */
+      case 308: /* keyword_not_select_clause ::= INSERT */ yytestcase(yyruleno==308);
+{  yy_destructor(yypParser,6,&yymsp[0].minor);
 #line 305 "src/parser/mylite_lemon.y"
 {
 }
-#line 3928 "src/parser/generated/mylite_lemon.c"
+#line 3882 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 214: /* keyword ::= COMMIT */
-      case 319: /* keyword_not_select_clause ::= COMMIT */ yytestcase(yyruleno==319);
-{  yy_destructor(yypParser,94,&yymsp[0].minor);
+      case 204: /* keyword ::= REPLACE */
+      case 309: /* keyword_not_select_clause ::= REPLACE */ yytestcase(yyruleno==309);
+{  yy_destructor(yypParser,7,&yymsp[0].minor);
 #line 306 "src/parser/mylite_lemon.y"
 {
 }
-#line 3937 "src/parser/generated/mylite_lemon.c"
+#line 3891 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 215: /* keyword ::= ROLLBACK */
-      case 320: /* keyword_not_select_clause ::= ROLLBACK */ yytestcase(yyruleno==320);
-{  yy_destructor(yypParser,95,&yymsp[0].minor);
+      case 205: /* keyword ::= UPDATE */
+      case 310: /* keyword_not_select_clause ::= UPDATE */ yytestcase(yyruleno==310);
+{  yy_destructor(yypParser,8,&yymsp[0].minor);
 #line 307 "src/parser/mylite_lemon.y"
 {
 }
-#line 3946 "src/parser/generated/mylite_lemon.c"
+#line 3900 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 216: /* keyword ::= SAVEPOINT */
-      case 321: /* keyword_not_select_clause ::= SAVEPOINT */ yytestcase(yyruleno==321);
-{  yy_destructor(yypParser,20,&yymsp[0].minor);
+      case 206: /* keyword ::= DELETE */
+      case 311: /* keyword_not_select_clause ::= DELETE */ yytestcase(yyruleno==311);
+{  yy_destructor(yypParser,9,&yymsp[0].minor);
 #line 308 "src/parser/mylite_lemon.y"
 {
 }
-#line 3955 "src/parser/generated/mylite_lemon.c"
+#line 3909 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 217: /* keyword ::= RELEASE */
-      case 322: /* keyword_not_select_clause ::= RELEASE */ yytestcase(yyruleno==322);
-{  yy_destructor(yypParser,21,&yymsp[0].minor);
+      case 207: /* keyword ::= CREATE */
+      case 312: /* keyword_not_select_clause ::= CREATE */ yytestcase(yyruleno==312);
+{  yy_destructor(yypParser,4,&yymsp[0].minor);
 #line 309 "src/parser/mylite_lemon.y"
 {
 }
-#line 3964 "src/parser/generated/mylite_lemon.c"
+#line 3918 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 218: /* keyword ::= SET */
-      case 323: /* keyword_not_select_clause ::= SET */ yytestcase(yyruleno==323);
-{  yy_destructor(yypParser,22,&yymsp[0].minor);
-#line 310 "src/parser/mylite_lemon.y"
-{
-}
-#line 3973 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 219: /* keyword ::= LOCK */
-      case 324: /* keyword_not_select_clause ::= LOCK */ yytestcase(yyruleno==324);
-{  yy_destructor(yypParser,23,&yymsp[0].minor);
+      case 209: /* keyword ::= ALTER */
+      case 314: /* keyword_not_select_clause ::= ALTER */ yytestcase(yyruleno==314);
+{  yy_destructor(yypParser,89,&yymsp[0].minor);
 #line 311 "src/parser/mylite_lemon.y"
 {
 }
-#line 3982 "src/parser/generated/mylite_lemon.c"
+#line 3927 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 220: /* keyword ::= UNLOCK */
-      case 325: /* keyword_not_select_clause ::= UNLOCK */ yytestcase(yyruleno==325);
-{  yy_destructor(yypParser,24,&yymsp[0].minor);
+      case 210: /* keyword ::= DROP */
+      case 315: /* keyword_not_select_clause ::= DROP */ yytestcase(yyruleno==315);
+{  yy_destructor(yypParser,87,&yymsp[0].minor);
 #line 312 "src/parser/mylite_lemon.y"
 {
 }
-#line 3991 "src/parser/generated/mylite_lemon.c"
+#line 3936 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 221: /* keyword ::= XA */
-      case 326: /* keyword_not_select_clause ::= XA */ yytestcase(yyruleno==326);
-{  yy_destructor(yypParser,25,&yymsp[0].minor);
+      case 211: /* keyword ::= TRUNCATE */
+      case 316: /* keyword_not_select_clause ::= TRUNCATE */ yytestcase(yyruleno==316);
+{  yy_destructor(yypParser,92,&yymsp[0].minor);
 #line 313 "src/parser/mylite_lemon.y"
 {
 }
-#line 4000 "src/parser/generated/mylite_lemon.c"
+#line 3945 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 222: /* keyword ::= BINLOG */
-      case 327: /* keyword_not_select_clause ::= BINLOG */ yytestcase(yyruleno==327);
-{  yy_destructor(yypParser,26,&yymsp[0].minor);
+      case 212: /* keyword ::= RENAME */
+      case 317: /* keyword_not_select_clause ::= RENAME */ yytestcase(yyruleno==317);
+{  yy_destructor(yypParser,91,&yymsp[0].minor);
 #line 314 "src/parser/mylite_lemon.y"
 {
 }
-#line 4009 "src/parser/generated/mylite_lemon.c"
+#line 3954 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 223: /* keyword ::= PURGE */
-      case 328: /* keyword_not_select_clause ::= PURGE */ yytestcase(yyruleno==328);
-{  yy_destructor(yypParser,27,&yymsp[0].minor);
+      case 213: /* keyword ::= CALL */
+      case 318: /* keyword_not_select_clause ::= CALL */ yytestcase(yyruleno==318);
+{  yy_destructor(yypParser,10,&yymsp[0].minor);
 #line 315 "src/parser/mylite_lemon.y"
 {
 }
-#line 4018 "src/parser/generated/mylite_lemon.c"
+#line 3963 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 224: /* keyword ::= RESET */
-      case 329: /* keyword_not_select_clause ::= RESET */ yytestcase(yyruleno==329);
-{  yy_destructor(yypParser,28,&yymsp[0].minor);
+      case 214: /* keyword ::= DO */
+      case 319: /* keyword_not_select_clause ::= DO */ yytestcase(yyruleno==319);
+{  yy_destructor(yypParser,11,&yymsp[0].minor);
 #line 316 "src/parser/mylite_lemon.y"
 {
 }
-#line 4027 "src/parser/generated/mylite_lemon.c"
+#line 3972 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 225: /* keyword ::= CHANGE */
-      case 330: /* keyword_not_select_clause ::= CHANGE */ yytestcase(yyruleno==330);
-{  yy_destructor(yypParser,29,&yymsp[0].minor);
+      case 215: /* keyword ::= LOAD */
+      case 320: /* keyword_not_select_clause ::= LOAD */ yytestcase(yyruleno==320);
+{  yy_destructor(yypParser,12,&yymsp[0].minor);
 #line 317 "src/parser/mylite_lemon.y"
 {
 }
-#line 4036 "src/parser/generated/mylite_lemon.c"
+#line 3981 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 228: /* keyword ::= EXECUTE */
-      case 333: /* keyword_not_select_clause ::= EXECUTE */ yytestcase(yyruleno==333);
-{  yy_destructor(yypParser,31,&yymsp[0].minor);
-#line 320 "src/parser/mylite_lemon.y"
-{
-}
-#line 4045 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 229: /* keyword ::= DEALLOCATE */
-      case 334: /* keyword_not_select_clause ::= DEALLOCATE */ yytestcase(yyruleno==334);
-{  yy_destructor(yypParser,32,&yymsp[0].minor);
+      case 219: /* keyword ::= VALUES */
+      case 324: /* keyword_not_select_clause ::= VALUES */ yytestcase(yyruleno==324);
+{  yy_destructor(yypParser,14,&yymsp[0].minor);
 #line 321 "src/parser/mylite_lemon.y"
 {
 }
-#line 4054 "src/parser/generated/mylite_lemon.c"
+#line 3990 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 230: /* keyword ::= GRANT */
-      case 335: /* keyword_not_select_clause ::= GRANT */ yytestcase(yyruleno==335);
-{  yy_destructor(yypParser,33,&yymsp[0].minor);
+      case 220: /* keyword ::= HANDLER */
+      case 325: /* keyword_not_select_clause ::= HANDLER */ yytestcase(yyruleno==325);
+{  yy_destructor(yypParser,15,&yymsp[0].minor);
 #line 322 "src/parser/mylite_lemon.y"
 {
 }
-#line 4063 "src/parser/generated/mylite_lemon.c"
+#line 3999 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 231: /* keyword ::= REVOKE */
-      case 336: /* keyword_not_select_clause ::= REVOKE */ yytestcase(yyruleno==336);
-{  yy_destructor(yypParser,34,&yymsp[0].minor);
+      case 221: /* keyword ::= IMPORT */
+      case 326: /* keyword_not_select_clause ::= IMPORT */ yytestcase(yyruleno==326);
+{  yy_destructor(yypParser,16,&yymsp[0].minor);
 #line 323 "src/parser/mylite_lemon.y"
 {
 }
-#line 4072 "src/parser/generated/mylite_lemon.c"
+#line 4008 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 233: /* keyword ::= SHOW */
-      case 338: /* keyword_not_select_clause ::= SHOW */ yytestcase(yyruleno==338);
-{  yy_destructor(yypParser,35,&yymsp[0].minor);
+      case 222: /* keyword ::= START */
+      case 327: /* keyword_not_select_clause ::= START */ yytestcase(yyruleno==327);
+{  yy_destructor(yypParser,17,&yymsp[0].minor);
+#line 324 "src/parser/mylite_lemon.y"
+{
+}
+#line 4017 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 223: /* keyword ::= BEGIN */
+      case 328: /* keyword_not_select_clause ::= BEGIN */ yytestcase(yyruleno==328);
+{  yy_destructor(yypParser,93,&yymsp[0].minor);
 #line 325 "src/parser/mylite_lemon.y"
 {
 }
-#line 4081 "src/parser/generated/mylite_lemon.c"
+#line 4026 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 236: /* keyword ::= DESCRIBE */
-      case 341: /* keyword_not_select_clause ::= DESCRIBE */ yytestcase(yyruleno==341);
-{  yy_destructor(yypParser,36,&yymsp[0].minor);
+      case 224: /* keyword ::= COMMIT */
+      case 329: /* keyword_not_select_clause ::= COMMIT */ yytestcase(yyruleno==329);
+{  yy_destructor(yypParser,94,&yymsp[0].minor);
+#line 326 "src/parser/mylite_lemon.y"
+{
+}
+#line 4035 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 225: /* keyword ::= ROLLBACK */
+      case 330: /* keyword_not_select_clause ::= ROLLBACK */ yytestcase(yyruleno==330);
+{  yy_destructor(yypParser,95,&yymsp[0].minor);
+#line 327 "src/parser/mylite_lemon.y"
+{
+}
+#line 4044 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 226: /* keyword ::= SAVEPOINT */
+      case 331: /* keyword_not_select_clause ::= SAVEPOINT */ yytestcase(yyruleno==331);
+{  yy_destructor(yypParser,18,&yymsp[0].minor);
 #line 328 "src/parser/mylite_lemon.y"
 {
 }
-#line 4090 "src/parser/generated/mylite_lemon.c"
+#line 4053 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 237: /* keyword ::= DESC */
-      case 342: /* keyword_not_select_clause ::= DESC */ yytestcase(yyruleno==342);
-{  yy_destructor(yypParser,37,&yymsp[0].minor);
+      case 227: /* keyword ::= RELEASE */
+      case 332: /* keyword_not_select_clause ::= RELEASE */ yytestcase(yyruleno==332);
+{  yy_destructor(yypParser,19,&yymsp[0].minor);
 #line 329 "src/parser/mylite_lemon.y"
 {
 }
-#line 4099 "src/parser/generated/mylite_lemon.c"
+#line 4062 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 238: /* keyword ::= EXPLAIN */
-      case 343: /* keyword_not_select_clause ::= EXPLAIN */ yytestcase(yyruleno==343);
-{  yy_destructor(yypParser,38,&yymsp[0].minor);
+      case 228: /* keyword ::= SET */
+      case 333: /* keyword_not_select_clause ::= SET */ yytestcase(yyruleno==333);
+{  yy_destructor(yypParser,20,&yymsp[0].minor);
 #line 330 "src/parser/mylite_lemon.y"
 {
 }
-#line 4108 "src/parser/generated/mylite_lemon.c"
+#line 4071 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 241: /* keyword ::= HELP */
-      case 346: /* keyword_not_select_clause ::= HELP */ yytestcase(yyruleno==346);
-{  yy_destructor(yypParser,39,&yymsp[0].minor);
+      case 229: /* keyword ::= LOCK */
+      case 334: /* keyword_not_select_clause ::= LOCK */ yytestcase(yyruleno==334);
+{  yy_destructor(yypParser,21,&yymsp[0].minor);
+#line 331 "src/parser/mylite_lemon.y"
+{
+}
+#line 4080 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 230: /* keyword ::= UNLOCK */
+      case 335: /* keyword_not_select_clause ::= UNLOCK */ yytestcase(yyruleno==335);
+{  yy_destructor(yypParser,22,&yymsp[0].minor);
+#line 332 "src/parser/mylite_lemon.y"
+{
+}
+#line 4089 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 231: /* keyword ::= XA */
+      case 336: /* keyword_not_select_clause ::= XA */ yytestcase(yyruleno==336);
+{  yy_destructor(yypParser,23,&yymsp[0].minor);
 #line 333 "src/parser/mylite_lemon.y"
 {
 }
-#line 4117 "src/parser/generated/mylite_lemon.c"
+#line 4098 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 242: /* keyword ::= USE */
-      case 347: /* keyword_not_select_clause ::= USE */ yytestcase(yyruleno==347);
-{  yy_destructor(yypParser,40,&yymsp[0].minor);
+      case 232: /* keyword ::= BINLOG */
+      case 337: /* keyword_not_select_clause ::= BINLOG */ yytestcase(yyruleno==337);
+{  yy_destructor(yypParser,24,&yymsp[0].minor);
 #line 334 "src/parser/mylite_lemon.y"
 {
 }
-#line 4126 "src/parser/generated/mylite_lemon.c"
+#line 4107 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 243: /* keyword ::= ANALYZE */
-      case 348: /* keyword_not_select_clause ::= ANALYZE */ yytestcase(yyruleno==348);
-{  yy_destructor(yypParser,41,&yymsp[0].minor);
+      case 233: /* keyword ::= PURGE */
+      case 338: /* keyword_not_select_clause ::= PURGE */ yytestcase(yyruleno==338);
+{  yy_destructor(yypParser,25,&yymsp[0].minor);
 #line 335 "src/parser/mylite_lemon.y"
 {
 }
-#line 4135 "src/parser/generated/mylite_lemon.c"
+#line 4116 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 244: /* keyword ::= CHECK */
-      case 349: /* keyword_not_select_clause ::= CHECK */ yytestcase(yyruleno==349);
-{  yy_destructor(yypParser,42,&yymsp[0].minor);
+      case 234: /* keyword ::= RESET */
+      case 339: /* keyword_not_select_clause ::= RESET */ yytestcase(yyruleno==339);
+{  yy_destructor(yypParser,26,&yymsp[0].minor);
 #line 336 "src/parser/mylite_lemon.y"
 {
 }
-#line 4144 "src/parser/generated/mylite_lemon.c"
+#line 4125 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 245: /* keyword ::= CHECKSUM */
-      case 350: /* keyword_not_select_clause ::= CHECKSUM */ yytestcase(yyruleno==350);
-{  yy_destructor(yypParser,43,&yymsp[0].minor);
+      case 235: /* keyword ::= CHANGE */
+      case 340: /* keyword_not_select_clause ::= CHANGE */ yytestcase(yyruleno==340);
+{  yy_destructor(yypParser,27,&yymsp[0].minor);
 #line 337 "src/parser/mylite_lemon.y"
 {
 }
-#line 4153 "src/parser/generated/mylite_lemon.c"
+#line 4134 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 246: /* keyword ::= OPTIMIZE */
-      case 351: /* keyword_not_select_clause ::= OPTIMIZE */ yytestcase(yyruleno==351);
-{  yy_destructor(yypParser,44,&yymsp[0].minor);
-#line 338 "src/parser/mylite_lemon.y"
-{
-}
-#line 4162 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 247: /* keyword ::= REPAIR */
-      case 352: /* keyword_not_select_clause ::= REPAIR */ yytestcase(yyruleno==352);
-{  yy_destructor(yypParser,45,&yymsp[0].minor);
-#line 339 "src/parser/mylite_lemon.y"
-{
-}
-#line 4171 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 248: /* keyword ::= INSTALL */
-      case 353: /* keyword_not_select_clause ::= INSTALL */ yytestcase(yyruleno==353);
-{  yy_destructor(yypParser,46,&yymsp[0].minor);
+      case 238: /* keyword ::= EXECUTE */
+      case 343: /* keyword_not_select_clause ::= EXECUTE */ yytestcase(yyruleno==343);
+{  yy_destructor(yypParser,29,&yymsp[0].minor);
 #line 340 "src/parser/mylite_lemon.y"
 {
 }
-#line 4180 "src/parser/generated/mylite_lemon.c"
+#line 4143 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 251: /* keyword ::= UNINSTALL */
-      case 356: /* keyword_not_select_clause ::= UNINSTALL */ yytestcase(yyruleno==356);
-{  yy_destructor(yypParser,47,&yymsp[0].minor);
+      case 239: /* keyword ::= DEALLOCATE */
+      case 344: /* keyword_not_select_clause ::= DEALLOCATE */ yytestcase(yyruleno==344);
+{  yy_destructor(yypParser,30,&yymsp[0].minor);
+#line 341 "src/parser/mylite_lemon.y"
+{
+}
+#line 4152 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 240: /* keyword ::= GRANT */
+      case 345: /* keyword_not_select_clause ::= GRANT */ yytestcase(yyruleno==345);
+{  yy_destructor(yypParser,31,&yymsp[0].minor);
+#line 342 "src/parser/mylite_lemon.y"
+{
+}
+#line 4161 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 241: /* keyword ::= REVOKE */
+      case 346: /* keyword_not_select_clause ::= REVOKE */ yytestcase(yyruleno==346);
+{  yy_destructor(yypParser,32,&yymsp[0].minor);
 #line 343 "src/parser/mylite_lemon.y"
 {
 }
-#line 4189 "src/parser/generated/mylite_lemon.c"
+#line 4170 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 252: /* keyword ::= CLONE */
-      case 357: /* keyword_not_select_clause ::= CLONE */ yytestcase(yyruleno==357);
-{  yy_destructor(yypParser,48,&yymsp[0].minor);
-#line 344 "src/parser/mylite_lemon.y"
-{
-}
-#line 4198 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 253: /* keyword ::= CACHE */
-      case 358: /* keyword_not_select_clause ::= CACHE */ yytestcase(yyruleno==358);
-{  yy_destructor(yypParser,49,&yymsp[0].minor);
+      case 243: /* keyword ::= SHOW */
+      case 348: /* keyword_not_select_clause ::= SHOW */ yytestcase(yyruleno==348);
+{  yy_destructor(yypParser,33,&yymsp[0].minor);
 #line 345 "src/parser/mylite_lemon.y"
 {
 }
-#line 4207 "src/parser/generated/mylite_lemon.c"
+#line 4179 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 254: /* keyword ::= FLUSH */
-      case 359: /* keyword_not_select_clause ::= FLUSH */ yytestcase(yyruleno==359);
-{  yy_destructor(yypParser,96,&yymsp[0].minor);
-#line 346 "src/parser/mylite_lemon.y"
-{
-}
-#line 4216 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 255: /* keyword ::= KILL */
-      case 360: /* keyword_not_select_clause ::= KILL */ yytestcase(yyruleno==360);
-{  yy_destructor(yypParser,50,&yymsp[0].minor);
-#line 347 "src/parser/mylite_lemon.y"
-{
-}
-#line 4225 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 256: /* keyword ::= RESTART */
-      case 361: /* keyword_not_select_clause ::= RESTART */ yytestcase(yyruleno==361);
-{  yy_destructor(yypParser,97,&yymsp[0].minor);
+      case 246: /* keyword ::= DESCRIBE */
+      case 351: /* keyword_not_select_clause ::= DESCRIBE */ yytestcase(yyruleno==351);
+{  yy_destructor(yypParser,34,&yymsp[0].minor);
 #line 348 "src/parser/mylite_lemon.y"
 {
 }
-#line 4234 "src/parser/generated/mylite_lemon.c"
+#line 4188 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 257: /* keyword ::= SHUTDOWN */
-      case 362: /* keyword_not_select_clause ::= SHUTDOWN */ yytestcase(yyruleno==362);
-{  yy_destructor(yypParser,98,&yymsp[0].minor);
+      case 247: /* keyword ::= DESC */
+      case 352: /* keyword_not_select_clause ::= DESC */ yytestcase(yyruleno==352);
+{  yy_destructor(yypParser,35,&yymsp[0].minor);
 #line 349 "src/parser/mylite_lemon.y"
 {
 }
-#line 4243 "src/parser/generated/mylite_lemon.c"
+#line 4197 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 258: /* keyword ::= GET */
-      case 363: /* keyword_not_select_clause ::= GET */ yytestcase(yyruleno==363);
-{  yy_destructor(yypParser,51,&yymsp[0].minor);
+      case 248: /* keyword ::= EXPLAIN */
+      case 353: /* keyword_not_select_clause ::= EXPLAIN */ yytestcase(yyruleno==353);
+{  yy_destructor(yypParser,36,&yymsp[0].minor);
 #line 350 "src/parser/mylite_lemon.y"
 {
 }
-#line 4252 "src/parser/generated/mylite_lemon.c"
+#line 4206 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 259: /* keyword ::= SIGNAL */
-      case 364: /* keyword_not_select_clause ::= SIGNAL */ yytestcase(yyruleno==364);
-{  yy_destructor(yypParser,52,&yymsp[0].minor);
-#line 351 "src/parser/mylite_lemon.y"
-{
-}
-#line 4261 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 260: /* keyword ::= RESIGNAL */
-      case 365: /* keyword_not_select_clause ::= RESIGNAL */ yytestcase(yyruleno==365);
-{  yy_destructor(yypParser,99,&yymsp[0].minor);
-#line 352 "src/parser/mylite_lemon.y"
-{
-}
-#line 4270 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 261: /* keyword ::= IF */
-      case 366: /* keyword_not_select_clause ::= IF */ yytestcase(yyruleno==366);
-{  yy_destructor(yypParser,53,&yymsp[0].minor);
+      case 251: /* keyword ::= HELP */
+      case 356: /* keyword_not_select_clause ::= HELP */ yytestcase(yyruleno==356);
+{  yy_destructor(yypParser,37,&yymsp[0].minor);
 #line 353 "src/parser/mylite_lemon.y"
 {
 }
-#line 4279 "src/parser/generated/mylite_lemon.c"
+#line 4215 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 262: /* keyword ::= ELSEIF */
-      case 367: /* keyword_not_select_clause ::= ELSEIF */ yytestcase(yyruleno==367);
-{  yy_destructor(yypParser,54,&yymsp[0].minor);
+      case 252: /* keyword ::= USE */
+      case 357: /* keyword_not_select_clause ::= USE */ yytestcase(yyruleno==357);
+{  yy_destructor(yypParser,38,&yymsp[0].minor);
 #line 354 "src/parser/mylite_lemon.y"
 {
 }
-#line 4288 "src/parser/generated/mylite_lemon.c"
+#line 4224 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 263: /* keyword ::= LOOP */
-      case 368: /* keyword_not_select_clause ::= LOOP */ yytestcase(yyruleno==368);
-{  yy_destructor(yypParser,101,&yymsp[0].minor);
+      case 253: /* keyword ::= ANALYZE */
+      case 358: /* keyword_not_select_clause ::= ANALYZE */ yytestcase(yyruleno==358);
+{  yy_destructor(yypParser,39,&yymsp[0].minor);
 #line 355 "src/parser/mylite_lemon.y"
 {
 }
-#line 4297 "src/parser/generated/mylite_lemon.c"
+#line 4233 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 264: /* keyword ::= REPEAT */
-      case 369: /* keyword_not_select_clause ::= REPEAT */ yytestcase(yyruleno==369);
-{  yy_destructor(yypParser,102,&yymsp[0].minor);
+      case 254: /* keyword ::= CHECK */
+      case 359: /* keyword_not_select_clause ::= CHECK */ yytestcase(yyruleno==359);
+{  yy_destructor(yypParser,40,&yymsp[0].minor);
 #line 356 "src/parser/mylite_lemon.y"
 {
 }
-#line 4306 "src/parser/generated/mylite_lemon.c"
+#line 4242 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 265: /* keyword ::= UNTIL */
-      case 370: /* keyword_not_select_clause ::= UNTIL */ yytestcase(yyruleno==370);
-{  yy_destructor(yypParser,103,&yymsp[0].minor);
+      case 255: /* keyword ::= CHECKSUM */
+      case 360: /* keyword_not_select_clause ::= CHECKSUM */ yytestcase(yyruleno==360);
+{  yy_destructor(yypParser,41,&yymsp[0].minor);
 #line 357 "src/parser/mylite_lemon.y"
 {
 }
-#line 4315 "src/parser/generated/mylite_lemon.c"
+#line 4251 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 266: /* keyword ::= WHILE */
-      case 371: /* keyword_not_select_clause ::= WHILE */ yytestcase(yyruleno==371);
-{  yy_destructor(yypParser,104,&yymsp[0].minor);
+      case 256: /* keyword ::= OPTIMIZE */
+      case 361: /* keyword_not_select_clause ::= OPTIMIZE */ yytestcase(yyruleno==361);
+{  yy_destructor(yypParser,42,&yymsp[0].minor);
 #line 358 "src/parser/mylite_lemon.y"
 {
 }
-#line 4324 "src/parser/generated/mylite_lemon.c"
+#line 4260 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 267: /* keyword ::= CASE */
-      case 372: /* keyword_not_select_clause ::= CASE */ yytestcase(yyruleno==372);
-{  yy_destructor(yypParser,105,&yymsp[0].minor);
+      case 257: /* keyword ::= REPAIR */
+      case 362: /* keyword_not_select_clause ::= REPAIR */ yytestcase(yyruleno==362);
+{  yy_destructor(yypParser,43,&yymsp[0].minor);
 #line 359 "src/parser/mylite_lemon.y"
 {
 }
-#line 4333 "src/parser/generated/mylite_lemon.c"
+#line 4269 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 268: /* keyword ::= WHEN */
-      case 373: /* keyword_not_select_clause ::= WHEN */ yytestcase(yyruleno==373);
-{  yy_destructor(yypParser,106,&yymsp[0].minor);
+      case 258: /* keyword ::= INSTALL */
+      case 363: /* keyword_not_select_clause ::= INSTALL */ yytestcase(yyruleno==363);
+{  yy_destructor(yypParser,44,&yymsp[0].minor);
 #line 360 "src/parser/mylite_lemon.y"
 {
 }
-#line 4342 "src/parser/generated/mylite_lemon.c"
+#line 4278 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 270: /* keyword ::= DECLARE */
-      case 375: /* keyword_not_select_clause ::= DECLARE */ yytestcase(yyruleno==375);
-{  yy_destructor(yypParser,107,&yymsp[0].minor);
-#line 362 "src/parser/mylite_lemon.y"
-{
-}
-#line 4351 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 271: /* keyword ::= OPEN */
-      case 376: /* keyword_not_select_clause ::= OPEN */ yytestcase(yyruleno==376);
-{  yy_destructor(yypParser,109,&yymsp[0].minor);
+      case 261: /* keyword ::= UNINSTALL */
+      case 366: /* keyword_not_select_clause ::= UNINSTALL */ yytestcase(yyruleno==366);
+{  yy_destructor(yypParser,45,&yymsp[0].minor);
 #line 363 "src/parser/mylite_lemon.y"
 {
 }
-#line 4360 "src/parser/generated/mylite_lemon.c"
+#line 4287 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 272: /* keyword ::= FETCH */
-      case 377: /* keyword_not_select_clause ::= FETCH */ yytestcase(yyruleno==377);
-{  yy_destructor(yypParser,110,&yymsp[0].minor);
+      case 262: /* keyword ::= CLONE */
+      case 367: /* keyword_not_select_clause ::= CLONE */ yytestcase(yyruleno==367);
+{  yy_destructor(yypParser,46,&yymsp[0].minor);
 #line 364 "src/parser/mylite_lemon.y"
 {
 }
-#line 4369 "src/parser/generated/mylite_lemon.c"
+#line 4296 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 273: /* keyword ::= CLOSE */
-      case 378: /* keyword_not_select_clause ::= CLOSE */ yytestcase(yyruleno==378);
-{  yy_destructor(yypParser,111,&yymsp[0].minor);
+      case 263: /* keyword ::= CACHE */
+      case 368: /* keyword_not_select_clause ::= CACHE */ yytestcase(yyruleno==368);
+{  yy_destructor(yypParser,47,&yymsp[0].minor);
 #line 365 "src/parser/mylite_lemon.y"
 {
 }
-#line 4378 "src/parser/generated/mylite_lemon.c"
+#line 4305 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 274: /* keyword ::= RETURN */
-      case 379: /* keyword_not_select_clause ::= RETURN */ yytestcase(yyruleno==379);
-{  yy_destructor(yypParser,55,&yymsp[0].minor);
+      case 264: /* keyword ::= FLUSH */
+      case 369: /* keyword_not_select_clause ::= FLUSH */ yytestcase(yyruleno==369);
+{  yy_destructor(yypParser,96,&yymsp[0].minor);
 #line 366 "src/parser/mylite_lemon.y"
 {
 }
-#line 4387 "src/parser/generated/mylite_lemon.c"
+#line 4314 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 275: /* keyword ::= LEAVE */
-      case 380: /* keyword_not_select_clause ::= LEAVE */ yytestcase(yyruleno==380);
-{  yy_destructor(yypParser,56,&yymsp[0].minor);
+      case 265: /* keyword ::= KILL */
+      case 370: /* keyword_not_select_clause ::= KILL */ yytestcase(yyruleno==370);
+{  yy_destructor(yypParser,48,&yymsp[0].minor);
 #line 367 "src/parser/mylite_lemon.y"
 {
 }
-#line 4396 "src/parser/generated/mylite_lemon.c"
+#line 4323 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 276: /* keyword ::= ITERATE */
-      case 381: /* keyword_not_select_clause ::= ITERATE */ yytestcase(yyruleno==381);
-{  yy_destructor(yypParser,57,&yymsp[0].minor);
+      case 266: /* keyword ::= RESTART */
+      case 371: /* keyword_not_select_clause ::= RESTART */ yytestcase(yyruleno==371);
+{  yy_destructor(yypParser,97,&yymsp[0].minor);
 #line 368 "src/parser/mylite_lemon.y"
 {
 }
-#line 4405 "src/parser/generated/mylite_lemon.c"
+#line 4332 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 277: /* keyword ::= FROM */
-{  yy_destructor(yypParser,112,&yymsp[0].minor);
+      case 267: /* keyword ::= SHUTDOWN */
+      case 372: /* keyword_not_select_clause ::= SHUTDOWN */ yytestcase(yyruleno==372);
+{  yy_destructor(yypParser,98,&yymsp[0].minor);
 #line 369 "src/parser/mylite_lemon.y"
+{
+}
+#line 4341 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 268: /* keyword ::= GET */
+      case 373: /* keyword_not_select_clause ::= GET */ yytestcase(yyruleno==373);
+{  yy_destructor(yypParser,49,&yymsp[0].minor);
+#line 370 "src/parser/mylite_lemon.y"
+{
+}
+#line 4350 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 269: /* keyword ::= SIGNAL */
+      case 374: /* keyword_not_select_clause ::= SIGNAL */ yytestcase(yyruleno==374);
+{  yy_destructor(yypParser,50,&yymsp[0].minor);
+#line 371 "src/parser/mylite_lemon.y"
+{
+}
+#line 4359 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 270: /* keyword ::= RESIGNAL */
+      case 375: /* keyword_not_select_clause ::= RESIGNAL */ yytestcase(yyruleno==375);
+{  yy_destructor(yypParser,99,&yymsp[0].minor);
+#line 372 "src/parser/mylite_lemon.y"
+{
+}
+#line 4368 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 271: /* keyword ::= IF */
+      case 376: /* keyword_not_select_clause ::= IF */ yytestcase(yyruleno==376);
+{  yy_destructor(yypParser,51,&yymsp[0].minor);
+#line 373 "src/parser/mylite_lemon.y"
+{
+}
+#line 4377 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 272: /* keyword ::= ELSEIF */
+      case 377: /* keyword_not_select_clause ::= ELSEIF */ yytestcase(yyruleno==377);
+{  yy_destructor(yypParser,52,&yymsp[0].minor);
+#line 374 "src/parser/mylite_lemon.y"
+{
+}
+#line 4386 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 273: /* keyword ::= LOOP */
+      case 378: /* keyword_not_select_clause ::= LOOP */ yytestcase(yyruleno==378);
+{  yy_destructor(yypParser,101,&yymsp[0].minor);
+#line 375 "src/parser/mylite_lemon.y"
+{
+}
+#line 4395 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 274: /* keyword ::= REPEAT */
+      case 379: /* keyword_not_select_clause ::= REPEAT */ yytestcase(yyruleno==379);
+{  yy_destructor(yypParser,102,&yymsp[0].minor);
+#line 376 "src/parser/mylite_lemon.y"
+{
+}
+#line 4404 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 275: /* keyword ::= UNTIL */
+      case 380: /* keyword_not_select_clause ::= UNTIL */ yytestcase(yyruleno==380);
+{  yy_destructor(yypParser,103,&yymsp[0].minor);
+#line 377 "src/parser/mylite_lemon.y"
 {
 }
 #line 4413 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 280: /* keyword ::= HAVING */
-{  yy_destructor(yypParser,113,&yymsp[0].minor);
-#line 372 "src/parser/mylite_lemon.y"
+      case 276: /* keyword ::= WHILE */
+      case 381: /* keyword_not_select_clause ::= WHILE */ yytestcase(yyruleno==381);
+{  yy_destructor(yypParser,104,&yymsp[0].minor);
+#line 378 "src/parser/mylite_lemon.y"
 {
 }
-#line 4421 "src/parser/generated/mylite_lemon.c"
+#line 4422 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 281: /* keyword ::= ELSE */
-      case 384: /* keyword_not_select_clause ::= ELSE */ yytestcase(yyruleno==384);
-{  yy_destructor(yypParser,100,&yymsp[0].minor);
-#line 373 "src/parser/mylite_lemon.y"
+      case 277: /* keyword ::= CASE */
+      case 382: /* keyword_not_select_clause ::= CASE */ yytestcase(yyruleno==382);
+{  yy_destructor(yypParser,105,&yymsp[0].minor);
+#line 379 "src/parser/mylite_lemon.y"
 {
 }
-#line 4430 "src/parser/generated/mylite_lemon.c"
+#line 4431 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 282: /* keyword ::= END */
-      case 385: /* keyword_not_select_clause ::= END */ yytestcase(yyruleno==385);
-{  yy_destructor(yypParser,108,&yymsp[0].minor);
-#line 374 "src/parser/mylite_lemon.y"
+      case 278: /* keyword ::= WHEN */
+      case 383: /* keyword_not_select_clause ::= WHEN */ yytestcase(yyruleno==383);
+{  yy_destructor(yypParser,106,&yymsp[0].minor);
+#line 380 "src/parser/mylite_lemon.y"
 {
 }
-#line 4439 "src/parser/generated/mylite_lemon.c"
+#line 4440 "src/parser/generated/mylite_lemon.c"
 }
         break;
-      case 290: /* keyword ::= SECURITY */
-      case 393: /* keyword_not_select_clause ::= SECURITY */ yytestcase(yyruleno==393);
-{  yy_destructor(yypParser,114,&yymsp[0].minor);
+      case 280: /* keyword ::= DECLARE */
+      case 385: /* keyword_not_select_clause ::= DECLARE */ yytestcase(yyruleno==385);
+{  yy_destructor(yypParser,107,&yymsp[0].minor);
 #line 382 "src/parser/mylite_lemon.y"
 {
 }
-#line 4448 "src/parser/generated/mylite_lemon.c"
+#line 4449 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 281: /* keyword ::= OPEN */
+      case 386: /* keyword_not_select_clause ::= OPEN */ yytestcase(yyruleno==386);
+{  yy_destructor(yypParser,109,&yymsp[0].minor);
+#line 383 "src/parser/mylite_lemon.y"
+{
+}
+#line 4458 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 282: /* keyword ::= FETCH */
+      case 387: /* keyword_not_select_clause ::= FETCH */ yytestcase(yyruleno==387);
+{  yy_destructor(yypParser,110,&yymsp[0].minor);
+#line 384 "src/parser/mylite_lemon.y"
+{
+}
+#line 4467 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 283: /* keyword ::= CLOSE */
+      case 388: /* keyword_not_select_clause ::= CLOSE */ yytestcase(yyruleno==388);
+{  yy_destructor(yypParser,111,&yymsp[0].minor);
+#line 385 "src/parser/mylite_lemon.y"
+{
+}
+#line 4476 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 284: /* keyword ::= RETURN */
+      case 389: /* keyword_not_select_clause ::= RETURN */ yytestcase(yyruleno==389);
+{  yy_destructor(yypParser,53,&yymsp[0].minor);
+#line 386 "src/parser/mylite_lemon.y"
+{
+}
+#line 4485 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 285: /* keyword ::= LEAVE */
+      case 390: /* keyword_not_select_clause ::= LEAVE */ yytestcase(yyruleno==390);
+{  yy_destructor(yypParser,54,&yymsp[0].minor);
+#line 387 "src/parser/mylite_lemon.y"
+{
+}
+#line 4494 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 286: /* keyword ::= ITERATE */
+      case 391: /* keyword_not_select_clause ::= ITERATE */ yytestcase(yyruleno==391);
+{  yy_destructor(yypParser,55,&yymsp[0].minor);
+#line 388 "src/parser/mylite_lemon.y"
+{
+}
+#line 4503 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 287: /* keyword ::= FROM */
+{  yy_destructor(yypParser,112,&yymsp[0].minor);
+#line 389 "src/parser/mylite_lemon.y"
+{
+}
+#line 4511 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 290: /* keyword ::= HAVING */
+{  yy_destructor(yypParser,113,&yymsp[0].minor);
+#line 392 "src/parser/mylite_lemon.y"
+{
+}
+#line 4519 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 291: /* keyword ::= ELSE */
+      case 394: /* keyword_not_select_clause ::= ELSE */ yytestcase(yyruleno==394);
+{  yy_destructor(yypParser,100,&yymsp[0].minor);
+#line 393 "src/parser/mylite_lemon.y"
+{
+}
+#line 4528 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 292: /* keyword ::= END */
+      case 395: /* keyword_not_select_clause ::= END */ yytestcase(yyruleno==395);
+{  yy_destructor(yypParser,108,&yymsp[0].minor);
+#line 394 "src/parser/mylite_lemon.y"
+{
+}
+#line 4537 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 300: /* keyword ::= SECURITY */
+      case 403: /* keyword_not_select_clause ::= SECURITY */ yytestcase(yyruleno==403);
+{  yy_destructor(yypParser,114,&yymsp[0].minor);
+#line 402 "src/parser/mylite_lemon.y"
+{
+}
+#line 4546 "src/parser/generated/mylite_lemon.c"
 }
         break;
       default:
-      /* (178) statement_tail ::= */ yytestcase(yyruleno==178);
+      /* (188) statement_tail ::= */ yytestcase(yyruleno==188);
         break;
 /********** End reduce actions ************************************************/
   };
@@ -4493,7 +4591,7 @@ static void yy_parse_failed(
 #line 21 "src/parser/mylite_lemon.y"
 
   mylite_parser_failure(ctx);
-#line 4497 "src/parser/generated/mylite_lemon.c"
+#line 4595 "src/parser/generated/mylite_lemon.c"
 /************ End %parse_failure code *****************************************/
   MyLiteLemonARG_STORE /* Suppress warning about unused %extra_argument variable */
   MyLiteLemonCTX_STORE
@@ -4515,7 +4613,7 @@ static void yy_syntax_error(
 #line 17 "src/parser/mylite_lemon.y"
 
   mylite_parser_syntax_error(ctx, yymajor, TOKEN);
-#line 4519 "src/parser/generated/mylite_lemon.c"
+#line 4617 "src/parser/generated/mylite_lemon.c"
 /************ End %syntax_error code ******************************************/
   MyLiteLemonARG_STORE /* Suppress warning about unused %extra_argument variable */
   MyLiteLemonCTX_STORE
@@ -4544,7 +4642,7 @@ static void yy_accept(
 #line 25 "src/parser/mylite_lemon.y"
 
   mylite_parser_accept(ctx);
-#line 4548 "src/parser/generated/mylite_lemon.c"
+#line 4646 "src/parser/generated/mylite_lemon.c"
 /*********** End %parse_accept code *******************************************/
   MyLiteLemonARG_STORE /* Suppress warning about unused %extra_argument variable */
   MyLiteLemonCTX_STORE

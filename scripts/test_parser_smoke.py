@@ -27,6 +27,13 @@ def main() -> int:
         ("alter table t add column a int;", 0, {"statements": "1", "ddl": "1"}),
         ("alter algorithm=merge view v as select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("alter nonsense;", 1, {}),
+        ("rename table a to b;", 0, {"statements": "1", "ddl": "1"}),
+        ("rename tables a to b;", 0, {"statements": "1", "ddl": "1"}),
+        ("rename user a to b;", 0, {"statements": "1", "ddl": "1"}),
+        ("rename nonsense;", 1, {}),
+        ("truncate table t;", 0, {"statements": "1", "ddl": "1"}),
+        ("truncate t;", 0, {"statements": "1", "ddl": "1"}),
+        ("truncate select;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

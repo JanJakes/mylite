@@ -142,33 +142,35 @@ create_statement ::= CREATE create_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-create_tail ::= create_first_token required_statement_tail.
+create_tail ::= create_object_kind required_statement_tail.
+create_tail ::= TEMPORARY TABLE required_statement_tail.
+create_tail ::= create_index_kind INDEX required_statement_tail.
+create_tail ::= AGGREGATE FUNCTION required_statement_tail.
+create_tail ::= LOGFILE ATOM required_statement_tail.
+create_tail ::= RESOURCE ATOM required_statement_tail.
+create_tail ::= UNDO TABLESPACE required_statement_tail.
 
-create_first_token ::= TABLE.
-create_first_token ::= TEMPORARY.
-create_first_token ::= VIEW.
-create_first_token ::= OR.
-create_first_token ::= ALGORITHM.
-create_first_token ::= SQL.
-create_first_token ::= DEFINER.
-create_first_token ::= DATABASE.
-create_first_token ::= SCHEMA.
-create_first_token ::= INDEX.
-create_first_token ::= UNIQUE.
-create_first_token ::= FULLTEXT.
-create_first_token ::= SPATIAL.
-create_first_token ::= EVENT.
-create_first_token ::= FUNCTION.
-create_first_token ::= AGGREGATE.
-create_first_token ::= PROCEDURE.
-create_first_token ::= TRIGGER.
-create_first_token ::= USER.
-create_first_token ::= ROLE.
-create_first_token ::= RESOURCE.
-create_first_token ::= SERVER.
-create_first_token ::= LOGFILE.
-create_first_token ::= TABLESPACE.
-create_first_token ::= UNDO.
+create_index_kind ::= UNIQUE.
+create_index_kind ::= FULLTEXT.
+create_index_kind ::= SPATIAL.
+
+create_object_kind ::= TABLE.
+create_object_kind ::= VIEW.
+create_object_kind ::= OR.
+create_object_kind ::= ALGORITHM.
+create_object_kind ::= SQL.
+create_object_kind ::= DEFINER.
+create_object_kind ::= DATABASE.
+create_object_kind ::= SCHEMA.
+create_object_kind ::= INDEX.
+create_object_kind ::= EVENT.
+create_object_kind ::= FUNCTION.
+create_object_kind ::= PROCEDURE.
+create_object_kind ::= TRIGGER.
+create_object_kind ::= USER.
+create_object_kind ::= ROLE.
+create_object_kind ::= SERVER.
+create_object_kind ::= TABLESPACE.
 
 drop_statement ::= DROP drop_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);

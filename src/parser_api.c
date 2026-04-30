@@ -152,6 +152,9 @@ static int classify_show_statement_object(const mylite_parser *parser,
                                           mylite_statement *statement,
                                           size_t token_index,
                                           size_t last_token_index);
+static size_t find_show_profile_query_id_token(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index);
 static size_t find_show_binlog_events_name_token(const mylite_parser *parser,
                                                  size_t token_index,
                                                  size_t last_token_index);
@@ -597,6 +600,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_PLUGIN: return "plugin";
 	case MYLITE_STATEMENT_OBJECT_PREPARED_STATEMENT: return "prepared_statement";
 	case MYLITE_STATEMENT_OBJECT_PROCEDURE: return "procedure";
+	case MYLITE_STATEMENT_OBJECT_QUERY: return "query";
 	case MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL: return "replication_channel";
 	case MYLITE_STATEMENT_OBJECT_RESOURCE_GROUP: return "resource_group";
 	case MYLITE_STATEMENT_OBJECT_ROLE: return "role";
@@ -1768,6 +1772,15 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		                                        last_token_index);
 	}
 
+	if (token_text_equals(parser, token_index, "PROFILE")) {
+		name_token_index = find_show_profile_query_id_token(parser, token_index + 1, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_QUERY,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
 	if (parser->tokens[token_index].parser_token == ENGINE_T &&
 	    token_index + 2 <= last_token_index &&
 	    token_can_start_object_name(&parser->tokens[token_index + 1]) &&
@@ -1858,6 +1871,21 @@ static int classify_show_statement_object(const mylite_parser *parser,
 	}
 
 	return 0;
+}
+
+static size_t find_show_profile_query_id_token(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index)
+{
+	while (token_index + 2 <= last_token_index && token_index < parser->token_count) {
+		if (token_text_equals(parser, token_index, "FOR") &&
+		    token_text_equals(parser, token_index + 1, "QUERY") &&
+		    parser->tokens[token_index + 2].kind == MYLITE_TOKEN_NUMBER) {
+			return token_index + 2;
+		}
+		token_index++;
+	}
+	return parser->token_count;
 }
 
 static size_t find_show_binlog_events_name_token(const mylite_parser *parser,

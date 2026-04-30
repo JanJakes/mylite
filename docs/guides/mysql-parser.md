@@ -105,6 +105,12 @@ SHOW ENGINE diagnostics expose the engine name:
 ok statements=1 kinds=show[1:4,0:25]/engine:InnoDB
 ```
 
+SHOW PROFILE exposes explicit query ids:
+
+```text
+ok statements=1 kinds=show[1:5,0:24]/query:1
+```
+
 KILL statements expose the processlist id as a connection target:
 
 ```text

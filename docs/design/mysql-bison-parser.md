@@ -21,6 +21,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
 - MySQL 8.4 schema-scoped SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show.html`
+- MySQL 8.4 SHOW PROFILE statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-profile.html`
 - MySQL 8.4 EXPLAIN for named connections:
   `https://dev.mysql.com/doc/refman/8.4/en/explain-for-connection.html`
 - MySQL 8.4 KILL statement:
@@ -125,8 +127,9 @@ where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 STATUS`, `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
 targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, routine targets in
 `SHOW FUNCTION CODE` and `SHOW PROCEDURE CODE`, engine targets in
-`SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, connection targets in
-`KILL`, binary log targets in `SHOW BINLOG EVENTS IN ...` and
+`SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, query targets in
+`SHOW PROFILE ... FOR QUERY`, connection targets in `KILL`, binary log targets
+in `SHOW BINLOG EVENTS IN ...` and
 `PURGE BINARY LOGS TO ...`, table targets in `FLUSH TABLES`, and
 table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `REPAIR`, and prepared-statement names in
@@ -210,6 +213,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   objectless.
   Instance lifecycle metadata records only the instance object kind, not
   privilege, connection-loss, shutdown, or restart semantics.
+  `SHOW PROFILE` metadata records only numeric `FOR QUERY` ids and leaves bare
+  `SHOW PROFILE` / `SHOW PROFILES` objectless.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

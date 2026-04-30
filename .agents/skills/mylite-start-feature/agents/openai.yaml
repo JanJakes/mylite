@@ -1,0 +1,4 @@
+interface:
+  display_name: "MyLite Start Feature"
+  short_description: "Start a MyLite feature"
+  default_prompt: "Plan, research, design, document, and prepare MySQL-verified tests for this MyLite compatibility feature."

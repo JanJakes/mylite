@@ -1,0 +1,4 @@
+interface:
+  display_name: "MyLite Work Hard"
+  short_description: "Continuously implement MyLite compatibility batches"
+  default_prompt: "Pick unimplemented MyLite compatibility features, plan subagent ownership, implement, verify, commit and push completed batches, and continue."

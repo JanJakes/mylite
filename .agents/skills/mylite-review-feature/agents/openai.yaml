@@ -1,0 +1,4 @@
+interface:
+  display_name: "MyLite Review Feature"
+  short_description: "Review a completed MyLite feature"
+  default_prompt: "Review this completed or near-complete MyLite compatibility feature for correctness, coverage, documentation, and readiness."

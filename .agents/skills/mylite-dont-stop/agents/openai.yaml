@@ -1,0 +1,4 @@
+interface:
+  display_name: "MyLite Don't Stop"
+  short_description: "Persist through broad MyLite feature work"
+  default_prompt: "Continue the substantial requested MyLite work until it is complete, verified, and committed unless a real blocker exists."

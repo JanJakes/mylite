@@ -1,0 +1,4 @@
+interface:
+  display_name: "MyLite Implement Feature"
+  short_description: "Implement a MyLite feature end to end"
+  default_prompt: "Plan and implement this MyLite compatibility feature end to end, then verify and self-review."

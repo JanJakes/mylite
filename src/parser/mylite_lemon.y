@@ -165,7 +165,8 @@ create_tail ::= create_prefixed_view_tail.
 create_tail ::= create_definer_clause create_definer_object_tail.
 create_tail ::= EVENT create_if_not_exists_tail cache_table_ref create_event_body.
 create_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref create_trigger_body.
-create_tail ::= create_routine_kind create_if_not_exists_tail cache_table_ref required_statement_tail.
+create_tail ::= FUNCTION create_if_not_exists_tail cache_table_ref create_function_tail.
+create_tail ::= PROCEDURE create_if_not_exists_tail cache_table_ref create_procedure_tail.
 
 create_index_kind ::= UNIQUE.
 create_index_kind ::= FULLTEXT.
@@ -186,9 +187,6 @@ create_table_prefix ::= TEMPORARY TABLE.
 
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.
-
-create_routine_kind ::= FUNCTION.
-create_routine_kind ::= PROCEDURE.
 
 create_udf_tail ::= create_returns create_udf_return_type create_soname ATOM.
 
@@ -254,7 +252,8 @@ create_definer_account ::= ATOM LP RP.
 
 create_definer_object_tail ::= EVENT create_if_not_exists_tail cache_table_ref create_event_body.
 create_definer_object_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref create_trigger_body.
-create_definer_object_tail ::= create_routine_kind create_if_not_exists_tail cache_table_ref required_statement_tail.
+create_definer_object_tail ::= FUNCTION create_if_not_exists_tail cache_table_ref create_function_tail.
+create_definer_object_tail ::= PROCEDURE create_if_not_exists_tail cache_table_ref create_procedure_tail.
 
 create_event_body ::= ON create_schedule required_statement_tail.
 
@@ -275,6 +274,26 @@ create_trigger_event ::= DELETE.
 create_each ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "EACH");
 }
+
+create_function_tail ::= create_udf_tail.
+create_function_tail ::= routine_signature create_returns statement_token required_statement_tail.
+
+create_procedure_tail ::= routine_signature required_statement_tail.
+
+routine_signature ::= LP routine_signature_tokens RP.
+
+routine_signature_tokens ::= .
+routine_signature_tokens ::= routine_signature_tokens routine_signature_token.
+
+routine_signature_token ::= ATOM.
+routine_signature_token ::= LABEL.
+routine_signature_token ::= keyword.
+routine_signature_token ::= COMMA.
+routine_signature_token ::= LP routine_signature_tokens RP.
+routine_signature_token ::= LB.
+routine_signature_token ::= RB.
+routine_signature_token ::= LC.
+routine_signature_token ::= RC.
 
 create_if_not_exists_tail ::= .
 create_if_not_exists_tail ::= IF create_not reset_exists.

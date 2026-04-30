@@ -197,6 +197,9 @@ create_not ::= ATOM(A). {
 create_options_tail ::= .
 create_options_tail ::= create_options_tail statement_token.
 
+create_options_required_tail ::= statement_token.
+create_options_required_tail ::= create_options_required_tail statement_token.
+
 create_user_tail ::= .
 create_user_tail ::= create_user_tail statement_token.
 
@@ -331,14 +334,17 @@ alter_tail ::= UNDO TABLESPACE cache_name_part required_statement_tail.
 alter_tail ::= USER drop_if_exists_tail alter_user_target create_user_tail.
 alter_tail ::= EVENT cache_table_ref required_statement_tail.
 alter_tail ::= alter_routine_kind cache_table_ref create_options_tail.
+alter_tail ::= alter_database_kind cache_name_part create_options_required_tail.
+alter_tail ::= alter_database_kind CHARACTER required_statement_tail.
 
 alter_object_kind ::= TABLE.
 alter_object_kind ::= ALGORITHM.
-alter_object_kind ::= DATABASE.
 alter_object_kind ::= DEFINER.
-alter_object_kind ::= SCHEMA.
 alter_object_kind ::= VIEW.
 alter_object_kind ::= INSTANCE.
+
+alter_database_kind ::= DATABASE.
+alter_database_kind ::= SCHEMA.
 
 alter_routine_kind ::= FUNCTION.
 alter_routine_kind ::= PROCEDURE.

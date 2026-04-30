@@ -273,7 +273,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SHOW ENGINE LOGS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW ENGINE MUTEX` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW ENGINE STATUS` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW ENGINES` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser records the engine object kind; result rows are not implemented. |
+| `SHOW ENGINES` | ❌ | high | Result-set shape, storage-engine support levels, privileges, and MySQL 8.4 variant behavior. | Parser records the engine object kind for `SHOW ENGINES` and `SHOW STORAGE ENGINES`; result rows are not implemented. |
 | `SHOW ERRORS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser records the diagnostics-area object kind; result rows and `LIMIT` semantics are not implemented. |
 | `SHOW EVENTS` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW FUNCTION CODE` | ❌ | low | Debug-build-only stored-function instruction listing, privileges, result-set shape, and MySQL-compatible diagnostics when unavailable. | Conditional surface; available only for debug-capable builds. |

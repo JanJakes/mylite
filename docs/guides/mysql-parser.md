@@ -150,6 +150,10 @@ SHOW collection forms expose collection object kinds:
 ok statements=1 kinds=show[1:2,0:15]/privilege
 ```
 
+```text
+ok statements=1 kinds=show[1:3,0:20]/engine
+```
+
 SHOW ENGINE diagnostics expose the engine name:
 
 ```text

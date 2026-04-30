@@ -185,7 +185,8 @@ targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, database targets in
 `SHOW DATABASES` and `SHOW SCHEMAS`, routine targets in `SHOW FUNCTION CODE`
 and `SHOW PROCEDURE CODE`, and routine collection/pattern targets in
 `SHOW FUNCTION STATUS` and `SHOW PROCEDURE STATUS`, engine targets in
-`SHOW ENGINE ... STATUS`, `SHOW ENGINE ... MUTEX`, and `SHOW ENGINES`,
+`SHOW ENGINE ... STATUS`, `SHOW ENGINE ... MUTEX`, `SHOW ENGINES`, and
+`SHOW STORAGE ENGINES`,
 plugin targets in `SHOW PLUGINS`, privilege targets in `SHOW PRIVILEGES`,
 connection targets in `SHOW PROCESSLIST`,
 character-set and collation targets in `SHOW CHARACTER SET`, `SHOW CHARSET`,

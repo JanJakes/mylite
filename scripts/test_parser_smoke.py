@@ -75,6 +75,10 @@ def main() -> int:
         ("xa start 'x';", 0, {"statements": "1", "replication": "1"}),
         ("xa recover;", 0, {"statements": "1", "replication": "1"}),
         ("xa nonsense;", 1, {}),
+        ("show tables;", 0, {"statements": "1", "show": "1"}),
+        ("show extended full tables from test;", 0, {"statements": "1", "show": "1"}),
+        ("show count(*) warnings;", 0, {"statements": "1", "show": "1"}),
+        ("show nonsense;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

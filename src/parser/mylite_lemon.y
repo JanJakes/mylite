@@ -57,6 +57,7 @@ statement ::= reset_statement.
 statement ::= purge_statement.
 statement ::= change_statement.
 statement ::= xa_statement.
+statement ::= show_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -91,7 +92,6 @@ required_tail_start(A) ::= PREPARE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= EXECUTE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= GRANT. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= REVOKE. { A = MYLITE_STATEMENT_ADMIN; }
-required_tail_start(A) ::= SHOW. { A = MYLITE_STATEMENT_SHOW; }
 required_tail_start(A) ::= DESCRIBE. { A = MYLITE_STATEMENT_SHOW; }
 required_tail_start(A) ::= DESC. { A = MYLITE_STATEMENT_SHOW; }
 required_tail_start(A) ::= EXPLAIN. { A = MYLITE_STATEMENT_SHOW; }
@@ -379,6 +379,57 @@ xa_first_token ::= PREPARE.
 xa_first_token ::= COMMIT.
 xa_first_token ::= ROLLBACK.
 
+show_statement ::= SHOW show_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+}
+
+show_tail ::= show_first_token statement_tail.
+
+show_first_token ::= BINARY.
+show_first_token ::= BINLOG.
+show_first_token ::= CHARACTER.
+show_first_token ::= CHARSET.
+show_first_token ::= COLLATION.
+show_first_token ::= COLUMNS.
+show_first_token ::= COUNT.
+show_first_token ::= CREATE.
+show_first_token ::= DATABASES.
+show_first_token ::= ENGINE.
+show_first_token ::= ENGINES.
+show_first_token ::= ERRORS.
+show_first_token ::= EVENTS.
+show_first_token ::= EXTENDED.
+show_first_token ::= FIELDS.
+show_first_token ::= FULL.
+show_first_token ::= FUNCTION.
+show_first_token ::= GLOBAL.
+show_first_token ::= GRANTS.
+show_first_token ::= INDEX.
+show_first_token ::= INDEXES.
+show_first_token ::= KEYS.
+show_first_token ::= LOCAL.
+show_first_token ::= MASTER.
+show_first_token ::= OPEN.
+show_first_token ::= PLUGINS.
+show_first_token ::= PRIVILEGES.
+show_first_token ::= PROCEDURE.
+show_first_token ::= PROCESSLIST.
+show_first_token ::= PROFILE.
+show_first_token ::= PROFILES.
+show_first_token ::= RELAYLOG.
+show_first_token ::= REPLICA.
+show_first_token ::= REPLICAS.
+show_first_token ::= SCHEMAS.
+show_first_token ::= SESSION.
+show_first_token ::= SLAVE.
+show_first_token ::= STATUS.
+show_first_token ::= STORAGE.
+show_first_token ::= TABLE.
+show_first_token ::= TABLES.
+show_first_token ::= TRIGGERS.
+show_first_token ::= VARIABLES.
+show_first_token ::= WARNINGS.
+
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -571,6 +622,37 @@ keyword ::= TRANSACTION.
 keyword ::= UNDO.
 keyword ::= UNIQUE.
 keyword ::= XML.
+keyword ::= CHARACTER.
+keyword ::= CHARSET.
+keyword ::= COLLATION.
+keyword ::= COLUMNS.
+keyword ::= COUNT.
+keyword ::= DATABASES.
+keyword ::= ENGINE.
+keyword ::= ENGINES.
+keyword ::= ERRORS.
+keyword ::= EVENTS.
+keyword ::= EXTENDED.
+keyword ::= FIELDS.
+keyword ::= FULL.
+keyword ::= GLOBAL.
+keyword ::= GRANTS.
+keyword ::= INDEXES.
+keyword ::= KEYS.
+keyword ::= PLUGINS.
+keyword ::= PRIVILEGES.
+keyword ::= PROCESSLIST.
+keyword ::= PROFILE.
+keyword ::= PROFILES.
+keyword ::= RELAYLOG.
+keyword ::= REPLICAS.
+keyword ::= SCHEMAS.
+keyword ::= SESSION.
+keyword ::= STATUS.
+keyword ::= STORAGE.
+keyword ::= TRIGGERS.
+keyword ::= VARIABLES.
+keyword ::= WARNINGS.
 
 keyword_not_select_clause ::= SELECT.
 keyword_not_select_clause ::= WITH.
@@ -692,3 +774,34 @@ keyword_not_select_clause ::= TRANSACTION.
 keyword_not_select_clause ::= UNDO.
 keyword_not_select_clause ::= UNIQUE.
 keyword_not_select_clause ::= XML.
+keyword_not_select_clause ::= CHARACTER.
+keyword_not_select_clause ::= CHARSET.
+keyword_not_select_clause ::= COLLATION.
+keyword_not_select_clause ::= COLUMNS.
+keyword_not_select_clause ::= COUNT.
+keyword_not_select_clause ::= DATABASES.
+keyword_not_select_clause ::= ENGINE.
+keyword_not_select_clause ::= ENGINES.
+keyword_not_select_clause ::= ERRORS.
+keyword_not_select_clause ::= EVENTS.
+keyword_not_select_clause ::= EXTENDED.
+keyword_not_select_clause ::= FIELDS.
+keyword_not_select_clause ::= FULL.
+keyword_not_select_clause ::= GLOBAL.
+keyword_not_select_clause ::= GRANTS.
+keyword_not_select_clause ::= INDEXES.
+keyword_not_select_clause ::= KEYS.
+keyword_not_select_clause ::= PLUGINS.
+keyword_not_select_clause ::= PRIVILEGES.
+keyword_not_select_clause ::= PROCESSLIST.
+keyword_not_select_clause ::= PROFILE.
+keyword_not_select_clause ::= PROFILES.
+keyword_not_select_clause ::= RELAYLOG.
+keyword_not_select_clause ::= REPLICAS.
+keyword_not_select_clause ::= SCHEMAS.
+keyword_not_select_clause ::= SESSION.
+keyword_not_select_clause ::= STATUS.
+keyword_not_select_clause ::= STORAGE.
+keyword_not_select_clause ::= TRIGGERS.
+keyword_not_select_clause ::= VARIABLES.
+keyword_not_select_clause ::= WARNINGS.

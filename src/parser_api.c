@@ -989,6 +989,9 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	switch (statement->kind) {
 	case MYLITE_STATEMENT_ALTER:
 		return classify_instance_statement_object(parser, statement, name_token_index, last_token_index);
+	case MYLITE_STATEMENT_RESTART:
+	case MYLITE_STATEMENT_SHUTDOWN:
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_INSTANCE);
 	case MYLITE_STATEMENT_USE:
 		object_kind = MYLITE_STATEMENT_OBJECT_DATABASE;
 		break;

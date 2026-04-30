@@ -137,6 +137,12 @@ STOP replication-control forms are classified as `stop`:
 ok statements=1 kinds=stop[1:2,0:12]
 ```
 
+Server lifecycle statements expose the instance target:
+
+```text
+ok statements=1 kinds=restart[1:1,0:7]/instance
+```
+
 Replication-control statements expose explicit channel targets:
 
 ```text

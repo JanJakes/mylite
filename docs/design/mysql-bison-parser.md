@@ -69,7 +69,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/drop-logfile-group.html`
 - MySQL 8.4 instance-level statements:
   `https://dev.mysql.com/doc/refman/8.4/en/alter-instance.html`,
-  `https://dev.mysql.com/doc/refman/8.4/en/lock-instance-for-backup.html`
+  `https://dev.mysql.com/doc/refman/8.4/en/lock-instance-for-backup.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/restart.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/shutdown.html`
 - WordPress SQLite Database Integration query corpus:
   `packages/mysql-on-sqlite/tests/mysql/data/mysql-server-tests-queries.csv`
 
@@ -138,8 +140,9 @@ instance endpoints remain body tokens.
 Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`, and
 `SET RESOURCE GROUP`. Server, logfile-group, and tablespace DDL targets are
 recorded for the low-level storage/metadata statements that expose a direct
-name. Instance-level `ALTER`, `LOCK`, and `UNLOCK` statements are recorded with
-an object kind but no object-name span. Principal targets are recorded for
+name. Instance-level `ALTER`, `LOCK`, `UNLOCK`, `RESTART`, and `SHUTDOWN`
+statements are recorded with an object kind but no object-name span. Principal
+targets are recorded for
 `GRANT ... TO` and `REVOKE ... FROM`, including the first `user@host` span when
 present. Account and role DDL target spans also
 preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
@@ -201,6 +204,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   objectless.
   `HELP` metadata records only quoted search strings and leaves keyword topics
   objectless.
+  Instance lifecycle metadata records only the instance object kind, not
+  privilege, connection-loss, shutdown, or restart semantics.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

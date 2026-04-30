@@ -543,12 +543,12 @@ binlog_statement ::= BINLOG binlog_payload. {
 binlog_payload ::= ATOM.
 binlog_payload ::= LABEL.
 
-clone_statement ::= CLONE clone_first_token statement_tail. {
+clone_statement ::= CLONE clone_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-clone_first_token ::= INSTANCE.
-clone_first_token ::= LOCAL.
+clone_tail ::= INSTANCE FROM required_statement_tail.
+clone_tail ::= LOCAL DATA ATOM required_statement_tail.
 
 flush_statement ::= FLUSH flush_first_token statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);

@@ -93,6 +93,10 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
       }
       token->length = lexer->offset - token->offset;
       return ML_ATOM;
+    case '.':
+      lexer_advance(lexer);
+      token->length = 1;
+      return ML_DOT;
     case '\'':
     case '"':
       return lexer_string(lexer, token, c);

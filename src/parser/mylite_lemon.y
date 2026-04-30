@@ -2,6 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
+%fallback ATOM DOT.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %extra_argument {MyliteParseContext *ctx}
@@ -495,10 +496,17 @@ describe_statement ::= DESC describe_tail. {
 }
 
 describe_tail ::= SELECT required_statement_tail.
-describe_tail ::= describe_target statement_tail.
+describe_tail ::= describe_table_ref.
+describe_tail ::= describe_table_ref describe_column_ref.
 
-describe_target ::= ATOM.
-describe_target ::= LABEL.
+describe_table_ref ::= describe_name_part.
+describe_table_ref ::= describe_name_part DOT describe_name_part.
+
+describe_column_ref ::= ATOM.
+describe_column_ref ::= LABEL.
+
+describe_name_part ::= ATOM.
+describe_name_part ::= LABEL.
 
 explain_statement ::= EXPLAIN explain_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);

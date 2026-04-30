@@ -176,6 +176,15 @@ case "$show_routine_code_output" in
 		;;
 esac
 
+show_engine_output=$("$parser" 'SHOW ENGINE InnoDB STATUS; SHOW ENGINE performance_schema MUTEX; SHOW ENGINES')
+case "$show_engine_output" in
+	*"show"*/engine:InnoDB*"show"*/engine:performance_schema*"show[11:12"*) ;;
+	*)
+		echo "unexpected SHOW engine output: $show_engine_output" >&2
+		exit 1
+		;;
+esac
+
 prepared_output=$("$parser" 'PREPARE stmt FROM @sql; EXECUTE stmt USING @a; DEALLOCATE PREPARE stmt; DROP PREPARE stmt')
 case "$prepared_output" in
 	*"prepare"*/prepared_statement:stmt*"execute"*/prepared_statement:stmt*"deallocate"*/prepared_statement:stmt*"drop"*/prepared_statement:stmt*) ;;

@@ -543,6 +543,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_COMPONENT: return "component";
 	case MYLITE_STATEMENT_OBJECT_CURSOR: return "cursor";
 	case MYLITE_STATEMENT_OBJECT_DATABASE: return "database";
+	case MYLITE_STATEMENT_OBJECT_ENGINE: return "engine";
 	case MYLITE_STATEMENT_OBJECT_EVENT: return "event";
 	case MYLITE_STATEMENT_OBJECT_FUNCTION: return "function";
 	case MYLITE_STATEMENT_OBJECT_INDEX: return "index";
@@ -1448,6 +1449,18 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		                                        statement,
 		                                        MYLITE_STATEMENT_OBJECT_USER,
 		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	if (parser->tokens[token_index].parser_token == ENGINE_T &&
+	    token_index + 2 <= last_token_index &&
+	    token_can_start_object_name(&parser->tokens[token_index + 1]) &&
+	    (token_text_equals(parser, token_index + 2, "STATUS") ||
+	     token_text_equals(parser, token_index + 2, "MUTEX"))) {
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_ENGINE,
+		                                        token_index + 1,
 		                                        last_token_index);
 	}
 

@@ -89,6 +89,12 @@ Routine-code SHOW forms expose routine names:
 ok statements=1 kinds=show[1:4,0:20]/function:f
 ```
 
+SHOW ENGINE diagnostics expose the engine name:
+
+```text
+ok statements=1 kinds=show[1:4,0:25]/engine:InnoDB
+```
+
 Resource group administration exposes the group name:
 
 ```text

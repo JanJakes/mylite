@@ -761,7 +761,26 @@ call_target ::= ATOM.
 call_target ::= LABEL.
 
 call_arguments ::= .
-call_arguments ::= LP statement_tail.
+call_arguments ::= LP RP.
+call_arguments ::= LP call_argument_contents RP.
+call_arguments ::= LP(A) call_argument_contents. {
+  mylite_parser_require_permissive(ctx, A);
+}
+
+call_argument_contents ::= call_argument_token.
+call_argument_contents ::= call_argument_contents call_argument_token.
+
+call_argument_token ::= ATOM.
+call_argument_token ::= LABEL.
+call_argument_token ::= keyword.
+call_argument_token ::= DOT.
+call_argument_token ::= COMMA.
+call_argument_token ::= LP RP.
+call_argument_token ::= LP call_argument_contents RP.
+call_argument_token ::= LB.
+call_argument_token ::= RB.
+call_argument_token ::= LC.
+call_argument_token ::= RC.
 
 binlog_statement ::= BINLOG binlog_payload. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);

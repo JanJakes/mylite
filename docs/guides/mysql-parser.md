@@ -83,10 +83,25 @@ ok statements=1 kinds=create[1:5,0:19]/user:'u'@'h'
 ```
 
 Account-management `SET` statements expose the first explicit role or user
-target while ordinary variable assignments stay objectless:
+target:
 
 ```text
 ok statements=1 kinds=set[1:3,0:10]/role:r
+```
+
+Explicit variable-assignment targets are also reported for `SELECT ... INTO`,
+`SET`, and statement-level `GET DIAGNOSTICS` forms:
+
+```text
+ok statements=1 kinds=select[1:6,0:23]/user_variable:@x
+```
+
+```text
+ok statements=1 kinds=set[1:4,0:31]/system_variable:@@session.sql_mode
+```
+
+```text
+ok statements=1 kinds=get[1:5,0:27]/user_variable:@n
 ```
 
 SHOW account-introspection forms preserve account spans:

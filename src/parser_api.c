@@ -44,6 +44,8 @@ static size_t skip_dml_modifiers(const mylite_parser *parser,
                                  size_t last_token_index);
 static int is_dml_modifier_token(int token);
 static int classify_direct_statement_object(const mylite_parser *parser, mylite_statement *statement);
+static int classify_select_statement_object(const mylite_parser *parser, mylite_statement *statement);
+static size_t find_select_into_target_token(const mylite_parser *parser, const mylite_statement *statement);
 static size_t find_import_sdi_file_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index);
@@ -63,6 +65,9 @@ static int classify_get_statement_object(const mylite_parser *parser,
                                          mylite_statement *statement,
                                          size_t token_index,
                                          size_t last_token_index);
+static size_t find_get_diagnostics_target_token(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index);
 static int token_can_start_diagnostics_condition_number(const mylite_token *token);
 static int classify_describe_or_explain_statement_object(const mylite_parser *parser,
                                                          mylite_statement *statement,
@@ -129,6 +134,9 @@ static size_t find_set_default_role_user_name_token(const mylite_parser *parser,
 static size_t find_set_password_name_token(const mylite_parser *parser,
                                            size_t token_index,
                                            size_t last_token_index);
+static size_t find_set_system_variable_name_token(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
 static int classify_install_statement_object(const mylite_parser *parser,
                                              mylite_statement *statement,
                                              size_t token_index,
@@ -231,9 +239,12 @@ static size_t last_qualified_name_token(const mylite_parser *parser,
 static int token_can_start_object_name(const mylite_token *token);
 static int token_can_continue_object_name(const mylite_token *token);
 static int token_can_be_unquoted_object_name_keyword(int token);
+static mylite_statement_object_kind variable_object_kind_from_token(const mylite_token *token);
+static int token_can_start_local_variable_name(const mylite_token *token);
 static int token_can_start_label_name(const mylite_token *token);
 static int is_optional_name_modifier(int token);
 static int token_text_equals(const mylite_parser *parser, size_t token_index, const char *expected);
+static int token_is_assignment_operator(const mylite_parser *parser, size_t token_index);
 static int statement_kind_uses_object_scan(mylite_statement_kind kind);
 static mylite_token_kind token_kind_from_parser_token(int token);
 
@@ -656,6 +667,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_TABLESPACE: return "tablespace";
 	case MYLITE_STATEMENT_OBJECT_TRIGGER: return "trigger";
 	case MYLITE_STATEMENT_OBJECT_USER: return "user";
+	case MYLITE_STATEMENT_OBJECT_USER_VARIABLE: return "user_variable";
 	case MYLITE_STATEMENT_OBJECT_VIEW: return "view";
 	case MYLITE_STATEMENT_OBJECT_XA_TRANSACTION: return "xa_transaction";
 	case MYLITE_STATEMENT_OBJECT_NONE:
@@ -1041,6 +1053,8 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	name_token_index = token_index + 1;
 
 	switch (statement->kind) {
+	case MYLITE_STATEMENT_SELECT:
+		return classify_select_statement_object(parser, statement);
 	case MYLITE_STATEMENT_ALTER:
 		return classify_instance_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_RESTART:
@@ -1172,6 +1186,52 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	return set_statement_direct_object_name(parser, statement, object_kind, name_token_index, last_token_index);
 }
 
+static int classify_select_statement_object(const mylite_parser *parser, mylite_statement *statement)
+{
+	size_t name_token_index = find_select_into_target_token(parser, statement);
+	mylite_statement_object_kind object_kind;
+
+	if (name_token_index >= parser->token_count) {
+		return 0;
+	}
+	object_kind = variable_object_kind_from_token(&parser->tokens[name_token_index]);
+	if (object_kind == MYLITE_STATEMENT_OBJECT_NONE ||
+	    object_kind == MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE) {
+		return 0;
+	}
+	return set_statement_direct_object_name(parser, statement, object_kind, name_token_index, statement->last_token - 1);
+}
+
+static size_t find_select_into_target_token(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return parser->token_count;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == INTO_T) {
+			if (token_text_equals(parser, token_index + 1, "OUTFILE") ||
+			    token_text_equals(parser, token_index + 1, "DUMPFILE")) {
+				return parser->token_count;
+			}
+			return token_index + 1;
+		}
+		token_index++;
+	}
+	return parser->token_count;
+}
+
 static size_t find_import_sdi_file_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index)
@@ -1273,6 +1333,8 @@ static int classify_get_statement_object(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index)
 {
+	size_t diagnostics_target_token;
+
 	while (token_index <= last_token_index && token_index < parser->token_count) {
 		if (token_text_equals(parser, token_index, "DIAGNOSTICS")) {
 			token_index++;
@@ -1292,7 +1354,32 @@ static int classify_get_statement_object(const mylite_parser *parser,
 		}
 		token_index++;
 	}
-	return 0;
+
+	diagnostics_target_token = find_get_diagnostics_target_token(parser, statement->first_token, last_token_index);
+	if (diagnostics_target_token >= parser->token_count) {
+		return 0;
+	}
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        variable_object_kind_from_token(&parser->tokens[diagnostics_target_token]),
+	                                        diagnostics_target_token,
+	                                        last_token_index);
+}
+
+static size_t find_get_diagnostics_target_token(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index)
+{
+	while (token_index + 2 <= last_token_index && token_index < parser->token_count) {
+		mylite_statement_object_kind object_kind = variable_object_kind_from_token(&parser->tokens[token_index]);
+		if (object_kind != MYLITE_STATEMENT_OBJECT_NONE &&
+		    object_kind != MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE &&
+		    token_is_assignment_operator(parser, token_index + 1)) {
+			return token_index;
+		}
+		token_index++;
+	}
+	return parser->token_count;
 }
 
 static int token_can_start_diagnostics_condition_number(const mylite_token *token)
@@ -1672,7 +1759,22 @@ static int classify_set_statement_object(const mylite_parser *parser,
 		return 1;
 	}
 
-	return 0;
+	if (token_index + 1 <= last_token_index &&
+	    parser->tokens[token_index].kind == MYLITE_TOKEN_USER_VARIABLE &&
+	    token_is_assignment_operator(parser, token_index + 1)) {
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_USER_VARIABLE,
+		                                        token_index,
+		                                        last_token_index);
+	}
+
+	name_token_index = find_set_system_variable_name_token(parser, token_index, last_token_index);
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE,
+	                                        name_token_index,
+	                                        last_token_index);
 }
 
 static size_t find_set_role_name_token(const mylite_parser *parser,
@@ -1726,6 +1828,36 @@ static size_t find_set_password_name_token(const mylite_parser *parser,
 	    token_can_start_object_name(&parser->tokens[token_index + 1])) {
 		return token_index + 1;
 	}
+	return parser->token_count;
+}
+
+static size_t find_set_system_variable_name_token(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return parser->token_count;
+	}
+
+	if (parser->tokens[token_index].kind == MYLITE_TOKEN_SYSTEM_VARIABLE) {
+		if (token_index + 1 <= last_token_index &&
+		    token_is_assignment_operator(parser, token_index + 1)) {
+			return token_index;
+		}
+		return parser->token_count;
+	}
+
+	if ((token_text_equals(parser, token_index, "GLOBAL") ||
+	     token_text_equals(parser, token_index, "SESSION") ||
+	     token_text_equals(parser, token_index, "LOCAL") ||
+	     token_text_equals(parser, token_index, "PERSIST") ||
+	     token_text_equals(parser, token_index, "PERSIST_ONLY")) &&
+	    token_index + 2 <= last_token_index &&
+	    token_can_start_local_variable_name(&parser->tokens[token_index + 1]) &&
+	    token_is_assignment_operator(parser, token_index + 2)) {
+		return token_index + 1;
+	}
+
 	return parser->token_count;
 }
 
@@ -2269,7 +2401,9 @@ static int set_statement_direct_object_name(const mylite_parser *parser,
 {
 	if (name_token_index > last_token_index ||
 	    name_token_index >= parser->token_count ||
-	    !token_can_start_object_name(&parser->tokens[name_token_index])) {
+	    (!token_can_start_object_name(&parser->tokens[name_token_index]) &&
+	     object_kind != MYLITE_STATEMENT_OBJECT_USER_VARIABLE &&
+	     object_kind != MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE)) {
 		return 0;
 	}
 
@@ -2500,6 +2634,27 @@ static int token_can_be_unquoted_object_name_keyword(int token)
 	}
 }
 
+static mylite_statement_object_kind variable_object_kind_from_token(const mylite_token *token)
+{
+	if (token->kind == MYLITE_TOKEN_USER_VARIABLE) {
+		return MYLITE_STATEMENT_OBJECT_USER_VARIABLE;
+	}
+	if (token->kind == MYLITE_TOKEN_SYSTEM_VARIABLE) {
+		return MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE;
+	}
+	if (token_can_start_local_variable_name(token)) {
+		return MYLITE_STATEMENT_OBJECT_LOCAL_VARIABLE;
+	}
+	return MYLITE_STATEMENT_OBJECT_NONE;
+}
+
+static int token_can_start_local_variable_name(const mylite_token *token)
+{
+	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
+	       token_can_be_unquoted_object_name_keyword(token->parser_token);
+}
+
 static int token_can_start_label_name(const mylite_token *token)
 {
 	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
@@ -2527,6 +2682,12 @@ static int token_text_equals(const mylite_parser *parser, size_t token_index, co
 	token = &parser->tokens[token_index];
 	return token->end_offset - token->start_offset == expected_length &&
 	       strncasecmp(expected, parser->lexer.input + token->start_offset, expected_length) == 0;
+}
+
+static int token_is_assignment_operator(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "=") ||
+	       token_text_equals(parser, token_index, ":=");
 }
 
 static int statement_kind_uses_object_scan(mylite_statement_kind kind)

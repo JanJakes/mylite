@@ -20,6 +20,10 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/declare-handler.html`
 - MySQL 8.4 GET DIAGNOSTICS statement:
   `https://dev.mysql.com/doc/refman/8.4/en/get-diagnostics.html`
+- MySQL 8.4 SELECT ... INTO statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/select-into.html`
+- MySQL 8.4 SET variable assignment statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/set-variable.html`
 - MySQL 8.4 IMPORT TABLE statement:
   `https://dev.mysql.com/doc/refman/8.4/en/import-table.html`
 - MySQL 8.4 CALL statement:
@@ -137,6 +141,9 @@ matched CTE subqueries and inspecting the outer DML verb, so `WITH ... UPDATE`,
 target-name classification uses the same matched-token data to skip CTE bodies
 before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 `DELETE`, including common priority, delayed, quick, and ignore modifiers.
+`SELECT ... INTO` assignment targets are recorded for user variables and local
+variables, while `INTO OUTFILE` and `INTO DUMPFILE` remain file-export body
+tokens.
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table
@@ -178,8 +185,11 @@ present. Account and role DDL target spans also
 preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
 `RENAME` forms. Account-management `SET` metadata is recorded for explicit
 `SET ROLE`, `SET DEFAULT ROLE`, and `SET PASSWORD FOR` role or account targets,
-while session-variable `SET` statements remain objectless. Savepoint names are
-recorded for `SAVEPOINT`, `RELEASE SAVEPOINT`, and `ROLLBACK TO SAVEPOINT`.
+and variable-assignment `SET` metadata is recorded for explicit user-variable
+and system-variable targets. Unadorned `SET name = ...` assignments remain
+objectless until semantic context can distinguish local variables from system
+variables. Savepoint names are recorded for `SAVEPOINT`, `RELEASE SAVEPOINT`,
+and `ROLLBACK TO SAVEPOINT`.
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token.
@@ -196,6 +206,7 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`. Named condition
 declarations are recorded for `DECLARE ... CONDITION`, and the first handled
 condition value is recorded for `DECLARE ... HANDLER`. `GET DIAGNOSTICS
 ... CONDITION` records the requested diagnostics condition area number.
+Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
 
 ## Boundaries
 
@@ -206,6 +217,10 @@ condition value is recorded for `DECLARE ... HANDLER`. `GET DIAGNOSTICS
 - DML object metadata records the first syntactic target table span only. It
   does not yet resolve aliases, joined table references, partition clauses, or
   every affected table in multi-table statements.
+- Assignment metadata records only the first direct assignment target. It does
+  not expand multi-target `SELECT ... INTO`, `SET`, or `GET DIAGNOSTICS`
+  assignment lists, and it does not classify ambiguous unadorned `SET name`
+  assignments without semantic scope information.
 - Utility object metadata records the first direct target only and does not yet
   expand multi-table maintenance, cache-index lists, load-index lists, or lock
   lists. `DESCRIBE` and `EXPLAIN` target metadata is deliberately conservative:

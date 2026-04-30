@@ -168,6 +168,15 @@ case "$dml_object_output" in
 		;;
 esac
 
+variable_assignment_output=$("$parser" "SELECT a INTO @x FROM t; SELECT a INTO local_var FROM t; SELECT a FROM t INTO @x; SELECT a INTO OUTFILE '/tmp/x' FROM t; SET @x = 1; SET @@session.sql_mode = 'ANSI'; SET SESSION sql_mode = 'ANSI'; SET x = 1; GET DIAGNOSTICS @n = NUMBER; GET CURRENT DIAGNOSTICS CONDITION 1 @state = RETURNED_SQLSTATE")
+case "$variable_assignment_output" in
+	*"select"*/user_variable:@x*"select"*/local_variable:local_var*"select"*/user_variable:@x*"select[22:28"*"set"*/user_variable:@x*"set"*/system_variable:@@session.sql_mode*"set"*/system_variable:sql_mode*"set[46:49"*"get"*/user_variable:@n*"get"*/diagnostics_condition:1*) ;;
+	*)
+		echo "unexpected variable assignment output: $variable_assignment_output" >&2
+		exit 1
+		;;
+esac
+
 utility_sql='TRUNCATE t;
 TRUNCATE TABLE `db`.`t`;
 USE `db`;

@@ -324,9 +324,18 @@ esac
 
 show_engine_output=$("$parser" 'SHOW ENGINE InnoDB STATUS; SHOW ENGINE performance_schema MUTEX; SHOW ENGINES')
 case "$show_engine_output" in
-	*"show"*/engine:InnoDB*"show"*/engine:performance_schema*"show[11:12"*) ;;
+	*"show"*/engine:InnoDB*"show"*/engine:performance_schema*"show"*/engine*) ;;
 	*)
 		echo "unexpected SHOW engine output: $show_engine_output" >&2
+		exit 1
+		;;
+esac
+
+show_collection_output=$("$parser" 'SHOW ENGINES; SHOW PLUGINS; SHOW PROCESSLIST; SHOW FULL PROCESSLIST; SHOW ENGINE InnoDB STATUS; SHOW CREATE USER current_user()')
+case "$show_collection_output" in
+	*"show"*/engine*"show"*/plugin*"show"*/connection*"show"*/connection*"show"*/engine:InnoDB*"show"*/user:current_user*) ;;
+	*)
+		echo "unexpected SHOW collection output: $show_collection_output" >&2
 		exit 1
 		;;
 esac

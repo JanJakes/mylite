@@ -209,6 +209,9 @@ static int classify_show_database_statement_object(const mylite_parser *parser,
                                                    mylite_statement *statement,
                                                    size_t token_index,
                                                    size_t last_token_index);
+static int classify_show_collection_statement_object(const mylite_parser *parser,
+                                                     mylite_statement *statement,
+                                                     size_t token_index);
 static int classify_show_variable_statement_object(const mylite_parser *parser,
                                                    mylite_statement *statement,
                                                    size_t token_index,
@@ -2325,6 +2328,10 @@ static int classify_show_statement_object(const mylite_parser *parser,
 		return 1;
 	}
 
+	if (classify_show_collection_statement_object(parser, statement, token_index)) {
+		return 1;
+	}
+
 	if (classify_show_variable_statement_object(parser, statement, token_index, last_token_index)) {
 		return 1;
 	}
@@ -2524,6 +2531,22 @@ static int classify_show_database_statement_object(const mylite_parser *parser,
 	}
 
 	return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_DATABASE);
+}
+
+static int classify_show_collection_statement_object(const mylite_parser *parser,
+                                                     mylite_statement *statement,
+                                                     size_t token_index)
+{
+	if (token_text_equals(parser, token_index, "ENGINES")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_ENGINE);
+	}
+	if (token_text_equals(parser, token_index, "PLUGINS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_PLUGIN);
+	}
+	if (token_text_equals(parser, token_index, "PROCESSLIST")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_CONNECTION);
+	}
+	return 0;
 }
 
 static int classify_show_variable_statement_object(const mylite_parser *parser,

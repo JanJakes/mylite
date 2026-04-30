@@ -273,6 +273,20 @@ SHOW database statements expose the database collection or pattern:
 ok statements=1 kinds=show[1:4,0:25]/database:'wp%'
 ```
 
+SHOW collection statements expose the collection object kind:
+
+```text
+ok statements=1 kinds=show[1:2,0:12]/engine
+```
+
+```text
+ok statements=1 kinds=show[1:2,0:12]/plugin
+```
+
+```text
+ok statements=1 kinds=show[1:3,0:21]/connection
+```
+
 SIGNAL and RESIGNAL expose explicit SQLSTATE values or named conditions:
 
 ```text

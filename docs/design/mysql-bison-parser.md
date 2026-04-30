@@ -55,6 +55,10 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 SHOW diagnostics statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-warnings.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-errors.html`
+- MySQL 8.4 SHOW collection statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-engines.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-plugins.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/show-processlist.html`
 - MySQL 8.4 EXPLAIN for named connections:
   `https://dev.mysql.com/doc/refman/8.4/en/explain-for-connection.html`
 - MySQL 8.4 KILL statement:
@@ -172,9 +176,10 @@ STATUS`, `SHOW OPEN TABLES`, `SHOW EVENTS`, and `SHOW TRIGGERS`, account
 targets in `SHOW CREATE USER` and `SHOW GRANTS FOR`, database targets in
 `SHOW DATABASES` and `SHOW SCHEMAS`, routine targets in `SHOW FUNCTION CODE`
 and `SHOW PROCEDURE CODE`, engine targets in
-`SHOW ENGINE ... STATUS` and `SHOW ENGINE ... MUTEX`, character-set and
-collation targets in `SHOW CHARACTER SET`, `SHOW CHARSET`, and
-`SHOW COLLATION`, query targets in `SHOW PROFILE ... FOR QUERY`,
+`SHOW ENGINE ... STATUS`, `SHOW ENGINE ... MUTEX`, and `SHOW ENGINES`,
+plugin targets in `SHOW PLUGINS`, connection targets in `SHOW PROCESSLIST`,
+character-set and collation targets in `SHOW CHARACTER SET`, `SHOW CHARSET`,
+and `SHOW COLLATION`, query targets in `SHOW PROFILE ... FOR QUERY`,
 system-variable and status-variable targets in `SHOW VARIABLES`,
 `SHOW STATUS`, and their scoped forms, diagnostics-area targets in
 `SHOW WARNINGS`, `SHOW ERRORS`, and their `SHOW COUNT(*) ...` forms,

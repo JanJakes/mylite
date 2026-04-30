@@ -106,6 +106,8 @@ def main() -> int:
         ("reset binary;", 1, {}),
         ("reset nonsense;", 1, {}),
         ("purge binary logs to 'bin.0001';", 0, {"statements": "1", "replication": "1"}),
+        ("purge master logs before now();", 0, {"statements": "1", "replication": "1"}),
+        ("purge binary;", 1, {}),
         ("purge nonsense;", 1, {}),
         ("change replication source to source_host='127.0.0.1';", 0, {"statements": "1", "replication": "1"}),
         ("change nonsense;", 1, {}),

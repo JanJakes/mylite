@@ -369,12 +369,12 @@ reset_kind ::= PERSIST.
 reset_kind ::= REPLICA.
 reset_kind ::= SLAVE.
 
-purge_statement ::= PURGE purge_first_token required_statement_tail. {
+purge_statement ::= PURGE purge_log_kind LOGS required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
 }
 
-purge_first_token ::= BINARY.
-purge_first_token ::= MASTER.
+purge_log_kind ::= BINARY.
+purge_log_kind ::= MASTER.
 
 change_statement ::= CHANGE change_first_token required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);

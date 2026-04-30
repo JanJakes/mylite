@@ -58,6 +58,8 @@ statement ::= purge_statement.
 statement ::= change_statement.
 statement ::= xa_statement.
 statement ::= show_statement.
+statement ::= describe_statement.
+statement ::= explain_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -92,9 +94,6 @@ required_tail_start(A) ::= PREPARE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= EXECUTE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= GRANT. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= REVOKE. { A = MYLITE_STATEMENT_ADMIN; }
-required_tail_start(A) ::= DESCRIBE. { A = MYLITE_STATEMENT_SHOW; }
-required_tail_start(A) ::= DESC. { A = MYLITE_STATEMENT_SHOW; }
-required_tail_start(A) ::= EXPLAIN. { A = MYLITE_STATEMENT_SHOW; }
 required_tail_start(A) ::= HELP. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= USE. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= CLONE. { A = MYLITE_STATEMENT_ADMIN; }
@@ -430,6 +429,38 @@ show_first_token ::= TRIGGERS.
 show_first_token ::= VARIABLES.
 show_first_token ::= WARNINGS.
 
+describe_statement ::= DESCRIBE describe_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+}
+describe_statement ::= DESC describe_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+}
+
+describe_tail ::= SELECT required_statement_tail.
+describe_tail ::= describe_target statement_tail.
+
+describe_target ::= ATOM.
+describe_target ::= LABEL.
+
+explain_statement ::= EXPLAIN explain_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+}
+
+explain_tail ::= explain_first_token statement_tail.
+
+explain_first_token ::= ANALYZE.
+explain_first_token ::= DELETE.
+explain_first_token ::= FORMAT.
+explain_first_token ::= FOR.
+explain_first_token ::= INSERT.
+explain_first_token ::= LP.
+explain_first_token ::= REPLACE.
+explain_first_token ::= SELECT.
+explain_first_token ::= UPDATE.
+explain_first_token ::= WITH.
+explain_first_token ::= ATOM.
+explain_first_token ::= LABEL.
+
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
@@ -634,6 +665,8 @@ keyword ::= ERRORS.
 keyword ::= EVENTS.
 keyword ::= EXTENDED.
 keyword ::= FIELDS.
+keyword ::= FOR.
+keyword ::= FORMAT.
 keyword ::= FULL.
 keyword ::= GLOBAL.
 keyword ::= GRANTS.
@@ -786,6 +819,8 @@ keyword_not_select_clause ::= ERRORS.
 keyword_not_select_clause ::= EVENTS.
 keyword_not_select_clause ::= EXTENDED.
 keyword_not_select_clause ::= FIELDS.
+keyword_not_select_clause ::= FOR.
+keyword_not_select_clause ::= FORMAT.
 keyword_not_select_clause ::= FULL.
 keyword_not_select_clause ::= GLOBAL.
 keyword_not_select_clause ::= GRANTS.

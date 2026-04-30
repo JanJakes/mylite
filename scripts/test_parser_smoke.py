@@ -79,6 +79,13 @@ def main() -> int:
         ("show extended full tables from test;", 0, {"statements": "1", "show": "1"}),
         ("show count(*) warnings;", 0, {"statements": "1", "show": "1"}),
         ("show nonsense;", 1, {}),
+        ("describe t;", 0, {"statements": "1", "show": "1"}),
+        ("describe select * from t;", 0, {"statements": "1", "show": "1"}),
+        ("describe from;", 1, {}),
+        ("explain select * from t;", 0, {"statements": "1", "show": "1"}),
+        ("explain format=tree select * from t;", 0, {"statements": "1", "show": "1"}),
+        ("explain for connection 1;", 0, {"statements": "1", "show": "1"}),
+        ("explain from;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

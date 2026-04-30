@@ -486,6 +486,8 @@ static int keyword_token(const MyliteToken *token) {
       {"FETCH", ML_FETCH},
       {"FIELDS", ML_FIELDS},
       {"FLUSH", ML_FLUSH},
+      {"FOR", ML_FOR},
+      {"FORMAT", ML_FORMAT},
       {"FROM", ML_FROM},
       {"FULL", ML_FULL},
       {"FUNCTION", ML_FUNCTION},

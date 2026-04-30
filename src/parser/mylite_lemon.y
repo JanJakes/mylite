@@ -328,6 +328,7 @@ alter_tail ::= RESOURCE create_resource_group cache_name_part required_statement
 alter_tail ::= SERVER cache_name_part required_statement_tail.
 alter_tail ::= TABLESPACE cache_name_part required_statement_tail.
 alter_tail ::= UNDO TABLESPACE cache_name_part required_statement_tail.
+alter_tail ::= USER drop_if_exists_tail alter_user_target create_user_tail.
 
 alter_object_kind ::= TABLE.
 alter_object_kind ::= ALGORITHM.
@@ -338,8 +339,9 @@ alter_object_kind ::= VIEW.
 alter_object_kind ::= EVENT.
 alter_object_kind ::= FUNCTION.
 alter_object_kind ::= PROCEDURE.
-alter_object_kind ::= USER.
 alter_object_kind ::= INSTANCE.
+
+alter_user_target ::= drop_account_name.
 
 rename_statement ::= RENAME rename_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);

@@ -90,6 +90,19 @@ def main() -> int:
         ("use select;", 1, {}),
         ("handler t open;", 0, {"statements": "1", "utility": "1"}),
         ("handler select open;", 1, {}),
+        ("call p();", 0, {"statements": "1", "stored_program": "1"}),
+        ("call select();", 1, {}),
+        ("binlog 'abc';", 0, {"statements": "1", "replication": "1"}),
+        ("binlog select;", 1, {}),
+        ("clone local data directory = 'x';", 0, {"statements": "1", "admin": "1"}),
+        ("clone nonsense;", 1, {}),
+        ("flush tables;", 0, {"statements": "1", "admin": "1"}),
+        ("flush relay logs;", 0, {"statements": "1", "admin": "1"}),
+        ("flush nonsense;", 1, {}),
+        ("restart;", 0, {"statements": "1", "admin": "1"}),
+        ("restart now;", 1, {}),
+        ("shutdown;", 0, {"statements": "1", "admin": "1"}),
+        ("shutdown now;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

@@ -62,6 +62,12 @@ statement ::= describe_statement.
 statement ::= explain_statement.
 statement ::= use_statement.
 statement ::= handler_statement.
+statement ::= call_statement.
+statement ::= binlog_statement.
+statement ::= clone_statement.
+statement ::= flush_statement.
+statement ::= restart_statement.
+statement ::= shutdown_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -85,18 +91,15 @@ required_tail_start(A) ::= INSERT. { A = MYLITE_STATEMENT_INSERT; }
 required_tail_start(A) ::= REPLACE. { A = MYLITE_STATEMENT_REPLACE; }
 required_tail_start(A) ::= UPDATE. { A = MYLITE_STATEMENT_UPDATE; }
 required_tail_start(A) ::= DELETE. { A = MYLITE_STATEMENT_DELETE; }
-required_tail_start(A) ::= CALL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= TABLE. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= VALUES. { A = MYLITE_STATEMENT_SELECT; }
 required_tail_start(A) ::= SET. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= BINLOG. { A = MYLITE_STATEMENT_REPLICATION; }
 required_tail_start(A) ::= PREPARE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= EXECUTE. { A = MYLITE_STATEMENT_PREPARED; }
 required_tail_start(A) ::= GRANT. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= REVOKE. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= HELP. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= CLONE. { A = MYLITE_STATEMENT_ADMIN; }
 required_tail_start(A) ::= GET. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= SIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= IF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -475,12 +478,55 @@ handler_statement ::= HANDLER handler_target required_statement_tail. {
 handler_target ::= ATOM.
 handler_target ::= LABEL.
 
+call_statement ::= CALL call_target statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+call_target ::= ATOM.
+call_target ::= LABEL.
+
+binlog_statement ::= BINLOG binlog_payload statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
+}
+
+binlog_payload ::= ATOM.
+binlog_payload ::= LABEL.
+
+clone_statement ::= CLONE clone_first_token statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+
+clone_first_token ::= INSTANCE.
+clone_first_token ::= LOCAL.
+
+flush_statement ::= FLUSH flush_first_token statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+
+flush_first_token ::= BINARY.
+flush_first_token ::= ERROR.
+flush_first_token ::= HOSTS.
+flush_first_token ::= LOCAL.
+flush_first_token ::= LOGS.
+flush_first_token ::= OPTIMIZER_COSTS.
+flush_first_token ::= PRIVILEGES.
+flush_first_token ::= RELAY.
+flush_first_token ::= STATUS.
+flush_first_token ::= TABLE.
+flush_first_token ::= TABLES.
+flush_first_token ::= USER_RESOURCES.
+
+restart_statement ::= RESTART. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+
+shutdown_statement ::= SHUTDOWN. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
+
 optional_tail_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= COMMIT. { A = MYLITE_STATEMENT_TRANSACTION; }
 optional_tail_start(A) ::= ROLLBACK. { A = MYLITE_STATEMENT_TRANSACTION; }
-optional_tail_start(A) ::= FLUSH. { A = MYLITE_STATEMENT_ADMIN; }
-optional_tail_start(A) ::= RESTART. { A = MYLITE_STATEMENT_ADMIN; }
-optional_tail_start(A) ::= SHUTDOWN. { A = MYLITE_STATEMENT_ADMIN; }
 optional_tail_start(A) ::= RESIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= ELSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= LOOP. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -676,6 +722,7 @@ keyword ::= DATABASES.
 keyword ::= ENGINE.
 keyword ::= ENGINES.
 keyword ::= ERRORS.
+keyword ::= ERROR.
 keyword ::= EVENTS.
 keyword ::= EXTENDED.
 keyword ::= FIELDS.
@@ -684,20 +731,25 @@ keyword ::= FORMAT.
 keyword ::= FULL.
 keyword ::= GLOBAL.
 keyword ::= GRANTS.
+keyword ::= HOSTS.
 keyword ::= INDEXES.
 keyword ::= KEYS.
 keyword ::= PLUGINS.
+keyword ::= LOGS.
+keyword ::= OPTIMIZER_COSTS.
 keyword ::= PRIVILEGES.
 keyword ::= PROCESSLIST.
 keyword ::= PROFILE.
 keyword ::= PROFILES.
 keyword ::= RELAYLOG.
+keyword ::= RELAY.
 keyword ::= REPLICAS.
 keyword ::= SCHEMAS.
 keyword ::= SESSION.
 keyword ::= STATUS.
 keyword ::= STORAGE.
 keyword ::= TRIGGERS.
+keyword ::= USER_RESOURCES.
 keyword ::= VARIABLES.
 keyword ::= WARNINGS.
 
@@ -830,6 +882,7 @@ keyword_not_select_clause ::= DATABASES.
 keyword_not_select_clause ::= ENGINE.
 keyword_not_select_clause ::= ENGINES.
 keyword_not_select_clause ::= ERRORS.
+keyword_not_select_clause ::= ERROR.
 keyword_not_select_clause ::= EVENTS.
 keyword_not_select_clause ::= EXTENDED.
 keyword_not_select_clause ::= FIELDS.
@@ -838,19 +891,24 @@ keyword_not_select_clause ::= FORMAT.
 keyword_not_select_clause ::= FULL.
 keyword_not_select_clause ::= GLOBAL.
 keyword_not_select_clause ::= GRANTS.
+keyword_not_select_clause ::= HOSTS.
 keyword_not_select_clause ::= INDEXES.
 keyword_not_select_clause ::= KEYS.
 keyword_not_select_clause ::= PLUGINS.
+keyword_not_select_clause ::= LOGS.
+keyword_not_select_clause ::= OPTIMIZER_COSTS.
 keyword_not_select_clause ::= PRIVILEGES.
 keyword_not_select_clause ::= PROCESSLIST.
 keyword_not_select_clause ::= PROFILE.
 keyword_not_select_clause ::= PROFILES.
 keyword_not_select_clause ::= RELAYLOG.
+keyword_not_select_clause ::= RELAY.
 keyword_not_select_clause ::= REPLICAS.
 keyword_not_select_clause ::= SCHEMAS.
 keyword_not_select_clause ::= SESSION.
 keyword_not_select_clause ::= STATUS.
 keyword_not_select_clause ::= STORAGE.
 keyword_not_select_clause ::= TRIGGERS.
+keyword_not_select_clause ::= USER_RESOURCES.
 keyword_not_select_clause ::= VARIABLES.
 keyword_not_select_clause ::= WARNINGS.

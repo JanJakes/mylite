@@ -196,11 +196,15 @@ ok statements=1 kinds=show[1:4,0:22]/binary_log
 ok statements=1 kinds=show[1:3,0:18]/binary_log
 ```
 
-Relay log event statements expose explicit relay-log files, or a channel when
-no file is named:
+Relay log event statements expose explicit relay-log files, bare relay-log
+targets, or a channel when no file is named:
 
 ```text
 ok statements=1 kinds=show[1:7,0:43]/relay_log:'relay.000001'
+```
+
+```text
+ok statements=1 kinds=show[1:3,0:20]/relay_log
 ```
 
 SHOW REPLICA STATUS exposes explicit channel names or the replica-channel

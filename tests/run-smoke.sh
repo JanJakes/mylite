@@ -360,7 +360,7 @@ esac
 
 relay_log_output=$("$parser" "SHOW RELAYLOG EVENTS IN 'relay.000001' FROM 4; SHOW RELAYLOG EVENTS FOR CHANNEL 'ch'; SHOW RELAYLOG EVENTS; SHOW RELAYLOG EVENTS IN 'relay.000001' FOR CHANNEL 'ch'")
 case "$relay_log_output" in
-	*"show"*/relay_log:"'relay.000001'"*"show"*/replication_channel:"'ch'"*"show[16:18"*"show"*/relay_log:"'relay.000001'"*) ;;
+	*"show"*/relay_log:"'relay.000001'"*"show"*/replication_channel:"'ch'"*"show"*/relay_log*"show"*/relay_log:"'relay.000001'"*) ;;
 	*)
 		echo "unexpected relay log output: $relay_log_output" >&2
 		exit 1

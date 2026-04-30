@@ -302,7 +302,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   classify position or time expressions. `BINLOG` metadata records only the
   first string event payload.
   `SHOW RELAYLOG EVENTS` metadata records the explicit relay log name when
-  present, otherwise an explicit channel name, and leaves bare forms objectless.
+  present, bare relay-log targets, or an explicit channel name when no log file
+  is named.
   `SHOW REPLICA STATUS` metadata records only explicit channel names and leaves
   bare status forms objectless.
   `FLUSH TABLES` metadata records only the first table target. `FLUSH RELAY

@@ -123,6 +123,9 @@ static int classify_reset_statement_object(const mylite_parser *parser,
 static size_t find_replication_channel_name_token(const mylite_parser *parser,
                                                   size_t token_index,
                                                   size_t last_token_index);
+static int has_replication_channel_clause(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index);
 static int classify_transaction_statement_object(const mylite_parser *parser,
                                                  mylite_statement *statement,
                                                  size_t token_index,
@@ -1778,6 +1781,20 @@ static size_t find_replication_channel_name_token(const mylite_parser *parser,
 	return parser->token_count;
 }
 
+static int has_replication_channel_clause(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index)
+{
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if (token_text_equals(parser, token_index, "FOR") &&
+		    token_text_equals(parser, token_index + 1, "CHANNEL")) {
+			return 1;
+		}
+		token_index++;
+	}
+	return 0;
+}
+
 static int classify_transaction_statement_object(const mylite_parser *parser,
                                                  mylite_statement *statement,
                                                  size_t token_index,
@@ -2380,6 +2397,13 @@ static int classify_show_statement_object(const mylite_parser *parser,
 			                                        last_token_index);
 		}
 		name_token_index = find_replication_channel_name_token(parser, token_index + 2, last_token_index);
+		if (name_token_index >= parser->token_count &&
+		    has_replication_channel_clause(parser, token_index + 2, last_token_index)) {
+			return 0;
+		}
+		if (name_token_index >= parser->token_count) {
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_RELAY_LOG);
+		}
 		return set_statement_direct_object_name(parser,
 		                                        statement,
 		                                        MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL,

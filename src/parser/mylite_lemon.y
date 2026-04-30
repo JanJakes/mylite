@@ -1598,7 +1598,7 @@ handler_read_operator ::= ATOM(A). {
 handler_read_tuple ::= LP values_row_contents RP.
 
 handler_read_suffix ::= .
-handler_read_suffix ::= WHERE required_statement_tail.
+handler_read_suffix ::= WHERE expression_start statement_tail.
 handler_read_suffix ::= handler_limit_tail.
 
 handler_limit_tail ::= LIMIT ATOM.

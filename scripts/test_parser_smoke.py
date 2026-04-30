@@ -531,6 +531,7 @@ def main() -> int:
         ("handler t close;", 0, {"statements": "1", "utility": "1"}),
         ("handler t open a b;", 1, {}),
         ("handler t open as a b;", 1, {}),
+        ("handler t read first where;", 1, {}),
         ("handler t read first limit;", 1, {}),
         ("handler t read first limit 1 garbage;", 1, {}),
         ("handler t read;", 1, {}),

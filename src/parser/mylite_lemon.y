@@ -509,12 +509,19 @@ use_statement ::= USE use_target. {
 use_target ::= ATOM.
 use_target ::= LABEL.
 
-handler_statement ::= HANDLER handler_target required_statement_tail. {
+handler_statement ::= HANDLER handler_name handler_operation. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 
+handler_name ::= handler_target.
+handler_name ::= handler_name handler_target.
+
 handler_target ::= ATOM.
 handler_target ::= LABEL.
+
+handler_operation ::= OPEN statement_tail.
+handler_operation ::= READ required_statement_tail.
+handler_operation ::= CLOSE.
 
 call_statement ::= CALL call_target statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
@@ -1043,6 +1050,7 @@ keyword ::= PLUGIN.
 keyword ::= PERSIST.
 keyword ::= RESOURCE.
 keyword ::= QUERY.
+keyword ::= READ.
 keyword ::= RECOVER.
 keyword ::= REPLICATION.
 keyword ::= SECURITY.
@@ -1233,6 +1241,7 @@ keyword_not_select_clause ::= PLUGIN.
 keyword_not_select_clause ::= PERSIST.
 keyword_not_select_clause ::= RESOURCE.
 keyword_not_select_clause ::= QUERY.
+keyword_not_select_clause ::= READ.
 keyword_not_select_clause ::= RECOVER.
 keyword_not_select_clause ::= REPLICATION.
 keyword_not_select_clause ::= SECURITY.

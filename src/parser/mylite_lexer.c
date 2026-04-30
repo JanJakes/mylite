@@ -550,6 +550,7 @@ static int keyword_token(const MyliteToken *token) {
       {"PURGE", ML_PURGE},
       {"QUERY", ML_QUERY},
       {"QUICK", ML_QUICK},
+      {"READ", ML_READ},
       {"RECOVER", ML_RECOVER},
       {"RECURSIVE", ML_RECURSIVE},
       {"PREPARE", ML_PREPARE},

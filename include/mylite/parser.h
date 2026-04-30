@@ -102,6 +102,7 @@ typedef enum mylite_token_kind {
 typedef struct mylite_token {
 	mylite_token_kind kind;
 	int parser_token;
+	size_t matching_token;
 	size_t start_offset;
 	size_t end_offset;
 	unsigned int start_line;

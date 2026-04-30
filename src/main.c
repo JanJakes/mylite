@@ -236,6 +236,9 @@ static void print_tokens(const mylite_parse_result *result, const char *sql)
 		       token->end_column,
 		       (int)(token->end_offset - token->start_offset),
 		       sql + token->start_offset);
+		if (token->matching_token != 0) {
+			printf("match %zu %zu\n", i + 1, token->matching_token);
+		}
 	}
 }
 

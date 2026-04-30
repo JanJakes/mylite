@@ -77,6 +77,7 @@ int mylite_parser_record_token(mylite_parser *parser, int token)
 
 	parser->tokens[parser->token_count].kind = token_kind_from_parser_token(token);
 	parser->tokens[parser->token_count].parser_token = token;
+	parser->tokens[parser->token_count].matching_token = 0;
 	parser->tokens[parser->token_count].start_offset = parser->lexer.token_start_offset;
 	parser->tokens[parser->token_count].end_offset = parser->lexer.token_end_offset;
 	parser->tokens[parser->token_count].start_line = parser->lexer.token_start_line;
@@ -85,6 +86,16 @@ int mylite_parser_record_token(mylite_parser *parser, int token)
 	parser->tokens[parser->token_count].end_column = parser->lexer.token_end_column;
 	parser->token_count++;
 	return 1;
+}
+
+void mylite_parser_match_tokens(mylite_parser *parser, size_t left_token, size_t right_token)
+{
+	if (left_token == 0 || right_token == 0 ||
+	    left_token > parser->token_count || right_token > parser->token_count) {
+		return;
+	}
+	parser->tokens[left_token - 1].matching_token = right_token;
+	parser->tokens[right_token - 1].matching_token = left_token;
 }
 
 int mylite_parser_add_statement(mylite_parser *parser, mylite_statement_kind kind)

@@ -27,7 +27,9 @@ object kind for DDL/admin statements, an optional first target-name span, and
 source spans for each parsed statement. Spans include token ordinals, byte
 offsets into the original SQL buffer, and line/column endpoints for diagnostics
 and future AST nodes. Object-name spans preserve exact source text, including
-backtick quoting and schema qualification. The lexer classifies
+backtick quoting and schema qualification. Balanced structural tokens also carry
+bidirectional match references for `(...)`, `[...]`, `{...}`, `BEGIN ... END`,
+and `CASE ... END`. The lexer classifies
 statement-leading words, major clause words, common DDL words, boolean/null
 operators, and join/set operators as keywords so the future analyzer does not
 need to rediscover them from identifier text. The grammar validates that
@@ -43,6 +45,7 @@ statement by statement.
 ## Boundaries
 
 - Produces a token stream and statement/object-kind/name-span AST shell only.
+  Matching token pairs are structural metadata, not a full expression tree.
 - Does not yet resolve identifiers, expression precedence, table references,
   metadata, warnings, or MySQL runtime errors.
 - Skips ordinary comments. MySQL executable `/*! ... */` comments are tokenized

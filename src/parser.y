@@ -187,18 +187,18 @@ body_item:
 	;
 
 begin_block:
-	  BEGIN_T body END_T
+	  BEGIN_T body END_T { mylite_parser_match_tokens(parser, $1, $3); }
 	;
 
 case_block:
-	  CASE_T body END_T
-	| CASE_T body END_CASE_T
+	  CASE_T body END_T      { mylite_parser_match_tokens(parser, $1, $3); }
+	| CASE_T body END_CASE_T { mylite_parser_match_tokens(parser, $1, $3); }
 	;
 
 group:
-	  '(' group_body ')'
-	| '[' group_body ']'
-	| '{' group_body '}'
+	  '(' group_body ')' { mylite_parser_match_tokens(parser, $1, $3); }
+	| '[' group_body ']' { mylite_parser_match_tokens(parser, $1, $3); }
+	| '{' group_body '}' { mylite_parser_match_tokens(parser, $1, $3); }
 	;
 
 group_body:
@@ -372,8 +372,11 @@ secondary_keyword:
 
 static int yylex(YYSTYPE *yylval, mylite_parser *parser)
 {
-	(void)yylval;
-	return mylite_lexer_next(parser);
+	int token = mylite_lexer_next(parser);
+	if (token > 0) {
+		*yylval = (YYSTYPE)parser->lexer.token_count;
+	}
+	return token;
 }
 
 static void yyerror(mylite_parser *parser, const char *message)

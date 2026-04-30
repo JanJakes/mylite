@@ -42,6 +42,15 @@ case "$token_output" in
 		;;
 esac
 
+match_output=$("$parser" --tokens "SELECT (1), CASE WHEN a THEN b END")
+case "$match_output" in
+	*"match 2 4"*"match 4 2"*"match 6 11"*"match 11 6"*) ;;
+	*)
+		echo "unexpected match output: $match_output" >&2
+		exit 1
+		;;
+esac
+
 if "$parser" --quiet "SELECT (1"; then
 	echo "expected unmatched parenthesis to fail" >&2
 	exit 1

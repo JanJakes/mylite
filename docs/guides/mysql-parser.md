@@ -32,6 +32,13 @@ Dump tokens:
 bin/mylite-parse --tokens "SELECT @a, ?"
 ```
 
+Balanced groups and compound blocks print `match` lines in token mode:
+
+```text
+match 2 4
+match 4 2
+```
+
 Keyword lookup is table-driven and must remain sorted:
 
 ```sh

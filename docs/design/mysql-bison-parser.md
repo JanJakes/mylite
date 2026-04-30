@@ -16,6 +16,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/import-table.html`
 - MySQL 8.4 CALL statement:
   `https://dev.mysql.com/doc/refman/8.4/en/call.html`
+- MySQL 8.4 condition signaling statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/signal.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/resignal.html`
 - MySQL 8.4 account-management SET statements:
   `https://dev.mysql.com/doc/refman/8.4/en/set-role.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/set-default-role.html`,
@@ -129,7 +132,8 @@ before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table
-forms, `EXPLAIN ... FOR CONNECTION`, `LOAD ... INTO TABLE`,
+forms, `EXPLAIN ... FOR CONNECTION`, `SIGNAL` / `RESIGNAL` condition values,
+`LOAD ... INTO TABLE`,
 `CACHE INDEX`, `LOAD INDEX INTO CACHE`, `LOCK TABLES`, `SHOW CREATE ...`,
 `SHOW COLUMNS` / `FIELDS`,
 `SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, schema-scoped `SHOW TABLE
@@ -199,6 +203,9 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   `IMPORT TABLE` metadata records only the first string SDI file target.
   `CALL` metadata records only the first procedure name and does not classify
   parameters or OUT/INOUT binding semantics.
+  `SIGNAL` and `RESIGNAL` metadata records only the explicit SQLSTATE literal
+  or named condition value. Bare `RESIGNAL` and `RESIGNAL SET ...` forms remain
+  objectless, and signal information item assignments are not yet classified.
   `SHOW` metadata is similarly limited to forms with a clear table, view, or
   schema/account target. Schema-scoped `SHOW` metadata is recorded only when an
   explicit `FROM` or `IN` schema name is present. Prepared-statement metadata

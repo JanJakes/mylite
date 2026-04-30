@@ -50,6 +50,10 @@ static size_t find_import_sdi_file_token(const mylite_parser *parser,
 static size_t find_call_procedure_name_token(const mylite_parser *parser,
                                              size_t token_index,
                                              size_t last_token_index);
+static int classify_signal_statement_object(const mylite_parser *parser,
+                                            mylite_statement *statement,
+                                            size_t token_index,
+                                            size_t last_token_index);
 static int classify_describe_or_explain_statement_object(const mylite_parser *parser,
                                                          mylite_statement *statement,
                                                          size_t token_index,
@@ -597,6 +601,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_BINARY_LOG: return "binary_log";
 	case MYLITE_STATEMENT_OBJECT_BINARY_LOG_EVENT: return "binary_log_event";
 	case MYLITE_STATEMENT_OBJECT_COMPONENT: return "component";
+	case MYLITE_STATEMENT_OBJECT_CONDITION: return "condition";
 	case MYLITE_STATEMENT_OBJECT_CONNECTION: return "connection";
 	case MYLITE_STATEMENT_OBJECT_CURSOR: return "cursor";
 	case MYLITE_STATEMENT_OBJECT_DATABASE: return "database";
@@ -621,6 +626,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_SDI_FILE: return "sdi_file";
 	case MYLITE_STATEMENT_OBJECT_SERVER: return "server";
 	case MYLITE_STATEMENT_OBJECT_SPATIAL_REFERENCE_SYSTEM: return "spatial_reference_system";
+	case MYLITE_STATEMENT_OBJECT_SQLSTATE: return "sqlstate";
 	case MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE: return "system_variable";
 	case MYLITE_STATEMENT_OBJECT_TABLE: return "table";
 	case MYLITE_STATEMENT_OBJECT_TABLESPACE: return "tablespace";
@@ -1024,6 +1030,9 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		object_kind = MYLITE_STATEMENT_OBJECT_PROCEDURE;
 		name_token_index = find_call_procedure_name_token(parser, name_token_index, last_token_index);
 		break;
+	case MYLITE_STATEMENT_SIGNAL:
+	case MYLITE_STATEMENT_RESIGNAL:
+		return classify_signal_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_USE:
 		object_kind = MYLITE_STATEMENT_OBJECT_DATABASE;
 		break;
@@ -1160,6 +1169,48 @@ static size_t find_call_procedure_name_token(const mylite_parser *parser,
 		return token_index;
 	}
 	return parser->token_count;
+}
+
+static int classify_signal_statement_object(const mylite_parser *parser,
+                                            mylite_statement *statement,
+                                            size_t token_index,
+                                            size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "SET")) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "SQLSTATE")) {
+		size_t name_token_index = token_index + 1;
+
+		if (name_token_index <= last_token_index &&
+		    token_text_equals(parser, name_token_index, "VALUE")) {
+			name_token_index++;
+		}
+		if (name_token_index > last_token_index ||
+		    name_token_index >= parser->token_count ||
+		    parser->tokens[name_token_index].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_SQLSTATE,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	if (!token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	return set_statement_direct_object_name(parser,
+	                                        statement,
+	                                        MYLITE_STATEMENT_OBJECT_CONDITION,
+	                                        token_index,
+	                                        last_token_index);
 }
 
 static int classify_describe_or_explain_statement_object(const mylite_parser *parser,

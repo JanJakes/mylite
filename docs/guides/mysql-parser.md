@@ -204,6 +204,16 @@ HELP exposes quoted help-topic searches:
 ok statements=1 kinds=help[1:2,0:15]/help_topic:'contents'
 ```
 
+SIGNAL and RESIGNAL expose explicit SQLSTATE values or named conditions:
+
+```text
+ok statements=1 kinds=signal[1:3,0:23]/sqlstate:'45000'
+```
+
+```text
+ok statements=1 kinds=resignal[1:2,0:21]/condition:my_condition
+```
+
 Resource group administration exposes the group name:
 
 ```text

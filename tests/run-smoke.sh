@@ -62,6 +62,27 @@ case "$label_output" in
 		;;
 esac
 
+signal_sql=$(cat <<'SQL'
+SIGNAL SQLSTATE '45000';
+SIGNAL SQLSTATE VALUE '02000';
+SIGNAL my_condition;
+SIGNAL `cond` SET MESSAGE_TEXT = 'x';
+RESIGNAL;
+RESIGNAL SET MESSAGE_TEXT = 'x';
+RESIGNAL SQLSTATE '45000';
+RESIGNAL SQLSTATE VALUE '01000' SET MYSQL_ERRNO = 1000;
+RESIGNAL my_condition
+SQL
+)
+signal_output=$("$parser" "$signal_sql")
+case "$signal_output" in
+	*"signal"*/sqlstate:"'45000'"*"signal"*/sqlstate:"'02000'"*"signal"*/condition:my_condition*"signal"*/condition:'`cond`'*"resignal[22:26"*"resignal"*/sqlstate:"'45000'"*"resignal"*/sqlstate:"'01000'"*"resignal"*/condition:my_condition*) ;;
+	*)
+		echo "unexpected SIGNAL/RESIGNAL output: $signal_output" >&2
+		exit 1
+		;;
+esac
+
 labeled_statement_output=$("$parser" 'done: LOOP LEAVE done END LOOP done; rpt: REPEAT ITERATE rpt UNTIL done END REPEAT rpt; wh: WHILE done DO LEAVE wh END WHILE wh; blk: BEGIN SELECT 1 END blk')
 case "$labeled_statement_output" in
 	*"loop"*/label:done*"repeat"*/label:rpt*"while"*/label:wh*"begin"*/label:blk*) ;;

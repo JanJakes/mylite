@@ -47,6 +47,9 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 static size_t find_import_sdi_file_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index);
+static size_t find_call_procedure_name_token(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index);
 static int classify_describe_or_explain_statement_object(const mylite_parser *parser,
                                                          mylite_statement *statement,
                                                          size_t token_index,
@@ -1012,6 +1015,10 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		object_kind = MYLITE_STATEMENT_OBJECT_SDI_FILE;
 		name_token_index = find_import_sdi_file_token(parser, name_token_index, last_token_index);
 		break;
+	case MYLITE_STATEMENT_CALL:
+		object_kind = MYLITE_STATEMENT_OBJECT_PROCEDURE;
+		name_token_index = find_call_procedure_name_token(parser, name_token_index, last_token_index);
+		break;
 	case MYLITE_STATEMENT_USE:
 		object_kind = MYLITE_STATEMENT_OBJECT_DATABASE;
 		break;
@@ -1136,6 +1143,18 @@ static size_t find_import_sdi_file_token(const mylite_parser *parser,
 			return token_index + 1;
 		}
 		token_index++;
+	}
+	return parser->token_count;
+}
+
+static size_t find_call_procedure_name_token(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index)
+{
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    token_can_continue_object_name(&parser->tokens[token_index])) {
+		return token_index;
 	}
 	return parser->token_count;
 }

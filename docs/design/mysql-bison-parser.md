@@ -14,6 +14,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/statement-labels.html`
 - MySQL 8.4 IMPORT TABLE statement:
   `https://dev.mysql.com/doc/refman/8.4/en/import-table.html`
+- MySQL 8.4 CALL statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/call.html`
 - MySQL 8.4 account-management SET statements:
   `https://dev.mysql.com/doc/refman/8.4/en/set-role.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/set-default-role.html`,
@@ -122,8 +124,8 @@ before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 `DELETE`, including common priority, delayed, quick, and ignore modifiers.
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
-`HANDLER`, `IMPORT TABLE FROM`, direct `DESCRIBE` / `EXPLAIN` table forms,
-`EXPLAIN ... FOR CONNECTION`, `LOAD ... INTO TABLE`,
+`HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table
+forms, `EXPLAIN ... FOR CONNECTION`, `LOAD ... INTO TABLE`,
 `CACHE INDEX`, `LOAD INDEX INTO CACHE`, `LOCK TABLES`, `SHOW CREATE ...`,
 `SHOW COLUMNS` / `FIELDS`,
 `SHOW INDEX` / `KEYS`, `SHOW TABLES FROM ...`, schema-scoped `SHOW TABLE
@@ -188,6 +190,8 @@ constructs: `BEGIN`, `LOOP`, `REPEAT`, and `WHILE`.
   query-plan forms such as `EXPLAIN SELECT` and `EXPLAIN FORMAT=... SELECT`
   remain objectless.
   `IMPORT TABLE` metadata records only the first string SDI file target.
+  `CALL` metadata records only the first procedure name and does not classify
+  parameters or OUT/INOUT binding semantics.
   `SHOW` metadata is similarly limited to forms with a clear table, view, or
   schema/account target. Schema-scoped `SHOW` metadata is recorded only when an
   explicit `FROM` or `IN` schema name is present. Prepared-statement metadata

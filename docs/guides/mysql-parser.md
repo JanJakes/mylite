@@ -40,8 +40,8 @@ ok statements=1 kinds=analyze[1:3,0:15]/table:t
 ```
 
 Direct utility targets are reported for statements such as `USE`, `TABLE`,
-`TRUNCATE`, `HANDLER`, `IMPORT TABLE`, direct `DESCRIBE` / `EXPLAIN` table forms,
-`EXPLAIN ... FOR CONNECTION`, `LOAD ... INTO TABLE`, `CACHE INDEX`,
+`TRUNCATE`, `HANDLER`, `IMPORT TABLE`, `CALL`, direct `DESCRIBE` / `EXPLAIN`
+table forms, `EXPLAIN ... FOR CONNECTION`, `LOAD ... INTO TABLE`, `CACHE INDEX`,
 `LOAD INDEX INTO CACHE`, `LOCK TABLES`, and unambiguous `SHOW` table/schema
 forms. Prepared statement handles and component/plugin administration targets
 are reported with their own object kinds:
@@ -52,6 +52,10 @@ ok statements=1 kinds=use[1:2,0:7]/database:app
 
 ```text
 ok statements=1 kinds=import[1:4,0:30]/sdi_file:'/tmp/a.sdi'
+```
+
+```text
+ok statements=1 kinds=call[1:4,0:12]/procedure:p
 ```
 
 ```text

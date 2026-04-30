@@ -121,6 +121,15 @@ case "$import_output" in
 		;;
 esac
 
+call_output=$("$parser" 'CALL p; CALL p(); CALL `db`.`p`(@a); CALL 1')
+case "$call_output" in
+	*"call"*/procedure:p*"call"*/procedure:p*"call"*/procedure:'`db`.`p`'*"call[17:18"*) ;;
+	*)
+		echo "unexpected CALL output: $call_output" >&2
+		exit 1
+		;;
+esac
+
 explain_sql='DESC `db`.`t`;
 DESCRIBE t c;
 EXPLAIN `db`.`e`;

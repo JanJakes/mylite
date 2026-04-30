@@ -150,6 +150,9 @@ def main() -> int:
         ("leave select;", 1, {}),
         ("iterate block1;", 0, {"statements": "1", "stored_program": "1"}),
         ("iterate select;", 1, {}),
+        ("help 'select';", 0, {"statements": "1", "utility": "1"}),
+        ("help select;", 0, {"statements": "1", "utility": "1"}),
+        ("help;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

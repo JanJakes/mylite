@@ -87,6 +87,7 @@ statement ::= grant_statement.
 statement ::= revoke_statement.
 statement ::= leave_statement.
 statement ::= iterate_statement.
+statement ::= help_statement.
 statement ::= required_tail_start(A) required_statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
@@ -107,7 +108,6 @@ statement_start(A) ::= required_tail_start(B). { A = B; }
 statement_start(A) ::= optional_tail_start(B). { A = B; }
 
 required_tail_start(A) ::= DO. { A = MYLITE_STATEMENT_UTILITY; }
-required_tail_start(A) ::= HELP. { A = MYLITE_STATEMENT_UTILITY; }
 required_tail_start(A) ::= IF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= ELSEIF. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 required_tail_start(A) ::= RETURN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
@@ -726,6 +726,14 @@ iterate_statement ::= ITERATE stored_program_label_ref. {
 
 stored_program_label_ref ::= ATOM.
 stored_program_label_ref ::= LABEL.
+
+help_statement ::= HELP help_topic statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+
+help_topic ::= ATOM.
+help_topic ::= LABEL.
+help_topic ::= keyword_not_select_clause.
 
 optional_tail_start(A) ::= RESIGNAL. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 optional_tail_start(A) ::= ELSE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }

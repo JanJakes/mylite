@@ -93,6 +93,27 @@ case "$explain_object_output" in
 		;;
 esac
 
+show_sql='SHOW CREATE TABLE `db`.`t`;
+SHOW CREATE VIEW v;
+SHOW COLUMNS FROM `db`.`c`;
+SHOW FULL FIELDS FROM f;
+SHOW INDEXES FROM `db`.`i`;
+SHOW KEYS FROM k;
+SHOW TABLES FROM `db`;
+SHOW VARIABLES'
+show_object_output=$("$parser" "$show_sql")
+case "$show_object_output" in
+	*"/table:VARIABLES"*)
+		echo "unexpected SHOW object output: $show_object_output" >&2
+		exit 1
+		;;
+	*"show"*/table:'`db`.`t`'*"show"*/view:v*"show"*/table:'`db`.`c`'*"show"*/table:f*"show"*/table:'`db`.`i`'*"show"*/table:k*"show"*/database:'`db`'*"show[43:44"*) ;;
+	*)
+		echo "unexpected SHOW object output: $show_object_output" >&2
+		exit 1
+		;;
+esac
+
 with_output=$("$parser" "WITH c AS (SELECT 1) UPDATE t SET a=1; WITH c AS (SELECT 1) DELETE FROM t; WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c")
 case "$with_output" in
 	*"kinds=update"*"delete"*"insert"*) ;;

@@ -44,6 +44,17 @@ static size_t find_load_table_name_token(const mylite_parser *parser,
 static size_t find_lock_table_name_token(const mylite_parser *parser,
                                          size_t token_index,
                                          size_t last_token_index);
+static int classify_show_statement_object(const mylite_parser *parser,
+                                          mylite_statement *statement,
+                                          size_t token_index,
+                                          size_t last_token_index);
+static size_t skip_show_modifiers(const mylite_parser *parser,
+                                  size_t token_index,
+                                  size_t last_token_index);
+static int is_show_modifier_token(const mylite_parser *parser, size_t token_index);
+static size_t find_show_from_name_token(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index);
 static int set_statement_direct_object_name(const mylite_parser *parser,
                                             mylite_statement *statement,
                                             mylite_statement_object_kind object_kind,
@@ -721,6 +732,8 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
 		name_token_index = find_lock_table_name_token(parser, name_token_index, last_token_index);
 		break;
+	case MYLITE_STATEMENT_SHOW:
+		return classify_show_statement_object(parser, statement, name_token_index, last_token_index);
 	default:
 		return 0;
 	}
@@ -775,6 +788,98 @@ static size_t find_lock_table_name_token(const mylite_parser *parser,
 	token_index++;
 	if (token_index <= last_token_index && token_can_start_object_name(&parser->tokens[token_index])) {
 		return token_index;
+	}
+	return parser->token_count;
+}
+
+static int classify_show_statement_object(const mylite_parser *parser,
+                                          mylite_statement *statement,
+                                          size_t token_index,
+                                          size_t last_token_index)
+{
+	mylite_statement_object_kind object_kind;
+	size_t name_token_index;
+
+	token_index = skip_show_modifiers(parser, token_index, last_token_index);
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == CREATE_T && token_index + 1 <= last_token_index) {
+		size_t object_token_index = token_index + 1;
+		object_kind = object_kind_from_token_sequence(parser, object_token_index, last_token_index);
+		if (object_kind == MYLITE_STATEMENT_OBJECT_NONE) {
+			return 0;
+		}
+		name_token_index = first_name_token_after_object(parser, object_token_index, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        object_kind,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	if (token_text_equals(parser, token_index, "COLUMNS") ||
+	    token_text_equals(parser, token_index, "FIELDS")) {
+		name_token_index = find_show_from_name_token(parser, token_index + 1, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_TABLE,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	if (parser->tokens[token_index].parser_token == INDEX_T ||
+	    parser->tokens[token_index].parser_token == KEY_T ||
+	    token_text_equals(parser, token_index, "INDEXES") ||
+	    token_text_equals(parser, token_index, "KEYS")) {
+		name_token_index = find_show_from_name_token(parser, token_index + 1, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_TABLE,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	if (token_text_equals(parser, token_index, "TABLES")) {
+		name_token_index = find_show_from_name_token(parser, token_index + 1, last_token_index);
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_DATABASE,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
+	return 0;
+}
+
+static size_t skip_show_modifiers(const mylite_parser *parser,
+                                  size_t token_index,
+                                  size_t last_token_index)
+{
+	while (token_index <= last_token_index && is_show_modifier_token(parser, token_index)) {
+		token_index++;
+	}
+	return token_index;
+}
+
+static int is_show_modifier_token(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "FULL") ||
+	       token_text_equals(parser, token_index, "EXTENDED");
+}
+
+static size_t find_show_from_name_token(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index)
+{
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if ((parser->tokens[token_index].parser_token == FROM_T ||
+		     parser->tokens[token_index].parser_token == IN_T) &&
+		    token_can_start_object_name(&parser->tokens[token_index + 1])) {
+			return token_index + 1;
+		}
+		token_index++;
 	}
 	return parser->token_count;
 }

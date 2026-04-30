@@ -52,7 +52,8 @@ before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, direct `DESCRIBE` / `EXPLAIN` table forms, `LOAD ... INTO TABLE`,
-and `LOCK TABLES`.
+`LOCK TABLES`, `SHOW CREATE ...`, `SHOW COLUMNS` / `FIELDS`,
+`SHOW INDEX` / `KEYS`, and `SHOW TABLES FROM ...`.
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token.
@@ -70,6 +71,8 @@ according to the innermost leading query token.
   expand multi-table maintenance or lock lists. `DESCRIBE` and `EXPLAIN`
   target metadata is deliberately conservative so query-plan forms such as
   `EXPLAIN SELECT` and `EXPLAIN FORMAT=... SELECT` remain objectless.
+  `SHOW` metadata is similarly limited to forms with a clear table, view, or
+  schema target.
 - Parenthesized query-expression classification only identifies the leading
   query statement kind; it does not build the query-expression tree.
 - Skips ordinary comments. MySQL executable `/*! ... */` comments are tokenized

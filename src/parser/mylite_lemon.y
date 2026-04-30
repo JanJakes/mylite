@@ -179,7 +179,7 @@ drop_statement ::= DROP drop_tail. {
 }
 
 drop_tail ::= drop_object_kind required_statement_tail.
-drop_tail ::= TEMPORARY drop_table_kind required_statement_tail.
+drop_tail ::= drop_table_prefix drop_if_exists_tail drop_name_list drop_restrict_tail.
 drop_tail ::= LOGFILE ATOM required_statement_tail.
 drop_tail ::= RESOURCE ATOM required_statement_tail.
 drop_tail ::= SPATIAL ATOM required_statement_tail.
@@ -190,20 +190,28 @@ drop_tail ::= drop_database_kind drop_if_exists_tail cache_name_part.
 drop_tail ::= drop_routine_kind drop_if_exists_tail cache_table_ref.
 drop_tail ::= EVENT drop_if_exists_tail cache_table_ref.
 drop_tail ::= TRIGGER drop_if_exists_tail cache_table_ref.
+drop_tail ::= VIEW drop_if_exists_tail drop_name_list drop_restrict_tail.
 
 drop_table_kind ::= TABLE.
 drop_table_kind ::= TABLES.
 
-drop_object_kind ::= TABLE.
-drop_object_kind ::= TABLES.
-drop_object_kind ::= VIEW.
 drop_object_kind ::= USER.
 drop_object_kind ::= ROLE.
 drop_object_kind ::= SERVER.
 drop_object_kind ::= TABLESPACE.
 
+drop_table_prefix ::= drop_table_kind.
+drop_table_prefix ::= TEMPORARY drop_table_kind.
+
 drop_routine_kind ::= FUNCTION.
 drop_routine_kind ::= PROCEDURE.
+
+drop_name_list ::= cache_table_ref.
+drop_name_list ::= drop_name_list COMMA cache_table_ref.
+
+drop_restrict_tail ::= .
+drop_restrict_tail ::= RESTRICT.
+drop_restrict_tail ::= CASCADE.
 
 drop_index_name ::= cache_name_part.
 
@@ -655,6 +663,7 @@ cache_table_ref ::= cache_name_part.
 cache_table_ref ::= cache_name_part DOT cache_name_part.
 
 cache_name_part ::= ATOM.
+cache_name_part ::= CASCADE.
 cache_name_part ::= COMPONENT.
 cache_name_part ::= COUNT.
 cache_name_part ::= DATABASE.
@@ -663,13 +672,16 @@ cache_name_part ::= DEFAULT.
 cache_name_part ::= ENGINE.
 cache_name_part ::= EVENTS.
 cache_name_part ::= FIRST.
+cache_name_part ::= FULL.
 cache_name_part ::= GRANTS.
 cache_name_part ::= PLUGIN.
 cache_name_part ::= PROCESSLIST.
+cache_name_part ::= RESTRICT.
 cache_name_part ::= TABLES.
 cache_name_part ::= TABLESPACE.
 cache_name_part ::= TRIGGERS.
 cache_name_part ::= USER.
+cache_name_part ::= VARIABLES.
 
 cache_key_list ::= LP cache_key_names RP.
 
@@ -1835,8 +1847,10 @@ keyword ::= XA.
 keyword ::= BINARY.
 keyword ::= BINLOG.
 keyword ::= BY.
+keyword ::= CASCADE.
 keyword ::= PURGE.
 keyword ::= RESET.
+keyword ::= RESTRICT.
 keyword ::= CHANGE.
 keyword ::= PREPARE.
 keyword ::= PROCEDURE.
@@ -2051,8 +2065,10 @@ keyword_not_select_clause ::= XA.
 keyword_not_select_clause ::= BINARY.
 keyword_not_select_clause ::= BINLOG.
 keyword_not_select_clause ::= BY.
+keyword_not_select_clause ::= CASCADE.
 keyword_not_select_clause ::= PURGE.
 keyword_not_select_clause ::= RESET.
+keyword_not_select_clause ::= RESTRICT.
 keyword_not_select_clause ::= CHANGE.
 keyword_not_select_clause ::= PREPARE.
 keyword_not_select_clause ::= PROCEDURE.

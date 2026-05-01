@@ -38,6 +38,8 @@ token sink:
 - `USE` recognizes one-part schema names using the shared identifier grammar.
 - Account and role names use the shared unreserved identifier grammar across
   `CREATE`/`ALTER`/`DROP` account statements.
+- `RENAME USER` reuses the shared account-reference grammar for source and
+  destination account pairs.
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
   clauses, TLS/resource/password/lock options, comments, attributes, and
   default-role clauses rather than generic token tails, including MFA,

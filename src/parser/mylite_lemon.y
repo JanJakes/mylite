@@ -1559,15 +1559,8 @@ rename_user_pairs ::= rename_user_pairs import_comma rename_user_pair.
 
 rename_user_pair ::= rename_user_account TO rename_user_account.
 
-rename_user_account ::= rename_user_token.
-rename_user_account ::= rename_user_account rename_user_token.
+rename_user_account ::= drop_account_name.
 rename_user_account ::= current_user_ref.
-
-rename_user_token ::= ATOM.
-rename_user_token ::= LABEL.
-rename_user_token ::= MASTER.
-rename_user_token ::= ROLE.
-rename_user_token ::= USER.
 
 current_user_ref ::= CURRENT_USER.
 current_user_ref ::= CURRENT_USER LP RP.

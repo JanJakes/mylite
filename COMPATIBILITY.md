@@ -213,7 +213,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. | Parser recognizes `CURRENT_USER`/`CURRENT_USER()` and account references using shared unreserved identifier grammar. |
 | `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. | Parser recognizes role account names using shared unreserved identifier grammar. |
 | `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. | Parser recognizes recipient authentication/resource clauses, `WITH GRANT OPTION`, `WITH ADMIN OPTION`, and `AS user WITH ROLE ...` tails. |
-| `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
+| `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. | Parser recognizes account pairs using the shared account-reference grammar, including `CURRENT_USER` and `CURRENT_USER()`. |
 | `REVOKE` | ❌ | medium | Privilege and role revocation semantics. | Parser recognizes `IGNORE UNKNOWN USER`, proxy revocation shape, and all/grant-option revocation tails. |
 | `SET DEFAULT ROLE` | ❌ | medium | Default role assignment. | Parser recognizes `NONE`, `ALL`, explicit role lists, and required `TO` account lists. |
 | `SET PASSWORD` | ❌ | medium | Password assignment semantics. | Parser recognizes literal and random password assignment, `CURRENT_USER` account references, `REPLACE`, and `RETAIN CURRENT PASSWORD`. |

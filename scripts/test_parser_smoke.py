@@ -574,6 +574,7 @@ def main() -> int:
         ("rename table a to b, db.c to mysql.component;", 0, {"statements": "1", "ddl": "1"}),
         ("rename user a to b;", 0, {"statements": "1", "ddl": "1"}),
         ("rename user master@localhost to root@localhost;", 0, {"statements": "1", "ddl": "1"}),
+        ("rename user first@account to account@first;", 0, {"statements": "1", "ddl": "1"}),
         ("rename user 'a'@'%' to 'b'@'%', r1 to r2;", 0, {"statements": "1", "ddl": "1"}),
         ("rename user current_user() to u@localhost;", 0, {"statements": "1", "ddl": "1"}),
         ("rename table mysql.user to mysql.user_bak;", 0, {"statements": "1", "ddl": "1"}),

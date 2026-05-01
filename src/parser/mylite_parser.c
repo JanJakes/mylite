@@ -21,6 +21,7 @@ static void set_parser_error(MyliteParseContext *ctx, const MyliteToken *token,
                              const char *message);
 static void format_near_token(MyliteParseContext *ctx, int token_id,
                               const MyliteToken *token);
+static int token_ascii_equal(MyliteToken token, const char *expected);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
                                    MyliteParseResult *result) {
@@ -302,6 +303,19 @@ void mylite_parser_require_permissive(MyliteParseContext *ctx,
   set_parser_error(ctx, &token, "unsupported statement start");
 }
 
+void mylite_parser_require_row_format(MyliteParseContext *ctx,
+                                      MyliteToken token) {
+  if (token_ascii_equal(token, "fixed") ||
+      token_ascii_equal(token, "dynamic") ||
+      token_ascii_equal(token, "compressed") ||
+      token_ascii_equal(token, "redundant") ||
+      token_ascii_equal(token, "compact")) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid row format option");
+}
+
 void mylite_parser_reject(MyliteParseContext *ctx, MyliteToken token,
                           const char *message) {
   if (ctx->failed) {
@@ -310,6 +324,19 @@ void mylite_parser_reject(MyliteParseContext *ctx, MyliteToken token,
 
   ctx->failed = 1;
   set_parser_error(ctx, &token, message);
+}
+
+static int token_ascii_equal(MyliteToken token, const char *expected) {
+  size_t i = 0;
+
+  while (i < token.length && expected[i] != '\0') {
+    if (!ascii_alpha_equal(token.start[i], expected[i])) {
+      return 0;
+    }
+    i++;
+  }
+
+  return i == token.length && expected[i] == '\0';
 }
 
 static void result_init(MyliteParseResult *result) {

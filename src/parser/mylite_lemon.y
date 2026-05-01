@@ -1489,7 +1489,7 @@ alter_table_table_option ::= INDEX DIRECTORY drop_index_option_equals_tail strin
 alter_table_table_option ::= ENGINE drop_index_option_equals_tail alter_table_table_option_value.
 alter_table_table_option ::= INSERT_METHOD drop_index_option_equals_tail alter_table_insert_method_value.
 alter_table_table_option ::= PASSWORD drop_index_option_equals_tail string_literal.
-alter_table_table_option ::= ROW_FORMAT drop_index_option_equals_tail alter_table_table_option_value.
+alter_table_table_option ::= ROW_FORMAT drop_index_option_equals_tail alter_table_row_format_value.
 alter_table_table_option ::= SECONDARY_ENGINE drop_index_option_equals_tail alter_table_table_option_value.
 alter_table_table_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
 alter_table_table_option ::= START TRANSACTION.
@@ -1523,6 +1523,11 @@ alter_table_table_option_value ::= NO.
 alter_table_insert_method_value ::= NO.
 alter_table_insert_method_value ::= FIRST.
 alter_table_insert_method_value ::= LAST.
+
+alter_table_row_format_value ::= DEFAULT.
+alter_table_row_format_value ::= ATOM(A). {
+  mylite_parser_require_row_format(ctx, A);
+}
 
 alter_table_charset_action_tail ::= .
 alter_table_charset_action_tail ::= COMMA alter_table_charset_after_comma.

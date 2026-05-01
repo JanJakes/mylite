@@ -99,11 +99,11 @@ token sink:
   partition definition, maintenance/exchange, reorganize forms, maintenance
   binlog modifiers, CHECK/REPAIR maintenance options, and numeric coalesce counts,
   tablespace/storage/union changes, secondary-engine load/unload actions,
-  table option changes with numeric/boolean/default value domains,
-  string-literal data/index directories, string-literal
-  compression/password/connection/engine attributes, `AUTOEXTEND_SIZE`,
-  `TABLE_CHECKSUM`, `START TRANSACTION`, `ALGORITHM`/`LOCK` options, and
-  tablespace discard/import forms.
+  table option changes with numeric/boolean/default value domains, closed
+  `INSERT_METHOD` and `ROW_FORMAT` values, string-literal data/index
+  directories, string-literal compression/password/connection/engine
+  attributes, `AUTOEXTEND_SIZE`, `TABLE_CHECKSUM`, `START TRANSACTION`,
+  `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;
   `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body.
   Table-level `ENGINE_ATTRIBUTE` and `SECONDARY_ENGINE_ATTRIBUTE` changes

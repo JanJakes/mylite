@@ -2017,6 +2017,51 @@ case "$set_account_output" in
 		;;
 esac
 
+if ! "$parser" --quiet "SET DEFAULT ROLE NONE TO 'u'@'localhost'"; then
+	echo "expected SET DEFAULT ROLE NONE to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET ROLE'; then
+	echo "expected missing SET ROLE target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET ROLE ALL EXCEPT'; then
+	echo "expected SET ROLE ALL EXCEPT without roles to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET ROLE r,'; then
+	echo "expected SET ROLE with a trailing comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET ROLE ALL role1'; then
+	echo "expected SET ROLE ALL with trailing role to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET DEFAULT ROLE'; then
+	echo "expected missing SET DEFAULT ROLE target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET DEFAULT ROLE ALL'; then
+	echo "expected SET DEFAULT ROLE ALL without TO users to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET DEFAULT ROLE r TO'; then
+	echo "expected SET DEFAULT ROLE without users to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET DEFAULT ROLE r TO CURRENT_USER()'; then
+	echo "expected SET DEFAULT ROLE CURRENT_USER() target to fail" >&2
+	exit 1
+fi
+
 set_charset_output=$("$parser" "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci; SET NAMES DEFAULT; SET CHARACTER SET 'latin1'; SET CHARSET DEFAULT; SET NAMES 'latin1', @dummy = 'B'; SET CHARSET DEFAULT, @dummy = 'A'; SET CHARACTERISTICS AS TRANSACTION READ WRITE")
 case "$set_charset_output" in
 	*"set"*/character_set:utf8mb4*"set"*/character_set:DEFAULT*"set"*/character_set:"'latin1'"*"set"*/character_set:DEFAULT*"set"*/character_set:"'latin1'"*"set"*/character_set:DEFAULT*"set[36:41"*) ;;

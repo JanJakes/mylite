@@ -217,9 +217,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. | Parser records the first granted-to user or role target; privilege graph updates and diagnostics are not implemented. |
 | `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. | Parser records the first source account and validates comma-separated `old_user TO new_user` pairs; privilege metadata rewrites and diagnostics are not implemented. |
 | `REVOKE` | ❌ | medium | Privilege and role revocation semantics. | Parser records the first revoked-from user or role target; privilege graph updates and diagnostics are not implemented. |
-| `SET DEFAULT ROLE` | ❌ | medium | Default role assignment. |  |
+| `SET DEFAULT ROLE` | ❌ | medium | Default role assignment. | Parser records role or account targets and validates `NONE`, `ALL`, and role-list defaults with required `TO` account lists; default-role metadata and diagnostics are not implemented. |
 | `SET PASSWORD` | ❌ | medium | Password assignment semantics. | Parser records explicit `FOR` account targets and bare current-user password assignments as user targets; password validation, storage, and random generation are not implemented. |
-| `SET ROLE` | ❌ | medium | Active-role selection. | Parser records explicit role targets plus `DEFAULT`, `ALL`, and `NONE` active-role collection targets; privilege checks and active-role state are not implemented. |
+| `SET ROLE` | ❌ | medium | Active-role selection. | Parser records explicit role targets plus `DEFAULT`, `ALL`, and `NONE` active-role collection targets and validates documented role-list and `ALL EXCEPT` forms; privilege checks and active-role state are not implemented. |
 | `CREATE RESOURCE GROUP` | ❌ | low | Thread resource group creation syntax. |  |
 | `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. |  |
 | `DROP RESOURCE GROUP` | ❌ | low | Resource group deletion syntax. | Parser records and validates the resource group target with optional `FORCE`; resource group metadata, thread reassignment, and diagnostics are not implemented. |

@@ -147,6 +147,12 @@ static int validate_nonempty_expression_tail_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
 static int validate_set_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_set_role_statement_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index);
+static int validate_set_default_role_statement_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index);
 static int validate_set_names_statement_syntax(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
@@ -323,10 +329,10 @@ static int validate_drop_principal_statement_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index,
                                                     int allow_current_user);
-static int validate_drop_principal_name_list_syntax(const mylite_parser *parser,
-                                                    size_t token_index,
-                                                    size_t last_token_index,
-                                                    int allow_current_user);
+static int validate_principal_name_list_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index,
+                                               int allow_current_user);
 static int validate_principal_name_syntax(const mylite_parser *parser,
                                           size_t token_index,
                                           size_t last_token_index,
@@ -2975,6 +2981,14 @@ static int validate_set_statement_syntax(const mylite_parser *parser, const myli
 		return 0;
 	}
 
+	if (parser->tokens[token_index].parser_token == ROLE_T) {
+		return validate_set_role_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+	if (parser->tokens[token_index].parser_token == DEFAULT_T &&
+	    token_index + 1 <= last_token_index &&
+	    parser->tokens[token_index + 1].parser_token == ROLE_T) {
+		return validate_set_default_role_statement_syntax(parser, token_index + 2, last_token_index);
+	}
 	if (token_text_equals(parser, token_index, "NAMES")) {
 		return validate_set_names_statement_syntax(parser, token_index + 1, last_token_index);
 	}
@@ -2988,6 +3002,79 @@ static int validate_set_statement_syntax(const mylite_parser *parser, const myli
 	}
 
 	return 1;
+}
+
+static int validate_set_role_statement_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "DEFAULT") ||
+	    token_text_equals(parser, token_index, "NONE")) {
+		return token_index == last_token_index;
+	}
+
+	if (token_text_equals(parser, token_index, "ALL")) {
+		if (token_index == last_token_index) {
+			return 1;
+		}
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "EXCEPT")) {
+			return 0;
+		}
+		return validate_principal_name_list_syntax(parser, token_index + 2, last_token_index, 0);
+	}
+
+	return validate_principal_name_list_syntax(parser, token_index, last_token_index, 0);
+}
+
+static int validate_set_default_role_statement_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index)
+{
+	int uses_role_collection;
+	int saw_role = 0;
+
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	uses_role_collection = token_text_equals(parser, token_index, "NONE") ||
+	                       token_text_equals(parser, token_index, "ALL");
+	if (uses_role_collection) {
+		token_index++;
+	} else {
+		while (token_index <= last_token_index) {
+			if (token_text_equals(parser, token_index, "TO")) {
+				break;
+			}
+			if (!validate_principal_name_syntax(parser, token_index, last_token_index, 0, &token_index)) {
+				return 0;
+			}
+			saw_role = 1;
+			if (token_index > last_token_index || token_text_equals(parser, token_index, "TO")) {
+				break;
+			}
+			if (parser->tokens[token_index].parser_token != ',') {
+				return 0;
+			}
+			token_index++;
+			if (token_index > last_token_index) {
+				return 0;
+			}
+		}
+		if (!saw_role) {
+			return 0;
+		}
+	}
+
+	if (token_index > last_token_index || !token_text_equals(parser, token_index, "TO")) {
+		return 0;
+	}
+	return validate_principal_name_list_syntax(parser, token_index + 1, last_token_index, 0);
 }
 
 static int validate_set_names_statement_syntax(const mylite_parser *parser,
@@ -4782,16 +4869,16 @@ static int validate_drop_principal_statement_syntax(const mylite_parser *parser,
 		token_index += 2;
 	}
 
-	return validate_drop_principal_name_list_syntax(parser,
-	                                                token_index,
-	                                                last_token_index,
-	                                                allow_current_user);
+	return validate_principal_name_list_syntax(parser,
+	                                           token_index,
+	                                           last_token_index,
+	                                           allow_current_user);
 }
 
-static int validate_drop_principal_name_list_syntax(const mylite_parser *parser,
-                                                    size_t token_index,
-                                                    size_t last_token_index,
-                                                    int allow_current_user)
+static int validate_principal_name_list_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index,
+                                               int allow_current_user)
 {
 	int saw_name = 0;
 

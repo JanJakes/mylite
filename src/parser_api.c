@@ -66,6 +66,12 @@ static int validate_alter_event_statement_syntax(const mylite_parser *parser,
 static int token_starts_event_statement(const mylite_parser *parser,
                                         size_t token_index,
                                         size_t last_token_index);
+static int validate_create_trigger_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static int token_starts_trigger_statement(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index);
 static int validate_create_database_statement_syntax(const mylite_parser *parser,
                                                      size_t token_index,
                                                      size_t last_token_index);
@@ -272,6 +278,12 @@ static int token_starts_event_schedule_subclause_boundary(const mylite_parser *p
                                                           size_t token_index,
                                                           size_t last_token_index);
 static int token_is_event_interval_unit(const mylite_parser *parser, size_t token_index);
+static int validate_trigger_order_clause_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index,
+                                                size_t *next_token_index);
+static int token_is_trigger_time(const mylite_parser *parser, size_t token_index);
+static int token_is_trigger_event(const mylite_parser *parser, size_t token_index);
 static int validate_alter_database_statement_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
@@ -2015,6 +2027,9 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (token_starts_event_statement(parser, token_index, last_token_index)) {
 		return validate_create_event_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (token_starts_trigger_statement(parser, token_index, last_token_index)) {
+		return validate_create_trigger_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (parser->tokens[token_index].parser_token == DATABASE_T ||
 	    parser->tokens[token_index].parser_token == SCHEMA_T) {
 		return validate_create_database_statement_syntax(parser, token_index, last_token_index);
@@ -3069,6 +3084,136 @@ static int token_is_event_interval_unit(const mylite_parser *parser, size_t toke
 	       token_text_equals(parser, token_index, "HOUR_MINUTE") ||
 	       token_text_equals(parser, token_index, "HOUR_SECOND") ||
 	       token_text_equals(parser, token_index, "MINUTE_SECOND");
+}
+
+static int validate_create_trigger_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	if (token_text_equals(parser, token_index, "DEFINER")) {
+		if (!validate_definer_clause_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+	}
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token != TRIGGER_T) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index + 2 <= last_token_index &&
+	    token_text_equals(parser, token_index, "IF") &&
+	    token_text_equals(parser, token_index + 1, "NOT") &&
+	    token_text_equals(parser, token_index + 2, "EXISTS")) {
+		token_index += 3;
+	}
+	if (token_index > last_token_index || !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index = last_qualified_name_token(parser, token_index, last_token_index) + 1;
+
+	if (token_index + 5 > last_token_index ||
+	    !token_is_trigger_time(parser, token_index) ||
+	    !token_is_trigger_event(parser, token_index + 1) ||
+	    !token_text_equals(parser, token_index + 2, "ON") ||
+	    !token_can_continue_object_name(&parser->tokens[token_index + 3])) {
+		return 0;
+	}
+
+	token_index = last_qualified_name_token(parser, token_index + 3, last_token_index) + 1;
+	if (token_index + 2 > last_token_index ||
+	    !token_text_equals(parser, token_index, "FOR") ||
+	    !token_text_equals(parser, token_index + 1, "EACH") ||
+	    !token_text_equals(parser, token_index + 2, "ROW")) {
+		return 0;
+	}
+	token_index += 3;
+
+	if (token_index <= last_token_index &&
+	    (token_text_equals(parser, token_index, "FOLLOWS") ||
+	     token_text_equals(parser, token_index, "PRECEDES"))) {
+		if (!validate_trigger_order_clause_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+	}
+
+	return token_index <= last_token_index;
+}
+
+static int token_starts_trigger_statement(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == TRIGGER_T) {
+		return 1;
+	}
+	if (!token_text_equals(parser, token_index, "DEFINER")) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+		size_t definer_clause_last_token = last_definer_clause_token(parser, token_index, last_token_index);
+
+		if (definer_clause_last_token > token_index) {
+			token_index = definer_clause_last_token + 1;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == TRIGGER_T) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token == DATABASE_T ||
+		    parser->tokens[token_index].parser_token == EVENT_T ||
+		    parser->tokens[token_index].parser_token == FUNCTION_T ||
+		    parser->tokens[token_index].parser_token == INDEX_T ||
+		    parser->tokens[token_index].parser_token == PROCEDURE_T ||
+		    parser->tokens[token_index].parser_token == ROLE_T ||
+		    parser->tokens[token_index].parser_token == SCHEMA_T ||
+		    parser->tokens[token_index].parser_token == TABLE_T ||
+		    parser->tokens[token_index].parser_token == VIEW_T ||
+		    token_text_equals(parser, token_index, "SERVER") ||
+		    token_text_equals(parser, token_index, "TABLESPACE")) {
+			return 0;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+	return 0;
+}
+
+static int validate_trigger_order_clause_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index,
+                                                size_t *next_token_index)
+{
+	if ((!token_text_equals(parser, token_index, "FOLLOWS") &&
+	     !token_text_equals(parser, token_index, "PRECEDES")) ||
+	    token_index + 1 > last_token_index ||
+	    !token_can_continue_object_name(&parser->tokens[token_index + 1])) {
+		return 0;
+	}
+
+	*next_token_index = last_qualified_name_token(parser, token_index + 1, last_token_index) + 1;
+	return 1;
+}
+
+static int token_is_trigger_time(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "BEFORE") ||
+	       token_text_equals(parser, token_index, "AFTER");
+}
+
+static int token_is_trigger_event(const mylite_parser *parser, size_t token_index)
+{
+	return parser->tokens[token_index].parser_token == INSERT_T ||
+	       parser->tokens[token_index].parser_token == UPDATE_T ||
+	       parser->tokens[token_index].parser_token == DELETE_T;
 }
 
 static int validate_create_database_statement_syntax(const mylite_parser *parser,

@@ -83,6 +83,9 @@ clauses while leaving view dependency analysis to later phases.
 schedule forms, completion behavior, status clauses, comments, renames, and
 required or optional `DO` bodies while leaving scheduler metadata and execution
 to later phases.
+`CREATE TRIGGER` validates optional definer and `IF NOT EXISTS`, trigger timing
+and event, table targets, `FOR EACH ROW`, optional ordering clauses, and
+nonempty bodies while leaving trigger metadata and execution to later phases.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
 optional `IF EXISTS` with an identifier-like target.
 `CREATE SERVER` validates `FOREIGN DATA WRAPPER` and documented server

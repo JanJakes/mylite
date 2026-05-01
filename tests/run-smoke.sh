@@ -453,6 +453,50 @@ if "$parser" --quiet 'ALTER EVENT e DISABLE ON SOURCE'; then
 	exit 1
 fi
 
+trigger_output=$("$parser" "CREATE DEFINER=CURRENT_USER TRIGGER tr BEFORE INSERT ON t FOR EACH ROW SET NEW.a = 1; CREATE TRIGGER IF NOT EXISTS db.tr2 AFTER UPDATE ON db.t FOR EACH ROW FOLLOWS tr SET @x = OLD.a; CREATE DEFINER=trigger@localhost TRIGGER tr3 BEFORE DELETE ON t FOR EACH ROW BEGIN SET @x = OLD.a; END")
+case "$trigger_output" in
+	*"create"*/trigger:tr*"create"*/trigger:db.tr2*"create"*/trigger:tr3*) ;;
+	*)
+		echo "unexpected trigger DDL output: $trigger_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'CREATE TRIGGER tr INSERT ON t FOR EACH ROW SET @x = 1'; then
+	echo "expected CREATE TRIGGER without trigger time to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TRIGGER tr BEFORE SELECT ON t FOR EACH ROW SET @x = 1'; then
+	echo "expected CREATE TRIGGER invalid event to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TRIGGER tr BEFORE INSERT t FOR EACH ROW SET @x = 1'; then
+	echo "expected CREATE TRIGGER without ON to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TRIGGER tr BEFORE INSERT ON t FOR ROW SET @x = 1'; then
+	echo "expected CREATE TRIGGER without EACH ROW to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW FOLLOWS SET @x = 1'; then
+	echo "expected CREATE TRIGGER order without target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE DEFINER user@localhost TRIGGER tr BEFORE INSERT ON t FOR EACH ROW SET @x = 1'; then
+	echo "expected CREATE TRIGGER DEFINER without equals to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW'; then
+	echo "expected CREATE TRIGGER without body to fail" >&2
+	exit 1
+fi
+
 create_index_output=$("$parser" "CREATE INDEX i ON t (c); CREATE UNIQUE INDEX i2 USING BTREE ON db.t (c(10) DESC, (lower(name)) ASC) KEY_BLOCK_SIZE=8 WITH PARSER parser_name COMMENT 'c' VISIBLE ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE='{}' ALGORITHM=INPLACE LOCK=NONE; CREATE FULLTEXT INDEX ft ON t (body) WITH PARSER ngram; CREATE SPATIAL INDEX sp ON t (g) USING HASH; CREATE INDEX legacy TYPE BTREE ON t (c) TYPE RTREE")
 case "$create_index_output" in
 	*"create"*/index:i*"create"*/index:i2*"create"*/index:ft*"create"*/index:sp*"create"*/index:legacy*) ;;

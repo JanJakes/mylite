@@ -69,6 +69,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 event DDL:
   `https://dev.mysql.com/doc/refman/8.4/en/create-event.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/alter-event.html`
+- MySQL 8.4 trigger DDL:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-trigger.html`
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
@@ -377,6 +379,9 @@ tokens.
 schedule forms, completion behavior, status clauses, comments, renames, and
 required or optional `DO` bodies while leaving event-scheduler metadata and
 execution semantics to later phases.
+`CREATE TRIGGER` validates optional definer and `IF NOT EXISTS`, trigger timing
+and event, table target, `FOR EACH ROW`, optional ordering clauses, and nonempty
+bodies while leaving trigger metadata and execution to later phases.
 Resource group targets are recorded and validated for `CREATE`, `ALTER`,
 `DROP`, and `SET RESOURCE GROUP`. Server DDL targets are recorded and validated
 for `CREATE SERVER`, `ALTER SERVER`, and `DROP SERVER`. Logfile-group DDL

@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM AS COLLATE ENCRYPTION PARTITION VALUE DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ADD AS COLLATE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE PARTITION VALUE DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -446,9 +446,7 @@ create_logfile_group ::= ATOM(A). {
 
 create_logfile_group_tail ::= create_add create_undofile ATOM create_options_tail.
 
-create_add ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "ADD");
-}
+create_add ::= ADD.
 
 create_datafile ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "DATAFILE");
@@ -459,10 +457,11 @@ create_undofile ::= ATOM(A). {
 }
 
 create_tablespace_tail ::= .
+create_tablespace_tail ::= ADD create_options_tail.
 create_tablespace_tail ::= ENGINE create_options_tail.
-create_tablespace_tail ::= ATOM(A) create_options_tail. {
-  mylite_parser_require_create_tablespace_tail_atom(ctx, A);
-}
+create_tablespace_tail ::= ENCRYPTION create_options_tail.
+create_tablespace_tail ::= ENGINE_ATTRIBUTE create_options_tail.
+create_tablespace_tail ::= FILE_BLOCK_SIZE create_options_tail.
 
 create_undo_tablespace_tail ::= create_add create_datafile ATOM create_options_tail.
 

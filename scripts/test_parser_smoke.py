@@ -39,6 +39,8 @@ def main() -> int:
         ("create tablespace ts engine innodb;", 0, {"statements": "1", "ddl": "1"}),
         ("create tablespace ts add datafile 'ts.ibd' engine innodb;", 0, {"statements": "1", "ddl": "1"}),
         ("create tablespace ts engine_attribute='{}';", 0, {"statements": "1", "ddl": "1"}),
+        ("create tablespace ts file_block_size=8192;", 0, {"statements": "1", "ddl": "1"}),
+        ("create tablespace ts encryption='Y';", 0, {"statements": "1", "ddl": "1"}),
         ("create undo tablespace u add datafile 'u.ibu' engine innodb;", 0, {"statements": "1", "ddl": "1"}),
         ("create logfile group lg add undofile 'u.dat' engine ndb;", 0, {"statements": "1", "ddl": "1"}),
         ("create spatial reference system 4120 name 'x' organization 'EPSG' identified by 4120 definition 'x';", 0, {"statements": "1", "ddl": "1"}),

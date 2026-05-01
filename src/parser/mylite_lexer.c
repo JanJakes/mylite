@@ -483,6 +483,7 @@ static int keyword_token(const MyliteToken *token) {
   } keywords[] = {
       {"ALTER", ML_ALTER},
       {"AGGREGATE", ML_AGGREGATE},
+      {"ADD", ML_ADD},
       {"ALL", ML_ALL},
       {"ALGORITHM", ML_ALGORITHM},
       {"ANALYZE", ML_ANALYZE},
@@ -537,6 +538,7 @@ static int keyword_token(const MyliteToken *token) {
       {"ELSEIF", ML_ELSEIF},
       {"END", ML_END},
       {"ENGINE", ML_ENGINE},
+      {"ENGINE_ATTRIBUTE", ML_ENGINE_ATTRIBUTE},
       {"ENGINES", ML_ENGINES},
       {"ENCRYPTION", ML_ENCRYPTION},
       {"ERROR", ML_ERROR},
@@ -548,6 +550,7 @@ static int keyword_token(const MyliteToken *token) {
       {"EXPLAIN", ML_EXPLAIN},
       {"EXTENDED", ML_EXTENDED},
       {"FETCH", ML_FETCH},
+      {"FILE_BLOCK_SIZE", ML_FILE_BLOCK_SIZE},
       {"FIELDS", ML_FIELDS},
       {"FIRST", ML_FIRST},
       {"FLUSH", ML_FLUSH},

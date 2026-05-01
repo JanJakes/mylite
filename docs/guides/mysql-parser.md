@@ -206,8 +206,10 @@ ok statements=1 kinds=grant[1:10,0:31]/user:'u'@'h'
 Account and role DDL preserve the first account-style target span too.
 `CREATE USER` validates account lists, authentication clauses, default roles,
 TLS, resource, password-management, account-locking, comment, and attribute
-clauses. `CREATE ROLE` validates optional `IF NOT EXISTS` and comma-separated
-role lists:
+clauses. `ALTER USER` validates the same global account options plus
+`IF EXISTS`, `USER()` password changes, secondary-password clauses, factor
+operations, registration clauses, and default-role assignment. `CREATE ROLE`
+validates optional `IF NOT EXISTS` and comma-separated role lists:
 
 ```text
 ok statements=1 kinds=create[1:5,0:19]/user:'u'@'h'

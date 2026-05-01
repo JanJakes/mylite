@@ -84,6 +84,56 @@ static int token_is_create_user_auth_string(const mylite_parser *parser, size_t 
 static int token_is_create_user_auth_hash(const mylite_parser *parser, size_t token_index);
 static int token_can_be_create_user_auth_plugin(const mylite_parser *parser, size_t token_index);
 static int token_is_create_user_resource_option(const mylite_parser *parser, size_t token_index);
+static int validate_alter_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_alter_user_statement_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index);
+static int validate_alter_user_entry_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            size_t *next_token_index);
+static int validate_alter_user_name_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index,
+                                           size_t *next_token_index,
+                                           int *is_user_function);
+static int validate_alter_user_entry_option_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   size_t *next_token_index,
+                                                   int is_user_function);
+static int validate_alter_user_identified_tail_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index,
+                                                      size_t *next_token_index,
+                                                      int is_user_function);
+static int validate_alter_user_auth_option_tail_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index);
+static int validate_alter_user_factor_operation_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index);
+static int validate_alter_user_factor_auth_option_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index,
+                                                         size_t *next_token_index);
+static int validate_alter_user_registration_option_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index,
+                                                          size_t *next_token_index);
+static int validate_alter_user_tail_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index);
+static int validate_alter_user_default_role_clause_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index,
+                                                          size_t *next_token_index);
+static int token_starts_alter_user_entry_option(const mylite_parser *parser, size_t token_index);
+static int token_starts_alter_user_factor(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index);
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_truncate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_rename_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -727,6 +777,7 @@ static void set_statement_account_name_from_first_token(const mylite_parser *par
 static size_t last_account_name_token(const mylite_parser *parser,
                                       size_t first_name_token,
                                       size_t last_token_index);
+static int token_is_account_name_clause_boundary(const mylite_parser *parser, size_t token_index);
 static int token_is_current_user_function_name(const mylite_parser *parser, size_t token_index);
 static int token_pair_is_empty_parentheses(const mylite_parser *parser, size_t open_token_index);
 static int token_is_account_host_suffix(const mylite_parser *parser, size_t token_index);
@@ -1443,6 +1494,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_CREATE:
 			if (!validate_create_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid CREATE statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_ALTER:
+			if (!validate_alter_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid ALTER statement");
 				return;
 			}
 			break;
@@ -2304,6 +2361,440 @@ static int token_is_create_user_resource_option(const mylite_parser *parser, siz
 	       token_text_equals(parser, token_index, "MAX_UPDATES_PER_HOUR") ||
 	       token_text_equals(parser, token_index, "MAX_CONNECTIONS_PER_HOUR") ||
 	       token_text_equals(parser, token_index, "MAX_USER_CONNECTIONS");
+}
+
+static int validate_alter_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == USER_T) {
+		return validate_alter_user_statement_syntax(parser, token_index, last_token_index);
+	}
+	return 1;
+}
+
+static int validate_alter_user_statement_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index)
+{
+	int saw_user = 0;
+
+	if (token_index >= parser->token_count ||
+	    parser->tokens[token_index].parser_token != USER_T) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "IF")) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "EXISTS")) {
+			return 0;
+		}
+		token_index += 2;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_alter_user_entry_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+		saw_user = 1;
+
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token == ',') {
+			token_index++;
+			if (token_index > last_token_index) {
+				return 0;
+			}
+			continue;
+		}
+		break;
+	}
+
+	return saw_user && validate_alter_user_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_alter_user_entry_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            size_t *next_token_index)
+{
+	int is_user_function = 0;
+
+	if (!validate_alter_user_name_syntax(parser,
+	                                     token_index,
+	                                     last_token_index,
+	                                     &token_index,
+	                                     &is_user_function)) {
+		return 0;
+	}
+
+	if (token_index <= last_token_index && token_starts_alter_user_entry_option(parser, token_index)) {
+		return validate_alter_user_entry_option_syntax(parser,
+		                                               token_index,
+		                                               last_token_index,
+		                                               next_token_index,
+		                                               is_user_function);
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_alter_user_name_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index,
+                                           size_t *next_token_index,
+                                           int *is_user_function)
+{
+	if (token_index + 2 <= last_token_index &&
+	    token_text_equals(parser, token_index, "USER") &&
+	    token_pair_is_empty_parentheses(parser, token_index + 1)) {
+		*next_token_index = token_index + 3;
+		*is_user_function = 1;
+		return 1;
+	}
+
+	*is_user_function = 0;
+	return validate_principal_name_syntax(parser,
+	                                      token_index,
+	                                      last_token_index,
+	                                      1,
+	                                      next_token_index);
+}
+
+static int validate_alter_user_entry_option_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   size_t *next_token_index,
+                                                   int is_user_function)
+{
+	if (token_text_equals(parser, token_index, "IDENTIFIED")) {
+		return validate_alter_user_identified_tail_syntax(parser,
+		                                                  token_index + 1,
+		                                                  last_token_index,
+		                                                  next_token_index,
+		                                                  is_user_function);
+	}
+
+	if (token_text_equals(parser, token_index, "DISCARD")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "OLD") ||
+		    !token_text_equals(parser, token_index + 2, "PASSWORD")) {
+			return 0;
+		}
+		*next_token_index = token_index + 3;
+		return 1;
+	}
+
+	if (!is_user_function &&
+	    (token_text_equals(parser, token_index, "ADD") ||
+	     token_text_equals(parser, token_index, "MODIFY") ||
+	     token_text_equals(parser, token_index, "DROP"))) {
+		return validate_alter_user_factor_operation_syntax(parser,
+		                                                   token_index,
+		                                                   last_token_index,
+		                                                   next_token_index);
+	}
+
+	if (token_starts_alter_user_factor(parser, token_index, last_token_index)) {
+		return validate_alter_user_registration_option_syntax(parser,
+		                                                      token_index,
+		                                                      last_token_index,
+		                                                      next_token_index);
+	}
+
+	return 0;
+}
+
+static int validate_alter_user_identified_tail_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index,
+                                                      size_t *next_token_index,
+                                                      int is_user_function)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "BY")) {
+		token_index++;
+		if (!is_user_function &&
+		    token_index + 1 <= last_token_index &&
+		    token_text_equals(parser, token_index, "RANDOM") &&
+		    token_text_equals(parser, token_index + 1, "PASSWORD")) {
+			return validate_alter_user_auth_option_tail_syntax(parser,
+			                                                   token_index + 2,
+			                                                   last_token_index,
+			                                                   next_token_index);
+		}
+		if (token_is_create_user_auth_string(parser, token_index)) {
+			return validate_alter_user_auth_option_tail_syntax(parser,
+			                                                   token_index + 1,
+			                                                   last_token_index,
+			                                                   next_token_index);
+		}
+		return 0;
+	}
+
+	if (is_user_function || !token_text_equals(parser, token_index, "WITH")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index ||
+	    !token_can_be_create_user_auth_plugin(parser, token_index)) {
+		return 0;
+	}
+	token_index++;
+
+	if (token_index > last_token_index) {
+		*next_token_index = token_index;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "BY")) {
+		token_index++;
+		if (token_index + 1 <= last_token_index &&
+		    token_text_equals(parser, token_index, "RANDOM") &&
+		    token_text_equals(parser, token_index + 1, "PASSWORD")) {
+			return validate_alter_user_auth_option_tail_syntax(parser,
+			                                                   token_index + 2,
+			                                                   last_token_index,
+			                                                   next_token_index);
+		}
+		if (token_is_create_user_auth_string(parser, token_index)) {
+			return validate_alter_user_auth_option_tail_syntax(parser,
+			                                                   token_index + 1,
+			                                                   last_token_index,
+			                                                   next_token_index);
+		}
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "AS")) {
+		token_index++;
+		if (!token_is_create_user_auth_hash(parser, token_index)) {
+			return 0;
+		}
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_alter_user_auth_option_tail_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index)
+{
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "REPLACE")) {
+		token_index++;
+		if (!token_is_create_user_auth_string(parser, token_index)) {
+			return 0;
+		}
+		token_index++;
+	}
+
+	if (token_index + 2 <= last_token_index &&
+	    token_text_equals(parser, token_index, "RETAIN")) {
+		if (!token_text_equals(parser, token_index + 1, "CURRENT") ||
+		    !token_text_equals(parser, token_index + 2, "PASSWORD")) {
+			return 0;
+		}
+		token_index += 3;
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_alter_user_factor_operation_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index)
+{
+	const char *operation;
+	int factor_count = 0;
+
+	if (token_text_equals(parser, token_index, "ADD")) {
+		operation = "ADD";
+	} else if (token_text_equals(parser, token_index, "MODIFY")) {
+		operation = "MODIFY";
+	} else if (token_text_equals(parser, token_index, "DROP")) {
+		operation = "DROP";
+	} else {
+		return 0;
+	}
+
+	while (token_index <= last_token_index && token_text_equals(parser, token_index, operation)) {
+		factor_count++;
+		if (factor_count > 2) {
+			return 0;
+		}
+		token_index++;
+		if (!token_starts_alter_user_factor(parser, token_index, last_token_index)) {
+			return 0;
+		}
+		token_index += 2;
+		if (strcmp(operation, "DROP") != 0) {
+			if (!validate_alter_user_factor_auth_option_syntax(parser,
+			                                                   token_index,
+			                                                   last_token_index,
+			                                                   &token_index)) {
+				return 0;
+			}
+		}
+	}
+
+	*next_token_index = token_index;
+	return factor_count > 0;
+}
+
+static int validate_alter_user_factor_auth_option_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index,
+                                                         size_t *next_token_index)
+{
+	if (token_index > last_token_index || !token_text_equals(parser, token_index, "IDENTIFIED")) {
+		return 0;
+	}
+	return validate_create_user_identified_tail_syntax(parser,
+	                                                   token_index + 1,
+	                                                   last_token_index,
+	                                                   next_token_index,
+	                                                   0);
+}
+
+static int validate_alter_user_registration_option_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index,
+                                                          size_t *next_token_index)
+{
+	if (!token_starts_alter_user_factor(parser, token_index, last_token_index)) {
+		return 0;
+	}
+	token_index += 2;
+
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "INITIATE") &&
+	    token_text_equals(parser, token_index + 1, "REGISTRATION")) {
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "UNREGISTER")) {
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	if (token_index + 5 <= last_token_index &&
+	    token_text_equals(parser, token_index, "FINISH") &&
+	    token_text_equals(parser, token_index + 1, "REGISTRATION") &&
+	    token_text_equals(parser, token_index + 2, "SET") &&
+	    token_text_equals(parser, token_index + 3, "CHALLENGE_RESPONSE") &&
+	    token_text_equals(parser, token_index + 4, "AS") &&
+	    token_is_create_user_auth_string(parser, token_index + 5)) {
+		*next_token_index = token_index + 6;
+		return 1;
+	}
+
+	return 0;
+}
+
+static int validate_alter_user_tail_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 1;
+	}
+
+	if (token_text_equals(parser, token_index, "DEFAULT")) {
+		return validate_alter_user_default_role_clause_syntax(parser,
+		                                                      token_index,
+		                                                      last_token_index,
+		                                                      &token_index) &&
+		       token_index > last_token_index;
+	}
+
+	return validate_create_user_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_alter_user_default_role_clause_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index,
+                                                          size_t *next_token_index)
+{
+	int saw_role = 0;
+
+	if (token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index, "DEFAULT") ||
+	    parser->tokens[token_index + 1].parser_token != ROLE_T) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index <= last_token_index &&
+	    (token_text_equals(parser, token_index, "NONE") ||
+	     token_text_equals(parser, token_index, "ALL"))) {
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_principal_name_syntax(parser, token_index, last_token_index, 0, &token_index)) {
+			return 0;
+		}
+		saw_role = 1;
+
+		if (token_index > last_token_index) {
+			break;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	*next_token_index = token_index;
+	return saw_role;
+}
+
+static int token_starts_alter_user_entry_option(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "IDENTIFIED") ||
+	       token_text_equals(parser, token_index, "DISCARD") ||
+	       token_text_equals(parser, token_index, "ADD") ||
+	       token_text_equals(parser, token_index, "MODIFY") ||
+	       token_text_equals(parser, token_index, "DROP") ||
+	       parser->tokens[token_index].kind == MYLITE_TOKEN_NUMBER;
+}
+
+static int token_starts_alter_user_factor(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index)
+{
+	return token_index + 1 <= last_token_index &&
+	       (token_text_equals(parser, token_index, "2") ||
+	        token_text_equals(parser, token_index, "3")) &&
+	       token_text_equals(parser, token_index + 1, "FACTOR");
 }
 
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
@@ -8558,10 +9049,33 @@ static size_t last_account_name_token(const mylite_parser *parser,
 	}
 	if (first_name_token + 2 <= last_token_index &&
 	    token_is_account_at_marker(parser, first_name_token + 1) &&
+	    !token_is_account_name_clause_boundary(parser, first_name_token + 2) &&
 	    token_can_start_object_name(&parser->tokens[first_name_token + 2])) {
 		return first_name_token + 2;
 	}
 	return first_name_token;
+}
+
+static int token_is_account_name_clause_boundary(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "ADD") ||
+	       token_text_equals(parser, token_index, "ACCOUNT") ||
+	       token_text_equals(parser, token_index, "ATTRIBUTE") ||
+	       token_text_equals(parser, token_index, "COMMENT") ||
+	       token_text_equals(parser, token_index, "DEFAULT") ||
+	       token_text_equals(parser, token_index, "DISCARD") ||
+	       token_text_equals(parser, token_index, "DROP") ||
+	       token_text_equals(parser, token_index, "FAILED_LOGIN_ATTEMPTS") ||
+	       token_text_equals(parser, token_index, "FROM") ||
+	       token_text_equals(parser, token_index, "IDENTIFIED") ||
+	       token_text_equals(parser, token_index, "MODIFY") ||
+	       token_text_equals(parser, token_index, "PASSWORD") ||
+	       token_text_equals(parser, token_index, "PASSWORD_LOCK_TIME") ||
+	       token_text_equals(parser, token_index, "REPLACE") ||
+	       token_text_equals(parser, token_index, "REQUIRE") ||
+	       token_text_equals(parser, token_index, "RETAIN") ||
+	       token_text_equals(parser, token_index, "TO") ||
+	       token_text_equals(parser, token_index, "WITH");
 }
 
 static int token_is_current_user_function_name(const mylite_parser *parser, size_t token_index)

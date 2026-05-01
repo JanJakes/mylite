@@ -54,6 +54,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/create-role.html`
 - MySQL 8.4 CREATE USER statement:
   `https://dev.mysql.com/doc/refman/8.4/en/create-user.html`
+- MySQL 8.4 ALTER USER statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/alter-user.html`
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
@@ -333,19 +335,23 @@ forms. Principal
 targets are recorded for
 `GRANT ... TO` and `REVOKE ... FROM`, including the first `user@host` span when
 present. Account and role DDL target spans also preserve `user@host` /
-`role@host` syntax for `CREATE`, `ALTER`, `DROP`, and `RENAME` forms.
-`CREATE USER` validates optional `IF NOT EXISTS`, account lists with
-authentication clauses, default roles, TLS requirements, resource limits,
-password-management options, account locks, comments, and attributes.
-`CREATE ROLE` validates optional `IF NOT EXISTS` plus comma-separated role
-lists. Account-management `SET` metadata is recorded for explicit `SET ROLE`
-and `SET DEFAULT ROLE` role targets, collection-form `SET ROLE` active-role
-targets, plus `SET PASSWORD FOR` and bare current-user `SET PASSWORD` account
-targets. `SET PASSWORD` validates optional `FOR` account targets, literal
-assignment, `TO RANDOM`, `REPLACE`, and `RETAIN CURRENT PASSWORD` tails.
-`SET ROLE` validates `DEFAULT`, `NONE`, `ALL`, `ALL EXCEPT` role lists, and
-explicit role lists, while `SET DEFAULT ROLE` validates `NONE`, `ALL`, and
-role-list defaults with required `TO` account lists,
+`role@host` syntax for `CREATE`, `ALTER`, `DROP`, and `RENAME` forms, including
+corpus-observed trailing-`@` accounts before option clauses. `CREATE USER`
+validates optional `IF NOT EXISTS`, account lists with authentication clauses,
+default roles, TLS requirements, resource limits, password-management options,
+account locks, comments, and attributes. `ALTER USER` validates optional
+`IF EXISTS`, account lists with authentication changes, `USER()` password
+changes, secondary-password clauses, factor operations, registration clauses,
+default roles, TLS requirements, resource limits, password-management options,
+account locks, comments, and attributes. `CREATE ROLE` validates optional
+`IF NOT EXISTS` plus comma-separated role lists. Account-management `SET`
+metadata is recorded for explicit `SET ROLE` and `SET DEFAULT ROLE` role
+targets, collection-form `SET ROLE` active-role targets, plus `SET PASSWORD FOR`
+and bare current-user `SET PASSWORD` account targets. `SET PASSWORD` validates
+optional `FOR` account targets, literal assignment, `TO RANDOM`, `REPLACE`, and
+`RETAIN CURRENT PASSWORD` tails. `SET ROLE` validates `DEFAULT`, `NONE`, `ALL`,
+`ALL EXCEPT` role lists, and explicit role lists, while `SET DEFAULT ROLE`
+validates `NONE`, `ALL`, and role-list defaults with required `TO` account lists,
 and variable-assignment `SET` metadata is recorded for explicit user-variable
 and system-variable targets, including direct unadorned `SET name = ...`
 targets at the statement boundary. User-variable targets include MySQL's quoted

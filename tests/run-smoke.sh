@@ -2008,6 +2008,11 @@ if ! "$parser" --quiet "CREATE USER u IDENTIFIED WITH plugin INITIAL AUTHENTICAT
 	exit 1
 fi
 
+if ! "$parser" --quiet "CREATE USER user1@ IDENTIFIED BY 'p'"; then
+	echo "expected CREATE USER trailing-at account with auth to parse" >&2
+	exit 1
+fi
+
 if ! "$parser" --quiet "CREATE USER u IDENTIFIED BY 'p' AND IDENTIFIED WITH plugin AS 'h' AND IDENTIFIED BY RANDOM PASSWORD"; then
 	echo "expected CREATE USER multifactor authentication to parse" >&2
 	exit 1
@@ -2085,6 +2090,126 @@ fi
 
 if "$parser" --quiet 'CREATE USER u,'; then
 	echo "expected CREATE USER with trailing comma to fail" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER USER IF EXISTS u1 IDENTIFIED BY 'new' REPLACE 'old' RETAIN CURRENT PASSWORD, u2 IDENTIFIED WITH plugin BY RANDOM PASSWORD REQUIRE SSL WITH MAX_USER_CONNECTIONS 2 PASSWORD REUSE INTERVAL 1 DAY ACCOUNT UNLOCK COMMENT 'x'"; then
+	echo "expected ALTER USER with auth and global options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER USER USER() IDENTIFIED BY 'new' RETAIN CURRENT PASSWORD"; then
+	echo "expected ALTER USER USER() password change to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER USER user1@ IDENTIFIED BY 'p'"; then
+	echo "expected ALTER USER trailing-at account with auth to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER USER CURRENT_USER() DEFAULT ROLE NONE"; then
+	echo "expected ALTER USER CURRENT_USER() DEFAULT ROLE NONE to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER USER u DEFAULT ROLE r1, r2"; then
+	echo "expected ALTER USER DEFAULT ROLE role list to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER USER u DISCARD OLD PASSWORD ATTRIBUTE '{}'"; then
+	echo "expected ALTER USER DISCARD OLD PASSWORD to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER USER u ADD 2 FACTOR IDENTIFIED BY 'x' ADD 3 FACTOR IDENTIFIED WITH plugin AS 'hash'"; then
+	echo "expected ALTER USER factor ADD operations to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER USER u 2 FACTOR INITIATE REGISTRATION"; then
+	echo "expected ALTER USER factor registration initiation to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER USER u 3 FACTOR FINISH REGISTRATION SET CHALLENGE_RESPONSE AS 'x'"; then
+	echo "expected ALTER USER factor registration finish to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER'; then
+	echo "expected missing ALTER USER account list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER IF NOT EXISTS u'; then
+	echo "expected ALTER USER IF NOT EXISTS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER IF EXISTS'; then
+	echo "expected ALTER USER IF EXISTS without account list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER USER() IDENTIFIED WITH plugin'; then
+	echo "expected ALTER USER USER() IDENTIFIED WITH to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER u IDENTIFIED BY 123'; then
+	echo "expected ALTER USER IDENTIFIED BY numeric password to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "ALTER USER u IDENTIFIED BY 'x' RETAIN CURRENT PASSWORD REPLACE 'old'"; then
+	echo "expected ALTER USER REPLACE after RETAIN CURRENT PASSWORD to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER u DEFAULT ROLE'; then
+	echo "expected ALTER USER DEFAULT ROLE without role target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER u DEFAULT ROLE r1,'; then
+	echo "expected ALTER USER DEFAULT ROLE with trailing comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER u REQUIRE SSL AND'; then
+	echo "expected ALTER USER REQUIRE with trailing AND to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER u WITH MAX_USER_CONNECTIONS'; then
+	echo "expected ALTER USER resource option without count to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER u PASSWORD REUSE INTERVAL 1'; then
+	echo "expected ALTER USER incomplete PASSWORD REUSE INTERVAL to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER u ACCOUNT'; then
+	echo "expected ALTER USER ACCOUNT without lock state to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "ALTER USER u COMMENT 'x' extra"; then
+	echo "expected ALTER USER COMMENT with trailing tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER USER u ADD 2 FACTOR'; then
+	echo "expected ALTER USER ADD factor without auth option to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "ALTER USER u 2 FACTOR FINISH REGISTRATION AS 'x'"; then
+	echo "expected ALTER USER incomplete registration finish to fail" >&2
 	exit 1
 fi
 

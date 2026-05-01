@@ -1934,7 +1934,7 @@ case "$principal_output" in
 		;;
 esac
 
-account_ddl_output=$("$parser" "CREATE USER 'u'@'h'; ALTER USER 'u'@'%'; DROP USER IF EXISTS 'u'@'%', user1@; RENAME USER 'u'@'h' TO 'v'@'h'; CREATE ROLE IF NOT EXISTS 'r'@'%'; DROP ROLE IF EXISTS 'r'@'%', role2")
+account_ddl_output=$("$parser" "CREATE USER 'u'@'h'; ALTER USER 'u'@'%'; DROP USER IF EXISTS 'u'@'%', user1@; RENAME USER 'u'@'h' TO 'v'@'h', u2@localhost TO u3@localhost; CREATE ROLE IF NOT EXISTS 'r'@'%'; DROP ROLE IF EXISTS 'r'@'%', role2")
 case "$account_ddl_output" in
 	*"create"*/user:"'u'@'h'"*"alter"*/user:"'u'@'%'"*"drop"*/user:"'u'@'%'"*"rename"*/user:"'u'@'h'"*"create"*/role:"'r'@'%'"*"drop"*/role:"'r'@'%"*) ;;
 	*)
@@ -1980,6 +1980,31 @@ fi
 
 if "$parser" --quiet 'DROP ROLE r extra'; then
 	echo "expected DROP ROLE with trailing tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RENAME USER'; then
+	echo "expected missing RENAME USER pair list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RENAME USER u'; then
+	echo "expected RENAME USER without TO target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RENAME USER u TO'; then
+	echo "expected RENAME USER with missing new account to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RENAME USER u TO v extra'; then
+	echo "expected RENAME USER with trailing tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RENAME USER u TO v,'; then
+	echo "expected RENAME USER with a trailing comma to fail" >&2
 	exit 1
 fi
 

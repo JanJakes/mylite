@@ -283,7 +283,8 @@ optional `IF EXISTS`, `DROP SPATIAL REFERENCE SYSTEM` requires a numeric SRID,
 `DROP UNDO TABLESPACE` accept the corpus-observed optional engine tail.
 Account and resource DDL validation covers `DROP USER` and `DROP ROLE` with
 optional `IF EXISTS` plus comma-separated account/role lists, and
-`DROP RESOURCE GROUP group_name [FORCE]`.
+`DROP RESOURCE GROUP group_name [FORCE]`. `RENAME USER` validates
+comma-separated `old_user TO new_user` account pairs.
 Prepared-statement names are recorded in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`; those forms
 validate handle names, `PREPARE ... FROM` sources, and `EXECUTE ... USING`

@@ -37,6 +37,13 @@ static int validate_rename_table_pair_syntax(const mylite_parser *parser,
                                              size_t token_index,
                                              size_t last_token_index,
                                              size_t *next_token_index);
+static int validate_rename_user_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
+static int validate_rename_user_pair_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            size_t *next_token_index);
 static int validate_call_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_call_argument_list_syntax(const mylite_parser *parser, size_t open_token_index);
 static int validate_do_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -320,11 +327,11 @@ static int validate_drop_principal_name_list_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index,
                                                     int allow_current_user);
-static int validate_drop_principal_name_syntax(const mylite_parser *parser,
-                                               size_t token_index,
-                                               size_t last_token_index,
-                                               int allow_current_user,
-                                               size_t *next_token_index);
+static int validate_principal_name_syntax(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index,
+                                          int allow_current_user,
+                                          size_t *next_token_index);
 static int validate_drop_resource_group_statement_syntax(const mylite_parser *parser,
                                                          size_t token_index,
                                                          size_t last_token_index);
@@ -1654,6 +1661,9 @@ static int validate_rename_statement_syntax(const mylite_parser *parser, const m
 	    token_text_equals(parser, token_index, "TABLES")) {
 		return validate_rename_table_statement_syntax(parser, token_index + 1, last_token_index);
 	}
+	if (parser->tokens[token_index].parser_token == USER_T) {
+		return validate_rename_user_statement_syntax(parser, token_index + 1, last_token_index);
+	}
 	return 1;
 }
 
@@ -1707,6 +1717,53 @@ static int validate_rename_table_pair_syntax(const mylite_parser *parser,
 	last_name_token = last_qualified_name_token(parser, token_index + 1, last_token_index);
 	*next_token_index = last_name_token + 1;
 	return 1;
+}
+
+static int validate_rename_user_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_rename_user_pair_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static int validate_rename_user_pair_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            size_t *next_token_index)
+{
+	if (!validate_principal_name_syntax(parser, token_index, last_token_index, 1, &token_index)) {
+		return 0;
+	}
+	if (token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index, "TO")) {
+		return 0;
+	}
+	token_index++;
+
+	return validate_principal_name_syntax(parser,
+	                                      token_index,
+	                                      last_token_index,
+	                                      1,
+	                                      next_token_index);
 }
 
 static int validate_call_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
@@ -4739,11 +4796,11 @@ static int validate_drop_principal_name_list_syntax(const mylite_parser *parser,
 	int saw_name = 0;
 
 	while (token_index <= last_token_index) {
-		if (!validate_drop_principal_name_syntax(parser,
-		                                         token_index,
-		                                         last_token_index,
-		                                         allow_current_user,
-		                                         &token_index)) {
+		if (!validate_principal_name_syntax(parser,
+		                                    token_index,
+		                                    last_token_index,
+		                                    allow_current_user,
+		                                    &token_index)) {
 			return 0;
 		}
 		saw_name = 1;
@@ -4762,11 +4819,11 @@ static int validate_drop_principal_name_list_syntax(const mylite_parser *parser,
 	return saw_name;
 }
 
-static int validate_drop_principal_name_syntax(const mylite_parser *parser,
-                                               size_t token_index,
-                                               size_t last_token_index,
-                                               int allow_current_user,
-                                               size_t *next_token_index)
+static int validate_principal_name_syntax(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index,
+                                          int allow_current_user,
+                                          size_t *next_token_index)
 {
 	size_t last_name_token;
 

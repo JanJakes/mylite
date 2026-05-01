@@ -215,7 +215,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. | Parser records the first account target and validates optional `IF EXISTS` plus comma-separated account lists, including corpus-observed `user@` forms; privilege cleanup and diagnostics are not implemented. |
 | `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. | Parser records the first role target and validates optional `IF EXISTS` plus comma-separated role lists; grant cleanup and diagnostics are not implemented. |
 | `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. | Parser records the first granted-to user or role target; privilege graph updates and diagnostics are not implemented. |
-| `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. |  |
+| `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. | Parser records the first source account and validates comma-separated `old_user TO new_user` pairs; privilege metadata rewrites and diagnostics are not implemented. |
 | `REVOKE` | ❌ | medium | Privilege and role revocation semantics. | Parser records the first revoked-from user or role target; privilege graph updates and diagnostics are not implemented. |
 | `SET DEFAULT ROLE` | ❌ | medium | Default role assignment. |  |
 | `SET PASSWORD` | ❌ | medium | Password assignment semantics. | Parser records explicit `FOR` account targets and bare current-user password assignments as user targets; password validation, storage, and random generation are not implemented. |

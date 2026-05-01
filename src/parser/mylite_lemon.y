@@ -3550,6 +3550,8 @@ signal_mysql_errno_value ::= NUMBER_LITERAL.
 signal_information_value ::= ATOM.
 signal_information_value ::= LABEL.
 signal_information_value ::= DEFAULT.
+signal_information_value ::= AT_EMPTY set_variable_part set_variable_dot_tail.
+signal_information_value ::= set_variable_part DOT set_variable_part set_variable_dot_tail.
 
 begin_statement ::= BEGIN. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);

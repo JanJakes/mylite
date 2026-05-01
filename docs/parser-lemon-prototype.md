@@ -209,7 +209,8 @@ token sink:
   selectors; assignment targets use local/user-variable grammar and condition
   numbers may come from user variables.
 - `SIGNAL` and `RESIGNAL` recognize five-character `SQLSTATE [VALUE]` literals
-  and condition item assignments with numeric `MYSQL_ERRNO` values.
+  and condition item assignments with numeric `MYSQL_ERRNO`, literal/simple,
+  user-variable, system-variable, and dotted local identifier values.
 - `SET NAMES` and `SET CHARACTER SET` recognize charset/collation names using
   the shared identifier grammar, `BINARY`, `DEFAULT`, optional collation, and
   comma-following variable assignments.

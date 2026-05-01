@@ -2493,7 +2493,10 @@ purge_statement ::= PURGE purge_log_kind LOGS purge_tail. {
 }
 
 purge_tail ::= TO purge_log_name.
-purge_tail ::= purge_before expression_start statement_tail.
+purge_tail ::= purge_before expression_start(A) statement_tail. {
+  mylite_parser_validate_expression_from(
+      ctx, A, "malformed PURGE BEFORE expression");
+}
 
 purge_before ::= BEFORE.
 

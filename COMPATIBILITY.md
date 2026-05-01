@@ -169,7 +169,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `XA ROLLBACK` | ❌ | low | XA rollback. | Parser recognizes one-, two-, and three-part string, hex, or binary XIDs with numeric `formatID` values. |
 | `XA RECOVER` | ❌ | low | XA recovery result-set metadata. |  |
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. | Parser requires a string-literal payload. |
-| `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser recognizes `TO` string-literal log names and `BEFORE` expression tails. |
+| `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser recognizes `TO` string-literal log names and validates `BEFORE` expression tails. |
 | `PURGE MASTER LOGS` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than purging binary logs. | Replacement statement is `PURGE BINARY LOGS`; removed syntax is accepted only in permissive corpus mode. |
 | `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser recognizes optional numeric `TO` index values and comma-separated combinations with `RESET REPLICA` options. |
 | `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |

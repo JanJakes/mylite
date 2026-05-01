@@ -269,8 +269,9 @@ token sink:
   `RESET BINARY LOGS AND GTIDS` with optional numeric `TO` index values and
   `RESET REPLICA` channel clauses. Removed `RESET MASTER` and `RESET SLAVE`
   syntax is permissive-corpus-only.
-- `BINLOG` requires a string-literal payload, and `PURGE BINARY LOGS ... TO`
-  requires a string-literal log name. Removed `PURGE MASTER LOGS` syntax is
+- `BINLOG` requires a string-literal payload, `PURGE BINARY LOGS ... TO`
+  requires a string-literal log name, and `PURGE BINARY LOGS ... BEFORE`
+  validates expression tails. Removed `PURGE MASTER LOGS` syntax is
   permissive-corpus-only.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes, expression-style
   targets including function-call tails, and exact user-variable targets, while

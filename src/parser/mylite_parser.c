@@ -363,47 +363,6 @@ void mylite_parser_require_create_procedure_tail_atom(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
-void mylite_parser_require_create_database_option_start(MyliteParseContext *ctx,
-                                                        MyliteToken token) {
-  static const char *const starters[] = {
-      "CHARACTER",
-      "CHARSET",
-      "COLLATE",
-      "DEFAULT",
-      "ENCRYPTION",
-  };
-
-  if (ctx->failed ||
-      token_ascii_matches_any(&token, starters,
-                              sizeof(starters) / sizeof(starters[0]))) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
-void mylite_parser_require_alter_database_option_start(MyliteParseContext *ctx,
-                                                       MyliteToken token) {
-  static const char *const starters[] = {
-      "CHARACTER",
-      "CHARSET",
-      "COLLATE",
-      "DEFAULT",
-      "ENCRYPTION",
-      "READ",
-  };
-
-  if (ctx->failed ||
-      token_ascii_matches_any(&token, starters,
-                              sizeof(starters) / sizeof(starters[0]))) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
 void mylite_parser_require_create_table_tail_atom(MyliteParseContext *ctx,
                                                   MyliteToken token) {
   static const char *const starters[] = {

@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM AS PARTITION VALUE DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM AS COLLATE ENCRYPTION PARTITION VALUE DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -233,9 +233,8 @@ create_table_query_start ::= TABLESPACE.
 create_database_option_start ::= DEFAULT.
 create_database_option_start ::= CHARACTER.
 create_database_option_start ::= CHARSET.
-create_database_option_start ::= ATOM(A). {
-  mylite_parser_require_create_database_option_start(ctx, A);
-}
+create_database_option_start ::= COLLATE.
+create_database_option_start ::= ENCRYPTION.
 
 create_udf_tail ::= create_returns create_udf_return_type create_soname ATOM.
 
@@ -641,9 +640,8 @@ alter_database_tail ::= alter_database_option_start create_options_required_tail
 alter_database_option_start ::= DEFAULT.
 alter_database_option_start ::= CHARACTER.
 alter_database_option_start ::= CHARSET.
-alter_database_option_start ::= ATOM(A). {
-  mylite_parser_require_alter_database_option_start(ctx, A);
-}
+alter_database_option_start ::= COLLATE.
+alter_database_option_start ::= ENCRYPTION.
 
 alter_routine_kind ::= FUNCTION.
 alter_routine_kind ::= PROCEDURE.

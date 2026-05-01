@@ -368,6 +368,8 @@ def main() -> int:
         ("create table t1 (a int) union=;", 1, {}),
         ("create table t1 engine=innodb;", 1, {}),
         ("create table t1 engine=innodb partition by hash(id);", 1, {}),
+        ("create table t1 engine=innodb partition by hash(id) as garbage;", 1, {}),
+        ("create table t1 engine=innodb partition by hash(id), as select 1;", 1, {}),
         ("create table t1 bogus;", 1, {}),
         ("create table t1 select;", 1, {}),
         ("create table t1 as garbage;", 1, {}),

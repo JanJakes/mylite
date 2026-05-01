@@ -469,6 +469,8 @@ view_table_tail ::= view_check_option.
 
 view_values_tail ::= .
 view_values_tail ::= values_query_tail_nonempty.
+view_values_tail ::= ORDER BY values_order_list values_limit_optional_tail view_check_option.
+view_values_tail ::= values_limit_tail view_check_option.
 view_values_tail ::= view_check_option.
 
 view_parenthesized_tail ::= .

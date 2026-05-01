@@ -394,6 +394,10 @@ static int lexer_number(MyliteLexer *lexer, MyliteToken *token) {
 
   token->length = lexer->offset - token->offset;
   if (token->length == 1 &&
+      (token->start[0] == '0' || token->start[0] == '1')) {
+    return ML_BOOLEAN_NUMBER;
+  }
+  if (token->length == 1 &&
       (token->start[0] == '2' || token->start[0] == '3')) {
     return ML_FACTOR_NUMBER;
   }

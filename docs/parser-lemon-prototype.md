@@ -69,7 +69,8 @@ token sink:
   table option
   changes, `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize schema names, charset,
-  collation, encryption, and alter-only `READ ONLY` option clauses.
+  collation, encryption, and alter-only `READ ONLY` option clauses with
+  MySQL's `DEFAULT`/`0`/`1` value grammar.
 - `CREATE EVENT` and `ALTER EVENT` recognize ordered event metadata clauses
   for schedules, completion policy, enablement state, comments, and event
   bodies; `ALTER EVENT` also recognizes renames.

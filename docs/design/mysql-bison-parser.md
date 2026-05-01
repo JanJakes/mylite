@@ -231,7 +231,7 @@ and `SHOW COLLATION`, query targets in `SHOW PROFILE`, `SHOW PROFILES`,
 system-variable and status-variable targets in `SHOW VARIABLES`,
 `SHOW STATUS`, and their scoped forms, diagnostics-area targets in
 `SHOW WARNINGS`, `SHOW ERRORS`, and their `SHOW COUNT(*) ...` forms,
-connection targets in `KILL`, binary log event
+connection and query targets in `KILL`, binary log event
 payloads in `BINLOG`, binary log targets in `SHOW BINARY LOGS`,
 legacy `SHOW MASTER LOGS`,
 `SHOW BINARY LOG STATUS`, `SHOW MASTER STATUS`, `SHOW BINLOG EVENTS`,
@@ -359,8 +359,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   the named object, not engine-specific options or rename destinations.
   Instance metadata records only the instance-level command surface, not the
   specific backup-lock, TLS, keyring, or redo-log operation.
-  `KILL` metadata records only numeric processlist id tokens, not the
-  distinction between query and connection termination.
+  `KILL` metadata records numeric processlist id tokens and distinguishes
+  `KILL QUERY` from connection termination.
   `CLONE` metadata records local clone directories or remote donor endpoints
   only; plugin availability, privilege checks, copy behavior, SSL requirements,
   and restart side effects remain runtime work.

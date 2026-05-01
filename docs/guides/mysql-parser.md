@@ -272,10 +272,11 @@ EXPLAIN and DESCRIBE expose explainable statements as query targets:
 ok statements=1 kinds=explain[1:3,0:16]/query
 ```
 
-KILL statements expose a numeric processlist id as a connection target:
+KILL statements expose numeric processlist ids as connection or query targets:
 
 ```text
-ok statements=1 kinds=kill[1:3,0:14]/connection:123
+ok statements=1 kinds=kill[1:2,0:8]/connection:123
+ok statements=1 kinds=kill[1:3,0:14]/query:123
 ```
 
 Binary log statements expose explicit log-file targets:

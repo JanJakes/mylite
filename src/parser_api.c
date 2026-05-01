@@ -2064,12 +2064,16 @@ static int classify_kill_statement_object(const mylite_parser *parser,
                                           size_t token_index,
                                           size_t last_token_index)
 {
+	mylite_statement_object_kind object_kind = MYLITE_STATEMENT_OBJECT_CONNECTION;
+
 	if (token_index > last_token_index || token_index >= parser->token_count) {
 		return 0;
 	}
 
-	if (token_text_equals(parser, token_index, "QUERY") ||
-	    token_text_equals(parser, token_index, "CONNECTION")) {
+	if (token_text_equals(parser, token_index, "QUERY")) {
+		object_kind = MYLITE_STATEMENT_OBJECT_QUERY;
+		token_index++;
+	} else if (token_text_equals(parser, token_index, "CONNECTION")) {
 		token_index++;
 	}
 
@@ -2081,7 +2085,7 @@ static int classify_kill_statement_object(const mylite_parser *parser,
 
 	return set_statement_direct_object_name(parser,
 	                                        statement,
-	                                        MYLITE_STATEMENT_OBJECT_CONNECTION,
+	                                        object_kind,
 	                                        token_index,
 	                                        last_token_index);
 }

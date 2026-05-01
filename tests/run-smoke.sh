@@ -495,11 +495,11 @@ esac
 
 kill_output=$("$parser" 'KILL 123; KILL QUERY 456; KILL CONNECTION 789; KILL QUERY; KILL QUERY @id; KILL USER "u"')
 case "$kill_output" in
-	*"/connection:@id"*|*"/connection:USER"*)
+	*"/connection:@id"*|*"/connection:USER"*|*"/query:@id"*)
 		echo "unexpected KILL non-numeric connection output: $kill_output" >&2
 		exit 1
 		;;
-	*"kill"*/connection:123*"kill"*/connection:456*"kill"*/connection:789*"kill[12:13"*"kill[15:17"*"kill[19:21"*) ;;
+	*"kill"*/connection:123*"kill"*/query:456*"kill"*/connection:789*"kill[12:13"*"kill[15:17"*"kill[19:21"*) ;;
 	*)
 		echo "unexpected KILL output: $kill_output" >&2
 		exit 1

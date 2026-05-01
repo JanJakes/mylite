@@ -35,7 +35,8 @@ token sink:
   column lists, view body starts, and explicit check-option tails for
   non-plain-`SELECT` body forms, including parenthesized query expressions and
   `VALUES` set operands, while validating parenthesized query `ORDER BY` and
-  `LIMIT` suffixes before `WITH CHECK OPTION`.
+  `LIMIT` suffixes and malformed `SELECT` operands after set operators before
+  `WITH CHECK OPTION`.
 - `CALL` recognizes one- and two-part routine names plus comma-separated
   argument lists with nested expression bodies.
 - `DO` recognizes comma-separated expression lists while rejecting dangling
@@ -44,9 +45,10 @@ token sink:
   write payloads, and validate `SET` assignment lists including repeated-`SET`
   continuations, explicit `VALUE(S)` row-list tails, `ROW(...)` constructors,
   `INSERT` `VALUE(S)`/`SET` row aliases, parenthesized query payload `ORDER BY`
-  and `LIMIT` suffixes, and `ON DUPLICATE KEY UPDATE` assignment tails including
-  malformed post-value continuations and stray top-level `SELECT`/`FROM` suffixes
-  after assignment values.
+  and `LIMIT` suffixes, malformed `SELECT` operands after set operators, and
+  `ON DUPLICATE KEY UPDATE` assignment tails including malformed post-value
+  continuations and stray top-level `SELECT`/`FROM` suffixes after assignment
+  values.
 - Single-table `DELETE` recognizes table aliases before optional partition
   lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails, rejecting incomplete
   DML clause tails, invalid top-level `ORDER BY` direction sequences, malformed
@@ -102,7 +104,7 @@ token sink:
 - Top-level parenthesized query expressions reject stray suffixes after the
   outer `)`, validate `ORDER BY` expression-list tails plus `LIMIT`/`INTO`
   continuations, validate `INTO` variable-list tails, and require set-operation
-  tails to start with a query operand.
+  tails to start with a query operand whose `SELECT` clause tail is well formed.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,
   MySQL's table-scan and indexed-read direction sets, equality/range tuple
   reads, `WHERE`, and numeric or identifier `LIMIT` tails, while rejecting

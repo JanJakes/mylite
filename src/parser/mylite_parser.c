@@ -1951,6 +1951,10 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
 
     if (state == PAREN_QUERY_AFTER_RP) {
       if (select_set_operator(token_id)) {
+        mylite_parser_validate_select_statement(ctx);
+        if (ctx->failed) {
+          return;
+        }
         state = PAREN_QUERY_AFTER_SET_OPERATOR;
         set_option_seen = 0;
         pending_token = token;
@@ -2684,6 +2688,10 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         break;
       }
       if (select_set_operator(token_id)) {
+        mylite_parser_validate_select_statement(ctx);
+        if (ctx->failed) {
+          return;
+        }
         query_tail_state = DML_QUERY_TAIL_NONE;
         continue;
       }
@@ -5601,6 +5609,10 @@ void mylite_parser_validate_view_statement(MyliteParseContext *ctx,
         break;
       }
       if (select_set_operator(token_id)) {
+        mylite_parser_validate_select_statement(ctx);
+        if (ctx->failed) {
+          return;
+        }
         return;
       }
       if (token_id == ML_ORDER) {

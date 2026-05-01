@@ -191,8 +191,9 @@ static int dml_assignment_operator(int token_id);
 static int dml_assignment_target_token(int token_id);
 static int dml_assignment_value_allows_function(int token_id,
                                                 MyliteToken token);
-static int dml_parenthesized_query_start_follows(MyliteParseContext *ctx,
-                                                 MyliteToken token);
+static int parenthesized_query_start_follows(MyliteParseContext *ctx,
+                                             MyliteToken token);
+static int view_query_order_boundary(int token_id);
 static int dml_query_order_boundary(int token_id);
 static int dml_clause_operand_boundary(int token_id);
 static int dml_limit_option_token(int token_id);
@@ -3092,7 +3093,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
          kind == MYLITE_STATEMENT_REPLACE) &&
         payload_kind == DML_PAYLOAD_NONE &&
         token_id == ML_LP &&
-        dml_parenthesized_query_start_follows(ctx, token)) {
+        parenthesized_query_start_follows(ctx, token)) {
       payload_kind = DML_PAYLOAD_QUERY;
       query_parenthesized_payload = 1;
       depth++;
@@ -4630,7 +4631,7 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
 }
 
 void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
-                                                   MyliteToken start) {
+                                                  MyliteToken start) {
   enum {
     ALTER_INDEX_KEY_NEED_PART,
     ALTER_INDEX_KEY_AFTER_NAME,
@@ -5508,6 +5509,338 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   } else if (index_using_pending) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE index USING");
+  }
+}
+
+void mylite_parser_validate_view_statement(MyliteParseContext *ctx,
+                                            MyliteToken start) {
+  enum {
+    VIEW_FIND_AS,
+    VIEW_AFTER_AS,
+    VIEW_TAIL
+  };
+  enum {
+    VIEW_QUERY_TAIL_NONE,
+    VIEW_QUERY_TAIL_AFTER_RP,
+    VIEW_QUERY_TAIL_AFTER_ORDER,
+    VIEW_QUERY_TAIL_AFTER_ORDER_BY,
+    VIEW_QUERY_TAIL_ORDER_EXPR,
+    VIEW_QUERY_TAIL_ORDER_DIRECTION,
+    VIEW_QUERY_TAIL_AFTER_LIMIT,
+    VIEW_QUERY_TAIL_AFTER_LIMIT_VALUE,
+    VIEW_QUERY_TAIL_AFTER_LIMIT_COMMA,
+    VIEW_QUERY_TAIL_AFTER_LIMIT_OFFSET,
+    VIEW_QUERY_TAIL_AFTER_LIMIT_FINAL_VALUE,
+    VIEW_QUERY_TAIL_AFTER_WITH,
+    VIEW_QUERY_TAIL_AFTER_SCOPE,
+    VIEW_QUERY_TAIL_AFTER_CHECK,
+    VIEW_QUERY_TAIL_AFTER_OPTION
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  MyliteToken order_previous_top_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int state = VIEW_FIND_AS;
+  int depth = 0;
+  int tail_state = VIEW_QUERY_TAIL_NONE;
+  int order_previous_top_token_id = 0;
+  int order_previous_was_operator = 1;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+        if (depth == 0) {
+          tail_state = VIEW_QUERY_TAIL_AFTER_RP;
+          state = VIEW_TAIL;
+        }
+      }
+      continue;
+    }
+
+    if (state == VIEW_FIND_AS) {
+      if (token_id == ML_AS) {
+        state = VIEW_AFTER_AS;
+        pending_token = token;
+      }
+      continue;
+    }
+
+    if (state == VIEW_AFTER_AS) {
+      if (token_id == ML_LP && parenthesized_query_start_follows(ctx, token)) {
+        depth = 1;
+        pending_token = token;
+        continue;
+      }
+      return;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_AFTER_RP) {
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      if (select_set_operator(token_id)) {
+        return;
+      }
+      if (token_id == ML_ORDER) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_ORDER;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LIMIT) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_LIMIT;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_WITH) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_WITH;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed VIEW parenthesized query tail");
+      return;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_AFTER_ORDER) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete VIEW parenthesized query ORDER BY");
+        return;
+      }
+      tail_state = VIEW_QUERY_TAIL_AFTER_ORDER_BY;
+      pending_token = token;
+      order_previous_top_token_id = 0;
+      order_previous_was_operator = 1;
+      order_previous_top_token = token;
+      continue;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_AFTER_ORDER_BY) {
+      if (view_query_order_boundary(token_id) || token_id == ML_ASC ||
+          token_id == ML_DESC) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete VIEW parenthesized query ORDER BY");
+        return;
+      }
+      tail_state = VIEW_QUERY_TAIL_ORDER_EXPR;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_ORDER_EXPR) {
+      if (view_query_order_boundary(token_id)) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(
+              ctx, order_previous_top_token,
+              "incomplete VIEW parenthesized query ORDER BY");
+          return;
+        }
+        if (token_id == ML_COMMA) {
+          tail_state = VIEW_QUERY_TAIL_AFTER_ORDER_BY;
+          pending_token = token;
+          order_previous_top_token_id = 0;
+          order_previous_was_operator = 1;
+          order_previous_top_token = token;
+          continue;
+        }
+        if (token_id == ML_LIMIT) {
+          tail_state = VIEW_QUERY_TAIL_AFTER_LIMIT;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_WITH) {
+          tail_state = VIEW_QUERY_TAIL_AFTER_WITH;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_SEMI) {
+          break;
+        }
+        mylite_parser_reject(ctx, token,
+                             "malformed VIEW parenthesized query ORDER BY");
+        return;
+      }
+      if (token_id == ML_ASC || token_id == ML_DESC) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(
+              ctx, order_previous_top_token,
+              "incomplete VIEW parenthesized query ORDER BY");
+          return;
+        }
+        tail_state = VIEW_QUERY_TAIL_ORDER_DIRECTION;
+        pending_token = token;
+        continue;
+      }
+      if (token_closes_nested_expression(token_id)) {
+        mylite_parser_reject(ctx, token,
+                             "malformed VIEW parenthesized query ORDER BY");
+        return;
+      }
+      if (!query_expression_token(
+              ctx, token_id, token, &depth, &order_previous_top_token_id,
+              &order_previous_top_token, &order_previous_was_operator,
+              "malformed VIEW parenthesized query ORDER BY")) {
+        return;
+      }
+      continue;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_ORDER_DIRECTION) {
+      if (token_id == ML_COMMA) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_ORDER_BY;
+        pending_token = token;
+        order_previous_top_token_id = 0;
+        order_previous_was_operator = 1;
+        order_previous_top_token = token;
+        continue;
+      }
+      if (token_id == ML_LIMIT) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_LIMIT;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_WITH) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_WITH;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed VIEW parenthesized query ORDER BY");
+      return;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT ||
+        tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT_COMMA ||
+        tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT_OFFSET) {
+      if (!dml_limit_option_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete VIEW parenthesized query LIMIT");
+        return;
+      }
+      tail_state = tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT
+                       ? VIEW_QUERY_TAIL_AFTER_LIMIT_VALUE
+                       : VIEW_QUERY_TAIL_AFTER_LIMIT_FINAL_VALUE;
+      continue;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT_VALUE) {
+      if (token_id == ML_COMMA) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_LIMIT_COMMA;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_OFFSET) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_LIMIT_OFFSET;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_WITH) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_WITH;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed VIEW parenthesized query LIMIT");
+      return;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT_FINAL_VALUE) {
+      if (token_id == ML_WITH) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_WITH;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed VIEW parenthesized query LIMIT");
+      return;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_AFTER_WITH) {
+      if (token_id == ML_CASCADED || token_id == ML_LOCAL) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_SCOPE;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_CHECK) {
+        tail_state = VIEW_QUERY_TAIL_AFTER_CHECK;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "incomplete VIEW CHECK OPTION");
+      return;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_AFTER_SCOPE) {
+      if (token_id != ML_CHECK) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete VIEW CHECK OPTION");
+        return;
+      }
+      tail_state = VIEW_QUERY_TAIL_AFTER_CHECK;
+      pending_token = token;
+      continue;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_AFTER_CHECK) {
+      if (token_id != ML_OPTION) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete VIEW CHECK OPTION");
+        return;
+      }
+      tail_state = VIEW_QUERY_TAIL_AFTER_OPTION;
+      continue;
+    }
+
+    if (tail_state == VIEW_QUERY_TAIL_AFTER_OPTION) {
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      mylite_parser_reject(ctx, token, "malformed VIEW CHECK OPTION");
+      return;
+    }
+  }
+
+  if (depth > 0) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete VIEW parenthesized query");
+  } else if (tail_state == VIEW_QUERY_TAIL_AFTER_ORDER ||
+             tail_state == VIEW_QUERY_TAIL_AFTER_ORDER_BY) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete VIEW parenthesized query ORDER BY");
+  } else if (tail_state == VIEW_QUERY_TAIL_ORDER_EXPR &&
+             order_previous_was_operator) {
+    mylite_parser_reject(ctx, order_previous_top_token,
+                         "incomplete VIEW parenthesized query ORDER BY");
+  } else if (tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT ||
+             tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT_COMMA ||
+             tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT_OFFSET) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete VIEW parenthesized query LIMIT");
+  } else if (tail_state == VIEW_QUERY_TAIL_AFTER_WITH ||
+             tail_state == VIEW_QUERY_TAIL_AFTER_SCOPE ||
+             tail_state == VIEW_QUERY_TAIL_AFTER_CHECK) {
+    mylite_parser_reject(ctx, pending_token, "incomplete VIEW CHECK OPTION");
   }
 }
 
@@ -7847,8 +8180,8 @@ static int dml_assignment_value_allows_function(int token_id,
          strchr("!%&*+/^|", token.start[0]) != NULL;
 }
 
-static int dml_parenthesized_query_start_follows(MyliteParseContext *ctx,
-                                                 MyliteToken token) {
+static int parenthesized_query_start_follows(MyliteParseContext *ctx,
+                                             MyliteToken token) {
   MyliteLexer lexer;
   MyliteToken next;
   int token_id;
@@ -7863,6 +8196,12 @@ static int dml_parenthesized_query_start_follows(MyliteParseContext *ctx,
 
   return token_id == ML_SELECT || token_id == ML_TABLE ||
          token_id == ML_VALUES || token_id == ML_WITH;
+}
+
+static int view_query_order_boundary(int token_id) {
+  return token_id == ML_COMMA || token_id == ML_LIMIT || token_id == ML_SEMI ||
+         token_id == ML_WITH || select_clause_requires_by(token_id) ||
+         select_clause_requires_operand(token_id) || select_set_operator(token_id);
 }
 
 static int dml_query_order_boundary(int token_id) {

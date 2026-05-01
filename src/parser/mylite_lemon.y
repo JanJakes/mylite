@@ -210,7 +210,9 @@ create_tail ::= UNDO TABLESPACE cache_name_part create_undo_tablespace_tail.
 create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_database_tail.
 create_tail ::= ROLE create_if_not_exists_tail drop_account_list.
 create_tail ::= USER create_if_not_exists_tail create_user_list account_management_options account_management_permissive_tail.
-create_tail ::= VIEW cache_table_ref view_column_tail view_body.
+create_tail ::= VIEW(A) cache_table_ref view_column_tail view_body. {
+  mylite_parser_validate_view_statement(ctx, A);
+}
 create_tail ::= create_prefixed_view_tail.
 create_tail ::= create_definer_clause create_definer_object_tail.
 create_tail ::= EVENT(A) create_if_not_exists_tail cache_table_ref create_event_body. {
@@ -451,7 +453,9 @@ create_udf_return_type ::= STRING.
 
 create_soname ::= SONAME.
 
-create_prefixed_view_tail ::= create_view_prefix VIEW cache_table_ref view_column_tail view_body.
+create_prefixed_view_tail ::= create_view_prefix VIEW(A) cache_table_ref view_column_tail view_body. {
+  mylite_parser_validate_view_statement(ctx, A);
+}
 
 create_view_prefix ::= OR REPLACE create_view_optional_options.
 create_view_prefix ::= create_view_options.
@@ -1194,7 +1198,9 @@ alter_tail ::= EVENT(A) cache_table_ref alter_event_clauses. {
 alter_tail ::= alter_routine_kind cache_table_ref alter_routine_characteristics_tail.
 alter_tail ::= alter_database_kind alter_database_options.
 alter_tail ::= alter_database_kind alter_database_name alter_database_options.
-alter_tail ::= VIEW cache_table_ref view_column_tail view_body.
+alter_tail ::= VIEW(A) cache_table_ref view_column_tail view_body. {
+  mylite_parser_validate_view_statement(ctx, A);
+}
 alter_tail ::= alter_prefixed_view_tail.
 alter_tail ::= create_definer_clause alter_definer_object_tail.
 alter_tail ::= INSTANCE alter_instance_action.
@@ -1625,7 +1631,9 @@ alter_table_partition_name ::= cache_name_part.
 alter_table_keys_action ::= ENABLE KEYS.
 alter_table_keys_action ::= DISABLE KEYS.
 
-alter_prefixed_view_tail ::= alter_view_prefix VIEW cache_table_ref view_column_tail view_body.
+alter_prefixed_view_tail ::= alter_view_prefix VIEW(A) cache_table_ref view_column_tail view_body. {
+  mylite_parser_validate_view_statement(ctx, A);
+}
 
 alter_view_prefix ::= create_view_algorithm create_view_definer_tail create_view_sql_security_tail.
 alter_view_prefix ::= create_definer_clause create_view_sql_security_tail.

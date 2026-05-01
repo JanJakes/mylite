@@ -34,7 +34,8 @@ token sink:
 - `CREATE VIEW` and `ALTER VIEW` recognize algorithm, definer, SQL security,
   column lists, view body starts, and explicit check-option tails for
   non-plain-`SELECT` body forms, including parenthesized query expressions and
-  `VALUES` set operands.
+  `VALUES` set operands, while validating parenthesized query `ORDER BY` and
+  `LIMIT` suffixes before `WITH CHECK OPTION`.
 - `CALL` recognizes one- and two-part routine names plus comma-separated
   argument lists with nested expression bodies.
 - `DO` recognizes comma-separated expression lists while rejecting dangling

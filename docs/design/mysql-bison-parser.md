@@ -43,6 +43,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/import-table.html`
 - MySQL 8.4 CALL statement:
   `https://dev.mysql.com/doc/refman/8.4/en/call.html`
+- MySQL 8.4 INSERT and REPLACE statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/insert.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/replace.html`
 - MySQL 8.4 LOAD DATA and LOAD XML statements:
   `https://dev.mysql.com/doc/refman/8.4/en/load-data.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/load-xml.html`
@@ -257,6 +260,11 @@ matched CTE subqueries and inspecting the outer DML verb, so `WITH ... UPDATE`,
 target-name classification uses the same matched-token data to skip CTE bodies
 before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 `DELETE`, including common priority, delayed, quick, and ignore modifiers.
+`INSERT` and `REPLACE` validation checks the documented target/source skeleton:
+optional `INTO`, partition lists, optional column lists, `VALUES` / `VALUE`,
+`SET`, query-backed sources, row aliases, and `ON DUPLICATE KEY UPDATE`
+assignment-list shape where MySQL allows it. Expression and source-query
+semantics remain later analyzer work.
 `UPDATE` table-reference scanning skips derived-table subqueries and descends
 into parenthesized joined table references before the `SET` clause.
 `SELECT ... INTO` and `TABLE ... INTO` assignment targets are recorded for user

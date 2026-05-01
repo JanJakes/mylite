@@ -33,6 +33,11 @@ For DML, the reported table is the first syntactic target table, including
 ok statements=1 kinds=update[1:13,0:38]/table:wt
 ```
 
+`INSERT` and `REPLACE` validate their target table, optional partition and
+column lists, `VALUES` / `VALUE`, `SET`, and query-backed source forms.
+`INSERT` also validates row aliases and `ON DUPLICATE KEY UPDATE` assignment
+tails while leaving expression semantics and row changes to later phases.
+
 Derived-table-leading `UPDATE` references skip the derived alias and report the
 first concrete table before `SET`:
 

@@ -17,6 +17,65 @@ python3 tests/check_keywords.py
 "$parser" --quiet "WITH c AS (SELECT 1) UPDATE t SET a=1"
 "$parser" --quiet "COMMIT"
 
+insert_replace_output=$("$parser" "INSERT INTO t1 () VALUES (); INSERT INTO t1 VALUES ROW(); INSERT INTO t1 SET a=1, b=DEFAULT AS new(a,b) ON DUPLICATE KEY UPDATE b = VALUES(b); INSERT INTO t1 (a) WITH c AS (SELECT 1) SELECT * FROM c; INSERT INTO t1 (SELECT 1) UNION SELECT 2; REPLACE DELAYED INTO t1 VALUES (1); REPLACE INTO t1 SET a=1")
+case "$insert_replace_output" in
+	*"insert[1:8"*/table:t1*"insert[10:16"*/table:t1*"insert[18:45"*/table:t1*"replace[76:83"*/table:t1*"replace[85:91"*/table:t1*) ;;
+	*)
+		echo "unexpected INSERT/REPLACE output: $insert_replace_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'INSERT INTO'; then
+	echo "expected INSERT without table target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'INSERT INTO t1'; then
+	echo "expected INSERT without source form to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'INSERT INTO t1 VALUES'; then
+	echo "expected INSERT VALUES without row source to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'INSERT INTO t1 VALUES (1),'; then
+	echo "expected trailing INSERT VALUES comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'INSERT INTO t1 SET a'; then
+	echo "expected INSERT SET assignment without operator to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'INSERT INTO t1 SET a='; then
+	echo "expected INSERT SET assignment without value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'INSERT INTO t1 (a,) VALUES (1)'; then
+	echo "expected trailing INSERT column comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'INSERT INTO t1 PARTITION () VALUES (1)'; then
+	echo "expected empty INSERT partition list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'INSERT INTO t1 VALUES (1) ON DUPLICATE KEY UPDATE'; then
+	echo "expected incomplete INSERT duplicate-key update to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'REPLACE INTO t1 VALUES (1) ON DUPLICATE KEY UPDATE a=1'; then
+	echo "expected REPLACE duplicate-key update tail to fail" >&2
+	exit 1
+fi
+
 version_comment_output=$("$parser" "SELECT /*! STRAIGHT_JOIN */ 1; /*!80409 SET @ok=1 */; /*!080409 SET @six=1 */; /*!80410 SET @future=1 */; /*!99999 SET @far=1 */; /*!123 SET @short=1 */; SELECT 2")
 case "$version_comment_output" in
 	*"@future"*|*"@far"*|*"@short"*)

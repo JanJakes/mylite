@@ -539,6 +539,61 @@ static int values_statement_is_explained_query(const mylite_parser *parser,
                                                const mylite_statement *statement,
                                                size_t values_token_index);
 static int token_is_values_tail_boundary(const mylite_parser *parser, size_t token_index);
+static int validate_insert_or_replace_statement_syntax(const mylite_parser *parser,
+                                                       const mylite_statement *statement);
+static int skip_insert_or_replace_modifiers(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            int is_insert,
+                                            size_t *next_token_index);
+static int validate_insert_or_replace_source_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    int is_insert);
+static int validate_insert_or_replace_values_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    int is_insert);
+static int validate_insert_parenthesized_value_list_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           size_t *next_token_index);
+static int validate_insert_row_constructor_list_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index);
+static int validate_insert_or_replace_set_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 int is_insert);
+static int validate_insert_or_replace_query_source_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index);
+static int validate_insert_or_replace_tail_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index,
+                                                  int is_insert);
+static int validate_insert_row_alias_clause_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   size_t *next_token_index);
+static int validate_insert_on_duplicate_key_update_tail_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index);
+static int validate_dml_assignment_list_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index);
+static int validate_dml_name_list_group_syntax(const mylite_parser *parser,
+                                               size_t open_token_index,
+                                               int allow_empty);
+static size_t find_insert_assignment_tail_token(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index,
+                                                int is_insert);
+static int token_starts_insert_or_replace_query_source(const mylite_parser *parser, size_t token_index);
+static int token_is_insert_priority_modifier(const mylite_parser *parser,
+                                             size_t token_index,
+                                             int is_insert);
 static int validate_import_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_binlog_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_install_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1913,6 +1968,13 @@ static void validate_statement_syntax(mylite_parser *parser)
 		const mylite_statement *statement = &parser->statements[i];
 
 		switch (statement->kind) {
+		case MYLITE_STATEMENT_INSERT:
+		case MYLITE_STATEMENT_REPLACE:
+			if (!validate_insert_or_replace_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid INSERT or REPLACE statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_CREATE:
 			if (!validate_create_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid CREATE statement");
@@ -7648,6 +7710,475 @@ static int token_is_values_tail_boundary(const mylite_parser *parser, size_t tok
 	        token_text_equals(parser, token_index, "UNION") ||
 	        token_text_equals(parser, token_index, "INTERSECT") ||
 	        token_text_equals(parser, token_index, "EXCEPT"));
+}
+
+static int validate_insert_or_replace_statement_syntax(const mylite_parser *parser,
+                                                       const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+	int is_insert = statement->kind == MYLITE_STATEMENT_INSERT;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (!skip_insert_or_replace_modifiers(parser,
+	                                      token_index,
+	                                      last_token_index,
+	                                      is_insert,
+	                                      &token_index)) {
+		return 0;
+	}
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == INTO_T) {
+		token_index++;
+	}
+	if (token_index > last_token_index || !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	token_index = last_qualified_name_token(parser, token_index, last_token_index) + 1;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "PARTITION")) {
+		if (token_index + 1 > last_token_index ||
+		    !validate_dml_name_list_group_syntax(parser, token_index + 1, 0)) {
+			return 0;
+		}
+		token_index = parser->tokens[token_index + 1].matching_token;
+	}
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == '(' && group_starts_query_expression(parser, token_index)) {
+		return validate_insert_or_replace_query_source_syntax(parser, token_index, last_token_index);
+	}
+	if (parser->tokens[token_index].parser_token == '(') {
+		if (!validate_dml_name_list_group_syntax(parser, token_index, 1)) {
+			return 0;
+		}
+		token_index = parser->tokens[token_index].matching_token;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	return validate_insert_or_replace_source_syntax(parser, token_index, last_token_index, is_insert);
+}
+
+static int skip_insert_or_replace_modifiers(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            int is_insert,
+                                            size_t *next_token_index)
+{
+	int seen_priority = 0;
+	int seen_ignore = 0;
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (token_is_insert_priority_modifier(parser, token_index, is_insert)) {
+			if (seen_priority || seen_ignore) {
+				return 0;
+			}
+			seen_priority = 1;
+			token_index++;
+			continue;
+		}
+		if (is_insert && parser->tokens[token_index].parser_token == IGNORE_T) {
+			if (seen_ignore) {
+				return 0;
+			}
+			seen_ignore = 1;
+			token_index++;
+			continue;
+		}
+		break;
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_insert_or_replace_source_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    int is_insert)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == VALUES_T ||
+	    parser->tokens[token_index].parser_token == VALUE_T) {
+		return validate_insert_or_replace_values_syntax(parser, token_index, last_token_index, is_insert);
+	}
+	if (parser->tokens[token_index].parser_token == SET_T) {
+		return validate_insert_or_replace_set_syntax(parser, token_index, last_token_index, is_insert);
+	}
+	if (token_starts_insert_or_replace_query_source(parser, token_index)) {
+		return validate_insert_or_replace_query_source_syntax(parser, token_index, last_token_index);
+	}
+	return 0;
+}
+
+static int validate_insert_or_replace_values_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    int is_insert)
+{
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "ROW")) {
+		if (!validate_insert_row_constructor_list_syntax(parser,
+		                                                 token_index,
+		                                                 last_token_index,
+		                                                 &token_index)) {
+			return 0;
+		}
+	} else if (!validate_insert_parenthesized_value_list_syntax(parser,
+	                                                            token_index,
+	                                                            last_token_index,
+	                                                            &token_index)) {
+		return 0;
+	}
+
+	return validate_insert_or_replace_tail_syntax(parser, token_index, last_token_index, is_insert);
+}
+
+static int validate_insert_parenthesized_value_list_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           size_t *next_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		size_t after_close_token_index;
+		size_t close_token_index;
+
+		if (parser->tokens[token_index].parser_token != '(') {
+			return 0;
+		}
+
+		after_close_token_index = parser->tokens[token_index].matching_token;
+		if (after_close_token_index == 0 ||
+		    after_close_token_index <= token_index + 1 ||
+		    after_close_token_index - 1 > last_token_index) {
+			return 0;
+		}
+
+		close_token_index = after_close_token_index - 1;
+		if (close_token_index > token_index + 1 &&
+		    !validate_expression_list_syntax(parser, token_index + 1, close_token_index - 1)) {
+			return 0;
+		}
+
+		token_index = after_close_token_index;
+		if (token_index > last_token_index || parser->tokens[token_index].parser_token != ',') {
+			break;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_insert_row_constructor_list_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		size_t open_token_index;
+		size_t after_close_token_index;
+
+		if (!token_text_equals(parser, token_index, "ROW") ||
+		    token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].parser_token != '(') {
+			return 0;
+		}
+
+		open_token_index = token_index + 1;
+		after_close_token_index = parser->tokens[open_token_index].matching_token;
+		if (after_close_token_index == 0 ||
+		    after_close_token_index <= open_token_index + 1 ||
+		    after_close_token_index - 1 > last_token_index) {
+			return 0;
+		}
+		if (after_close_token_index > open_token_index + 2 &&
+		    !validate_expression_list_syntax(parser, open_token_index + 1, after_close_token_index - 2)) {
+			return 0;
+		}
+
+		token_index = after_close_token_index;
+		if (token_index > last_token_index || parser->tokens[token_index].parser_token != ',') {
+			break;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_insert_or_replace_set_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 int is_insert)
+{
+	size_t assignment_first_token;
+	size_t assignment_tail_token;
+	size_t assignment_last_token;
+
+	if (token_index > last_token_index || parser->tokens[token_index].parser_token != SET_T) {
+		return 0;
+	}
+
+	assignment_first_token = token_index + 1;
+	assignment_tail_token = find_insert_assignment_tail_token(parser,
+	                                                          assignment_first_token,
+	                                                          last_token_index,
+	                                                          is_insert);
+	assignment_last_token = assignment_tail_token < parser->token_count ?
+		assignment_tail_token - 1 :
+		last_token_index;
+	if (!validate_dml_assignment_list_syntax(parser, assignment_first_token, assignment_last_token)) {
+		return 0;
+	}
+	return validate_insert_or_replace_tail_syntax(parser, assignment_tail_token, last_token_index, is_insert);
+}
+
+static int validate_insert_or_replace_query_source_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == TABLE_T && token_index + 1 > last_token_index) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == '(' &&
+	    (!group_starts_query_expression(parser, token_index) ||
+	     parser->tokens[token_index].matching_token <= token_index + 1 ||
+	     parser->tokens[token_index].matching_token - 1 > last_token_index)) {
+		return 0;
+	}
+	return validate_nonempty_expression_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_insert_or_replace_tail_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index,
+                                                  int is_insert)
+{
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (!is_insert) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "AS")) {
+		if (!validate_insert_row_alias_clause_syntax(parser,
+		                                             token_index,
+		                                             last_token_index,
+		                                             &token_index)) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+	}
+	if (parser->tokens[token_index].parser_token == ON_T) {
+		return validate_insert_on_duplicate_key_update_tail_syntax(parser,
+		                                                           token_index,
+		                                                           last_token_index);
+	}
+	return 0;
+}
+
+static int validate_insert_row_alias_clause_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   size_t *next_token_index)
+{
+	if (token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index, "AS") ||
+	    !token_can_continue_object_name(&parser->tokens[token_index + 1])) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == '(') {
+		if (!validate_dml_name_list_group_syntax(parser, token_index, 0)) {
+			return 0;
+		}
+		token_index = parser->tokens[token_index].matching_token;
+	}
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_insert_on_duplicate_key_update_tail_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index)
+{
+	if (token_index + 4 > last_token_index ||
+	    parser->tokens[token_index].parser_token != ON_T ||
+	    !token_text_equals(parser, token_index + 1, "DUPLICATE") ||
+	    parser->tokens[token_index + 2].parser_token != KEY_T ||
+	    parser->tokens[token_index + 3].parser_token != UPDATE_T) {
+		return 0;
+	}
+	return validate_dml_assignment_list_syntax(parser, token_index + 4, last_token_index);
+}
+
+static int validate_dml_assignment_list_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		size_t last_name_token;
+		int has_expression = 0;
+
+		if (!token_can_continue_object_name(&parser->tokens[token_index])) {
+			return 0;
+		}
+
+		last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+		if (last_name_token + 1 > last_token_index ||
+		    !token_is_assignment_operator(parser, last_name_token + 1)) {
+			return 0;
+		}
+
+		token_index = last_name_token + 2;
+		if (token_index > last_token_index || parser->tokens[token_index].parser_token == ',') {
+			return 0;
+		}
+
+		while (token_index <= last_token_index) {
+			size_t matching_token = parser->tokens[token_index].matching_token;
+
+			if (matching_token > token_index + 1) {
+				has_expression = 1;
+				token_index = matching_token;
+				continue;
+			}
+			if (parser->tokens[token_index].parser_token == ',') {
+				break;
+			}
+			has_expression = 1;
+			token_index++;
+		}
+		if (!has_expression) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static int validate_dml_name_list_group_syntax(const mylite_parser *parser,
+                                               size_t open_token_index,
+                                               int allow_empty)
+{
+	size_t token_index;
+	size_t close_token_index;
+	int expecting_name = 1;
+
+	if (open_token_index >= parser->token_count ||
+	    parser->tokens[open_token_index].parser_token != '(' ||
+	    parser->tokens[open_token_index].matching_token == 0 ||
+	    parser->tokens[open_token_index].matching_token <= open_token_index + 1) {
+		return 0;
+	}
+
+	close_token_index = parser->tokens[open_token_index].matching_token - 1;
+	if (close_token_index == open_token_index + 1) {
+		return allow_empty;
+	}
+
+	for (token_index = open_token_index + 1; token_index < close_token_index; token_index++) {
+		if (expecting_name) {
+			if (!token_can_continue_object_name(&parser->tokens[token_index])) {
+				return 0;
+			}
+			expecting_name = 0;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		expecting_name = 1;
+	}
+
+	return !expecting_name;
+}
+
+static size_t find_insert_assignment_tail_token(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index,
+                                                int is_insert)
+{
+	while (is_insert && token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (token_text_equals(parser, token_index, "AS") ||
+		    parser->tokens[token_index].parser_token == ON_T) {
+			return token_index;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+	return parser->token_count;
+}
+
+static int token_starts_insert_or_replace_query_source(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return parser->tokens[token_index].parser_token == SELECT_T ||
+	       parser->tokens[token_index].parser_token == WITH_T ||
+	       parser->tokens[token_index].parser_token == TABLE_T ||
+	       (parser->tokens[token_index].parser_token == '(' &&
+	        group_starts_query_expression(parser, token_index));
+}
+
+static int token_is_insert_priority_modifier(const mylite_parser *parser,
+                                             size_t token_index,
+                                             int is_insert)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return parser->tokens[token_index].parser_token == LOW_PRIORITY_T ||
+	       parser->tokens[token_index].parser_token == DELAYED_T ||
+	       (is_insert && parser->tokens[token_index].parser_token == HIGH_PRIORITY_T);
 }
 
 static int validate_import_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

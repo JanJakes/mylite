@@ -309,6 +309,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int need_operand = 0;
   int need_set_operand = 0;
   int lock_state = 0;
+  int for_state = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -331,6 +332,20 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         depth--;
       }
       continue;
+    }
+
+    if (for_state) {
+      if (token_id == ML_GROUP || token_id == ML_JOIN || token_id == ML_ORDER) {
+        for_state = 0;
+        continue;
+      }
+      if (token_id == ML_UPDATE || token_ascii_equal(token, "share")) {
+        for_state = 0;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "incomplete SELECT lock clause");
+      return;
     }
 
     if (lock_state == 1) {
@@ -413,6 +428,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       pending_token = token;
       continue;
     }
+    if (token_id == ML_FOR) {
+      for_state = 1;
+      pending_token = token;
+      continue;
+    }
 
     if (select_clause_requires_by(token_id)) {
       need_by = 1;
@@ -431,7 +451,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
   }
 
-  if (lock_state) {
+  if (for_state || lock_state) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT lock clause");
   } else if (need_set_operand) {

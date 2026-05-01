@@ -14102,7 +14102,7 @@ static int validate_drop_statement_syntax(const mylite_parser *parser, const myl
 	if (token_is_drop_table_or_view_token(parser, token_index + 1)) {
 		return validate_drop_table_or_view_statement_syntax(parser, token_index + 1, last_token_index);
 	}
-	return 1;
+	return 0;
 }
 
 static int validate_drop_prepare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

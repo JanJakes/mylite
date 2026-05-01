@@ -354,7 +354,8 @@ work.
 corpus-observed `RENAME TABLES` spelling remains accepted for parser coverage.
 `DROP TABLE` and `DROP VIEW` validate optional `IF EXISTS`, comma-separated
 name lists, and `RESTRICT` / `CASCADE` tails; `DROP TABLE` also accepts
-`TEMPORARY` and corpus-observed `TABLES` forms.
+`TEMPORARY` and corpus-observed `TABLES` forms. `DROP` now rejects unknown
+object families instead of falling back to permissive acceptance.
 `CREATE DATABASE` and `CREATE SCHEMA` validate optional `IF NOT EXISTS` and
 documented character-set, collation, and encryption options. `ALTER DATABASE`
 and `ALTER SCHEMA` validate explicit or nameless default-database option forms,

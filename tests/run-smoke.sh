@@ -1344,6 +1344,11 @@ if "$parser" --quiet 'DROP'; then
 	exit 1
 fi
 
+if "$parser" --quiet 'DROP FOO'; then
+	echo "expected unknown DROP object type to fail" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'DROP INDEX'; then
 	echo "expected missing DROP INDEX name to fail" >&2
 	exit 1

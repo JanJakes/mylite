@@ -6,7 +6,7 @@
 %token_type {MyliteToken}
 %default_type {MyliteToken}
 %fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENFORCED ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NONE NOT NUMBER ONE ONLY OPTIONS ORGANIZATION OWNER PACK_KEYS PAGE PARSE_TREE PARTITION PARTITIONING PHASE PORT PRECEDES PRESERVE PRIMARY RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE USE_FRM VALIDATION VALUE VCPU WAIT WITHOUT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
-%fallback ATOM BOOLEAN_NUMBER FACTOR_NUMBER.
+%fallback ATOM BOOLEAN_NUMBER ENCRYPTION_VALUE FACTOR_NUMBER.
 %fallback ATOM ENCLOSED ESCAPED LINES OPTIONALLY ROWS STARTING TERMINATED.
 %fallback ATOM COPY EXCLUSIVE INPLACE INSTANT SHARED.
 %fallback ATOM INVISIBLE PARSER VISIBLE.
@@ -388,7 +388,9 @@ database_character_set_option ::= CHARSET drop_index_option_equals_tail set_char
 
 database_collate_option ::= COLLATE drop_index_option_equals_tail set_collation_value.
 
-database_encryption_option ::= ENCRYPTION drop_index_option_equals_tail ATOM.
+database_encryption_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
+
+encryption_value ::= ENCRYPTION_VALUE.
 
 create_udf_tail ::= create_returns create_udf_return_type create_soname ATOM.
 
@@ -820,7 +822,7 @@ create_tablespace_options_tail ::= create_tablespace_options_tail create_tablesp
 create_tablespace_option ::= create_add create_datafile ATOM.
 create_tablespace_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail ATOM.
 create_tablespace_option ::= FILE_BLOCK_SIZE drop_index_option_equals_tail ATOM.
-create_tablespace_option ::= ENCRYPTION drop_index_option_equals_tail ATOM.
+create_tablespace_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 create_tablespace_option ::= USE LOGFILE create_logfile_group cache_name_part.
 create_tablespace_option ::= EXTENT_SIZE drop_index_option_equals_tail ATOM.
 create_tablespace_option ::= INITIAL_SIZE drop_index_option_equals_tail ATOM.
@@ -838,7 +840,7 @@ create_tablespace_post_datafile_options_tail ::= create_tablespace_post_datafile
 
 create_tablespace_post_datafile_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail ATOM.
 create_tablespace_post_datafile_option ::= FILE_BLOCK_SIZE drop_index_option_equals_tail ATOM.
-create_tablespace_post_datafile_option ::= ENCRYPTION drop_index_option_equals_tail ATOM.
+create_tablespace_post_datafile_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 create_tablespace_post_datafile_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
 create_tablespace_post_datafile_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
 
@@ -1286,7 +1288,7 @@ alter_table_exchange_validation_tail ::= WITHOUT VALIDATION.
 
 alter_table_table_option ::= alter_table_numeric_table_option drop_index_option_equals_tail ATOM.
 alter_table_table_option ::= COMMENT drop_index_option_equals_tail ATOM.
-alter_table_table_option ::= ENCRYPTION drop_index_option_equals_tail ATOM.
+alter_table_table_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 alter_table_table_option ::= ENGINE drop_index_option_equals_tail alter_table_table_option_value.
 alter_table_table_option ::= INSERT_METHOD drop_index_option_equals_tail alter_table_table_option_value.
 alter_table_table_option ::= ROW_FORMAT drop_index_option_equals_tail alter_table_table_option_value.
@@ -1470,7 +1472,7 @@ alter_tablespace_action ::= RENAME TO cache_name_part.
 alter_tablespace_action ::= ADD create_datafile ATOM alter_tablespace_datafile_options_tail.
 alter_tablespace_action ::= DROP create_datafile ATOM alter_tablespace_datafile_options_tail.
 alter_tablespace_action ::= AUTOEXTEND_SIZE drop_index_option_equals_tail ATOM.
-alter_tablespace_action ::= ENCRYPTION drop_index_option_equals_tail ATOM.
+alter_tablespace_action ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 alter_tablespace_action ::= ENGINE drop_index_option_equals_tail cache_name_part.
 alter_tablespace_action ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
 

@@ -293,6 +293,11 @@ static int lexer_string(MyliteLexer *lexer, MyliteToken *token,
         continue;
       }
       token->length = lexer->offset - token->offset;
+      if (quote == '\'' && token->length == 3 &&
+          (token->start[1] == 'Y' || token->start[1] == 'y' ||
+           token->start[1] == 'N' || token->start[1] == 'n')) {
+        return ML_ENCRYPTION_VALUE;
+      }
       if (quote == '"') {
         return ML_DOUBLE_QUOTED_STRING;
       }

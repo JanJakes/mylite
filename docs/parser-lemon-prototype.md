@@ -57,8 +57,8 @@ token sink:
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   documented NDB logfile options, and required `ENGINE` clauses.
 - `CREATE TABLESPACE`, `CREATE UNDO TABLESPACE`, and `ALTER TABLESPACE`
-  recognize documented data-file, size, encryption, engine, and attribute
-  clauses.
+  recognize documented data-file, size, `'Y'`/`'N'` encryption, engine, and
+  attribute clauses.
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
   `OPTIONS` names and value requirements.
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,
@@ -69,8 +69,8 @@ token sink:
   table option
   changes, `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize schema names, charset,
-  collation, encryption, and alter-only `READ ONLY` option clauses with
-  MySQL's `DEFAULT`/`0`/`1` value grammar.
+  collation, `'Y'`/`'N'` encryption, and alter-only `READ ONLY` option clauses
+  with MySQL's `DEFAULT`/`0`/`1` value grammar.
 - `CREATE EVENT` and `ALTER EVENT` recognize ordered event metadata clauses
   for schedules, completion policy, enablement state, comments, and event
   bodies; `ALTER EVENT` also recognizes renames.

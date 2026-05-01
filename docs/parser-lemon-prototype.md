@@ -47,7 +47,7 @@ token sink:
   forms, `INTO` variable lists, and file output targets.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,
   MySQL's table-scan and indexed-read direction sets, equality/range tuple
-  reads, `WHERE`, and numeric `LIMIT` tails.
+  reads, `WHERE`, and numeric or identifier `LIMIT` tails.
 - `USE` recognizes one-part schema names using the shared identifier grammar.
 - Account and role names use the shared unreserved identifier grammar across
   `CREATE`/`ALTER`/`DROP` account statements.
@@ -187,15 +187,16 @@ token sink:
 - `SHOW INDEX`/`INDEXES`/`KEYS` uses MySQL's narrower parser shape with
   optional `EXTENDED` and `WHERE`, excluding `FULL` and `LIKE`.
 - `SHOW BINLOG EVENTS` and `SHOW RELAYLOG EVENTS` recognize optional
-  string-literal log names, numeric `FROM` positions, and numeric `LIMIT` tails;
-  relay-log events also recognize MySQL channel clauses.
+  string-literal log names, numeric `FROM` positions, and numeric or identifier
+  `LIMIT` tails; relay-log events also recognize MySQL channel clauses.
 - `SHOW BINARY LOG STATUS` is the strict MySQL 8.4 binary-log status form;
   removed `SHOW MASTER STATUS` syntax is permissive-corpus-only.
 - `SHOW BINARY LOGS` is the strict MySQL 8.4 binary-log listing form; removed
   `SHOW MASTER LOGS` syntax is permissive-corpus-only.
 - `SHOW PROFILE` recognizes profile type lists, numeric `FOR QUERY` ids, and
-  numeric `LIMIT` tails.
-- `SHOW WARNINGS` and `SHOW ERRORS` recognize numeric `LIMIT` tails.
+  numeric or identifier `LIMIT` tails.
+- `SHOW WARNINGS` and `SHOW ERRORS` recognize numeric or identifier `LIMIT`
+  tails.
 - `SET ROLE` and `SET DEFAULT ROLE` recognize MySQL role specifiers and account
   lists rather than permissive token tails.
 - `SET PASSWORD` recognizes MySQL 8.4 string-literal and random password

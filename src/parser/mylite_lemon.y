@@ -2801,9 +2801,12 @@ show_limit_tail ::= LIMIT show_limit_value.
 show_limit_tail ::= LIMIT show_limit_value import_comma show_limit_value.
 show_limit_tail ::= LIMIT show_limit_value OFFSET show_limit_value.
 
-show_limit_value ::= BOOLEAN_NUMBER.
-show_limit_value ::= FACTOR_NUMBER.
-show_limit_value ::= NUMBER_LITERAL.
+show_limit_value ::= parser_limit_option.
+
+parser_limit_option ::= BOOLEAN_NUMBER.
+parser_limit_option ::= FACTOR_NUMBER.
+parser_limit_option ::= NUMBER_LITERAL.
+parser_limit_option ::= cache_name_part.
 
 show_simple_kind ::= ENGINES.
 show_simple_kind ::= PLUGINS.
@@ -2988,9 +2991,7 @@ handler_limit_tail ::= LIMIT handler_limit_value.
 handler_limit_tail ::= LIMIT handler_limit_value import_comma handler_limit_value.
 handler_limit_tail ::= LIMIT handler_limit_value OFFSET handler_limit_value.
 
-handler_limit_value ::= BOOLEAN_NUMBER.
-handler_limit_value ::= FACTOR_NUMBER.
-handler_limit_value ::= NUMBER_LITERAL.
+handler_limit_value ::= parser_limit_option.
 
 call_statement ::= CALL call_name call_arguments. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
@@ -3454,9 +3455,7 @@ table_limit_nonempty_tail ::= LIMIT table_limit_value.
 table_limit_nonempty_tail ::= LIMIT table_limit_value import_comma table_limit_value.
 table_limit_nonempty_tail ::= LIMIT table_limit_value OFFSET table_limit_value.
 
-table_limit_value ::= BOOLEAN_NUMBER.
-table_limit_value ::= FACTOR_NUMBER.
-table_limit_value ::= NUMBER_LITERAL.
+table_limit_value ::= parser_limit_option.
 
 table_into_tail ::= .
 table_into_tail ::= INTO table_output_target.

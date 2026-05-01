@@ -16,8 +16,6 @@ static void set_parser_error(MyliteParseContext *ctx, const MyliteToken *token,
                              const char *message);
 static void format_near_token(MyliteParseContext *ctx, int token_id,
                               const MyliteToken *token);
-static int token_ascii_starts_with(const MyliteToken *token,
-                                   const char *prefix);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
                                    MyliteParseResult *result) {
@@ -158,17 +156,6 @@ void mylite_parser_record_empty_statement(MyliteParseContext *ctx) {
   ctx->result->statement_kind_counts[MYLITE_STATEMENT_EMPTY]++;
 }
 
-void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
-                                        MyliteToken token,
-                                        const char *prefix) {
-  if (ctx->failed || token_ascii_starts_with(&token, prefix)) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {
@@ -215,26 +202,4 @@ static void format_near_token(MyliteParseContext *ctx, int token_id,
   result->error_column = token->column;
   snprintf(result->error_message, sizeof(result->error_message),
            "syntax error near '%s'", snippet);
-}
-
-static int token_ascii_starts_with(const MyliteToken *token,
-                                   const char *prefix) {
-  size_t i;
-
-  for (i = 0; i < token->length && prefix[i] != '\0'; i++) {
-    unsigned char a = (unsigned char) token->start[i];
-    unsigned char b = (unsigned char) prefix[i];
-
-    if (a >= 'a' && a <= 'z') {
-      a = (unsigned char) (a - 'a' + 'A');
-    }
-    if (b >= 'a' && b <= 'z') {
-      b = (unsigned char) (b - 'a' + 'A');
-    }
-    if (a != b) {
-      return 0;
-    }
-  }
-
-  return prefix[i] == '\0';
 }

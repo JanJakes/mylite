@@ -292,11 +292,17 @@ static int lexer_string(MyliteLexer *lexer, MyliteToken *token,
         continue;
       }
       token->length = lexer->offset - token->offset;
+      if (quote == '"') {
+        return ML_DOUBLE_QUOTED_STRING;
+      }
       return ML_ATOM;
     }
   }
 
   token->length = lexer->offset - token->offset;
+  if (quote == '"') {
+    return ML_DOUBLE_QUOTED_STRING;
+  }
   return ML_ATOM;
 }
 

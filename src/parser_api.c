@@ -94,6 +94,9 @@ static int classify_describe_or_explain_statement_object(const mylite_parser *pa
                                                          mylite_statement *statement,
                                                          size_t token_index,
                                                          size_t last_token_index);
+static size_t find_explain_into_target_token(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index);
 static size_t find_explain_connection_id_token(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
@@ -1723,6 +1726,15 @@ static int classify_describe_or_explain_statement_object(const mylite_parser *pa
 		                                        last_token_index);
 	}
 
+	name_token_index = find_explain_into_target_token(parser, token_index, last_token_index);
+	if (name_token_index < parser->token_count) {
+		return set_statement_direct_object_name(parser,
+		                                        statement,
+		                                        MYLITE_STATEMENT_OBJECT_USER_VARIABLE,
+		                                        name_token_index,
+		                                        last_token_index);
+	}
+
 	name_token_index = find_explain_connection_id_token(parser, token_index, last_token_index);
 	if (name_token_index < parser->token_count) {
 		return set_statement_direct_object_name(parser,
@@ -1738,6 +1750,24 @@ static int classify_describe_or_explain_statement_object(const mylite_parser *pa
 	}
 
 	return 0;
+}
+
+static size_t find_explain_into_target_token(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index)
+{
+	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token != ANALYZE_T &&
+		    token_is_explainable_statement_head(parser->tokens[token_index].parser_token)) {
+			return parser->token_count;
+		}
+		if (parser->tokens[token_index].parser_token == INTO_T &&
+		    parser->tokens[token_index + 1].kind == MYLITE_TOKEN_USER_VARIABLE) {
+			return token_index + 1;
+		}
+		token_index++;
+	}
+	return parser->token_count;
 }
 
 static size_t find_explain_connection_id_token(const mylite_parser *parser,

@@ -208,7 +208,8 @@ the explicit export file target.
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table
-forms, `EXPLAIN ... FOR CONNECTION`, `SIGNAL` / `RESIGNAL` condition values,
+forms, `EXPLAIN ... INTO`, `EXPLAIN ... FOR CONNECTION`,
+`SIGNAL` / `RESIGNAL` condition values,
 `LOAD ... INTO TABLE`,
 `CACHE INDEX`, `LOAD INDEX INTO CACHE`, `LOCK` / `UNLOCK TABLES`,
 `SHOW CREATE ...`,
@@ -334,8 +335,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
 - Utility object metadata records the first direct target only and does not yet
   expand multi-table maintenance, cache-index lists, load-index lists, or lock
   lists. `DESCRIBE` and `EXPLAIN` target metadata records direct table forms,
-  `EXPLAIN ... FOR CONNECTION` targets, and documented explainable statement
-  forms as query targets, without modeling optimizer plans or result rows.
+  `EXPLAIN ... INTO` user-variable targets, `EXPLAIN ... FOR CONNECTION`
+  targets, and documented explainable statement forms as query targets,
+  without modeling optimizer plans or result rows.
   `UNLOCK TABLES` metadata records the table object kind without a name because
   the statement releases the session's table locks rather than naming tables.
   `IMPORT TABLE` metadata records only the first string SDI file target.

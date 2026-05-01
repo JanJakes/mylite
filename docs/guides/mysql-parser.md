@@ -272,6 +272,12 @@ EXPLAIN and DESCRIBE expose explainable statements as query targets:
 ok statements=1 kinds=explain[1:3,0:16]/query
 ```
 
+EXPLAIN INTO exposes the user-variable output target:
+
+```text
+ok statements=1 kinds=explain[1:8,0:39]/user_variable:@plan
+```
+
 KILL statements expose numeric processlist ids as connection or query targets:
 
 ```text

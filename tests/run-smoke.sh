@@ -298,14 +298,15 @@ EXPLAIN FORMAT = JSON SELECT 1;
 DESCRIBE SELECT 1;
 EXPLAIN FOR CONNECTION 123;
 EXPLAIN FORMAT = JSON FOR CONNECTION 456;
-EXPLAIN SELECT 1 FOR CONNECTION 789'
+EXPLAIN SELECT 1 FOR CONNECTION 789;
+EXPLAIN FORMAT = JSON INTO @plan SELECT 1'
 explain_object_output=$("$parser" "$explain_sql")
 case "$explain_object_output" in
 	*"/table:FORMAT"*|*"/table:SELECT"*|*"explain[43:48"*/connection:*)
 		echo "unexpected EXPLAIN/DESCRIBE object output: $explain_object_output" >&2
 		exit 1
 		;;
-	*"describe"*/table:'`db`.`t`'*"describe"*/table:t*"explain"*/table:'`db`.`e`'*"explain[15:17"*/query*"explain[19:24"*/query*"describe[26:28"*/query*"connection:123"*"connection:456"*"explain[43:48"*/query*) ;;
+	*"describe"*/table:'`db`.`t`'*"describe"*/table:t*"explain"*/table:'`db`.`e`'*"explain[15:17"*/query*"explain[19:24"*/query*"describe[26:28"*/query*"connection:123"*"connection:456"*"explain[43:48"*/query*"user_variable:@plan"*) ;;
 	*)
 		echo "unexpected EXPLAIN/DESCRIBE object output: $explain_object_output" >&2
 		exit 1

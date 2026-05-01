@@ -10674,15 +10674,15 @@ static int create_table_column_name_needs_type_check(int token_id,
                                                      MyliteToken token) {
   size_t i;
 
+  for (i = 0; i < token.length; i++) {
+    if (token.start[i] == '$') {
+      return 1;
+    }
+  }
+
   if (token_id == ML_BOOLEAN_NUMBER || token_id == ML_FACTOR_NUMBER ||
       token_id == ML_NUMBER_LITERAL) {
     return 0;
-  }
-
-  for (i = 0; i < token.length; i++) {
-    if (token.start[i] == '$') {
-      return 0;
-    }
   }
 
   return 1;

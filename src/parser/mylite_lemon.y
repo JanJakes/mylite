@@ -1,4 +1,7 @@
 %name MyLiteLemon
+%stack_size 0
+%realloc mylite_lemon_realloc
+%free mylite_lemon_free
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
@@ -17,7 +20,13 @@
 %default_destructor { (void)ctx; (void)yypminor; }
 
 %include {
+#include <stdlib.h>
+#include <string.h>
+
 #include "mylite_parser_internal.h"
+
+#define mylite_lemon_realloc(P, N, C) realloc((P), (N))
+#define mylite_lemon_free(P, C) free(P)
 }
 
 %syntax_error {
@@ -1219,7 +1228,9 @@ alter_table_partition_definition_action ::= PARTITION BY required_statement_tail
 alter_table_trailing_partition_option ::= REMOVE PARTITIONING.
 alter_table_trailing_partition_option ::= PARTITION BY required_statement_tail.
 
-alter_table_add_action ::= ADD alter_table_add_start required_statement_tail.
+alter_table_add_action ::= ADD LP create_table_definition_tokens RP alter_table_definition_action_tail.
+alter_table_add_action ::= ADD COLUMN LP create_table_definition_tokens RP alter_table_definition_action_tail.
+alter_table_add_action ::= ADD alter_table_add_start alter_table_definition_tokens alter_table_definition_action_tail.
 
 alter_table_add_start ::= alter_table_column_keyword_tail alter_table_column_definition_start.
 alter_table_add_start ::= alter_table_index_definition_start.
@@ -1228,7 +1239,6 @@ alter_table_add_start ::= FOREIGN.
 alter_table_add_start ::= CHECK.
 alter_table_add_start ::= PARTITION.
 
-alter_table_column_definition_start ::= LP.
 alter_table_column_definition_start ::= alter_table_column_name.
 
 alter_table_index_definition_start ::= PRIMARY.
@@ -1238,12 +1248,28 @@ alter_table_index_definition_start ::= SPATIAL.
 alter_table_index_definition_start ::= INDEX.
 alter_table_index_definition_start ::= KEY.
 
-alter_table_change_action ::= CHANGE alter_table_column_keyword_tail alter_table_column_name alter_table_column_name required_statement_tail.
+alter_table_change_action ::= CHANGE alter_table_column_keyword_tail alter_table_column_name alter_table_column_name alter_table_definition_tokens alter_table_definition_action_tail.
 
 alter_table_column_name ::= cache_name_part.
 alter_table_column_name ::= DATA.
 
-alter_table_modify_action ::= MODIFY alter_table_column_keyword_tail alter_table_column_name required_statement_tail.
+alter_table_modify_action ::= MODIFY alter_table_column_keyword_tail alter_table_column_name alter_table_definition_tokens alter_table_definition_action_tail.
+
+alter_table_definition_action_tail ::= .
+alter_table_definition_action_tail ::= COMMA alter_table_algorithm_lock_after_comma.
+
+alter_table_definition_tokens ::= alter_table_definition_token.
+alter_table_definition_tokens ::= alter_table_definition_tokens alter_table_definition_token.
+
+alter_table_definition_token ::= ATOM.
+alter_table_definition_token ::= LABEL.
+alter_table_definition_token ::= keyword.
+alter_table_definition_token ::= DOT.
+alter_table_definition_token ::= LP create_table_definition_tokens RP.
+alter_table_definition_token ::= LB.
+alter_table_definition_token ::= RB.
+alter_table_definition_token ::= LC.
+alter_table_definition_token ::= RC.
 
 alter_table_partition_maintenance_kind ::= ANALYZE.
 alter_table_partition_maintenance_kind ::= CHECK.

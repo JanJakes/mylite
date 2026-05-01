@@ -14,6 +14,8 @@ token sink:
 - A Lemon grammar recognizes MySQL statement families for DDL, DML,
   transactions, utility statements, administration statements, replication/XA,
   and stored-program statement starts.
+- The generated parser uses Lemon's growable stack path so long DDL action
+  lists do not fail at the default fixed stack depth.
 - Closed keyword subgrammars for routine characteristics, table options,
   diagnostics items, replication options, profile types, UDF return types, and
   other statement modifiers are represented directly in Lemon rather than
@@ -47,9 +49,10 @@ token sink:
   `OPTIONS` names and value requirements.
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,
   `ENABLE/DISABLE KEYS`, `ADD`/`CHANGE`/`MODIFY` heads, `RENAME` forms,
-  `DROP` forms, `ALTER` subactions, charset/order changes, partition
-  definition, maintenance/exchange, and reorganize forms,
-  tablespace/storage/union changes, table option
+  comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `DROP` forms,
+  `ALTER` subactions, charset/order changes, partition definition,
+  maintenance/exchange, and reorganize forms, tablespace/storage/union changes,
+  table option
   changes, `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize charset, collation,
   encryption, and alter-only `READ ONLY` option clauses.

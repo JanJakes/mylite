@@ -374,7 +374,8 @@ token sink:
 - `GET DIAGNOSTICS` recognizes optional `CURRENT`/`STACKED` diagnostics-area
   selectors; assignment targets use local/user-variable grammar and condition
   numbers may come from literal/simple, user-variable, system-variable, and
-  dotted identifier values.
+  dotted identifier values. Embedded stored-program bodies validate assignment
+  separators and diagnostics item names.
 - `SIGNAL` and `RESIGNAL` recognize five-character `SQLSTATE [VALUE]` literals
   and condition item assignments with numeric `MYSQL_ERRNO`, literal/simple,
   user-variable, system-variable, and dotted local identifier values; embedded

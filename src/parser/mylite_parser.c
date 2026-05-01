@@ -276,6 +276,8 @@ static void validate_call_statement_from(MyliteParseContext *ctx,
                                          MyliteToken start);
 static void validate_signal_statement_from(MyliteParseContext *ctx,
                                            MyliteToken start);
+static void validate_get_diagnostics_statement_from(MyliteParseContext *ctx,
+                                                    MyliteToken start);
 static void validate_flow_control_statement_from(MyliteParseContext *ctx,
                                                  int token_id,
                                                  MyliteToken token);
@@ -291,6 +293,7 @@ static int validate_embedded_set_value(MyliteParseContext *ctx,
 static int routine_body_statement_start_token(int token_id);
 static int routine_compound_statement_start_token(int token_id);
 static int routine_end_suffix_token(int token_id);
+static int diagnostics_item_name_token(int token_id);
 static int routine_characteristic_token(MyliteLexer *lexer, int *token_id,
                                         MyliteToken *token);
 static int token_is_statement_terminator(int token_id, MyliteToken token);
@@ -7438,6 +7441,10 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
     validate_signal_statement_from(ctx, token);
     return;
   }
+  if (token_id == ML_GET) {
+    validate_get_diagnostics_statement_from(ctx, token);
+    return;
+  }
   if (token_id == ML_DO) {
     mylite_parser_validate_do_statement(ctx, token);
     return;
@@ -7503,6 +7510,10 @@ static void validate_routine_statement_body_from(MyliteParseContext *ctx,
   }
   if (token_id == ML_SIGNAL || token_id == ML_RESIGNAL) {
     validate_signal_statement_from(ctx, token);
+    return;
+  }
+  if (token_id == ML_GET) {
+    validate_get_diagnostics_statement_from(ctx, token);
     return;
   }
   if (routine_compound_statement_start_token(token_id) ||
@@ -7734,6 +7745,79 @@ static void validate_signal_statement_from(MyliteParseContext *ctx,
       validate_embedded_set_statement_from(ctx, token);
       return;
     }
+  }
+}
+
+static void validate_get_diagnostics_statement_from(MyliteParseContext *ctx,
+                                                    MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int seen_equals = 0;
+  int last_was_comma = 0;
+  int target_started = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (token_is_statement_terminator(token_id, token)) {
+      if (last_was_comma || !seen_equals) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete GET DIAGNOSTICS assignment");
+      }
+      return;
+    }
+
+    if (token_id == ML_COMMA) {
+      if (last_was_comma || !seen_equals) {
+        mylite_parser_reject(ctx, token,
+                             "incomplete GET DIAGNOSTICS assignment");
+        return;
+      }
+      last_was_comma = 1;
+      target_started = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_EQUALS) {
+      if (!target_started) {
+        mylite_parser_reject(ctx, token,
+                             "incomplete GET DIAGNOSTICS assignment");
+        return;
+      }
+      token_id = mylite_lexer_next(&lexer, &token);
+      if (token_id <= 0 || token_id == ML_COMMA ||
+          token_is_statement_terminator(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete GET DIAGNOSTICS assignment");
+        return;
+      }
+      if (!diagnostics_item_name_token(token_id)) {
+        mylite_parser_reject(ctx, token, "malformed GET DIAGNOSTICS item");
+        return;
+      }
+      seen_equals = 1;
+      last_was_comma = 0;
+      target_started = 0;
+      continue;
+    }
+
+    target_started = 1;
+    pending_token = token;
+  }
+
+  if (last_was_comma || !seen_equals) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete GET DIAGNOSTICS assignment");
   }
 }
 
@@ -10198,8 +10282,8 @@ static int event_schedule_option_start(MyliteToken token) {
 static int routine_body_statement_start_token(int token_id) {
   return token_id == ML_BEGIN || token_id == ML_CASE ||
          token_id == ML_CALL || token_id == ML_DECLARE || token_id == ML_DO ||
-         token_id == ML_IF || token_id == ML_LOOP || token_id == ML_REPEAT ||
-         token_id == ML_RESIGNAL || token_id == ML_RETURN ||
+         token_id == ML_GET || token_id == ML_IF || token_id == ML_LOOP ||
+         token_id == ML_REPEAT || token_id == ML_RESIGNAL || token_id == ML_RETURN ||
          token_id == ML_SET || token_id == ML_SIGNAL || token_id == ML_UNTIL ||
          token_id == ML_WHEN || token_id == ML_WHILE;
 }
@@ -10212,6 +10296,17 @@ static int routine_compound_statement_start_token(int token_id) {
 static int routine_end_suffix_token(int token_id) {
   return token_id == ML_CASE || token_id == ML_IF || token_id == ML_LOOP ||
          token_id == ML_REPEAT || token_id == ML_WHILE;
+}
+
+static int diagnostics_item_name_token(int token_id) {
+  return token_id == ML_CATALOG_NAME || token_id == ML_CLASS_ORIGIN ||
+         token_id == ML_COLUMN_NAME || token_id == ML_CONSTRAINT_CATALOG ||
+         token_id == ML_CONSTRAINT_NAME || token_id == ML_CONSTRAINT_SCHEMA ||
+         token_id == ML_CURSOR_NAME || token_id == ML_MESSAGE_TEXT ||
+         token_id == ML_MYSQL_ERRNO || token_id == ML_NUMBER ||
+         token_id == ML_RETURNED_SQLSTATE || token_id == ML_ROW_COUNT ||
+         token_id == ML_SCHEMA_NAME || token_id == ML_SUBCLASS_ORIGIN ||
+         token_id == ML_TABLE_NAME;
 }
 
 static int routine_characteristic_token(MyliteLexer *lexer, int *token_id,

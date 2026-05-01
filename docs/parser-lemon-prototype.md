@@ -26,6 +26,9 @@ token sink:
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
   clauses, TLS/resource/password/lock options, comments, attributes, and
   default-role clauses rather than generic token tails.
+- `GRANT` and `REVOKE` recognize grant/admin options, proxy forms, recipient
+  authentication/resource clauses, `AS ... WITH ROLE`, and
+  `IGNORE UNKNOWN USER`.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`
   and `OR REPLACE` variants.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource

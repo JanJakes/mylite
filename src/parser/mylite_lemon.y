@@ -2631,14 +2631,14 @@ revoke_statement ::= REVOKE revoke_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-grant_destination_tail ::= ON grant_object TO grant_recipient_list.
-grant_destination_tail ::= TO grant_recipient_list.
+grant_destination_tail ::= ON grant_object TO grant_recipient_list grant_tail_options.
+grant_destination_tail ::= TO grant_recipient_list grant_tail_options.
 
 revoke_tail ::= grant_subject_list revoke_destination_tail.
 revoke_tail ::= IF reset_exists grant_subject_list revoke_destination_tail.
 
-revoke_destination_tail ::= ON grant_object FROM grant_recipient_list.
-revoke_destination_tail ::= FROM grant_recipient_list.
+revoke_destination_tail ::= ON grant_object FROM grant_recipient_list revoke_ignore_unknown_tail.
+revoke_destination_tail ::= FROM grant_recipient_list revoke_ignore_unknown_tail.
 
 grant_subject_list ::= grant_subject_item.
 grant_subject_list ::= grant_subject_list COMMA grant_subject_item.
@@ -2685,6 +2685,7 @@ grant_subject_token ::= LOCK.
 grant_subject_token ::= NO.
 grant_subject_token ::= PRIVILEGES.
 grant_subject_token ::= PROCEDURE.
+grant_subject_token ::= PROXY.
 grant_subject_token ::= REPLICATION.
 grant_subject_token ::= ROLE.
 grant_subject_token ::= SELECT.
@@ -2721,22 +2722,49 @@ grant_object_token ::= USER.
 grant_recipient_list ::= grant_recipient.
 grant_recipient_list ::= grant_recipient_list COMMA grant_recipient.
 
-grant_recipient ::= drop_account_name grant_recipient_option_tail.
+grant_recipient ::= grant_account_ref grant_recipient_auth_tail.
 
-grant_recipient_option_tail ::= .
-grant_recipient_option_tail ::= grant_recipient_option_tail grant_recipient_option_token.
+grant_account_ref ::= drop_account_name.
+grant_account_ref ::= current_user_ref.
 
-grant_recipient_option_nested ::= .
-grant_recipient_option_nested ::= grant_recipient_option_nested grant_recipient_option_token.
+grant_recipient_auth_tail ::= .
+grant_recipient_auth_tail ::= grant_recipient_auth_option.
 
-grant_recipient_option_token ::= ATOM.
-grant_recipient_option_token ::= LABEL.
-grant_recipient_option_token ::= keyword.
-grant_recipient_option_token ::= LP grant_recipient_option_nested RP.
-grant_recipient_option_token ::= LB.
-grant_recipient_option_token ::= RB.
-grant_recipient_option_token ::= LC.
-grant_recipient_option_token ::= RC.
+grant_recipient_auth_option ::= IDENTIFIED BY user_auth_value.
+grant_recipient_auth_option ::= IDENTIFIED WITH user_auth_plugin.
+grant_recipient_auth_option ::= IDENTIFIED WITH user_auth_plugin BY user_auth_value.
+
+grant_tail_options ::= grant_require_tail grant_with_tails grant_as_tail.
+
+grant_require_tail ::= .
+grant_require_tail ::= REQUIRE account_tls_requirement.
+
+grant_with_tails ::= .
+grant_with_tails ::= grant_with_tails WITH grant_with_clause.
+
+grant_with_clause ::= account_resource_options.
+grant_with_clause ::= GRANT OPTION.
+grant_with_clause ::= ADMIN OPTION.
+
+grant_as_tail ::= .
+grant_as_tail ::= AS grant_as_user grant_as_role_tail.
+
+grant_as_user ::= drop_account_name.
+grant_as_user ::= current_user_ref.
+
+grant_as_role_tail ::= .
+grant_as_role_tail ::= WITH ROLE grant_as_role_spec.
+
+grant_as_role_spec ::= DEFAULT.
+grant_as_role_spec ::= NONE.
+grant_as_role_spec ::= ALL.
+grant_as_role_spec ::= ALL EXCEPT drop_account_list.
+grant_as_role_spec ::= drop_account_list.
+
+revoke_ignore_unknown_tail ::= .
+revoke_ignore_unknown_tail ::= IGNORE UNKNOWN USER.
+
+%fallback ATOM ADMIN OPTION PROXY UNKNOWN.
 
 leave_statement ::= LEAVE stored_program_label_ref. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
@@ -3284,6 +3312,7 @@ keyword ::= REPEATABLE.
 keyword ::= SERIALIZABLE.
 keyword ::= UNCOMMITTED.
 keyword ::= ACCOUNT.
+keyword ::= ADMIN.
 keyword ::= ATTRIBUTE.
 keyword ::= CIPHER.
 keyword ::= DAY.
@@ -3299,11 +3328,14 @@ keyword ::= MAX_UPDATES_PER_HOUR.
 keyword ::= MAX_USER_CONNECTIONS.
 keyword ::= NEVER.
 keyword ::= OLD.
+keyword ::= OPTION.
 keyword ::= OPTIONAL.
 keyword ::= PASSWORD_LOCK_TIME.
+keyword ::= PROXY.
 keyword ::= REUSE.
 keyword ::= SUBJECT.
 keyword ::= UNBOUNDED.
+keyword ::= UNKNOWN.
 keyword ::= X509.
 
 keyword_not_select_clause ::= SELECT.
@@ -3536,6 +3568,7 @@ keyword_not_select_clause ::= REPEATABLE.
 keyword_not_select_clause ::= SERIALIZABLE.
 keyword_not_select_clause ::= UNCOMMITTED.
 keyword_not_select_clause ::= ACCOUNT.
+keyword_not_select_clause ::= ADMIN.
 keyword_not_select_clause ::= ATTRIBUTE.
 keyword_not_select_clause ::= CIPHER.
 keyword_not_select_clause ::= DAY.
@@ -3551,9 +3584,12 @@ keyword_not_select_clause ::= MAX_UPDATES_PER_HOUR.
 keyword_not_select_clause ::= MAX_USER_CONNECTIONS.
 keyword_not_select_clause ::= NEVER.
 keyword_not_select_clause ::= OLD.
+keyword_not_select_clause ::= OPTION.
 keyword_not_select_clause ::= OPTIONAL.
 keyword_not_select_clause ::= PASSWORD_LOCK_TIME.
+keyword_not_select_clause ::= PROXY.
 keyword_not_select_clause ::= REUSE.
 keyword_not_select_clause ::= SUBJECT.
 keyword_not_select_clause ::= UNBOUNDED.
+keyword_not_select_clause ::= UNKNOWN.
 keyword_not_select_clause ::= X509.

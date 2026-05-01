@@ -504,6 +504,7 @@ static int keyword_token(const MyliteToken *token) {
     int token;
   } keywords[] = {
       {"ACCOUNT", ML_ACCOUNT},
+      {"ADMIN", ML_ADMIN},
       {"ALTER", ML_ALTER},
       {"AGGREGATE", ML_AGGREGATE},
       {"ACTIVE", ML_ACTIVE},
@@ -739,6 +740,7 @@ static int keyword_token(const MyliteToken *token) {
       {"OPEN", ML_OPEN},
       {"OPTIMIZE", ML_OPTIMIZE},
       {"OPTIMIZER_COSTS", ML_OPTIMIZER_COSTS},
+      {"OPTION", ML_OPTION},
       {"OPTIONS", ML_OPTIONS},
       {"OPTIONAL", ML_OPTIONAL},
       {"OR", ML_OR},
@@ -775,6 +777,7 @@ static int keyword_token(const MyliteToken *token) {
       {"PROCESSLIST", ML_PROCESSLIST},
       {"PROFILE", ML_PROFILE},
       {"PROFILES", ML_PROFILES},
+      {"PROXY", ML_PROXY},
       {"PREV", ML_PREV},
       {"REFERENCE", ML_REFERENCE},
       {"RELEASE", ML_RELEASE},
@@ -889,6 +892,7 @@ static int keyword_token(const MyliteToken *token) {
       {"UNDEFINED", ML_UNDEFINED},
       {"UNCOMMITTED", ML_UNCOMMITTED},
       {"UNBOUNDED", ML_UNBOUNDED},
+      {"UNKNOWN", ML_UNKNOWN},
       {"UNTIL", ML_UNTIL},
       {"UNINSTALL", ML_UNINSTALL},
       {"UNLOCK", ML_UNLOCK},

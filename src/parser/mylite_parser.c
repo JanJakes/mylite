@@ -63,6 +63,10 @@ static int validate_parenthesized_identifier_list(MyliteParseContext *ctx,
                                                   MyliteLexer *lexer,
                                                   MyliteToken start,
                                                   const char *message);
+static int validate_parenthesized_nonempty_body(MyliteParseContext *ctx,
+                                                MyliteLexer *lexer,
+                                                MyliteToken start,
+                                                const char *message);
 static int validate_create_table_index_key_list(MyliteParseContext *ctx,
                                                 MyliteLexer *lexer,
                                                 MyliteToken start);
@@ -2452,6 +2456,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
   int depth = 0;
   int index_candidate = 0;
   int foreign_state = CREATE_TABLE_FK_NONE;
+  int check_pending = 0;
   int element_start = 0;
   int constraint_prefix = 0;
 
@@ -2492,6 +2497,23 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       }
       state = CREATE_TABLE_IN_DEFINITION;
       element_start = 1;
+    }
+
+    if (check_pending) {
+      if (token_id != ML_LP) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete CREATE TABLE CHECK constraint");
+        return;
+      }
+      if (!validate_parenthesized_nonempty_body(
+              ctx, &lexer, token,
+              "incomplete CREATE TABLE CHECK constraint")) {
+        return;
+      }
+      check_pending = 0;
+      element_start = 0;
+      constraint_prefix = 0;
+      continue;
     }
 
     if (foreign_state != CREATE_TABLE_FK_NONE) {
@@ -2651,6 +2673,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       }
       element_start = 1;
       constraint_prefix = 0;
+      check_pending = 0;
       continue;
     }
 
@@ -2665,6 +2688,14 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       } else {
         depth = 2;
       }
+      continue;
+    }
+
+    if (token_id == ML_CHECK) {
+      check_pending = 1;
+      element_start = 0;
+      constraint_prefix = 0;
+      pending_token = token;
       continue;
     }
 
@@ -2690,10 +2721,6 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
         foreign_state = CREATE_TABLE_FK_AFTER_FOREIGN;
         constraint_prefix = 0;
         pending_token = token;
-        continue;
-      }
-      if (token_id == ML_CHECK) {
-        constraint_prefix = 0;
         continue;
       }
       if (constraint_prefix == 1) {
@@ -2725,6 +2752,9 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       foreign_state != CREATE_TABLE_FK_AFTER_PARENT_LIST) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE TABLE foreign key");
+  } else if (check_pending) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete CREATE TABLE CHECK constraint");
   } else if (index_candidate) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE TABLE index key part");
@@ -2935,6 +2965,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   int add_scan = 0;
   int add_index_candidate = 0;
   int add_foreign_state = ALTER_FK_NONE;
+  int check_pending = 0;
   int validate_key_list = 0;
   int depth = 0;
   int key_state = ALTER_INDEX_KEY_NEED_PART;
@@ -3092,6 +3123,23 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       mylite_parser_reject(ctx, token,
                            "malformed ALTER TABLE index key part");
       return;
+    }
+
+    if (check_pending) {
+      if (token_id != ML_LP) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete ALTER TABLE CHECK constraint");
+        return;
+      }
+      if (!validate_parenthesized_nonempty_body(
+              ctx, &lexer, token,
+              "incomplete ALTER TABLE CHECK constraint")) {
+        return;
+      }
+      check_pending = 0;
+      add_scan = 0;
+      add_index_candidate = 0;
+      continue;
     }
 
     if (add_foreign_state != ALTER_FK_NONE) {
@@ -3259,6 +3307,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       add_scan = 0;
       add_index_candidate = 0;
       add_foreign_state = ALTER_FK_NONE;
+      check_pending = 0;
       continue;
     }
 
@@ -3266,6 +3315,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       add_scan = 1;
       add_index_candidate = 0;
       add_foreign_state = ALTER_FK_NONE;
+      check_pending = 0;
       pending_token = token;
       continue;
     }
@@ -3276,6 +3326,12 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
 
     if (token_id == ML_FOREIGN) {
       add_foreign_state = ALTER_FK_AFTER_FOREIGN;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_CHECK) {
+      check_pending = 1;
       pending_token = token;
       continue;
     }
@@ -3307,6 +3363,9 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       add_foreign_state != ALTER_FK_AFTER_PARENT_LIST) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE foreign key");
+  } else if (check_pending) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete ALTER TABLE CHECK constraint");
   } else if (validate_key_list) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE index key part");
@@ -3838,6 +3897,37 @@ static int validate_parenthesized_identifier_list(MyliteParseContext *ctx,
     }
 
     state = CREATE_TABLE_IDENTIFIER_AFTER_NAME;
+  }
+
+  mylite_parser_reject(ctx, pending_token, message);
+  return 0;
+}
+
+static int validate_parenthesized_nonempty_body(MyliteParseContext *ctx,
+                                                MyliteLexer *lexer,
+                                                MyliteToken start,
+                                                const char *message) {
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int depth = 1;
+  int saw_token = 0;
+
+  while ((token_id = mylite_lexer_next(lexer, &token)) > 0) {
+    if (depth == 1 && token_id == ML_RP) {
+      if (!saw_token) {
+        mylite_parser_reject(ctx, pending_token, message);
+        return 0;
+      }
+      return 1;
+    }
+
+    saw_token = 1;
+    if (token_opens_nested_expression(token_id)) {
+      depth++;
+    } else if (token_closes_nested_expression(token_id)) {
+      depth--;
+    }
   }
 
   mylite_parser_reject(ctx, pending_token, message);

@@ -106,8 +106,9 @@ token sink:
   elements while preserving nested token bodies for column and constraint
   definitions, and validate table-level index key-part prefix lengths plus
   `ASC`/`DESC` tails plus table-level foreign-key child/reference column-list
-  envelopes and referential-action tails; trailing table options must start with
-  known MySQL table-option keywords, including `AUTOEXTEND_SIZE` and
+  envelopes and referential-action tails. Column and table `CHECK` constraints
+  require non-empty parenthesized expression bodies; trailing table options must
+  start with known MySQL table-option keywords, including `AUTOEXTEND_SIZE` and
   `START TRANSACTION`, and
   no-definition and post-definition CTAS forms are recognized explicitly,
   including `IGNORE`/`REPLACE` duplicate-handling modifiers.
@@ -148,7 +149,7 @@ token sink:
   `ALGORITHM`/`LOCK` options, tablespace discard/import forms, and validated
   `ADD` index key-part prefix lengths and `ASC`/`DESC` tails. `ADD FOREIGN KEY`
   child/reference column-list envelopes and referential-action tails are also
-  validated.
+  validated, and `ADD CHECK` requires a non-empty parenthesized expression body.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;
   `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body.
   Table-level `ENGINE_ATTRIBUTE` and `SECONDARY_ENGINE_ATTRIBUTE` changes

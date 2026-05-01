@@ -1641,7 +1641,11 @@ load_xml_rows_tail ::= .
 load_xml_rows_tail ::= ROWS IDENTIFIED BY load_file_name.
 
 load_ignore_tail ::= .
-load_ignore_tail ::= IGNORE ATOM load_ignore_unit.
+load_ignore_tail ::= IGNORE load_ignore_count load_ignore_unit.
+
+load_ignore_count ::= BOOLEAN_NUMBER.
+load_ignore_count ::= FACTOR_NUMBER.
+load_ignore_count ::= NUMBER_LITERAL.
 
 load_ignore_unit ::= LINES.
 load_ignore_unit ::= ROWS.

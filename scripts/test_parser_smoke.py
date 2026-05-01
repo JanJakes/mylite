@@ -627,6 +627,7 @@ def main() -> int:
         ("load data infile 'x' ignore into table;", 1, {}),
         ("load data infile 'x' into table t fields by ',';", 1, {}),
         ("load data infile 'x' into table t ignore lines;", 1, {}),
+        ("load data infile 'x' into table t ignore many lines;", 1, {}),
         ("load xml infile 'x' into table t partition (p0);", 1, {}),
         ("load index into cache t ignore branches;", 1, {}),
         ("load index into cache t partition all;", 1, {}),

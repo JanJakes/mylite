@@ -1560,9 +1560,9 @@ describe_explain_tail ::= explain_format_clause describe_explain_query_start req
 describe_explain_tail ::= explain_format_clause explain_schema_spec describe_explain_query_start required_statement_tail.
 describe_explain_tail ::= explain_format_json_clause explain_into_tail describe_explain_query_start required_statement_tail.
 describe_explain_tail ::= explain_format_json_clause explain_into_tail explain_schema_spec describe_explain_query_start required_statement_tail.
+describe_explain_tail ::= explain_analyze_tail.
 describe_explain_tail ::= FOR CONNECTION ATOM.
 
-describe_explain_query_start ::= ANALYZE.
 describe_explain_query_start ::= DELETE.
 describe_explain_query_start ::= INSERT.
 describe_explain_query_start ::= LP.
@@ -1582,6 +1582,7 @@ explain_tail ::= explain_format_clause explain_query_start statement_tail.
 explain_tail ::= explain_format_clause explain_schema_spec explain_query_start statement_tail.
 explain_tail ::= explain_format_json_clause explain_into_tail explain_query_start statement_tail.
 explain_tail ::= explain_format_json_clause explain_into_tail explain_schema_spec explain_query_start statement_tail.
+explain_tail ::= explain_analyze_tail.
 explain_tail ::= FOR CONNECTION ATOM.
 
 explain_format_clause ::= FORMAT diagnostics_equals explain_format_name.
@@ -1595,11 +1596,26 @@ explain_schema_spec ::= FOR explain_schema_kind cache_name_part.
 explain_schema_kind ::= SCHEMA.
 explain_schema_kind ::= DATABASE.
 
+explain_analyze_tail ::= ANALYZE explain_analyze_format_tail explain_schema_tail explain_analyze_query_start statement_tail.
+
+explain_analyze_format_tail ::= .
+explain_analyze_format_tail ::= FORMAT diagnostics_equals TREE.
+
+explain_schema_tail ::= .
+explain_schema_tail ::= explain_schema_spec.
+
+explain_analyze_query_start ::= DELETE.
+explain_analyze_query_start ::= INSERT.
+explain_analyze_query_start ::= LP.
+explain_analyze_query_start ::= REPLACE.
+explain_analyze_query_start ::= SELECT.
+explain_analyze_query_start ::= UPDATE.
+explain_analyze_query_start ::= WITH.
+
 explain_format_name ::= JSON.
 explain_format_name ::= TRADITIONAL.
 explain_format_name ::= TREE.
 
-explain_query_start ::= ANALYZE.
 explain_query_start ::= DELETE.
 explain_query_start ::= INSERT.
 explain_query_start ::= LP.

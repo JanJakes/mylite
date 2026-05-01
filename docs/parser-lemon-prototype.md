@@ -29,6 +29,8 @@ token sink:
 - `EXPLAIN ... FOR SCHEMA|DATABASE name` schema specifiers are recognized.
 - `DESCRIBE` and `DESC` reuse the EXPLAIN syntax variants for execution-plan
   statements while preserving table and column description forms.
+- `EXPLAIN ANALYZE` has explicit statement-start handling and rejects
+  unsupported non-`TREE` format names.
 - `ALTER TABLESPACE` recognizes `ADD DATAFILE` and `DROP DATAFILE` actions.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.

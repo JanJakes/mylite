@@ -63,7 +63,8 @@ Direct utility targets are reported for statements such as `USE`, `TABLE`,
 table forms, `EXPLAIN ... FOR CONNECTION`, `LOAD ... INTO TABLE`, `CACHE INDEX`,
 `LOAD INDEX INTO CACHE`, table-lock statements, and unambiguous `SHOW` table/schema
 forms. Prepared statement handles and component/plugin administration targets
-are reported with their own object kinds:
+are reported with their own object kinds. Low-level storage DDL reports
+tablespace and undo-tablespace targets separately:
 
 ```text
 ok statements=1 kinds=use[1:2,0:7]/database:app
@@ -91,6 +92,10 @@ ok statements=1 kinds=prepare[1:4,0:22]/prepared_statement:stmt
 
 ```text
 ok statements=1 kinds=install[1:5,0:30]/plugin:p
+```
+
+```text
+ok statements=1 kinds=create[1:7,0:50]/undo_tablespace:uts
 ```
 
 Grant and revoke principal targets preserve the first account span:

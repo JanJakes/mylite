@@ -928,6 +928,7 @@ const char *mylite_statement_object_kind_name(mylite_statement_object_kind kind)
 	case MYLITE_STATEMENT_OBJECT_TABLESPACE: return "tablespace";
 	case MYLITE_STATEMENT_OBJECT_TRANSACTION: return "transaction";
 	case MYLITE_STATEMENT_OBJECT_TRIGGER: return "trigger";
+	case MYLITE_STATEMENT_OBJECT_UNDO_TABLESPACE: return "undo_tablespace";
 	case MYLITE_STATEMENT_OBJECT_USER: return "user";
 	case MYLITE_STATEMENT_OBJECT_USER_VARIABLE: return "user_variable";
 	case MYLITE_STATEMENT_OBJECT_USER_RESOURCE: return "user_resource";
@@ -3727,6 +3728,11 @@ static mylite_statement_object_kind object_kind_from_token_sequence(const mylite
 		if (token_text_equals(parser, token_index, "SERVER")) {
 			return MYLITE_STATEMENT_OBJECT_SERVER;
 		}
+		if (token_text_equals(parser, token_index, "UNDO") &&
+		    token_index + 1 <= last_token_index &&
+		    token_text_equals(parser, token_index + 1, "TABLESPACE")) {
+			return MYLITE_STATEMENT_OBJECT_UNDO_TABLESPACE;
+		}
 		if (parser->tokens[token_index].kind == MYLITE_TOKEN_IDENTIFIER &&
 		    parser->tokens[token_index].end_offset - parser->tokens[token_index].start_offset == 10 &&
 		    strncasecmp("TABLESPACE",
@@ -3798,6 +3804,11 @@ static size_t first_name_token_after_object(const mylite_parser *parser,
 	if (token_text_equals(parser, object_token_index, "RESOURCE") &&
 	    token_index <= last_token_index &&
 	    parser->tokens[token_index].parser_token == GROUP_T) {
+		token_index++;
+	}
+	if (token_text_equals(parser, object_token_index, "UNDO") &&
+	    token_index <= last_token_index &&
+	    token_text_equals(parser, token_index, "TABLESPACE")) {
 		token_index++;
 	}
 

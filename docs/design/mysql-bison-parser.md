@@ -263,9 +263,10 @@ Local `CLONE` directory targets and remote `CLONE INSTANCE` donor endpoints
 are recorded as direct targets.
 `STOP` has an explicit statement kind for replication-control statements.
 Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`, and
-`SET RESOURCE GROUP`. Server, logfile-group, and tablespace DDL targets are
-recorded for the low-level storage/metadata statements that expose a direct
-name. Instance-level `ALTER`, `LOCK`, `UNLOCK`, `RESTART`, and `SHUTDOWN`
+`SET RESOURCE GROUP`. Server, logfile-group, tablespace, and undo-tablespace
+DDL targets are recorded for the low-level storage/metadata statements that
+expose a direct name. Instance-level `ALTER`, `LOCK`, `UNLOCK`, `RESTART`, and
+`SHUTDOWN`
 statements are recorded with an object kind but no object-name span. Principal
 targets are recorded for
 `GRANT ... TO` and `REVOKE ... FROM`, including the first `user@host` span when
@@ -359,8 +360,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   Component/plugin
   metadata records only the first target in multi-target statements. Resource
   group metadata records only the named group, not VCPU, priority, or thread
-  assignment lists. Server, logfile-group, and tablespace metadata records only
-  the named object, not engine-specific options or rename destinations.
+  assignment lists. Server, logfile-group, tablespace, and undo-tablespace
+  metadata records only the named object, not engine-specific options or
+  rename destinations.
   Instance metadata records only the instance-level command surface, not the
   specific backup-lock, TLS, keyring, or redo-log operation.
   `KILL` metadata records numeric processlist id tokens and distinguishes

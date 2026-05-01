@@ -681,9 +681,9 @@ case "$resource_group_output" in
 		;;
 esac
 
-server_logfile_output=$("$parser" 'CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (HOST "h"); ALTER SERVER s OPTIONS (USER "u"); DROP SERVER s; CREATE LOGFILE GROUP lg ADD UNDOFILE "u.dat"; ALTER LOGFILE GROUP lg ADD UNDOFILE "v.dat"; DROP LOGFILE GROUP lg ENGINE NDB; CREATE TABLESPACE ts ADD DATAFILE "ts.ibd"')
+server_logfile_output=$("$parser" 'CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (HOST "h"); ALTER SERVER s OPTIONS (USER "u"); DROP SERVER s; CREATE LOGFILE GROUP lg ADD UNDOFILE "u.dat"; ALTER LOGFILE GROUP lg ADD UNDOFILE "v.dat"; DROP LOGFILE GROUP lg ENGINE NDB; CREATE TABLESPACE ts ADD DATAFILE "ts.ibd"; ALTER UNDO TABLESPACE uts SET INACTIVE; DROP UNDO TABLESPACE uts')
 case "$server_logfile_output" in
-	*"create"*/server:s*"alter"*/server:s*"drop"*/server:s*"create"*/logfile_group:lg*"alter"*/logfile_group:lg*"drop"*/logfile_group:lg*"create"*/tablespace:ts*) ;;
+	*"create"*/server:s*"alter"*/server:s*"drop"*/server:s*"create"*/logfile_group:lg*"alter"*/logfile_group:lg*"drop"*/logfile_group:lg*"create"*/tablespace:ts*"alter"*/undo_tablespace:uts*"drop"*/undo_tablespace:uts*) ;;
 	*)
 		echo "unexpected server/logfile output: $server_logfile_output" >&2
 		exit 1

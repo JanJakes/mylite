@@ -27,6 +27,7 @@ static int select_operand_boundary(int token_id);
 static int select_set_operator(int token_id);
 static int select_set_option(int token_id);
 static int select_set_operand_start(int token_id);
+static int select_window_name_token(int token_id, MyliteToken token);
 static int select_lock_table_ref_start(int token_id, MyliteToken token);
 static int select_lock_table_ref_part(int token_id);
 static int select_into_output_option_start(int token_id);
@@ -347,6 +348,13 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     SELECT_LIMIT_AFTER_OFFSET,
     SELECT_LIMIT_AFTER_FINAL_VALUE
   };
+  enum {
+    SELECT_WINDOW_NONE,
+    SELECT_WINDOW_AFTER_WINDOW,
+    SELECT_WINDOW_AFTER_NAME,
+    SELECT_WINDOW_AFTER_AS,
+    SELECT_WINDOW_AFTER_SPEC
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token;
@@ -362,6 +370,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int outfile_fields = 0;
   int outfile_lines = 0;
   int limit_state = SELECT_LIMIT_NONE;
+  int window_state = SELECT_WINDOW_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -809,6 +818,44 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       limit_state = SELECT_LIMIT_NONE;
     }
 
+    if (window_state == SELECT_WINDOW_AFTER_WINDOW) {
+      if (!select_window_name_token(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT WINDOW clause");
+        return;
+      }
+      window_state = SELECT_WINDOW_AFTER_NAME;
+      continue;
+    }
+    if (window_state == SELECT_WINDOW_AFTER_NAME) {
+      if (token_id != ML_AS) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT WINDOW clause");
+        return;
+      }
+      window_state = SELECT_WINDOW_AFTER_AS;
+      pending_token = token;
+      continue;
+    }
+    if (window_state == SELECT_WINDOW_AFTER_AS) {
+      if (token_id != ML_LP) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT WINDOW clause");
+        return;
+      }
+      depth++;
+      window_state = SELECT_WINDOW_AFTER_SPEC;
+      continue;
+    }
+    if (window_state == SELECT_WINDOW_AFTER_SPEC) {
+      if (token_id == ML_COMMA) {
+        window_state = SELECT_WINDOW_AFTER_WINDOW;
+        pending_token = token;
+        continue;
+      }
+      window_state = SELECT_WINDOW_NONE;
+    }
+
     if (need_by) {
       if (token_id != ML_BY) {
         mylite_parser_reject(ctx, pending_token,
@@ -876,6 +923,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       pending_token = token;
       continue;
     }
+    if (token_ascii_equal(token, "window")) {
+      window_state = SELECT_WINDOW_AFTER_WINDOW;
+      pending_token = token;
+      continue;
+    }
 
     if (select_clause_requires_by(token_id)) {
       need_by = 1;
@@ -932,6 +984,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
              limit_state == SELECT_LIMIT_AFTER_OFFSET) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT LIMIT clause");
+  } else if (window_state == SELECT_WINDOW_AFTER_WINDOW ||
+             window_state == SELECT_WINDOW_AFTER_NAME ||
+             window_state == SELECT_WINDOW_AFTER_AS) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT WINDOW clause");
   } else if (need_set_operand) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT set operation");
@@ -1038,6 +1095,14 @@ static int select_set_option(int token_id) {
 static int select_set_operand_start(int token_id) {
   return token_id == ML_LP || token_id == ML_SELECT || token_id == ML_TABLE ||
          token_id == ML_VALUES || token_id == ML_WITH;
+}
+
+static int select_window_name_token(int token_id, MyliteToken token) {
+  if (token_id == ML_AS || token_ascii_equal(token, "window")) {
+    return 0;
+  }
+
+  return token_id == ML_ATOM || token_id == ML_QUOTED_ID;
 }
 
 static int select_lock_table_ref_start(int token_id, MyliteToken token) {

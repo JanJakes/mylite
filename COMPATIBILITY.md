@@ -137,7 +137,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. |  |
-| `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser rejects missing operands for major top-level clause starts such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `INTO`, top-level `JOIN`/`ON`/`USING` clauses, malformed `LIMIT` comma/`OFFSET` tails, trailing top-level comma separators, incomplete `UNION`/`INTERSECT`/`EXCEPT` set operations, malformed `LOCK IN SHARE MODE` tails, malformed `FOR UPDATE`/`FOR SHARE` locking tails while preserving index-hint `FOR` forms, and `INTO OUTFILE`/`INTO DUMPFILE` without file names; full expression/query grammar remains incomplete. |
+| `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser rejects missing operands for major top-level clause starts such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `INTO`, top-level `JOIN`/`ON`/`USING` clauses, malformed `LIMIT` comma/`OFFSET` tails, malformed named `WINDOW` clauses, trailing top-level comma separators, incomplete `UNION`/`INTERSECT`/`EXCEPT` set operations, malformed `LOCK IN SHARE MODE` tails, malformed `FOR UPDATE`/`FOR SHARE` locking tails while preserving index-hint `FOR` forms, and `INTO OUTFILE`/`INTO DUMPFILE` without file names; full expression/query grammar remains incomplete. |
 | `SELECT ... INTO var_list` | ❌ | high | User/local variable assignment semantics. |  |
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. | Parser requires the file-name string and validates basic character-set, field, and line option tails; export execution is not implemented. |
 | `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. | Parser requires the file-name string; export execution is not implemented. |
@@ -329,7 +329,7 @@ Shared parser-level `SHOW ... LIKE` filters require string-literal patterns.
 | `GROUP BY` | ❌ | top | Grouping expression semantics, ordinals, aliases, functional-dependence handling, and ONLY_FULL_GROUP_BY. |  |
 | `WITH ROLLUP` | ❌ | medium | Super-aggregate rows and GROUPING() behavior. |  |
 | `HAVING` | ❌ | top | Post-group predicate semantics and alias resolution. |  |
-| Window definitions | ❌ | high | WINDOW clause, named windows, inheritance, partitioning, ordering, frames, and MySQL restrictions. |  |
+| Window definitions | ❌ | high | WINDOW clause, named windows, inheritance, partitioning, ordering, frames, and MySQL restrictions. | Parser validates top-level named `WINDOW name AS (...)` clause lists; `OVER` expressions and frame semantics are not implemented. |
 | `ORDER BY` | ❌ | top | Expression, alias, ordinal, collation, ASC/DESC, and filesort metadata behavior. |  |
 | `LIMIT` / `OFFSET` | ❌ | top | Row limiting, prepared markers, integer conversion, and error cases. |  |
 | `DISTINCT` / `DISTINCTROW` | ❌ | top | Duplicate elimination semantics and metadata. |  |

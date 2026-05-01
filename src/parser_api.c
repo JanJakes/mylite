@@ -1072,6 +1072,28 @@ static int validate_stop_statement_syntax(const mylite_parser *parser, const myl
 static int validate_stop_replica_statement_syntax(const mylite_parser *parser,
                                                   size_t token_index,
                                                   size_t last_token_index);
+static int validate_change_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_change_replication_source_statement_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index);
+static int validate_change_replication_filter_statement_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index);
+static int validate_change_assignment_list_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index,
+                                                  int require_filter_group_values);
+static size_t find_change_assignment_boundary_token(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static int validate_change_assignment_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             int require_filter_group_value);
+static int change_assignment_value_has_top_level_assignment(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index);
+static int token_is_change_replication_filter_name(const mylite_parser *parser, size_t token_index);
 static int validate_replication_thread_type_list_syntax(const mylite_parser *parser,
                                                         size_t token_index,
                                                         size_t last_token_index,
@@ -2507,6 +2529,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_STOP:
 			if (!validate_stop_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid STOP statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_CHANGE:
+			if (!validate_change_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid CHANGE statement");
 				return;
 			}
 			break;
@@ -13544,6 +13572,190 @@ static int validate_stop_replica_statement_syntax(const mylite_parser *parser,
 	                                                  last_token_index,
 	                                                  &token_index) &&
 	       token_index > last_token_index;
+}
+
+static int validate_change_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "MASTER")) {
+		return validate_change_replication_source_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "REPLICATION") &&
+	    token_text_equals(parser, token_index + 1, "SOURCE")) {
+		return validate_change_replication_source_statement_syntax(parser, token_index + 2, last_token_index);
+	}
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "REPLICATION") &&
+	    token_text_equals(parser, token_index + 1, "FILTER")) {
+		return validate_change_replication_filter_statement_syntax(parser, token_index + 2, last_token_index);
+	}
+
+	return 0;
+}
+
+static int validate_change_replication_source_statement_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index)
+{
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token != TO_T) {
+		return 0;
+	}
+	return validate_change_assignment_list_syntax(parser, token_index + 1, last_token_index, 0);
+}
+
+static int validate_change_replication_filter_statement_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index)
+{
+	return validate_change_assignment_list_syntax(parser, token_index, last_token_index, 1);
+}
+
+static int validate_change_assignment_list_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index,
+                                                  int require_filter_group_values)
+{
+	int saw_assignment = 0;
+
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		size_t boundary_token_index;
+
+		if (token_text_equals(parser, token_index, "FOR")) {
+			size_t next_token_index;
+			return saw_assignment &&
+			       validate_replication_channel_clause_syntax(parser,
+			                                                  token_index,
+			                                                  last_token_index,
+			                                                  &next_token_index) &&
+			       next_token_index > last_token_index;
+		}
+
+		boundary_token_index = find_change_assignment_boundary_token(parser, token_index, last_token_index);
+		if (!validate_change_assignment_syntax(parser,
+		                                       token_index,
+		                                       boundary_token_index - 1,
+		                                       require_filter_group_values)) {
+			return 0;
+		}
+		saw_assignment = 1;
+		if (boundary_token_index > last_token_index) {
+			return 1;
+		}
+		if (token_text_equals(parser, boundary_token_index, "FOR")) {
+			size_t next_token_index;
+			return validate_replication_channel_clause_syntax(parser,
+			                                                  boundary_token_index,
+			                                                  last_token_index,
+			                                                  &next_token_index) &&
+			       next_token_index > last_token_index;
+		}
+		if (parser->tokens[boundary_token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index = boundary_token_index + 1;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	return saw_assignment;
+}
+
+static size_t find_change_assignment_boundary_token(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == ',' ||
+		    token_text_equals(parser, token_index, "FOR")) {
+			return token_index;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+			continue;
+		}
+		token_index++;
+	}
+	return last_token_index + 1;
+}
+
+static int validate_change_assignment_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             int require_filter_group_value)
+{
+	size_t value_token_index;
+
+	if (token_index + 2 > last_token_index ||
+	    !token_can_continue_object_name(&parser->tokens[token_index]) ||
+	    !token_text_equals(parser, token_index + 1, "=")) {
+		return 0;
+	}
+	if (require_filter_group_value && !token_is_change_replication_filter_name(parser, token_index)) {
+		return 0;
+	}
+
+	value_token_index = token_index + 2;
+	if (require_filter_group_value) {
+		return parser->tokens[value_token_index].parser_token == '(' &&
+		       parser->tokens[value_token_index].matching_token == last_token_index + 1 &&
+		       parser->tokens[value_token_index].matching_token > value_token_index + 2;
+	}
+
+	return !change_assignment_value_has_top_level_assignment(parser, value_token_index, last_token_index) &&
+	       validate_nonempty_expression_tail_syntax(parser, value_token_index, last_token_index);
+}
+
+static int change_assignment_value_has_top_level_assignment(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+			continue;
+		}
+		if (token_index + 1 <= last_token_index &&
+		    token_can_continue_object_name(&parser->tokens[token_index]) &&
+		    token_text_equals(parser, token_index + 1, "=")) {
+			return 1;
+		}
+		token_index++;
+	}
+	return 0;
+}
+
+static int token_is_change_replication_filter_name(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "REPLICATE_DO_DB") ||
+	       token_text_equals(parser, token_index, "REPLICATE_IGNORE_DB") ||
+	       token_text_equals(parser, token_index, "REPLICATE_DO_TABLE") ||
+	       token_text_equals(parser, token_index, "REPLICATE_IGNORE_TABLE") ||
+	       token_text_equals(parser, token_index, "REPLICATE_WILD_DO_TABLE") ||
+	       token_text_equals(parser, token_index, "REPLICATE_WILD_IGNORE_TABLE") ||
+	       token_text_equals(parser, token_index, "REPLICATE_REWRITE_DB");
 }
 
 static int validate_replication_thread_type_list_syntax(const mylite_parser *parser,

@@ -403,6 +403,10 @@ system-variable targets are recorded for `RESET PERSIST`. Local clone
 directories and remote donor endpoints are recorded for `CLONE`. Replication
 channel targets are recorded for explicit and default-channel `START`, `STOP`,
 `RESET`, and `CHANGE` forms, including legacy `CHANGE MASTER TO` routing.
+`CHANGE REPLICATION SOURCE TO` validates nonempty comma-separated option
+assignments and final `FOR CHANNEL` clauses. `CHANGE REPLICATION FILTER`
+validates documented filter names, parenthesized nonempty filter lists, and
+final channel clauses.
 Group Replication start/stop statements record the group-replication subsystem
 target. XA transaction XID targets are recorded for the
 XID-bearing XA statements, while `XA RECOVER` records the XA transaction

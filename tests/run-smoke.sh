@@ -2942,6 +2942,83 @@ case "$replication_channel_output" in
 		;;
 esac
 
+"$parser" --quiet "CHANGE REPLICATION SOURCE TO SOURCE_HOST='h', SOURCE_PORT=3306, IGNORE_SERVER_IDS=(1,2) FOR CHANNEL 'ch'; CHANGE REPLICATION FILTER REPLICATE_DO_DB=(db1,db2), REPLICATE_REWRITE_DB=((old_db,new_db))"
+
+if "$parser" --quiet 'CHANGE'; then
+	echo "expected empty CHANGE statement to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHANGE REPLICATION SOURCE'; then
+	echo "expected CHANGE REPLICATION SOURCE without TO to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHANGE REPLICATION SOURCE TO'; then
+	echo "expected CHANGE REPLICATION SOURCE TO without options to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CHANGE REPLICATION SOURCE SOURCE_HOST='h'"; then
+	echo "expected CHANGE REPLICATION SOURCE without TO marker to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHANGE REPLICATION SOURCE TO SOURCE_HOST'; then
+	echo "expected CHANGE source option without assignment to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHANGE REPLICATION SOURCE TO SOURCE_HOST='; then
+	echo "expected CHANGE source option without value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CHANGE REPLICATION SOURCE TO SOURCE_HOST='h' SOURCE_PORT=3306"; then
+	echo "expected CHANGE source options without comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CHANGE REPLICATION SOURCE TO SOURCE_HOST='h' FOR CHANNEL"; then
+	echo "expected CHANGE source channel without name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CHANGE REPLICATION SOURCE TO SOURCE_HOST='h' FOR CHANNEL 'ch' SOURCE_PORT=3306"; then
+	echo "expected CHANGE source trailing tokens after channel to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHANGE REPLICATION FILTER'; then
+	echo "expected CHANGE REPLICATION FILTER without filters to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHANGE REPLICATION FILTER BAD_FILTER=(db)'; then
+	echo "expected unknown CHANGE REPLICATION FILTER name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHANGE REPLICATION FILTER REPLICATE_DO_DB=db'; then
+	echo "expected CHANGE REPLICATION FILTER value without group to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHANGE REPLICATION FILTER REPLICATE_DO_DB=()'; then
+	echo "expected empty CHANGE REPLICATION FILTER group to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHANGE REPLICATION FILTER REPLICATE_DO_DB=(db),'; then
+	echo "expected trailing CHANGE REPLICATION FILTER comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CHANGE MASTER MASTER_HOST='h'"; then
+	echo "expected CHANGE MASTER without TO marker to fail" >&2
+	exit 1
+fi
+
 start_replica_output=$("$parser" "START REPLICA; START SLAVE SQL_THREAD UNTIL SQL_AFTER_MTS_GAPS; START REPLICA IO_THREAD, SQL_THREAD UNTIL SOURCE_LOG_FILE='bin.000001', SOURCE_LOG_POS=4 USER='u' PASSWORD='p' DEFAULT_AUTH='mysql_native_password' PLUGIN_DIR='/tmp' FOR CHANNEL 'ch'; START REPLICA UNTIL SQL_AFTER_GTIDS = 3E11FA47-71CA-11E1-9E33-C80AA9429562:11-56")
 case "$start_replica_output" in
 	*"start"*/replication_channel*"start"*/replication_channel*"start"*/replication_channel:"'ch'"*"start"*/replication_channel*) ;;

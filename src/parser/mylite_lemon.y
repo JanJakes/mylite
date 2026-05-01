@@ -3561,7 +3561,7 @@ with_query_body ::= SELECT(A) select_tail. {
   mylite_parser_validate_select_statement_from(ctx, A);
 }
 with_query_body ::= TABLE(A) table_statement_target table_query_tail. {
-  mylite_parser_validate_select_statement_from(ctx, A);
+  mylite_parser_validate_table_statement_from(ctx, A);
 }
 with_query_body ::= VALUES(A) values_row_list values_query_tail. {
   mylite_parser_validate_values_statement_from(ctx, A);
@@ -3585,8 +3585,8 @@ with_query_body ::= LP(A) dml_write_query_start dml_write_parenthesized_query_ta
   mylite_parser_validate_parenthesized_statement(ctx, A);
 }
 
-table_statement ::= TABLE table_statement_target table_query_tail. {
-  mylite_parser_validate_select_statement(ctx);
+table_statement ::= TABLE(A) table_statement_target table_query_tail. {
+  mylite_parser_validate_table_statement_from(ctx, A);
   if (!ctx->failed) {
     mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
   }
@@ -4451,7 +4451,7 @@ declare_statement ::= DECLARE declare_name CURSOR FOR SELECT(A) statement_tail. 
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 declare_statement ::= DECLARE declare_name CURSOR FOR TABLE(A) statement_tail. {
-  mylite_parser_validate_select_statement_from(ctx, A);
+  mylite_parser_validate_table_statement_from(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 declare_statement ::= DECLARE declare_name CURSOR FOR VALUES(A) statement_tail. {

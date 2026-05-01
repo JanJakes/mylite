@@ -80,7 +80,9 @@ token sink:
   malformed `SELECT` operands after set operators are rejected.
 - `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`
   forms, `INTO` variable lists, and file output targets, and malformed `SELECT`
-  operands after set operators are rejected.
+  operands after set operators are rejected. Embedded `TABLE` statements reuse
+  a C-side validator for required targets plus dangling `ORDER BY`, `LIMIT`, and
+  `INTO` tails.
 - Expression-tail validation rejects trailing separators in nested plain
   parenthesized expression groups and empty `EXISTS()` predicates while
   preserving empty ordinary function calls and window `OVER()` clauses. It also

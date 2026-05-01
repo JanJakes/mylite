@@ -103,6 +103,8 @@ static void format_near_token(MyliteParseContext *ctx, int token_id,
                               const MyliteToken *token);
 static void validate_select_statement_from(MyliteParseContext *ctx,
                                            int use_start, MyliteToken start);
+static void validate_table_statement_from(MyliteParseContext *ctx,
+                                          MyliteToken start);
 static int select_clause_requires_by(int token_id);
 static int select_clause_requires_operand(int token_id);
 static int select_from_starts_nth_modifier(MyliteParseContext *ctx,
@@ -605,6 +607,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
 void mylite_parser_validate_select_statement_from(MyliteParseContext *ctx,
                                                   MyliteToken start) {
   validate_select_statement_from(ctx, 1, start);
+}
+
+void mylite_parser_validate_table_statement_from(MyliteParseContext *ctx,
+                                                 MyliteToken start) {
+  validate_table_statement_from(ctx, start);
 }
 
 static void validate_select_statement_from(MyliteParseContext *ctx,
@@ -2127,6 +2134,348 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
   } else if (nth_from_state != SELECT_NTH_FROM_NONE ||
              need_by || need_operand) {
     mylite_parser_reject(ctx, pending_token, "incomplete SELECT clause");
+  }
+}
+
+static void validate_table_statement_from(MyliteParseContext *ctx,
+                                          MyliteToken start) {
+  enum {
+    TABLE_AFTER_TABLE,
+    TABLE_AFTER_NAME,
+    TABLE_AFTER_DOT,
+    TABLE_AFTER_TARGET,
+    TABLE_AFTER_ORDER,
+    TABLE_AFTER_ORDER_BY,
+    TABLE_IN_ORDER_EXPR,
+    TABLE_AFTER_ORDER_DIRECTION,
+    TABLE_AFTER_LIMIT,
+    TABLE_AFTER_LIMIT_VALUE,
+    TABLE_AFTER_LIMIT_COMMA,
+    TABLE_AFTER_LIMIT_OFFSET,
+    TABLE_AFTER_LIMIT_FINAL_VALUE,
+    TABLE_AFTER_INTO,
+    TABLE_AFTER_INTO_AT,
+    TABLE_AFTER_INTO_FILE,
+    TABLE_AFTER_INTO_TARGET
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  MyliteToken order_previous_top_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int state = TABLE_AFTER_TABLE;
+  int order_depth = 0;
+  int order_previous_top_token_id = 0;
+  int order_previous_was_operator = 1;
+  MyliteExpressionStack order_expression_stack = {0};
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (order_depth > 0) {
+      if (!query_expression_depth_token(
+              ctx, token_id, token, &order_depth, &order_expression_stack,
+              "malformed TABLE ORDER BY clause")) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id) && order_depth == 0) {
+        order_previous_top_token_id = token_id;
+        order_previous_top_token = token;
+        order_previous_was_operator = 0;
+      }
+      continue;
+    }
+
+    if (token_is_statement_terminator(token_id, token)) {
+      if (state == TABLE_AFTER_TABLE || state == TABLE_AFTER_DOT) {
+        mylite_parser_reject(ctx, pending_token, "incomplete TABLE target");
+      } else if (state == TABLE_AFTER_ORDER || state == TABLE_AFTER_ORDER_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete TABLE ORDER BY clause");
+      } else if (state == TABLE_IN_ORDER_EXPR && order_previous_was_operator) {
+        mylite_parser_reject(ctx, order_previous_top_token,
+                             "incomplete TABLE ORDER BY clause");
+      } else if (state == TABLE_AFTER_LIMIT ||
+                 state == TABLE_AFTER_LIMIT_COMMA ||
+                 state == TABLE_AFTER_LIMIT_OFFSET) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete TABLE LIMIT clause");
+      } else if (state == TABLE_AFTER_INTO ||
+                 state == TABLE_AFTER_INTO_AT ||
+                 state == TABLE_AFTER_INTO_FILE) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete TABLE INTO clause");
+      }
+      return;
+    }
+
+    if (state == TABLE_AFTER_TABLE || state == TABLE_AFTER_DOT) {
+      if (!dml_row_alias_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token, "incomplete TABLE target");
+        return;
+      }
+      state = state == TABLE_AFTER_TABLE ? TABLE_AFTER_NAME : TABLE_AFTER_TARGET;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == TABLE_AFTER_NAME) {
+      if (token_id == ML_DOT) {
+        state = TABLE_AFTER_DOT;
+        pending_token = token;
+        continue;
+      }
+      state = TABLE_AFTER_TARGET;
+    }
+
+    if (state == TABLE_AFTER_TARGET) {
+      if (select_set_operator(token_id)) {
+        mylite_parser_validate_select_statement_from(ctx, token);
+        return;
+      }
+      if (token_id == ML_ORDER) {
+        state = TABLE_AFTER_ORDER;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LIMIT) {
+        state = TABLE_AFTER_LIMIT;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_INTO) {
+        state = TABLE_AFTER_INTO;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, token, "malformed TABLE statement");
+      return;
+    }
+
+    if (state == TABLE_AFTER_ORDER) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete TABLE ORDER BY clause");
+        return;
+      }
+      state = TABLE_AFTER_ORDER_BY;
+      pending_token = token;
+      order_previous_top_token_id = 0;
+      order_previous_was_operator = 1;
+      order_previous_top_token = token;
+      continue;
+    }
+
+    if (state == TABLE_AFTER_ORDER_BY) {
+      if (token_id == ML_ASC || token_id == ML_DESC || token_id == ML_COMMA ||
+          token_id == ML_LIMIT || token_id == ML_INTO ||
+          select_set_operator(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete TABLE ORDER BY clause");
+        return;
+      }
+      state = TABLE_IN_ORDER_EXPR;
+    }
+
+    if (state == TABLE_IN_ORDER_EXPR) {
+      if (token_id == ML_COMMA || token_id == ML_LIMIT || token_id == ML_INTO ||
+          select_set_operator(token_id)) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(ctx, order_previous_top_token,
+                               "incomplete TABLE ORDER BY clause");
+          return;
+        }
+        if (token_id == ML_COMMA) {
+          state = TABLE_AFTER_ORDER_BY;
+          pending_token = token;
+          order_previous_top_token_id = 0;
+          order_previous_was_operator = 1;
+          order_previous_top_token = token;
+          continue;
+        }
+        if (token_id == ML_LIMIT) {
+          state = TABLE_AFTER_LIMIT;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_INTO) {
+          state = TABLE_AFTER_INTO;
+          pending_token = token;
+          continue;
+        }
+        mylite_parser_validate_select_statement_from(ctx, token);
+        return;
+      }
+      if (token_id == ML_ASC || token_id == ML_DESC) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(ctx, order_previous_top_token,
+                               "incomplete TABLE ORDER BY clause");
+          return;
+        }
+        state = TABLE_AFTER_ORDER_DIRECTION;
+        pending_token = token;
+        continue;
+      }
+      if (!query_expression_token(
+              ctx, token_id, token, &order_depth, &order_previous_top_token_id,
+              &order_previous_top_token, &order_previous_was_operator,
+              &order_expression_stack, "malformed TABLE ORDER BY clause")) {
+        return;
+      }
+      continue;
+    }
+
+    if (state == TABLE_AFTER_ORDER_DIRECTION) {
+      if (token_id == ML_COMMA) {
+        state = TABLE_AFTER_ORDER_BY;
+        pending_token = token;
+        order_previous_top_token_id = 0;
+        order_previous_was_operator = 1;
+        order_previous_top_token = token;
+        continue;
+      }
+      if (token_id == ML_LIMIT) {
+        state = TABLE_AFTER_LIMIT;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_INTO) {
+        state = TABLE_AFTER_INTO;
+        pending_token = token;
+        continue;
+      }
+      if (select_set_operator(token_id)) {
+        mylite_parser_validate_select_statement_from(ctx, token);
+        return;
+      }
+      mylite_parser_reject(ctx, token, "malformed TABLE ORDER BY clause");
+      return;
+    }
+
+    if (state == TABLE_AFTER_LIMIT || state == TABLE_AFTER_LIMIT_COMMA ||
+        state == TABLE_AFTER_LIMIT_OFFSET) {
+      if (!select_limit_option_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token, "incomplete TABLE LIMIT clause");
+        return;
+      }
+      state = state == TABLE_AFTER_LIMIT ? TABLE_AFTER_LIMIT_VALUE
+                                         : TABLE_AFTER_LIMIT_FINAL_VALUE;
+      continue;
+    }
+
+    if (state == TABLE_AFTER_LIMIT_VALUE) {
+      if (token_id == ML_COMMA) {
+        state = TABLE_AFTER_LIMIT_COMMA;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_OFFSET) {
+        state = TABLE_AFTER_LIMIT_OFFSET;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_INTO) {
+        state = TABLE_AFTER_INTO;
+        pending_token = token;
+        continue;
+      }
+      if (select_set_operator(token_id)) {
+        mylite_parser_validate_select_statement_from(ctx, token);
+        return;
+      }
+      mylite_parser_reject(ctx, token, "malformed TABLE LIMIT clause");
+      return;
+    }
+
+    if (state == TABLE_AFTER_LIMIT_FINAL_VALUE) {
+      if (token_id == ML_INTO) {
+        state = TABLE_AFTER_INTO;
+        pending_token = token;
+        continue;
+      }
+      if (select_set_operator(token_id)) {
+        mylite_parser_validate_select_statement_from(ctx, token);
+        return;
+      }
+      mylite_parser_reject(ctx, token, "malformed TABLE LIMIT clause");
+      return;
+    }
+
+    if (state == TABLE_AFTER_INTO) {
+      if (token_id == ML_OUTFILE || token_id == ML_DUMPFILE) {
+        state = TABLE_AFTER_INTO_FILE;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_AT_SIGN) {
+        state = TABLE_AFTER_INTO_AT;
+        pending_token = token;
+        continue;
+      }
+      if (!dml_row_alias_token(token_id) && token_id != ML_AT_HOST) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete TABLE INTO clause");
+        return;
+      }
+      state = TABLE_AFTER_INTO_TARGET;
+      continue;
+    }
+
+    if (state == TABLE_AFTER_INTO_AT) {
+      if (!dml_row_alias_token(token_id) &&
+          token_id != ML_DOUBLE_QUOTED_STRING &&
+          token_id != ML_STRING_LITERAL) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete TABLE INTO clause");
+        return;
+      }
+      state = TABLE_AFTER_INTO_TARGET;
+      continue;
+    }
+
+    if (state == TABLE_AFTER_INTO_FILE) {
+      if (token_id != ML_DOUBLE_QUOTED_STRING &&
+          token_id != ML_STRING_LITERAL) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete TABLE INTO clause");
+        return;
+      }
+      state = TABLE_AFTER_INTO_TARGET;
+      continue;
+    }
+
+    if (state == TABLE_AFTER_INTO_TARGET) {
+      if (token_id == ML_COMMA) {
+        state = TABLE_AFTER_INTO;
+        pending_token = token;
+        continue;
+      }
+      return;
+    }
+  }
+
+  if (state == TABLE_AFTER_TABLE || state == TABLE_AFTER_DOT) {
+    mylite_parser_reject(ctx, pending_token, "incomplete TABLE target");
+  } else if (state == TABLE_AFTER_ORDER || state == TABLE_AFTER_ORDER_BY) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete TABLE ORDER BY clause");
+  } else if (state == TABLE_IN_ORDER_EXPR && order_previous_was_operator) {
+    mylite_parser_reject(ctx, order_previous_top_token,
+                         "incomplete TABLE ORDER BY clause");
+  } else if (state == TABLE_AFTER_LIMIT ||
+             state == TABLE_AFTER_LIMIT_COMMA ||
+             state == TABLE_AFTER_LIMIT_OFFSET) {
+    mylite_parser_reject(ctx, pending_token, "incomplete TABLE LIMIT clause");
+  } else if (state == TABLE_AFTER_INTO || state == TABLE_AFTER_INTO_AT ||
+             state == TABLE_AFTER_INTO_FILE) {
+    mylite_parser_reject(ctx, pending_token, "incomplete TABLE INTO clause");
   }
 }
 
@@ -4641,7 +4990,7 @@ static void validate_query_body_from(MyliteParseContext *ctx, int token_id,
     return;
   }
   if (token_id == ML_TABLE) {
-    mylite_parser_validate_select_statement_from(ctx, token);
+    mylite_parser_validate_table_statement_from(ctx, token);
     return;
   }
   if (token_id == ML_VALUES) {
@@ -7529,7 +7878,7 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
     return;
   }
   if (token_id == ML_TABLE) {
-    mylite_parser_validate_select_statement_from(ctx, token);
+    mylite_parser_validate_table_statement_from(ctx, token);
     return;
   }
   if (token_id == ML_VALUES) {

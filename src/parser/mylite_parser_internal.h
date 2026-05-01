@@ -33,6 +33,8 @@ void mylite_parser_record_empty_statement(MyliteParseContext *ctx);
 void mylite_parser_validate_select_statement(MyliteParseContext *ctx);
 void mylite_parser_validate_select_statement_from(MyliteParseContext *ctx,
                                                   MyliteToken start);
+void mylite_parser_validate_table_statement_from(MyliteParseContext *ctx,
+                                                 MyliteToken start);
 void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
                                                     MyliteToken start);
 void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,

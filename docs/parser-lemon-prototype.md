@@ -111,8 +111,9 @@ token sink:
   validate `ENFORCED`/`NOT ENFORCED` tails while allowing later column
   attributes where MySQL permits them. Column definitions require a known MySQL
   type-family start plus common attribute starts and selected closed attribute
-  values; trailing table options must start with known MySQL table-option
-  keywords, including
+  values, and column-level `REFERENCES` clauses validate the referenced
+  column-list envelope plus referential-action tails. Trailing table options
+  must start with known MySQL table-option keywords, including
   `AUTOEXTEND_SIZE` and `START TRANSACTION`, and
   no-definition and post-definition CTAS forms are recognized explicitly,
   including `IGNORE`/`REPLACE` duplicate-handling modifiers.

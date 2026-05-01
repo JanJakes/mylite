@@ -35,6 +35,17 @@ typedef enum ColumnDefinitionTailState {
   COLUMN_DEFINITION_TAIL_AFTER_ON,
   COLUMN_DEFINITION_TAIL_AFTER_ON_UPDATE,
   COLUMN_DEFINITION_TAIL_AFTER_REFERENCES,
+  COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE,
+  COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE_DOT,
+  COLUMN_DEFINITION_TAIL_REFERENCES_LIST_NEED_NAME,
+  COLUMN_DEFINITION_TAIL_REFERENCES_LIST_AFTER_NAME,
+  COLUMN_DEFINITION_TAIL_REFERENCES_LIST_AFTER_DOT,
+  COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_LIST,
+  COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_MATCH,
+  COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_ON,
+  COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_ON_ACTION,
+  COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_SET,
+  COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_NO,
   COLUMN_DEFINITION_TAIL_AFTER_CONSTRAINT,
   COLUMN_DEFINITION_TAIL_AFTER_CONSTRAINT_NAME,
   COLUMN_DEFINITION_TAIL_AFTER_GENERATED,
@@ -91,6 +102,8 @@ static int column_definition_tail_token(
     ColumnDefinitionTailState *state, int *depth, int *check_pending,
     MyliteToken *pending_token, int allow_position, const char *message);
 static int column_definition_tail_complete(ColumnDefinitionTailState state);
+static int column_definition_tail_wants_boundary_token(
+    ColumnDefinitionTailState state, int token_id);
 static int column_definition_value_token(int token_id, MyliteToken token);
 static int column_definition_charset_name_token(int token_id,
                                                 MyliteToken token);
@@ -2802,6 +2815,21 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       continue;
     }
 
+    if (column_in_definition &&
+        column_definition_tail_wants_boundary_token(column_tail_state,
+                                                    token_id)) {
+      if (!column_definition_tail_token(
+              ctx, token_id, token, &column_tail_state, &depth,
+              &check_pending, &pending_token, 0,
+              "malformed CREATE TABLE column definition")) {
+        return;
+      }
+      if (check_pending) {
+        check_table_level = 0;
+      }
+      continue;
+    }
+
     if (token_id == ML_RP) {
       if (index_candidate) {
         mylite_parser_reject(ctx, pending_token,
@@ -3562,6 +3590,19 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
         depth++;
       } else if (token_closes_nested_expression(token_id)) {
         depth--;
+      }
+      continue;
+    }
+
+    if ((add_column_in_definition ||
+         alter_column_state == ALTER_COLUMN_IN_DEFINITION) &&
+        column_definition_tail_wants_boundary_token(column_tail_state,
+                                                    token_id)) {
+      if (!column_definition_tail_token(
+              ctx, token_id, token, &column_tail_state, &depth,
+              &check_pending, &pending_token, 1,
+              "malformed ALTER TABLE column definition")) {
+        return;
       }
       continue;
     }
@@ -4398,12 +4439,18 @@ static int column_definition_tail_token(
         *state == COLUMN_DEFINITION_TAIL_AFTER_AFTER ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_ON ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES ||
+        *state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE_DOT ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_CONSTRAINT ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_CONSTRAINT_NAME ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_GENERATED ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_ALWAYS) {
       mylite_parser_reject(ctx, *pending_token, message);
       return 0;
+    }
+    if (*state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE) {
+      *state = COLUMN_DEFINITION_TAIL_REFERENCES_LIST_NEED_NAME;
+      *pending_token = token;
+      return 1;
     }
     *state = COLUMN_DEFINITION_TAIL_READY;
     (*depth)++;
@@ -4565,7 +4612,138 @@ static int column_definition_tail_token(
       mylite_parser_reject(ctx, *pending_token, message);
       return 0;
     }
-    *state = COLUMN_DEFINITION_TAIL_READY;
+    if (*state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES) {
+      *state = COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE;
+    } else {
+      *state = COLUMN_DEFINITION_TAIL_READY;
+    }
+    return 1;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE) {
+    if (token_id == ML_DOT) {
+      *state = COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE_DOT;
+      *pending_token = token;
+      return 1;
+    }
+    mylite_parser_reject(ctx, *pending_token, message);
+    return 0;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE_DOT) {
+    if (!dml_row_alias_token(token_id)) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE;
+    return 1;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_REFERENCES_LIST_NEED_NAME) {
+    if (!dml_row_alias_token(token_id)) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_REFERENCES_LIST_AFTER_NAME;
+    return 1;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_REFERENCES_LIST_AFTER_NAME) {
+    if (token_id == ML_DOT) {
+      *state = COLUMN_DEFINITION_TAIL_REFERENCES_LIST_AFTER_DOT;
+      *pending_token = token;
+      return 1;
+    }
+    if (token_id == ML_COMMA) {
+      *state = COLUMN_DEFINITION_TAIL_REFERENCES_LIST_NEED_NAME;
+      *pending_token = token;
+      return 1;
+    }
+    if (token_id == ML_RP) {
+      *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_LIST;
+      return 1;
+    }
+    mylite_parser_reject(ctx, token, message);
+    return 0;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_REFERENCES_LIST_AFTER_DOT) {
+    if (!dml_row_alias_token(token_id)) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_REFERENCES_LIST_AFTER_NAME;
+    return 1;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_LIST) {
+    if (token_ascii_equal(token, "match")) {
+      *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_MATCH;
+      *pending_token = token;
+      return 1;
+    }
+    if (token_id == ML_ON) {
+      *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_ON;
+      *pending_token = token;
+      return 1;
+    }
+    mylite_parser_reject(ctx, token, message);
+    return 0;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_MATCH) {
+    if (!foreign_key_match_option(token_id, token)) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_LIST;
+    return 1;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_ON) {
+    if (token_id != ML_DELETE && token_id != ML_UPDATE) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_ON_ACTION;
+    *pending_token = token;
+    return 1;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_ON_ACTION) {
+    if (foreign_key_reference_action_token(token_id)) {
+      *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_LIST;
+      return 1;
+    }
+    if (token_id == ML_SET) {
+      *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_SET;
+      *pending_token = token;
+      return 1;
+    }
+    if (token_id == ML_NO) {
+      *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_NO;
+      *pending_token = token;
+      return 1;
+    }
+    mylite_parser_reject(ctx, *pending_token, message);
+    return 0;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_SET) {
+    if (token_id != ML_DEFAULT && token_id != ML_NULL) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_LIST;
+    return 1;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_NO) {
+    if (!token_ascii_equal(token, "action")) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_LIST;
     return 1;
   }
 
@@ -4785,7 +4963,22 @@ static int column_definition_tail_token(
 
 static int column_definition_tail_complete(ColumnDefinitionTailState state) {
   return state == COLUMN_DEFINITION_TAIL_READY ||
-         state == COLUMN_DEFINITION_TAIL_AFTER_DEFAULT_VALUE;
+         state == COLUMN_DEFINITION_TAIL_AFTER_DEFAULT_VALUE ||
+         state == COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_LIST;
+}
+
+static int column_definition_tail_wants_boundary_token(
+    ColumnDefinitionTailState state, int token_id) {
+  if (token_id == ML_LP &&
+      state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE) {
+    return 1;
+  }
+  if (token_id == ML_COMMA || token_id == ML_RP) {
+    return state == COLUMN_DEFINITION_TAIL_REFERENCES_LIST_NEED_NAME ||
+           state == COLUMN_DEFINITION_TAIL_REFERENCES_LIST_AFTER_NAME ||
+           state == COLUMN_DEFINITION_TAIL_REFERENCES_LIST_AFTER_DOT;
+  }
+  return 0;
 }
 
 static int column_definition_value_token(int token_id, MyliteToken token) {

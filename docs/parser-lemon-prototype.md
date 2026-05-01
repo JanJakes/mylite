@@ -42,8 +42,8 @@ token sink:
   `OPTIONS` names and value requirements.
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,
   `ENABLE/DISABLE KEYS`, `RENAME` forms, `DROP` forms,
-  `ALTER` subactions, partition maintenance/exchange forms,
-  table option changes, `ALGORITHM`/`LOCK` options, and tablespace
+  `ALTER` subactions, charset/order changes, partition maintenance/exchange
+  forms, table option changes, `ALGORITHM`/`LOCK` options, and tablespace
   discard/import forms.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize charset, collation,
   encryption, and alter-only `READ ONLY` option clauses.

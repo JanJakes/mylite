@@ -33,8 +33,8 @@ token sink:
   write payloads.
 - `VALUES` recognizes comma-separated row contents while preserving nested
   expression bodies.
-- `HANDLER` recognizes one- and two-part table names, aliases, read directions,
-  tuple reads, `WHERE`, and `LIMIT` tails.
+- `HANDLER` recognizes one- and two-part table names, aliases, key names, read
+  directions, tuple reads, `WHERE`, and `LIMIT` tails.
 - `USE` recognizes one-part schema names using the shared identifier grammar.
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
   clauses, TLS/resource/password/lock options, comments, attributes, and
@@ -104,7 +104,8 @@ token sink:
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form.
 - `EXPLAIN ... FOR SCHEMA|DATABASE name` schema specifiers are recognized.
 - `DESCRIBE` and `DESC` reuse the EXPLAIN syntax variants for execution-plan
-  statements while preserving table and column description forms.
+  statements while preserving table and column description forms with shared
+  identifier handling.
 - `EXPLAIN ANALYZE` has explicit statement-start handling and rejects
   unsupported non-`TREE` format names.
 - `ALTER TABLESPACE` recognizes `ADD DATAFILE` and `DROP DATAFILE` actions.

@@ -2395,11 +2395,9 @@ describe_tail ::= describe_table_ref describe_column_ref.
 describe_table_ref ::= describe_name_part.
 describe_table_ref ::= describe_name_part DOT describe_name_part.
 
-describe_column_ref ::= ATOM.
-describe_column_ref ::= LABEL.
+describe_column_ref ::= cache_name_part.
 
-describe_name_part ::= ATOM.
-describe_name_part ::= LABEL.
+describe_name_part ::= cache_name_part.
 
 describe_explain_tail ::= describe_explain_query_start required_statement_tail.
 describe_explain_tail ::= explain_schema_spec describe_explain_query_start required_statement_tail.
@@ -2496,15 +2494,13 @@ handler_operation ::= CLOSE.
 
 handler_as ::= AS.
 
-handler_alias ::= ATOM.
-handler_alias ::= LABEL.
+handler_alias ::= cache_name_part.
 
 handler_read_tail ::= handler_read_direction handler_read_suffix.
 handler_read_tail ::= handler_read_index handler_read_direction handler_read_suffix.
 handler_read_tail ::= handler_read_index handler_read_operator handler_read_tuple handler_read_suffix.
 
-handler_read_index ::= ATOM.
-handler_read_index ::= LABEL.
+handler_read_index ::= cache_name_part.
 
 handler_read_direction ::= FIRST.
 handler_read_direction ::= NEXT.

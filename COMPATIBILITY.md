@@ -120,7 +120,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. |  |
 | `DELETE` (multi-table) | ❌ | high | Multi-table delete forms using FROM and USING, join semantics, and affected rows. |  |
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. |  |
-| `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. | Parser recognizes one- and two-part table names, aliases, read directions, tuple reads, `WHERE`, and `LIMIT` tails. |
+| `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. | Parser recognizes one- and two-part table names, aliases, key names, read directions, tuple reads, `WHERE`, and `LIMIT` tails. |
 | `IMPORT TABLE` | ❌ | low | Transportable tablespace import syntax and diagnostics. |  |
 | `INSERT ... VALUES` | ❌ | top | Multi-row values, defaults, generated columns, warnings, affected rows, and insert ids. | Parser recognizes empty and comma-separated column lists before write payloads. |
 | `INSERT ... SET` | ❌ | top | MySQL SET-form insert semantics. |  |
@@ -243,7 +243,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. | Parser recognizes one- and two-part persisted variable names using the shared identifier grammar. |
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. |  |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. |  |
-| `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. | Parser recognizes table/column forms and EXPLAIN-synonym variants. |
+| `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. | Parser recognizes table/column forms using the shared identifier grammar plus EXPLAIN-synonym variants. |
 | `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. | Parser recognizes `FORMAT=JSON INTO @var`, `FOR SCHEMA`/`FOR DATABASE` schema specifiers, and explicit `ANALYZE` statement starts. |
 | `HELP` | ❌ | low | Server help lookup result-set semantics. |  |
 | `USE` | ❌ | top | Default schema selection in the embedded single-file model. | Parser recognizes one-part schema names using the shared identifier grammar. |

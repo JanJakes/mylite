@@ -125,6 +125,7 @@ def main() -> int:
         ("create view db1.v13 as values row(1) union values row(2) with check option;", 0, {"statements": "1", "ddl": "1"}),
         ("create view db1.v14 as values row(1) except values row(2) with cascaded check option;", 0, {"statements": "1", "ddl": "1"}),
         ("create view db1.v15 as values row(1) union all values row(2) with local check option;", 0, {"statements": "1", "ddl": "1"}),
+        ("create view db1.v16 as values row(1) union table t1 with check option;", 0, {"statements": "1", "ddl": "1"}),
         ("create or replace view v1 as select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create or replace algorithm=merge definer=u@localhost sql security invoker view v2 as select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create definer=current_user() event e1 on schedule every 1 day do select 1;", 0, {"statements": "1", "ddl": "1"}),

@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER AS BACKUP BEFORE BUCKETS CHANNEL COLLATE CONSISTENT DATAFILE DISABLE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EXISTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN GROUP GTIDS HISTOGRAM INACTIVE INFILE INNODB INVOKER KEYRING LEAVES ONLY OPTIONS PARTITION PRECEDES REDO_LOG REFERENCE RELOAD RETURNS ROTATE SCHEDULE SNAPSHOT SONAME SOURCE SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER AS BACKUP BEFORE BUCKETS CHANNEL COLLATE CONSISTENT CONVERT DATAFILE DISABLE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EXISTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN GROUP GTIDS HISTOGRAM INACTIVE INFILE INNODB INVOKER JOIN KEYRING LEAVES MIGRATE ONE ONLY OPTIONS PARTITION PHASE PRECEDES REDO_LOG REFERENCE RELOAD RESUME RETURNS ROTATE SCHEDULE SNAPSHOT SONAME SOURCE SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SUSPEND SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -1269,12 +1269,8 @@ xa_tail ::= PREPARE xa_xid.
 xa_tail ::= COMMIT xa_xid xa_commit_tail.
 xa_tail ::= ROLLBACK xa_xid.
 
-xa_recover_convert ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "CONVERT");
-}
-xa_recover_xid ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "XID");
-}
+xa_recover_convert ::= CONVERT.
+xa_recover_xid ::= XID.
 
 xa_xid ::= ATOM.
 xa_xid ::= ATOM import_comma ATOM.
@@ -1283,30 +1279,21 @@ xa_xid ::= ATOM import_comma ATOM import_comma ATOM.
 xa_start_tail ::= .
 xa_start_tail ::= xa_start_option.
 
-xa_start_option ::= ATOM(A). {
-  mylite_parser_require_token_text_any(ctx, A, "JOIN", "RESUME");
-}
+xa_start_option ::= JOIN.
+xa_start_option ::= RESUME.
 
 xa_end_tail ::= .
 xa_end_tail ::= xa_suspend.
 xa_end_tail ::= xa_suspend FOR xa_migrate.
 
-xa_suspend ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "SUSPEND");
-}
-xa_migrate ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "MIGRATE");
-}
+xa_suspend ::= SUSPEND.
+xa_migrate ::= MIGRATE.
 
 xa_commit_tail ::= .
 xa_commit_tail ::= xa_one xa_phase.
 
-xa_one ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "ONE");
-}
-xa_phase ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "PHASE");
-}
+xa_one ::= ONE.
+xa_phase ::= PHASE.
 
 show_statement ::= SHOW show_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);

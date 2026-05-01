@@ -2027,6 +2027,7 @@ kill_mode ::= QUERY.
 
 kill_target ::= ATOM.
 kill_target ::= LABEL.
+kill_target ::= user_variable_name.
 
 deallocate_statement ::= DEALLOCATE PREPARE prepared_statement_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);

@@ -76,6 +76,8 @@ token sink:
 - `DROP INDEX` recognizes MySQL's `ALGORITHM` and `LOCK` option tails.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, VCPU ranges, force modifiers, and thread-id assignment lists.
+- `KILL` recognizes optional `CONNECTION`/`QUERY` modes and literal,
+  local-variable, or user-variable targets.
 - `LOCK TABLES` recognizes table lists, aliases, and MySQL lock types using the
   shared identifier grammar for alias names.
 - `LOAD DATA` and `LOAD XML` recognize file modifiers, duplicate handling,

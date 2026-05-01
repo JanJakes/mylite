@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER AS BEFORE COLLATE DATAFILE DISABLE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN GROUP INACTIVE INNODB INVOKER KEYRING OPTIONS PARTITION PRECEDES REDO_LOG REFERENCE RELOAD RETURNS ROTATE SCHEDULE SONAME SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE VALUE VCPU WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER AS BACKUP BEFORE BUCKETS COLLATE CONSISTENT DATAFILE DISABLE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN GROUP HISTOGRAM INACTIVE INFILE INNODB INVOKER KEYRING LEAVES ONLY OPTIONS PARTITION PRECEDES REDO_LOG REFERENCE RELOAD RETURNS ROTATE SCHEDULE SNAPSHOT SONAME SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -768,9 +768,7 @@ load_file_modifier ::= LOW_PRIORITY.
 load_file_modifier ::= LOCAL.
 load_file_modifier ::= CONCURRENT.
 
-load_infile ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "INFILE");
-}
+load_infile ::= INFILE.
 
 load_file_table_tail ::= INTO TABLE cache_table_ref load_file_options_tail.
 load_file_table_tail ::= load_duplicate_handling INTO TABLE cache_table_ref load_file_options_tail.
@@ -788,9 +786,7 @@ load_index_tail ::= load_index_partition IGNORE load_leaves.
 
 load_index_partition ::= load_partition LP load_partition_names RP.
 
-load_partition ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "PARTITION");
-}
+load_partition ::= PARTITION.
 
 load_partition_names ::= load_partition_name.
 load_partition_names ::= load_partition_names import_comma load_partition_name.
@@ -799,9 +795,7 @@ load_partition_name ::= ATOM.
 load_partition_name ::= LABEL.
 load_partition_name ::= ALL.
 
-load_leaves ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "LEAVES");
-}
+load_leaves ::= LEAVES.
 
 start_statement ::= START start_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
@@ -824,17 +818,11 @@ transaction_characteristic ::= WITH transaction_consistent transaction_snapshot.
 alter_database_read_tail ::= READ create_options_required_tail.
 alter_database_option_start ::= READ.
 
-transaction_access_mode ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "ONLY");
-}
+transaction_access_mode ::= ONLY.
 transaction_access_mode ::= WRITE.
 
-transaction_consistent ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "CONSISTENT");
-}
-transaction_snapshot ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "SNAPSHOT");
-}
+transaction_consistent ::= CONSISTENT.
+transaction_snapshot ::= SNAPSHOT.
 
 start_replica_tail ::= start_thread_tail start_until_tail start_connection_tail show_channel_tail.
 
@@ -917,9 +905,7 @@ lock_statement ::= LOCK lock_tail. {
 lock_tail ::= lock_table_kind lock_table_list.
 lock_tail ::= INSTANCE FOR lock_backup.
 
-lock_backup ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "BACKUP");
-}
+lock_backup ::= BACKUP.
 
 lock_table_kind ::= TABLE.
 lock_table_kind ::= TABLES.
@@ -973,17 +959,13 @@ analyze_table_options ::= .
 analyze_table_options ::= UPDATE analyze_histogram_marker ON table_admin_column_list analyze_histogram_value_tail.
 analyze_table_options ::= DROP analyze_histogram_marker ON table_admin_column_list.
 
-analyze_histogram_marker ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "HISTOGRAM");
-}
+analyze_histogram_marker ::= HISTOGRAM.
 
 analyze_histogram_value_tail ::= .
 analyze_histogram_value_tail ::= WITH ATOM analyze_buckets_marker.
 analyze_histogram_value_tail ::= USING DATA ATOM.
 
-analyze_buckets_marker ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "BUCKETS");
-}
+analyze_buckets_marker ::= BUCKETS.
 
 table_admin_column_list ::= table_admin_column.
 table_admin_column_list ::= table_admin_column_list import_comma table_admin_column.
@@ -1006,9 +988,7 @@ check_table_option ::= ATOM(A). {
   mylite_parser_require_check_table_option(ctx, A);
 }
 
-check_upgrade_marker ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "UPGRADE");
-}
+check_upgrade_marker ::= UPGRADE.
 
 checksum_table_tail ::= TABLE table_admin_table_list checksum_table_option.
 
@@ -1028,9 +1008,7 @@ repair_table_option_list ::= repair_table_option_list repair_table_option.
 
 repair_table_option ::= QUICK.
 repair_table_option ::= EXTENDED.
-repair_table_option ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "USE_FRM");
-}
+repair_table_option ::= USE_FRM.
 
 table_admin_optional_binlog ::= .
 table_admin_optional_binlog ::= LOCAL.

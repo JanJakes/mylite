@@ -361,6 +361,7 @@ def main() -> int:
         ("analyze table t update histogram on a using data '{\"buckets\": []}';", 0, {"statements": "1", "admin": "1"}),
         ("check tables t;", 0, {"statements": "1", "admin": "1"}),
         ("check table t fast medium changed;", 0, {"statements": "1", "admin": "1"}),
+        ("check table t for upgrade;", 0, {"statements": "1", "admin": "1"}),
         ("check table information_schema.processlist fast;", 0, {"statements": "1", "admin": "1"}),
         ("checksum table t;", 0, {"statements": "1", "admin": "1"}),
         ("checksum table t quick;", 0, {"statements": "1", "admin": "1"}),

@@ -3040,7 +3040,10 @@ execute_tail ::= USING execute_using_list.
 execute_using_list ::= execute_using_arg.
 execute_using_list ::= execute_using_list import_comma execute_using_arg.
 
-execute_using_arg ::= ATOM.
+execute_using_arg ::= user_variable_name.
+
+user_variable_name ::= AT_HOST set_variable_dot_tail.
+user_variable_name ::= AT_SIGN set_variable_part set_variable_dot_tail.
 
 prepared_statement_name ::= cache_name_part.
 

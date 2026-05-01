@@ -1121,6 +1121,8 @@ def main() -> int:
         ("execute account;", 0, {"statements": "1", "prepared": "1"}),
         ("execute s using @a;", 0, {"statements": "1", "prepared": "1"}),
         ("execute s using @a, @b;", 0, {"statements": "1", "prepared": "1"}),
+        ("execute s using @first, @account;", 0, {"statements": "1", "prepared": "1"}),
+        ("execute s using a;", 1, {}),
         ("execute s using @a @b;", 1, {}),
         ("execute s extra;", 1, {}),
         ("execute select;", 1, {}),

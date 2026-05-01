@@ -38,6 +38,8 @@ token sink:
   argument lists with nested expression bodies.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
   write payloads.
+- Single-table `DELETE` recognizes table aliases before optional partition
+  lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails.
 - `VALUES` recognizes comma-separated row contents while preserving nested
   expression bodies, set operators, `ORDER BY`, and `LIMIT` tails.
 - `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`

@@ -3211,7 +3211,7 @@ dml_delete_modifier ::= IGNORE.
 dml_delete_modifier ::= LOW_PRIORITY.
 dml_delete_modifier ::= QUICK.
 
-delete_core ::= FROM dml_delete_table_list delete_after_from_tail.
+delete_core ::= FROM cache_table_ref delete_single_table_tail.
 delete_core ::= dml_delete_table_list FROM dml_delete_source_start statement_tail.
 delete_core ::= FROM dml_delete_table_list USING delete_using_tail.
 
@@ -3224,11 +3224,20 @@ dml_delete_table_list ::= dml_delete_table_list import_comma cache_table_ref.
 dml_delete_source_start ::= cache_table_ref.
 dml_delete_source_start ::= LP.
 
+delete_single_table_tail ::= delete_after_from_tail.
+delete_single_table_tail ::= delete_partition_clause delete_after_from_tail.
+delete_single_table_tail ::= AS delete_table_alias delete_partition_tail delete_after_from_tail.
+delete_single_table_tail ::= delete_table_alias delete_partition_tail delete_after_from_tail.
+
+delete_table_alias ::= cache_name_part.
+
+delete_partition_tail ::= .
+delete_partition_tail ::= delete_partition_clause.
+
 delete_after_from_tail ::= .
 delete_after_from_tail ::= WHERE expression_start statement_tail.
 delete_after_from_tail ::= ORDER BY expression_start statement_tail.
 delete_after_from_tail ::= LIMIT ATOM.
-delete_after_from_tail ::= delete_partition_clause delete_after_from_tail.
 
 delete_partition_clause ::= PARTITION LP delete_partition_list RP.
 

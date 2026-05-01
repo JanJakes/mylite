@@ -280,6 +280,7 @@ static void column_definition_tail_finish_parenthesized_expression(
 static int column_definition_value_token(int token_id, MyliteToken token);
 static int column_definition_default_introducer_token(int token_id,
                                                      MyliteToken token);
+static int column_definition_on_update_value_token(MyliteToken token);
 static int column_definition_charset_name_token(int token_id,
                                                 MyliteToken token);
 static int column_definition_attribute_start(int token_id, MyliteToken token,
@@ -11179,6 +11180,7 @@ static int column_definition_tail_token(
         *state == COLUMN_DEFINITION_TAIL_AFTER_SRID ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_AFTER ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_ON ||
+        *state == COLUMN_DEFINITION_TAIL_AFTER_ON_UPDATE ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE_DOT ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_CONSTRAINT ||
@@ -11512,12 +11514,7 @@ static int column_definition_tail_token(
   }
 
   if (*state == COLUMN_DEFINITION_TAIL_AFTER_ON_UPDATE) {
-    if (token_id == ML_MINUS) {
-      *state = COLUMN_DEFINITION_TAIL_AFTER_VALUE_SIGN;
-      *pending_token = token;
-      return 1;
-    }
-    if (!column_definition_value_token(token_id, token)) {
+    if (!column_definition_on_update_value_token(token)) {
       mylite_parser_reject(ctx, *pending_token, message);
       return 0;
     }
@@ -11777,6 +11774,13 @@ static int column_definition_value_token(int token_id, MyliteToken token) {
 static int column_definition_default_introducer_token(int token_id,
                                                      MyliteToken token) {
   return token_id == ML_ATOM && token.length > 1 && token.start[0] == '_';
+}
+
+static int column_definition_on_update_value_token(MyliteToken token) {
+  return token_ascii_equal(token, "current_timestamp") ||
+         token_ascii_equal(token, "localtime") ||
+         token_ascii_equal(token, "localtimestamp") ||
+         token_ascii_equal(token, "now");
 }
 
 static int column_definition_charset_name_token(int token_id,

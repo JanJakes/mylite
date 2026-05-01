@@ -300,7 +300,9 @@ ok statements=1 kinds=set[1:3,0:12]/role
 ```
 
 Explicit variable-assignment targets are also reported for `SELECT ... INTO`,
-`TABLE ... INTO`, `SET`, and statement-level `GET DIAGNOSTICS` forms:
+`TABLE ... INTO`, `SET`, and statement-level `GET DIAGNOSTICS` forms.
+`SELECT ... INTO` validates one top-level `INTO` clause plus variable-list and
+file-export target shape:
 
 ```text
 ok statements=1 kinds=select[1:6,0:23]/user_variable:@x

@@ -286,6 +286,10 @@ variable/export targets.
 variables and local variables. `SET` system-variable targets preserve qualified
 structured names such as `keycache1.key_buffer_size`. `INTO OUTFILE` and
 `INTO DUMPFILE` record the explicit export file target.
+`SELECT ... INTO` validation checks the single top-level `INTO` rule, variable
+target-list separators, OUTFILE character-set and field/line options, and
+DUMPFILE target shape while leaving full SELECT query-expression analysis to a
+later phase.
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table

@@ -1639,6 +1639,60 @@ case "$variable_assignment_output" in
 		;;
 esac
 
+select_into_output=$("$parser" "SELECT a, b INTO @x, local_y FROM t; SELECT a FROM t INTO @x FOR UPDATE; SELECT a FROM t FOR UPDATE INTO @x; SELECT a INTO OUTFILE '/tmp/x' CHARACTER SET utf8mb4 FIELDS TERMINATED BY ',' FROM t; SELECT a INTO DUMPFILE '/tmp/y' FROM t")
+case "$select_into_output" in
+	*"select"*/user_variable:@x*"select"*/user_variable:@x*"select"*/user_variable:@x*"select"*/outfile:"'/tmp/x'"*"select"*/dumpfile:"'/tmp/y'"*) ;;
+	*)
+		echo "unexpected SELECT INTO output: $select_into_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'SELECT INTO @x'; then
+	echo "expected SELECT INTO without select expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a INTO'; then
+	echo "expected SELECT INTO without target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a INTO @@x FROM t'; then
+	echo "expected SELECT INTO system variable to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a INTO @x, FROM t'; then
+	echo "expected SELECT INTO trailing target comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a INTO @x @y FROM t'; then
+	echo "expected SELECT INTO adjacent targets without comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SELECT a INTO OUTFILE '/tmp/x' FIELDS TERMINATED FROM t"; then
+	echo "expected SELECT OUTFILE FIELDS TERMINATED without BY string to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SELECT a INTO OUTFILE '/tmp/x' CHARACTER SET utf8mb4 CHARACTER SET latin1 FROM t"; then
+	echo "expected SELECT OUTFILE duplicate character set to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SELECT a INTO DUMPFILE '/tmp/x' FIELDS TERMINATED BY ',' FROM t"; then
+	echo "expected SELECT DUMPFILE options to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a INTO @x FROM t INTO @y'; then
+	echo "expected SELECT with duplicate INTO clauses to fail" >&2
+	exit 1
+fi
+
 utility_sql='TRUNCATE t;
 TRUNCATE TABLE `db`.`t`;
 USE `db`;

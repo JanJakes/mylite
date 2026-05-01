@@ -2785,16 +2785,20 @@ flush_statement ::= FLUSH flush_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-flush_tail ::= flush_simple_list.
-flush_tail ::= flush_table_kind flush_table_tail.
-flush_tail ::= LOCAL flush_table_kind flush_table_tail.
-flush_tail ::= NO_WRITE_TO_BINLOG flush_table_kind flush_table_tail.
-flush_tail ::= BINARY LOGS.
-flush_tail ::= ENGINE LOGS.
-flush_tail ::= ERROR LOGS.
-flush_tail ::= GENERAL LOGS.
-flush_tail ::= RELAY LOGS show_channel_tail.
-flush_tail ::= SLOW LOGS.
+flush_tail ::= flush_binlog_modifier flush_target.
+
+flush_binlog_modifier ::= .
+flush_binlog_modifier ::= LOCAL.
+flush_binlog_modifier ::= NO_WRITE_TO_BINLOG.
+
+flush_target ::= flush_simple_list.
+flush_target ::= flush_table_kind flush_table_tail.
+flush_target ::= BINARY LOGS.
+flush_target ::= ENGINE LOGS.
+flush_target ::= ERROR LOGS.
+flush_target ::= GENERAL LOGS.
+flush_target ::= RELAY LOGS show_channel_tail.
+flush_target ::= SLOW LOGS.
 
 flush_simple_list ::= flush_simple_kind.
 flush_simple_list ::= flush_simple_list import_comma flush_simple_kind.

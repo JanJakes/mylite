@@ -236,7 +236,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser recognizes charset names using the shared identifier grammar, `BINARY`, `DEFAULT`, and comma-following variable assignments. |
 | `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser recognizes charset/collation names using the shared identifier grammar, `BINARY`, `DEFAULT`, optional `COLLATE`, and comma-following variable assignments. |
 | `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. | Parser recognizes table references, key lists, and key-cache names using the shared identifier grammar. |
-| `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. | Parser recognizes binary, engine, error, general, relay, and slow log forms, including channel-qualified relay logs. |
+| `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, table forms, simple option lists, binary/engine/error/general/relay/slow log forms, and channel-qualified relay logs. |
 | `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. | Parser recognizes CONNECTION/QUERY modes and literal, shared-identifier local-variable, and user-variable targets. |
 | `LOAD INDEX INTO CACHE` | ❌ | low | MyISAM index preload syntax. |  |
 | `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. |  |

@@ -260,7 +260,9 @@ table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 corpus-observed plural `TABLES` spellings while semantic validation remains a
 later grammar responsibility. `USE` has targeted syntax validation for the
 single identifier-like schema-name form MySQL accepts, rejecting missing names,
-quoted strings, variables, qualified names, and trailing tokens.
+quoted strings, variables, qualified names, and trailing tokens. `TRUNCATE`
+validates a single identifier-like or qualified table target across optional
+`TABLE` forms.
 Prepared-statement names are recorded in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`; those forms
 validate handle names, `PREPARE ... FROM` sources, and `EXECUTE ... USING`

@@ -338,6 +338,45 @@ case "$utility_object_output" in
 		;;
 esac
 
+truncate_output=$("$parser" 'TRUNCATE t; TRUNCATE TABLE `db`.`t`; TRUNCATE TABLE `select`')
+case "$truncate_output" in
+	*"truncate"*/table:t*"truncate"*/table:'`db`.`t`'*"truncate"*/table:'`select`'*) ;;
+	*)
+		echo "unexpected TRUNCATE output: $truncate_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'TRUNCATE'; then
+	echo "expected missing TRUNCATE table to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TRUNCATE TABLE'; then
+	echo "expected missing TRUNCATE TABLE name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TRUNCATE t extra'; then
+	echo "expected trailing TRUNCATE tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TRUNCATE t, u'; then
+	echo "expected multi-table TRUNCATE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TRUNCATE TABLE 1'; then
+	echo "expected numeric TRUNCATE table to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TRUNCATE TABLE @t'; then
+	echo "expected variable TRUNCATE table to fail" >&2
+	exit 1
+fi
+
 use_output=$("$parser" 'USE db; USE `select`; USE transaction')
 case "$use_output" in
 	*"use"*/database:db*"use"*/database:'`select`'*"use"*/database:transaction*) ;;

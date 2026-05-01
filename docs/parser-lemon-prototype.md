@@ -106,8 +106,8 @@ token sink:
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
 - `CHANGE REPLICATION SOURCE TO` recognizes documented MySQL 8.4 source option
-  names, legacy `CHANGE MASTER TO` option names, option values, and optional
-  channel clauses.
+  names, legacy `CHANGE MASTER TO` option names, typed numeric/boolean option
+  values, generic string/list/enum values, and optional channel clauses.
 - Replication channel clauses share one identifier grammar across
   `START`/`STOP`/`RESET`/`SHOW`/`FLUSH` and `CHANGE ... FOR CHANNEL`.
 - `SHOW PARSE_TREE` recognizes SELECT and WITH SELECT inputs as a

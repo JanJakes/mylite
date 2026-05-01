@@ -31,6 +31,59 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 static int validate_create_role_statement_syntax(const mylite_parser *parser,
                                                  size_t token_index,
                                                  size_t last_token_index);
+static int validate_create_user_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
+static int validate_create_user_entry_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             size_t *next_token_index);
+static int validate_create_user_auth_option_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   size_t *next_token_index,
+                                                   int allow_initial_auth);
+static int validate_create_user_identified_tail_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index,
+                                                       int allow_initial_auth);
+static int validate_create_user_initial_auth_option_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           size_t *next_token_index);
+static int validate_create_user_auth_mfa_tail_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index,
+                                                     size_t *next_token_index);
+static int validate_create_user_tail_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index);
+static int validate_create_user_default_role_clause_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           size_t *next_token_index);
+static int validate_create_user_tls_clause_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index,
+                                                  size_t *next_token_index);
+static int validate_create_user_tls_option_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index,
+                                                  size_t *next_token_index);
+static int validate_create_user_resource_clause_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index);
+static int validate_create_user_password_or_lock_option_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index,
+                                                               size_t *next_token_index);
+static int token_is_create_user_tail_boundary(const mylite_parser *parser, size_t token_index);
+static int token_is_create_user_auth_string(const mylite_parser *parser, size_t token_index);
+static int token_is_create_user_auth_hash(const mylite_parser *parser, size_t token_index);
+static int token_can_be_create_user_auth_plugin(const mylite_parser *parser, size_t token_index);
+static int token_is_create_user_resource_option(const mylite_parser *parser, size_t token_index);
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_truncate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_rename_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1645,6 +1698,9 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (parser->tokens[token_index].parser_token == ROLE_T) {
 		return validate_create_role_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (parser->tokens[token_index].parser_token == USER_T) {
+		return validate_create_user_statement_syntax(parser, token_index, last_token_index);
+	}
 	return 1;
 }
 
@@ -1671,6 +1727,583 @@ static int validate_create_role_statement_syntax(const mylite_parser *parser,
 	                                           token_index,
 	                                           last_token_index,
 	                                           0);
+}
+
+static int validate_create_user_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	int saw_user = 0;
+
+	if (token_index >= parser->token_count ||
+	    parser->tokens[token_index].parser_token != USER_T) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "IF")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "NOT") ||
+		    !token_text_equals(parser, token_index + 2, "EXISTS")) {
+			return 0;
+		}
+		token_index += 3;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_create_user_entry_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+		saw_user = 1;
+
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token == ',') {
+			token_index++;
+			if (token_index > last_token_index) {
+				return 0;
+			}
+			continue;
+		}
+		break;
+	}
+
+	return saw_user && validate_create_user_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_create_user_entry_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             size_t *next_token_index)
+{
+	if (!validate_principal_name_syntax(parser, token_index, last_token_index, 0, &token_index)) {
+		return 0;
+	}
+
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "IDENTIFIED")) {
+		return validate_create_user_auth_option_syntax(parser,
+		                                               token_index,
+		                                               last_token_index,
+		                                               next_token_index,
+		                                               1);
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_create_user_auth_option_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   size_t *next_token_index,
+                                                   int allow_initial_auth)
+{
+	if (token_index > last_token_index || !token_text_equals(parser, token_index, "IDENTIFIED")) {
+		return 0;
+	}
+
+	if (!validate_create_user_identified_tail_syntax(parser,
+	                                                token_index + 1,
+	                                                last_token_index,
+	                                                &token_index,
+	                                                allow_initial_auth)) {
+		return 0;
+	}
+
+	return validate_create_user_auth_mfa_tail_syntax(parser,
+	                                                 token_index,
+	                                                 last_token_index,
+	                                                 next_token_index);
+}
+
+static int validate_create_user_identified_tail_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index,
+                                                       int allow_initial_auth)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "BY")) {
+		token_index++;
+		if (token_index + 1 <= last_token_index &&
+		    token_text_equals(parser, token_index, "RANDOM") &&
+		    token_text_equals(parser, token_index + 1, "PASSWORD")) {
+			*next_token_index = token_index + 2;
+			return 1;
+		}
+		if (token_is_create_user_auth_string(parser, token_index)) {
+			*next_token_index = token_index + 1;
+			return 1;
+		}
+		return 0;
+	}
+
+	if (!token_text_equals(parser, token_index, "WITH")) {
+		return 0;
+	}
+	token_index++;
+	if (token_index > last_token_index ||
+	    !token_can_be_create_user_auth_plugin(parser, token_index)) {
+		return 0;
+	}
+	token_index++;
+
+	if (token_index > last_token_index) {
+		*next_token_index = token_index;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "BY")) {
+		token_index++;
+		if (token_index + 1 <= last_token_index &&
+		    token_text_equals(parser, token_index, "RANDOM") &&
+		    token_text_equals(parser, token_index + 1, "PASSWORD")) {
+			*next_token_index = token_index + 2;
+			return 1;
+		}
+		if (token_is_create_user_auth_string(parser, token_index)) {
+			*next_token_index = token_index + 1;
+			return 1;
+		}
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "AS")) {
+		token_index++;
+		if (!token_is_create_user_auth_hash(parser, token_index)) {
+			return 0;
+		}
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+	if (allow_initial_auth && token_text_equals(parser, token_index, "INITIAL")) {
+		return validate_create_user_initial_auth_option_syntax(parser,
+		                                                       token_index,
+		                                                       last_token_index,
+		                                                       next_token_index);
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_create_user_initial_auth_option_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           size_t *next_token_index)
+{
+	if (token_index + 2 > last_token_index ||
+	    !token_text_equals(parser, token_index, "INITIAL") ||
+	    !token_text_equals(parser, token_index + 1, "AUTHENTICATION") ||
+	    !token_text_equals(parser, token_index + 2, "IDENTIFIED")) {
+		return 0;
+	}
+
+	token_index += 3;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "BY")) {
+		token_index++;
+		if (token_index + 1 <= last_token_index &&
+		    token_text_equals(parser, token_index, "RANDOM") &&
+		    token_text_equals(parser, token_index + 1, "PASSWORD")) {
+			*next_token_index = token_index + 2;
+			return 1;
+		}
+		if (token_is_create_user_auth_string(parser, token_index)) {
+			*next_token_index = token_index + 1;
+			return 1;
+		}
+		return 0;
+	}
+	if (token_index + 2 <= last_token_index &&
+	    token_text_equals(parser, token_index, "WITH") &&
+	    token_can_be_create_user_auth_plugin(parser, token_index + 1) &&
+	    token_text_equals(parser, token_index + 2, "AS")) {
+		token_index += 3;
+		if (!token_is_create_user_auth_hash(parser, token_index)) {
+			return 0;
+		}
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	return 0;
+}
+
+static int validate_create_user_auth_mfa_tail_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index,
+                                                     size_t *next_token_index)
+{
+	int factor_count = 0;
+
+	while (token_index <= last_token_index && token_text_equals(parser, token_index, "AND")) {
+		factor_count++;
+		if (factor_count > 2) {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index || !token_text_equals(parser, token_index, "IDENTIFIED")) {
+			return 0;
+		}
+		if (!validate_create_user_identified_tail_syntax(parser,
+		                                                token_index + 1,
+		                                                last_token_index,
+		                                                &token_index,
+		                                                0)) {
+			return 0;
+		}
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_create_user_tail_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 1;
+	}
+
+	if (token_text_equals(parser, token_index, "DEFAULT")) {
+		if (!validate_create_user_default_role_clause_syntax(parser,
+		                                                     token_index,
+		                                                     last_token_index,
+		                                                     &token_index)) {
+			return 0;
+		}
+	}
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "REQUIRE")) {
+		if (!validate_create_user_tls_clause_syntax(parser,
+		                                            token_index,
+		                                            last_token_index,
+		                                            &token_index)) {
+			return 0;
+		}
+	}
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "WITH")) {
+		if (!validate_create_user_resource_clause_syntax(parser,
+		                                                 token_index,
+		                                                 last_token_index,
+		                                                 &token_index)) {
+			return 0;
+		}
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_create_user_password_or_lock_option_syntax(parser,
+		                                                         token_index,
+		                                                         last_token_index,
+		                                                         &token_index)) {
+			break;
+		}
+	}
+
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if ((token_text_equals(parser, token_index, "COMMENT") ||
+	     token_text_equals(parser, token_index, "ATTRIBUTE")) &&
+	    token_index + 1 == last_token_index &&
+	    token_is_create_user_auth_string(parser, token_index + 1)) {
+		return 1;
+	}
+
+	return 0;
+}
+
+static int validate_create_user_default_role_clause_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           size_t *next_token_index)
+{
+	int saw_role = 0;
+
+	if (token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index, "DEFAULT") ||
+	    parser->tokens[token_index + 1].parser_token != ROLE_T) {
+		return 0;
+	}
+
+	token_index += 2;
+	while (token_index <= last_token_index) {
+		if (token_is_create_user_tail_boundary(parser, token_index)) {
+			break;
+		}
+		if (!validate_principal_name_syntax(parser, token_index, last_token_index, 0, &token_index)) {
+			return 0;
+		}
+		saw_role = 1;
+
+		if (token_index > last_token_index || token_is_create_user_tail_boundary(parser, token_index)) {
+			break;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	if (!saw_role) {
+		return 0;
+	}
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_create_user_tls_clause_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index,
+                                                  size_t *next_token_index)
+{
+	int saw_option = 0;
+
+	if (token_index > last_token_index || !token_text_equals(parser, token_index, "REQUIRE")) {
+		return 0;
+	}
+	token_index++;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "NONE")) {
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	while (token_index <= last_token_index) {
+		if (token_is_create_user_tail_boundary(parser, token_index)) {
+			break;
+		}
+		if (token_text_equals(parser, token_index, "AND")) {
+			token_index++;
+			if (token_index > last_token_index) {
+				return 0;
+			}
+		}
+		if (!validate_create_user_tls_option_syntax(parser,
+		                                            token_index,
+		                                            last_token_index,
+		                                            &token_index)) {
+			return 0;
+		}
+		saw_option = 1;
+	}
+
+	if (!saw_option) {
+		return 0;
+	}
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_create_user_tls_option_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index,
+                                                  size_t *next_token_index)
+{
+	if (token_text_equals(parser, token_index, "SSL") ||
+	    token_text_equals(parser, token_index, "X509")) {
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	if ((token_text_equals(parser, token_index, "CIPHER") ||
+	     token_text_equals(parser, token_index, "ISSUER") ||
+	     token_text_equals(parser, token_index, "SUBJECT")) &&
+	    token_index + 1 <= last_token_index &&
+	    token_is_create_user_auth_string(parser, token_index + 1)) {
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	return 0;
+}
+
+static int validate_create_user_resource_clause_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index)
+{
+	int saw_option = 0;
+
+	if (token_index > last_token_index || !token_text_equals(parser, token_index, "WITH")) {
+		return 0;
+	}
+	token_index++;
+
+	while (token_index <= last_token_index && !token_is_create_user_tail_boundary(parser, token_index)) {
+		if (token_index + 1 > last_token_index ||
+		    !token_is_create_user_resource_option(parser, token_index) ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		token_index += 2;
+		saw_option = 1;
+	}
+
+	if (!saw_option) {
+		return 0;
+	}
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_create_user_password_or_lock_option_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index,
+                                                               size_t *next_token_index)
+{
+	if (token_text_equals(parser, token_index, "ACCOUNT")) {
+		if (token_index + 1 > last_token_index ||
+		    (!token_text_equals(parser, token_index + 1, "LOCK") &&
+		     !token_text_equals(parser, token_index + 1, "UNLOCK"))) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	if (token_text_equals(parser, token_index, "FAILED_LOGIN_ATTEMPTS")) {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	if (token_text_equals(parser, token_index, "PASSWORD_LOCK_TIME")) {
+		if (token_index + 1 > last_token_index ||
+		    (parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER &&
+		     !token_text_equals(parser, token_index + 1, "UNBOUNDED"))) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	if (!token_text_equals(parser, token_index, "PASSWORD") ||
+	    token_index + 1 > last_token_index) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_text_equals(parser, token_index, "EXPIRE")) {
+		token_index++;
+		if (token_index > last_token_index ||
+		    token_is_create_user_tail_boundary(parser, token_index)) {
+			*next_token_index = token_index;
+			return 1;
+		}
+		if (token_text_equals(parser, token_index, "DEFAULT") ||
+		    token_text_equals(parser, token_index, "NEVER")) {
+			*next_token_index = token_index + 1;
+			return 1;
+		}
+		if (token_index + 2 <= last_token_index &&
+		    token_text_equals(parser, token_index, "INTERVAL") &&
+		    parser->tokens[token_index + 1].kind == MYLITE_TOKEN_NUMBER &&
+		    token_text_equals(parser, token_index + 2, "DAY")) {
+			*next_token_index = token_index + 3;
+			return 1;
+		}
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "HISTORY")) {
+		if (token_index + 1 > last_token_index ||
+		    (!token_text_equals(parser, token_index + 1, "DEFAULT") &&
+		     parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER)) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	if (token_text_equals(parser, token_index, "REUSE")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "INTERVAL")) {
+			return 0;
+		}
+		token_index += 2;
+		if (token_text_equals(parser, token_index, "DEFAULT")) {
+			*next_token_index = token_index + 1;
+			return 1;
+		}
+		if (token_index + 1 <= last_token_index &&
+		    parser->tokens[token_index].kind == MYLITE_TOKEN_NUMBER &&
+		    token_text_equals(parser, token_index + 1, "DAY")) {
+			*next_token_index = token_index + 2;
+			return 1;
+		}
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "REQUIRE")) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "CURRENT")) {
+			return 0;
+		}
+		token_index += 2;
+		if (token_index <= last_token_index &&
+		    (token_text_equals(parser, token_index, "DEFAULT") ||
+		     token_text_equals(parser, token_index, "OPTIONAL"))) {
+			token_index++;
+		}
+		*next_token_index = token_index;
+		return 1;
+	}
+
+	return 0;
+}
+
+static int token_is_create_user_tail_boundary(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "REQUIRE") ||
+	       token_text_equals(parser, token_index, "WITH") ||
+	       token_text_equals(parser, token_index, "PASSWORD") ||
+	       token_text_equals(parser, token_index, "FAILED_LOGIN_ATTEMPTS") ||
+	       token_text_equals(parser, token_index, "PASSWORD_LOCK_TIME") ||
+	       token_text_equals(parser, token_index, "ACCOUNT") ||
+	       token_text_equals(parser, token_index, "COMMENT") ||
+	       token_text_equals(parser, token_index, "ATTRIBUTE");
+}
+
+static int token_is_create_user_auth_string(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       parser->tokens[token_index].kind == MYLITE_TOKEN_STRING;
+}
+
+static int token_is_create_user_auth_hash(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (parser->tokens[token_index].kind == MYLITE_TOKEN_STRING ||
+	        parser->tokens[token_index].kind == MYLITE_TOKEN_NUMBER);
+}
+
+static int token_can_be_create_user_auth_plugin(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (token_can_continue_object_name(&parser->tokens[token_index]) ||
+	        parser->tokens[token_index].kind == MYLITE_TOKEN_STRING);
+}
+
+static int token_is_create_user_resource_option(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "MAX_QUERIES_PER_HOUR") ||
+	       token_text_equals(parser, token_index, "MAX_UPDATES_PER_HOUR") ||
+	       token_text_equals(parser, token_index, "MAX_CONNECTIONS_PER_HOUR") ||
+	       token_text_equals(parser, token_index, "MAX_USER_CONNECTIONS");
 }
 
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

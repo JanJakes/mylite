@@ -210,7 +210,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | `ALTER USER` | ❌ | medium | Authentication plugins, passwords, MFA, TLS, resources, lock/expire, comments, attributes, and default roles. |  |
-| `CREATE USER` | ❌ | medium | User creation syntax, IF NOT EXISTS, auth factors, TLS, resources, password options, and comments. |  |
+| `CREATE USER` | ❌ | medium | User creation syntax, IF NOT EXISTS, auth factors, TLS, resources, password options, and comments. | Parser records the first account target and validates optional `IF NOT EXISTS`, comma-separated accounts with authentication clauses, default roles, TLS requirements, resource limits, password-management options, account locks, comments, and attributes; account metadata, privilege checks, generated-password result sets, and diagnostics are not implemented. |
 | `CREATE ROLE` | ❌ | medium | Role creation syntax and metadata. | Parser records the first role target and validates optional `IF NOT EXISTS` plus comma-separated role lists; role metadata and diagnostics are not implemented. |
 | `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. | Parser records the first account target and validates optional `IF EXISTS` plus comma-separated account lists, including corpus-observed `user@` forms; privilege cleanup and diagnostics are not implemented. |
 | `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. | Parser records the first role target and validates optional `IF EXISTS` plus comma-separated role lists; grant cleanup and diagnostics are not implemented. |

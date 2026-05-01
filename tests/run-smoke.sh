@@ -1983,6 +1983,111 @@ if "$parser" --quiet 'CREATE ROLE r extra'; then
 	exit 1
 fi
 
+if ! "$parser" --quiet "CREATE USER u1 IDENTIFIED BY 'p', u2 IDENTIFIED WITH caching_sha2_password BY RANDOM PASSWORD DEFAULT ROLE r REQUIRE SSL WITH MAX_QUERIES_PER_HOUR 2 PASSWORD EXPIRE INTERVAL 4 DAY ACCOUNT LOCK COMMENT 'x'"; then
+	echo "expected CREATE USER with auth and global options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE USER IF NOT EXISTS 'u'@'h' IDENTIFIED WITH 'mysql_native_password' AS '*hash'"; then
+	echo "expected CREATE USER IF NOT EXISTS with auth hash to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE USER u REQUIRE CIPHER 'c' AND ISSUER 'i' SUBJECT 's'"; then
+	echo "expected CREATE USER TLS options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE USER u PASSWORD HISTORY 1 PASSWORD REUSE INTERVAL 2 DAY PASSWORD REQUIRE CURRENT OPTIONAL FAILED_LOGIN_ATTEMPTS 3 PASSWORD_LOCK_TIME UNBOUNDED ATTRIBUTE '{}'"; then
+	echo "expected CREATE USER password-management options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE USER u IDENTIFIED WITH plugin INITIAL AUTHENTICATION IDENTIFIED BY RANDOM PASSWORD"; then
+	echo "expected CREATE USER initial authentication option to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE USER u IDENTIFIED BY 'p' AND IDENTIFIED WITH plugin AS 'h' AND IDENTIFIED BY RANDOM PASSWORD"; then
+	echo "expected CREATE USER multifactor authentication to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER'; then
+	echo "expected missing CREATE USER account list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER IF EXISTS u'; then
+	echo "expected CREATE USER IF EXISTS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER IF NOT EXISTS'; then
+	echo "expected CREATE USER IF NOT EXISTS without account list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER u IDENTIFIED'; then
+	echo "expected CREATE USER incomplete IDENTIFIED clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER u IDENTIFIED BY'; then
+	echo "expected CREATE USER IDENTIFIED BY without password to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER u IDENTIFIED BY 123'; then
+	echo "expected CREATE USER IDENTIFIED BY numeric password to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER u IDENTIFIED WITH'; then
+	echo "expected CREATE USER IDENTIFIED WITH without plugin to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE USER u IDENTIFIED BY 'p' AND IDENTIFIED BY 'q' AND IDENTIFIED BY 'r' AND IDENTIFIED BY 's'"; then
+	echo "expected CREATE USER with too many authentication factors to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER u DEFAULT ROLE'; then
+	echo "expected CREATE USER DEFAULT ROLE without role list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER u REQUIRE SSL AND'; then
+	echo "expected CREATE USER REQUIRE with trailing AND to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER u WITH MAX_QUERIES_PER_HOUR'; then
+	echo "expected CREATE USER resource option without count to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER u PASSWORD EXPIRE INTERVAL 4'; then
+	echo "expected CREATE USER incomplete PASSWORD EXPIRE INTERVAL to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER u ACCOUNT'; then
+	echo "expected CREATE USER ACCOUNT without lock state to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE USER u COMMENT 'x' extra"; then
+	echo "expected CREATE USER COMMENT with trailing tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE USER u,'; then
+	echo "expected CREATE USER with trailing comma to fail" >&2
+	exit 1
+fi
+
 if ! "$parser" --quiet 'DROP USER CURRENT_USER()'; then
 	echo "expected DROP USER CURRENT_USER() to parse" >&2
 	exit 1

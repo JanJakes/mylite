@@ -3078,6 +3078,71 @@ case "$instance_output" in
 		;;
 esac
 
+if ! "$parser" --quiet 'ALTER INSTANCE ENABLE INNODB REDO_LOG'; then
+	echo "expected ALTER INSTANCE ENABLE INNODB REDO_LOG to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'ALTER INSTANCE DISABLE INNODB REDO_LOG'; then
+	echo "expected ALTER INSTANCE DISABLE INNODB REDO_LOG to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'ALTER INSTANCE ROTATE BINLOG MASTER KEY'; then
+	echo "expected ALTER INSTANCE ROTATE BINLOG MASTER KEY to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'ALTER INSTANCE RELOAD TLS FOR CHANNEL mysql_main NO ROLLBACK ON ERROR'; then
+	echo "expected ALTER INSTANCE RELOAD TLS FOR CHANNEL mysql_main NO ROLLBACK ON ERROR to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'ALTER INSTANCE RELOAD TLS FOR CHANNEL mysql_admin'; then
+	echo "expected ALTER INSTANCE RELOAD TLS FOR CHANNEL mysql_admin to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'ALTER INSTANCE RELOAD KEYRING'; then
+	echo "expected ALTER INSTANCE RELOAD KEYRING to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER INSTANCE'; then
+	echo "expected ALTER INSTANCE without action to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER INSTANCE ENABLE REDO_LOG'; then
+	echo "expected ALTER INSTANCE ENABLE without INNODB to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER INSTANCE ROTATE MASTER KEY'; then
+	echo "expected ALTER INSTANCE ROTATE without key family to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER INSTANCE RELOAD TLS FOR CHANNEL mysql_replication'; then
+	echo "expected ALTER INSTANCE RELOAD TLS unknown channel to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER INSTANCE RELOAD TLS NO ROLLBACK'; then
+	echo "expected ALTER INSTANCE RELOAD TLS incomplete no-rollback clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER INSTANCE RELOAD TLS NO ROLLBACK ON ERROR FOR CHANNEL mysql_main'; then
+	echo "expected ALTER INSTANCE RELOAD TLS wrong clause order to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER INSTANCE RELOAD KEYRING NO ROLLBACK ON ERROR'; then
+	echo "expected ALTER INSTANCE RELOAD KEYRING trailing tokens to fail" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'RESTART NOW'; then
 	echo "expected RESTART body to fail" >&2
 	exit 1

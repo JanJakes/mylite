@@ -179,6 +179,10 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 static int validate_alter_database_statement_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
+static int validate_alter_instance_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static int token_is_alter_instance_tls_channel(const mylite_parser *parser, size_t token_index);
 static int validate_alter_resource_group_statement_syntax(const mylite_parser *parser,
                                                           size_t token_index,
                                                           size_t last_token_index);
@@ -3457,6 +3461,9 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 	    parser->tokens[token_index].parser_token == SCHEMA_T) {
 		return validate_alter_database_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (token_text_equals(parser, token_index, "INSTANCE")) {
+		return validate_alter_instance_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (token_is_logfile_group_sequence(parser, token_index, last_token_index)) {
 		return validate_alter_logfile_group_statement_syntax(parser, token_index, last_token_index);
 	}
@@ -3500,6 +3507,79 @@ static int validate_alter_database_statement_syntax(const mylite_parser *parser,
 	}
 
 	return validate_database_option_list_syntax(parser, token_index, last_token_index, 1);
+}
+
+static int validate_alter_instance_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	if (token_index > last_token_index || !token_text_equals(parser, token_index, "INSTANCE")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "ENABLE") ||
+	    token_text_equals(parser, token_index, "DISABLE")) {
+		return token_index + 2 == last_token_index &&
+		       token_text_equals(parser, token_index + 1, "INNODB") &&
+		       token_text_equals(parser, token_index + 2, "REDO_LOG");
+	}
+
+	if (token_text_equals(parser, token_index, "ROTATE")) {
+		return token_index + 3 == last_token_index &&
+		       (token_text_equals(parser, token_index + 1, "INNODB") ||
+		        token_text_equals(parser, token_index + 1, "BINLOG")) &&
+		       token_text_equals(parser, token_index + 2, "MASTER") &&
+		       parser->tokens[token_index + 3].parser_token == KEY_T;
+	}
+
+	if (!token_text_equals(parser, token_index, "RELOAD")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "KEYRING")) {
+		return token_index == last_token_index;
+	}
+	if (!token_text_equals(parser, token_index, "TLS")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "FOR")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "CHANNEL") ||
+		    !token_is_alter_instance_tls_channel(parser, token_index + 2)) {
+			return 0;
+		}
+		token_index += 3;
+	}
+
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == NO_T) {
+		if (token_index + 3 > last_token_index ||
+		    parser->tokens[token_index + 1].parser_token != ROLLBACK_T ||
+		    parser->tokens[token_index + 2].parser_token != ON_T ||
+		    !token_text_equals(parser, token_index + 3, "ERROR")) {
+			return 0;
+		}
+		token_index += 4;
+	}
+
+	return token_index > last_token_index;
+}
+
+static int token_is_alter_instance_tls_channel(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "mysql_main") ||
+	       token_text_equals(parser, token_index, "mysql_admin");
 }
 
 static int validate_alter_logfile_group_statement_syntax(const mylite_parser *parser,

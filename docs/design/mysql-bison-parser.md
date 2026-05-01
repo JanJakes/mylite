@@ -491,8 +491,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   assignment lists. Server, logfile-group, tablespace, and undo-tablespace
   metadata records only the named object, not engine-specific options or
   rename destinations.
-  Instance metadata records only the instance-level command surface, not the
-  specific backup-lock, TLS, keyring, or redo-log operation.
+  Instance metadata records only the instance-level command surface, while
+  `ALTER INSTANCE` validates documented redo-log, key-rotation, TLS reload,
+  and keyring reload action shapes.
   `KILL` metadata records single processlist-id expressions and distinguishes
   `KILL QUERY` from connection termination. `KILL` also has targeted syntax
   validation for missing targets and comma-separated target lists. `BINLOG`
@@ -548,7 +549,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   `HELP` metadata records and validates single string-literal search topics
   plus corpus-observed unquoted identifier/keyword topics.
   Instance lifecycle metadata records only the instance object kind, not
-  privilege, connection-loss, shutdown, or restart semantics.
+  privilege, connection-loss, shutdown, restart, keyring, TLS, or redo-log
+  semantics.
   `SHOW PROFILE` metadata records query targets for bare forms and numeric
   `FOR QUERY` ids, while malformed `FOR QUERY` forms stay objectless.
   `SHOW PARSE_TREE` metadata records documented `SELECT` payloads as query

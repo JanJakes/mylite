@@ -597,7 +597,9 @@ STOP replication-control forms are classified as `stop`:
 ok statements=1 kinds=stop[1:2,0:12]
 ```
 
-Server lifecycle statements expose the instance target:
+Server lifecycle statements expose the instance target. `ALTER INSTANCE`
+also validates documented redo-log, key-rotation, TLS reload, and keyring
+reload action shapes:
 
 ```text
 ok statements=1 kinds=restart[1:1,0:7]/instance

@@ -725,25 +725,29 @@ account_resource_count ::= NUMBER_LITERAL.
 account_password_option ::= PASSWORD EXPIRE.
 account_password_option ::= PASSWORD EXPIRE DEFAULT.
 account_password_option ::= PASSWORD EXPIRE NEVER.
-account_password_option ::= PASSWORD EXPIRE INTERVAL user_option_value DAY.
+account_password_option ::= PASSWORD EXPIRE INTERVAL account_password_number_value DAY.
 account_password_option ::= PASSWORD HISTORY account_default_or_value.
 account_password_option ::= PASSWORD REUSE INTERVAL account_default_or_day_value.
 account_password_option ::= PASSWORD REQUIRE CURRENT account_current_password_tail.
-account_password_option ::= FAILED_LOGIN_ATTEMPTS user_option_value.
+account_password_option ::= FAILED_LOGIN_ATTEMPTS account_password_number_value.
 account_password_option ::= PASSWORD_LOCK_TIME account_password_lock_value.
 
 account_default_or_value ::= DEFAULT.
-account_default_or_value ::= user_option_value.
+account_default_or_value ::= account_password_number_value.
 
 account_default_or_day_value ::= DEFAULT.
-account_default_or_day_value ::= user_option_value DAY.
+account_default_or_day_value ::= account_password_number_value DAY.
 
 account_current_password_tail ::= .
 account_current_password_tail ::= DEFAULT.
 account_current_password_tail ::= OPTIONAL.
 
-account_password_lock_value ::= user_option_value.
+account_password_lock_value ::= account_password_number_value.
 account_password_lock_value ::= UNBOUNDED.
+
+account_password_number_value ::= BOOLEAN_NUMBER.
+account_password_number_value ::= FACTOR_NUMBER.
+account_password_number_value ::= NUMBER_LITERAL.
 
 account_lock_option ::= ACCOUNT LOCK.
 account_lock_option ::= ACCOUNT UNLOCK.

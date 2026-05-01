@@ -43,8 +43,8 @@ token sink:
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
   clauses, TLS/resource/password/lock options, comments, attributes, and
   default-role clauses rather than generic token tails, including numeric
-  resource limits, MFA, initial-authentication, and WebAuthn registration
-  syntax.
+  resource limits and password policy counts, MFA, initial-authentication, and
+  WebAuthn registration syntax.
 - `GRANT` and `REVOKE` recognize grant/admin options, proxy forms, recipient
   authentication/resource clauses, `AS ... WITH ROLE`, and
   `IGNORE UNKNOWN USER`.

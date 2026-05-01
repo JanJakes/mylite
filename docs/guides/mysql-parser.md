@@ -66,6 +66,10 @@ name lists, and `RESTRICT` / `CASCADE` tails. `DROP TABLE` also accepts
 unqualified schema target.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
 optional `IF EXISTS` with an identifier-like target.
+`DROP SERVER`, `DROP SPATIAL REFERENCE SYSTEM`, `DROP LOGFILE GROUP`,
+`DROP TABLESPACE`, and `DROP UNDO TABLESPACE` validate their required object
+names and low-level tails, including `IF EXISTS`, numeric SRIDs, and
+`ENGINE [=] name` where MySQL syntax or the corpus requires it.
 
 Standalone `DROP INDEX` records the index target and validates the required
 `ON` table clause plus optional `ALGORITHM` and `LOCK` clauses:

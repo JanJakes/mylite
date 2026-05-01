@@ -2010,14 +2010,79 @@ case "$resource_group_output" in
 		;;
 esac
 
-server_logfile_output=$("$parser" 'CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (HOST "h"); ALTER SERVER s OPTIONS (USER "u"); DROP SERVER s; CREATE LOGFILE GROUP lg ADD UNDOFILE "u.dat"; ALTER LOGFILE GROUP lg ADD UNDOFILE "v.dat"; DROP LOGFILE GROUP lg ENGINE NDB; CREATE TABLESPACE ts ADD DATAFILE "ts.ibd"; ALTER UNDO TABLESPACE uts SET INACTIVE; DROP UNDO TABLESPACE uts')
+server_logfile_output=$("$parser" 'CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (HOST "h"); ALTER SERVER s OPTIONS (USER "u"); DROP SERVER IF EXISTS "server_one"; CREATE LOGFILE GROUP lg ADD UNDOFILE "u.dat"; ALTER LOGFILE GROUP lg ADD UNDOFILE "v.dat"; DROP LOGFILE GROUP lg ENGINE=NDB; CREATE TABLESPACE ts ADD DATAFILE "ts.ibd"; DROP TABLESPACE ts ENGINE InnoDB; ALTER UNDO TABLESPACE uts SET INACTIVE; DROP UNDO TABLESPACE undo_003 ENGINE InnoDB; DROP SPATIAL REFERENCE SYSTEM IF EXISTS 4120')
 case "$server_logfile_output" in
-	*"create"*/server:s*"alter"*/server:s*"drop"*/server:s*"create"*/logfile_group:lg*"alter"*/logfile_group:lg*"drop"*/logfile_group:lg*"create"*/tablespace:ts*"alter"*/undo_tablespace:uts*"drop"*/undo_tablespace:uts*) ;;
+	*"create"*/server:s*"alter"*/server:s*"drop"*/server:*server_one*"create"*/logfile_group:lg*"alter"*/logfile_group:lg*"drop"*/logfile_group:lg*"create"*/tablespace:ts*"drop"*/tablespace:ts*"alter"*/undo_tablespace:uts*"drop"*/undo_tablespace:undo_003*"drop"*/spatial_reference_system:4120*) ;;
 	*)
 		echo "unexpected server/logfile output: $server_logfile_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'DROP SERVER'; then
+	echo "expected DROP SERVER without a name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP SERVER s extra'; then
+	echo "expected DROP SERVER with trailing tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP SPATIAL REFERENCE SYSTEM IF EXISTS'; then
+	echo "expected DROP SPATIAL REFERENCE SYSTEM without an SRID to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP SPATIAL REFERENCE SYSTEM IF EXISTS srs'; then
+	echo "expected DROP SPATIAL REFERENCE SYSTEM with a nonnumeric SRID to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP SPATIAL REFERENCE SYSTEM 4120 extra'; then
+	echo "expected DROP SPATIAL REFERENCE SYSTEM with trailing tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP TABLESPACE'; then
+	echo "expected DROP TABLESPACE without a name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP TABLESPACE ts ENGINE'; then
+	echo "expected DROP TABLESPACE with an incomplete ENGINE clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP TABLESPACE ts ENGINE InnoDB extra'; then
+	echo "expected DROP TABLESPACE with trailing ENGINE tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP UNDO TABLESPACE'; then
+	echo "expected DROP UNDO TABLESPACE without a name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP UNDO TABLESPACE uts ENGINE InnoDB extra'; then
+	echo "expected DROP UNDO TABLESPACE with trailing ENGINE tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP LOGFILE GROUP lg'; then
+	echo "expected DROP LOGFILE GROUP without ENGINE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP LOGFILE GROUP lg ENGINE'; then
+	echo "expected DROP LOGFILE GROUP with an incomplete ENGINE clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP LOGFILE GROUP lg ENGINE NDB extra'; then
+	echo "expected DROP LOGFILE GROUP with trailing ENGINE tokens to fail" >&2
+	exit 1
+fi
 
 instance_output=$("$parser" 'RESTART; SHUTDOWN; ALTER INSTANCE ROTATE INNODB MASTER KEY; ALTER INSTANCE RELOAD TLS; LOCK INSTANCE FOR BACKUP; UNLOCK INSTANCE; LOCK TABLES t READ; ALTER TABLE t ADD COLUMN c int')
 case "$instance_output" in

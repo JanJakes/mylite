@@ -277,6 +277,10 @@ unqualified schema target.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
 optional `IF EXISTS` with an identifier-like target; the trigger and routine
 forms accept schema-qualified targets used by the corpus.
+Low-level DDL forms validate their distinctive tails: `DROP SERVER` accepts
+optional `IF EXISTS`, `DROP SPATIAL REFERENCE SYSTEM` requires a numeric SRID,
+`DROP LOGFILE GROUP` requires `ENGINE [=] name`, and `DROP TABLESPACE` /
+`DROP UNDO TABLESPACE` accept the corpus-observed optional engine tail.
 Prepared-statement names are recorded in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`; those forms
 validate handle names, `PREPARE ... FROM` sources, and `EXECUTE ... USING`

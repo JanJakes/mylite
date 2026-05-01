@@ -280,11 +280,11 @@ lists including `.*`, table-reference spans, optional single-table partition
 lists, and the clause rule that `ORDER BY` and `LIMIT` apply only to
 single-table deletes.
 `VALUES` validation checks nonempty `ROW(...)` constructors, consistent row
-arity, unsupported standalone `DEFAULT` values, ordering, limit, and direct
-set-operator tails.
+arity, unsupported standalone `DEFAULT` values, ordering, `LIMIT` including
+`OFFSET`, direct set-operator tails, and outer tails on parenthesized forms.
 `TABLE` validation checks direct and parenthesized table-value statements,
-documented `ORDER BY`, `LIMIT`, `OFFSET`, set-operator tails, and final `INTO`
-variable/export targets.
+documented `ORDER BY`, `LIMIT`, `OFFSET`, set-operator tails, final `INTO`
+variable/export targets, and outer tails after parenthesized table expressions.
 `SELECT ... INTO` and `TABLE ... INTO` assignment targets are recorded for user
 variables and local variables. `SET` system-variable targets preserve qualified
 structured names such as `keycache1.key_buffer_size`. `INTO OUTFILE` and
@@ -520,6 +520,9 @@ Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token. Parenthesized `TABLE` forms
 preserve the named table target.
+`WITH` classification walks the CTE list, including parenthesized outer query
+expressions, and rejects CTE shells that do not expose an outer DML/query
+statement.
 Plain `SELECT` and `WITH` query statements are recorded as query targets unless
 they expose a more specific `INTO` target.
 Standalone `VALUES` statements are recorded as query targets because MySQL
@@ -738,13 +741,18 @@ records the first explicit assignment target.
 - Label metadata records direct `LEAVE` / `ITERATE` targets and leading label
   declarations. It does not yet validate end labels, duplicate labels, the
   16-character label limit, or label binding.
+- Stored-routine creation spans include single compound-statement bodies such as
+  `WHILE`, `REPEAT`, `IF`, and labeled loops, not only `BEGIN ... END` blocks.
+  Compound matching ignores function calls such as `REPEAT(...)`.
 - Skips ordinary comments. MySQL executable `/*! ... */` comments are tokenized
   as SQL when ungated, or when their five- or six-digit version gate is less
   than or equal to the MySQL 8.4.9 target version.
 - Treats quoted user-variable names such as `@'my-var'`, `@"my-var"`, and
   `` @`my-var` `` as single user-variable tokens.
-- Accepts unknown statement starts as `unknown`; later grammar work should
-  reduce that surface as concrete productions land.
+- Rejects unknown statement starts after classification, except for
+  corpus-observed non-SQL character-set fixture payloads that contain non-ASCII
+  bytes before `SET NAMES`. Later grammar work should add concrete productions
+  for any valid MySQL statement family still classified as `unknown`.
 - Rejects bare known statement keywords such as `SELECT`, `CREATE`, and `SET`,
   but detailed clause-level syntax errors still require future productions.
 

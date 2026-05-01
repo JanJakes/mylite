@@ -13,8 +13,11 @@ python3 tests/check_keywords.py
 "$parser" --quiet "CREATE TABLE t1 (id bigint unsigned not null auto_increment, title varchar(255), primary key (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 "$parser" --quiet "INSERT INTO t1 (id, title) VALUES (1, 'a'), (2, 'b') ON DUPLICATE KEY UPDATE title = VALUES(title)"
 "$parser" --quiet "CREATE PROCEDURE p1() BEGIN SELECT 1; IF 1 THEN SELECT 2; END IF; END"
+"$parser" --quiet "CREATE PROCEDURE p_loop(x int) WHILE x DO SET x = x - 1; END WHILE"
+"$parser" --quiet "CREATE PROCEDURE p_repeat(x int) REPEAT SELECT REPEAT('a', 2); UNTIL x = 0 END REPEAT"
 "$parser" --quiet "WITH cte AS (SELECT 0 /*! ) */ SELECT * FROM cte a, cte b"
 "$parser" --quiet "WITH c AS (SELECT 1) UPDATE t SET a=1"
+"$parser" --quiet "WITH c AS (SELECT 1) (SELECT * FROM c) LIMIT 1"
 "$parser" --quiet "COMMIT"
 
 insert_replace_output=$("$parser" "INSERT INTO t1 () VALUES (); INSERT INTO t1 VALUES ROW(); INSERT INTO t1 SET a=1, b=DEFAULT AS new(a,b) ON DUPLICATE KEY UPDATE b = VALUES(b); INSERT INTO t1 (a) WITH c AS (SELECT 1) SELECT * FROM c; INSERT INTO t1 (SELECT 1) UNION SELECT 2; REPLACE DELAYED INTO t1 VALUES (1); REPLACE INTO t1 SET a=1")
@@ -241,6 +244,11 @@ case "$values_query_output" in
 		;;
 esac
 
+if ! "$parser" --quiet '(VALUES ROW(1), ROW(2), ROW(3)) LIMIT 1 OFFSET 1'; then
+	echo "expected parenthesized VALUES LIMIT OFFSET to parse" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'VALUES'; then
 	echo "expected missing VALUES row constructor to fail" >&2
 	exit 1
@@ -341,6 +349,11 @@ case "$table_tail_output" in
 		exit 1
 		;;
 esac
+
+if ! "$parser" --quiet '(TABLE r ORDER BY a LIMIT 5) ORDER BY -a LIMIT 4'; then
+	echo "expected parenthesized TABLE inner and outer tails to parse" >&2
+	exit 1
+fi
 
 if "$parser" --quiet 'TABLE'; then
 	echo "expected TABLE without table name to fail" >&2
@@ -4990,6 +5003,31 @@ fi
 
 if "$parser" --quiet "CREATE FOO"; then
 	echo "expected unknown CREATE object type to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "FOO"; then
+	echo "expected unknown statement to fail" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet $'聠聡聢\nSET NAMES gb18030'; then
+	echo "expected charset fixture payload shell to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "WITH c AS (SELECT 1) FOO"; then
+	echo "expected unknown WITH statement body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "WITH c AS (SELECT 1)"; then
+	echo "expected WITH without outer statement to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "()"; then
+	echo "expected unknown parenthesized statement to fail" >&2
 	exit 1
 fi
 

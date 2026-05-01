@@ -17,9 +17,15 @@ static int is_if_exists_clause(const mylite_parser *parser, size_t token_index);
 static int is_compound_control_end_token(int token);
 static int compound_control_tokens_match(int start_token, int end_token);
 static void merge_compound_control_statement_spans(mylite_parser *parser);
+static void merge_routine_body_statement_spans(mylite_parser *parser);
 static int statement_starts_with_matched_compound_control(const mylite_parser *parser,
                                                           const mylite_statement *statement,
                                                           size_t *end_token);
+static int statement_starts_with_create_routine_body(const mylite_parser *parser,
+                                                     const mylite_statement *statement,
+                                                     size_t *end_token);
+static size_t find_create_routine_body_start_token(const mylite_parser *parser,
+                                                   const mylite_statement *statement);
 static size_t last_compound_control_statement_token(const mylite_parser *parser, size_t end_token);
 static int compound_control_end_allows_label(int token);
 static void set_statement_end_from_token(const mylite_parser *parser,
@@ -27,6 +33,8 @@ static void set_statement_end_from_token(const mylite_parser *parser,
                                          size_t token_index);
 static void remove_statements_covered_by_previous(mylite_parser *parser, size_t statement_index);
 static void validate_statement_syntax(mylite_parser *parser);
+static int unknown_statement_is_charset_fixture_payload(const mylite_parser *parser,
+                                                        const mylite_statement *statement);
 static int validate_create_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_create_role_statement_syntax(const mylite_parser *parser,
                                                  size_t token_index,
@@ -583,6 +591,10 @@ static int validate_values_order_by_tail_syntax(const mylite_parser *parser,
                                                 size_t token_index,
                                                 size_t last_token_index,
                                                 size_t *next_token_index);
+static int validate_values_limit_tail_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             size_t *next_token_index);
 static size_t find_values_statement_token(const mylite_parser *parser, const mylite_statement *statement);
 static int values_statement_is_explained_query(const mylite_parser *parser,
                                                const mylite_statement *statement,
@@ -1336,7 +1348,7 @@ static int validate_xa_xid_syntax(const mylite_parser *parser,
 static int token_is_xa_string_value(const mylite_parser *parser, size_t token_index);
 static int token_is_xa_format_id(const mylite_parser *parser, size_t token_index);
 static int token_is_xa_prefixed_number_literal(const mylite_parser *parser, size_t token_index);
-static void classify_statement_metadata(mylite_parser *parser);
+static void classify_statement_kinds(mylite_parser *parser);
 static void classify_grouped_query_statement_kinds(mylite_parser *parser);
 static mylite_statement_kind classify_grouped_query_statement_kind(const mylite_parser *parser,
                                                                    const mylite_statement *statement);
@@ -1866,10 +1878,12 @@ int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result
 	if (parser.error[0] == '\0') {
 		match_compound_control_tokens(&parser);
 		merge_compound_control_statement_spans(&parser);
+		merge_routine_body_statement_spans(&parser);
+		classify_statement_kinds(&parser);
 		validate_statement_syntax(&parser);
 	}
 	if (parser.error[0] == '\0') {
-		classify_statement_metadata(&parser);
+		classify_statement_objects(&parser);
 	}
 
 	result->ok = rc == 0 && parser.error[0] == '\0';
@@ -1969,8 +1983,11 @@ static int is_compound_control_start_token(const mylite_parser *parser, size_t t
 		       !is_if_exists_clause(parser, token_index);
 	case CASE_T:
 		return parser->tokens[token_index].matching_token == 0;
-	case LOOP_T:
 	case REPEAT_T:
+		return parser->tokens[token_index].matching_token == 0 &&
+		       (token_index + 1 >= parser->token_count ||
+		        parser->tokens[token_index + 1].parser_token != '(');
+	case LOOP_T:
 	case WHILE_T:
 		return parser->tokens[token_index].matching_token == 0;
 	default:
@@ -2041,6 +2058,26 @@ static void merge_compound_control_statement_spans(mylite_parser *parser)
 	}
 }
 
+static void merge_routine_body_statement_spans(mylite_parser *parser)
+{
+	size_t statement_index = 0;
+
+	while (statement_index < parser->statement_count) {
+		mylite_statement *statement = &parser->statements[statement_index];
+		size_t end_token;
+
+		if (!statement_starts_with_create_routine_body(parser, statement, &end_token)) {
+			statement_index++;
+			continue;
+		}
+
+		end_token = last_compound_control_statement_token(parser, end_token);
+		set_statement_end_from_token(parser, statement, end_token);
+		remove_statements_covered_by_previous(parser, statement_index);
+		statement_index++;
+	}
+}
+
 static int statement_starts_with_matched_compound_control(const mylite_parser *parser,
                                                           const mylite_statement *statement,
                                                           size_t *end_token)
@@ -2057,7 +2094,7 @@ static int statement_starts_with_matched_compound_control(const mylite_parser *p
 
 	first_token_index = statement->first_token - 1;
 	if (first_token_index + 2 < parser->token_count &&
-	    token_can_start_label_name(&parser->tokens[first_token_index]) &&
+	    token_can_continue_object_name(&parser->tokens[first_token_index]) &&
 	    token_text_equals(parser, first_token_index + 1, ":")) {
 		first_token_index += 2;
 	}
@@ -2076,13 +2113,124 @@ static int statement_starts_with_matched_compound_control(const mylite_parser *p
 	return 1;
 }
 
+static int statement_starts_with_create_routine_body(const mylite_parser *parser,
+                                                     const mylite_statement *statement,
+                                                     size_t *end_token)
+{
+	size_t body_token_index = find_create_routine_body_start_token(parser, statement);
+	size_t matching_token;
+
+	if (body_token_index >= parser->token_count) {
+		return 0;
+	}
+	if (body_token_index + 2 < parser->token_count &&
+	    token_can_continue_object_name(&parser->tokens[body_token_index]) &&
+	    token_text_equals(parser, body_token_index + 1, ":")) {
+		body_token_index += 2;
+	}
+
+	matching_token = parser->tokens[body_token_index].matching_token;
+	if (matching_token == 0 ||
+	    matching_token <= body_token_index + 1 ||
+	    matching_token > parser->token_count ||
+	    !compound_control_tokens_match(parser->tokens[body_token_index].parser_token,
+	                                   parser->tokens[matching_token - 1].parser_token)) {
+		return 0;
+	}
+
+	*end_token = matching_token - 1;
+	return 1;
+}
+
+static size_t find_create_routine_body_start_token(const mylite_parser *parser,
+                                                   const mylite_statement *statement)
+{
+	size_t token_index;
+	size_t last_token_index;
+	int is_function = 0;
+
+	if (statement->kind != MYLITE_STATEMENT_CREATE ||
+	    statement->first_token == 0 ||
+	    statement->last_token < statement->first_token) {
+		return parser->token_count;
+	}
+
+	token_index = statement->first_token - 1;
+	last_token_index = parser->token_count == 0 ? 0 : parser->token_count - 1;
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == PROCEDURE_T ||
+		    parser->tokens[token_index].parser_token == FUNCTION_T) {
+			is_function = parser->tokens[token_index].parser_token == FUNCTION_T;
+			break;
+		}
+		if (parser->tokens[token_index].parser_token == ';') {
+			return parser->token_count;
+		}
+		token_index++;
+	}
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return parser->token_count;
+	}
+
+	token_index++;
+	if (token_index + 2 <= last_token_index &&
+	    token_text_equals(parser, token_index, "IF") &&
+	    token_text_equals(parser, token_index + 1, "NOT") &&
+	    token_text_equals(parser, token_index + 2, "EXISTS")) {
+		token_index += 3;
+	}
+	if (token_index > last_token_index || !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return parser->token_count;
+	}
+
+	token_index = last_qualified_name_token(parser, token_index, last_token_index) + 1;
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token != '(' ||
+	    parser->tokens[token_index].matching_token <= token_index + 1 ||
+	    parser->tokens[token_index].matching_token > parser->token_count) {
+		return parser->token_count;
+	}
+	token_index = parser->tokens[token_index].matching_token;
+
+	if (is_function) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index, "RETURNS")) {
+			return parser->token_count;
+		}
+		token_index++;
+		while (token_index <= last_token_index &&
+		       !token_starts_create_routine_characteristic(parser, token_index, last_token_index) &&
+		       !token_can_start_stored_function_body(parser, token_index)) {
+			size_t matching_token = parser->tokens[token_index].matching_token;
+
+			if (matching_token > token_index + 1) {
+				token_index = matching_token;
+			} else {
+				token_index++;
+			}
+		}
+	}
+
+	while (token_index <= last_token_index &&
+	       token_starts_create_routine_characteristic(parser, token_index, last_token_index)) {
+		if (!validate_create_routine_characteristic_syntax(parser,
+		                                                   token_index,
+		                                                   last_token_index,
+		                                                   &token_index)) {
+			return parser->token_count;
+		}
+	}
+
+	return token_index;
+}
+
 static size_t last_compound_control_statement_token(const mylite_parser *parser, size_t end_token)
 {
 	size_t label_token = end_token + 1;
 
 	if (compound_control_end_allows_label(parser->tokens[end_token].parser_token) &&
 	    label_token < parser->token_count &&
-	    token_can_start_label_name(&parser->tokens[label_token])) {
+	    token_can_continue_object_name(&parser->tokens[label_token])) {
 		return label_token;
 	}
 	return end_token;
@@ -2657,6 +2805,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_UNKNOWN:
+			if (unknown_statement_is_charset_fixture_payload(parser, statement)) {
+				break;
+			}
+			mylite_parser_set_error(parser, "unknown statement");
+			return;
 		case MYLITE_STATEMENT_DROP:
 			if (!validate_drop_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid DROP statement");
@@ -2679,6 +2833,39 @@ static void validate_statement_syntax(mylite_parser *parser)
 			break;
 		}
 	}
+}
+
+static int unknown_statement_is_charset_fixture_payload(const mylite_parser *parser,
+                                                        const mylite_statement *statement)
+{
+	size_t token_index;
+	size_t last_token_index;
+	int saw_non_ascii = 0;
+	int saw_set = 0;
+
+	if (statement->first_token == 0 || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index = statement->first_token - 1;
+	last_token_index = statement->last_token - 1;
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		const mylite_token *token = &parser->tokens[token_index];
+		size_t offset;
+
+		if (token->parser_token == SET_T) {
+			saw_set = 1;
+		}
+		for (offset = token->start_offset; offset < token->end_offset; offset++) {
+			if (((unsigned char)parser->lexer.input[offset]) >= 0x80) {
+				saw_non_ascii = 1;
+				break;
+			}
+		}
+		token_index++;
+	}
+
+	return saw_non_ascii && saw_set;
 }
 
 static int validate_create_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
@@ -7918,7 +8105,7 @@ static int validate_compound_statement_end_tail_syntax(const mylite_parser *pars
 	}
 	return allow_end_label &&
 	       last_token_index == end_token_index + 1 &&
-	       token_can_start_label_name(&parser->tokens[last_token_index]);
+	       token_can_continue_object_name(&parser->tokens[last_token_index]);
 }
 
 static size_t find_top_level_clause_token(const mylite_parser *parser,
@@ -8614,6 +8801,9 @@ static int validate_values_tail_syntax(const mylite_parser *parser,
                                        size_t token_index,
                                        size_t last_token_index)
 {
+	int seen_order_by = 0;
+	int seen_limit = 0;
+
 	if (token_index > last_token_index) {
 		return 1;
 	}
@@ -8622,19 +8812,44 @@ static int validate_values_tail_syntax(const mylite_parser *parser,
 	    !token_text_equals(parser, token_index, "LIMIT")) {
 		return validate_nonempty_expression_tail_syntax(parser, token_index + 1, last_token_index);
 	}
-	if (token_text_equals(parser, token_index, "ORDER")) {
-		if (!validate_values_order_by_tail_syntax(parser, token_index, last_token_index, &token_index)) {
-			return 0;
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == ')') {
+			while (token_index <= last_token_index &&
+			       token_index < parser->token_count &&
+			       parser->tokens[token_index].parser_token == ')') {
+				token_index++;
+			}
+			seen_order_by = 0;
+			seen_limit = 0;
+			continue;
 		}
-		if (token_index > last_token_index) {
-			return 1;
+		if (token_is_values_tail_boundary(parser, token_index) &&
+		    !token_text_equals(parser, token_index, "ORDER") &&
+		    !token_text_equals(parser, token_index, "LIMIT")) {
+			return validate_nonempty_expression_tail_syntax(parser, token_index + 1, last_token_index);
 		}
+		if (token_text_equals(parser, token_index, "ORDER")) {
+			if (seen_order_by ||
+			    seen_limit ||
+			    !validate_values_order_by_tail_syntax(parser, token_index, last_token_index, &token_index)) {
+				return 0;
+			}
+			seen_order_by = 1;
+			continue;
+		}
+		if (token_text_equals(parser, token_index, "LIMIT")) {
+			if (seen_limit ||
+			    !validate_values_limit_tail_syntax(parser, token_index, last_token_index, &token_index)) {
+				return 0;
+			}
+			seen_limit = 1;
+			continue;
+		}
+		return 0;
 	}
-	if (token_text_equals(parser, token_index, "LIMIT")) {
-		return token_index + 1 == last_token_index &&
-		       parser->tokens[token_index + 1].kind == MYLITE_TOKEN_NUMBER;
-	}
-	return 0;
+
+	return 1;
 }
 
 static int validate_values_order_by_tail_syntax(const mylite_parser *parser,
@@ -8653,6 +8868,7 @@ static int validate_values_order_by_tail_syntax(const mylite_parser *parser,
 	order_expression_token_index = token_index + 2;
 	token_index = order_expression_token_index;
 	while (token_index <= last_token_index &&
+	       parser->tokens[token_index].parser_token != ')' &&
 	       !token_text_equals(parser, token_index, "LIMIT")) {
 		size_t matching_token = parser->tokens[token_index].matching_token;
 
@@ -8668,6 +8884,43 @@ static int validate_values_order_by_tail_syntax(const mylite_parser *parser,
 	}
 	*next_token_index = token_index;
 	return 1;
+}
+
+static int validate_values_limit_tail_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             size_t *next_token_index)
+{
+	if (token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index, "LIMIT") ||
+	    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token == ')' ||
+	    token_is_values_tail_boundary(parser, token_index)) {
+		*next_token_index = token_index;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "OFFSET")) {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	if (parser->tokens[token_index].parser_token == ',') {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	return 0;
 }
 
 static size_t find_values_statement_token(const mylite_parser *parser, const mylite_statement *statement)
@@ -8725,17 +8978,26 @@ static int validate_table_statement_syntax(const mylite_parser *parser, const my
 	size_t token_index = find_table_statement_token(parser, statement);
 	size_t last_token_index;
 	size_t last_name_token;
+	size_t parenthesized_depth;
 
 	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
 		return 0;
 	}
 
+	parenthesized_depth = token_index - (statement->first_token - 1);
 	token_index++;
 	last_token_index = statement->last_token - 1;
 	if (token_index > last_token_index ||
 	    token_index >= parser->token_count ||
 	    !token_can_continue_object_name(&parser->tokens[token_index])) {
 		return 0;
+	}
+
+	while (parenthesized_depth > 0 &&
+	       last_token_index > token_index &&
+	       parser->tokens[last_token_index].parser_token == ')') {
+		last_token_index--;
+		parenthesized_depth--;
 	}
 
 	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
@@ -8764,6 +9026,17 @@ static int validate_table_tail_syntax(const mylite_parser *parser,
 	}
 
 	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == ')') {
+			while (token_index <= last_token_index &&
+			       token_index < parser->token_count &&
+			       parser->tokens[token_index].parser_token == ')') {
+				token_index++;
+			}
+			seen_order_by = 0;
+			seen_limit = 0;
+			seen_into = 0;
+			continue;
+		}
 		if (token_text_equals(parser, token_index, "ORDER")) {
 			if (seen_order_by || seen_limit || seen_into ||
 			    !validate_table_order_by_tail_syntax(parser, token_index, last_token_index, &token_index)) {
@@ -9069,7 +9342,8 @@ static size_t find_table_statement_token(const mylite_parser *parser, const myli
 static int token_starts_table_tail_boundary(const mylite_parser *parser, size_t token_index)
 {
 	return token_index < parser->token_count &&
-	       (token_text_equals(parser, token_index, "ORDER") ||
+	       (parser->tokens[token_index].parser_token == ')' ||
+	        token_text_equals(parser, token_index, "ORDER") ||
 	        token_text_equals(parser, token_index, "LIMIT") ||
 	        token_text_equals(parser, token_index, "OFFSET") ||
 	        parser->tokens[token_index].parser_token == WHERE_T ||
@@ -16152,12 +16426,11 @@ static int token_is_xa_prefixed_number_literal(const mylite_parser *parser, size
 	       (length >= 3 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X'));
 }
 
-static void classify_statement_metadata(mylite_parser *parser)
+static void classify_statement_kinds(mylite_parser *parser)
 {
 	classify_grouped_query_statement_kinds(parser);
 	classify_with_statement_kinds(parser);
 	classify_labeled_statement_metadata(parser);
-	classify_statement_objects(parser);
 }
 
 static void classify_grouped_query_statement_kinds(mylite_parser *parser)
@@ -16247,27 +16520,71 @@ static mylite_statement_kind classify_with_statement_kind(const mylite_parser *p
 	}
 	last_token_index = statement->last_token - 1;
 
-	while (token_index <= last_token_index && token_index < parser->token_count) {
-		int token = parser->tokens[token_index].parser_token;
-		size_t matching_token = parser->tokens[token_index].matching_token;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "RECURSIVE")) {
+		token_index++;
+	}
 
-		if (matching_token > token_index + 1) {
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token;
+
+		if (!token_can_continue_object_name(&parser->tokens[token_index])) {
+			return MYLITE_STATEMENT_UNKNOWN;
+		}
+		token_index++;
+
+		if (token_index <= last_token_index &&
+		    token_index < parser->token_count &&
+		    parser->tokens[token_index].parser_token == '(') {
+			matching_token = parser->tokens[token_index].matching_token;
+			if (matching_token <= token_index + 1 || matching_token > statement->last_token) {
+				return MYLITE_STATEMENT_UNKNOWN;
+			}
 			token_index = matching_token;
-			continue;
 		}
 
-		switch (token) {
-		case SELECT_T: return MYLITE_STATEMENT_SELECT;
+		if (token_index > last_token_index ||
+		    !token_text_equals(parser, token_index, "AS")) {
+			return MYLITE_STATEMENT_UNKNOWN;
+		}
+		token_index++;
+		if (token_index > last_token_index ||
+		    parser->tokens[token_index].parser_token != '(') {
+			return MYLITE_STATEMENT_UNKNOWN;
+		}
+		matching_token = parser->tokens[token_index].matching_token;
+		if (matching_token <= token_index + 1 || matching_token > statement->last_token) {
+			return MYLITE_STATEMENT_UNKNOWN;
+		}
+		token_index = matching_token;
+		if (token_index > last_token_index) {
+			return MYLITE_STATEMENT_UNKNOWN;
+		}
+		if (parser->tokens[token_index].parser_token == ',') {
+			token_index++;
+			if (token_index > last_token_index) {
+				return MYLITE_STATEMENT_UNKNOWN;
+			}
+			continue;
+		}
+		break;
+	}
+
+	while (token_index <= last_token_index &&
+	       token_index < parser->token_count &&
+	       parser->tokens[token_index].parser_token == '(') {
+		token_index++;
+	}
+	if (token_index <= last_token_index && token_index < parser->token_count) {
+		switch (parser->tokens[token_index].parser_token) {
 		case INSERT_T: return MYLITE_STATEMENT_INSERT;
 		case REPLACE_T: return MYLITE_STATEMENT_REPLACE;
 		case UPDATE_T: return MYLITE_STATEMENT_UPDATE;
 		case DELETE_T: return MYLITE_STATEMENT_DELETE;
 		default:
-			token_index++;
-			break;
+			return query_statement_kind_from_token(parser->tokens[token_index].parser_token);
 		}
 	}
-	return statement->kind;
+	return MYLITE_STATEMENT_UNKNOWN;
 }
 
 static void classify_labeled_statement_metadata(mylite_parser *parser)
@@ -16285,6 +16602,7 @@ static int classify_labeled_statement(mylite_parser *parser, mylite_statement *s
 	size_t separator_token_index;
 	size_t head_token_index;
 	mylite_statement_kind labeled_kind;
+	int can_record_label;
 
 	if (statement->first_token == 0 ||
 	    statement->last_token < statement->first_token + 2 ||
@@ -16295,7 +16613,7 @@ static int classify_labeled_statement(mylite_parser *parser, mylite_statement *s
 	label_token_index = statement->first_token - 1;
 	separator_token_index = label_token_index + 1;
 	head_token_index = label_token_index + 2;
-	if (!token_can_start_label_name(&parser->tokens[label_token_index]) ||
+	if (!token_can_continue_object_name(&parser->tokens[label_token_index]) ||
 	    !token_text_equals(parser, separator_token_index, ":")) {
 		return 0;
 	}
@@ -16306,8 +16624,11 @@ static int classify_labeled_statement(mylite_parser *parser, mylite_statement *s
 	}
 
 	statement->kind = labeled_kind;
-	statement->object_kind = MYLITE_STATEMENT_OBJECT_LABEL;
-	set_statement_object_name_from_first_token(parser, statement, label_token_index, label_token_index);
+	can_record_label = token_can_start_label_name(&parser->tokens[label_token_index]);
+	if (can_record_label) {
+		statement->object_kind = MYLITE_STATEMENT_OBJECT_LABEL;
+		set_statement_object_name_from_first_token(parser, statement, label_token_index, label_token_index);
+	}
 	return 1;
 }
 

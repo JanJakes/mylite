@@ -8,10 +8,51 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct MyliteAstChunk {
+  struct MyliteAstChunk *next;
+  size_t capacity;
+  size_t used;
+  unsigned char data[];
+} MyliteAstChunk;
+
+struct MyliteAstNode {
+  MyliteAstNodeKind kind;
+  unsigned rule_id;
+  const char *symbol_name;
+  int token;
+  int has_span;
+  size_t start;
+  size_t end;
+  size_t child_count;
+  MyliteAstNode **children;
+};
+
+struct MyliteAst {
+  MyliteAstNode *root;
+  MyliteAstChunk *chunks;
+  size_t node_count;
+  size_t allocated_bytes;
+};
+
 void *MyliteTidbParseAlloc(void *(*malloc_proc)(size_t));
 void MyliteTidbParseFree(void *parser, void (*free_proc)(void *));
-void MyliteTidbParse(void *parser, int token, int token_value, MyliteParserState *state);
+void MyliteTidbParse(void *parser, int token, MyliteAstNode *token_value,
+                     MyliteParserState *state);
 
+static MyliteParseStatus parse_sql_common(const char *sql, MyliteParseResult *result,
+                                          MyliteAst **ast_out, int build_ast);
+static int accepts_parser_shortcut(const char *sql);
+static int accepts_parser_fallback(const char *sql);
+static MyliteAst *mylite_ast_create(void);
+static void *mylite_ast_alloc(MyliteAst *ast, size_t size);
+static MyliteAstNode *mylite_ast_make_node(MyliteParserState *state,
+                                           MyliteAstNodeKind kind,
+                                           unsigned rule_id,
+                                           const char *symbol_name, int token,
+                                           size_t child_count,
+                                           MyliteAstNode *const *children);
+static void mylite_ast_set_node_span_from_children(MyliteAstNode *node);
+static void mylite_parser_state_no_memory(MyliteParserState *state);
 static int accepts_mysqltest_harness_statement(const char *sql);
 static int accepts_parenthesized_create_table_set_statement(const char *sql);
 static int accepts_alter_user_default_role_statement(const char *sql);
@@ -35,10 +76,106 @@ static int is_ascii_identifier_char(int ch);
 static int ascii_tolower(int ch);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result) {
+  return parse_sql_common(sql, result, NULL, 0);
+}
+
+MyliteParseStatus mylite_parse_sql_ast(const char *sql, MyliteAst **ast,
+                                       MyliteParseResult *result) {
+  if (ast == NULL) {
+    if (result != NULL) {
+      memset(result, 0, sizeof(*result));
+      result->status = MYLITE_PARSE_LEX_ERROR;
+      snprintf(result->message, sizeof(result->message), "AST output is null");
+    }
+    return MYLITE_PARSE_LEX_ERROR;
+  }
+  return parse_sql_common(sql, result, ast, 1);
+}
+
+const char *mylite_parse_status_name(MyliteParseStatus status) {
+  switch (status) {
+    case MYLITE_PARSE_OK:
+      return "ok";
+    case MYLITE_PARSE_SYNTAX_ERROR:
+      return "syntax_error";
+    case MYLITE_PARSE_LEX_ERROR:
+      return "lex_error";
+    case MYLITE_PARSE_NO_MEMORY:
+      return "no_memory";
+  }
+  return "unknown";
+}
+
+void mylite_ast_free(MyliteAst *ast) {
+  if (ast == NULL) {
+    return;
+  }
+  MyliteAstChunk *chunk = ast->chunks;
+  while (chunk != NULL) {
+    MyliteAstChunk *next = chunk->next;
+    free(chunk);
+    chunk = next;
+  }
+  free(ast);
+}
+
+const MyliteAstNode *mylite_ast_root(const MyliteAst *ast) {
+  return ast == NULL ? NULL : ast->root;
+}
+
+size_t mylite_ast_node_count(const MyliteAst *ast) {
+  return ast == NULL ? 0 : ast->node_count;
+}
+
+size_t mylite_ast_allocated_bytes(const MyliteAst *ast) {
+  return ast == NULL ? 0 : ast->allocated_bytes;
+}
+
+MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node) {
+  return node == NULL ? 0 : node->kind;
+}
+
+unsigned mylite_ast_node_rule_id(const MyliteAstNode *node) {
+  return node == NULL ? 0 : node->rule_id;
+}
+
+const char *mylite_ast_node_symbol_name(const MyliteAstNode *node) {
+  return node == NULL ? NULL : node->symbol_name;
+}
+
+int mylite_ast_node_token(const MyliteAstNode *node) {
+  return node == NULL ? 0 : node->token;
+}
+
+size_t mylite_ast_node_start(const MyliteAstNode *node) {
+  return node == NULL || !node->has_span ? 0 : node->start;
+}
+
+size_t mylite_ast_node_end(const MyliteAstNode *node) {
+  return node == NULL || !node->has_span ? 0 : node->end;
+}
+
+size_t mylite_ast_node_child_count(const MyliteAstNode *node) {
+  return node == NULL ? 0 : node->child_count;
+}
+
+const MyliteAstNode *mylite_ast_node_child(const MyliteAstNode *node,
+                                           size_t index) {
+  if (node == NULL || index >= node->child_count) {
+    return NULL;
+  }
+  return node->children[index];
+}
+
+static MyliteParseStatus parse_sql_common(const char *sql, MyliteParseResult *result,
+                                          MyliteAst **ast_out, int build_ast) {
   MyliteParseResult local_result;
   MyliteParseResult *target = result != NULL ? result : &local_result;
   memset(target, 0, sizeof(*target));
   target->status = MYLITE_PARSE_OK;
+  if (ast_out != NULL) {
+    *ast_out = NULL;
+  }
 
   if (sql == NULL) {
     target->status = MYLITE_PARSE_LEX_ERROR;
@@ -46,17 +183,31 @@ MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result) {
     return target->status;
   }
 
-  if (accepts_mysqltest_harness_statement(sql) ||
-      accepts_parenthesized_create_table_set_statement(sql) ||
-      accepts_alter_user_default_role_statement(sql) ||
-      accepts_create_user_default_role_statement(sql) ||
-      accepts_flush_option_list_statement(sql) ||
-      accepts_select_where_having_without_from(sql) ||
-      accepts_select_group_having_without_from(sql) ||
-      accepts_select_from_dual_group_having(sql) ||
-      accepts_select_not_like_pipes_statement(sql) ||
-      accepts_analyze_histogram_table_list(sql) ||
-      accepts_mysql_resource_group_statement(sql)) {
+  MyliteAst *ast = NULL;
+  if (build_ast) {
+    ast = mylite_ast_create();
+    if (ast == NULL) {
+      target->status = MYLITE_PARSE_NO_MEMORY;
+      snprintf(target->message, sizeof(target->message), "AST allocation failed");
+      return target->status;
+    }
+  }
+
+  MyliteParserState state;
+  memset(&state, 0, sizeof(state));
+  state.result = target;
+  state.ast = ast;
+  state.build_ast = build_ast;
+
+  if (accepts_parser_shortcut(sql)) {
+    if (build_ast) {
+      mylite_parser_state_recognized_root(&state, strlen(sql));
+      if (target->status != MYLITE_PARSE_OK) {
+        mylite_ast_free(ast);
+        return target->status;
+      }
+      *ast_out = ast;
+    }
     return target->status;
   }
 
@@ -64,12 +215,9 @@ MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result) {
   if (parser == NULL) {
     target->status = MYLITE_PARSE_NO_MEMORY;
     snprintf(target->message, sizeof(target->message), "parser allocation failed");
+    mylite_ast_free(ast);
     return target->status;
   }
-
-  MyliteParserState state;
-  memset(&state, 0, sizeof(state));
-  state.result = target;
 
   MyliteLexer lexer;
   mylite_lexer_init(&lexer, sql);
@@ -85,7 +233,15 @@ MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result) {
     }
 
     state.token_offset = token.offset;
-    MyliteTidbParse(parser, token.type, 0, &state);
+    MyliteAstNode *token_node = NULL;
+    if (build_ast && token.type != 0) {
+      token_node =
+          mylite_parser_state_token(&state, token.type, token.offset, token.length);
+      if (target->status != MYLITE_PARSE_OK) {
+        break;
+      }
+    }
+    MyliteTidbParse(parser, token.type, token_node, &state);
     if (target->status != MYLITE_PARSE_OK || token.type == 0) {
       break;
     }
@@ -94,12 +250,22 @@ MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result) {
   MyliteTidbParseFree(parser, free);
 
   if (target->status == MYLITE_PARSE_SYNTAX_ERROR &&
-      (accepts_create_procedure_with_characteristics(sql) ||
-       accepts_insert_alias_on_duplicate(sql) ||
-       accepts_set_select_into_before_lock(sql))) {
+      accepts_parser_fallback(sql)) {
     memset(target, 0, sizeof(*target));
     target->status = MYLITE_PARSE_OK;
     state.accepted = 1;
+    if (build_ast) {
+      mylite_ast_free(ast);
+      ast = mylite_ast_create();
+      if (ast == NULL) {
+        target->status = MYLITE_PARSE_NO_MEMORY;
+        snprintf(target->message, sizeof(target->message), "AST allocation failed");
+        return target->status;
+      }
+      state.ast = ast;
+      state.root = NULL;
+      mylite_parser_state_recognized_root(&state, strlen(sql));
+    }
   }
 
   if (target->status == MYLITE_PARSE_OK && !state.accepted) {
@@ -107,21 +273,178 @@ MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result) {
     snprintf(target->message, sizeof(target->message), "parser did not accept input");
   }
 
+  if (target->status == MYLITE_PARSE_OK && build_ast) {
+    if (state.root == NULL) {
+      target->status = MYLITE_PARSE_SYNTAX_ERROR;
+      snprintf(target->message, sizeof(target->message), "parser did not build AST");
+    } else {
+      *ast_out = ast;
+      return target->status;
+    }
+  }
+
+  if (target->status != MYLITE_PARSE_OK || !build_ast) {
+    mylite_ast_free(ast);
+  }
   return target->status;
 }
 
-const char *mylite_parse_status_name(MyliteParseStatus status) {
-  switch (status) {
-    case MYLITE_PARSE_OK:
-      return "ok";
-    case MYLITE_PARSE_SYNTAX_ERROR:
-      return "syntax_error";
-    case MYLITE_PARSE_LEX_ERROR:
-      return "lex_error";
-    case MYLITE_PARSE_NO_MEMORY:
-      return "no_memory";
+static int accepts_parser_shortcut(const char *sql) {
+  return accepts_mysqltest_harness_statement(sql) ||
+         accepts_parenthesized_create_table_set_statement(sql) ||
+         accepts_alter_user_default_role_statement(sql) ||
+         accepts_create_user_default_role_statement(sql) ||
+         accepts_flush_option_list_statement(sql) ||
+         accepts_select_where_having_without_from(sql) ||
+         accepts_select_group_having_without_from(sql) ||
+         accepts_select_from_dual_group_having(sql) ||
+         accepts_select_not_like_pipes_statement(sql) ||
+         accepts_analyze_histogram_table_list(sql) ||
+         accepts_mysql_resource_group_statement(sql);
+}
+
+static int accepts_parser_fallback(const char *sql) {
+  return accepts_create_procedure_with_characteristics(sql) ||
+         accepts_insert_alias_on_duplicate(sql) ||
+         accepts_set_select_into_before_lock(sql);
+}
+
+static MyliteAst *mylite_ast_create(void) {
+  MyliteAst *ast = calloc(1, sizeof(*ast));
+  return ast;
+}
+
+static void *mylite_ast_alloc(MyliteAst *ast, size_t size) {
+  enum { DEFAULT_CHUNK_SIZE = 8192 };
+  if (ast == NULL || size == 0) {
+    return NULL;
   }
-  return "unknown";
+
+  size_t alignment = sizeof(void *);
+  size_t aligned_size = (size + alignment - 1) & ~(alignment - 1);
+  MyliteAstChunk *chunk = ast->chunks;
+  if (chunk == NULL || chunk->capacity - chunk->used < aligned_size) {
+    size_t capacity = aligned_size > DEFAULT_CHUNK_SIZE ? aligned_size : DEFAULT_CHUNK_SIZE;
+    chunk = malloc(sizeof(*chunk) + capacity);
+    if (chunk == NULL) {
+      return NULL;
+    }
+    chunk->next = ast->chunks;
+    chunk->capacity = capacity;
+    chunk->used = 0;
+    ast->chunks = chunk;
+    ast->allocated_bytes += sizeof(*chunk) + capacity;
+  }
+
+  void *memory = chunk->data + chunk->used;
+  chunk->used += aligned_size;
+  memset(memory, 0, aligned_size);
+  return memory;
+}
+
+static MyliteAstNode *mylite_ast_make_node(MyliteParserState *state,
+                                           MyliteAstNodeKind kind,
+                                           unsigned rule_id,
+                                           const char *symbol_name, int token,
+                                           size_t child_count,
+                                           MyliteAstNode *const *children) {
+  if (state == NULL || !state->build_ast) {
+    return NULL;
+  }
+  if (state->result != NULL && state->result->status != MYLITE_PARSE_OK) {
+    return NULL;
+  }
+
+  MyliteAstNode *node = mylite_ast_alloc(state->ast, sizeof(*node));
+  if (node == NULL) {
+    mylite_parser_state_no_memory(state);
+    return NULL;
+  }
+
+  node->kind = kind;
+  node->rule_id = rule_id;
+  node->symbol_name = symbol_name;
+  node->token = token;
+  node->child_count = child_count;
+  if (child_count > 0) {
+    node->children = mylite_ast_alloc(state->ast, child_count * sizeof(*node->children));
+    if (node->children == NULL) {
+      mylite_parser_state_no_memory(state);
+      return NULL;
+    }
+    memcpy(node->children, children, child_count * sizeof(*node->children));
+    mylite_ast_set_node_span_from_children(node);
+  }
+  state->ast->node_count++;
+  return node;
+}
+
+static void mylite_ast_set_node_span_from_children(MyliteAstNode *node) {
+  if (node == NULL) {
+    return;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    MyliteAstNode *child = node->children[i];
+    if (child == NULL || !child->has_span) {
+      continue;
+    }
+    if (!node->has_span) {
+      node->start = child->start;
+      node->has_span = 1;
+    }
+    node->end = child->end;
+  }
+}
+
+static void mylite_parser_state_no_memory(MyliteParserState *state) {
+  if (state == NULL || state->result == NULL || state->reported_error) {
+    return;
+  }
+  state->reported_error = 1;
+  state->result->status = MYLITE_PARSE_NO_MEMORY;
+  state->result->offset = state->token_offset;
+  snprintf(state->result->message, sizeof(state->result->message),
+           "AST allocation failed near byte %zu", state->token_offset);
+}
+
+MyliteAstNode *mylite_parser_state_token(MyliteParserState *state, int token,
+                                         size_t offset, size_t length) {
+  MyliteAstNode *node =
+      mylite_ast_make_node(state, MYLITE_AST_NODE_TOKEN, 0, "token", token, 0, NULL);
+  if (node != NULL) {
+    node->has_span = 1;
+    node->start = offset;
+    node->end = offset + length;
+  }
+  return node;
+}
+
+MyliteAstNode *mylite_parser_state_reduce(MyliteParserState *state, unsigned rule_id,
+                                          const char *symbol_name, size_t child_count,
+                                          MyliteAstNode *const *children) {
+  return mylite_ast_make_node(state, MYLITE_AST_NODE_RULE, rule_id, symbol_name, 0,
+                              child_count, children);
+}
+
+void mylite_parser_state_root(MyliteParserState *state, MyliteAstNode *root) {
+  if (state == NULL || !state->build_ast) {
+    return;
+  }
+  state->root = root;
+  if (state->ast != NULL) {
+    state->ast->root = root;
+  }
+}
+
+void mylite_parser_state_recognized_root(MyliteParserState *state, size_t length) {
+  MyliteAstNode *root = mylite_parser_state_reduce(
+      state, 0, "nt_mylite_recognized_statement", 0, NULL);
+  if (root != NULL) {
+    root->has_span = 1;
+    root->start = 0;
+    root->end = length;
+    mylite_parser_state_root(state, root);
+  }
 }
 
 void mylite_parser_state_accept(MyliteParserState *state) {

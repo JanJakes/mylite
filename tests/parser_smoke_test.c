@@ -4,6 +4,7 @@
 #include <string.h>
 
 static int expect_parse_ok(const char *sql);
+static int expect_ast_ok(const char *sql, const char *root_symbol);
 
 int main(void) {
   int failures = 0;
@@ -461,6 +462,9 @@ int main(void) {
   failures += expect_parse_ok(
       "CALL mtr.add_suppression(\"Found wrong key definition in #sql.* Please do "
       "\\ALTER TABLE `#sql.*` FORCE \\\" to fix it!\"\")\"");
+  failures += expect_ast_ok("SELECT 1 + 2 AS total", "input");
+  failures += expect_ast_ok("SELECT 1 WHERE TRUE HAVING COUNT(*) = 1",
+                            "nt_mylite_recognized_statement");
 
   return failures == 0 ? 0 : 1;
 }
@@ -476,4 +480,34 @@ static int expect_parse_ok(const char *sql) {
           sql, mylite_parse_status_name(status), result.offset, result.token,
           result.message);
   return 1;
+}
+
+static int expect_ast_ok(const char *sql, const char *root_symbol) {
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr, "AST parse failed: %s\nstatus=%s offset=%zu token=%d message=%s\n",
+            sql, mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstNode *root = mylite_ast_root(ast);
+  int failed = 0;
+  if (root == NULL || strcmp(mylite_ast_node_symbol_name(root), root_symbol) != 0 ||
+      mylite_ast_node_count(ast) == 0 ||
+      mylite_ast_node_end(root) > strlen(sql)) {
+    fprintf(stderr,
+            "AST shape failed: %s\nroot=%s nodes=%zu span=%zu..%zu bytes=%zu\n",
+            sql, root == NULL ? "<null>" : mylite_ast_node_symbol_name(root),
+            mylite_ast_node_count(ast),
+            root == NULL ? 0 : mylite_ast_node_start(root),
+            root == NULL ? 0 : mylite_ast_node_end(root),
+            mylite_ast_allocated_bytes(ast));
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
 }

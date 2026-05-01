@@ -499,8 +499,8 @@ def render_lemon_grammar(
     lines = [
         "%name MyliteTidbParse",
         "%token_prefix MYLITE_TOK_",
-        "%token_type {int}",
-        "%default_type {int}",
+        "%token_type {MyliteAstNode *}",
+        "%default_type {MyliteAstNode *}",
         "%extra_argument {MyliteParserState *state}",
         "%include {",
         "#include <stdlib.h>",
@@ -528,23 +528,68 @@ def render_lemon_grammar(
     lines.append("%nonassoc INTO.")
 
     lines.append("")
-    lines.append(f"input ::= {map_nonterminal('Start')}.")
+    rule_id = 1
+    lines.append(render_lemon_rule("input", [map_nonterminal("Start")], None, rule_id, True))
+    rule_id += 1
 
     for rule in rules:
         mapped_rhs = [
             map_symbol(symbol, token_symbols, display_to_symbol, nonterminals, used_terminals)
             for symbol in rule.rhs
         ]
-        rhs_text = " ".join(mapped_rhs)
-        rendered = f"{map_nonterminal(rule.lhs)} ::= {rhs_text}."
+        precedence = None
         if rule.precedence is not None:
-            rendered += (
-                f" [{map_terminal_symbol(rule.precedence, display_to_symbol, used_terminals)}]"
-            )
-        lines.append(rendered)
+            precedence = map_terminal_symbol(rule.precedence, display_to_symbol, used_terminals)
+        lines.append(render_lemon_rule(map_nonterminal(rule.lhs), mapped_rhs, precedence, rule_id))
+        rule_id += 1
 
-    lines.extend(render_mysql_overlay_rules(used_terminals))
+    for line in render_mysql_overlay_rules(used_terminals):
+        if "::=" in line and line.strip().endswith("."):
+            lines.append(render_overlay_lemon_rule(line, rule_id))
+            rule_id += 1
+        else:
+            lines.append(line)
     return "\n".join(lines) + "\n"
+
+
+def render_lemon_rule(
+    lhs: str, rhs: list[str], precedence: str | None, rule_id: int, root: bool = False
+) -> str:
+    rhs_text = " ".join(f"{symbol}(C{i})" for i, symbol in enumerate(rhs))
+    rendered = f"{lhs}(A) ::= {rhs_text}."
+    if precedence is not None:
+        rendered += f" [{precedence}]"
+    rendered += " " + render_reduce_action(lhs, len(rhs), rule_id, root)
+    return rendered
+
+
+def render_overlay_lemon_rule(line: str, rule_id: int) -> str:
+    match = re.match(r"^(\w+)\s+::=\s*(.*?)\.$", line.strip())
+    if match is None:
+        raise ValueError(f"cannot render overlay rule {line!r}")
+    lhs = match.group(1)
+    rhs = match.group(2).split() if match.group(2) else []
+    return render_lemon_rule(lhs, rhs, None, rule_id)
+
+
+def render_reduce_action(lhs: str, child_count: int, rule_id: int, root: bool) -> str:
+    if child_count == 0:
+        action = (
+            "{ A = mylite_parser_state_reduce(state, "
+            f"{rule_id}u, \"{lhs}\", 0, NULL);"
+        )
+    else:
+        children = ", ".join(f"C{i}" for i in range(child_count))
+        action = (
+            "{ MyliteAstNode *children[] = {"
+            f"{children}"
+            "}; A = mylite_parser_state_reduce(state, "
+            f"{rule_id}u, \"{lhs}\", {child_count}, children);"
+        )
+    if root:
+        action += " mylite_parser_state_root(state, A);"
+    action += " }"
+    return action
 
 
 def render_token_map(display_to_symbol: dict[str, str], used_terminals: set[str]) -> str:

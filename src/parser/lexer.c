@@ -1301,10 +1301,10 @@ static MyliteToken scan_at_identifier(MyliteLexer *lexer) {
 }
 
 static MyliteToken make_token(MyliteLexer *lexer, int type, size_t offset) {
-  (void)lexer;
   MyliteToken token;
   token.type = type;
   token.offset = offset;
+  token.length = lexer->offset > offset ? lexer->offset - offset : 0;
   return token;
 }
 

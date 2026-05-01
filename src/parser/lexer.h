@@ -6,6 +6,7 @@
 typedef struct MyliteToken {
   int type;
   size_t offset;
+  size_t length;
 } MyliteToken;
 
 typedef struct MyliteLexer {

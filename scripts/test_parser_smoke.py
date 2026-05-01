@@ -495,6 +495,7 @@ def main() -> int:
         ("alter table t1 discard partition p0;", 1, {}),
         ("alter table t1 coalesce;", 1, {}),
         ("alter table t1 coalesce partition;", 1, {}),
+        ("alter table t1 coalesce partition many;", 1, {}),
         ("alter table t1 analyze partition;", 1, {}),
         ("alter table t1 remove;", 1, {}),
         ("alter table t1 remove partition;", 1, {}),

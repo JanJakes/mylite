@@ -1251,9 +1251,13 @@ alter_table_visibility ::= VISIBLE.
 alter_table_visibility ::= INVISIBLE.
 
 alter_table_partition_action ::= alter_table_partition_maintenance_kind PARTITION load_partition_names.
-alter_table_partition_action ::= COALESCE PARTITION ATOM.
+alter_table_partition_action ::= COALESCE PARTITION alter_table_partition_count.
 alter_table_partition_action ::= REMOVE PARTITIONING.
 alter_table_partition_action ::= EXCHANGE PARTITION load_partition_name WITH TABLE cache_table_ref alter_table_exchange_validation_tail.
+
+alter_table_partition_count ::= BOOLEAN_NUMBER.
+alter_table_partition_count ::= FACTOR_NUMBER.
+alter_table_partition_count ::= NUMBER_LITERAL.
 
 alter_table_partition_definition_action ::= PARTITION BY required_statement_tail.
 

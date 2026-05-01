@@ -2299,7 +2299,11 @@ xa_recover_xid ::= XID.
 
 xa_xid ::= ATOM.
 xa_xid ::= ATOM import_comma ATOM.
-xa_xid ::= ATOM import_comma ATOM import_comma ATOM.
+xa_xid ::= ATOM import_comma ATOM import_comma xa_format_id.
+
+xa_format_id ::= BOOLEAN_NUMBER.
+xa_format_id ::= FACTOR_NUMBER.
+xa_format_id ::= NUMBER_LITERAL.
 
 xa_start_tail ::= .
 xa_start_tail ::= xa_start_option.

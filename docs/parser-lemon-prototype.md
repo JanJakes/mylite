@@ -131,6 +131,8 @@ token sink:
   identifier grammar for local names.
 - Prepared-statement names, `PREPARE ... FROM` user-variable sources, and
   `EXECUTE ... USING` user-variable lists use the shared identifier grammar.
+- XA statements recognize one-, two-, and three-part XIDs with numeric
+  `formatID` values.
 - `CACHE INDEX` and `RESET PERSIST` use the shared identifier grammar for
   key-cache and persisted-variable names.
 - `GET DIAGNOSTICS` assignment targets use local/user-variable grammar and

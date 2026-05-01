@@ -162,11 +162,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. |  |
 | `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. | Parser recognizes table lists, lock types, and aliases using the shared identifier grammar. |
 | `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. |  |
-| `XA START` | ❌ | low | XA transaction branch start. |  |
+| `XA START` | ❌ | low | XA transaction branch start. | Parser recognizes one-, two-, and three-part XIDs with numeric `formatID` values. |
 | `XA END` | ❌ | low | XA transaction branch end. |  |
 | `XA PREPARE` | ❌ | low | XA prepare phase. |  |
-| `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. |  |
-| `XA ROLLBACK` | ❌ | low | XA rollback. |  |
+| `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. | Parser recognizes one-, two-, and three-part XIDs with numeric `formatID` values. |
+| `XA ROLLBACK` | ❌ | low | XA rollback. | Parser recognizes one-, two-, and three-part XIDs with numeric `formatID` values. |
 | `XA RECOVER` | ❌ | low | XA recovery result-set metadata. |  |
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. |  |
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. |  |

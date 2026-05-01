@@ -836,6 +836,7 @@ def main() -> int:
         ("xa recover;", 0, {"statements": "1", "replication": "1"}),
         ("xa recover convert xid;", 0, {"statements": "1", "replication": "1"}),
         ("xa start 'x' garbage;", 1, {}),
+        ("xa start 'x','b',format;", 1, {}),
         ("xa end 'x' suspend for bogus;", 1, {}),
         ("xa commit 'x' one bogus;", 1, {}),
         ("xa recover garbage garbage;", 1, {}),

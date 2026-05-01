@@ -108,7 +108,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP TRIGGER` | ❌ | high | Trigger deletion and metadata cleanup. |  |
 | `DROP VIEW` | ❌ | high | Multi-view drop and warnings. |  |
 | `RENAME TABLE` | ❌ | top | Atomic multi-table rename semantics. |  |
-| `TRUNCATE TABLE` | ❌ | top | DDL-like truncate, auto-increment reset, implicit commit, and foreign-key restrictions. |  |
+| `TRUNCATE TABLE` | ❌ | top | DDL-like truncate, auto-increment reset, implicit commit, and foreign-key restrictions. | Parser recognizes optional `TABLE` and one- or two-part table references using the shared identifier grammar. |
 | Atomic DDL | ❌ | top | Atomicity and crash-safety expectations for MySQL DDL equivalents. |  |
 | Implicit commit boundaries | ❌ | top | Statements that cause implicit commits before and/or after execution. |  |
 

@@ -582,6 +582,7 @@ def main() -> int:
         ("truncate t;", 0, {"statements": "1", "ddl": "1"}),
         ("truncate mysql.general_log;", 0, {"statements": "1", "ddl": "1"}),
         ("truncate table mysql.user;", 0, {"statements": "1", "ddl": "1"}),
+        ("truncate account.first;", 0, {"statements": "1", "ddl": "1"}),
         ("truncate t extra;", 1, {}),
         ("truncate select;", 1, {}),
         ("load data infile 'x' into table t;", 0, {"statements": "1", "utility": "1"}),

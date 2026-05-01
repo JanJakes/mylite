@@ -74,6 +74,8 @@ token sink:
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`,
   `OR REPLACE`, and documented attribute forms.
 - `DROP INDEX` recognizes MySQL's `ALGORITHM` and `LOCK` option tails.
+- `TRUNCATE TABLE` recognizes optional `TABLE` and one- or two-part table
+  references using the shared identifier grammar.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, VCPU ranges, force modifiers, and thread-id assignment lists.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes and literal,

@@ -74,8 +74,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. |  |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. | Parser records and validates the server target with a nonempty documented `OPTIONS` list; foreign-server metadata updates and diagnostics are not implemented. |
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. |  |
-| `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. |  |
-| `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. | Parser records the undo tablespace target; storage-engine behavior is not implemented. |
+| `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser records and validates the tablespace target with datafile add/drop, rename, autoextend, encryption, storage-engine, and engine-attribute clause shapes; storage-engine behavior, range checks, engine validation, state changes, and diagnostics are not implemented. |
+| `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. | Parser records and validates the undo tablespace target with required `SET ACTIVE` / `SET INACTIVE` and optional storage-engine / engine-attribute tails; storage-engine behavior, state changes, and diagnostics are not implemented. |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. | Parser records the view target while skipping optional definer account clauses; view replacement semantics are not implemented. |
 | `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. |  |
 | `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. | Parser records the event target while skipping optional definer account clauses; scheduler metadata and execution are not implemented. |
@@ -90,8 +90,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE TEMPORARY TABLE` | ❌ | high | Session-scoped table lifecycle and name shadowing. |  |
 | `CREATE TABLE ... LIKE` | ❌ | high | Exact metadata cloning rules. |  |
 | `CREATE TABLE ... SELECT` | ❌ | high | CTAS type inference, default handling, indexes, and atomicity. |  |
-| `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. |  |
-| `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax present in the MySQL 8.4 parser source. | Parser records the undo tablespace target; storage-engine behavior is not implemented. |
+| `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. | Parser records and validates the tablespace target with optional datafile, autoextend, file-block, encryption, NDB logfile-group, size, nodegroup, wait, comment, storage-engine, and engine-attribute clauses; storage-engine behavior, range checks, engine validation, and diagnostics are not implemented. |
+| `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax present in the MySQL 8.4 parser source. | Parser records and validates the undo tablespace target with required `ADD DATAFILE` plus optional autoextend, storage-engine, and engine-attribute clauses; storage-engine behavior, range checks, engine validation, and diagnostics are not implemented. |
 | `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. | Parser records the trigger target while skipping optional definer account clauses; trigger execution is not implemented. |
 | `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. | Parser records the view target while skipping optional definer account clauses; view metadata and expansion are not implemented. |
 | `DROP DATABASE` / `DROP SCHEMA` | ❌ | high | Schema removal, metadata cleanup, warnings, and embedded single-file constraints. | Parser records the schema target and validates optional `IF EXISTS` with a single unqualified schema name; metadata cleanup, default-schema effects, warnings, and embedded file constraints are not implemented. |

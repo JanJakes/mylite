@@ -2704,6 +2704,146 @@ if "$parser" --quiet "ALTER LOGFILE GROUP lg DROP UNDOFILE 'v.dat' ENGINE=NDB"; 
 	exit 1
 fi
 
+if ! "$parser" --quiet 'CREATE TABLESPACE ts'; then
+	echo "expected CREATE TABLESPACE minimal form to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE TABLESPACE ts ADD DATAFILE 'ts.ibd' AUTOEXTEND_SIZE=4M FILE_BLOCK_SIZE=16K ENCRYPTION='Y' ENGINE=InnoDB ENGINE_ATTRIBUTE='{}'"; then
+	echo "expected CREATE TABLESPACE InnoDB options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE TABLESPACE ts ADD DATAFILE 'ts.dat' USE LOGFILE GROUP lg EXTENT_SIZE=1M INITIAL_SIZE=2M MAX_SIZE=16M NODEGROUP=1 WAIT COMMENT='c' ENGINE=NDB"; then
+	echo "expected CREATE TABLESPACE NDB options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE UNDO TABLESPACE uts ADD DATAFILE 'uts.ibu' AUTOEXTEND_SIZE=8M ENGINE=InnoDB"; then
+	echo "expected CREATE UNDO TABLESPACE options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER TABLESPACE ts ADD DATAFILE 'ts2.ibd' INITIAL_SIZE=32M WAIT ENGINE=InnoDB"; then
+	echo "expected ALTER TABLESPACE ADD DATAFILE to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER TABLESPACE ts DROP DATAFILE 'ts2.ibd' WAIT ENGINE=NDB"; then
+	echo "expected ALTER TABLESPACE DROP DATAFILE to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'ALTER TABLESPACE ts RENAME TO ts2'; then
+	echo "expected ALTER TABLESPACE RENAME to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'ALTER TABLESPACE ts AUTOEXTEND_SIZE=16M'; then
+	echo "expected ALTER TABLESPACE AUTOEXTEND_SIZE to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER TABLESPACE ts AUTOEXTEND_SIZE='16M'"; then
+	echo "expected ALTER TABLESPACE quoted AUTOEXTEND_SIZE to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER TABLESPACE ts ENCRYPTION='N'"; then
+	echo "expected ALTER TABLESPACE ENCRYPTION to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER TABLESPACE ts ENGINE_ATTRIBUTE='{}'"; then
+	echo "expected ALTER TABLESPACE ENGINE_ATTRIBUTE to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'ALTER UNDO TABLESPACE uts SET ACTIVE ENGINE=InnoDB'; then
+	echo "expected ALTER UNDO TABLESPACE SET ACTIVE to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE UNDO TABLESPACE uts'; then
+	echo "expected CREATE UNDO TABLESPACE without ADD DATAFILE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TABLESPACE ts ADD DATAFILE 1'; then
+	echo "expected CREATE TABLESPACE numeric DATAFILE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE TABLESPACE ts ADD DATAFILE 'x' AUTOEXTEND_SIZE='x'"; then
+	echo "expected CREATE TABLESPACE string AUTOEXTEND_SIZE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TABLESPACE ts USE LOGFILE GROUP'; then
+	echo "expected CREATE TABLESPACE incomplete logfile group clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TABLESPACE ts USE LOGFILE GROUP lg ENGINE=NDB'; then
+	echo "expected CREATE TABLESPACE logfile group without datafile to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE TABLESPACE ts ADD DATAFILE 'x' FILE_BLOCK_SIZE 16K"; then
+	echo "expected CREATE TABLESPACE FILE_BLOCK_SIZE without equals to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE TABLESPACE ts ADD DATAFILE 'x' ENGINE"; then
+	echo "expected CREATE TABLESPACE incomplete ENGINE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE TABLESPACE ts ADD DATAFILE 'x' ENGINE=InnoDB extra"; then
+	echo "expected CREATE TABLESPACE trailing ENGINE tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLESPACE ts'; then
+	echo "expected ALTER TABLESPACE without an action to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLESPACE ts SET INACTIVE'; then
+	echo "expected ALTER TABLESPACE SET state without UNDO to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLESPACE ts ADD DATAFILE'; then
+	echo "expected ALTER TABLESPACE ADD DATAFILE without file name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "ALTER TABLESPACE ts DROP DATAFILE 'x' INITIAL_SIZE=1M"; then
+	echo "expected ALTER TABLESPACE DROP DATAFILE INITIAL_SIZE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLESPACE ts RENAME ts2'; then
+	echo "expected ALTER TABLESPACE RENAME without TO to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER UNDO TABLESPACE uts'; then
+	echo "expected ALTER UNDO TABLESPACE without SET state to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER UNDO TABLESPACE uts SET'; then
+	echo "expected ALTER UNDO TABLESPACE incomplete SET to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "ALTER UNDO TABLESPACE uts ADD DATAFILE 'x'"; then
+	echo "expected ALTER UNDO TABLESPACE ADD DATAFILE to fail" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'DROP SERVER'; then
 	echo "expected DROP SERVER without a name to fail" >&2
 	exit 1

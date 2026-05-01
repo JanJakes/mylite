@@ -281,6 +281,11 @@ static int column_definition_value_token(int token_id, MyliteToken token);
 static int column_definition_default_introducer_token(int token_id,
                                                      MyliteToken token);
 static int column_definition_on_update_value_token(MyliteToken token);
+static int column_definition_temporal_function_token(MyliteToken token);
+static int validate_column_temporal_precision_list(MyliteParseContext *ctx,
+                                                   MyliteLexer *lexer,
+                                                   MyliteToken start,
+                                                   const char *message);
 static int column_definition_charset_name_token(int token_id,
                                                 MyliteToken token);
 static int column_definition_attribute_start(int token_id, MyliteToken token,
@@ -5590,6 +5595,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
   int column_type_parameter_pending = 0;
   ColumnTypeParameterKind column_type_parameter_list_kind =
       COLUMN_TYPE_PARAMETER_NONE;
+  int column_temporal_precision_pending = 0;
   ColumnDefinitionTailState column_tail_state =
       COLUMN_DEFINITION_TAIL_READY;
   int column_tail_flags = 0;
@@ -5712,6 +5718,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       column_type_parameter_pending = 1;
       column_type_parameter_list_kind =
           column_type_parameter_kind(token_id, token);
+      column_temporal_precision_pending = 0;
       column_tail_state = COLUMN_DEFINITION_TAIL_READY;
       column_tail_flags = 0;
       continue;
@@ -6061,6 +6068,18 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
         if (consumed_type_parameters) {
           continue;
         }
+        if (column_temporal_precision_pending && token_id != ML_LP) {
+          column_temporal_precision_pending = 0;
+        }
+        if (column_temporal_precision_pending) {
+          column_temporal_precision_pending = 0;
+          if (!validate_column_temporal_precision_list(
+                  ctx, &lexer, token,
+                  "malformed CREATE TABLE column definition")) {
+            return;
+          }
+          continue;
+        }
         if (column_definition_tail_parenthesized_expression(
                 column_tail_state)) {
           if (!validate_parenthesized_expression_body(
@@ -6120,7 +6139,15 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
         column_type_parameter_pending = 1;
         column_type_parameter_list_kind =
             column_type_parameter_kind(token_id, token);
+      } else if (before_tail_state == COLUMN_DEFINITION_TAIL_AFTER_CHARACTER &&
+                 token_ascii_equal(token, "varying")) {
+        column_type_parameter_pending = 1;
+        column_type_parameter_list_kind = COLUMN_TYPE_PARAMETER_NUMERIC_ONE;
       }
+      column_temporal_precision_pending =
+          (before_tail_state == COLUMN_DEFINITION_TAIL_AFTER_DEFAULT ||
+           before_tail_state == COLUMN_DEFINITION_TAIL_AFTER_ON_UPDATE) &&
+          column_definition_temporal_function_token(token);
       if (check_pending) {
         check_table_level = 0;
       }
@@ -6517,6 +6544,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   int column_type_parameter_pending = 0;
   ColumnTypeParameterKind column_type_parameter_list_kind =
       COLUMN_TYPE_PARAMETER_NONE;
+  int column_temporal_precision_pending = 0;
   ColumnDefinitionTailState column_tail_state =
       COLUMN_DEFINITION_TAIL_READY;
   int column_tail_flags = 0;
@@ -7113,6 +7141,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
         column_type_parameter_pending = 1;
         column_type_parameter_list_kind =
             column_type_parameter_kind(token_id, token);
+        column_temporal_precision_pending = 0;
         column_tail_state = COLUMN_DEFINITION_TAIL_READY;
         column_tail_flags = 0;
         continue;
@@ -7142,6 +7171,18 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
         if (consumed_type_parameters) {
           continue;
         }
+        if (column_temporal_precision_pending && token_id != ML_LP) {
+          column_temporal_precision_pending = 0;
+        }
+        if (column_temporal_precision_pending) {
+          column_temporal_precision_pending = 0;
+          if (!validate_column_temporal_precision_list(
+                  ctx, &lexer, token,
+                  "malformed ALTER TABLE column definition")) {
+            return;
+          }
+          continue;
+        }
         if (token_id == ML_LP &&
             column_definition_tail_parenthesized_expression(
                 column_tail_state)) {
@@ -7165,7 +7206,16 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
           column_type_parameter_pending = 1;
           column_type_parameter_list_kind =
               column_type_parameter_kind(token_id, token);
+        } else if (before_tail_state ==
+                       COLUMN_DEFINITION_TAIL_AFTER_CHARACTER &&
+                   token_ascii_equal(token, "varying")) {
+          column_type_parameter_pending = 1;
+          column_type_parameter_list_kind = COLUMN_TYPE_PARAMETER_NUMERIC_ONE;
         }
+        column_temporal_precision_pending =
+            (before_tail_state == COLUMN_DEFINITION_TAIL_AFTER_DEFAULT ||
+             before_tail_state == COLUMN_DEFINITION_TAIL_AFTER_ON_UPDATE) &&
+            column_definition_temporal_function_token(token);
         continue;
       }
     }
@@ -7218,6 +7268,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       column_type_parameter_pending = 1;
       column_type_parameter_list_kind =
           column_type_parameter_kind(token_id, token);
+      column_temporal_precision_pending = 0;
       column_tail_state = COLUMN_DEFINITION_TAIL_READY;
       column_tail_flags = 0;
       continue;
@@ -7247,6 +7298,18 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       if (consumed_type_parameters) {
         continue;
       }
+      if (column_temporal_precision_pending && token_id != ML_LP) {
+        column_temporal_precision_pending = 0;
+      }
+      if (column_temporal_precision_pending) {
+        column_temporal_precision_pending = 0;
+        if (!validate_column_temporal_precision_list(
+                ctx, &lexer, token,
+                "malformed ALTER TABLE column definition")) {
+          return;
+        }
+        continue;
+      }
       if (token_id == ML_LP &&
           column_definition_tail_parenthesized_expression(
               column_tail_state)) {
@@ -7270,7 +7333,15 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
         column_type_parameter_pending = 1;
         column_type_parameter_list_kind =
             column_type_parameter_kind(token_id, token);
+      } else if (before_tail_state == COLUMN_DEFINITION_TAIL_AFTER_CHARACTER &&
+                 token_ascii_equal(token, "varying")) {
+        column_type_parameter_pending = 1;
+        column_type_parameter_list_kind = COLUMN_TYPE_PARAMETER_NUMERIC_ONE;
       }
+      column_temporal_precision_pending =
+          (before_tail_state == COLUMN_DEFINITION_TAIL_AFTER_DEFAULT ||
+           before_tail_state == COLUMN_DEFINITION_TAIL_AFTER_ON_UPDATE) &&
+          column_definition_temporal_function_token(token);
       continue;
     }
 
@@ -11171,7 +11242,8 @@ static int column_definition_tail_token(
     MyliteToken *pending_token, int *flags, int allow_position,
     const char *message) {
   if (token_id == ML_LP) {
-    if (*state == COLUMN_DEFINITION_TAIL_AFTER_COMMENT ||
+    if (*state == COLUMN_DEFINITION_TAIL_READY ||
+        *state == COLUMN_DEFINITION_TAIL_AFTER_COMMENT ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_COLLATE ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_CHARACTER ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_CHARSET ||
@@ -11777,10 +11849,39 @@ static int column_definition_default_introducer_token(int token_id,
 }
 
 static int column_definition_on_update_value_token(MyliteToken token) {
+  return column_definition_temporal_function_token(token);
+}
+
+static int column_definition_temporal_function_token(MyliteToken token) {
   return token_ascii_equal(token, "current_timestamp") ||
          token_ascii_equal(token, "localtime") ||
          token_ascii_equal(token, "localtimestamp") ||
          token_ascii_equal(token, "now");
+}
+
+static int validate_column_temporal_precision_list(MyliteParseContext *ctx,
+                                                   MyliteLexer *lexer,
+                                                   MyliteToken start,
+                                                   const char *message) {
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id = mylite_lexer_next(lexer, &token);
+
+  if (token_id == ML_RP) {
+    return 1;
+  }
+  if (!create_table_tail_option_number_token(token_id)) {
+    mylite_parser_reject(ctx, pending_token, message);
+    return 0;
+  }
+
+  pending_token = token;
+  token_id = mylite_lexer_next(lexer, &token);
+  if (token_id != ML_RP) {
+    mylite_parser_reject(ctx, pending_token, message);
+    return 0;
+  }
+  return 1;
 }
 
 static int column_definition_charset_name_token(int token_id,

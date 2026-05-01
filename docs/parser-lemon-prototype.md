@@ -196,7 +196,8 @@ token sink:
   modifiers to follow generated
   expressions, reject repeated generated-column storage modifiers, validate
   parenthesized default/generated expression bodies for dangling operators and
-  scalar comma lists, validate `ON UPDATE` temporal value starts, and
+  scalar comma lists, validate temporal precision lists for `DEFAULT`/`ON UPDATE`
+  functions, reject stray attribute parentheses, and
   column-level `REFERENCES` clauses validate optional referenced column-list
   envelopes plus referential-action tails. Trailing table options
   must start with known MySQL table-option keywords and validate selected value

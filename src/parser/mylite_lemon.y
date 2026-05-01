@@ -2357,10 +2357,10 @@ savepoint_reference ::= LABEL.
 set_statement ::= SET set_names_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET CHARACTER SET set_charset_value statement_tail. {
+set_statement ::= SET CHARACTER SET set_character_set_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET CHARSET set_charset_value statement_tail. {
+set_statement ::= SET CHARSET set_character_set_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 set_statement ::= SET PASSWORD set_password_tail. {
@@ -2388,12 +2388,28 @@ set_statement ::= SET set_assignment_scope TRANSACTION set_transaction_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 
-set_names_tail ::= NAMES set_charset_value statement_tail.
+set_names_tail ::= NAMES set_names_value set_comma_assignment_tail.
 
-set_charset_value ::= ATOM.
-set_charset_value ::= BINARY.
+set_names_value ::= DEFAULT.
+set_names_value ::= set_charset_name set_names_collate_tail.
+
+set_names_collate_tail ::= .
+set_names_collate_tail ::= COLLATE set_collation_value.
+
+set_character_set_tail ::= set_charset_value set_comma_assignment_tail.
+
+set_comma_assignment_tail ::= .
+set_comma_assignment_tail ::= import_comma set_assignment.
+
 set_charset_value ::= DEFAULT.
-set_charset_value ::= LABEL.
+set_charset_value ::= set_charset_name.
+
+set_charset_name ::= ATOM.
+set_charset_name ::= BINARY.
+set_charset_name ::= LABEL.
+
+set_collation_value ::= ATOM.
+set_collation_value ::= LABEL.
 
 set_resource_group_tail ::= .
 set_resource_group_tail ::= FOR set_resource_group_thread_list.

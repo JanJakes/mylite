@@ -2970,17 +2970,39 @@ values_row_list ::= values_row_list import_comma values_row.
 values_row ::= ROW LP values_row_contents RP.
 
 values_row_contents ::= .
-values_row_contents ::= values_row_contents values_row_token.
+values_row_contents ::= values_row_value_list.
 
-values_row_token ::= ATOM.
-values_row_token ::= LABEL.
-values_row_token ::= keyword.
-values_row_token ::= COMMA.
-values_row_token ::= LP values_row_contents RP.
-values_row_token ::= LB.
-values_row_token ::= RB.
-values_row_token ::= LC.
-values_row_token ::= RC.
+values_row_value_list ::= values_row_value.
+values_row_value_list ::= values_row_value_list COMMA values_row_value.
+
+values_row_value ::= values_row_value_tokens.
+
+values_row_value_tokens ::= values_row_value_token.
+values_row_value_tokens ::= values_row_value_tokens values_row_value_token.
+
+values_row_value_token ::= ATOM.
+values_row_value_token ::= LABEL.
+values_row_value_token ::= keyword.
+values_row_value_token ::= DOT.
+values_row_value_token ::= LP values_row_nested_tokens RP.
+values_row_value_token ::= LB.
+values_row_value_token ::= RB.
+values_row_value_token ::= LC.
+values_row_value_token ::= RC.
+
+values_row_nested_tokens ::= .
+values_row_nested_tokens ::= values_row_nested_tokens values_row_nested_token.
+
+values_row_nested_token ::= ATOM.
+values_row_nested_token ::= LABEL.
+values_row_nested_token ::= keyword.
+values_row_nested_token ::= COMMA.
+values_row_nested_token ::= DOT.
+values_row_nested_token ::= LP values_row_nested_tokens RP.
+values_row_nested_token ::= LB.
+values_row_nested_token ::= RB.
+values_row_nested_token ::= LC.
+values_row_nested_token ::= RC.
 
 values_query_tail ::= .
 values_query_tail ::= UNION values_union_tail.

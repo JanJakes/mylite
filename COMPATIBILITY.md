@@ -144,7 +144,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. |  |
 | `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. |  |
 | `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. |  |
-| `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. |  |
+| `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. | Parser recognizes comma-separated `VALUES ROW(...)` contents, `UNION`, `ORDER BY`, and `LIMIT` tails. |
 
 ### 1.3 Transactional, Locking, Replication, Prepared, and Compound Statements
 

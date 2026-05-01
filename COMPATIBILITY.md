@@ -207,8 +207,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `ALTER USER` | ❌ | medium | Authentication plugins, passwords, MFA, TLS, resources, lock/expire, comments, attributes, and default roles. | Parser recognizes account lists, authentication clauses, TLS/resource/password/lock options, comments, attributes, default roles, `USER()`, and `DISCARD OLD PASSWORD`. |
-| `CREATE USER` | ❌ | medium | User creation syntax, IF NOT EXISTS, auth factors, TLS, resources, password options, and comments. | Parser recognizes account lists, authentication clauses, default roles, TLS/resource/password/lock options, comments, and attributes. |
+| `ALTER USER` | ❌ | medium | Authentication plugins, passwords, MFA, TLS, resources, lock/expire, comments, attributes, and default roles. | Parser recognizes account lists, authentication clauses, MFA factor add/modify/drop, WebAuthn registration clauses, TLS/resource/password/lock options, comments, attributes, default roles, `USER()`, and `DISCARD OLD PASSWORD`. |
+| `CREATE USER` | ❌ | medium | User creation syntax, IF NOT EXISTS, auth factors, TLS, resources, password options, and comments. | Parser recognizes account lists, authentication clauses, multi-factor authentication chains, initial-authentication clauses, default roles, TLS/resource/password/lock options, comments, and attributes. |
 | `CREATE ROLE` | ❌ | medium | Role creation syntax and metadata. |  |
 | `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
 | `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. |  |

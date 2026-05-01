@@ -3,6 +3,7 @@
 %token_type {MyliteToken}
 %default_type {MyliteToken}
 %fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NONE NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PACK_KEYS PAGE PARSE_TREE PARTITION PHASE PRECEDES PRESERVE RANDOM READS REAL REBUILD REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM FACTOR_NUMBER.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -442,7 +443,7 @@ create_user_list ::= create_user_list import_comma create_user_spec.
 create_user_spec ::= drop_account_name create_user_auth_tail.
 
 create_user_auth_tail ::= .
-create_user_auth_tail ::= user_auth_option.
+create_user_auth_tail ::= create_user_auth_option.
 
 alter_user_list ::= alter_user_spec.
 alter_user_list ::= alter_user_list import_comma alter_user_spec.
@@ -456,6 +457,8 @@ alter_user_account ::= USER LP RP.
 alter_user_account_option_tail ::= .
 alter_user_account_option_tail ::= user_auth_option alter_user_auth_tail.
 alter_user_account_option_tail ::= DISCARD OLD PASSWORD.
+alter_user_account_option_tail ::= alter_user_factor_option.
+alter_user_account_option_tail ::= account_registration_option.
 
 alter_user_auth_tail ::= .
 alter_user_auth_tail ::= REPLACE user_auth_value alter_user_retain_tail.
@@ -464,10 +467,53 @@ alter_user_auth_tail ::= RETAIN CURRENT PASSWORD.
 alter_user_retain_tail ::= .
 alter_user_retain_tail ::= RETAIN CURRENT PASSWORD.
 
-user_auth_option ::= IDENTIFIED BY user_auth_value.
+create_user_auth_option ::= user_auth_option create_user_mfa_tail.
+create_user_auth_option ::= IDENTIFIED WITH user_auth_plugin account_initial_auth_option.
+
+create_user_mfa_tail ::= .
+create_user_mfa_tail ::= AND create_user_factor_auth_option create_user_third_factor_tail.
+
+create_user_third_factor_tail ::= .
+create_user_third_factor_tail ::= AND create_user_factor_auth_option.
+
+create_user_factor_auth_option ::= user_auth_option.
+
+account_initial_auth_option ::= INITIAL AUTHENTICATION IDENTIFIED BY user_auth_value.
+account_initial_auth_option ::= INITIAL AUTHENTICATION IDENTIFIED WITH user_auth_plugin AS user_auth_value.
+
+user_auth_option ::= account_password_auth_option.
 user_auth_option ::= IDENTIFIED WITH user_auth_plugin.
 user_auth_option ::= IDENTIFIED WITH user_auth_plugin BY user_auth_value.
 user_auth_option ::= IDENTIFIED WITH user_auth_plugin AS user_auth_value.
+
+account_password_auth_option ::= IDENTIFIED BY user_auth_value.
+
+alter_user_factor_option ::= alter_user_factor_add_option alter_user_factor_add_tail.
+alter_user_factor_option ::= alter_user_factor_modify_option alter_user_factor_modify_tail.
+alter_user_factor_option ::= alter_user_factor_drop_option alter_user_factor_drop_tail.
+
+alter_user_factor_add_tail ::= .
+alter_user_factor_add_tail ::= alter_user_factor_add_option.
+
+alter_user_factor_modify_tail ::= .
+alter_user_factor_modify_tail ::= alter_user_factor_modify_option.
+
+alter_user_factor_drop_tail ::= .
+alter_user_factor_drop_tail ::= alter_user_factor_drop_option.
+
+alter_user_factor_add_option ::= ADD account_factor account_factor_auth_option.
+alter_user_factor_modify_option ::= MODIFY account_factor account_factor_auth_option.
+alter_user_factor_drop_option ::= DROP account_factor.
+
+account_factor_auth_option ::= account_password_auth_option.
+account_factor_auth_option ::= IDENTIFIED WITH user_auth_plugin BY user_auth_value.
+account_factor_auth_option ::= IDENTIFIED WITH user_auth_plugin AS user_auth_value.
+
+account_registration_option ::= account_factor INITIATE REGISTRATION.
+account_registration_option ::= account_factor FINISH REGISTRATION SET CHALLENGE_RESPONSE AS user_auth_value.
+account_registration_option ::= account_factor UNREGISTER.
+
+account_factor ::= FACTOR_NUMBER FACTOR.
 
 user_auth_value ::= user_option_value.
 user_auth_value ::= RANDOM PASSWORD.
@@ -554,9 +600,10 @@ account_lock_option ::= ACCOUNT LOCK.
 account_lock_option ::= ACCOUNT UNLOCK.
 
 user_option_value ::= ATOM.
+user_option_value ::= FACTOR_NUMBER.
 user_option_value ::= LABEL.
 
-%fallback ATOM ACCOUNT ATTRIBUTE CIPHER DAY EXPIRE FAILED_LOGIN_ATTEMPTS HISTORY INTERVAL ISSUER MAX_CONNECTIONS_PER_HOUR MAX_QUERIES_PER_HOUR MAX_UPDATES_PER_HOUR MAX_USER_CONNECTIONS NEVER OLD OPTIONAL PASSWORD_LOCK_TIME REUSE SUBJECT UNBOUNDED X509.
+%fallback ATOM ATTRIBUTE AUTHENTICATION CHALLENGE_RESPONSE CIPHER DAY EXPIRE FAILED_LOGIN_ATTEMPTS FINISH HISTORY INITIAL INITIATE INTERVAL ISSUER MAX_CONNECTIONS_PER_HOUR MAX_QUERIES_PER_HOUR MAX_UPDATES_PER_HOUR MAX_USER_CONNECTIONS NEVER OLD OPTIONAL PASSWORD_LOCK_TIME REGISTRATION REUSE SUBJECT UNBOUNDED UNREGISTER X509.
 
 create_resource_group ::= GROUP.
 
@@ -704,6 +751,7 @@ drop_host_dot_tail ::= .
 drop_host_dot_tail ::= drop_host_dot_tail DOT drop_account_ident.
 
 drop_account_ident ::= ATOM.
+drop_account_ident ::= ACCOUNT.
 drop_account_ident ::= LABEL.
 drop_account_ident ::= MASTER.
 drop_account_ident ::= ROLE.
@@ -1315,6 +1363,7 @@ cache_table_ref ::= cache_name_part.
 cache_table_ref ::= cache_name_part DOT cache_name_part.
 
 cache_name_part ::= ATOM.
+cache_name_part ::= ACCOUNT.
 cache_name_part ::= CASCADE.
 cache_name_part ::= COMPONENT.
 cache_name_part ::= COUNT.
@@ -1869,6 +1918,7 @@ call_name ::= call_target.
 call_name ::= call_target ATOM call_target.
 
 call_target ::= ATOM.
+call_target ::= ACCOUNT.
 call_target ::= LABEL.
 
 call_arguments ::= .
@@ -2797,6 +2847,7 @@ expression_start ::= LB.
 expression_start ::= LC.
 
 expression_start_keyword ::= BINARY.
+expression_start_keyword ::= ACCOUNT.
 expression_start_keyword ::= CASE.
 expression_start_keyword ::= CHARSET.
 expression_start_keyword ::= COLLATION.
@@ -3314,12 +3365,18 @@ keyword ::= UNCOMMITTED.
 keyword ::= ACCOUNT.
 keyword ::= ADMIN.
 keyword ::= ATTRIBUTE.
+keyword ::= AUTHENTICATION.
+keyword ::= CHALLENGE_RESPONSE.
 keyword ::= CIPHER.
 keyword ::= DAY.
 keyword ::= DISCARD.
 keyword ::= EXPIRE.
+keyword ::= FACTOR.
 keyword ::= FAILED_LOGIN_ATTEMPTS.
+keyword ::= FINISH.
 keyword ::= HISTORY.
+keyword ::= INITIAL.
+keyword ::= INITIATE.
 keyword ::= INTERVAL.
 keyword ::= ISSUER.
 keyword ::= MAX_CONNECTIONS_PER_HOUR.
@@ -3332,9 +3389,11 @@ keyword ::= OPTION.
 keyword ::= OPTIONAL.
 keyword ::= PASSWORD_LOCK_TIME.
 keyword ::= PROXY.
+keyword ::= REGISTRATION.
 keyword ::= REUSE.
 keyword ::= SUBJECT.
 keyword ::= UNBOUNDED.
+keyword ::= UNREGISTER.
 keyword ::= UNKNOWN.
 keyword ::= X509.
 
@@ -3570,12 +3629,18 @@ keyword_not_select_clause ::= UNCOMMITTED.
 keyword_not_select_clause ::= ACCOUNT.
 keyword_not_select_clause ::= ADMIN.
 keyword_not_select_clause ::= ATTRIBUTE.
+keyword_not_select_clause ::= AUTHENTICATION.
+keyword_not_select_clause ::= CHALLENGE_RESPONSE.
 keyword_not_select_clause ::= CIPHER.
 keyword_not_select_clause ::= DAY.
 keyword_not_select_clause ::= DISCARD.
 keyword_not_select_clause ::= EXPIRE.
+keyword_not_select_clause ::= FACTOR.
 keyword_not_select_clause ::= FAILED_LOGIN_ATTEMPTS.
+keyword_not_select_clause ::= FINISH.
 keyword_not_select_clause ::= HISTORY.
+keyword_not_select_clause ::= INITIAL.
+keyword_not_select_clause ::= INITIATE.
 keyword_not_select_clause ::= INTERVAL.
 keyword_not_select_clause ::= ISSUER.
 keyword_not_select_clause ::= MAX_CONNECTIONS_PER_HOUR.
@@ -3588,8 +3653,10 @@ keyword_not_select_clause ::= OPTION.
 keyword_not_select_clause ::= OPTIONAL.
 keyword_not_select_clause ::= PASSWORD_LOCK_TIME.
 keyword_not_select_clause ::= PROXY.
+keyword_not_select_clause ::= REGISTRATION.
 keyword_not_select_clause ::= REUSE.
 keyword_not_select_clause ::= SUBJECT.
 keyword_not_select_clause ::= UNBOUNDED.
+keyword_not_select_clause ::= UNREGISTER.
 keyword_not_select_clause ::= UNKNOWN.
 keyword_not_select_clause ::= X509.

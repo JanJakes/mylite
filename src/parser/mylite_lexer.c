@@ -393,6 +393,11 @@ static int lexer_number(MyliteLexer *lexer, MyliteToken *token) {
   }
 
   token->length = lexer->offset - token->offset;
+  if (token->length == 1 &&
+      (token->start[0] == '2' || token->start[0] == '3')) {
+    return ML_FACTOR_NUMBER;
+  }
+
   return ML_ATOM;
 }
 
@@ -518,6 +523,7 @@ static int keyword_token(const MyliteToken *token) {
       {"AS", ML_AS},
       {"AT", ML_AT},
       {"ATTRIBUTE", ML_ATTRIBUTE},
+      {"AUTHENTICATION", ML_AUTHENTICATION},
       {"AUTO_INCREMENT", ML_AUTO_INCREMENT},
       {"AVG_ROW_LENGTH", ML_AVG_ROW_LENGTH},
       {"BACKUP", ML_BACKUP},
@@ -537,6 +543,7 @@ static int keyword_token(const MyliteToken *token) {
       {"CHANGED", ML_CHANGED},
       {"CHANNEL", ML_CHANNEL},
       {"CHAIN", ML_CHAIN},
+      {"CHALLENGE_RESPONSE", ML_CHALLENGE_RESPONSE},
       {"CHARACTER", ML_CHARACTER},
       {"CHARSET", ML_CHARSET},
       {"CHECK", ML_CHECK},
@@ -628,11 +635,13 @@ static int keyword_token(const MyliteToken *token) {
       {"EXTENDED", ML_EXTENDED},
       {"FAST", ML_FAST},
       {"FAULTS", ML_FAULTS},
+      {"FACTOR", ML_FACTOR},
       {"FAILED_LOGIN_ATTEMPTS", ML_FAILED_LOGIN_ATTEMPTS},
       {"FETCH", ML_FETCH},
       {"FILE_BLOCK_SIZE", ML_FILE_BLOCK_SIZE},
       {"FIELDS", ML_FIELDS},
       {"FILTER", ML_FILTER},
+      {"FINISH", ML_FINISH},
       {"FIRST", ML_FIRST},
       {"FLUSH", ML_FLUSH},
       {"FOLLOWS", ML_FOLLOWS},
@@ -668,6 +677,8 @@ static int keyword_token(const MyliteToken *token) {
       {"INFILE", ML_INFILE},
       {"IMPORT", ML_IMPORT},
       {"INDEX", ML_INDEX},
+      {"INITIAL", ML_INITIAL},
+      {"INITIATE", ML_INITIATE},
       {"INSTANCE", ML_INSTANCE},
       {"INNODB", ML_INNODB},
       {"INSERT", ML_INSERT},
@@ -800,6 +811,7 @@ static int keyword_token(const MyliteToken *token) {
       {"REMOVE", ML_REMOVE},
       {"REORGANIZE", ML_REORGANIZE},
       {"REPAIR", ML_REPAIR},
+      {"REGISTRATION", ML_REGISTRATION},
       {"REQUIRE", ML_REQUIRE},
       {"REPEAT", ML_REPEAT},
       {"REPEATABLE", ML_REPEATABLE},
@@ -892,6 +904,7 @@ static int keyword_token(const MyliteToken *token) {
       {"UNDEFINED", ML_UNDEFINED},
       {"UNCOMMITTED", ML_UNCOMMITTED},
       {"UNBOUNDED", ML_UNBOUNDED},
+      {"UNREGISTER", ML_UNREGISTER},
       {"UNKNOWN", ML_UNKNOWN},
       {"UNTIL", ML_UNTIL},
       {"UNINSTALL", ML_UNINSTALL},

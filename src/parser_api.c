@@ -31,6 +31,7 @@ static int validate_use_statement_syntax(const mylite_parser *parser, const myli
 static int validate_truncate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_call_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_call_argument_list_syntax(const mylite_parser *parser, size_t open_token_index);
+static int validate_import_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1035,6 +1036,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_IMPORT:
+			if (!validate_import_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid IMPORT statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_KILL:
 			if (!validate_kill_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid KILL statement");
@@ -1215,6 +1222,39 @@ static int validate_call_argument_list_syntax(const mylite_parser *parser, size_
 		expecting_argument = 0;
 	}
 	return !expecting_argument;
+}
+
+static int validate_import_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+	int expecting_file = 1;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	last_token_index = statement->last_token - 1;
+	if (token_index + 3 > last_token_index ||
+	    parser->tokens[token_index + 1].parser_token != TABLE_T ||
+	    parser->tokens[token_index + 2].parser_token != FROM_T) {
+		return 0;
+	}
+
+	for (token_index += 3; token_index <= last_token_index; token_index++) {
+		if (expecting_file) {
+			if (parser->tokens[token_index].kind != MYLITE_TOKEN_STRING) {
+				return 0;
+			}
+			expecting_file = 0;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		expecting_file = 1;
+	}
+	return !expecting_file;
 }
 
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

@@ -420,14 +420,44 @@ case "$table_lock_output" in
 		;;
 esac
 
-import_output=$("$parser" "IMPORT TABLE FROM '/tmp/a.sdi', '/tmp/b.sdi'; IMPORT TABLE FROM @file")
+import_output=$("$parser" "IMPORT TABLE FROM '/tmp/a.sdi', '/tmp/b.sdi'")
 case "$import_output" in
-	*"import"*/sdi_file:"'/tmp/a.sdi'"*"import[8:11"*) ;;
+	*"import"*/sdi_file:"'/tmp/a.sdi'"*) ;;
 	*)
 		echo "unexpected IMPORT output: $import_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet "IMPORT TABLE"; then
+	echo "expected missing IMPORT FROM clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "IMPORT TABLE FROM"; then
+	echo "expected missing IMPORT SDI file to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "IMPORT FROM '/tmp/a.sdi'"; then
+	echo "expected IMPORT without TABLE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "IMPORT TABLE FROM @file"; then
+	echo "expected variable IMPORT SDI file to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "IMPORT TABLE FROM '/tmp/a.sdi' extra"; then
+	echo "expected trailing IMPORT tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "IMPORT TABLE FROM '/tmp/a.sdi',"; then
+	echo "expected trailing IMPORT comma to fail" >&2
+	exit 1
+fi
 
 call_output=$("$parser" 'CALL p; CALL p(); CALL `db`.`p`(@a, 1 + 2); CALL 15298_1(); CALL `select`()')
 case "$call_output" in

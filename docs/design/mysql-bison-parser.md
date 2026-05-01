@@ -381,7 +381,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   without modeling optimizer plans or result rows.
   `UNLOCK TABLES` metadata records the table object kind without a name because
   the statement releases the session's table locks rather than naming tables.
-  `IMPORT TABLE` metadata records only the first string SDI file target.
+  `IMPORT TABLE` metadata records only the first string SDI file target and
+  validates the `IMPORT TABLE FROM` string-file list shape.
   `CALL` metadata records the procedure name and validates optional
   parenthesized argument-list shape, but does not classify parameters or
   OUT/INOUT binding semantics.

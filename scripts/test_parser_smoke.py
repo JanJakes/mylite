@@ -483,6 +483,7 @@ def main() -> int:
         ("show profile;", 0, {"statements": "1", "show": "1"}),
         ("show profile cpu, block io for query 15 limit 2 offset 2;", 0, {"statements": "1", "show": "1"}),
         ("show profile context switches;", 0, {"statements": "1", "show": "1"}),
+        ("show profile memory, page faults, source, swaps, ipc;", 0, {"statements": "1", "show": "1"}),
         ("show extended index from t;", 0, {"statements": "1", "show": "1"}),
         ("show full processlist;", 0, {"statements": "1", "show": "1"}),
         ("show global status like 'Threads%';", 0, {"statements": "1", "show": "1"}),

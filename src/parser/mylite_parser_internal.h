@@ -48,9 +48,6 @@ void mylite_parser_require_alter_table_action_start(MyliteParseContext *ctx,
 void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
                                         MyliteToken token,
                                         const char *prefix);
-void mylite_parser_require_profile_type(MyliteParseContext *ctx,
-                                        MyliteToken first,
-                                        MyliteToken second);
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token);
 

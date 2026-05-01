@@ -94,6 +94,7 @@ token sink:
   suffixes.
 - Top-level `SELECT` rejects adjacent bare operands and dangling operators in
   `WHERE`, `HAVING`, and `QUALIFY` expression tails.
+- Top-level `SELECT` rejects dangling operators in `GROUP BY` expression lists.
 - Top-level `SELECT` rejects adjacent bare operands and dangling operators in
   `ORDER BY` expression lists.
 - Top-level `SELECT` requires `INTO OUTFILE` and `INTO DUMPFILE` to include

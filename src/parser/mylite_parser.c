@@ -608,6 +608,9 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int window_state = SELECT_WINDOW_NONE;
   int group_clause = 0;
   int rollup_state = SELECT_ROLLUP_NONE;
+  int group_previous_top_token_id = 0;
+  int group_previous_was_operator = 1;
+  MyliteToken group_previous_top_token = {0};
   int order_clause = 0;
   int order_direction_state = SELECT_ORDER_DIRECTION_NONE;
   int order_previous_top_token_id = 0;
@@ -659,6 +662,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
           order_previous_top_token_id = token_id;
           order_previous_top_token = token;
           order_previous_was_operator = 0;
+        }
+        if (depth == 0 && group_clause) {
+          group_previous_top_token_id = token_id;
+          group_previous_top_token = token;
+          group_previous_was_operator = 0;
         }
         if (depth == 0 && expression_clause != SELECT_EXPRESSION_NONE) {
           expression_previous_top_token_id = token_id;
@@ -1474,6 +1482,17 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         expression_previous_top_token = token;
         continue;
       }
+      if (clause_phase == SELECT_PHASE_GROUP) {
+        if (group_previous_was_operator) {
+          mylite_parser_reject(ctx, group_previous_top_token,
+                               "incomplete SELECT GROUP BY clause");
+          return;
+        }
+        group_previous_top_token_id = 0;
+        group_previous_was_operator = 1;
+        group_previous_top_token = token;
+        continue;
+      }
       if (clause_phase == SELECT_PHASE_ORDER) {
         order_clause = 1;
         order_previous_top_token_id = 0;
@@ -1513,6 +1532,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
 
     if (group_clause && token_id == ML_WITH) {
+      if (group_previous_was_operator) {
+        mylite_parser_reject(ctx, group_previous_top_token,
+                             "incomplete SELECT GROUP BY clause");
+        return;
+      }
       rollup_state = SELECT_ROLLUP_AFTER_WITH;
       pending_token = token;
       continue;
@@ -1527,6 +1551,15 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       }
       expression_clause = SELECT_EXPRESSION_NONE;
       expression_match_list = 0;
+    }
+
+    if (group_clause && select_rollup_boundary(token_id, token)) {
+      if (group_previous_was_operator) {
+        mylite_parser_reject(ctx, group_previous_top_token,
+                             "incomplete SELECT GROUP BY clause");
+        return;
+      }
+      group_clause = 0;
     }
 
     if (token_id == ML_LOCK) {
@@ -1653,6 +1686,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       from_clause = 0;
       group_clause = token_id == ML_GROUP;
       order_clause = token_id == ML_ORDER;
+      if (group_clause) {
+        group_previous_top_token_id = 0;
+        group_previous_was_operator = 1;
+        group_previous_top_token = token;
+      }
       if (order_clause) {
         order_previous_top_token_id = 0;
         order_previous_was_operator = 1;
@@ -1732,6 +1770,15 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       need_operand = 1;
       operand_clause = token_id;
       pending_token = token;
+      continue;
+    }
+    if (group_clause) {
+      if (!query_expression_token(
+              ctx, token_id, token, &depth, &group_previous_top_token_id,
+              &group_previous_top_token, &group_previous_was_operator,
+              "malformed SELECT GROUP BY clause")) {
+        return;
+      }
       continue;
     }
     if (select_set_operator(token_id)) {
@@ -1840,6 +1887,9 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   } else if (order_clause && order_previous_was_operator) {
     mylite_parser_reject(ctx, order_previous_top_token,
                          "incomplete SELECT ORDER BY clause");
+  } else if (group_clause && group_previous_was_operator) {
+    mylite_parser_reject(ctx, group_previous_top_token,
+                         "incomplete SELECT GROUP BY clause");
   } else if (depth == 0 && expression_clause != SELECT_EXPRESSION_NONE &&
              expression_previous_was_operator) {
     mylite_parser_reject(ctx, expression_previous_top_token,

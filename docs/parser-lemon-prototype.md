@@ -33,7 +33,8 @@ token sink:
   `SONAME` values.
 - `CREATE VIEW` and `ALTER VIEW` recognize algorithm, definer, SQL security,
   column lists, view body starts, and explicit check-option tails for
-  non-plain-`SELECT` body forms, including parenthesized query expressions.
+  non-plain-`SELECT` body forms, including parenthesized query expressions and
+  `VALUES` set operands.
 - `CALL` recognizes one- and two-part routine names plus comma-separated
   argument lists with nested expression bodies.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before

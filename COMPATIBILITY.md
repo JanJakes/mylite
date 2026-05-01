@@ -55,7 +55,7 @@ Priority is a delivery-order signal, not a relaxation of correctness:
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| Lemon parser prototype | 🟡 | top | Lean C parser foundation with MySQL-aware lexing, statement-family recognition, permissive corpus-fragment mode, and corpus acceptance. | Current grammar recognizes statement starts plus selected closed keyword subgrammars, but does not yet implement full clause-level MySQL syntax. Verified against the WordPress SQLite Database Integration MySQL query corpus, with a strict-mode fixture for known corpus fragments. See [docs/parser-lemon-prototype.md](docs/parser-lemon-prototype.md). |
+| Lemon parser prototype | 🟡 | top | Lean C parser foundation with MySQL-aware lexing, statement-family recognition, permissive corpus-fragment mode, and corpus acceptance. | Current grammar recognizes statement starts plus selected closed keyword subgrammars, including view check-option tails for `TABLE`, `VALUES`, and parenthesized query-expression forms, but does not yet implement full clause-level MySQL syntax. Verified against the WordPress SQLite Database Integration MySQL query corpus, with a strict-mode fixture for known corpus fragments. See [docs/parser-lemon-prototype.md](docs/parser-lemon-prototype.md). |
 
 ## 1. SQL Statement Surface
 

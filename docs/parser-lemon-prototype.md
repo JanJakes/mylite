@@ -315,7 +315,8 @@ token sink:
   the shared identifier grammar, `BINARY`, `DEFAULT`, optional collation, and
   comma-following variable assignments.
 - `SET` variable assignments recognize comma-separated assignment lists with
-  optional per-assignment scopes and nested value expressions.
+  optional per-assignment scopes and nested value expressions, while rejecting
+  repeated top-level `SET` continuations after completed assignment values.
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form
   with user-variable targets, while `INTO` is still rejected for
   `FOR CONNECTION` plans.

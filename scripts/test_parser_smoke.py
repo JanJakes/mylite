@@ -1951,6 +1951,8 @@ def main() -> int:
         ("set global max_connections;", 1, {}),
         ("set a=1,,b=2;", 1, {}),
         ("set a=;", 1, {}),
+        ("set a=1 set b=2;", 1, {}),
+        ("set @a=1 set @b=2;", 1, {}),
         ("set persist a=1, persist;", 1, {}),
         ("set names;", 1, {}),
         ("set names utf8mb4 extra;", 1, {}),

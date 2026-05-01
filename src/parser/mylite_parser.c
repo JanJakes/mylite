@@ -170,6 +170,8 @@ static int dml_assignment_value_allows_function(int token_id,
                                                 MyliteToken token);
 static int dml_clause_operand_boundary(int token_id);
 static int dml_limit_option_token(int token_id);
+static int set_statement_previous_value_terminal(int token_id,
+                                                 MyliteToken token);
 static int dml_row_alias_token(int token_id);
 static int dml_values_unclosed_string_fragment(int token_id,
                                                MyliteToken token);
@@ -2734,6 +2736,63 @@ void mylite_parser_validate_kill_statement(MyliteParseContext *ctx,
     mylite_parser_reject(ctx, pending_token, "incomplete KILL target");
   } else if (state == KILL_IN_CALL) {
     mylite_parser_reject(ctx, pending_token, "incomplete KILL target");
+  }
+}
+
+void mylite_parser_validate_set_statement(MyliteParseContext *ctx,
+                                          MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  int token_id;
+  int saw_statement = 0;
+  int depth = 0;
+  int previous_top_token_id = 0;
+  MyliteToken previous_top_token = start;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+        previous_top_token_id = token_id;
+        previous_top_token = token;
+      }
+      continue;
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+        if (depth == 0) {
+          previous_top_token_id = token_id;
+          previous_top_token = token;
+        }
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      break;
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      depth++;
+      previous_top_token_id = token_id;
+      previous_top_token = token;
+      continue;
+    }
+
+    if (token_id == ML_SET && previous_top_token_id != ML_CHARACTER &&
+        set_statement_previous_value_terminal(previous_top_token_id,
+                                              previous_top_token)) {
+      mylite_parser_reject(ctx, token, "malformed SET statement");
+      return;
+    }
+
+    previous_top_token_id = token_id;
+    previous_top_token = token;
   }
 }
 
@@ -6540,6 +6599,18 @@ static int dml_limit_option_token(int token_id) {
   return token_id == ML_ATOM || token_id == ML_BOOLEAN_NUMBER ||
          token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
          token_id == ML_QUOTED_ID;
+}
+
+static int set_statement_previous_value_terminal(int token_id,
+                                                 MyliteToken token) {
+  (void) token;
+  return token_id == ML_AT_HOST || token_id == ML_AT_SIGN ||
+         token_id == ML_BOOLEAN_NUMBER ||
+         token_id == ML_DOUBLE_QUOTED_STRING ||
+         token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
+         token_id == ML_QUOTED_ID || token_id == ML_RB ||
+         token_id == ML_RC || token_id == ML_RP ||
+         token_id == ML_STRING_LITERAL;
 }
 
 static int dml_row_alias_token(int token_id) {

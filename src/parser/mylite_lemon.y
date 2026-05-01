@@ -3796,34 +3796,44 @@ rollback_to_savepoint_tail ::= WORK TO SAVEPOINT savepoint_reference.
 
 savepoint_reference ::= cache_name_part.
 
-set_statement ::= SET set_names_tail. {
+set_statement ::= SET(A) set_names_tail. {
+  mylite_parser_validate_set_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET CHARACTER SET set_character_set_tail. {
+set_statement ::= SET(A) CHARACTER SET set_character_set_tail. {
+  mylite_parser_validate_set_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET CHARSET set_character_set_tail. {
+set_statement ::= SET(A) CHARSET set_character_set_tail. {
+  mylite_parser_validate_set_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET PASSWORD set_password_tail. {
+set_statement ::= SET(A) PASSWORD set_password_tail. {
+  mylite_parser_validate_set_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET ROLE set_role_tail. {
+set_statement ::= SET(A) ROLE set_role_tail. {
+  mylite_parser_validate_set_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET DEFAULT ROLE set_default_role_tail. {
+set_statement ::= SET(A) DEFAULT ROLE set_default_role_tail. {
+  mylite_parser_validate_set_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET RESOURCE create_resource_group cache_name_part set_resource_group_tail. {
+set_statement ::= SET(A) RESOURCE create_resource_group cache_name_part set_resource_group_tail. {
+  mylite_parser_validate_set_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET TRANSACTION set_transaction_tail. {
+set_statement ::= SET(A) TRANSACTION set_transaction_tail. {
+  mylite_parser_validate_set_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET set_assignment_list. {
+set_statement ::= SET(A) set_assignment_list. {
+  mylite_parser_validate_set_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET set_transaction_scope TRANSACTION set_transaction_tail. {
+set_statement ::= SET(A) set_transaction_scope TRANSACTION set_transaction_tail. {
+  mylite_parser_validate_set_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 

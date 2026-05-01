@@ -1896,9 +1896,17 @@ load_duplicate_tail ::= IGNORE.
 load_duplicate_tail ::= REPLACE.
 
 load_data_options ::= load_partition_tail load_character_set_tail load_compression_tail load_fields_tail load_lines_tail load_ignore_tail load_column_list_tail load_post_options_tail.
-load_data_options ::= load_partition_tail load_character_set_tail load_compression_tail load_fields_tail load_lines_tail load_ignore_tail load_column_list_tail SET update_assignment_start.
+load_data_options ::= load_partition_tail load_character_set_tail load_compression_tail load_fields_tail load_lines_tail load_ignore_tail load_column_list_tail SET load_assignment_list.
 load_xml_options ::= load_character_set_tail load_compression_tail load_xml_rows_tail load_ignore_tail load_column_list_tail load_post_options_tail.
-load_xml_options ::= load_character_set_tail load_compression_tail load_xml_rows_tail load_ignore_tail load_column_list_tail SET update_assignment_start.
+load_xml_options ::= load_character_set_tail load_compression_tail load_xml_rows_tail load_ignore_tail load_column_list_tail SET load_assignment_list.
+
+load_assignment_list ::= load_assignment.
+load_assignment_list ::= load_assignment_list import_comma load_assignment.
+
+load_assignment ::= update_assignment_target set_assignment_operator set_assignment_value(A). {
+  mylite_parser_validate_expression_from(
+      ctx, A, "malformed LOAD assignment");
+}
 
 load_partition_tail ::= .
 load_partition_tail ::= load_partition LP load_partition_names RP.

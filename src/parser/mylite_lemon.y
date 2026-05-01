@@ -2033,8 +2033,7 @@ reset_channel_tail ::= FOR reset_channel reset_channel_name.
 
 reset_channel ::= CHANNEL.
 
-reset_channel_name ::= ATOM.
-reset_channel_name ::= LABEL.
+reset_channel_name ::= replication_channel_name.
 
 purge_statement ::= PURGE purge_log_kind LOGS purge_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
@@ -2120,8 +2119,9 @@ change_option_value_content ::= RC.
 change_for_channel_tail ::= .
 change_for_channel_tail ::= FOR reset_channel change_channel_name.
 
-change_channel_name ::= ATOM.
-change_channel_name ::= LABEL.
+change_channel_name ::= replication_channel_name.
+
+replication_channel_name ::= cache_name_part.
 
 xa_statement ::= XA xa_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);

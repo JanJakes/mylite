@@ -173,10 +173,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. |  |
 | `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |
 | `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. | Parser recognizes MySQL 8.4 filter names, parenthesized rule lists, empty rule lists, rewrite-db pairs, and optional channel clauses. |
-| `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. |  |
-| `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. |  |
-| `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. |  |
-| `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. |  |
+| `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. | Parser recognizes source options and channel names using the shared identifier grammar. |
+| `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. | Parser recognizes `ALL` and channel names using the shared identifier grammar. |
+| `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. | Parser recognizes thread, until, connection, and channel clauses with channel names using the shared identifier grammar. |
+| `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. | Parser recognizes thread and channel clauses with channel names using the shared identifier grammar. |
 | `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. |  |
 | `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. |  |
 | `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. | Parser recognizes prepared-statement names and user-variable sources using the shared identifier grammar. |

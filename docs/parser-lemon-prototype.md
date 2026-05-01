@@ -96,6 +96,8 @@ token sink:
   partition names use the shared identifier grammar.
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
+- Replication channel clauses share one identifier grammar across
+  `START`/`STOP`/`RESET`/`SHOW`/`FLUSH` and `CHANGE ... FOR CHANNEL`.
 - `SHOW PARSE_TREE` recognizes SELECT and WITH SELECT inputs as a
   debug/development SHOW form.
 - `SHOW ENGINE ... STATUS|LOGS|MUTEX` recognizes engine names using the shared

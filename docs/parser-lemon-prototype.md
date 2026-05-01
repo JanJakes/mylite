@@ -348,6 +348,7 @@ token sink:
   handler conditions. Handler bodies recognize compound blocks and stored
   program starts for flow-control, cursor, DML, diagnostics, and return
   statements.
+- Local-variable `DECLARE` statements validate `DEFAULT` expression tails.
 - Stored-program `IF`/`ELSEIF`, `WHILE`, `REPEAT ... UNTIL`, `WHEN`, and
   `RETURN` validate expression tails at their statement boundaries.
 - Prepared-statement names and `EXECUTE ... USING` user-variable lists use the

@@ -189,7 +189,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DEALLOCATE PREPARE` / `DROP PREPARE` | ❌ | high | Prepared statement cleanup. | Parser recognizes prepared-statement names using the shared identifier grammar. |
 | `BEGIN ... END` | ❌ | medium | Compound statement block scope for stored programs and events. |  |
 | Statement labels | ❌ | medium | Label declaration, LEAVE/ITERATE binding, and duplicate-label diagnostics. |  |
-| `DECLARE` local variables | ❌ | medium | Stored-program local variable declarations, defaults, and scope. |  |
+| `DECLARE` local variables | ❌ | medium | Stored-program local variable declarations, defaults, and scope. | Parser recognizes comma-separated local variable names and validates `DEFAULT` expression tails. |
 | `DECLARE ... CONDITION` | ❌ | medium | Named condition declarations. | Parser recognizes named conditions with numeric MySQL error codes or five-character `SQLSTATE [VALUE]` literals. |
 | `DECLARE ... CURSOR` | ❌ | medium | Cursor declaration over SELECT statements. |  |
 | `DECLARE ... HANDLER` | ❌ | medium | CONTINUE/EXIT handler declarations for SQLSTATE, errors, warnings, and NOT FOUND. | Parser recognizes numeric MySQL error codes, named conditions, `SQLSTATE [VALUE]` literals, `SQLWARNING`, `NOT FOUND`, `SQLEXCEPTION`, and handler bodies starting with compound blocks, flow-control, cursor, DML, diagnostics, and return statements. |

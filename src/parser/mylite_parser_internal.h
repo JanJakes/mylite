@@ -59,6 +59,8 @@ void mylite_parser_validate_expression_until_from(MyliteParseContext *ctx,
                                                   MyliteToken start,
                                                   int boundary_token_id,
                                                   const char *message);
+void mylite_parser_validate_declare_statement(MyliteParseContext *ctx,
+                                               MyliteToken start);
 void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
                                                    MyliteToken start);
 void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,

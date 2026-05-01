@@ -4286,6 +4286,65 @@ static int expression_start_follows_double_at_assignment(
   return 0;
 }
 
+void mylite_parser_validate_declare_statement(MyliteParseContext *ctx,
+                                              MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int depth = 0;
+  int after_default = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      if (after_default) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete DECLARE DEFAULT expression");
+      }
+      return;
+    }
+
+    if (after_default) {
+      mylite_parser_validate_expression_from(
+          ctx, token, "malformed DECLARE DEFAULT expression");
+      return;
+    }
+
+    if (token_id == ML_DEFAULT) {
+      after_default = 1;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      depth++;
+    }
+  }
+
+  if (after_default) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete DECLARE DEFAULT expression");
+  }
+}
+
 void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
                                                    MyliteToken start) {
   enum {

@@ -4417,7 +4417,8 @@ case_statement ::= CASE statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-declare_statement ::= DECLARE declare_identifier_list declare_type_start statement_tail. {
+declare_statement ::= DECLARE(A) declare_identifier_list declare_type_start statement_tail. {
+  mylite_parser_validate_declare_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 declare_statement ::= DECLARE declare_name CONDITION FOR declare_condition_value. {

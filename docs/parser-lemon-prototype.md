@@ -84,6 +84,8 @@ token sink:
   `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;
   `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body.
+  Table-level `ENGINE_ATTRIBUTE` and `SECONDARY_ENGINE_ATTRIBUTE` changes
+  require string literals.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize schema names, charset,
   collation, `'Y'`/`'N'` encryption, and alter-only `READ ONLY` option clauses
   with MySQL's `DEFAULT`/`0`/`1` value grammar.

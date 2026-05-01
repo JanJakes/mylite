@@ -1395,10 +1395,12 @@ alter_table_table_option ::= alter_table_default_boolean_table_option drop_index
 alter_table_table_option ::= STATS_SAMPLE_PAGES drop_index_option_equals_tail alter_table_default_number_value.
 alter_table_table_option ::= COMMENT drop_index_option_equals_tail string_literal.
 alter_table_table_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
+alter_table_table_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
 alter_table_table_option ::= ENGINE drop_index_option_equals_tail alter_table_table_option_value.
 alter_table_table_option ::= INSERT_METHOD drop_index_option_equals_tail alter_table_table_option_value.
 alter_table_table_option ::= ROW_FORMAT drop_index_option_equals_tail alter_table_table_option_value.
 alter_table_table_option ::= SECONDARY_ENGINE drop_index_option_equals_tail alter_table_table_option_value.
+alter_table_table_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
 
 alter_table_number_table_option ::= AUTO_INCREMENT.
 alter_table_number_table_option ::= AVG_ROW_LENGTH.

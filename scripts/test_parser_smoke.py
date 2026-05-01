@@ -193,6 +193,8 @@ def main() -> int:
         ("create spatial reference system 4120;", 1, {}),
         ("create or replace spatial reference system if not exists 4120 name 'x' definition 'x';", 1, {}),
         ("create spatial reference system 4120 bogus 'x';", 1, {}),
+        ("create spatial reference system 4120 name;", 1, {}),
+        ("create spatial reference system 4120 organization 'EPSG';", 1, {}),
         ("create nonsense;", 1, {}),
         ("drop table if exists t;", 0, {"statements": "1", "ddl": "1"}),
         ("drop table if exists db1.t1, t2;", 0, {"statements": "1", "ddl": "1"}),

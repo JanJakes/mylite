@@ -47,8 +47,8 @@ token sink:
   bodies; `ALTER EVENT` also recognizes renames.
 - `ALTER FUNCTION` and `ALTER PROCEDURE` recognize routine characteristics:
   comments, `LANGUAGE SQL`, SQL data access, and SQL security.
-- Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`
-  and `OR REPLACE` variants.
+- Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`,
+  `OR REPLACE`, and documented attribute forms.
 - `DROP INDEX` recognizes MySQL's `ALGORITHM` and `LOCK` option tails.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, VCPU ranges, force modifiers, and thread-id assignment lists.

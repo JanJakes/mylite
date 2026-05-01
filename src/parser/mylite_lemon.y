@@ -157,8 +157,8 @@ create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_r
 create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref create_index_tail.
 create_tail ::= LOGFILE create_logfile_group cache_name_part create_logfile_group_tail.
 create_tail ::= RESOURCE create_resource_group cache_name_part create_resource_group_tail.
-create_tail ::= SPATIAL create_reference create_system create_if_not_exists_tail cache_name_part create_srs_attribute_start statement_token create_options_tail.
-create_tail ::= OR REPLACE SPATIAL create_reference create_system cache_name_part create_srs_attribute_start statement_token create_options_tail.
+create_tail ::= SPATIAL create_reference create_system create_if_not_exists_tail cache_name_part create_srs_attributes.
+create_tail ::= OR REPLACE SPATIAL create_reference create_system cache_name_part create_srs_attributes.
 create_tail ::= SERVER cache_name_part create_server_tail.
 create_tail ::= TABLESPACE cache_name_part create_tablespace_tail.
 create_tail ::= UNDO TABLESPACE cache_name_part create_undo_tablespace_tail.
@@ -740,10 +740,13 @@ create_reference ::= REFERENCE.
 
 create_system ::= SYSTEM.
 
-create_srs_attribute_start ::= DEFINITION.
-create_srs_attribute_start ::= DESCRIPTION.
-create_srs_attribute_start ::= NAME.
-create_srs_attribute_start ::= ORGANIZATION.
+create_srs_attributes ::= create_srs_attribute.
+create_srs_attributes ::= create_srs_attributes create_srs_attribute.
+
+create_srs_attribute ::= NAME ATOM.
+create_srs_attribute ::= DEFINITION ATOM.
+create_srs_attribute ::= DESCRIPTION ATOM.
+create_srs_attribute ::= ORGANIZATION ATOM IDENTIFIED BY ATOM.
 
 drop_statement ::= DROP drop_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);

@@ -99,6 +99,8 @@ void mylite_parser_require_identifier_atom(MyliteParseContext *ctx,
                                            MyliteToken token);
 void mylite_parser_require_charset_name_atom(MyliteParseContext *ctx,
                                              MyliteToken token);
+void mylite_parser_require_use_target_atom(MyliteParseContext *ctx,
+                                           MyliteToken token);
 void mylite_parser_reject(MyliteParseContext *ctx, MyliteToken token,
                           const char *message);
 

@@ -3077,7 +3077,32 @@ use_statement ::= USE use_target. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 
-use_target ::= cache_name_part.
+use_target ::= ATOM(A). {
+  mylite_parser_require_use_target_atom(ctx, A);
+}
+use_target ::= AT_EMPTY.
+use_target ::= AT_EMPTY AT_EMPTY.
+use_target ::= SELECT.
+use_target ::= ACCOUNT.
+use_target ::= CASCADE.
+use_target ::= COMPONENT.
+use_target ::= COUNT.
+use_target ::= DATABASE.
+use_target ::= LABEL.
+use_target ::= DEFAULT.
+use_target ::= ENGINE.
+use_target ::= EVENTS.
+use_target ::= FIRST.
+use_target ::= FULL.
+use_target ::= GRANTS.
+use_target ::= PLUGIN.
+use_target ::= PROCESSLIST.
+use_target ::= RESTRICT.
+use_target ::= TABLES.
+use_target ::= TABLESPACE.
+use_target ::= TRIGGERS.
+use_target ::= USER.
+use_target ::= VARIABLES.
 use_target ::= STAR.
 
 handler_statement ::= HANDLER(A) handler_name handler_operation. {

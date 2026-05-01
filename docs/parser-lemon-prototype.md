@@ -350,7 +350,8 @@ token sink:
   statements.
 - Local-variable `DECLARE` statements validate `DEFAULT` expression tails.
 - Cursor `DECLARE` statements validate `SELECT`, `TABLE`, `VALUES`, `WITH`,
-  and parenthesized query bodies.
+  and parenthesized query bodies, including CTE wrappers before the outer query
+  body.
 - Stored-program `IF`/`ELSEIF`, `WHILE`, `REPEAT ... UNTIL`, `WHEN`, and
   `RETURN` validate expression tails at their statement boundaries.
 - Prepared-statement names and `EXECUTE ... USING` user-variable lists use the

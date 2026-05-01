@@ -4449,7 +4449,7 @@ declare_statement ::= DECLARE declare_name CURSOR FOR VALUES(A) statement_tail. 
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 declare_statement ::= DECLARE declare_name CURSOR FOR WITH(A) statement_tail. {
-  mylite_parser_validate_select_statement_from(ctx, A);
+  mylite_parser_validate_with_statement_from(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 declare_statement ::= DECLARE declare_name CURSOR FOR LP(A) statement_tail. {

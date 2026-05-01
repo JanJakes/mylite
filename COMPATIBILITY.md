@@ -191,7 +191,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Statement labels | ❌ | medium | Label declaration, LEAVE/ITERATE binding, and duplicate-label diagnostics. |  |
 | `DECLARE` local variables | ❌ | medium | Stored-program local variable declarations, defaults, and scope. | Parser recognizes comma-separated local variable names and validates `DEFAULT` expression tails. |
 | `DECLARE ... CONDITION` | ❌ | medium | Named condition declarations. | Parser recognizes named conditions with numeric MySQL error codes or five-character `SQLSTATE [VALUE]` literals. |
-| `DECLARE ... CURSOR` | ❌ | medium | Cursor declaration over SELECT statements. | Parser recognizes cursor declarations over `SELECT`, `TABLE`, `VALUES`, `WITH`, and parenthesized query bodies, reusing query-tail validation. |
+| `DECLARE ... CURSOR` | ❌ | medium | Cursor declaration over SELECT statements. | Parser recognizes cursor declarations over `SELECT`, `TABLE`, `VALUES`, `WITH`, and parenthesized query bodies, reusing query-tail validation and scanning CTE wrappers before validating the outer query body. |
 | `DECLARE ... HANDLER` | ❌ | medium | CONTINUE/EXIT handler declarations for SQLSTATE, errors, warnings, and NOT FOUND. | Parser recognizes numeric MySQL error codes, named conditions, `SQLSTATE [VALUE]` literals, `SQLWARNING`, `NOT FOUND`, `SQLEXCEPTION`, and handler bodies starting with compound blocks, flow-control, cursor, DML, diagnostics, and return statements. |
 | `CASE` statement | ❌ | medium | Stored-program CASE statement semantics. | Parser validates `WHEN` condition expression tails before `THEN`. |
 | `IF` statement | ❌ | medium | Stored-program IF/ELSEIF/ELSE semantics. | Parser validates `IF`/`ELSEIF` condition expression tails before `THEN`. |
@@ -317,7 +317,7 @@ while preserving common MySQL expression forms.
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | Query expression grammar | ❌ | top | Parenthesized query expressions, query terms, and query primary rules. |  |
-| `WITH` common table expressions | ❌ | high | Non-recursive CTEs, column lists, name shadowing, and scope. | Parser recognizes CTE lists and routes main `SELECT`, `TABLE`, `VALUES`, parenthesized query, and DML bodies through their existing syntax validators. |
+| `WITH` common table expressions | ❌ | high | Non-recursive CTEs, column lists, name shadowing, and scope. | Parser recognizes CTE lists and routes main `SELECT`, `TABLE`, `VALUES`, parenthesized query, and DML bodies through their existing syntax validators, including EXPLAIN and cursor-declaration wrappers. |
 | `WITH RECURSIVE` | ❌ | high | Recursive CTE execution, cycle behavior, limits, and type inference. |  |
 | Projection list | ❌ | top | Expression aliases, wildcard expansion, qualified wildcards, duplicate names, and metadata. |  |
 | Table references | ❌ | top | Base tables, aliases, schema qualifiers, derived tables, table functions, and parentheses. |  |

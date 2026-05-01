@@ -98,13 +98,13 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP FUNCTION` (stored) | ❌ | medium | Stored-function deletion and routine metadata cleanup. |  |
 | `DROP FUNCTION` (loadable) | ❌ | low | Loadable-function deregistration syntax. |  |
 | `DROP INDEX` | ❌ | top | Standalone index removal semantics. | Parser recognizes optional `ALGORITHM` and `LOCK` clauses. |
-| `DROP LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
+| `DROP LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes optional `ENGINE`/`STORAGE ENGINE` and `WAIT`/`NO_WAIT` option lists. |
 | `DROP PROCEDURE` | ❌ | medium | Stored-procedure deletion and metadata cleanup. |  |
 | `DROP SERVER` | ❌ | low | Foreign server metadata deletion. |  |
 | `DROP SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system deletion and dependency checks. | Parser recognizes numeric SRS ids and optional `IF EXISTS`. |
 | `DROP TABLE` | ❌ | top | Multi-table drop, temporary tables, foreign-key checks, and warnings. |  |
-| `DROP TABLESPACE` | ❌ | low | Tablespace deletion syntax and diagnostics. | Parser recognizes optional `ENGINE [=] name` tails. |
-| `DROP UNDO TABLESPACE` | ❌ | low | Undo tablespace deletion syntax present in the MySQL 8.4 parser source. | Parser recognizes optional `ENGINE [=] name` tails. |
+| `DROP TABLESPACE` | ❌ | low | Tablespace deletion syntax and diagnostics. | Parser recognizes optional `ENGINE`/`STORAGE ENGINE` and `WAIT`/`NO_WAIT` option lists. |
+| `DROP UNDO TABLESPACE` | ❌ | low | Undo tablespace deletion syntax present in the MySQL 8.4 parser source. | Parser recognizes optional `ENGINE`/`STORAGE ENGINE` and `WAIT`/`NO_WAIT` option lists. |
 | `DROP TRIGGER` | ❌ | high | Trigger deletion and metadata cleanup. |  |
 | `DROP VIEW` | ❌ | high | Multi-view drop and warnings. |  |
 | `RENAME TABLE` | ❌ | top | Atomic multi-table rename semantics. |  |

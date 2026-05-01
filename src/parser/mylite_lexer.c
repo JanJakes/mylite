@@ -828,6 +828,7 @@ static int keyword_token(const MyliteToken *token) {
       {"NEXT", ML_NEXT},
       {"NODEGROUP", ML_NODEGROUP},
       {"NO", ML_NO},
+      {"NO_WAIT", ML_NO_WAIT},
       {"NO_WRITE_TO_BINLOG", ML_NO_WRITE_TO_BINLOG},
       {"NONE", ML_NONE},
       {"NOT", ML_NOT},

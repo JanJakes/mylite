@@ -73,10 +73,11 @@ token sink:
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   string-literal file names, documented NDB logfile options with numeric
   size/nodegroup values, and required `ENGINE` clauses.
-- `CREATE TABLESPACE`, `CREATE UNDO TABLESPACE`, `ALTER TABLESPACE`, and
-  undo/drop tablespace tails recognize documented string-literal data files,
-  numeric size, `'Y'`/`'N'` encryption, optional-equals engine, and
-  string-literal attribute clauses.
+- `CREATE TABLESPACE`, `CREATE UNDO TABLESPACE`, and `ALTER TABLESPACE`
+  recognize documented string-literal data files, numeric size, `'Y'`/`'N'`
+  encryption, optional-equals engine, and string-literal attribute clauses.
+  Drop tablespace/logfile tails recognize MySQL option lists including
+  `ENGINE`, `STORAGE ENGINE`, `WAIT`, and `NO_WAIT`.
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
   `OPTIONS` names, string-valued options, and numeric ports.
 - `CREATE EVENT` recognizes scheduler status tails including

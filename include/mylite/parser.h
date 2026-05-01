@@ -122,6 +122,32 @@ size_t mylite_ast_statement_target_name_start_at(const MyliteAst *ast,
 size_t mylite_ast_statement_target_name_end_at(const MyliteAst *ast,
                                                size_t statement_index,
                                                size_t target_index);
+size_t mylite_ast_create_table_column_count(const MyliteAst *ast,
+                                            size_t statement_index);
+size_t mylite_ast_create_table_column_start(const MyliteAst *ast,
+                                            size_t statement_index,
+                                            size_t column_index);
+size_t mylite_ast_create_table_column_end(const MyliteAst *ast,
+                                          size_t statement_index,
+                                          size_t column_index);
+size_t mylite_ast_create_table_column_name_start(const MyliteAst *ast,
+                                                 size_t statement_index,
+                                                 size_t column_index);
+size_t mylite_ast_create_table_column_name_end(const MyliteAst *ast,
+                                               size_t statement_index,
+                                               size_t column_index);
+size_t mylite_ast_create_table_column_type_start(const MyliteAst *ast,
+                                                 size_t statement_index,
+                                                 size_t column_index);
+size_t mylite_ast_create_table_column_type_end(const MyliteAst *ast,
+                                               size_t statement_index,
+                                               size_t column_index);
+size_t mylite_ast_create_table_column_options_start(const MyliteAst *ast,
+                                                    size_t statement_index,
+                                                    size_t column_index);
+size_t mylite_ast_create_table_column_options_end(const MyliteAst *ast,
+                                                  size_t statement_index,
+                                                  size_t column_index);
 MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node);
 unsigned mylite_ast_node_rule_id(const MyliteAstNode *node);
 const char *mylite_ast_node_symbol_name(const MyliteAstNode *node);

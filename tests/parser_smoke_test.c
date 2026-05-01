@@ -11,6 +11,13 @@ typedef struct ExpectedAstTarget {
   const char *name;
 } ExpectedAstTarget;
 
+typedef struct ExpectedCreateTableColumn {
+  const char *definition;
+  const char *name;
+  const char *type;
+  const char *options;
+} ExpectedCreateTableColumn;
+
 static int expect_parse_ok(const char *sql);
 static int expect_ast_ok(const char *sql, const char *root_symbol);
 static int expect_ast_statements(const char *sql, size_t count,
@@ -22,6 +29,9 @@ static int expect_ast_target(const char *sql, MyliteStatementKind statement_kind
 static int expect_ast_targets(const char *sql, MyliteStatementKind statement_kind,
                               const ExpectedAstTarget *targets,
                               size_t target_count);
+static int expect_create_table_columns(const char *sql,
+                                       const ExpectedCreateTableColumn *columns,
+                                       size_t column_count);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
 
@@ -593,6 +603,17 @@ int main(void) {
         MYLITE_STATEMENT_UPDATE, targets,
         sizeof(targets) / sizeof(targets[0]));
   }
+  {
+    const ExpectedCreateTableColumn columns[] = {
+        {"id INT NOT NULL AUTO_INCREMENT", "id", "INT",
+         "NOT NULL AUTO_INCREMENT"},
+        {"name VARCHAR(50) DEFAULT 'x'", "name", "VARCHAR(50)",
+         "DEFAULT 'x'"}};
+    failures += expect_create_table_columns(
+        "CREATE TABLE db1.t1 (id INT NOT NULL AUTO_INCREMENT, "
+        "name VARCHAR(50) DEFAULT 'x', PRIMARY KEY (id), KEY name_idx (name))",
+        columns, sizeof(columns) / sizeof(columns[0]));
+  }
 
   return failures == 0 ? 0 : 1;
 }
@@ -740,6 +761,65 @@ static int expect_ast_targets(const char *sql, MyliteStatementKind statement_kin
               mylite_ast_statement_target_schema_end_at(ast, 0, i),
               mylite_ast_statement_target_name_start_at(ast, 0, i),
               mylite_ast_statement_target_name_end_at(ast, 0, i));
+      failed = 1;
+    }
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_create_table_columns(const char *sql,
+                                       const ExpectedCreateTableColumn *columns,
+                                       size_t column_count) {
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "CREATE TABLE column parse failed: %s\nstatus=%s offset=%zu token=%d "
+            "message=%s\n",
+            sql, mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  int failed = 0;
+  if (mylite_ast_statement_count(ast) != 1 ||
+      mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_CREATE ||
+      mylite_ast_create_table_column_count(ast, 0) != column_count) {
+    fprintf(stderr,
+            "CREATE TABLE column header failed: %s\nkind=%s column_count=%zu\n",
+            sql, mylite_statement_kind_name(mylite_ast_statement_kind(ast, 0)),
+            mylite_ast_create_table_column_count(ast, 0));
+    failed = 1;
+  }
+
+  size_t actual_count = mylite_ast_create_table_column_count(ast, 0);
+  for (size_t i = 0; i < column_count && i < actual_count; i++) {
+    if (!span_matches(sql, mylite_ast_create_table_column_start(ast, 0, i),
+                      mylite_ast_create_table_column_end(ast, 0, i),
+                      columns[i].definition) ||
+        !span_matches(sql, mylite_ast_create_table_column_name_start(ast, 0, i),
+                      mylite_ast_create_table_column_name_end(ast, 0, i),
+                      columns[i].name) ||
+        !span_matches(sql, mylite_ast_create_table_column_type_start(ast, 0, i),
+                      mylite_ast_create_table_column_type_end(ast, 0, i),
+                      columns[i].type) ||
+        !span_matches(sql, mylite_ast_create_table_column_options_start(ast, 0, i),
+                      mylite_ast_create_table_column_options_end(ast, 0, i),
+                      columns[i].options)) {
+      fprintf(stderr,
+              "CREATE TABLE column[%zu] failed: %s\ndef=%zu..%zu name=%zu..%zu "
+              "type=%zu..%zu options=%zu..%zu\n",
+              i, sql, mylite_ast_create_table_column_start(ast, 0, i),
+              mylite_ast_create_table_column_end(ast, 0, i),
+              mylite_ast_create_table_column_name_start(ast, 0, i),
+              mylite_ast_create_table_column_name_end(ast, 0, i),
+              mylite_ast_create_table_column_type_start(ast, 0, i),
+              mylite_ast_create_table_column_type_end(ast, 0, i),
+              mylite_ast_create_table_column_options_start(ast, 0, i),
+              mylite_ast_create_table_column_options_end(ast, 0, i));
       failed = 1;
     }
   }

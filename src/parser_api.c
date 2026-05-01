@@ -1472,12 +1472,14 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		                                                     last_token_index);
 	case MYLITE_STATEMENT_HELP:
 		if (name_token_index > last_token_index ||
-		    name_token_index >= parser->token_count ||
-		    parser->tokens[name_token_index].kind != MYLITE_TOKEN_STRING) {
+		    name_token_index >= parser->token_count) {
 			return 0;
 		}
-		object_kind = MYLITE_STATEMENT_OBJECT_HELP_TOPIC;
-		break;
+		return set_statement_direct_object_name_range(parser,
+		                                             statement,
+		                                             MYLITE_STATEMENT_OBJECT_HELP_TOPIC,
+		                                             name_token_index,
+		                                             last_token_index);
 	case MYLITE_STATEMENT_HANDLER:
 		object_kind = MYLITE_STATEMENT_OBJECT_TABLE;
 		break;

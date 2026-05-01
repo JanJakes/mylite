@@ -660,9 +660,9 @@ case "$xa_output" in
 		;;
 esac
 
-help_output=$("$parser" "HELP 'contents'; HELP SELECT; HELP 'CREATE TABLE'")
+help_output=$("$parser" "HELP 'contents'; HELP SELECT; HELP no_such_topic; HELP CREATE TABLE")
 case "$help_output" in
-	*"help"*/help_topic:"'contents'"*"help[4:5"*"help"*/help_topic:"'CREATE TABLE'"*) ;;
+	*"help"*/help_topic:"'contents'"*"help"*/help_topic:SELECT*"help"*/help_topic:no_such_topic*"help"*/help_topic:"CREATE TABLE"*) ;;
 	*)
 		echo "unexpected HELP output: $help_output" >&2
 		exit 1

@@ -543,10 +543,14 @@ ok statements=1 kinds=xa[1:3,0:12]/xa_transaction:'x'
 ok statements=1 kinds=xa[1:2,0:10]/xa_transaction
 ```
 
-HELP exposes quoted help-topic searches:
+HELP exposes quoted and unquoted help-topic searches:
 
 ```text
 ok statements=1 kinds=help[1:2,0:15]/help_topic:'contents'
+```
+
+```text
+ok statements=1 kinds=help[1:3,0:17]/help_topic:CREATE TABLE
 ```
 
 SHOW variable statements expose system-variable or status-variable targets:

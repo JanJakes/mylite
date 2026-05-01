@@ -422,8 +422,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   credentials, distributed recovery, group membership, or timeout behavior.
   XA metadata records only the first XID token for XID-bearing statements and
   the XA transaction collection for `XA RECOVER`; it does not model XA state.
-  `HELP` metadata records only quoted search strings and leaves keyword topics
-  objectless.
+  `HELP` metadata records quoted and unquoted search-topic text, including
+  multi-token topics.
   Instance lifecycle metadata records only the instance object kind, not
   privilege, connection-loss, shutdown, or restart semantics.
   `SHOW PROFILE` metadata records query targets for bare forms and numeric

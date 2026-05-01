@@ -55,6 +55,15 @@ enum mylite_column_numeric_type {
     MYLITE_COLUMN_NUMERIC_DOUBLE = 3,
 };
 
+enum mylite_column_temporal_type {
+    MYLITE_COLUMN_TEMPORAL_NONE = 0,
+    MYLITE_COLUMN_TEMPORAL_DATE = 1,
+    MYLITE_COLUMN_TEMPORAL_TIME = 2,
+    MYLITE_COLUMN_TEMPORAL_DATETIME = 3,
+    MYLITE_COLUMN_TEMPORAL_TIMESTAMP = 4,
+    MYLITE_COLUMN_TEMPORAL_YEAR = 5,
+};
+
 struct mylite_column_type_attributes {
     uint64_t length;
     uint64_t precision;
@@ -82,6 +91,7 @@ struct mylite_column_type_descriptor {
     enum mylite_column_integer_type integer_type;
     enum mylite_column_string_binary_type string_binary_type;
     enum mylite_column_numeric_type numeric_type;
+    enum mylite_column_temporal_type temporal_type;
     bool is_unsigned;
     bool is_boolean_alias;
     bool is_binary_string;
@@ -97,6 +107,8 @@ struct mylite_column_type_descriptor {
     unsigned int numeric_precision;
     bool has_numeric_scale;
     unsigned int numeric_scale;
+    bool has_datetime_precision;
+    unsigned int datetime_precision;
     uint64_t character_maximum_length;
     uint64_t character_octet_length;
     const char *canonical_type_name;
@@ -126,6 +138,11 @@ enum mylite_column_type_status
 mylite_column_type_describe_numeric(const char *type_name, size_t type_name_length,
                                     struct mylite_column_type_attributes attributes,
                                     struct mylite_column_type_descriptor *out_descriptor);
+
+enum mylite_column_type_status
+mylite_column_type_describe_temporal(const char *type_name, size_t type_name_length,
+                                     struct mylite_column_type_attributes attributes,
+                                     struct mylite_column_type_descriptor *out_descriptor);
 
 const char *mylite_column_type_status_name(enum mylite_column_type_status status);
 

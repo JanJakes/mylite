@@ -35,6 +35,7 @@ static bool parse_column_length(const struct mylite_sql_ast_node *length, uint64
 static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type column_type);
 static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column_type column_type);
 static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type column_type);
+static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type);
 static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_token_was_dot,
                             struct mylite_sql_parser_token_map *out_map);
 static void record_parse_error(struct mylite_sql_parse_result *result,
@@ -834,7 +835,8 @@ mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
 
     if (!is_parse_ok(state) || column_type == NULL ||
         (!column_type_uses_string_binary_descriptor(column_type->column_type) &&
-         !column_type_uses_numeric_descriptor(column_type->column_type))) {
+         !column_type_uses_numeric_descriptor(column_type->column_type) &&
+         !column_type_uses_temporal_descriptor(column_type->column_type))) {
         return column_type;
     }
 
@@ -860,7 +862,10 @@ mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
         .is_national = column_type->column_national_attribute,
     };
 
-    if (column_type_uses_numeric_descriptor(column_type->column_type)) {
+    if (column_type_uses_temporal_descriptor(column_type->column_type)) {
+        status = mylite_column_type_describe_temporal(type_name, strlen(type_name), attributes,
+                                                      &descriptor);
+    } else if (column_type_uses_numeric_descriptor(column_type->column_type)) {
         status = mylite_column_type_describe_numeric(type_name, strlen(type_name), attributes,
                                                      &descriptor);
     } else {
@@ -1293,6 +1298,16 @@ static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type c
         return "FLOAT";
     case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
         return "DOUBLE";
+    case MYLITE_SQL_AST_COLUMN_TYPE_DATE:
+        return "DATE";
+    case MYLITE_SQL_AST_COLUMN_TYPE_TIME:
+        return "TIME";
+    case MYLITE_SQL_AST_COLUMN_TYPE_DATETIME:
+        return "DATETIME";
+    case MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP:
+        return "TIMESTAMP";
+    case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
+        return "YEAR";
     case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
     case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
     case MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT:
@@ -1316,6 +1331,12 @@ static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type 
 {
     return (column_type >= MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL &&
             column_type <= MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE) != 0;
+}
+
+static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type)
+{
+    return (column_type >= MYLITE_SQL_AST_COLUMN_TYPE_DATE &&
+            column_type <= MYLITE_SQL_AST_COLUMN_TYPE_YEAR) != 0;
 }
 
 static void record_parse_error(struct mylite_sql_parse_result *result,
@@ -1376,6 +1397,8 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"CREATE", MYLITE_SQL_PARSE_CREATE},
         {"DATABASE", MYLITE_SQL_PARSE_DATABASE},
         {"DATABASES", MYLITE_SQL_PARSE_DATABASES},
+        {"DATE", MYLITE_SQL_PARSE_DATE},
+        {"DATETIME", MYLITE_SQL_PARSE_DATETIME},
         {"DEC", MYLITE_SQL_PARSE_DEC},
         {"DECIMAL", MYLITE_SQL_PARSE_DECIMALKW},
         {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
@@ -1425,6 +1448,8 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"SMALLINT", MYLITE_SQL_PARSE_SMALLINT},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
         {"TEXT", MYLITE_SQL_PARSE_TEXT},
+        {"TIME", MYLITE_SQL_PARSE_TIME},
+        {"TIMESTAMP", MYLITE_SQL_PARSE_TIMESTAMP},
         {"TINYBLOB", MYLITE_SQL_PARSE_TINYBLOB},
         {"TINYINT", MYLITE_SQL_PARSE_TINYINT},
         {"TINYTEXT", MYLITE_SQL_PARSE_TINYTEXT},
@@ -1434,6 +1459,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"VARBINARY", MYLITE_SQL_PARSE_VARBINARY},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
         {"VARYING", MYLITE_SQL_PARSE_VARYING},
+        {"YEAR", MYLITE_SQL_PARSE_YEAR},
         {"ZEROFILL", MYLITE_SQL_PARSE_ZEROFILL},
     };
 

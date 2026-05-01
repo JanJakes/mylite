@@ -385,6 +385,16 @@ const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type colu
         return "float";
     case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
         return "double";
+    case MYLITE_SQL_AST_COLUMN_TYPE_DATE:
+        return "date";
+    case MYLITE_SQL_AST_COLUMN_TYPE_TIME:
+        return "time";
+    case MYLITE_SQL_AST_COLUMN_TYPE_DATETIME:
+        return "datetime";
+    case MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP:
+        return "timestamp";
+    case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
+        return "year";
     }
 
     return "unknown";

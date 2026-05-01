@@ -756,6 +756,20 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
         stmt = NULL;
     }
     failures += expect_no_information_schema_table_name_row(database, "numeric_types");
+    failures += prepare_sql(database,
+                            "CREATE TABLE app.`temporal_types` ("
+                            "a DATE, b TIME, c TIME(1), d TIME(6), "
+                            "e DATETIME, f DATETIME(0), g DATETIME(6), "
+                            "h TIMESTAMP, i TIMESTAMP(0), j TIMESTAMP(6), "
+                            "k YEAR, l YEAR(4), m TIME(00), n DATETIME(06), o YEAR(004))",
+                            MYLITE_UNSUPPORTED, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "parse-only temporal CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += expect_no_information_schema_table_name_row(database, "temporal_types");
     failures += prepare_sql(database, "CREATE TABLE invalid_width (a INT(256));",
                             MYLITE_PARSE_ERROR, &stmt);
     if (stmt != NULL) {
@@ -844,6 +858,40 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
                             MYLITE_PARSE_ERROR, &stmt);
     if (stmt != NULL) {
         fprintf(stderr, "overflow numeric CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database, "CREATE TABLE invalid_time_fsp (a TIME(7));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid TIME CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database, "CREATE TABLE invalid_date_fsp (a DATE(0));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid DATE CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database, "CREATE TABLE invalid_year_width (a YEAR(5));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid YEAR CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_temporal_overflow "
+                            "(a TIME(18446744073709551616));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "overflow temporal CREATE TABLE returned a statement handle\n");
         failures = 1;
         mylite_finalize(stmt);
         stmt = NULL;

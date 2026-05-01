@@ -11,6 +11,7 @@ static int test_connection_charset_statements(void);
 static int test_create_table_integer_boolean_columns(void);
 static int test_create_table_string_binary_columns(void);
 static int test_create_table_numeric_columns(void);
+static int test_create_table_temporal_columns(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -49,6 +50,7 @@ int main(void)
     failures += test_create_table_integer_boolean_columns();
     failures += test_create_table_string_binary_columns();
     failures += test_create_table_numeric_columns();
+    failures += test_create_table_temporal_columns();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -837,6 +839,198 @@ static int test_create_table_numeric_columns(void)
 
     failures += parse_sql("CREATE TABLE bad_double_overflow "
                           "(a DOUBLE(18446744073709551616,1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_temporal_columns(void)
+{
+    enum {
+        expected_column_count = 16,
+        time_fsp_column = 2,
+        datetime_fsp_column = 6,
+        timestamp_column = 7,
+        timestamp_fsp_column = 10,
+        year_column = 11,
+        year_width_column = 12,
+        year_leading_zero_column = 13,
+        datetime_leading_zero_column = 14,
+    };
+    const unsigned long long temporal_fsp_max = 6ULL;
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE TABLE app.temporal_types ("
+                          "a DATE, b TIME, c TIME(1), d TIME(6), "
+                          "e DATETIME, f DATETIME(0), g DATETIME(6), "
+                          "h TIMESTAMP, i TIMESTAMP(0), j TIMESTAMP(1), k TIMESTAMP(6), "
+                          "l YEAR, m YEAR(4), n YEAR(004), o DATETIME(06), p TIME(00));",
+                          MYLITE_SQL_PARSE_OK, &result);
+    columns = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(columns, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "temporal column list");
+    failures += expect_child_count(columns, expected_column_count, "temporal columns");
+
+    failures += expect_column_type(child_at(child_at(columns, 0U), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_DATE, "date column");
+    failures += expect_column_type(child_at(child_at(columns, 1U), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_TIME, "time column");
+
+    column_type = child_at(child_at(columns, time_fsp_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_TIME, "time fsp column");
+    if (column_type != NULL &&
+        (!column_type->has_column_precision || column_type->column_precision != 1ULL)) {
+        fprintf(stderr, "time precision was not recorded as 1\n");
+        failures = 1;
+    }
+
+    failures += expect_column_type(child_at(child_at(columns, 4U), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_DATETIME, "datetime column");
+
+    column_type = child_at(child_at(columns, datetime_fsp_column), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_DATETIME, "datetime fsp column");
+    if (column_type != NULL &&
+        (!column_type->has_column_precision || column_type->column_precision != temporal_fsp_max)) {
+        fprintf(stderr, "datetime precision was not recorded as 6\n");
+        failures = 1;
+    }
+
+    failures += expect_column_type(child_at(child_at(columns, timestamp_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP, "timestamp column");
+
+    column_type = child_at(child_at(columns, timestamp_fsp_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP,
+                                   "timestamp fsp column");
+    if (column_type != NULL &&
+        (!column_type->has_column_precision || column_type->column_precision != temporal_fsp_max)) {
+        fprintf(stderr, "timestamp precision was not recorded as 6\n");
+        failures = 1;
+    }
+
+    failures += expect_column_type(child_at(child_at(columns, year_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_YEAR, "year column");
+
+    column_type = child_at(child_at(columns, year_width_column), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_YEAR, "year width column");
+    if (column_type != NULL &&
+        (!column_type->has_column_precision || column_type->column_precision != 4ULL)) {
+        fprintf(stderr, "year width was not recorded as 4\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, datetime_leading_zero_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_DATETIME,
+                                   "datetime leading zero fsp");
+    if (column_type != NULL &&
+        (!column_type->has_column_precision || column_type->column_precision != temporal_fsp_max)) {
+        fprintf(stderr, "datetime leading-zero precision was not recorded as 6\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, year_leading_zero_column), 1U);
+    if (column_type != NULL &&
+        (!column_type->has_column_precision || column_type->column_precision != 4ULL)) {
+        fprintf(stderr, "year leading-zero width was not recorded as 4\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE temporal_keyword_names ("
+                          "date INT, time INT, datetime INT, timestamp INT, year INT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_date_fsp (a DATE(0));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_date_fsp_one (a DATE(1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_time_fsp (a TIME(7));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_datetime_fsp (a DATETIME(7));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_timestamp_fsp (a TIMESTAMP(7));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_time_negative (a TIME(-1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_time_empty_fsp (a TIME());",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_time_string_fsp (a TIME('1'));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_time_scale (a TIME(1,2));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_datetime_scale (a DATETIME(1,2));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_time_overflow_scale "
+                          "(a TIME(1,18446744073709551616));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_datetime_overflow "
+                          "(a DATETIME(18446744073709551616));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_time_overflow "
+                          "(a TIME(18446744073709551616));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_timestamp_overflow "
+                          "(a TIMESTAMP(18446744073709551616));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_year_zero (a YEAR(0));", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_year_one (a YEAR(1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_year_two (a YEAR(2));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_year_three (a YEAR(3));", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_year_five (a YEAR(5));", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_year_overflow "
+                          "(a YEAR(18446744073709551616));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_time_unsigned (a TIME UNSIGNED);",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

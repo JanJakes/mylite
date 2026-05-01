@@ -28,7 +28,8 @@
 %left PLUS MINUS.
 %left STAR SLASH.
 %right UPLUS UMINUS.
-%fallback IDENTIFIER BOOL BOOLEAN CHARSET ENCRYPTION FIXED NCHAR NVARCHAR ONLY SIGNED TEXT.
+%fallback IDENTIFIER BOOL BOOLEAN CHARSET DATE DATETIME ENCRYPTION FIXED NCHAR NVARCHAR ONLY SIGNED
+    TEXT TIME TIMESTAMP YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -187,6 +188,9 @@ column_type(A) ::= float_column_type(B). {
     A = B;
 }
 column_type(A) ::= double_column_type(B). {
+    A = B;
+}
+column_type(A) ::= temporal_column_type(B). {
     A = B;
 }
 
@@ -499,6 +503,53 @@ double_column_type(A) ::= FLOAT8(T) opt_double_precision_scale(B) numeric_type_a
                        mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE),
                        B)),
         C);
+}
+
+temporal_column_type(A) ::= DATE(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DATE));
+}
+temporal_column_type(A) ::= TIME(T) opt_temporal_fsp(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_precision_scale(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_TIME),
+            B));
+}
+temporal_column_type(A) ::= DATETIME(T) opt_temporal_fsp(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_precision_scale(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DATETIME),
+            B));
+}
+temporal_column_type(A) ::= TIMESTAMP(T) opt_temporal_fsp(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_precision_scale(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP),
+            B));
+}
+temporal_column_type(A) ::= YEAR(T) opt_year_width(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_precision_scale(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_YEAR),
+            B));
+}
+
+opt_temporal_fsp(A) ::= . {
+    A = NULL;
+}
+opt_temporal_fsp(A) ::= column_precision(B). {
+    A = B;
+}
+
+opt_year_width(A) ::= . {
+    A = NULL;
+}
+opt_year_width(A) ::= column_precision(B). {
+    A = B;
 }
 
 opt_precision_keyword ::= .

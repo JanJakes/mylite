@@ -60,6 +60,16 @@ struct mylite_numeric_format {
     bool is_zerofill;
 };
 
+struct mylite_temporal_type_info {
+    const char *canonical_type_name;
+    enum mylite_column_temporal_type type;
+    unsigned int base_storage_bytes;
+    bool permits_fractional_seconds;
+    bool has_datetime_precision;
+    const char *range_min;
+    const char *range_max;
+};
+
 struct mylite_precision_scale {
     uint64_t precision;
     uint64_t scale;
@@ -78,6 +88,8 @@ enum {
     float_binary_precision_cutover = 24U,
     approximate_display_width_max = 255U,
     approximate_scale_max = 30U,
+    temporal_fractional_seconds_precision_max = 6U,
+    year_display_width = 4U,
 };
 
 static const uint64_t decimal_default_precision = 10ULL;
@@ -101,6 +113,8 @@ static bool lookup_string_binary_alias(const char *type_name, size_t type_name_l
                                        bool *out_is_alias);
 static bool lookup_numeric_alias(const char *type_name, size_t type_name_length,
                                  enum mylite_column_numeric_type *out_type, bool *out_is_alias);
+static const struct mylite_temporal_type_info *lookup_temporal_type_info(const char *type_name,
+                                                                         size_t type_name_length);
 static const struct mylite_charset_info *
 effective_charset(struct mylite_column_type_attributes attributes,
                   enum mylite_column_type_status *out_status);
@@ -141,6 +155,13 @@ static void fill_numeric_descriptor(struct mylite_numeric_format format, bool is
 static const char *name_for_numeric_type(enum mylite_column_numeric_type type);
 static void format_numeric_column_type(struct mylite_numeric_format format, char *out_column_type,
                                        size_t column_type_size);
+static void fill_temporal_descriptor(const struct mylite_temporal_type_info *info,
+                                     struct mylite_column_type_attributes attributes,
+                                     struct mylite_column_type_descriptor *out_descriptor);
+static unsigned int fractional_storage_bytes(unsigned int precision);
+static void format_temporal_column_type(const struct mylite_temporal_type_info *info,
+                                        struct mylite_column_type_attributes attributes,
+                                        char *out_column_type, size_t column_type_size);
 static enum mylite_column_type_status
 describe_char_varchar(enum mylite_column_string_binary_type requested_type,
                       struct mylite_column_type_attributes attributes,
@@ -284,6 +305,46 @@ mylite_column_type_describe_numeric(const char *type_name, size_t type_name_leng
     }
 
     return MYLITE_COLUMN_TYPE_UNKNOWN;
+}
+
+enum mylite_column_type_status
+mylite_column_type_describe_temporal(const char *type_name, size_t type_name_length,
+                                     struct mylite_column_type_attributes attributes,
+                                     struct mylite_column_type_descriptor *out_descriptor)
+{
+    const struct mylite_temporal_type_info *info = NULL;
+
+    if (out_descriptor == NULL) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    *out_descriptor = (struct mylite_column_type_descriptor){0};
+
+    info = lookup_temporal_type_info(type_name, type_name_length);
+    if (info == NULL) {
+        return MYLITE_COLUMN_TYPE_UNKNOWN;
+    }
+
+    if (attributes.has_display_width || attributes.has_length || attributes.has_scale ||
+        attributes.has_signed || attributes.has_unsigned || attributes.has_character_set ||
+        attributes.has_collation || attributes.has_binary_attribute ||
+        attributes.has_byte_attribute || attributes.has_zerofill_attribute ||
+        attributes.is_national) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (info->type == MYLITE_COLUMN_TEMPORAL_DATE && attributes.has_precision) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (info->type == MYLITE_COLUMN_TEMPORAL_YEAR && attributes.has_precision &&
+        attributes.precision != year_display_width) {
+        return MYLITE_COLUMN_TYPE_DISPLAY_WIDTH_OUT_OF_RANGE;
+    }
+    if (info->permits_fractional_seconds && attributes.has_precision &&
+        attributes.precision > temporal_fractional_seconds_precision_max) {
+        return MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE;
+    }
+
+    fill_temporal_descriptor(info, attributes, out_descriptor);
+    return MYLITE_COLUMN_TYPE_OK;
 }
 
 const char *mylite_column_type_status_name(enum mylite_column_type_status status)
@@ -490,6 +551,65 @@ static bool lookup_numeric_alias(const char *type_name, size_t type_name_length,
         }
     }
     return false;
+}
+
+static const struct mylite_temporal_type_info *lookup_temporal_type_info(const char *type_name,
+                                                                         size_t type_name_length)
+{
+    static const struct mylite_temporal_type_info types[] = {
+        {
+            .canonical_type_name = "date",
+            .type = MYLITE_COLUMN_TEMPORAL_DATE,
+            .base_storage_bytes = 3U,
+            .permits_fractional_seconds = false,
+            .has_datetime_precision = false,
+            .range_min = "1000-01-01",
+            .range_max = "9999-12-31",
+        },
+        {
+            .canonical_type_name = "time",
+            .type = MYLITE_COLUMN_TEMPORAL_TIME,
+            .base_storage_bytes = 3U,
+            .permits_fractional_seconds = true,
+            .has_datetime_precision = true,
+            .range_min = "-838:59:59.000000",
+            .range_max = "838:59:59.000000",
+        },
+        {
+            .canonical_type_name = "datetime",
+            .type = MYLITE_COLUMN_TEMPORAL_DATETIME,
+            .base_storage_bytes = 5U,
+            .permits_fractional_seconds = true,
+            .has_datetime_precision = true,
+            .range_min = "1000-01-01 00:00:00.000000",
+            .range_max = "9999-12-31 23:59:59.499999",
+        },
+        {
+            .canonical_type_name = "timestamp",
+            .type = MYLITE_COLUMN_TEMPORAL_TIMESTAMP,
+            .base_storage_bytes = 4U,
+            .permits_fractional_seconds = true,
+            .has_datetime_precision = true,
+            .range_min = "1970-01-01 00:00:01.000000",
+            .range_max = "2038-01-19 03:14:07.499999",
+        },
+        {
+            .canonical_type_name = "year",
+            .type = MYLITE_COLUMN_TEMPORAL_YEAR,
+            .base_storage_bytes = 1U,
+            .permits_fractional_seconds = false,
+            .has_datetime_precision = false,
+            .range_min = "0000",
+            .range_max = "2155",
+        },
+    };
+
+    for (size_t index = 0U; index < sizeof(types) / sizeof(types[0]); ++index) {
+        if (ascii_case_equal(type_name, type_name_length, types[index].canonical_type_name)) {
+            return &types[index];
+        }
+    }
+    return NULL;
 }
 
 static const struct mylite_charset_info *
@@ -917,6 +1037,66 @@ static void format_numeric_column_type(struct mylite_numeric_format format, char
     } else {
         (void)snprintf(out_column_type, column_type_size, "%s", base);
     }
+}
+
+static void fill_temporal_descriptor(const struct mylite_temporal_type_info *info,
+                                     struct mylite_column_type_attributes attributes,
+                                     struct mylite_column_type_descriptor *out_descriptor)
+{
+    unsigned int datetime_precision = 0U;
+    unsigned int storage_bytes = info->base_storage_bytes;
+    bool is_alias = false;
+
+    if (attributes.has_precision) {
+        datetime_precision = (unsigned int)attributes.precision;
+    }
+    if (info->permits_fractional_seconds) {
+        storage_bytes += fractional_storage_bytes(datetime_precision);
+    }
+    if (info->type == MYLITE_COLUMN_TEMPORAL_YEAR && attributes.has_precision) {
+        is_alias = true;
+    }
+
+    *out_descriptor = (struct mylite_column_type_descriptor){
+        .temporal_type = info->type,
+        .is_alias = is_alias,
+        .storage_bytes = storage_bytes,
+        .has_datetime_precision = info->has_datetime_precision,
+        .datetime_precision = datetime_precision,
+        .canonical_type_name = info->canonical_type_name,
+        .data_type = info->canonical_type_name,
+        .range_min = info->range_min,
+        .range_max = info->range_max,
+    };
+    format_temporal_column_type(info, attributes, out_descriptor->column_type,
+                                sizeof(out_descriptor->column_type));
+}
+
+static unsigned int fractional_storage_bytes(unsigned int precision)
+{
+    if (precision == 0U) {
+        return 0U;
+    }
+    if (precision <= 2U) {
+        return 1U;
+    }
+    if (precision <= 4U) {
+        return 2U;
+    }
+    return 3U;
+}
+
+static void format_temporal_column_type(const struct mylite_temporal_type_info *info,
+                                        struct mylite_column_type_attributes attributes,
+                                        char *out_column_type, size_t column_type_size)
+{
+    if (info->permits_fractional_seconds && attributes.has_precision && attributes.precision > 0U) {
+        (void)snprintf(out_column_type, column_type_size, "%s(%u)", info->canonical_type_name,
+                       (unsigned int)attributes.precision);
+        return;
+    }
+
+    (void)snprintf(out_column_type, column_type_size, "%s", info->canonical_type_name);
 }
 
 static enum mylite_column_type_status

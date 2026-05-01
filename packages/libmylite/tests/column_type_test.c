@@ -41,6 +41,13 @@ static const unsigned int approximate_display_width_max = 255U;
 static const unsigned int approximate_display_width_out_of_range = 256U;
 static const unsigned long long numeric_alias_precision = 8ULL;
 static const unsigned long long fixed_alias_precision = 7ULL;
+static const unsigned int temporal_fsp_max = 6U;
+static const unsigned int temporal_fsp_out_of_range = 7U;
+static const unsigned long long year_invalid_width = 5ULL;
+static const unsigned int time_base_storage_bytes = 3U;
+static const unsigned int datetime_base_storage_bytes = 5U;
+static const unsigned int timestamp_base_storage_bytes = 4U;
+static const unsigned long long year_display_width = 4ULL;
 
 static int test_integer_type_metadata(void);
 static int test_integer_aliases(void);
@@ -50,6 +57,7 @@ static int test_string_binary_aliases_and_charsets(void);
 static int test_text_blob_length_mapping(void);
 static int test_numeric_type_metadata(void);
 static int test_numeric_aliases_and_attributes(void);
+static int test_temporal_type_metadata(void);
 static int test_rejected_type_descriptors(void);
 static struct mylite_column_type_attributes no_column_type_attributes(void);
 static struct mylite_column_type_attributes length_attribute(unsigned long long length);
@@ -66,6 +74,10 @@ static int describe_numeric_type(const char *type_name,
                                  struct mylite_column_type_attributes attributes,
                                  enum mylite_column_type_status expected_status,
                                  struct mylite_column_type_descriptor *out_descriptor);
+static int describe_temporal_type(const char *type_name,
+                                  struct mylite_column_type_attributes attributes,
+                                  enum mylite_column_type_status expected_status,
+                                  struct mylite_column_type_descriptor *out_descriptor);
 static int expect_string(const char *actual, const char *expected, const char *context);
 static int expect_uint(unsigned int actual, unsigned int expected, const char *context);
 static int expect_uint64(unsigned long long actual, unsigned long long expected,
@@ -84,6 +96,7 @@ int main(void)
     failures += test_text_blob_length_mapping();
     failures += test_numeric_type_metadata();
     failures += test_numeric_aliases_and_attributes();
+    failures += test_temporal_type_metadata();
     failures += test_rejected_type_descriptors();
 
     return failures == 0 ? 0 : 1;
@@ -682,6 +695,108 @@ static int test_numeric_aliases_and_attributes(void)
     return failures;
 }
 
+static int test_temporal_type_metadata(void)
+{
+    struct mylite_column_type_descriptor descriptor;
+    int failures = 0;
+
+    failures += describe_temporal_type("DATE", no_column_type_attributes(), MYLITE_COLUMN_TYPE_OK,
+                                       &descriptor);
+    failures += expect_string(descriptor.data_type, "date", "date data type");
+    failures += expect_string(descriptor.column_type, "date", "date column type");
+    failures += expect_bool(descriptor.has_datetime_precision, false, "date precision null");
+    failures += expect_uint(descriptor.storage_bytes, 3U, "date storage");
+    failures += expect_string(descriptor.range_min, "1000-01-01", "date min");
+    failures += expect_string(descriptor.range_max, "9999-12-31", "date max");
+
+    failures += describe_temporal_type("TIME", no_column_type_attributes(), MYLITE_COLUMN_TYPE_OK,
+                                       &descriptor);
+    failures += expect_string(descriptor.data_type, "time", "time data type");
+    failures += expect_string(descriptor.column_type, "time", "time column type");
+    failures += expect_bool(descriptor.has_datetime_precision, true, "time precision flag");
+    failures += expect_uint(descriptor.datetime_precision, 0U, "time default fsp");
+    failures += expect_uint(descriptor.storage_bytes, time_base_storage_bytes, "time storage");
+    failures += expect_string(descriptor.range_min, "-838:59:59.000000", "time min");
+
+    failures += describe_temporal_type("TIME",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = 1ULL,
+                                       },
+                                       MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "time(1)", "time(1) column type");
+    failures += expect_uint(descriptor.datetime_precision, 1U, "time(1) fsp");
+    failures +=
+        expect_uint(descriptor.storage_bytes, time_base_storage_bytes + 1U, "time(1) storage");
+
+    failures += describe_temporal_type("TIME",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = temporal_fsp_max,
+                                       },
+                                       MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "time(6)", "time(6) column type");
+    failures +=
+        expect_uint(descriptor.storage_bytes, time_base_storage_bytes + 3U, "time(6) storage");
+
+    failures += describe_temporal_type("DATETIME", no_column_type_attributes(),
+                                       MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "datetime", "datetime data type");
+    failures += expect_string(descriptor.column_type, "datetime", "datetime column type");
+    failures += expect_uint(descriptor.datetime_precision, 0U, "datetime default fsp");
+    failures +=
+        expect_uint(descriptor.storage_bytes, datetime_base_storage_bytes, "datetime storage");
+
+    failures += describe_temporal_type("DATETIME",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = temporal_fsp_max,
+                                       },
+                                       MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "datetime(6)", "datetime(6) column type");
+    failures += expect_uint(descriptor.datetime_precision, temporal_fsp_max, "datetime(6) fsp");
+    failures += expect_uint(descriptor.storage_bytes, datetime_base_storage_bytes + 3U,
+                            "datetime(6) storage");
+
+    failures += describe_temporal_type("TIMESTAMP", no_column_type_attributes(),
+                                       MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "timestamp", "timestamp data type");
+    failures += expect_string(descriptor.column_type, "timestamp", "timestamp column type");
+    failures +=
+        expect_uint(descriptor.storage_bytes, timestamp_base_storage_bytes, "timestamp storage");
+
+    failures += describe_temporal_type("TIMESTAMP",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = 1ULL,
+                                       },
+                                       MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "timestamp(1)", "timestamp(1) column type");
+    failures += expect_uint(descriptor.datetime_precision, 1U, "timestamp(1) fsp");
+    failures += expect_uint(descriptor.storage_bytes, timestamp_base_storage_bytes + 1U,
+                            "timestamp(1) storage");
+
+    failures += describe_temporal_type("YEAR", no_column_type_attributes(), MYLITE_COLUMN_TYPE_OK,
+                                       &descriptor);
+    failures += expect_string(descriptor.data_type, "year", "year data type");
+    failures += expect_string(descriptor.column_type, "year", "year column type");
+    failures += expect_bool(descriptor.has_datetime_precision, false, "year precision null");
+    failures += expect_uint(descriptor.storage_bytes, 1U, "year storage");
+    failures += expect_string(descriptor.range_min, "0000", "year min");
+    failures += expect_string(descriptor.range_max, "2155", "year max");
+
+    failures += describe_temporal_type("YEAR",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = year_display_width,
+                                       },
+                                       MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "year", "year(4) column type");
+    failures += expect_bool(descriptor.is_alias, true, "year(4) alias flag");
+
+    return failures;
+}
+
 static int test_rejected_type_descriptors(void)
 {
     struct mylite_column_type_descriptor descriptor;
@@ -833,6 +948,73 @@ static int test_rejected_type_descriptors(void)
                                           .scale = 1ULL,
                                       },
                                       MYLITE_COLUMN_TYPE_SCALE_EXCEEDS_PRECISION, &descriptor);
+    failures += describe_temporal_type("DATE",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = 0ULL,
+                                       },
+                                       MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+    failures += describe_temporal_type("TIME",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = temporal_fsp_out_of_range,
+                                       },
+                                       MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE, &descriptor);
+    failures += describe_temporal_type("DATETIME",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = temporal_fsp_out_of_range,
+                                       },
+                                       MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE, &descriptor);
+    failures += describe_temporal_type("TIMESTAMP",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = temporal_fsp_out_of_range,
+                                       },
+                                       MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE, &descriptor);
+    failures += describe_temporal_type("YEAR",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = 0ULL,
+                                       },
+                                       MYLITE_COLUMN_TYPE_DISPLAY_WIDTH_OUT_OF_RANGE, &descriptor);
+    failures += describe_temporal_type("YEAR",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = 1ULL,
+                                       },
+                                       MYLITE_COLUMN_TYPE_DISPLAY_WIDTH_OUT_OF_RANGE, &descriptor);
+    failures += describe_temporal_type("YEAR",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = 2ULL,
+                                       },
+                                       MYLITE_COLUMN_TYPE_DISPLAY_WIDTH_OUT_OF_RANGE, &descriptor);
+    failures += describe_temporal_type("YEAR",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = 3ULL,
+                                       },
+                                       MYLITE_COLUMN_TYPE_DISPLAY_WIDTH_OUT_OF_RANGE, &descriptor);
+    failures += describe_temporal_type("YEAR",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = year_invalid_width,
+                                       },
+                                       MYLITE_COLUMN_TYPE_DISPLAY_WIDTH_OUT_OF_RANGE, &descriptor);
+    failures += describe_temporal_type("TIME",
+                                       (struct mylite_column_type_attributes){
+                                           .has_unsigned = true,
+                                       },
+                                       MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+    failures += describe_temporal_type("TIME",
+                                       (struct mylite_column_type_attributes){
+                                           .has_precision = true,
+                                           .precision = 1ULL,
+                                           .has_scale = true,
+                                           .scale = 2ULL,
+                                       },
+                                       MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
 
     {
         struct mylite_column_type_attributes mismatch = character_set_attribute("utf8mb4");
@@ -921,6 +1103,23 @@ static int describe_numeric_type(const char *type_name,
                                  struct mylite_column_type_descriptor *out_descriptor)
 {
     enum mylite_column_type_status actual = mylite_column_type_describe_numeric(
+        type_name, strlen(type_name), attributes, out_descriptor);
+
+    if (actual != expected_status) {
+        fprintf(stderr, "%s: expected %s, got %s\n", type_name,
+                mylite_column_type_status_name(expected_status),
+                mylite_column_type_status_name(actual));
+        return 1;
+    }
+    return 0;
+}
+
+static int describe_temporal_type(const char *type_name,
+                                  struct mylite_column_type_attributes attributes,
+                                  enum mylite_column_type_status expected_status,
+                                  struct mylite_column_type_descriptor *out_descriptor)
+{
+    enum mylite_column_type_status actual = mylite_column_type_describe_temporal(
         type_name, strlen(type_name), attributes, out_descriptor);
 
     if (actual != expected_status) {

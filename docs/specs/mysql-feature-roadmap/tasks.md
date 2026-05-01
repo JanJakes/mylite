@@ -21,7 +21,7 @@ level application surfaces.
        `BINARY`, `VARBINARY`, `BLOB` family, length limits, and metadata.
 6. [x] Exact and approximate numeric column types: `DECIMAL`, `NUMERIC`,
        `FLOAT`, `DOUBLE`, aliases, precision/scale, and metadata.
-7. [ ] Temporal column types: `DATE`, `TIME`, `DATETIME`, `TIMESTAMP`, `YEAR`,
+7. [x] Temporal column types: `DATE`, `TIME`, `DATETIME`, `TIMESTAMP`, `YEAR`,
        fractional seconds, zero values, and metadata.
 8. [ ] Column attributes: `NULL`, `NOT NULL`, `DEFAULT`, expression defaults,
        `ON UPDATE`, comments, visibility, and storage/format options.

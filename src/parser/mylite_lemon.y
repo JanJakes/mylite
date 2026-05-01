@@ -2603,7 +2603,7 @@ show_tail ::= EVENTS show_database_tail show_filter_tail.
 show_tail ::= TRIGGERS show_database_tail show_filter_tail.
 show_tail ::= FULL TRIGGERS show_database_tail show_filter_tail.
 show_tail ::= show_table_metadata_prefix show_column_kind show_table_source show_database_tail show_filter_tail.
-show_tail ::= show_table_metadata_prefix show_index_kind show_table_source show_database_tail show_filter_tail.
+show_tail ::= show_index_prefix show_index_kind show_table_source show_database_tail show_where_tail.
 show_tail ::= CHARACTER SET show_filter_tail.
 show_tail ::= CHARSET show_filter_tail.
 show_tail ::= COLLATION show_filter_tail.
@@ -2653,12 +2653,18 @@ show_table_metadata_prefix ::= EXTENDED.
 show_table_metadata_prefix ::= FULL.
 show_table_metadata_prefix ::= EXTENDED FULL.
 
+show_index_prefix ::= .
+show_index_prefix ::= EXTENDED.
+
 show_column_kind ::= COLUMNS.
 show_column_kind ::= FIELDS.
 
 show_index_kind ::= INDEX.
 show_index_kind ::= INDEXES.
 show_index_kind ::= KEYS.
+
+show_where_tail ::= .
+show_where_tail ::= WHERE expression_start statement_tail.
 
 show_table_source ::= FROM cache_table_ref.
 show_table_source ::= IN cache_table_ref.

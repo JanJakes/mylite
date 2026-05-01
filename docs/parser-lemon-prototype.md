@@ -180,6 +180,8 @@ token sink:
   identifier grammar plus MySQL's `ALL` engine selector.
 - Shared `SHOW ... LIKE` filters require string-literal patterns, while
   `SHOW ... WHERE` keeps using the general expression tail.
+- `SHOW INDEX`/`INDEXES`/`KEYS` uses MySQL's narrower parser shape with
+  optional `EXTENDED` and `WHERE`, excluding `FULL` and `LIKE`.
 - `SHOW BINLOG EVENTS` and `SHOW RELAYLOG EVENTS` recognize optional
   string-literal log names, numeric `FROM` positions, and numeric `LIMIT` tails;
   relay-log events also recognize MySQL channel clauses.

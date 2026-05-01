@@ -1199,14 +1199,9 @@ drop_index_option ::= LOCK drop_index_option_equals_tail drop_index_lock.
 drop_index_option_equals_tail ::= .
 drop_index_option_equals_tail ::= diagnostics_equals.
 
-drop_index_algorithm ::= DEFAULT.
-drop_index_algorithm ::= INPLACE.
-drop_index_algorithm ::= COPY.
+drop_index_algorithm ::= cache_name_part.
 
-drop_index_lock ::= DEFAULT.
-drop_index_lock ::= NONE.
-drop_index_lock ::= SHARED.
-drop_index_lock ::= EXCLUSIVE.
+drop_index_lock ::= cache_name_part.
 
 drop_database_kind ::= DATABASE.
 drop_database_kind ::= SCHEMA.
@@ -1340,10 +1335,7 @@ alter_table_algorithm_lock_after_comma ::= alter_table_secondary_action.
 alter_table_algorithm_lock_option ::= ALGORITHM drop_index_option_equals_tail alter_table_algorithm_value.
 alter_table_algorithm_lock_option ::= LOCK drop_index_option_equals_tail drop_index_lock.
 
-alter_table_algorithm_value ::= DEFAULT.
-alter_table_algorithm_value ::= INSTANT.
-alter_table_algorithm_value ::= INPLACE.
-alter_table_algorithm_value ::= COPY.
+alter_table_algorithm_value ::= cache_name_part.
 
 alter_table_rename_action_tail ::= .
 alter_table_rename_action_tail ::= COMMA alter_table_rename_after_comma.

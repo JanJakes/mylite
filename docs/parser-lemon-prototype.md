@@ -179,7 +179,7 @@ token sink:
 - `CREATE INDEX` recognizes non-empty functional/key-part lists and standalone
   index options including parser plugins, string-literal comments, visibility,
   string-literal attributes, numeric `KEY_BLOCK_SIZE`, closed `USING`/`TYPE`
-  values, `ALGORITHM`, and `LOCK`,
+  values, and identifier-valued `ALGORITHM`/`LOCK`,
   while validating standalone key-part prefix lengths and `ASC`/`DESC` tails.
 - `CREATE TABLE` table-definition bodies require non-empty comma-separated
   elements while preserving nested token bodies for column and constraint
@@ -250,9 +250,10 @@ token sink:
   `INSERT_METHOD` and `ROW_FORMAT` values, string-literal data/index
   directories, string-literal compression/password/connection/engine
   attributes, `AUTOEXTEND_SIZE`, `TABLE_CHECKSUM`, `START TRANSACTION`,
-  `ALGORITHM`/`LOCK` options, tablespace discard/import forms, and validated
-  `ADD`/`CHANGE`/`MODIFY` column type starts plus column-definition attribute
-  starts and selected closed attribute values including generated-column storage
+  identifier-valued `ALGORITHM`/`LOCK` options, tablespace discard/import
+  forms, and validated `ADD`/`CHANGE`/`MODIFY` column type starts plus
+  column-definition attribute starts and selected closed attribute values
+  including generated-column storage
   modifier context and repetition checks, index key-part prefix lengths,
   `ASC`/`DESC` tails, and index option values including closed index
   `USING`/`TYPE` values. `ADD FOREIGN KEY` child/reference column-list
@@ -275,7 +276,8 @@ token sink:
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`,
   `OR REPLACE`, numeric SRS ids, documented string-literal attribute forms, and
   numeric organization authority codes.
-- `DROP INDEX` recognizes MySQL's `ALGORITHM` and `LOCK` option tails.
+- `DROP INDEX` recognizes MySQL's identifier-valued `ALGORITHM` and `LOCK`
+  option tails.
 - `TRUNCATE TABLE` recognizes optional `TABLE` and one- or two-part table
   references using the shared identifier grammar.
 - `INSTALL PLUGIN` and `UNINSTALL PLUGIN` recognize plugin names using the

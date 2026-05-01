@@ -43,7 +43,8 @@ token sink:
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,
   `ENABLE/DISABLE KEYS`, `RENAME` forms, `DROP` forms,
   `ALTER` subactions, partition maintenance/exchange forms,
-  `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
+  table option changes, `ALGORITHM`/`LOCK` options, and tablespace
+  discard/import forms.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize charset, collation,
   encryption, and alter-only `READ ONLY` option clauses.
 - `CREATE EVENT` and `ALTER EVENT` recognize ordered event metadata clauses

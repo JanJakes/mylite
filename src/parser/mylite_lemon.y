@@ -942,30 +942,18 @@ alter_table_tail ::= alter_table_drop_partition_action.
 alter_table_tail ::= alter_table_alter_action alter_table_alter_action_tail.
 alter_table_tail ::= alter_table_alter_set_default_action.
 alter_table_tail ::= alter_table_partition_action.
+alter_table_tail ::= alter_table_table_option create_options_tail.
 alter_table_tail ::= alter_table_action_start create_options_tail.
 
 alter_table_action_start ::= ADD.
-alter_table_action_start ::= AUTO_INCREMENT.
-alter_table_action_start ::= AVG_ROW_LENGTH.
 alter_table_action_start ::= CHANGE.
 alter_table_action_start ::= CHARACTER.
-alter_table_action_start ::= CHECKSUM.
-alter_table_action_start ::= COMMENT.
 alter_table_action_start ::= CONVERT.
 alter_table_action_start ::= DEFAULT.
-alter_table_action_start ::= ENCRYPTION.
-alter_table_action_start ::= ENGINE.
-alter_table_action_start ::= INSERT_METHOD.
-alter_table_action_start ::= KEY_BLOCK_SIZE.
-alter_table_action_start ::= MAX_ROWS.
-alter_table_action_start ::= MIN_ROWS.
 alter_table_action_start ::= MODIFY.
 alter_table_action_start ::= ORDER.
-alter_table_action_start ::= PACK_KEYS.
 alter_table_action_start ::= PARTITION.
 alter_table_action_start ::= REORGANIZE.
-alter_table_action_start ::= ROW_FORMAT.
-alter_table_action_start ::= SECONDARY_ENGINE.
 alter_table_action_start ::= STORAGE.
 alter_table_action_start ::= TABLESPACE.
 alter_table_action_start ::= UNION.
@@ -992,6 +980,7 @@ alter_table_algorithm_lock_after_comma ::= alter_table_drop_partition_action.
 alter_table_algorithm_lock_after_comma ::= alter_table_alter_action alter_table_alter_action_tail.
 alter_table_algorithm_lock_after_comma ::= alter_table_alter_set_default_action.
 alter_table_algorithm_lock_after_comma ::= alter_table_partition_action.
+alter_table_algorithm_lock_after_comma ::= alter_table_table_option create_options_tail.
 alter_table_algorithm_lock_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
 alter_table_algorithm_lock_after_comma ::= alter_table_action_start create_options_tail.
 
@@ -1014,6 +1003,7 @@ alter_table_rename_after_comma ::= alter_table_drop_partition_action.
 alter_table_rename_after_comma ::= alter_table_alter_action alter_table_alter_action_tail.
 alter_table_rename_after_comma ::= alter_table_alter_set_default_action.
 alter_table_rename_after_comma ::= alter_table_partition_action.
+alter_table_rename_after_comma ::= alter_table_table_option create_options_tail.
 alter_table_rename_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
 alter_table_rename_after_comma ::= alter_table_action_start create_options_tail.
 
@@ -1041,6 +1031,7 @@ alter_table_drop_after_comma ::= alter_table_drop_partition_action.
 alter_table_drop_after_comma ::= alter_table_alter_action alter_table_alter_action_tail.
 alter_table_drop_after_comma ::= alter_table_alter_set_default_action.
 alter_table_drop_after_comma ::= alter_table_partition_action.
+alter_table_drop_after_comma ::= alter_table_table_option create_options_tail.
 alter_table_drop_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
 alter_table_drop_after_comma ::= alter_table_action_start create_options_tail.
 
@@ -1072,6 +1063,7 @@ alter_table_alter_after_comma ::= alter_table_drop_partition_action.
 alter_table_alter_after_comma ::= alter_table_alter_action alter_table_alter_action_tail.
 alter_table_alter_after_comma ::= alter_table_alter_set_default_action.
 alter_table_alter_after_comma ::= alter_table_partition_action.
+alter_table_alter_after_comma ::= alter_table_table_option create_options_tail.
 alter_table_alter_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
 alter_table_alter_after_comma ::= alter_table_action_start create_options_tail.
 
@@ -1106,6 +1098,29 @@ alter_table_partition_maintenance_kind ::= TRUNCATE.
 alter_table_exchange_validation_tail ::= .
 alter_table_exchange_validation_tail ::= WITH VALIDATION.
 alter_table_exchange_validation_tail ::= WITHOUT VALIDATION.
+
+alter_table_table_option ::= alter_table_numeric_table_option drop_index_option_equals_tail ATOM.
+alter_table_table_option ::= COMMENT drop_index_option_equals_tail ATOM.
+alter_table_table_option ::= ENCRYPTION drop_index_option_equals_tail ATOM.
+alter_table_table_option ::= ENGINE drop_index_option_equals_tail alter_table_table_option_value.
+alter_table_table_option ::= INSERT_METHOD drop_index_option_equals_tail alter_table_table_option_value.
+alter_table_table_option ::= ROW_FORMAT drop_index_option_equals_tail alter_table_table_option_value.
+alter_table_table_option ::= SECONDARY_ENGINE drop_index_option_equals_tail alter_table_table_option_value.
+
+alter_table_numeric_table_option ::= AUTO_INCREMENT.
+alter_table_numeric_table_option ::= AVG_ROW_LENGTH.
+alter_table_numeric_table_option ::= CHECKSUM.
+alter_table_numeric_table_option ::= DELAY_KEY_WRITE.
+alter_table_numeric_table_option ::= KEY_BLOCK_SIZE.
+alter_table_numeric_table_option ::= MAX_ROWS.
+alter_table_numeric_table_option ::= MIN_ROWS.
+alter_table_numeric_table_option ::= PACK_KEYS.
+alter_table_numeric_table_option ::= STATS_AUTO_RECALC.
+alter_table_numeric_table_option ::= STATS_PERSISTENT.
+alter_table_numeric_table_option ::= STATS_SAMPLE_PAGES.
+
+alter_table_table_option_value ::= cache_name_part.
+alter_table_table_option_value ::= NO.
 
 alter_table_partition_option_start ::= REMOVE.
 alter_table_partition_option_start ::= PARTITION.

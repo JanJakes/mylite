@@ -72,7 +72,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, `INITIAL_SIZE`, `WAIT`, and required `ENGINE`. |
 | `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. | Parser recognizes the documented `OPTIONS` names and value requirements. |
-| `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. | Parser recognizes selected closed actions including `FORCE`, `ENABLE/DISABLE KEYS`, `RENAME` forms, `DROP` forms, `ALTER` subactions, partition maintenance/exchange forms, `ALGORITHM`/`LOCK` options, and tablespace discard/import forms. |
+| `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. | Parser recognizes selected closed actions including `FORCE`, `ENABLE/DISABLE KEYS`, `RENAME` forms, `DROP` forms, `ALTER` subactions, partition maintenance/exchange forms, table option changes, `ALGORITHM`/`LOCK` options, and tablespace discard/import forms. |
 | `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser recognizes rename, `ADD/DROP DATAFILE`, size, encryption, engine, and attribute clauses. |
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. |  |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |

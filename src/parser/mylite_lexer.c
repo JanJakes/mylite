@@ -298,6 +298,14 @@ static int lexer_string(MyliteLexer *lexer, MyliteToken *token,
            token->start[1] == 'N' || token->start[1] == 'n')) {
         return ML_ENCRYPTION_VALUE;
       }
+      if (quote == '\'' && token->length == 7 &&
+          isalnum((unsigned char)token->start[1]) &&
+          isalnum((unsigned char)token->start[2]) &&
+          isalnum((unsigned char)token->start[3]) &&
+          isalnum((unsigned char)token->start[4]) &&
+          isalnum((unsigned char)token->start[5])) {
+        return ML_SQLSTATE_VALUE;
+      }
       if (quote == '"') {
         return ML_DOUBLE_QUOTED_STRING;
       }

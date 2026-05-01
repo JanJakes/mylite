@@ -128,7 +128,7 @@ token sink:
   savepoint names using the shared identifier grammar.
 - Stored-program label and cursor references use the shared identifier grammar.
 - `DECLARE`, `FETCH ... INTO`, and named signal conditions use the shared
-  identifier grammar for local names.
+  identifier grammar for local names, with five-character SQLSTATE literals.
 - Prepared-statement names, `PREPARE ... FROM` user-variable sources, and
   `EXECUTE ... USING` user-variable lists use the shared identifier grammar.
 - XA statements recognize one-, two-, and three-part XIDs with numeric
@@ -137,8 +137,8 @@ token sink:
   key-cache and persisted-variable names.
 - `GET DIAGNOSTICS` assignment targets use local/user-variable grammar and
   condition numbers may come from user variables.
-- `SIGNAL` and `RESIGNAL` condition item assignments recognize numeric
-  `MYSQL_ERRNO` values.
+- `SIGNAL` and `RESIGNAL` recognize five-character SQLSTATE literals and
+  condition item assignments with numeric `MYSQL_ERRNO` values.
 - `SET NAMES` and `SET CHARACTER SET` recognize charset/collation names using
   the shared identifier grammar, `BINARY`, `DEFAULT`, optional collation, and
   comma-following variable assignments.

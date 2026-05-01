@@ -185,7 +185,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `BEGIN ... END` | ❌ | medium | Compound statement block scope for stored programs and events. |  |
 | Statement labels | ❌ | medium | Label declaration, LEAVE/ITERATE binding, and duplicate-label diagnostics. |  |
 | `DECLARE` local variables | ❌ | medium | Stored-program local variable declarations, defaults, and scope. |  |
-| `DECLARE ... CONDITION` | ❌ | medium | Named condition declarations. |  |
+| `DECLARE ... CONDITION` | ❌ | medium | Named condition declarations. | Parser recognizes named conditions and five-character SQLSTATE literals. |
 | `DECLARE ... CURSOR` | ❌ | medium | Cursor declaration over SELECT statements. |  |
 | `DECLARE ... HANDLER` | ❌ | medium | CONTINUE/EXIT handler declarations for SQLSTATE, errors, warnings, and NOT FOUND. |  |
 | `CASE` statement | ❌ | medium | Stored-program CASE statement semantics. |  |
@@ -200,8 +200,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. |  |
 | `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. |  |
 | `GET DIAGNOSTICS` | ❌ | medium | Current and stacked diagnostics retrieval. | Parser recognizes diagnostics item lists, local/user-variable assignment targets, and variable condition numbers. |
-| `SIGNAL` | ❌ | medium | User-raised SQLSTATE and condition item semantics. | Parser recognizes condition item assignments with numeric `MYSQL_ERRNO` values. |
-| `RESIGNAL` | ❌ | medium | Handler rethrow and diagnostics mutation. | Parser recognizes condition item assignments with numeric `MYSQL_ERRNO` values. |
+| `SIGNAL` | ❌ | medium | User-raised SQLSTATE and condition item semantics. | Parser recognizes five-character SQLSTATE literals and condition item assignments with numeric `MYSQL_ERRNO` values. |
+| `RESIGNAL` | ❌ | medium | Handler rethrow and diagnostics mutation. | Parser recognizes five-character SQLSTATE literals and condition item assignments with numeric `MYSQL_ERRNO` values. |
 
 ### 1.4 Account, Resource, Plugin, Maintenance, SHOW, and Utility Statements
 

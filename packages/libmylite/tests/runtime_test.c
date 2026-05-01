@@ -31,6 +31,7 @@ enum {
     tables_collation_column = 17,
     tables_comment_column = 20,
     columns_table_name_column = 2,
+    statistics_table_name_column = 2,
     information_schema_table_version = 10,
 };
 
@@ -53,6 +54,7 @@ static int test_create_table_column_type_prepare_is_unsupported(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
+static int expect_no_stmt_handle(mylite_stmt **stmt, const char *context);
 static int execute_sql(mylite_db *database, const char *sql, int expected_step_status);
 static int expect_information_schema_schemata_row(mylite_db *database,
                                                   const struct expected_schemata_row *expected);
@@ -63,6 +65,8 @@ static int expect_no_information_schema_table_schema_row(mylite_db *database,
 static int expect_no_information_schema_table_name_row(mylite_db *database, const char *table_name);
 static int expect_no_information_schema_column_table_name_row(mylite_db *database,
                                                               const char *table_name);
+static int expect_no_information_schema_statistics_table_name_row(mylite_db *database,
+                                                                  const char *table_name);
 static int expect_empty_information_schema_table(mylite_db *database, const char *sql,
                                                  const char *const *columns, int column_count);
 static int expect_show_database_rows(mylite_db *database, const char *required,
@@ -798,6 +802,26 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
     }
     failures += expect_no_information_schema_table_name_row(database, "column_attributes");
     failures += expect_no_information_schema_column_table_name_row(database, "column_attributes");
+    failures += prepare_sql(database,
+                            "CREATE TABLE app.`primary_key_auto_increment` ("
+                            "id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, "
+                            "shorthand INT KEY, no_key BIGINT AUTO_INCREMENT, "
+                            "nullable_pk INT NULL PRIMARY KEY, "
+                            "slug VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'slug' VISIBLE, "
+                            "decimal_auto DECIMAL AUTO_INCREMENT PRIMARY KEY, "
+                            "float_auto FLOAT AUTO_INCREMENT PRIMARY KEY, "
+                            "PRIMARY KEY pk_slug USING BTREE (slug(10) DESC, id ASC) "
+                            "KEY_BLOCK_SIZE = 8 COMMENT 'pk' VISIBLE "
+                            "ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE '', "
+                            "CONSTRAINT PRIMARY KEY (shorthand) USING HASH INVISIBLE, "
+                            "CONSTRAINT named PRIMARY KEY named_pk (nullable_pk DESC))",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "parse-only primary-key CREATE TABLE");
+    failures += expect_no_information_schema_table_name_row(database, "primary_key_auto_increment");
+    failures +=
+        expect_no_information_schema_column_table_name_row(database, "primary_key_auto_increment");
+    failures += expect_no_information_schema_statistics_table_name_row(
+        database, "primary_key_auto_increment");
     failures += prepare_sql(database, "CREATE TABLE invalid_width (a INT(256));",
                             MYLITE_PARSE_ERROR, &stmt);
     if (stmt != NULL) {
@@ -954,6 +978,45 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
         mylite_finalize(stmt);
         stmt = NULL;
     }
+    failures += prepare_sql(database, "CREATE TABLE invalid_unique_inline (a INT UNIQUE KEY);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid inline unique CREATE TABLE");
+    failures += prepare_sql(database, "CREATE TABLE invalid_table_key (a INT, KEY (a));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid table key CREATE TABLE");
+    failures += prepare_sql(database, "CREATE TABLE invalid_primary_empty (a INT, PRIMARY KEY ());",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid empty primary key CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_primary_trailing "
+                            "(a INT, PRIMARY KEY (a,));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid trailing primary key CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_primary_overflow_prefix "
+                            "(a VARCHAR(10), PRIMARY KEY (a(18446744073709551616)));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid primary prefix CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_primary_key_block_string "
+                            "(a INT, PRIMARY KEY (a) KEY_BLOCK_SIZE '8');",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid primary key block CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_primary_comment_equal "
+                            "(a INT, PRIMARY KEY (a) COMMENT = 'pk');",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid primary comment CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_primary_using_rtree "
+                            "(a INT, PRIMARY KEY USING RTREE (a));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid primary RTREE CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_primary_engine_attribute "
+                            "(a INT, PRIMARY KEY (a) ENGINE_ATTRIBUTE 123);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid primary engine attribute CREATE TABLE");
 
     mylite_close(database);
     return failures;
@@ -989,6 +1052,18 @@ static int prepare_sql(mylite_db *database, const char *sql, int expected_status
     }
 
     return 0;
+}
+
+static int expect_no_stmt_handle(mylite_stmt **stmt, const char *context)
+{
+    if (stmt == NULL || *stmt == NULL) {
+        return 0;
+    }
+
+    fprintf(stderr, "%s returned a statement handle\n", context);
+    mylite_finalize(*stmt);
+    *stmt = NULL;
+    return 1;
 }
 
 static int execute_sql(mylite_db *database, const char *sql, int expected_step_status)
@@ -1213,6 +1288,34 @@ static int expect_no_information_schema_column_table_name_row(mylite_db *databas
         }
         if (strcmp(mylite_column_text(stmt, columns_table_name_column), table_name) == 0) {
             fprintf(stderr, "columns unexpectedly returned row for table '%s'\n", table_name);
+            failures = 1;
+            break;
+        }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_no_information_schema_statistics_table_name_row(mylite_db *database,
+                                                                  const char *table_name)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.STATISTICS", MYLITE_OK, &stmt);
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "statistics row");
+        if (failures != 0) {
+            break;
+        }
+        if (strcmp(mylite_column_text(stmt, statistics_table_name_column), table_name) == 0) {
+            fprintf(stderr, "statistics unexpectedly returned row for table '%s'\n", table_name);
             failures = 1;
             break;
         }

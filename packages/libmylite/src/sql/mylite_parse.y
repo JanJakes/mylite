@@ -28,9 +28,9 @@
 %left PLUS MINUS.
 %left STAR SLASH.
 %right UPLUS UMINUS.
-%fallback IDENTIFIER BOOL BOOLEAN CHARSET COLUMN_FORMAT COMMENT DATE DATETIME DISK DYNAMIC
-    ENCRYPTION FIXED INVISIBLE MEMORY NCHAR NVARCHAR ONLY SIGNED STORAGE TEXT TIME TIMESTAMP
-    VISIBLE YEAR.
+%fallback IDENTIFIER AUTO_INCREMENT BOOL BOOLEAN BTREE CHARSET COLUMN_FORMAT COMMENT DATE DATETIME
+    DISK DYNAMIC ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR
+    NVARCHAR ONLY SECONDARY_ENGINE_ATTRIBUTE SIGNED STORAGE TEXT TIME TIMESTAMP VISIBLE YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -149,15 +149,22 @@ set_character_set_statement(A) ::= SET(T) CHARSET DEFAULT(D). {
         state, T, mylite_sql_parser_make_default(state, D));
 }
 
-create_table_statement(A) ::= CREATE(T) TABLE table_name(B) LPAREN column_definition_list(C) RPAREN. {
+create_table_statement(A) ::= CREATE(T) TABLE table_name(B) LPAREN table_element_list(C) RPAREN. {
     A = mylite_sql_parser_make_create_table_statement(state, T, B, C);
 }
 
-column_definition_list(A) ::= column_definition(B). {
+table_element_list(A) ::= table_element(B). {
     A = mylite_sql_parser_make_column_definition_list(state, B);
 }
-column_definition_list(A) ::= column_definition_list(B) COMMA column_definition(C). {
+table_element_list(A) ::= table_element_list(B) COMMA table_element(C). {
     A = mylite_sql_parser_append_column_definition(state, B, C);
+}
+
+table_element(A) ::= column_definition(B). {
+    A = B;
+}
+table_element(A) ::= table_primary_key_constraint(B). {
+    A = B;
 }
 
 column_definition(A) ::= identifier(B) column_type(C) column_attribute_list(D). {
@@ -681,6 +688,148 @@ column_attribute(A) ::= STORAGE(S) DISK(T). {
 column_attribute(A) ::= STORAGE(S) MEMORY(T). {
     A = mylite_sql_parser_make_column_storage_attribute(
         state, S, T, MYLITE_SQL_AST_COLUMN_STORAGE_MEMORY);
+}
+column_attribute(A) ::= AUTO_INCREMENT(T). {
+    A = mylite_sql_parser_make_column_auto_increment_attribute(state, T);
+}
+column_attribute(A) ::= PRIMARY(P) KEY(K). {
+    A = mylite_sql_parser_make_column_primary_key_attribute(state, P, K);
+}
+column_attribute(A) ::= KEY(T). {
+    A = mylite_sql_parser_make_column_primary_key_attribute(state, T, T);
+}
+
+table_primary_key_constraint(A) ::= PRIMARY(P) KEY opt_primary_key_name(B) opt_index_type(C) LPAREN key_part_list(D) RPAREN index_option_list(E). {
+    A = mylite_sql_parser_make_primary_key_constraint(state, P, NULL, B, C, D, E);
+}
+table_primary_key_constraint(A) ::= CONSTRAINT(C) opt_constraint_name(B) PRIMARY KEY opt_primary_key_name(D) opt_index_type(E) LPAREN key_part_list(F) RPAREN index_option_list(G). {
+    A = mylite_sql_parser_make_primary_key_constraint(state, C, B, D, E, F, G);
+}
+
+opt_constraint_name(A) ::= . {
+    A = NULL;
+}
+opt_constraint_name(A) ::= identifier(B). {
+    A = B;
+}
+
+opt_primary_key_name(A) ::= . {
+    A = NULL;
+}
+opt_primary_key_name(A) ::= identifier(B). {
+    A = B;
+}
+
+key_part_list(A) ::= key_part(B). {
+    A = mylite_sql_parser_make_key_part_list(state, B);
+}
+key_part_list(A) ::= key_part_list(B) COMMA key_part(C). {
+    A = mylite_sql_parser_append_key_part(state, B, C);
+}
+
+key_part(A) ::= identifier(B) opt_key_part_prefix(C). {
+    A = mylite_sql_parser_make_key_part(
+        state, B, C, MYLITE_SQL_AST_KEY_PART_ORDER_NONE, (struct mylite_sql_token){0});
+}
+key_part(A) ::= identifier(B) opt_key_part_prefix(C) ASC(T). {
+    A = mylite_sql_parser_make_key_part(state, B, C, MYLITE_SQL_AST_KEY_PART_ORDER_ASC, T);
+}
+key_part(A) ::= identifier(B) opt_key_part_prefix(C) DESC(T). {
+    A = mylite_sql_parser_make_key_part(state, B, C, MYLITE_SQL_AST_KEY_PART_ORDER_DESC, T);
+}
+
+opt_key_part_prefix(A) ::= . {
+    A = NULL;
+}
+opt_key_part_prefix(A) ::= LPAREN(L) INTEGER(T) RPAREN(R). {
+    A = mylite_sql_parser_make_key_part_prefix(
+        state, (struct mylite_sql_parser_key_part_prefix_tokens){
+            .left_paren = L,
+            .integer = T,
+            .right_paren = R,
+        });
+}
+
+opt_index_type(A) ::= . {
+    A = NULL;
+}
+opt_index_type(A) ::= index_type(B). {
+    A = B;
+}
+
+index_type(A) ::= USING(U) BTREE(T). {
+    A = mylite_sql_parser_make_index_type(state, U, T, MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE);
+}
+index_type(A) ::= USING(U) HASH(T). {
+    A = mylite_sql_parser_make_index_type(state, U, T, MYLITE_SQL_AST_INDEX_ALGORITHM_HASH);
+}
+
+index_option_list(A) ::= . {
+    A = mylite_sql_parser_make_index_option_list(state);
+}
+index_option_list(A) ::= index_option_list(B) index_option(C). {
+    A = mylite_sql_parser_append_index_option(state, B, C);
+}
+
+index_option(A) ::= index_type(B). {
+    A = mylite_sql_parser_make_index_using_option(state, B);
+}
+index_option(A) ::= KEY_BLOCK_SIZE(T) INTEGER(V). {
+    A = mylite_sql_parser_make_index_key_block_size_option(
+        state, (struct mylite_sql_parser_index_key_block_size_tokens){
+            .key_block_size = T,
+            .integer = V,
+        });
+}
+index_option(A) ::= KEY_BLOCK_SIZE(T) EQ INTEGER(V). {
+    A = mylite_sql_parser_make_index_key_block_size_option(
+        state, (struct mylite_sql_parser_index_key_block_size_tokens){
+            .key_block_size = T,
+            .integer = V,
+        });
+}
+index_option(A) ::= COMMENT(T) STRING(S). {
+    A = mylite_sql_parser_make_index_comment_option(
+        state, (struct mylite_sql_parser_index_string_option_tokens){
+            .option = T,
+            .string = S,
+        });
+}
+index_option(A) ::= VISIBLE(T). {
+    A = mylite_sql_parser_make_index_visibility_option(
+        state, T, MYLITE_SQL_AST_INDEX_OPTION_VISIBLE);
+}
+index_option(A) ::= INVISIBLE(T). {
+    A = mylite_sql_parser_make_index_visibility_option(
+        state, T, MYLITE_SQL_AST_INDEX_OPTION_INVISIBLE);
+}
+index_option(A) ::= ENGINE_ATTRIBUTE(T) STRING(S). {
+    A = mylite_sql_parser_make_index_attribute_option(
+        state, (struct mylite_sql_parser_index_string_option_tokens){
+            .option = T,
+            .string = S,
+        }, MYLITE_SQL_AST_INDEX_OPTION_ENGINE_ATTRIBUTE);
+}
+index_option(A) ::= ENGINE_ATTRIBUTE(T) EQ STRING(S). {
+    A = mylite_sql_parser_make_index_attribute_option(
+        state, (struct mylite_sql_parser_index_string_option_tokens){
+            .option = T,
+            .string = S,
+        }, MYLITE_SQL_AST_INDEX_OPTION_ENGINE_ATTRIBUTE);
+}
+index_option(A) ::= SECONDARY_ENGINE_ATTRIBUTE(T) STRING(S). {
+    A = mylite_sql_parser_make_index_attribute_option(
+        state, (struct mylite_sql_parser_index_string_option_tokens){
+            .option = T,
+            .string = S,
+        }, MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE);
+}
+index_option(A) ::= SECONDARY_ENGINE_ATTRIBUTE(T) EQ STRING(S). {
+    A = mylite_sql_parser_make_index_attribute_option(
+        state, (struct mylite_sql_parser_index_string_option_tokens){
+            .option = T,
+            .string = S,
+        }, MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE);
 }
 
 column_default_value(A) ::= literal(B). {

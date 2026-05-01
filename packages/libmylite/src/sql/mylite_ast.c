@@ -263,6 +263,36 @@ void mylite_sql_ast_node_set_column_storage(struct mylite_sql_ast_node *node,
     node->column_storage = column_storage;
 }
 
+void mylite_sql_ast_node_set_key_part_order(struct mylite_sql_ast_node *node,
+                                            enum mylite_sql_ast_key_part_order order)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->key_part_order = order;
+}
+
+void mylite_sql_ast_node_set_index_algorithm(struct mylite_sql_ast_node *node,
+                                             enum mylite_sql_ast_index_algorithm algorithm)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->index_algorithm = algorithm;
+}
+
+void mylite_sql_ast_node_set_index_option(struct mylite_sql_ast_node *node,
+                                          enum mylite_sql_ast_index_option option)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->index_option = option;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -349,6 +379,18 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "column_attribute";
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return "current_timestamp";
+    case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
+        return "primary_key_constraint";
+    case MYLITE_SQL_AST_KEY_PART_LIST:
+        return "key_part_list";
+    case MYLITE_SQL_AST_KEY_PART:
+        return "key_part";
+    case MYLITE_SQL_AST_INDEX_TYPE:
+        return "index_type";
+    case MYLITE_SQL_AST_INDEX_OPTION_LIST:
+        return "index_option_list";
+    case MYLITE_SQL_AST_INDEX_OPTION:
+        return "index_option";
     }
 
     return "unknown";
@@ -460,6 +502,10 @@ mylite_sql_ast_column_attribute_name(enum mylite_sql_ast_column_attribute column
         return "column_format";
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_STORAGE:
         return "storage";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT:
+        return "auto_increment";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY:
+        return "primary_key";
     }
 
     return "unknown";
@@ -492,6 +538,58 @@ const char *mylite_sql_ast_column_storage_name(enum mylite_sql_ast_column_storag
         return "disk";
     case MYLITE_SQL_AST_COLUMN_STORAGE_MEMORY:
         return "memory";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_key_part_order_name(enum mylite_sql_ast_key_part_order order)
+{
+    switch (order) {
+    case MYLITE_SQL_AST_KEY_PART_ORDER_NONE:
+        return "none";
+    case MYLITE_SQL_AST_KEY_PART_ORDER_ASC:
+        return "asc";
+    case MYLITE_SQL_AST_KEY_PART_ORDER_DESC:
+        return "desc";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_index_algorithm_name(enum mylite_sql_ast_index_algorithm algorithm)
+{
+    switch (algorithm) {
+    case MYLITE_SQL_AST_INDEX_ALGORITHM_NONE:
+        return "none";
+    case MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE:
+        return "btree";
+    case MYLITE_SQL_AST_INDEX_ALGORITHM_HASH:
+        return "hash";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_index_option_name(enum mylite_sql_ast_index_option option)
+{
+    switch (option) {
+    case MYLITE_SQL_AST_INDEX_OPTION_NONE:
+        return "none";
+    case MYLITE_SQL_AST_INDEX_OPTION_USING:
+        return "using";
+    case MYLITE_SQL_AST_INDEX_OPTION_KEY_BLOCK_SIZE:
+        return "key_block_size";
+    case MYLITE_SQL_AST_INDEX_OPTION_COMMENT:
+        return "comment";
+    case MYLITE_SQL_AST_INDEX_OPTION_VISIBLE:
+        return "visible";
+    case MYLITE_SQL_AST_INDEX_OPTION_INVISIBLE:
+        return "invisible";
+    case MYLITE_SQL_AST_INDEX_OPTION_ENGINE_ATTRIBUTE:
+        return "engine_attribute";
+    case MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE:
+        return "secondary_engine_attribute";
     }
 
     return "unknown";

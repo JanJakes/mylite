@@ -38,6 +38,22 @@ struct mylite_sql_parser_precision_scale_tokens {
     struct mylite_sql_token right_paren;
 };
 
+struct mylite_sql_parser_key_part_prefix_tokens {
+    struct mylite_sql_token left_paren;
+    struct mylite_sql_token integer;
+    struct mylite_sql_token right_paren;
+};
+
+struct mylite_sql_parser_index_key_block_size_tokens {
+    struct mylite_sql_token key_block_size;
+    struct mylite_sql_token integer;
+};
+
+struct mylite_sql_parser_index_string_option_tokens {
+    struct mylite_sql_token option;
+    struct mylite_sql_token string;
+};
+
 void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
                                       struct mylite_sql_ast_node *root);
 void mylite_sql_parser_state_syntax_error(struct mylite_sql_parser_state *state, int parser_token,
@@ -92,6 +108,50 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_append_column_definition(struct mylite_sql_parser_state *state,
                                            struct mylite_sql_ast_node *list,
                                            struct mylite_sql_ast_node *column);
+struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_constraint(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *constraint_name, struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *index_type, struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_ast_node *options);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_key_part_list(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_ast_node *key_part);
+struct mylite_sql_ast_node *mylite_sql_parser_append_key_part(struct mylite_sql_parser_state *state,
+                                                              struct mylite_sql_ast_node *list,
+                                                              struct mylite_sql_ast_node *key_part);
+struct mylite_sql_ast_node *mylite_sql_parser_make_key_part(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *prefix, enum mylite_sql_ast_key_part_order order,
+    struct mylite_sql_token order_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_key_part_prefix(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_parser_key_part_prefix_tokens tokens);
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_type(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token using_token,
+    struct mylite_sql_token algorithm_token, enum mylite_sql_ast_index_algorithm algorithm);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_index_option_list(struct mylite_sql_parser_state *state);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_index_option(struct mylite_sql_parser_state *state,
+                                      struct mylite_sql_ast_node *list,
+                                      struct mylite_sql_ast_node *option);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_index_using_option(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_ast_node *index_type);
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_key_block_size_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_index_key_block_size_tokens tokens);
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_comment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_index_string_option_tokens tokens);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_index_visibility_option(struct mylite_sql_parser_state *state,
+                                               struct mylite_sql_token visibility_token,
+                                               enum mylite_sql_ast_index_option visibility);
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_attribute_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_index_string_option_tokens tokens,
+    enum mylite_sql_ast_index_option option);
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_ast_node *column_type, struct mylite_sql_ast_node *attributes);
@@ -197,6 +257,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_format_attribute(
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_storage_attribute(
     struct mylite_sql_parser_state *state, struct mylite_sql_token storage_token,
     struct mylite_sql_token value_token, enum mylite_sql_ast_column_storage storage);
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_auto_increment_attribute(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token auto_increment_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_column_primary_key_attribute(struct mylite_sql_parser_state *state,
+                                                    struct mylite_sql_token start_token,
+                                                    struct mylite_sql_token key_token);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_current_timestamp(struct mylite_sql_parser_state *state,
                                          struct mylite_sql_token current_timestamp_token,

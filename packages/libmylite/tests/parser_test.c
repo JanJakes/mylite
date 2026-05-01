@@ -13,6 +13,7 @@ static int test_create_table_string_binary_columns(void);
 static int test_create_table_numeric_columns(void);
 static int test_create_table_temporal_columns(void);
 static int test_create_table_column_attributes(void);
+static int test_create_table_primary_keys_auto_increment(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -46,6 +47,13 @@ static int expect_column_format(const struct mylite_sql_ast_node *node,
                                 enum mylite_sql_ast_column_format expected, const char *context);
 static int expect_column_storage(const struct mylite_sql_ast_node *node,
                                  enum mylite_sql_ast_column_storage expected, const char *context);
+static int expect_key_part_order(const struct mylite_sql_ast_node *node,
+                                 enum mylite_sql_ast_key_part_order expected, const char *context);
+static int expect_index_algorithm(const struct mylite_sql_ast_node *node,
+                                  enum mylite_sql_ast_index_algorithm expected,
+                                  const char *context);
+static int expect_index_option(const struct mylite_sql_ast_node *node,
+                               enum mylite_sql_ast_index_option expected, const char *context);
 static int expect_current_timestamp(const struct mylite_sql_ast_node *node, bool has_precision,
                                     uint64_t precision, const char *context);
 
@@ -62,6 +70,7 @@ int main(void)
     failures += test_create_table_numeric_columns();
     failures += test_create_table_temporal_columns();
     failures += test_create_table_column_attributes();
+    failures += test_create_table_primary_keys_auto_increment();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -1372,11 +1381,303 @@ static int test_create_table_column_attributes(void)
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("CREATE TABLE bad_auto_increment (a INT AUTO_INCREMENT);",
+    failures += parse_sql("CREATE TABLE supported_auto_increment (a INT AUTO_INCREMENT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE supported_inline_primary_key (a INT PRIMARY KEY);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_primary_keys_auto_increment(void)
+{
+    enum {
+        expected_element_count = 10,
+        id_column = 0,
+        shorthand_column = 1,
+        no_key_auto_column = 2,
+        nullable_primary_column = 3,
+        decimal_auto_column = 5,
+        float_auto_column = 6,
+        named_primary_constraint = 7,
+        constraint_without_name = 8,
+        constraint_with_index_name = 9,
+        prefix_length = 10,
+        key_block_size = 8,
+        named_primary_option_count = 5,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *elements = NULL;
+    const struct mylite_sql_ast_node *attributes = NULL;
+    const struct mylite_sql_ast_node *constraint = NULL;
+    const struct mylite_sql_ast_node *key_parts = NULL;
+    const struct mylite_sql_ast_node *key_part = NULL;
+    const struct mylite_sql_ast_node *options = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE TABLE app.primary_valid ("
+                          "id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, "
+                          "shorthand INT KEY, no_key BIGINT AUTO_INCREMENT, "
+                          "nullable_pk INT NULL PRIMARY KEY, "
+                          "v VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'v' VISIBLE, "
+                          "d DECIMAL AUTO_INCREMENT PRIMARY KEY, "
+                          "f FLOAT AUTO_INCREMENT PRIMARY KEY, "
+                          "PRIMARY KEY pk_named USING BTREE (id, v(10) DESC) "
+                          "KEY_BLOCK_SIZE = 8 COMMENT 'pk' VISIBLE "
+                          "ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE '', "
+                          "CONSTRAINT PRIMARY KEY (shorthand ASC) USING HASH INVISIBLE, "
+                          "CONSTRAINT named PRIMARY KEY named_pk (nullable_pk DESC));",
+                          MYLITE_SQL_PARSE_OK, &result);
+    elements = child_at(child_at(result.root, 0U), 1U);
+    failures +=
+        expect_node(elements, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "primary element list");
+    failures += expect_child_count(elements, expected_element_count, "primary element count");
+
+    attributes = child_at(child_at(elements, id_column), 2U);
+    failures += expect_child_count(attributes, 2U, "id primary attribute count");
+    failures += expect_column_attribute(child_at(attributes, 0U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT,
+                                        "id auto_increment attribute");
+    failures += expect_column_attribute(child_at(attributes, 1U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY,
+                                        "id primary attribute");
+    failures +=
+        expect_span_text(child_at(attributes, 1U), "PRIMARY KEY", "id primary attribute span");
+
+    attributes = child_at(child_at(elements, shorthand_column), 2U);
+    failures += expect_column_attribute(child_at(attributes, 0U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY,
+                                        "inline key alias attribute");
+    failures += expect_span_text(child_at(attributes, 0U), "KEY", "inline key alias span");
+
+    attributes = child_at(child_at(elements, no_key_auto_column), 2U);
+    failures += expect_column_attribute(child_at(attributes, 0U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT,
+                                        "no-key auto_increment attribute");
+
+    attributes = child_at(child_at(elements, nullable_primary_column), 2U);
+    failures += expect_child_count(attributes, 2U, "nullable primary attributes");
+    failures +=
+        expect_column_attribute(child_at(attributes, 0U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NULL,
+                                "nullable primary null attribute");
+    failures += expect_column_attribute(child_at(attributes, 1U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY,
+                                        "nullable primary key attribute");
+
+    attributes = child_at(child_at(elements, decimal_auto_column), 2U);
+    failures += expect_column_attribute(child_at(attributes, 0U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT,
+                                        "decimal auto_increment attribute");
+    failures += expect_column_attribute(child_at(attributes, 1U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY,
+                                        "decimal primary attribute");
+
+    attributes = child_at(child_at(elements, float_auto_column), 2U);
+    failures += expect_column_attribute(child_at(attributes, 0U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT,
+                                        "float auto_increment attribute");
+
+    constraint = child_at(elements, named_primary_constraint);
+    failures +=
+        expect_node(constraint, MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT, "named primary constraint");
+    failures += expect_span_text(child_at(constraint, 0U), "pk_named", "primary index name");
+    failures +=
+        expect_index_algorithm(child_at(constraint, 1U), MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
+                               "primary index type before list");
+    key_parts = child_at(constraint, 2U);
+    failures += expect_node(key_parts, MYLITE_SQL_AST_KEY_PART_LIST, "named primary key parts");
+    failures += expect_child_count(key_parts, 2U, "named primary key part count");
+    key_part = child_at(key_parts, 0U);
+    failures += expect_span_text(child_at(key_part, 0U), "id", "first key part name");
+    failures +=
+        expect_key_part_order(key_part, MYLITE_SQL_AST_KEY_PART_ORDER_NONE, "first key part order");
+    key_part = child_at(key_parts, 1U);
+    failures += expect_span_text(child_at(key_part, 0U), "v", "prefix key part name");
+    failures += expect_child_count(key_part, 2U, "prefix key part children");
+    if (child_at(key_part, 1U) != NULL &&
+        (!child_at(key_part, 1U)->has_column_length ||
+         child_at(key_part, 1U)->column_length != prefix_length)) {
+        fprintf(stderr, "prefix key part did not record length 10\n");
+        failures = 1;
+    }
+    failures += expect_key_part_order(key_part, MYLITE_SQL_AST_KEY_PART_ORDER_DESC,
+                                      "prefix key part desc order");
+    options = child_at(constraint, 3U);
+    failures += expect_node(options, MYLITE_SQL_AST_INDEX_OPTION_LIST, "named primary options");
+    failures +=
+        expect_child_count(options, named_primary_option_count, "named primary option count");
+    failures += expect_index_option(child_at(options, 0U),
+                                    MYLITE_SQL_AST_INDEX_OPTION_KEY_BLOCK_SIZE, "key block option");
+    if (child_at(child_at(options, 0U), 0U) != NULL &&
+        child_at(child_at(options, 0U), 0U)->column_length != key_block_size) {
+        fprintf(stderr, "key block size was not recorded as 8\n");
+        failures = 1;
+    }
+    failures += expect_index_option(child_at(options, 1U), MYLITE_SQL_AST_INDEX_OPTION_COMMENT,
+                                    "primary comment option");
+    failures += expect_index_option(child_at(options, 2U), MYLITE_SQL_AST_INDEX_OPTION_VISIBLE,
+                                    "primary visible option");
+    failures +=
+        expect_index_option(child_at(options, 3U), MYLITE_SQL_AST_INDEX_OPTION_ENGINE_ATTRIBUTE,
+                            "primary engine attribute option");
+    failures += expect_index_option(child_at(options, 4U),
+                                    MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE,
+                                    "primary secondary engine attribute option");
+
+    constraint = child_at(elements, constraint_without_name);
+    failures +=
+        expect_node(constraint, MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT, "constraint without symbol");
+    key_parts = child_at(constraint, 0U);
+    failures += expect_node(key_parts, MYLITE_SQL_AST_KEY_PART_LIST, "constraint key parts");
+    key_part = child_at(key_parts, 0U);
+    failures +=
+        expect_key_part_order(key_part, MYLITE_SQL_AST_KEY_PART_ORDER_ASC, "constraint asc order");
+    options = child_at(constraint, 1U);
+    failures += expect_index_option(child_at(options, 0U), MYLITE_SQL_AST_INDEX_OPTION_USING,
+                                    "post-list using option");
+    failures +=
+        expect_index_algorithm(child_at(child_at(options, 0U), 0U),
+                               MYLITE_SQL_AST_INDEX_ALGORITHM_HASH, "post-list hash index type");
+    failures += expect_index_option(child_at(options, 1U), MYLITE_SQL_AST_INDEX_OPTION_INVISIBLE,
+                                    "primary invisible option");
+
+    constraint = child_at(elements, constraint_with_index_name);
+    failures += expect_span_text(child_at(constraint, 0U), "named", "primary constraint symbol");
+    failures += expect_span_text(child_at(constraint, 1U), "named_pk", "primary index name");
+    key_parts = child_at(constraint, 2U);
+    failures += expect_key_part_order(child_at(key_parts, 0U), MYLITE_SQL_AST_KEY_PART_ORDER_DESC,
+                                      "named constraint desc order");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE pk_keyword_names ("
+                          "auto_increment INT, btree INT, hash INT, "
+                          "key_block_size INT, engine_attribute INT, "
+                          "secondary_engine_attribute INT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE pk_prefix_zero "
+                          "(a VARCHAR(10), PRIMARY KEY (a(0)));",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE pk_option_order ("
+                          "a INT, PRIMARY KEY USING BTREE (a) COMMENT 'pk' "
+                          "KEY_BLOCK_SIZE 8 VISIBLE, "
+                          "b INT, PRIMARY KEY (b) COMMENT 'pk' USING BTREE);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_unique_inline (a INT UNIQUE KEY);",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("CREATE TABLE bad_inline_primary_key (a INT PRIMARY KEY);",
+    failures += parse_sql("CREATE TABLE bad_table_key (a INT, KEY (a));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_table_index (a INT, INDEX (a));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_identifier (primary INT);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_key_identifier (key INT);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_constraint_identifier (constraint INT);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_asc_identifier (asc INT);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_desc_identifier (desc INT);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_index_identifier (index INT);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_empty (a INT, PRIMARY KEY ());",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_trailing (a INT, PRIMARY KEY (a,));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_functional "
+                          "(a INT, PRIMARY KEY ((a + 1)));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_overflow_prefix "
+                          "(a VARCHAR(10), PRIMARY KEY (a(18446744073709551616)));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_negative_prefix "
+                          "(a VARCHAR(10), PRIMARY KEY (a(-1)));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_string_prefix "
+                          "(a VARCHAR(10), PRIMARY KEY (a('1')));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_key_block_string "
+                          "(a INT, PRIMARY KEY (a) KEY_BLOCK_SIZE '8');",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_key_block_negative "
+                          "(a INT, PRIMARY KEY (a) KEY_BLOCK_SIZE -1);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_key_block_overflow "
+                          "(a INT, PRIMARY KEY (a) "
+                          "KEY_BLOCK_SIZE 18446744073709551616);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_prelist_comment "
+                          "(a INT, PRIMARY KEY COMMENT 'pk' (a));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_comment_equal "
+                          "(a INT, PRIMARY KEY (a) COMMENT = 'pk');",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_comment_number "
+                          "(a INT, PRIMARY KEY (a) COMMENT 8);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_using_rtree "
+                          "(a INT, PRIMARY KEY USING RTREE (a));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_engine_attribute_number "
+                          "(a INT, PRIMARY KEY (a) ENGINE_ATTRIBUTE 123);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_primary_secondary_engine_attribute_number "
+                          "(a INT, PRIMARY KEY (a) SECONDARY_ENGINE_ATTRIBUTE = 123);",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
@@ -1827,6 +2128,51 @@ static int expect_column_storage(const struct mylite_sql_ast_node *node,
         fprintf(stderr, "%s: expected column storage %s, got %s\n", context,
                 mylite_sql_ast_column_storage_name(expected),
                 mylite_sql_ast_column_storage_name(node->column_storage));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_key_part_order(const struct mylite_sql_ast_node *node,
+                                 enum mylite_sql_ast_key_part_order expected, const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_KEY_PART, context);
+
+    if (node != NULL && node->key_part_order != expected) {
+        fprintf(stderr, "%s: expected key part order %s, got %s\n", context,
+                mylite_sql_ast_key_part_order_name(expected),
+                mylite_sql_ast_key_part_order_name(node->key_part_order));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_index_algorithm(const struct mylite_sql_ast_node *node,
+                                  enum mylite_sql_ast_index_algorithm expected, const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_INDEX_TYPE, context);
+
+    if (node != NULL && node->index_algorithm != expected) {
+        fprintf(stderr, "%s: expected index algorithm %s, got %s\n", context,
+                mylite_sql_ast_index_algorithm_name(expected),
+                mylite_sql_ast_index_algorithm_name(node->index_algorithm));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_index_option(const struct mylite_sql_ast_node *node,
+                               enum mylite_sql_ast_index_option expected, const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_INDEX_OPTION, context);
+
+    if (node != NULL && node->index_option != expected) {
+        fprintf(stderr, "%s: expected index option %s, got %s\n", context,
+                mylite_sql_ast_index_option_name(expected),
+                mylite_sql_ast_index_option_name(node->index_option));
         failures = 1;
     }
 

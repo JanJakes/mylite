@@ -41,6 +41,12 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST = 30,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE = 31,
     MYLITE_SQL_AST_CURRENT_TIMESTAMP = 32,
+    MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT = 33,
+    MYLITE_SQL_AST_KEY_PART_LIST = 34,
+    MYLITE_SQL_AST_KEY_PART = 35,
+    MYLITE_SQL_AST_INDEX_TYPE = 36,
+    MYLITE_SQL_AST_INDEX_OPTION_LIST = 37,
+    MYLITE_SQL_AST_INDEX_OPTION = 38,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -117,6 +123,8 @@ enum mylite_sql_ast_column_attribute {
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_INVISIBLE = 7,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COLUMN_FORMAT = 8,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_STORAGE = 9,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT = 10,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY = 11,
 };
 
 enum mylite_sql_ast_column_format {
@@ -131,6 +139,29 @@ enum mylite_sql_ast_column_storage {
     MYLITE_SQL_AST_COLUMN_STORAGE_DEFAULT = 1,
     MYLITE_SQL_AST_COLUMN_STORAGE_DISK = 2,
     MYLITE_SQL_AST_COLUMN_STORAGE_MEMORY = 3,
+};
+
+enum mylite_sql_ast_key_part_order {
+    MYLITE_SQL_AST_KEY_PART_ORDER_NONE = 0,
+    MYLITE_SQL_AST_KEY_PART_ORDER_ASC = 1,
+    MYLITE_SQL_AST_KEY_PART_ORDER_DESC = 2,
+};
+
+enum mylite_sql_ast_index_algorithm {
+    MYLITE_SQL_AST_INDEX_ALGORITHM_NONE = 0,
+    MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE = 1,
+    MYLITE_SQL_AST_INDEX_ALGORITHM_HASH = 2,
+};
+
+enum mylite_sql_ast_index_option {
+    MYLITE_SQL_AST_INDEX_OPTION_NONE = 0,
+    MYLITE_SQL_AST_INDEX_OPTION_USING = 1,
+    MYLITE_SQL_AST_INDEX_OPTION_KEY_BLOCK_SIZE = 2,
+    MYLITE_SQL_AST_INDEX_OPTION_COMMENT = 3,
+    MYLITE_SQL_AST_INDEX_OPTION_VISIBLE = 4,
+    MYLITE_SQL_AST_INDEX_OPTION_INVISIBLE = 5,
+    MYLITE_SQL_AST_INDEX_OPTION_ENGINE_ATTRIBUTE = 6,
+    MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE = 7,
 };
 
 struct mylite_sql_ast_node {
@@ -152,6 +183,9 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_column_attribute column_attribute;
     enum mylite_sql_ast_column_format column_format;
     enum mylite_sql_ast_column_storage column_storage;
+    enum mylite_sql_ast_key_part_order key_part_order;
+    enum mylite_sql_ast_index_algorithm index_algorithm;
+    enum mylite_sql_ast_index_option index_option;
     unsigned int column_display_width;
     bool column_type_unsigned;
     bool column_type_signed;
@@ -211,6 +245,12 @@ void mylite_sql_ast_node_set_column_format(struct mylite_sql_ast_node *node,
                                            enum mylite_sql_ast_column_format column_format);
 void mylite_sql_ast_node_set_column_storage(struct mylite_sql_ast_node *node,
                                             enum mylite_sql_ast_column_storage column_storage);
+void mylite_sql_ast_node_set_key_part_order(struct mylite_sql_ast_node *node,
+                                            enum mylite_sql_ast_key_part_order order);
+void mylite_sql_ast_node_set_index_algorithm(struct mylite_sql_ast_node *node,
+                                             enum mylite_sql_ast_index_algorithm algorithm);
+void mylite_sql_ast_node_set_index_option(struct mylite_sql_ast_node *node,
+                                          enum mylite_sql_ast_index_option option);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 
@@ -223,5 +263,8 @@ const char *
 mylite_sql_ast_column_attribute_name(enum mylite_sql_ast_column_attribute column_attribute);
 const char *mylite_sql_ast_column_format_name(enum mylite_sql_ast_column_format column_format);
 const char *mylite_sql_ast_column_storage_name(enum mylite_sql_ast_column_storage column_storage);
+const char *mylite_sql_ast_key_part_order_name(enum mylite_sql_ast_key_part_order order);
+const char *mylite_sql_ast_index_algorithm_name(enum mylite_sql_ast_index_algorithm algorithm);
+const char *mylite_sql_ast_index_option_name(enum mylite_sql_ast_index_option option);
 
 #endif

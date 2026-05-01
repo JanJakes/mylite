@@ -25,7 +25,7 @@ level application surfaces.
        fractional seconds, zero values, and metadata.
 8. [x] Column attributes: `NULL`, `NOT NULL`, `DEFAULT`, expression defaults,
        `ON UPDATE`, comments, visibility, and storage/format options.
-9. [ ] Primary keys and `AUTO_INCREMENT`: inline and table constraints,
+9. [x] Primary keys and `AUTO_INCREMENT`: inline and table constraints,
        allocation, explicit values, metadata, and error cases.
 10. [ ] Unique and secondary indexes in `CREATE TABLE`: key parts, prefix
        lengths, index types, visibility, comments, and metadata.

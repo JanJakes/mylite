@@ -3061,8 +3061,7 @@ diagnostics_condition_items ::= diagnostics_condition_items import_comma diagnos
 
 diagnostics_condition_item ::= diagnostics_target diagnostics_equals diagnostics_condition_item_name.
 
-diagnostics_target ::= ATOM.
-diagnostics_target ::= LABEL.
+diagnostics_target ::= set_variable_name.
 
 diagnostics_condition_value ::= ATOM.
 diagnostics_condition_value ::= LABEL.
@@ -3330,13 +3329,10 @@ set_variable_name ::= AT_SIGN set_variable_part set_variable_dot_tail.
 set_variable_dot_tail ::= .
 set_variable_dot_tail ::= set_variable_dot_tail DOT set_variable_part.
 
-set_variable_part ::= ATOM.
+set_variable_part ::= cache_name_part.
 set_variable_part ::= AT_HOST.
-set_variable_part ::= DEFAULT.
 set_variable_part ::= FLUSH.
-set_variable_part ::= LABEL.
 set_variable_part ::= SQL_BUFFER_RESULT.
-set_variable_part ::= USER.
 
 grant_statement ::= GRANT grant_subject_list grant_destination_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);

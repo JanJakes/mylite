@@ -97,6 +97,7 @@ token sink:
 - Prepared-statement names use the shared identifier grammar.
 - `CACHE INDEX` and `RESET PERSIST` use the shared identifier grammar for
   key-cache and persisted-variable names.
+- `GET DIAGNOSTICS` assignment targets use the shared variable-name grammar.
 - `SET NAMES` and `SET CHARACTER SET` recognize charset/collation names using
   the shared identifier grammar, `BINARY`, `DEFAULT`, optional collation, and
   comma-following variable assignments.

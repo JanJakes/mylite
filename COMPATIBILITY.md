@@ -199,7 +199,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `OPEN` cursor | ❌ | medium | Cursor open lifecycle. |  |
 | `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. |  |
 | `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. |  |
-| `GET DIAGNOSTICS` | ❌ | medium | Current and stacked diagnostics retrieval. |  |
+| `GET DIAGNOSTICS` | ❌ | medium | Current and stacked diagnostics retrieval. | Parser recognizes diagnostics item lists and assignment targets using the shared variable-name grammar. |
 | `SIGNAL` | ❌ | medium | User-raised SQLSTATE and condition item semantics. |  |
 | `RESIGNAL` | ❌ | medium | Handler rethrow and diagnostics mutation. |  |
 

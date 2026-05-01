@@ -67,7 +67,8 @@ token sink:
   elements while preserving nested token bodies for column and constraint
   definitions; trailing table options must start with known MySQL table-option
   keywords, including `AUTOEXTEND_SIZE` and `START TRANSACTION`, and
-  post-definition CTAS forms are recognized explicitly.
+  no-definition and post-definition CTAS forms are recognized explicitly,
+  including `IGNORE`/`REPLACE` duplicate-handling modifiers.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   string-literal file names, documented NDB logfile options with numeric
   size/nodegroup values, and required `ENGINE` clauses.

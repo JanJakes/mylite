@@ -260,6 +260,7 @@ create_table_tail ::= AS WITH with_recursive_tail with_cte_list with_query_body.
 create_table_tail ::= query_parenthesized_body.
 create_table_tail ::= AS query_parenthesized_body.
 create_table_tail ::= AS LP LP dml_write_query_start required_statement_tail.
+create_table_tail ::= create_table_ctas_modifier create_table_ctas_body.
 create_table_tail ::= create_table_tail_option_start required_statement_tail.
 
 create_table_post_definition_tail ::= .
@@ -269,8 +270,10 @@ create_table_post_definition_tail ::= create_table_ctas_tail.
 create_table_ctas_tail ::= create_table_ctas_modifier_tail create_table_ctas_body.
 
 create_table_ctas_modifier_tail ::= .
-create_table_ctas_modifier_tail ::= IGNORE.
-create_table_ctas_modifier_tail ::= REPLACE.
+create_table_ctas_modifier_tail ::= create_table_ctas_modifier.
+
+create_table_ctas_modifier ::= IGNORE.
+create_table_ctas_modifier ::= REPLACE.
 
 create_table_ctas_body ::= SELECT select_tail.
 create_table_ctas_body ::= AS SELECT select_tail.

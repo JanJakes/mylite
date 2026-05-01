@@ -57,6 +57,9 @@ static int dml_assignment_operator(int token_id);
 static int dml_assignment_target_token(int token_id);
 static int dml_clause_operand_boundary(int token_id);
 static int dml_limit_option_token(int token_id);
+static int dml_values_alias_token(int token_id);
+static int dml_values_unclosed_string_fragment(int token_id,
+                                               MyliteToken token);
 static int token_opens_nested_expression(int token_id);
 static int token_closes_nested_expression(int token_id);
 static int token_ascii_equal(MyliteToken token, const char *expected);
@@ -1428,10 +1431,26 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     DML_PAYLOAD_VALUES,
     DML_PAYLOAD_QUERY
   };
+  enum {
+    DML_VALUES_NONE,
+    DML_VALUES_AFTER_VALUES,
+    DML_VALUES_AFTER_ROW_KEYWORD,
+    DML_VALUES_IN_ROW,
+    DML_VALUES_AFTER_ROW,
+    DML_VALUES_AFTER_COMMA,
+    DML_VALUES_AFTER_AS,
+    DML_VALUES_AFTER_ALIAS,
+    DML_VALUES_AFTER_ALIAS_LP,
+    DML_VALUES_AFTER_ALIAS_COLUMN,
+    DML_VALUES_AFTER_ALIAS_COMMA,
+    DML_VALUES_AFTER_ALIAS_RP
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token = start;
+  MyliteToken values_row_last_token = start;
   int token_id;
+  int values_row_last_token_id = 0;
   int saw_statement = 0;
   int depth = 0;
   int assignment_state = DML_ASSIGN_NONE;
@@ -1446,6 +1465,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int seen_order = 0;
   int seen_limit = 0;
   int payload_kind = DML_PAYLOAD_NONE;
+  int values_state = DML_VALUES_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -1458,10 +1478,17 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     }
 
     if (depth > 0) {
+      if (values_state == DML_VALUES_IN_ROW) {
+        values_row_last_token = token;
+        values_row_last_token_id = token_id;
+      }
       if (token_opens_nested_expression(token_id)) {
         depth++;
       } else if (token_closes_nested_expression(token_id)) {
         depth--;
+        if (depth == 0 && values_state == DML_VALUES_IN_ROW) {
+          values_state = DML_VALUES_AFTER_ROW;
+        }
       }
       continue;
     }
@@ -1535,6 +1562,127 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
           depth++;
         }
         continue;
+      }
+    }
+
+    if (values_state != DML_VALUES_NONE) {
+      if (values_state == DML_VALUES_AFTER_VALUES ||
+          values_state == DML_VALUES_AFTER_COMMA) {
+        if (token_id == ML_ROW) {
+          values_state = DML_VALUES_AFTER_ROW_KEYWORD;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_LP) {
+          values_state = DML_VALUES_IN_ROW;
+          values_row_last_token_id = 0;
+          depth = 1;
+          pending_token = token;
+          continue;
+        }
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete DML VALUES row list");
+        return;
+      }
+      if (values_state == DML_VALUES_AFTER_ROW_KEYWORD) {
+        if (token_id != ML_LP) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete DML VALUES row list");
+          return;
+        }
+        values_state = DML_VALUES_IN_ROW;
+        values_row_last_token_id = 0;
+        depth = 1;
+        pending_token = token;
+        continue;
+      }
+      if (values_state == DML_VALUES_AFTER_ROW) {
+        if (token_id == ML_COMMA) {
+          values_state = DML_VALUES_AFTER_COMMA;
+          pending_token = token;
+          continue;
+        }
+        if (kind == MYLITE_STATEMENT_INSERT && token_id == ML_AS) {
+          values_state = DML_VALUES_AFTER_AS;
+          pending_token = token;
+          continue;
+        }
+        if (kind == MYLITE_STATEMENT_INSERT && token_id == ML_ON) {
+          values_state = DML_VALUES_NONE;
+          duplicate_state = DML_DUP_AFTER_ON;
+          duplicate_strict = 1;
+          pending_token = token;
+          continue;
+        }
+        if (token_id != ML_SEMI) {
+          mylite_parser_reject(ctx, token, "malformed DML VALUES row list");
+          return;
+        }
+      } else if (values_state == DML_VALUES_AFTER_AS) {
+        if (!dml_values_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete DML VALUES row alias");
+          return;
+        }
+        values_state = DML_VALUES_AFTER_ALIAS;
+        continue;
+      } else if (values_state == DML_VALUES_AFTER_ALIAS) {
+        if (token_id == ML_LP) {
+          values_state = DML_VALUES_AFTER_ALIAS_LP;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_ON) {
+          values_state = DML_VALUES_NONE;
+          duplicate_state = DML_DUP_AFTER_ON;
+          duplicate_strict = 1;
+          pending_token = token;
+          continue;
+        }
+        if (token_id != ML_SEMI) {
+          mylite_parser_reject(ctx, token, "malformed DML VALUES row alias");
+          return;
+        }
+      } else if (values_state == DML_VALUES_AFTER_ALIAS_LP) {
+        if (!dml_values_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete DML VALUES row alias");
+          return;
+        }
+        values_state = DML_VALUES_AFTER_ALIAS_COLUMN;
+        continue;
+      } else if (values_state == DML_VALUES_AFTER_ALIAS_COLUMN) {
+        if (token_id == ML_COMMA) {
+          values_state = DML_VALUES_AFTER_ALIAS_COMMA;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_RP) {
+          values_state = DML_VALUES_AFTER_ALIAS_RP;
+          continue;
+        }
+        mylite_parser_reject(ctx, token, "malformed DML VALUES row alias");
+        return;
+      } else if (values_state == DML_VALUES_AFTER_ALIAS_COMMA) {
+        if (!dml_values_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete DML VALUES row alias");
+          return;
+        }
+        values_state = DML_VALUES_AFTER_ALIAS_COLUMN;
+        continue;
+      } else if (values_state == DML_VALUES_AFTER_ALIAS_RP) {
+        if (token_id == ML_ON) {
+          values_state = DML_VALUES_NONE;
+          duplicate_state = DML_DUP_AFTER_ON;
+          duplicate_strict = 1;
+          pending_token = token;
+          continue;
+        }
+        if (token_id != ML_SEMI) {
+          mylite_parser_reject(ctx, token, "malformed DML VALUES row alias");
+          return;
+        }
       }
     }
 
@@ -1706,6 +1854,8 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         payload_kind == DML_PAYLOAD_NONE &&
         (token_id == ML_VALUE || token_id == ML_VALUES)) {
       payload_kind = DML_PAYLOAD_VALUES;
+      values_state = DML_VALUES_AFTER_VALUES;
+      pending_token = token;
       continue;
     }
 
@@ -1770,6 +1920,22 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   } else if (duplicate_state != DML_DUP_NONE) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete INSERT duplicate key clause");
+  } else if (values_state == DML_VALUES_AFTER_VALUES ||
+             values_state == DML_VALUES_AFTER_ROW_KEYWORD ||
+             values_state == DML_VALUES_AFTER_COMMA) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete DML VALUES row list");
+  } else if (values_state == DML_VALUES_IN_ROW) {
+    if (!dml_values_unclosed_string_fragment(values_row_last_token_id,
+                                             values_row_last_token)) {
+      mylite_parser_reject(ctx, pending_token,
+                           "incomplete DML VALUES row list");
+    }
+  } else if (values_state == DML_VALUES_AFTER_AS ||
+             values_state == DML_VALUES_AFTER_ALIAS_LP ||
+             values_state == DML_VALUES_AFTER_ALIAS_COMMA) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete DML VALUES row alias");
   } else if (where_state == DML_WHERE_AFTER_WHERE) {
     mylite_parser_reject(ctx, pending_token, "incomplete DML WHERE clause");
   } else if (order_state == DML_ORDER_AFTER_ORDER ||
@@ -2214,6 +2380,58 @@ static int dml_limit_option_token(int token_id) {
   return token_id == ML_ATOM || token_id == ML_BOOLEAN_NUMBER ||
          token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
          token_id == ML_QUOTED_ID;
+}
+
+static int dml_values_alias_token(int token_id) {
+  return token_id != ML_ASSIGN && token_id != ML_BOOLEAN_NUMBER &&
+         token_id != ML_COMMA && token_id != ML_DOT &&
+         token_id != ML_DOUBLE_QUOTED_STRING && token_id != ML_EQUALS &&
+         token_id != ML_FACTOR_NUMBER && token_id != ML_LB &&
+         token_id != ML_LC && token_id != ML_LP &&
+         token_id != ML_NUMBER_LITERAL && token_id != ML_RB &&
+         token_id != ML_RC && token_id != ML_RP && token_id != ML_SEMI &&
+         token_id != ML_STRING_LITERAL;
+}
+
+static int dml_values_unclosed_string_fragment(int token_id,
+                                               MyliteToken token) {
+  char quote;
+  size_t i;
+
+  if (token_id != ML_DOUBLE_QUOTED_STRING && token_id != ML_STRING_LITERAL) {
+    return 0;
+  }
+  if (token.length == 0) {
+    return 0;
+  }
+
+  quote = token.start[0];
+  if (quote != '\'' && quote != '"') {
+    if (token.length < 2 || token.start[1] != '\'') {
+      return 0;
+    }
+    quote = '\'';
+    i = 2;
+  } else {
+    i = 1;
+  }
+
+  while (i < token.length) {
+    char ch = token.start[i++];
+    if (ch == '\\' && i < token.length) {
+      i++;
+      continue;
+    }
+    if (ch == quote) {
+      if (i < token.length && token.start[i] == quote) {
+        i++;
+        continue;
+      }
+      return 0;
+    }
+  }
+
+  return 1;
 }
 
 static int token_opens_nested_expression(int token_id) {

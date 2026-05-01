@@ -132,6 +132,8 @@ The `mylite-parse` tool accepts SQL from stdin or file paths:
 
 ```sh
 printf 'SELECT 1\n' | build/mylite-parse
+printf 'SELECT 1\n' | build/mylite-parse --statements
+printf 'SELECT 1\n' | build/mylite-parse --ast
 ```
 
 Parser design and corpus verification notes live in

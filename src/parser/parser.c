@@ -15,6 +15,14 @@ typedef struct MyliteAstChunk {
   unsigned char data[];
 } MyliteAstChunk;
 
+typedef struct MyliteAstStatement {
+  const MyliteAstNode *node;
+  const char *symbol_name;
+  MyliteStatementKind kind;
+  size_t start;
+  size_t end;
+} MyliteAstStatement;
+
 struct MyliteAstNode {
   MyliteAstNodeKind kind;
   unsigned rule_id;
@@ -30,7 +38,9 @@ struct MyliteAstNode {
 struct MyliteAst {
   MyliteAstNode *root;
   MyliteAstChunk *chunks;
+  MyliteAstStatement *statements;
   size_t node_count;
+  size_t statement_count;
   size_t allocated_bytes;
 };
 
@@ -52,6 +62,18 @@ static MyliteAstNode *mylite_ast_make_node(MyliteParserState *state,
                                            size_t child_count,
                                            MyliteAstNode *const *children);
 static void mylite_ast_set_node_span_from_children(MyliteAstNode *node);
+static int mylite_ast_finalize_statements(MyliteAst *ast);
+static size_t mylite_ast_count_top_level_statements(const MyliteAstNode *node);
+static void mylite_ast_fill_top_level_statements(MyliteAst *ast,
+                                                 const MyliteAstNode *node,
+                                                 size_t *index);
+static const MyliteAstNode *mylite_ast_statement_payload(const MyliteAstNode *node);
+static MyliteStatementKind mylite_ast_classify_statement(const char *symbol_name);
+static int symbol_is_one_of(const char *symbol_name, const char *const *symbols,
+                            size_t count);
+static int symbol_has_prefix(const char *symbol_name, const char *prefix);
+static const MyliteAstStatement *mylite_ast_statement_at(const MyliteAst *ast,
+                                                         size_t index);
 static void mylite_parser_state_no_memory(MyliteParserState *state);
 static int accepts_mysqltest_harness_statement(const char *sql);
 static int accepts_parenthesized_create_table_set_statement(const char *sql);
@@ -106,6 +128,58 @@ const char *mylite_parse_status_name(MyliteParseStatus status) {
   return "unknown";
 }
 
+const char *mylite_statement_kind_name(MyliteStatementKind kind) {
+  switch (kind) {
+    case MYLITE_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_STATEMENT_EMPTY:
+      return "empty";
+    case MYLITE_STATEMENT_SELECT:
+      return "select";
+    case MYLITE_STATEMENT_INSERT:
+      return "insert";
+    case MYLITE_STATEMENT_UPDATE:
+      return "update";
+    case MYLITE_STATEMENT_DELETE:
+      return "delete";
+    case MYLITE_STATEMENT_REPLACE:
+      return "replace";
+    case MYLITE_STATEMENT_CREATE:
+      return "create";
+    case MYLITE_STATEMENT_ALTER:
+      return "alter";
+    case MYLITE_STATEMENT_DROP:
+      return "drop";
+    case MYLITE_STATEMENT_RENAME:
+      return "rename";
+    case MYLITE_STATEMENT_TRUNCATE:
+      return "truncate";
+    case MYLITE_STATEMENT_SET:
+      return "set";
+    case MYLITE_STATEMENT_SHOW:
+      return "show";
+    case MYLITE_STATEMENT_EXPLAIN:
+      return "explain";
+    case MYLITE_STATEMENT_DO:
+      return "do";
+    case MYLITE_STATEMENT_CALL:
+      return "call";
+    case MYLITE_STATEMENT_PREPARE:
+      return "prepare";
+    case MYLITE_STATEMENT_EXECUTE:
+      return "execute";
+    case MYLITE_STATEMENT_DEALLOCATE:
+      return "deallocate";
+    case MYLITE_STATEMENT_TRANSACTION:
+      return "transaction";
+    case MYLITE_STATEMENT_LOCK:
+      return "lock";
+    case MYLITE_STATEMENT_UTILITY:
+      return "utility";
+  }
+  return "unknown";
+}
+
 void mylite_ast_free(MyliteAst *ast) {
   if (ast == NULL) {
     return;
@@ -129,6 +203,35 @@ size_t mylite_ast_node_count(const MyliteAst *ast) {
 
 size_t mylite_ast_allocated_bytes(const MyliteAst *ast) {
   return ast == NULL ? 0 : ast->allocated_bytes;
+}
+
+size_t mylite_ast_statement_count(const MyliteAst *ast) {
+  return ast == NULL ? 0 : ast->statement_count;
+}
+
+MyliteStatementKind mylite_ast_statement_kind(const MyliteAst *ast, size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? MYLITE_STATEMENT_UNKNOWN : statement->kind;
+}
+
+const char *mylite_ast_statement_symbol_name(const MyliteAst *ast, size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? NULL : statement->symbol_name;
+}
+
+const MyliteAstNode *mylite_ast_statement_node(const MyliteAst *ast, size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? NULL : statement->node;
+}
+
+size_t mylite_ast_statement_start(const MyliteAst *ast, size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? 0 : statement->start;
+}
+
+size_t mylite_ast_statement_end(const MyliteAst *ast, size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? 0 : statement->end;
 }
 
 MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node) {
@@ -277,6 +380,10 @@ static MyliteParseStatus parse_sql_common(const char *sql, MyliteParseResult *re
     if (state.root == NULL) {
       target->status = MYLITE_PARSE_SYNTAX_ERROR;
       snprintf(target->message, sizeof(target->message), "parser did not build AST");
+    } else if (!mylite_ast_finalize_statements(ast)) {
+      target->status = MYLITE_PARSE_NO_MEMORY;
+      snprintf(target->message, sizeof(target->message),
+               "AST statement allocation failed");
     } else {
       *ast_out = ast;
       return target->status;
@@ -394,6 +501,245 @@ static void mylite_ast_set_node_span_from_children(MyliteAstNode *node) {
     }
     node->end = child->end;
   }
+}
+
+static int mylite_ast_finalize_statements(MyliteAst *ast) {
+  if (ast == NULL || ast->root == NULL) {
+    return 1;
+  }
+
+  size_t count = mylite_ast_count_top_level_statements(ast->root);
+  if (count == 0) {
+    count = 1;
+  }
+
+  ast->statements = mylite_ast_alloc(ast, count * sizeof(*ast->statements));
+  if (ast->statements == NULL) {
+    return 0;
+  }
+  ast->statement_count = count;
+
+  size_t index = 0;
+  mylite_ast_fill_top_level_statements(ast, ast->root, &index);
+  if (index == 0) {
+    const MyliteAstNode *payload = ast->root;
+    ast->statements[0].node = payload;
+    ast->statements[0].symbol_name = payload->symbol_name;
+    ast->statements[0].kind = mylite_ast_classify_statement(payload->symbol_name);
+    ast->statements[0].start = mylite_ast_node_start(payload);
+    ast->statements[0].end = mylite_ast_node_end(payload);
+  }
+  return 1;
+}
+
+static size_t mylite_ast_count_top_level_statements(const MyliteAstNode *node) {
+  if (node == NULL || node->symbol_name == NULL) {
+    return 0;
+  }
+  if (strcmp(node->symbol_name, "nt_statement") == 0) {
+    return 1;
+  }
+  if (strcmp(node->symbol_name, "input") != 0 &&
+      strcmp(node->symbol_name, "nt_start") != 0 &&
+      strcmp(node->symbol_name, "nt_statement_list") != 0) {
+    return 0;
+  }
+
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_top_level_statements(node->children[i]);
+  }
+  return count;
+}
+
+static void mylite_ast_fill_top_level_statements(MyliteAst *ast,
+                                                 const MyliteAstNode *node,
+                                                 size_t *index) {
+  if (ast == NULL || node == NULL || index == NULL || node->symbol_name == NULL ||
+      *index >= ast->statement_count) {
+    return;
+  }
+
+  if (strcmp(node->symbol_name, "nt_statement") == 0) {
+    const MyliteAstNode *payload = mylite_ast_statement_payload(node);
+    ast->statements[*index].node = node;
+    ast->statements[*index].symbol_name =
+        payload == NULL ? node->symbol_name : payload->symbol_name;
+    ast->statements[*index].kind =
+        mylite_ast_classify_statement(ast->statements[*index].symbol_name);
+    ast->statements[*index].start = mylite_ast_node_start(node);
+    ast->statements[*index].end = mylite_ast_node_end(node);
+    (*index)++;
+    return;
+  }
+
+  if (strcmp(node->symbol_name, "input") != 0 &&
+      strcmp(node->symbol_name, "nt_start") != 0 &&
+      strcmp(node->symbol_name, "nt_statement_list") != 0) {
+    return;
+  }
+
+  for (size_t i = 0; i < node->child_count; i++) {
+    mylite_ast_fill_top_level_statements(ast, node->children[i], index);
+  }
+}
+
+static const MyliteAstNode *mylite_ast_statement_payload(const MyliteAstNode *node) {
+  if (node == NULL || node->child_count == 0) {
+    return node;
+  }
+  return node->children[0];
+}
+
+static MyliteStatementKind mylite_ast_classify_statement(const char *symbol_name) {
+  static const char *const select_symbols[] = {
+      "nt_select_stmt",
+      "nt_select_stmt_with_clause",
+      "nt_set_opr_stmt",
+      "nt_set_opr_stmt_with_limit_order_by",
+      "nt_set_opr_stmt_wout_limit_order_by",
+      "nt_sub_select",
+  };
+  static const char *const transaction_symbols[] = {
+      "nt_begin_transaction_stmt",
+      "nt_commit_stmt",
+      "nt_rollback_stmt",
+      "nt_savepoint_stmt",
+      "nt_release_savepoint_stmt",
+  };
+  static const char *const lock_symbols[] = {
+      "nt_lock_tables_stmt",
+      "nt_unlock_tables_stmt",
+      "nt_mysql_lock_instance_stmt",
+  };
+  static const char *const utility_symbols[] = {
+      "nt_admin_stmt",
+      "nt_analyze_table_stmt",
+      "nt_binlog_stmt",
+      "nt_check_table_stmt",
+      "nt_checksum_table_stmt",
+      "nt_flush_stmt",
+      "nt_grant_stmt",
+      "nt_grant_role_stmt",
+      "nt_handler_stmt",
+      "nt_help_stmt",
+      "nt_kill_stmt",
+      "nt_load_data_stmt",
+      "nt_load_stats_stmt",
+      "nt_load_xml_stmt",
+      "nt_optimize_table_stmt",
+      "nt_repair_table_stmt",
+      "nt_reset_stmt",
+      "nt_revoke_stmt",
+      "nt_revoke_role_stmt",
+      "nt_trace_stmt",
+      "nt_use_stmt",
+      "nt_mysql_xa_stmt",
+  };
+
+  if (symbol_name == NULL) {
+    return MYLITE_STATEMENT_UNKNOWN;
+  }
+  if (strcmp(symbol_name, "nt_empty_stmt") == 0) {
+    return MYLITE_STATEMENT_EMPTY;
+  }
+  if (symbol_is_one_of(symbol_name, select_symbols,
+                       sizeof(select_symbols) / sizeof(select_symbols[0]))) {
+    return MYLITE_STATEMENT_SELECT;
+  }
+  if (strcmp(symbol_name, "nt_insert_into_stmt") == 0) {
+    return MYLITE_STATEMENT_INSERT;
+  }
+  if (strcmp(symbol_name, "nt_update_stmt") == 0) {
+    return MYLITE_STATEMENT_UPDATE;
+  }
+  if (strcmp(symbol_name, "nt_delete_from_stmt") == 0) {
+    return MYLITE_STATEMENT_DELETE;
+  }
+  if (strcmp(symbol_name, "nt_replace_into_stmt") == 0) {
+    return MYLITE_STATEMENT_REPLACE;
+  }
+  if (symbol_has_prefix(symbol_name, "nt_create_") ||
+      symbol_has_prefix(symbol_name, "nt_mysql_create_")) {
+    return MYLITE_STATEMENT_CREATE;
+  }
+  if (symbol_has_prefix(symbol_name, "nt_alter_") ||
+      symbol_has_prefix(symbol_name, "nt_mysql_alter_")) {
+    return MYLITE_STATEMENT_ALTER;
+  }
+  if (symbol_has_prefix(symbol_name, "nt_drop_") ||
+      symbol_has_prefix(symbol_name, "nt_mysql_drop_")) {
+    return MYLITE_STATEMENT_DROP;
+  }
+  if (strcmp(symbol_name, "nt_rename_table_stmt") == 0) {
+    return MYLITE_STATEMENT_RENAME;
+  }
+  if (strcmp(symbol_name, "nt_truncate_table_stmt") == 0) {
+    return MYLITE_STATEMENT_TRUNCATE;
+  }
+  if (strcmp(symbol_name, "nt_set_stmt") == 0 ||
+      strcmp(symbol_name, "nt_set_default_role_stmt") == 0 ||
+      strcmp(symbol_name, "nt_set_role_stmt") == 0) {
+    return MYLITE_STATEMENT_SET;
+  }
+  if (strcmp(symbol_name, "nt_show_stmt") == 0) {
+    return MYLITE_STATEMENT_SHOW;
+  }
+  if (strcmp(symbol_name, "nt_explain_stmt") == 0) {
+    return MYLITE_STATEMENT_EXPLAIN;
+  }
+  if (strcmp(symbol_name, "nt_do_stmt") == 0) {
+    return MYLITE_STATEMENT_DO;
+  }
+  if (strcmp(symbol_name, "nt_call_stmt") == 0) {
+    return MYLITE_STATEMENT_CALL;
+  }
+  if (strcmp(symbol_name, "nt_prepare_stmt") == 0) {
+    return MYLITE_STATEMENT_PREPARE;
+  }
+  if (strcmp(symbol_name, "nt_execute_stmt") == 0) {
+    return MYLITE_STATEMENT_EXECUTE;
+  }
+  if (strcmp(symbol_name, "nt_deallocate_stmt") == 0) {
+    return MYLITE_STATEMENT_DEALLOCATE;
+  }
+  if (symbol_is_one_of(symbol_name, transaction_symbols,
+                       sizeof(transaction_symbols) / sizeof(transaction_symbols[0]))) {
+    return MYLITE_STATEMENT_TRANSACTION;
+  }
+  if (symbol_is_one_of(symbol_name, lock_symbols,
+                       sizeof(lock_symbols) / sizeof(lock_symbols[0]))) {
+    return MYLITE_STATEMENT_LOCK;
+  }
+  if (symbol_is_one_of(symbol_name, utility_symbols,
+                       sizeof(utility_symbols) / sizeof(utility_symbols[0])) ||
+      symbol_has_prefix(symbol_name, "nt_mysql_")) {
+    return MYLITE_STATEMENT_UTILITY;
+  }
+  return MYLITE_STATEMENT_UNKNOWN;
+}
+
+static int symbol_is_one_of(const char *symbol_name, const char *const *symbols,
+                            size_t count) {
+  for (size_t i = 0; i < count; i++) {
+    if (strcmp(symbol_name, symbols[i]) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static int symbol_has_prefix(const char *symbol_name, const char *prefix) {
+  size_t prefix_length = strlen(prefix);
+  return strncmp(symbol_name, prefix, prefix_length) == 0;
+}
+
+static const MyliteAstStatement *mylite_ast_statement_at(const MyliteAst *ast,
+                                                         size_t index) {
+  if (ast == NULL || index >= ast->statement_count) {
+    return NULL;
+  }
+  return &ast->statements[index];
 }
 
 static void mylite_parser_state_no_memory(MyliteParserState *state) {

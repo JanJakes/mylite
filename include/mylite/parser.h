@@ -29,15 +29,48 @@ typedef enum MyliteAstNodeKind {
   MYLITE_AST_NODE_TOKEN = 2
 } MyliteAstNodeKind;
 
+typedef enum MyliteStatementKind {
+  MYLITE_STATEMENT_UNKNOWN = 0,
+  MYLITE_STATEMENT_EMPTY,
+  MYLITE_STATEMENT_SELECT,
+  MYLITE_STATEMENT_INSERT,
+  MYLITE_STATEMENT_UPDATE,
+  MYLITE_STATEMENT_DELETE,
+  MYLITE_STATEMENT_REPLACE,
+  MYLITE_STATEMENT_CREATE,
+  MYLITE_STATEMENT_ALTER,
+  MYLITE_STATEMENT_DROP,
+  MYLITE_STATEMENT_RENAME,
+  MYLITE_STATEMENT_TRUNCATE,
+  MYLITE_STATEMENT_SET,
+  MYLITE_STATEMENT_SHOW,
+  MYLITE_STATEMENT_EXPLAIN,
+  MYLITE_STATEMENT_DO,
+  MYLITE_STATEMENT_CALL,
+  MYLITE_STATEMENT_PREPARE,
+  MYLITE_STATEMENT_EXECUTE,
+  MYLITE_STATEMENT_DEALLOCATE,
+  MYLITE_STATEMENT_TRANSACTION,
+  MYLITE_STATEMENT_LOCK,
+  MYLITE_STATEMENT_UTILITY
+} MyliteStatementKind;
+
 MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result);
 MyliteParseStatus mylite_parse_sql_ast(const char *sql, MyliteAst **ast,
                                        MyliteParseResult *result);
 const char *mylite_parse_status_name(MyliteParseStatus status);
+const char *mylite_statement_kind_name(MyliteStatementKind kind);
 
 void mylite_ast_free(MyliteAst *ast);
 const MyliteAstNode *mylite_ast_root(const MyliteAst *ast);
 size_t mylite_ast_node_count(const MyliteAst *ast);
 size_t mylite_ast_allocated_bytes(const MyliteAst *ast);
+size_t mylite_ast_statement_count(const MyliteAst *ast);
+MyliteStatementKind mylite_ast_statement_kind(const MyliteAst *ast, size_t index);
+const char *mylite_ast_statement_symbol_name(const MyliteAst *ast, size_t index);
+const MyliteAstNode *mylite_ast_statement_node(const MyliteAst *ast, size_t index);
+size_t mylite_ast_statement_start(const MyliteAst *ast, size_t index);
+size_t mylite_ast_statement_end(const MyliteAst *ast, size_t index);
 MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node);
 unsigned mylite_ast_node_rule_id(const MyliteAstNode *node);
 const char *mylite_ast_node_symbol_name(const MyliteAstNode *node);

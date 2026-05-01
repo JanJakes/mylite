@@ -5,6 +5,8 @@
 
 static int expect_parse_ok(const char *sql);
 static int expect_ast_ok(const char *sql, const char *root_symbol);
+static int expect_ast_statements(const char *sql, size_t count,
+                                 const MyliteStatementKind *kinds);
 
 int main(void) {
   int failures = 0;
@@ -465,6 +467,13 @@ int main(void) {
   failures += expect_ast_ok("SELECT 1 + 2 AS total", "input");
   failures += expect_ast_ok("SELECT 1 WHERE TRUE HAVING COUNT(*) = 1",
                             "nt_mylite_recognized_statement");
+  {
+    const MyliteStatementKind kinds[] = {MYLITE_STATEMENT_SET,
+                                         MYLITE_STATEMENT_SELECT,
+                                         MYLITE_STATEMENT_CREATE};
+    failures += expect_ast_statements("SET @a = 1; SELECT @a; CREATE TABLE s (id INT)",
+                                      3, kinds);
+  }
 
   return failures == 0 ? 0 : 1;
 }
@@ -506,6 +515,41 @@ static int expect_ast_ok(const char *sql, const char *root_symbol) {
             root == NULL ? 0 : mylite_ast_node_end(root),
             mylite_ast_allocated_bytes(ast));
     failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_ast_statements(const char *sql, size_t count,
+                                 const MyliteStatementKind *kinds) {
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "AST statement parse failed: %s\nstatus=%s offset=%zu token=%d message=%s\n",
+            sql, mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  int failed = 0;
+  if (mylite_ast_statement_count(ast) != count) {
+    fprintf(stderr, "AST statement count failed: %s\nexpected=%zu actual=%zu\n", sql,
+            count, mylite_ast_statement_count(ast));
+    failed = 1;
+  }
+  for (size_t i = 0; i < count && i < mylite_ast_statement_count(ast); i++) {
+    MyliteStatementKind actual = mylite_ast_statement_kind(ast, i);
+    if (actual != kinds[i]) {
+      fprintf(stderr,
+              "AST statement kind failed: %s\nindex=%zu expected=%s actual=%s symbol=%s\n",
+              sql, i, mylite_statement_kind_name(kinds[i]),
+              mylite_statement_kind_name(actual),
+              mylite_ast_statement_symbol_name(ast, i));
+      failed = 1;
+    }
   }
 
   mylite_ast_free(ast);

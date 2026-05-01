@@ -18,6 +18,8 @@ expression nodes.
 - Token nodes carry byte spans from the original SQL input.
 - Rule nodes carry generated rule IDs, symbol names, children, and aggregate
   spans.
+- Top-level statement views classify each parsed statement and expose stable
+  statement spans for the analyzer.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
   still cover the full current corpus.
 - The AST is opaque in the public API and freed with `mylite_ast_free()`.
@@ -35,9 +37,21 @@ expression nodes.
 - token ID
 - byte span
 - children
+- top-level statement count
+- top-level statement kind
+- top-level statement grammar symbol
+- top-level statement span
 
 The tree is not yet the final semantic MyLite AST. It is a complete generated
-parse tree suitable for measuring cost and for guiding typed-node work.
+parse tree with a typed statement classification layer suitable for measuring
+cost and for guiding typed-node work.
+
+For development inspection:
+
+```sh
+printf 'SELECT 1\n' | build/mylite-parse --statements
+printf 'SELECT 1\n' | build/mylite-parse --ast
+```
 
 ## Benchmark
 
@@ -51,8 +65,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 1, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.390437 qps=483245 mbps=36.75 avg_us=2.069
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=17.580908 qps=395548 mbps=30.08 avg_us=2.528 avg_nodes=74.5 avg_ast_bytes=9817.5
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.432263 qps=481844 mbps=36.64 avg_us=2.075
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=18.397929 qps=377983 mbps=28.75 avg_us=2.646 avg_nodes=74.5 avg_ast_bytes=9829.6 avg_statements=1.00
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -64,8 +78,8 @@ allocation while paying some action-call overhead.
 
 - Replace temporary recognizer placeholder roots with real grammar productions
   or explicit typed placeholder statements.
-- Add typed AST nodes for the analyzer's first statement families instead of
-  exposing TiDB production details directly.
+- Add typed AST nodes for the analyzer's first statement families underneath
+  the statement classification layer.
 - Decide whether syntax-only builds should use a separate no-action generated
   parser if the action overhead matters.
 - Add tree-shape tests for representative DDL, DML, expressions, stored

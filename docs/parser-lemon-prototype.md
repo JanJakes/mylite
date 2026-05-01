@@ -43,12 +43,16 @@ token sink:
   separators, adjacent top-level operands, and top-level query-clause tails.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
   write payloads, and validate `SET` assignment lists including repeated-`SET`
-  continuations, explicit `VALUE(S)` row-list tails, `ROW(...)` constructors,
-  `INSERT` `VALUE(S)`/`SET` row aliases, parenthesized query payload `ORDER BY`
-  and `LIMIT` suffixes, malformed `SELECT` operands after set operators, and
-  `ON DUPLICATE KEY UPDATE` assignment tails including malformed post-value
-  continuations and stray top-level `SELECT`/`FROM` suffixes after assignment
-  values.
+  continuations, malformed top-level assignment value adjacent operands and
+  dangling operators, explicit `VALUE(S)` row-list tails, `ROW(...)`
+  constructors, `INSERT` `VALUE(S)`/`SET` row aliases, parenthesized query
+  payload `ORDER BY` and `LIMIT` suffixes, malformed `SELECT` operands after set
+  operators, and `ON DUPLICATE KEY UPDATE` assignment tails including malformed
+  post-value continuations and stray top-level `SELECT`/`FROM` suffixes after
+  assignment values.
+- Single-table `UPDATE` validates `SET` assignment lists, malformed top-level
+  assignment value adjacent operands and dangling operators, plus `WHERE`,
+  `ORDER BY`, and `LIMIT` tails.
 - Single-table `DELETE` recognizes table aliases before optional partition
   lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails, rejecting incomplete
   DML clause tails, invalid top-level `ORDER BY` direction sequences, malformed

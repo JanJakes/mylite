@@ -399,10 +399,21 @@ static int lexer_dollar_quoted_string(MyliteLexer *lexer,
 }
 
 static int lexer_number(MyliteLexer *lexer, MyliteToken *token) {
-  while (isalnum(lexer_peek(lexer, 0)) || lexer_peek(lexer, 0) == '.' ||
-         lexer_peek(lexer, 0) == '_' || lexer_peek(lexer, 0) == '+' ||
-         lexer_peek(lexer, 0) == '-') {
+  if ((lexer_peek(lexer, 0) == '+' || lexer_peek(lexer, 0) == '-') &&
+      isdigit(lexer_peek(lexer, 1))) {
     lexer_advance(lexer);
+  }
+
+  while (isalnum(lexer_peek(lexer, 0)) || lexer_peek(lexer, 0) == '.' ||
+         lexer_peek(lexer, 0) == '_') {
+    lexer_advance(lexer);
+    if ((lexer_peek(lexer, 0) == '+' || lexer_peek(lexer, 0) == '-') &&
+        lexer->offset > token->offset &&
+        (lexer->sql[lexer->offset - 1] == 'e' ||
+         lexer->sql[lexer->offset - 1] == 'E') &&
+        isdigit(lexer_peek(lexer, 1))) {
+      lexer_advance(lexer);
+    }
   }
 
   token->length = lexer->offset - token->offset;

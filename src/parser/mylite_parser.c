@@ -2384,7 +2384,10 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int assignment_mode = DML_ASSIGNMENT_NONE;
   int assignment_value_started = 0;
   int assignment_value_last_token_id = 0;
+  int assignment_value_previous_top_token_id = 0;
+  int assignment_value_previous_was_operator = 1;
   MyliteToken assignment_value_last_token = start;
+  MyliteToken assignment_value_previous_top_token = start;
   int duplicate_state = DML_DUP_NONE;
   int duplicate_strict = 0;
   int where_state = DML_WHERE_NONE;
@@ -2440,6 +2443,11 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
           where_previous_top_token = token;
           where_previous_was_operator = 0;
         }
+        if (depth == 0 && assignment_state == DML_ASSIGN_VALUE) {
+          assignment_value_previous_top_token_id = token_id;
+          assignment_value_previous_top_token = token;
+          assignment_value_previous_was_operator = 0;
+        }
         if (depth == 0 && query_parenthesized_payload) {
           query_parenthesized_payload = 0;
           query_tail_state = DML_QUERY_TAIL_AFTER_RP;
@@ -2455,7 +2463,8 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
       int boundary = dml_assignment_boundary(assignment_mode, token_id);
       if (token_id == ML_SEMI || boundary) {
         if (assignment_state != DML_ASSIGN_VALUE ||
-            !assignment_value_started) {
+            !assignment_value_started ||
+            assignment_value_previous_was_operator) {
           mylite_parser_reject(ctx, pending_token,
                                "incomplete DML assignment");
           return;
@@ -2464,12 +2473,15 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         assignment_mode = DML_ASSIGNMENT_NONE;
         assignment_value_started = 0;
         assignment_value_last_token_id = 0;
+        assignment_value_previous_top_token_id = 0;
+        assignment_value_previous_was_operator = 1;
         if (token_id == ML_SEMI) {
           break;
         }
       } else if (token_id == ML_COMMA) {
         if (assignment_state != DML_ASSIGN_VALUE ||
-            !assignment_value_started) {
+            !assignment_value_started ||
+            assignment_value_previous_was_operator) {
           mylite_parser_reject(ctx, pending_token,
                                "incomplete DML assignment");
           return;
@@ -2477,6 +2489,9 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         assignment_state = DML_ASSIGN_TARGET;
         assignment_value_started = 0;
         assignment_value_last_token_id = 0;
+        assignment_value_previous_top_token_id = 0;
+        assignment_value_previous_was_operator = 1;
+        assignment_value_previous_top_token = token;
         pending_token = token;
         continue;
       } else if (assignment_state == DML_ASSIGN_TARGET) {
@@ -2501,6 +2516,9 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         assignment_state = DML_ASSIGN_VALUE;
         assignment_value_started = 0;
         assignment_value_last_token_id = 0;
+        assignment_value_previous_top_token_id = 0;
+        assignment_value_previous_was_operator = 1;
+        assignment_value_previous_top_token = token;
         pending_token = token;
         continue;
       } else if (assignment_state == DML_ASSIGN_AFTER_DOT) {
@@ -2536,8 +2554,13 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         assignment_value_started = 1;
         assignment_value_last_token_id = token_id;
         assignment_value_last_token = token;
-        if (token_opens_nested_expression(token_id)) {
-          depth++;
+        if (!query_expression_token(
+                ctx, token_id, token, &depth,
+                &assignment_value_previous_top_token_id,
+                &assignment_value_previous_top_token,
+                &assignment_value_previous_was_operator,
+                "malformed DML assignment")) {
+          return;
         }
         continue;
       }
@@ -3254,7 +3277,8 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   }
 
   if (assignment_state != DML_ASSIGN_NONE) {
-    if (assignment_state == DML_ASSIGN_VALUE && assignment_value_started) {
+    if (assignment_state == DML_ASSIGN_VALUE && assignment_value_started &&
+        !assignment_value_previous_was_operator) {
       return;
     }
     mylite_parser_reject(ctx, pending_token, "incomplete DML assignment");

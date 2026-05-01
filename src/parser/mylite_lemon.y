@@ -887,6 +887,13 @@ resource_group_vcpu_list ::= resource_group_vcpu_list import_comma resource_grou
 
 resource_group_vcpu_spec ::= resource_group_number_value.
 resource_group_vcpu_spec ::= resource_group_number_value MINUS resource_group_number_value.
+resource_group_vcpu_spec ::= resource_group_number_value resource_group_vcpu_range_end.
+
+resource_group_vcpu_range_end ::= NUMBER_LITERAL(A). {
+  if (A.length == 0 || A.start[0] != '-') {
+    mylite_parser_reject(ctx, A, "invalid resource group VCPU range");
+  }
+}
 
 resource_group_thread_priority_tail ::= .
 resource_group_thread_priority_tail ::= resource_group_thread_priority_clause.

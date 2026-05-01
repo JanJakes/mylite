@@ -43,7 +43,8 @@ token sink:
   write payloads, and validate `SET` assignment lists including repeated-`SET`
   continuations, explicit `VALUE(S)` row-list tails, `ROW(...)` constructors,
   `INSERT` `VALUE(S)`/`SET` row aliases, and `ON DUPLICATE KEY UPDATE`
-  assignment tails including malformed post-value continuations.
+  assignment tails including malformed post-value continuations and stray
+  top-level `SELECT`/`FROM` suffixes after assignment values.
 - Single-table `DELETE` recognizes table aliases before optional partition
   lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails, rejecting incomplete
   DML clause tails, invalid top-level `ORDER BY` direction sequences, and

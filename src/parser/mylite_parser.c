@@ -1913,7 +1913,8 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         continue;
       } else if (assignment_state == DML_ASSIGN_VALUE) {
         if (assignment_value_started &&
-            (token_id == ML_VALUE || token_id == ML_VALUES ||
+            (token_id == ML_FROM || token_id == ML_SELECT ||
+             token_id == ML_VALUE || token_id == ML_VALUES ||
              ((assignment_mode == DML_ASSIGNMENT_DUPLICATE ||
                assignment_mode == DML_ASSIGNMENT_UPDATE) &&
               token_id == ML_ON))) {

@@ -1027,6 +1027,7 @@ static int keyword_token(const MyliteToken *token) {
       {"SYSTEM", ML_SYSTEM},
       {"TABLE", ML_TABLE},
       {"TABLES", ML_TABLES},
+      {"TABLE_CHECKSUM", ML_CHECKSUM},
       {"TABLE_NAME", ML_TABLE_NAME},
       {"TABLESPACE", ML_TABLESPACE},
       {"TEMPORARY", ML_TEMPORARY},

@@ -172,7 +172,9 @@ statement-leading keywords, and stored program `END IF` / `END LOOP` style
 compound endings.
 MySQL prefixed literals such as `_utf8mb4'text'`, `N'text'`, `X'ff'`, and
 `B'1010'` are emitted as single literal tokens with source spans covering the
-prefix and quoted body.
+prefix and quoted body. Operators are split before an adjacent signed numeric
+literal, so forms such as `@v=-1`, `a<=-1`, and `c<=>-1` keep the assignment or
+comparison operator distinct from the unary sign.
 
 The parser records the full token stream, a statement kind, an optional target
 object kind for DDL/admin statements and DML table operations, an optional first

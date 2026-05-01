@@ -284,9 +284,9 @@ case "$dml_object_output" in
 		;;
 esac
 
-variable_assignment_output=$("$parser" "SELECT a INTO @x FROM t; SELECT a INTO local_var FROM t; SELECT a FROM t INTO @x; SELECT a INTO OUTFILE '/tmp/x' FROM t; SELECT a INTO DUMPFILE '/tmp/y' FROM t; SET @x = 1; SET @'my-var' = 1; SET @\"my-var\" := 2; SET @\`my-var\` = 3; SET @@session.sql_mode = 'ANSI'; SET SESSION sql_mode = 'ANSI'; SET sql_log_bin = 0; SET autocommit = 1; SET x = 1; GET DIAGNOSTICS @n = NUMBER; GET CURRENT DIAGNOSTICS CONDITION 1 @state = RETURNED_SQLSTATE")
+variable_assignment_output=$("$parser" "SELECT a INTO @x FROM t; SELECT a INTO local_var FROM t; SELECT a FROM t INTO @x; SELECT a INTO OUTFILE '/tmp/x' FROM t; SELECT a INTO DUMPFILE '/tmp/y' FROM t; SET @x = 1; SET @'my-var' = 1; SET @\"my-var\" := 2; SET @\`my-var\` = 3; SET @iv=-20010101; SET @plus=+.5; SET @@session.sql_mode = 'ANSI'; SET SESSION sql_mode = 'ANSI'; SET sql_log_bin = 0; SET autocommit = 1; SET x = 1; GET DIAGNOSTICS @n = NUMBER; GET CURRENT DIAGNOSTICS CONDITION 1 @state = RETURNED_SQLSTATE")
 case "$variable_assignment_output" in
-	*"select"*/user_variable:@x*"select"*/local_variable:local_var*"select"*/user_variable:@x*"select"*/outfile:"'/tmp/x'"*"select"*/dumpfile:"'/tmp/y'"*"set"*/user_variable:@x*"set"*/user_variable:@*my-var*"set"*/user_variable:@\"my-var\"*"set"*/user_variable:@\`my-var\`*"set"*/system_variable:@@session.sql_mode*"set"*/system_variable:sql_mode*"set"*/system_variable:sql_log_bin*"set"*/system_variable:autocommit*"set"*/system_variable:x*"get"*/user_variable:@n*"get"*/diagnostics_condition:1*) ;;
+	*"select"*/user_variable:@x*"select"*/local_variable:local_var*"select"*/user_variable:@x*"select"*/outfile:"'/tmp/x'"*"select"*/dumpfile:"'/tmp/y'"*"set"*/user_variable:@x*"set"*/user_variable:@*my-var*"set"*/user_variable:@\"my-var\"*"set"*/user_variable:@\`my-var\`*"set"*/user_variable:@iv*"set"*/user_variable:@plus*"set"*/system_variable:@@session.sql_mode*"set"*/system_variable:sql_mode*"set"*/system_variable:sql_log_bin*"set"*/system_variable:autocommit*"set"*/system_variable:x*"get"*/user_variable:@n*"get"*/diagnostics_condition:1*) ;;
 	*)
 		echo "unexpected variable assignment output: $variable_assignment_output" >&2
 		exit 1
@@ -782,6 +782,21 @@ case "$token_output" in
 	*"token 1 keyword"*"token 2 user_variable"*"token 3 punctuation"*"token 4 parameter"*"token 5 keyword"*"token 7 keyword"*"token 10 keyword"*) ;;
 	*)
 		echo "unexpected token output: $token_output" >&2
+		exit 1
+		;;
+esac
+
+operator_sign_output=$("$parser" --tokens 'SET @iv=-20010101; SET @plus=+.5; SELECT a<=-1, b>=+.5, c<=>-4')
+case "$operator_sign_output" in
+	*"=-"*|*"=+"*|*"<=-"*|*">=+"*|*"<=>-"*)
+		echo "unexpected signed-number operator token output: $operator_sign_output" >&2
+		exit 1
+		;;
+esac
+case "$operator_sign_output" in
+	*"set"*/user_variable:@iv*"set"*/user_variable:@plus*"token 3 operator"*"token 4 punctuation"*"token 9 operator"*"token 10 punctuation"*"token 15 operator"*"token 16 punctuation"*"token 20 operator"*"token 21 punctuation"*"token 25 operator"*"token 26 punctuation"*) ;;
+	*)
+		echo "unexpected signed-number token output: $operator_sign_output" >&2
 		exit 1
 		;;
 esac

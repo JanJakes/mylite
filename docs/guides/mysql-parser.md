@@ -163,6 +163,10 @@ ok statements=1 kinds=set[1:4,0:17]/user_variable:@'my-var'
 ```
 
 ```text
+ok statements=1 kinds=set[1:4,0:17]/user_variable:@iv
+```
+
+```text
 ok statements=1 kinds=set[1:4,0:19]/system_variable:sql_log_bin
 ```
 

@@ -300,7 +300,7 @@ ok statements=1 kinds=show[1:3,0:20]/relay_log
 ```
 
 SHOW REPLICA STATUS exposes explicit channel names or the replica-channel
-collection:
+collection, including the deprecated `SHOW SLAVE STATUS` alias:
 
 ```text
 ok statements=1 kinds=show[1:6,0:36]/replication_channel:'ch'
@@ -310,10 +310,15 @@ ok statements=1 kinds=show[1:6,0:36]/replication_channel:'ch'
 ok statements=1 kinds=show[1:3,0:19]/replication_channel
 ```
 
-SHOW REPLICAS exposes the replica-channel collection:
+SHOW REPLICAS exposes the replica-channel collection, including the deprecated
+`SHOW SLAVE HOSTS` alias:
 
 ```text
 ok statements=1 kinds=show[1:2,0:13]/replication_channel
+```
+
+```text
+ok statements=1 kinds=show[1:3,0:16]/replication_channel
 ```
 
 BINLOG statements expose their event payload string:

@@ -3248,7 +3248,15 @@ static int classify_show_replica_statement_object(const mylite_parser *parser,
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL);
 	}
 
-	if (!token_text_equals(parser, token_index, "REPLICA") ||
+	if (token_text_equals(parser, token_index, "SLAVE") &&
+	    token_index + 1 <= last_token_index &&
+	    token_index + 1 < parser->token_count &&
+	    token_text_equals(parser, token_index + 1, "HOSTS")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL);
+	}
+
+	if ((!token_text_equals(parser, token_index, "REPLICA") &&
+	     !token_text_equals(parser, token_index, "SLAVE")) ||
 	    token_index + 1 > last_token_index ||
 	    token_index + 1 >= parser->token_count ||
 	    !token_text_equals(parser, token_index + 1, "STATUS")) {

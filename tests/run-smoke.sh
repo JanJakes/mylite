@@ -475,9 +475,9 @@ case "$relay_log_output" in
 		;;
 esac
 
-replica_status_output=$("$parser" "SHOW REPLICAS; SHOW REPLICA STATUS FOR CHANNEL 'ch'; SHOW REPLICA STATUS; SHOW SLAVE STATUS FOR CHANNEL 'old'")
+replica_status_output=$("$parser" "SHOW REPLICAS; SHOW SLAVE HOSTS; SHOW REPLICA STATUS FOR CHANNEL 'ch'; SHOW REPLICA STATUS; SHOW SLAVE STATUS FOR CHANNEL 'old'; SHOW SLAVE STATUS")
 case "$replica_status_output" in
-	*"show"*/replication_channel*"show"*/replication_channel:"'ch'"*"show"*/replication_channel*"show[15:20"*) ;;
+	*"show"*/replication_channel*"show"*/replication_channel*"show"*/replication_channel:"'ch'"*"show"*/replication_channel*"show"*/replication_channel:"'old'"*"show"*/replication_channel*) ;;
 	*)
 		echo "unexpected SHOW REPLICA STATUS output: $replica_status_output" >&2
 		exit 1

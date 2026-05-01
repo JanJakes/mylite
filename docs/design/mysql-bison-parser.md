@@ -236,8 +236,10 @@ payloads in `BINLOG`, binary log targets in `SHOW BINARY LOGS`,
 `SHOW BINARY LOG STATUS`, `SHOW MASTER STATUS`, `SHOW BINLOG EVENTS`,
 `PURGE BINARY LOGS TO ...`, `PURGE BINARY LOGS BEFORE ...`, and
 `RESET BINARY LOGS AND GTIDS`, including legacy `RESET MASTER` routing, relay
-log targets in `SHOW RELAYLOG EVENTS IN ...`, replication channel targets in channel-only
-`SHOW RELAYLOG EVENTS`, `SHOW REPLICAS`, `SHOW REPLICA STATUS`, and
+log targets in `SHOW RELAYLOG EVENTS IN ...`, replication channel targets in
+channel-only
+`SHOW RELAYLOG EVENTS`, `SHOW REPLICAS`, `SHOW SLAVE HOSTS`,
+`SHOW REPLICA STATUS`, `SHOW SLAVE STATUS`, and
 `FLUSH RELAY LOGS`, documented global log/cache/privilege/status/user-resource
 targets in `FLUSH`, table targets in `FLUSH TABLES`, and
 table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
@@ -365,8 +367,10 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   `SHOW RELAYLOG EVENTS` metadata records the explicit relay log name when
   present, bare relay-log targets, or an explicit channel name when no log file
   is named.
-  `SHOW REPLICA STATUS` metadata records explicit channel names or the
-  replication-channel collection for bare status forms.
+  `SHOW REPLICA STATUS` and deprecated `SHOW SLAVE STATUS` metadata record
+  explicit channel names or the replication-channel collection for bare status
+  forms. `SHOW REPLICAS` and deprecated `SHOW SLAVE HOSTS` metadata record the
+  replication-channel collection.
   `FLUSH TABLES` metadata records the first table target when present and the
   table collection for unnamed table-cache forms. `FLUSH RELAY LOGS` records
   only explicit channel names. Other documented global `FLUSH` options record

@@ -26,6 +26,8 @@ static void set_statement_end_from_token(const mylite_parser *parser,
                                          mylite_statement *statement,
                                          size_t token_index);
 static void remove_statements_covered_by_previous(mylite_parser *parser, size_t statement_index);
+static void validate_statement_syntax(mylite_parser *parser);
+static int validate_kill_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static void classify_statement_metadata(mylite_parser *parser);
 static void classify_grouped_query_statement_kinds(mylite_parser *parser);
 static mylite_statement_kind classify_grouped_query_statement_kind(const mylite_parser *parser,
@@ -555,6 +557,9 @@ int mylite_parse_sql(const char *sql, size_t length, mylite_parse_result *result
 	if (parser.error[0] == '\0') {
 		match_compound_control_tokens(&parser);
 		merge_compound_control_statement_spans(&parser);
+		validate_statement_syntax(&parser);
+	}
+	if (parser.error[0] == '\0') {
 		classify_statement_metadata(&parser);
 	}
 
@@ -983,6 +988,47 @@ const char *mylite_token_kind_name(mylite_token_kind kind)
 	default:
 		return "unknown";
 	}
+}
+
+static void validate_statement_syntax(mylite_parser *parser)
+{
+	size_t i;
+
+	for (i = 0; i < parser->statement_count; i++) {
+		const mylite_statement *statement = &parser->statements[i];
+
+		switch (statement->kind) {
+		case MYLITE_STATEMENT_KILL:
+			if (!validate_kill_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid KILL statement");
+				return;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+static int validate_kill_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "QUERY")) {
+		token_index++;
+	} else if (token_index <= last_token_index && token_text_equals(parser, token_index, "CONNECTION")) {
+		token_index++;
+	}
+
+	return token_can_start_processlist_expression(parser, token_index, last_token_index) &&
+	       processlist_expression_is_single_target(parser, token_index, last_token_index);
 }
 
 static void classify_statement_metadata(mylite_parser *parser)

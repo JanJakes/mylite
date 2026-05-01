@@ -569,18 +569,33 @@ case "$binlog_event_output" in
 		;;
 esac
 
-kill_output=$("$parser" 'KILL 123; KILL QUERY 456; KILL CONNECTION 789; KILL @id; KILL QUERY @thread_id; KILL CONNECTION_ID(); KILL "1"; KILL QUERY @id + 1; KILL QUERY @id, @id; KILL QUERY; KILL USER "u"')
+kill_output=$("$parser" 'KILL 123; KILL QUERY 456; KILL CONNECTION 789; KILL @id; KILL QUERY @thread_id; KILL CONNECTION_ID(); KILL "1"; KILL QUERY @id + 1')
 case "$kill_output" in
 	*"/connection:USER"*)
 		echo "unexpected KILL non-numeric connection output: $kill_output" >&2
 		exit 1
 		;;
-	*"kill"*/connection:123*"kill"*/query:456*"kill"*/connection:789*"kill"*/connection:@id*"kill"*/query:@thread_id*"kill"*/connection:CONNECTION_ID"()"*"kill"*/connection:'"1"'*"kill"*/query:"@id + 1"*"kill[33:37"*"kill[39:40"*"kill[42:44"*) ;;
+	*"kill"*/connection:123*"kill"*/query:456*"kill"*/connection:789*"kill"*/connection:@id*"kill"*/query:@thread_id*"kill"*/connection:CONNECTION_ID"()"*"kill"*/connection:'"1"'*"kill"*/query:"@id + 1"*) ;;
 	*)
 		echo "unexpected KILL output: $kill_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'KILL QUERY'; then
+	echo "expected missing KILL target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'KILL QUERY @id, @id'; then
+	echo "expected multi-target KILL to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'KILL USER "u"'; then
+	echo "expected invalid KILL modifier to fail" >&2
+	exit 1
+fi
 
 flush_output=$("$parser" 'FLUSH TABLES t; FLUSH LOCAL TABLES t; FLUSH NO_WRITE_TO_BINLOG TABLES `db`.`t`; FLUSH TABLES WITH READ LOCK; FLUSH BINARY LOGS; FLUSH LOCAL BINARY LOGS; FLUSH PRIVILEGES; FLUSH STATUS')
 case "$flush_output" in

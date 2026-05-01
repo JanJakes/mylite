@@ -31,6 +31,8 @@ token sink:
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
 - `SHOW PARSE_TREE` recognizes SELECT and WITH SELECT inputs as a
   debug/development SHOW form.
+- `SET ROLE` and `SET DEFAULT ROLE` recognize MySQL role specifiers and account
+  lists rather than permissive token tails.
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form.
 - `EXPLAIN ... FOR SCHEMA|DATABASE name` schema specifiers are recognized.
 - `DESCRIBE` and `DESC` reuse the EXPLAIN syntax variants for execution-plan

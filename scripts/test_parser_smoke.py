@@ -716,6 +716,7 @@ def main() -> int:
         ("repair no_write_to_binlog table t;", 0, {"statements": "1", "admin": "1"}),
         ("analyze table t t2;", 1, {}),
         ("analyze table t update histogram on a with 2;", 1, {}),
+        ("analyze table t update histogram on a with many buckets;", 1, {}),
         ("check table t garbage;", 1, {}),
         ("checksum table t garbage;", 1, {}),
         ("optimize table t quick;", 1, {}),

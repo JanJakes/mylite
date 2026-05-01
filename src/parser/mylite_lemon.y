@@ -1842,8 +1842,12 @@ analyze_table_options ::= DROP analyze_histogram_marker ON table_admin_column_li
 analyze_histogram_marker ::= HISTOGRAM.
 
 analyze_histogram_value_tail ::= .
-analyze_histogram_value_tail ::= WITH ATOM analyze_buckets_marker.
+analyze_histogram_value_tail ::= WITH analyze_histogram_bucket_count analyze_buckets_marker.
 analyze_histogram_value_tail ::= USING DATA ATOM.
+
+analyze_histogram_bucket_count ::= BOOLEAN_NUMBER.
+analyze_histogram_bucket_count ::= FACTOR_NUMBER.
+analyze_histogram_bucket_count ::= NUMBER_LITERAL.
 
 analyze_buckets_marker ::= BUCKETS.
 

@@ -451,6 +451,22 @@ static int lexer_operator(MyliteLexer *lexer, MyliteToken *token) {
   if (c == '=') {
     return ML_EQUALS;
   }
+  if (c == '<') {
+    if (lexer_peek(lexer, 0) == '=') {
+      lexer_advance(lexer);
+      token->length = lexer->offset - token->offset;
+      return ML_LE;
+    }
+    return ML_LT;
+  }
+  if (c == '>') {
+    if (lexer_peek(lexer, 0) == '=') {
+      lexer_advance(lexer);
+      token->length = lexer->offset - token->offset;
+      return ML_GE;
+    }
+    return ML_GT;
+  }
   if (c == '-') {
     return ML_MINUS;
   }

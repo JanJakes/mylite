@@ -158,6 +158,8 @@ token sink:
   string-literal log names, numeric `FROM` positions, and numeric `LIMIT` tails.
 - `SHOW BINARY LOG STATUS` is the strict MySQL 8.4 binary-log status form;
   removed `SHOW MASTER STATUS` syntax is permissive-corpus-only.
+- `SHOW BINARY LOGS` is the strict MySQL 8.4 binary-log listing form; removed
+  `SHOW MASTER LOGS` syntax is permissive-corpus-only.
 - `SHOW PROFILE` recognizes profile type lists, numeric `FOR QUERY` ids, and
   numeric `LIMIT` tails.
 - `SHOW WARNINGS` and `SHOW ERRORS` recognize numeric `LIMIT` tails.

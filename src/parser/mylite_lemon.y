@@ -2476,7 +2476,9 @@ show_tail ::= CHARSET show_filter_tail.
 show_tail ::= COLLATION show_filter_tail.
 show_tail ::= ENGINE show_engine_name show_engine_kind.
 show_tail ::= BINARY LOGS.
-show_tail ::= MASTER LOGS.
+show_tail ::= MASTER(A) LOGS. {
+  mylite_parser_require_permissive(ctx, A);
+}
 show_tail ::= BINLOG EVENTS show_log_events_tail.
 show_tail ::= RELAYLOG EVENTS show_log_events_tail.
 show_tail ::= show_routine_status_kind STATUS show_filter_tail.

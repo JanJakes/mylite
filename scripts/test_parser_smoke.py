@@ -830,6 +830,7 @@ def main() -> int:
         ("show create schema if not exists db1;", 0, {"statements": "1", "show": "1"}),
         ("show create table db.t;", 0, {"statements": "1", "show": "1"}),
         ("show create user u@localhost;", 0, {"statements": "1", "show": "1"}),
+        ("show create user first@account;", 0, {"statements": "1", "show": "1"}),
         ("show create user current_user();", 0, {"statements": "1", "show": "1"}),
         ("show warnings limit 1;", 0, {"statements": "1", "show": "1"}),
         ("show errors limit 0, 10;", 0, {"statements": "1", "show": "1"}),

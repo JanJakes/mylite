@@ -133,6 +133,7 @@ token sink:
 - `ALTER TABLESPACE` recognizes `ADD DATAFILE` and `DROP DATAFILE` actions.
 - `SHOW CREATE DATABASE` and `SHOW CREATE SCHEMA` recognize optional
   `IF NOT EXISTS`.
+- `SHOW CREATE USER` reuses the shared account-reference grammar.
 - `FLUSH` recognizes engine, general, slow, and channel-qualified relay log
   variants.
 - A permissive mode accepts extracted corpus fragments that are not standalone

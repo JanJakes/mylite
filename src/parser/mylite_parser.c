@@ -25,6 +25,7 @@ static int select_clause_requires_by(int token_id);
 static int select_clause_requires_operand(int token_id);
 static int select_operand_boundary(int token_id);
 static int select_modifier_flag(int token_id);
+static int select_order_direction_boundary(int token_id);
 static int select_rollup_boundary(int token_id, MyliteToken token);
 static int select_set_operator(int token_id);
 static int select_set_option(int token_id);
@@ -366,6 +367,10 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     SELECT_ROLLUP_AFTER_WITH,
     SELECT_ROLLUP_COMPLETE
   };
+  enum {
+    SELECT_ORDER_DIRECTION_NONE,
+    SELECT_ORDER_DIRECTION_COMPLETE
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token;
@@ -386,6 +391,8 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int window_state = SELECT_WINDOW_NONE;
   int group_clause = 0;
   int rollup_state = SELECT_ROLLUP_NONE;
+  int order_clause = 0;
+  int order_direction_state = SELECT_ORDER_DIRECTION_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -446,6 +453,16 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       }
       group_clause = 0;
       rollup_state = SELECT_ROLLUP_NONE;
+    }
+
+    if (order_direction_state == SELECT_ORDER_DIRECTION_COMPLETE) {
+      if (!select_order_direction_boundary(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "malformed SELECT ORDER BY direction");
+        return;
+      }
+      order_direction_state = SELECT_ORDER_DIRECTION_NONE;
+      order_clause = 0;
     }
 
     if (lock_state == SELECT_LOCK_AFTER_LOCK) {
@@ -957,6 +974,12 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
 
+    if (order_clause && (token_id == ML_ASC || token_id == ML_DESC)) {
+      order_direction_state = SELECT_ORDER_DIRECTION_COMPLETE;
+      pending_token = token;
+      continue;
+    }
+
     if (group_clause && token_id == ML_WITH) {
       rollup_state = SELECT_ROLLUP_AFTER_WITH;
       pending_token = token;
@@ -965,24 +988,28 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
 
     if (token_id == ML_LOCK) {
       group_clause = 0;
+      order_clause = 0;
       lock_state = SELECT_LOCK_AFTER_LOCK;
       pending_token = token;
       continue;
     }
     if (token_id == ML_FOR) {
       group_clause = 0;
+      order_clause = 0;
       lock_state = SELECT_LOCK_AFTER_FOR;
       pending_token = token;
       continue;
     }
     if (token_id == ML_INTO) {
       group_clause = 0;
+      order_clause = 0;
       into_state = SELECT_INTO_AFTER_INTO;
       pending_token = token;
       continue;
     }
     if (token_id == ML_LIMIT) {
       group_clause = 0;
+      order_clause = 0;
       limit_state = SELECT_LIMIT_AFTER_LIMIT;
       pending_token = token;
       continue;
@@ -1002,6 +1029,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
 
     if (select_clause_requires_by(token_id)) {
       group_clause = token_id == ML_GROUP;
+      order_clause = token_id == ML_ORDER;
       need_by = 1;
       pending_token = token;
       continue;
@@ -1011,6 +1039,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
           token_id == ML_PROCEDURE || token_id == ML_USING ||
           token_id == ML_WHERE) {
         group_clause = 0;
+        order_clause = 0;
       }
       need_operand = 1;
       pending_token = token;
@@ -1018,6 +1047,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
     if (select_set_operator(token_id)) {
       group_clause = 0;
+      order_clause = 0;
       need_set_operand = 1;
       pending_token = token;
       continue;
@@ -1178,6 +1208,12 @@ static int select_modifier_flag(int token_id) {
   }
 
   return 0;
+}
+
+static int select_order_direction_boundary(int token_id) {
+  return token_id == ML_COMMA || token_id == ML_FOR || token_id == ML_INTO ||
+         token_id == ML_LIMIT || token_id == ML_LOCK || token_id == ML_RP ||
+         select_set_operator(token_id);
 }
 
 static int select_rollup_boundary(int token_id, MyliteToken token) {

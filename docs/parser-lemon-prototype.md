@@ -55,6 +55,7 @@ token sink:
 - Top-level `SELECT` rejects missing operands for top-level `JOIN`, `ON`, and
   `USING` join clauses.
 - Top-level `SELECT` validates `GROUP BY ... WITH ROLLUP` tails.
+- Top-level `SELECT` validates `ORDER BY` `ASC`/`DESC` direction tails.
 - Top-level `SELECT` validates `LIMIT` comma and `OFFSET` operands.
 - Top-level `SELECT` validates named `WINDOW name AS (...)` clause lists.
 - Top-level `SELECT` rejects missing operands after `QUALIFY`.

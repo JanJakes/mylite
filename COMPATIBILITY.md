@@ -330,7 +330,7 @@ Shared parser-level `SHOW ... LIKE` filters require string-literal patterns.
 | `WITH ROLLUP` | ❌ | medium | Super-aggregate rows and GROUPING() behavior. | Parser validates top-level `GROUP BY ... WITH ROLLUP` tails; execution semantics are not implemented. |
 | `HAVING` | ❌ | top | Post-group predicate semantics and alias resolution. |  |
 | Window definitions | ❌ | high | WINDOW clause, named windows, inheritance, partitioning, ordering, frames, and MySQL restrictions. | Parser validates top-level named `WINDOW name AS (...)` clause lists; `OVER` expressions and frame semantics are not implemented. |
-| `ORDER BY` | ❌ | top | Expression, alias, ordinal, collation, ASC/DESC, and filesort metadata behavior. |  |
+| `ORDER BY` | ❌ | top | Expression, alias, ordinal, collation, ASC/DESC, and filesort metadata behavior. | Parser validates top-level `ASC`/`DESC` direction tails; execution semantics are not implemented. |
 | `LIMIT` / `OFFSET` | ❌ | top | Row limiting, prepared markers, integer conversion, and error cases. |  |
 | `DISTINCT` / `DISTINCTROW` | ❌ | top | Duplicate elimination semantics and metadata. |  |
 | `UNION` | ❌ | high | ALL/DISTINCT semantics, column names/types, ordering, limits, and parentheses. |  |

@@ -145,7 +145,8 @@ token sink:
   directories, string-literal compression/password/connection/engine
   attributes, `AUTOEXTEND_SIZE`, `TABLE_CHECKSUM`, `START TRANSACTION`,
   `ALGORITHM`/`LOCK` options, tablespace discard/import forms, and validated
-  `ADD` index key-part prefix lengths and `ASC`/`DESC` tails.
+  `ADD` index key-part prefix lengths and `ASC`/`DESC` tails. `ADD FOREIGN KEY`
+  child/reference column-list envelopes are also validated.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;
   `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body.
   Table-level `ENGINE_ATTRIBUTE` and `SECONDARY_ENGINE_ATTRIBUTE` changes

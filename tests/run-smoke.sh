@@ -619,6 +619,75 @@ if "$parser" --quiet 'CREATE TABLE t (id INT,)'; then
 	exit 1
 fi
 
+alter_table_output=$("$parser" "ALTER TABLE t; ALTER TABLE db.t ADD COLUMN c INT NOT NULL, DROP COLUMN old_c, RENAME COLUMN c TO c2; ALTER TABLE t ADD COLUMN (a INT), ADD UNIQUE KEY u (a), DROP PRIMARY KEY; ALTER TABLE t ALTER COLUMN c SET DEFAULT 1, ALTER INDEX u INVISIBLE; ALTER TABLE t ORDER BY db.t.c DESC, c2 ASC; ALTER TABLE t ALGORITHM=INPLACE, LOCK=NONE, WITH VALIDATION; ALTER TABLE t REORGANIZE PARTITION p0, p1 INTO (PARTITION p2 VALUES LESS THAN (10)); ALTER TABLE t RENAME TO t2 REMOVE PARTITIONING")
+case "$alter_table_output" in
+	*"statements=8"*"alter"*/table:t*"alter"*/table:db.t*) ;;
+	*)
+		echo "unexpected ALTER TABLE output: $alter_table_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'ALTER TABLE'; then
+	echo "expected ALTER TABLE without a target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLE t ADD'; then
+	echo "expected ALTER TABLE ADD without an operand to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLE t ADD COLUMN c'; then
+	echo "expected ALTER TABLE ADD COLUMN without a type to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLE t ADD INDEX i'; then
+	echo "expected ALTER TABLE ADD INDEX without key parts to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLE t DROP'; then
+	echo "expected ALTER TABLE DROP without a target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLE t DROP PRIMARY'; then
+	echo "expected ALTER TABLE DROP PRIMARY without KEY to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLE t CHANGE c d'; then
+	echo "expected ALTER TABLE CHANGE without a type to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLE t MODIFY c'; then
+	echo "expected ALTER TABLE MODIFY without a type to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLE t RENAME COLUMN c d'; then
+	echo "expected ALTER TABLE RENAME COLUMN without TO to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLE t ORDER BY'; then
+	echo "expected ALTER TABLE ORDER BY without a list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLE t ALGORITHM='; then
+	echo "expected ALTER TABLE ALGORITHM without a value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER TABLE t ADD COLUMN c INT,'; then
+	echo "expected ALTER TABLE trailing action comma to fail" >&2
+	exit 1
+fi
+
 create_index_output=$("$parser" "CREATE INDEX i ON t (c); CREATE UNIQUE INDEX i2 USING BTREE ON db.t (c(10) DESC, (lower(name)) ASC) KEY_BLOCK_SIZE=8 WITH PARSER parser_name COMMENT 'c' VISIBLE ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE='{}' ALGORITHM=INPLACE LOCK=NONE; CREATE FULLTEXT INDEX ft ON t (body) WITH PARSER ngram; CREATE SPATIAL INDEX sp ON t (g) USING HASH; CREATE INDEX legacy TYPE BTREE ON t (c) TYPE RTREE")
 case "$create_index_output" in
 	*"create"*/index:i*"create"*/index:i2*"create"*/index:ft*"create"*/index:sp*"create"*/index:legacy*) ;;

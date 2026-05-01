@@ -335,6 +335,77 @@ static int validate_alter_routine_characteristic_syntax(const mylite_parser *par
                                                         size_t token_index,
                                                         size_t last_token_index,
                                                         size_t *next_token_index);
+static int validate_alter_table_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
+static int validate_alter_table_action_list_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int validate_alter_table_action_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index,
+                                              size_t *next_token_index);
+static int token_starts_alter_table_action(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index);
+static size_t find_alter_table_action_boundary(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index);
+static int validate_alter_table_add_action_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int validate_alter_table_key_action_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int validate_alter_table_drop_action_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int validate_alter_table_change_or_modify_action_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index);
+static int validate_alter_table_alter_action_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static int validate_alter_table_rename_action_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index);
+static int validate_alter_table_order_action_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static int validate_alter_table_algorithm_or_lock_action_syntax(const mylite_parser *parser,
+                                                                size_t token_index,
+                                                                size_t last_token_index);
+static int validate_alter_table_validation_action_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index);
+static int validate_alter_table_enable_or_disable_action_syntax(const mylite_parser *parser,
+                                                                size_t token_index,
+                                                                size_t last_token_index);
+static int validate_alter_table_convert_action_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index);
+static int validate_alter_table_partition_action_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index);
+static int validate_alter_table_table_option_action_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index);
+static int validate_alter_table_nonempty_list_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index);
+static int alter_table_action_has_group(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index);
+static int token_can_start_alter_table_name(const mylite_token *token);
+static int token_is_alter_table_column_keyword(const mylite_parser *parser, size_t token_index);
+static int token_is_alter_table_key_action_head(const mylite_parser *parser, size_t token_index);
+static int token_is_alter_table_algorithm_value(const mylite_parser *parser, size_t token_index);
+static int token_is_alter_table_table_option_start(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int token_is_alter_table_partition_action_start(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index);
 static int validate_alter_instance_statement_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
@@ -5310,6 +5381,9 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 	    parser->tokens[token_index].parser_token == PROCEDURE_T) {
 		return validate_alter_routine_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (parser->tokens[token_index].parser_token == TABLE_T) {
+		return validate_alter_table_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (token_text_equals(parser, token_index, "INSTANCE")) {
 		return validate_alter_instance_statement_syntax(parser, token_index, last_token_index);
 	}
@@ -5441,6 +5515,772 @@ static int validate_alter_routine_characteristic_syntax(const mylite_parser *par
 		return 1;
 	}
 
+	return 0;
+}
+
+static int validate_alter_table_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	size_t last_name_token;
+
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token != TABLE_T) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index || !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+	token_index = last_name_token + 1;
+	if (token_index > last_token_index) {
+		return 1;
+	}
+
+	return validate_alter_table_action_list_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_alter_table_action_list_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	while (token_index <= last_token_index) {
+		if (parser->tokens[token_index].parser_token == ',') {
+			return 0;
+		}
+		if (!validate_alter_table_action_syntax(parser,
+		                                        token_index,
+		                                        last_token_index,
+		                                        &token_index)) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+static int validate_alter_table_action_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index,
+                                              size_t *next_token_index)
+{
+	size_t boundary_token = find_alter_table_action_boundary(parser, token_index, last_token_index);
+	size_t action_last_token;
+	int is_valid;
+
+	if (boundary_token <= token_index) {
+		return 0;
+	}
+
+	action_last_token = boundary_token - 1;
+	if (token_is_alter_table_partition_action_start(parser, token_index, action_last_token)) {
+		is_valid = validate_alter_table_partition_action_syntax(parser, token_index, action_last_token);
+	} else if (token_text_equals(parser, token_index, "ADD")) {
+		is_valid = validate_alter_table_add_action_syntax(parser, token_index, action_last_token);
+	} else if (token_text_equals(parser, token_index, "DROP")) {
+		is_valid = validate_alter_table_drop_action_syntax(parser, token_index, action_last_token);
+	} else if (parser->tokens[token_index].parser_token == CHANGE_T ||
+	           token_text_equals(parser, token_index, "MODIFY")) {
+		is_valid = validate_alter_table_change_or_modify_action_syntax(parser,
+		                                                                token_index,
+		                                                                action_last_token);
+	} else if (parser->tokens[token_index].parser_token == ALTER_T) {
+		is_valid = validate_alter_table_alter_action_syntax(parser, token_index, action_last_token);
+	} else if (parser->tokens[token_index].parser_token == RENAME_T) {
+		is_valid = validate_alter_table_rename_action_syntax(parser, token_index, action_last_token);
+	} else if (parser->tokens[token_index].parser_token == ORDER_T) {
+		is_valid = validate_alter_table_order_action_syntax(parser, token_index, action_last_token);
+	} else if (token_text_equals(parser, token_index, "ALGORITHM") ||
+	           parser->tokens[token_index].parser_token == LOCK_T) {
+		is_valid = validate_alter_table_algorithm_or_lock_action_syntax(parser,
+		                                                                token_index,
+		                                                                action_last_token);
+	} else if (token_text_equals(parser, token_index, "WITH") ||
+	           token_text_equals(parser, token_index, "WITHOUT")) {
+		is_valid = validate_alter_table_validation_action_syntax(parser,
+		                                                         token_index,
+		                                                         action_last_token);
+	} else if (token_text_equals(parser, token_index, "ENABLE") ||
+	           token_text_equals(parser, token_index, "DISABLE")) {
+		is_valid = validate_alter_table_enable_or_disable_action_syntax(parser,
+		                                                                token_index,
+		                                                                action_last_token);
+	} else if (token_text_equals(parser, token_index, "CONVERT")) {
+		is_valid = validate_alter_table_convert_action_syntax(parser, token_index, action_last_token);
+	} else if (token_text_equals(parser, token_index, "FORCE")) {
+		is_valid = token_index == action_last_token;
+	} else if (token_is_alter_table_table_option_start(parser, token_index, action_last_token)) {
+		is_valid = validate_alter_table_table_option_action_syntax(parser,
+		                                                           token_index,
+		                                                           action_last_token);
+	} else {
+		is_valid = 0;
+	}
+
+	if (!is_valid) {
+		return 0;
+	}
+
+	*next_token_index = boundary_token;
+	return 1;
+}
+
+static int token_starts_alter_table_action(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	return token_is_alter_table_partition_action_start(parser, token_index, last_token_index) ||
+	       token_text_equals(parser, token_index, "ADD") ||
+	       token_text_equals(parser, token_index, "DROP") ||
+	       parser->tokens[token_index].parser_token == CHANGE_T ||
+	       token_text_equals(parser, token_index, "MODIFY") ||
+	       parser->tokens[token_index].parser_token == ALTER_T ||
+	       parser->tokens[token_index].parser_token == RENAME_T ||
+	       parser->tokens[token_index].parser_token == ORDER_T ||
+	       token_text_equals(parser, token_index, "ALGORITHM") ||
+	       parser->tokens[token_index].parser_token == LOCK_T ||
+	       token_text_equals(parser, token_index, "WITH") ||
+	       token_text_equals(parser, token_index, "WITHOUT") ||
+	       token_text_equals(parser, token_index, "ENABLE") ||
+	       token_text_equals(parser, token_index, "DISABLE") ||
+	       token_text_equals(parser, token_index, "CONVERT") ||
+	       token_text_equals(parser, token_index, "FORCE") ||
+	       token_is_alter_table_table_option_start(parser, token_index, last_token_index);
+}
+
+static size_t find_alter_table_action_boundary(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == ',' &&
+		    (token_index + 1 > last_token_index ||
+		     parser->tokens[token_index + 1].parser_token == ',' ||
+		     token_starts_alter_table_action(parser, token_index + 1, last_token_index))) {
+			return token_index;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+	return token_index;
+}
+
+static int validate_alter_table_add_action_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	if (!token_text_equals(parser, token_index, "ADD")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (token_is_alter_table_column_keyword(parser, token_index)) {
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	if (parser->tokens[token_index].parser_token == '(') {
+		return parser->tokens[token_index].matching_token == last_token_index + 1 &&
+		       validate_create_table_definition_group_syntax(parser, token_index);
+	}
+	if (token_is_alter_table_key_action_head(parser, token_index)) {
+		return validate_alter_table_key_action_syntax(parser, token_index, last_token_index);
+	}
+	if (!token_can_start_alter_table_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	token_index++;
+	return token_index <= last_token_index;
+}
+
+static int validate_alter_table_key_action_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	return token_index <= last_token_index &&
+	       alter_table_action_has_group(parser, token_index, last_token_index);
+}
+
+static int validate_alter_table_drop_action_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	if (!token_text_equals(parser, token_index, "DROP")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == PRIMARY_T) {
+		return token_index + 1 == last_token_index &&
+		       parser->tokens[token_index + 1].parser_token == KEY_T;
+	}
+	if (token_is_alter_table_column_keyword(parser, token_index)) {
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+		return token_can_start_alter_table_name(&parser->tokens[token_index]);
+	}
+	if (token_text_equals(parser, token_index, "FOREIGN")) {
+		return token_index + 2 <= last_token_index &&
+		       parser->tokens[token_index + 1].parser_token == KEY_T &&
+		       token_can_start_alter_table_name(&parser->tokens[token_index + 2]);
+	}
+	if (parser->tokens[token_index].parser_token == INDEX_T ||
+	    parser->tokens[token_index].parser_token == KEY_T ||
+	    parser->tokens[token_index].parser_token == CHECK_T ||
+	    parser->tokens[token_index].parser_token == CONSTRAINT_T) {
+		return token_index + 1 <= last_token_index &&
+		       token_can_start_alter_table_name(&parser->tokens[token_index + 1]);
+	}
+
+	return token_can_start_alter_table_name(&parser->tokens[token_index]);
+}
+
+static int validate_alter_table_change_or_modify_action_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index)
+{
+	int is_change = parser->tokens[token_index].parser_token == CHANGE_T;
+
+	if (!is_change && !token_text_equals(parser, token_index, "MODIFY")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index && token_is_alter_table_column_keyword(parser, token_index)) {
+		token_index++;
+	}
+	if (token_index > last_token_index ||
+	    !token_can_start_alter_table_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index++;
+
+	if (is_change) {
+		if (token_index > last_token_index ||
+		    !token_can_start_alter_table_name(&parser->tokens[token_index])) {
+			return 0;
+		}
+		token_index++;
+	}
+
+	return token_index <= last_token_index;
+}
+
+static int validate_alter_table_alter_action_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	if (parser->tokens[token_index].parser_token != ALTER_T) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == CHECK_T ||
+	    parser->tokens[token_index].parser_token == CONSTRAINT_T) {
+		token_index++;
+		if (token_index > last_token_index ||
+		    !token_can_start_alter_table_name(&parser->tokens[token_index])) {
+			return 0;
+		}
+		token_index++;
+		if (token_index <= last_token_index && parser->tokens[token_index].parser_token == NOT_T) {
+			token_index++;
+		}
+		return token_index == last_token_index &&
+		       token_text_equals(parser, token_index, "ENFORCED");
+	}
+
+	if (parser->tokens[token_index].parser_token == INDEX_T ||
+	    parser->tokens[token_index].parser_token == KEY_T) {
+		token_index++;
+		if (token_index + 1 > last_token_index ||
+		    !token_can_start_alter_table_name(&parser->tokens[token_index])) {
+			return 0;
+		}
+		token_index++;
+		return token_index == last_token_index &&
+		       (token_text_equals(parser, token_index, "VISIBLE") ||
+		        token_text_equals(parser, token_index, "INVISIBLE"));
+	}
+
+	if (token_is_alter_table_column_keyword(parser, token_index)) {
+		token_index++;
+	}
+	if (token_index > last_token_index ||
+	    !token_can_start_alter_table_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index++;
+
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == SET_T) {
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+		if (parser->tokens[token_index].parser_token == DEFAULT_T) {
+			return token_index + 1 <= last_token_index;
+		}
+		return token_index == last_token_index &&
+		       (token_text_equals(parser, token_index, "VISIBLE") ||
+		        token_text_equals(parser, token_index, "INVISIBLE"));
+	}
+	if (token_text_equals(parser, token_index, "DROP")) {
+		return token_index + 1 == last_token_index &&
+		       parser->tokens[token_index + 1].parser_token == DEFAULT_T;
+	}
+
+	return 0;
+}
+
+static int validate_alter_table_rename_action_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index)
+{
+	size_t last_name_token;
+
+	if (parser->tokens[token_index].parser_token != RENAME_T) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (token_is_alter_table_column_keyword(parser, token_index) ||
+	    parser->tokens[token_index].parser_token == INDEX_T ||
+	    parser->tokens[token_index].parser_token == KEY_T) {
+		token_index++;
+		if (token_index + 2 > last_token_index ||
+		    !token_can_start_alter_table_name(&parser->tokens[token_index]) ||
+		    parser->tokens[token_index + 1].parser_token != TO_T ||
+		    !token_can_start_alter_table_name(&parser->tokens[token_index + 2])) {
+			return 0;
+		}
+		token_index += 3;
+		return token_index > last_token_index ||
+		       (token_is_alter_table_partition_action_start(parser, token_index, last_token_index) &&
+		        validate_alter_table_partition_action_syntax(parser, token_index, last_token_index));
+	}
+
+	if (parser->tokens[token_index].parser_token == TO_T ||
+	    parser->tokens[token_index].parser_token == AS_T) {
+		token_index++;
+	}
+	if (token_index > last_token_index || !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+	if (last_name_token == last_token_index) {
+		return 1;
+	}
+
+	token_index = last_name_token + 1;
+	return token_is_alter_table_partition_action_start(parser, token_index, last_token_index) &&
+	       validate_alter_table_partition_action_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_alter_table_order_action_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	if (token_index + 2 > last_token_index ||
+	    parser->tokens[token_index].parser_token != ORDER_T ||
+	    parser->tokens[token_index + 1].parser_token != BY_T) {
+		return 0;
+	}
+
+	return validate_alter_table_nonempty_list_syntax(parser, token_index + 2, last_token_index);
+}
+
+static int validate_alter_table_algorithm_or_lock_action_syntax(const mylite_parser *parser,
+                                                                size_t token_index,
+                                                                size_t last_token_index)
+{
+	int is_algorithm_option = token_text_equals(parser, token_index, "ALGORITHM");
+	int is_lock_option = parser->tokens[token_index].parser_token == LOCK_T;
+
+	if (!is_algorithm_option && !is_lock_option) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+		token_index++;
+	}
+	if (token_index != last_token_index) {
+		return 0;
+	}
+
+	if (is_algorithm_option) {
+		return token_is_alter_table_algorithm_value(parser, token_index);
+	}
+	return token_is_drop_index_lock_value(parser, token_index);
+}
+
+static int validate_alter_table_validation_action_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index)
+{
+	return token_index + 1 == last_token_index &&
+	       (token_text_equals(parser, token_index, "WITH") ||
+	        token_text_equals(parser, token_index, "WITHOUT")) &&
+	       token_text_equals(parser, token_index + 1, "VALIDATION");
+}
+
+static int validate_alter_table_enable_or_disable_action_syntax(const mylite_parser *parser,
+                                                                size_t token_index,
+                                                                size_t last_token_index)
+{
+	return token_index + 1 == last_token_index &&
+	       (token_text_equals(parser, token_index, "ENABLE") ||
+	        token_text_equals(parser, token_index, "DISABLE")) &&
+	       token_text_equals(parser, token_index + 1, "KEYS");
+}
+
+static int validate_alter_table_convert_action_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index)
+{
+	if (!token_text_equals(parser, token_index, "CONVERT") ||
+	    token_index + 3 > last_token_index ||
+	    parser->tokens[token_index + 1].parser_token != TO_T) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (parser->tokens[token_index].parser_token == CHARACTER_T) {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].parser_token != SET_T) {
+			return 0;
+		}
+		token_index += 2;
+	} else if (parser->tokens[token_index].parser_token == CHARSET_T) {
+		token_index++;
+	} else {
+		return 0;
+	}
+
+	if (token_index > last_token_index ||
+	    !token_can_start_alter_table_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index++;
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (parser->tokens[token_index].parser_token != COLLATE_T ||
+	    token_index + 1 > last_token_index ||
+	    !token_can_start_alter_table_name(&parser->tokens[token_index + 1])) {
+		return 0;
+	}
+	return token_index + 1 == last_token_index;
+}
+
+static int validate_alter_table_partition_action_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index)
+{
+	if (token_text_equals(parser, token_index, "REORGANIZE")) {
+		return token_index + 1 <= last_token_index &&
+		       token_text_equals(parser, token_index + 1, "PARTITION");
+	}
+
+	if (token_text_equals(parser, token_index, "ADD") ||
+	    token_text_equals(parser, token_index, "DROP") ||
+	    parser->tokens[token_index].parser_token == TRUNCATE_T ||
+	    parser->tokens[token_index].parser_token == ANALYZE_T ||
+	    parser->tokens[token_index].parser_token == CHECK_T ||
+	    parser->tokens[token_index].parser_token == OPTIMIZE_T ||
+	    parser->tokens[token_index].parser_token == REPAIR_T ||
+	    token_text_equals(parser, token_index, "REBUILD") ||
+	    token_text_equals(parser, token_index, "COALESCE")) {
+		return token_index + 2 <= last_token_index &&
+		       token_text_equals(parser, token_index + 1, "PARTITION");
+	}
+
+	if (token_text_equals(parser, token_index, "DISCARD") ||
+	    parser->tokens[token_index].parser_token == IMPORT_T) {
+		if (token_index + 1 == last_token_index &&
+		    token_text_equals(parser, token_index + 1, "TABLESPACE")) {
+			return 1;
+		}
+		return token_index + 3 <= last_token_index &&
+		       token_text_equals(parser, token_index + 1, "PARTITION") &&
+		       token_text_equals(parser, last_token_index, "TABLESPACE");
+	}
+
+	if (token_text_equals(parser, token_index, "EXCHANGE")) {
+		return token_index + 5 <= last_token_index &&
+		       token_text_equals(parser, token_index + 1, "PARTITION") &&
+		       token_can_start_alter_table_name(&parser->tokens[token_index + 2]) &&
+		       token_text_equals(parser, token_index + 3, "WITH") &&
+		       parser->tokens[token_index + 4].parser_token == TABLE_T &&
+		       token_can_start_object_name(&parser->tokens[token_index + 5]);
+	}
+
+	if (token_text_equals(parser, token_index, "REMOVE")) {
+		return token_index + 1 == last_token_index &&
+		       token_text_equals(parser, token_index + 1, "PARTITIONING");
+	}
+
+	if (token_text_equals(parser, token_index, "PARTITION")) {
+		return token_index + 2 <= last_token_index &&
+		       parser->tokens[token_index + 1].parser_token == BY_T;
+	}
+
+	return 0;
+}
+
+static int validate_alter_table_table_option_action_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index)
+{
+	if (parser->tokens[token_index].parser_token == DEFAULT_T) {
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	if (parser->tokens[token_index].parser_token == CHARACTER_T) {
+		token_index++;
+		if (token_index <= last_token_index && parser->tokens[token_index].parser_token == SET_T) {
+			token_index++;
+		}
+	} else if ((parser->tokens[token_index].parser_token == DATA_T ||
+	            parser->tokens[token_index].parser_token == INDEX_T) &&
+	           token_index + 1 <= last_token_index &&
+	           token_text_equals(parser, token_index + 1, "DIRECTORY")) {
+		token_index += 2;
+	} else if (token_text_equals(parser, token_index, "STORAGE")) {
+		if (token_index + 1 > last_token_index ||
+		    (!token_text_equals(parser, token_index + 1, "DISK") &&
+		     !token_text_equals(parser, token_index + 1, "MEMORY"))) {
+			return 0;
+		}
+		return token_index + 1 == last_token_index ||
+		       token_is_alter_table_table_option_start(parser, token_index + 2, last_token_index);
+	} else {
+		token_index++;
+	}
+
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+		token_index++;
+	}
+	return token_index <= last_token_index;
+}
+
+static int validate_alter_table_nonempty_list_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index)
+{
+	int expecting_item = 1;
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == ',') {
+			if (expecting_item) {
+				return 0;
+			}
+			expecting_item = 1;
+			token_index++;
+			continue;
+		}
+		expecting_item = 0;
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+
+	return !expecting_item;
+}
+
+static int alter_table_action_has_group(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == '(' &&
+		    matching_token > token_index + 1 &&
+		    matching_token <= last_token_index + 1) {
+			return 1;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+	return 0;
+}
+
+static int token_can_start_alter_table_name(const mylite_token *token)
+{
+	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_STRING ||
+	       token->kind == MYLITE_TOKEN_NUMBER ||
+	       token->kind == MYLITE_TOKEN_KEYWORD;
+}
+
+static int token_is_alter_table_column_keyword(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "COLUMN");
+}
+
+static int token_is_alter_table_key_action_head(const mylite_parser *parser, size_t token_index)
+{
+	return parser->tokens[token_index].parser_token == PRIMARY_T ||
+	       parser->tokens[token_index].parser_token == UNIQUE_T ||
+	       parser->tokens[token_index].parser_token == INDEX_T ||
+	       parser->tokens[token_index].parser_token == KEY_T ||
+	       parser->tokens[token_index].parser_token == FULL_T ||
+	       token_text_equals(parser, token_index, "FULLTEXT") ||
+	       parser->tokens[token_index].parser_token == SPATIAL_T ||
+	       parser->tokens[token_index].parser_token == CONSTRAINT_T ||
+	       token_text_equals(parser, token_index, "FOREIGN") ||
+	       parser->tokens[token_index].parser_token == CHECK_T;
+}
+
+static int token_is_alter_table_algorithm_value(const mylite_parser *parser, size_t token_index)
+{
+	return token_is_drop_index_algorithm_value(parser, token_index) ||
+	       token_text_equals(parser, token_index, "INSTANT");
+}
+
+static int token_is_alter_table_table_option_start(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == DEFAULT_T) {
+		return token_index + 1 <= last_token_index &&
+		       (parser->tokens[token_index + 1].parser_token == CHARACTER_T ||
+		        parser->tokens[token_index + 1].parser_token == CHARSET_T ||
+		        parser->tokens[token_index + 1].parser_token == COLLATE_T ||
+		        token_text_equals(parser, token_index + 1, "ENCRYPTION"));
+	}
+	if ((parser->tokens[token_index].parser_token == DATA_T ||
+	     parser->tokens[token_index].parser_token == INDEX_T) &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index + 1, "DIRECTORY")) {
+		return 1;
+	}
+	return parser->tokens[token_index].parser_token == AUTO_INCREMENT_T ||
+	       parser->tokens[token_index].parser_token == CHARACTER_T ||
+	       parser->tokens[token_index].parser_token == CHARSET_T ||
+	       parser->tokens[token_index].parser_token == CHECKSUM_T ||
+	       parser->tokens[token_index].parser_token == COLLATE_T ||
+	       parser->tokens[token_index].parser_token == ENGINE_T ||
+	       parser->tokens[token_index].parser_token == UNION_T ||
+	       token_text_equals(parser, token_index, "AVG_ROW_LENGTH") ||
+	       token_text_equals(parser, token_index, "COMMENT") ||
+	       token_text_equals(parser, token_index, "COMPRESSION") ||
+	       token_text_equals(parser, token_index, "CONNECTION") ||
+	       token_text_equals(parser, token_index, "DELAY_KEY_WRITE") ||
+	       token_text_equals(parser, token_index, "ENCRYPTION") ||
+	       token_text_equals(parser, token_index, "ENGINE_ATTRIBUTE") ||
+	       token_text_equals(parser, token_index, "INSERT_METHOD") ||
+	       token_text_equals(parser, token_index, "KEY_BLOCK_SIZE") ||
+	       token_text_equals(parser, token_index, "MAX_ROWS") ||
+	       token_text_equals(parser, token_index, "MIN_ROWS") ||
+	       token_text_equals(parser, token_index, "PACK_KEYS") ||
+	       token_text_equals(parser, token_index, "PASSWORD") ||
+	       token_text_equals(parser, token_index, "ROW_FORMAT") ||
+	       token_text_equals(parser, token_index, "SECONDARY_ENGINE") ||
+	       token_text_equals(parser, token_index, "SECONDARY_ENGINE_ATTRIBUTE") ||
+	       token_text_equals(parser, token_index, "STATS_AUTO_RECALC") ||
+	       token_text_equals(parser, token_index, "STATS_PERSISTENT") ||
+	       token_text_equals(parser, token_index, "STATS_SAMPLE_PAGES") ||
+	       token_text_equals(parser, token_index, "STORAGE") ||
+	       token_text_equals(parser, token_index, "TABLESPACE");
+}
+
+static int token_is_alter_table_partition_action_start(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "PARTITION")) {
+		return token_index + 1 <= last_token_index &&
+		       parser->tokens[token_index + 1].parser_token == BY_T;
+	}
+	if (token_text_equals(parser, token_index, "REMOVE")) {
+		return token_index + 1 <= last_token_index &&
+		       token_text_equals(parser, token_index + 1, "PARTITIONING");
+	}
+	if (token_text_equals(parser, token_index, "DISCARD") ||
+	    parser->tokens[token_index].parser_token == IMPORT_T) {
+		return token_index + 1 <= last_token_index &&
+		       (token_text_equals(parser, token_index + 1, "TABLESPACE") ||
+		        token_text_equals(parser, token_index + 1, "PARTITION"));
+	}
+	if (token_text_equals(parser, token_index, "EXCHANGE")) {
+		return token_index + 1 <= last_token_index &&
+		       token_text_equals(parser, token_index + 1, "PARTITION");
+	}
+	if (token_text_equals(parser, token_index, "ADD") ||
+	    token_text_equals(parser, token_index, "DROP") ||
+	    parser->tokens[token_index].parser_token == TRUNCATE_T ||
+	    parser->tokens[token_index].parser_token == ANALYZE_T ||
+	    parser->tokens[token_index].parser_token == CHECK_T ||
+	    parser->tokens[token_index].parser_token == OPTIMIZE_T ||
+	    parser->tokens[token_index].parser_token == REPAIR_T ||
+	    token_text_equals(parser, token_index, "REBUILD") ||
+	    token_text_equals(parser, token_index, "COALESCE") ||
+	    token_text_equals(parser, token_index, "REORGANIZE")) {
+		return token_index + 1 <= last_token_index &&
+		       token_text_equals(parser, token_index + 1, "PARTITION");
+	}
 	return 0;
 }
 

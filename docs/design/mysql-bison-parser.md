@@ -78,6 +78,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 compact table creation forms:
   `https://dev.mysql.com/doc/refman/8.4/en/create-table-like.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/create-table-select.html`
+- MySQL 8.4 ALTER TABLE statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/alter-table.html`
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
@@ -402,6 +404,11 @@ Base `CREATE TABLE` validation records table targets and rejects missing, empty,
 or comma-dangling definition lists while keeping individual column, index,
 constraint, option, and partition productions permissive for the later full
 table grammar milestone.
+`ALTER TABLE` validation records table targets and checks top-level action-list
+shape for common action heads, including `ADD`, `DROP`, `CHANGE`, `MODIFY`,
+`ALTER`, `RENAME`, `ORDER BY`, online-DDL options, validation options,
+partition actions, and table options. Column, index, constraint, partition,
+table rebuild, online-DDL, and diagnostic semantics remain later milestones.
 Resource group targets are recorded and validated for `CREATE`, `ALTER`,
 `DROP`, and `SET RESOURCE GROUP`. Server DDL targets are recorded and validated
 for `CREATE SERVER`, `ALTER SERVER`, and `DROP SERVER`. Logfile-group DDL

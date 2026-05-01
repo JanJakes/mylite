@@ -84,6 +84,11 @@ Base `CREATE TABLE` forms validate the statement head and nonempty top-level
 definition-list structure, including quoted table identifiers, while keeping
 individual column, index, constraint, option, and partition productions
 permissive for the full table grammar milestone.
+`ALTER TABLE` records table targets and validates top-level action-list
+structure for common action heads, including column, index, constraint, rename,
+ordering, algorithm, lock, validation, partition, and table-option forms.
+Detailed table rebuild and metadata semantics are still outside this parser
+prototype.
 `CREATE INDEX` validates standalone index modifiers, key-part-list shape,
 documented option clauses, and corpus-observed legacy `TYPE` / `RTREE` index
 type spellings while table-level index definitions stay with `CREATE TABLE`

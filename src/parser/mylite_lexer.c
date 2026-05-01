@@ -564,6 +564,7 @@ static int keyword_token(const MyliteToken *token) {
       {"CPU", ML_CPU},
       {"CURSOR", ML_CURSOR},
       {"CURSOR_NAME", ML_CURSOR_NAME},
+      {"CURRENT_USER", ML_CURRENT_USER},
       {"DATA", ML_DATA},
       {"DATAFILE", ML_DATAFILE},
       {"DATABASE", ML_DATABASE},

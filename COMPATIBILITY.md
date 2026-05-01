@@ -210,13 +210,13 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER USER` | ❌ | medium | Authentication plugins, passwords, MFA, TLS, resources, lock/expire, comments, attributes, and default roles. |  |
 | `CREATE USER` | ❌ | medium | User creation syntax, IF NOT EXISTS, auth factors, TLS, resources, password options, and comments. |  |
 | `CREATE ROLE` | ❌ | medium | Role creation syntax and metadata. |  |
-| `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. |  |
+| `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
 | `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. |  |
 | `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. |  |
-| `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. |  |
+| `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
 | `REVOKE` | ❌ | medium | Privilege and role revocation semantics. |  |
 | `SET DEFAULT ROLE` | ❌ | medium | Default role assignment. |  |
-| `SET PASSWORD` | ❌ | medium | Password assignment semantics. |  |
+| `SET PASSWORD` | ❌ | medium | Password assignment semantics. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
 | `SET ROLE` | ❌ | medium | Active-role selection. |  |
 | `CREATE RESOURCE GROUP` | ❌ | low | Thread resource group creation syntax. |  |
 | `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. |  |
@@ -266,7 +266,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SHOW CREATE PROCEDURE` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW CREATE TABLE` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW CREATE TRIGGER` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW CREATE USER` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
+| `SHOW CREATE USER` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
 | `SHOW CREATE VIEW` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW DATABASES` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW ENGINE` | ❌ | low | Generic SHOW ENGINE syntax, subcommand dispatch, result-set shape, and engine-specific diagnostics. |  |

@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURSOR_NAME DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXCHANGE EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PACK_KEYS PAGE PARTITION PHASE PRECEDES PRESERVE READS REAL REBUILD REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REQUIRE RESUME RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXCHANGE EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PACK_KEYS PAGE PARTITION PHASE PRECEDES PRESERVE READS REAL REBUILD REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REQUIRE RESUME RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -315,7 +315,7 @@ view_column_list ::= view_column_list import_comma cache_name_part.
 create_definer_clause ::= DEFINER diagnostics_equals create_definer_account.
 
 create_definer_account ::= drop_account_name.
-create_definer_account ::= ATOM LP RP.
+create_definer_account ::= current_user_ref.
 
 create_definer_object_tail ::= EVENT create_if_not_exists_tail cache_table_ref create_event_body.
 create_definer_object_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref create_trigger_body.
@@ -502,7 +502,8 @@ drop_statement ::= DROP drop_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-drop_tail ::= drop_account_kind drop_if_exists_tail drop_account_list drop_account_trailing_tail.
+drop_tail ::= USER drop_if_exists_tail drop_user_ref_list drop_account_trailing_tail.
+drop_tail ::= ROLE drop_if_exists_tail drop_account_list drop_account_trailing_tail.
 drop_tail ::= drop_table_prefix drop_if_exists_tail drop_name_list drop_restrict_tail.
 drop_tail ::= LOGFILE drop_logfile_group cache_name_part drop_tablespace_engine_tail.
 drop_tail ::= RESOURCE drop_resource_group cache_name_part drop_resource_force_tail.
@@ -521,9 +522,6 @@ drop_tail ::= TABLESPACE cache_name_part drop_tablespace_engine_tail.
 drop_table_kind ::= TABLE.
 drop_table_kind ::= TABLES.
 
-drop_account_kind ::= USER.
-drop_account_kind ::= ROLE.
-
 drop_table_prefix ::= drop_table_kind.
 drop_table_prefix ::= TEMPORARY drop_table_kind.
 
@@ -532,6 +530,12 @@ drop_routine_kind ::= PROCEDURE.
 
 drop_account_list ::= drop_account_name.
 drop_account_list ::= drop_account_list COMMA drop_account_name.
+
+drop_user_ref_list ::= drop_user_ref.
+drop_user_ref_list ::= drop_user_ref_list COMMA drop_user_ref.
+
+drop_user_ref ::= drop_account_name.
+drop_user_ref ::= current_user_ref.
 
 drop_account_name ::= drop_account_principal.
 drop_account_name ::= drop_account_principal drop_account_host.
@@ -785,12 +789,16 @@ rename_user_pair ::= rename_user_account TO rename_user_account.
 
 rename_user_account ::= rename_user_token.
 rename_user_account ::= rename_user_account rename_user_token.
+rename_user_account ::= current_user_ref.
 
 rename_user_token ::= ATOM.
 rename_user_token ::= LABEL.
 rename_user_token ::= MASTER.
 rename_user_token ::= ROLE.
 rename_user_token ::= USER.
+
+current_user_ref ::= CURRENT_USER.
+current_user_ref ::= CURRENT_USER LP RP.
 
 truncate_statement ::= TRUNCATE truncate_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
@@ -1471,7 +1479,9 @@ show_count_kind ::= ERRORS.
 show_count_kind ::= WARNINGS.
 
 show_create_tail ::= show_create_named_kind cache_table_ref.
-show_create_tail ::= USER rename_user_account.
+show_create_tail ::= USER show_create_user_target.
+
+show_create_user_target ::= rename_user_account.
 
 show_create_named_kind ::= DATABASE.
 show_create_named_kind ::= EVENT.
@@ -1513,7 +1523,6 @@ show_grants_principal_list ::= show_grants_principal.
 show_grants_principal_list ::= show_grants_principal_list import_comma show_grants_principal.
 
 show_grants_principal ::= rename_user_account.
-show_grants_principal ::= ATOM LP RP.
 
 show_full_kind ::= PROCESSLIST.
 
@@ -2271,7 +2280,7 @@ set_password_operator ::= set_assignment_operator.
 set_password_operator ::= TO.
 
 set_password_target ::= drop_account_name.
-set_password_target ::= ATOM LP RP.
+set_password_target ::= current_user_ref.
 
 set_role_tail ::= set_role_start statement_tail.
 
@@ -2476,6 +2485,7 @@ expression_start_keyword ::= CASE.
 expression_start_keyword ::= CHARSET.
 expression_start_keyword ::= COLLATION.
 expression_start_keyword ::= COUNT.
+expression_start_keyword ::= CURRENT_USER.
 expression_start_keyword ::= DATA.
 expression_start_keyword ::= DATABASE.
 expression_start_keyword ::= DEFAULT.
@@ -2757,6 +2767,7 @@ keyword ::= REPLACE.
 keyword ::= UPDATE.
 keyword ::= DELETE.
 keyword ::= CREATE.
+keyword ::= CURRENT_USER.
 keyword ::= DATA.
 keyword ::= DATABASE.
 keyword ::= ALTER.
@@ -2979,6 +2990,7 @@ keyword_not_select_clause ::= REPLACE.
 keyword_not_select_clause ::= UPDATE.
 keyword_not_select_clause ::= DELETE.
 keyword_not_select_clause ::= CREATE.
+keyword_not_select_clause ::= CURRENT_USER.
 keyword_not_select_clause ::= DATA.
 keyword_not_select_clause ::= DATABASE.
 keyword_not_select_clause ::= ALTER.

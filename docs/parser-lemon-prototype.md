@@ -21,6 +21,8 @@ token sink:
 - MySQL 8.4 administration forms such as `SHOW BINARY LOG STATUS` and
   `CLONE INSTANCE ... [DATA DIRECTORY ...] [REQUIRE [NO] SSL]` are recognized
   structurally.
+- Account-reference forms that permit `CURRENT_USER` or `CURRENT_USER()` now
+  have explicit grammar productions.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,

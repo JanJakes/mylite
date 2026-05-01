@@ -462,9 +462,10 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   validates optional thread-type lists and channel clause shape, but neither
   form classifies thread lists, source options, filters, or replica runtime
   state.
-  Group Replication metadata records the subsystem object kind and validates
-  bare `STOP GROUP_REPLICATION`, but does not model user credentials,
-  distributed recovery, group membership, or timeout behavior.
+  Group Replication metadata records the subsystem object kind, validates
+  `START GROUP_REPLICATION` credential option shape, and validates bare
+  `STOP GROUP_REPLICATION`, but does not model credential storage, distributed
+  recovery, group membership, or timeout behavior.
   XA metadata records only the first XID token for XID-bearing statements and
   the XA transaction collection for `XA RECOVER`; it validates XID shape,
   `XA START` / `XA BEGIN` options, `XA END` suspend options, `XA COMMIT ONE

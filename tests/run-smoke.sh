@@ -1312,6 +1312,40 @@ if "$parser" --quiet "START REPLICA FOR CHANNEL 'ch' USER='u'"; then
 	exit 1
 fi
 
+start_group_replication_output=$("$parser" "START GROUP_REPLICATION; START GROUP_REPLICATION USER='u'; START GROUP_REPLICATION USER='u', PASSWORD='p'; START GROUP_REPLICATION USER='u', DEFAULT_AUTH='mysql_native_password'; START GROUP_REPLICATION USER='u', PASSWORD='p', DEFAULT_AUTH='mysql_native_password'")
+case "$start_group_replication_output" in
+	*"start"*/group_replication*"start"*/group_replication*"start"*/group_replication*"start"*/group_replication*"start"*/group_replication*) ;;
+	*)
+		echo "unexpected START GROUP_REPLICATION output: $start_group_replication_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet "START GROUP_REPLICATION USER=''"; then
+	echo "expected empty START GROUP_REPLICATION user to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "START GROUP_REPLICATION PASSWORD='p'"; then
+	echo "expected START GROUP_REPLICATION password without user to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "START GROUP_REPLICATION USER='u' PASSWORD='p'"; then
+	echo "expected missing START GROUP_REPLICATION option comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "START GROUP_REPLICATION USER='u',"; then
+	echo "expected trailing START GROUP_REPLICATION option comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "START GROUP_REPLICATION USER='u', PLUGIN_DIR='/tmp'"; then
+	echo "expected unsupported START GROUP_REPLICATION option to fail" >&2
+	exit 1
+fi
+
 xa_output=$("$parser" "XA START 'x'; XA BEGIN X'6162', 0x62, 7 JOIN; XA START b'1010' RESUME; XA END 'x' SUSPEND FOR MIGRATE; XA PREPARE 'x'; XA COMMIT 'x' ONE PHASE; XA ROLLBACK 'x'; XA RECOVER; XA RECOVER CONVERT XID")
 case "$xa_output" in
 	*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"X'6162'"*"xa"*/xa_transaction:"b'1010'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"/xa_transaction,xa"*/xa_transaction*) ;;

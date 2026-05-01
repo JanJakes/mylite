@@ -187,6 +187,14 @@ static int validate_start_replica_connection_option_syntax(const mylite_parser *
 static int token_is_start_replica_tail_boundary(const mylite_parser *parser, size_t token_index);
 static int token_is_start_replica_gtid_set_token(const mylite_parser *parser, size_t token_index);
 static int token_is_start_replica_connection_option(const mylite_parser *parser, size_t token_index);
+static int validate_start_group_replication_statement_syntax(const mylite_parser *parser,
+                                                             size_t token_index,
+                                                             size_t last_token_index);
+static int validate_start_group_replication_connection_option_syntax(const mylite_parser *parser,
+                                                                     size_t token_index,
+                                                                     size_t last_token_index,
+                                                                     const char *option,
+                                                                     size_t *next_token_index);
 static int validate_stop_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_stop_replica_statement_syntax(const mylite_parser *parser,
                                                   size_t token_index,
@@ -2904,6 +2912,11 @@ static int validate_start_statement_syntax(const mylite_parser *parser, const my
 	     token_text_equals(parser, token_index, "SLAVE"))) {
 		return validate_start_replica_statement_syntax(parser, token_index + 1, last_token_index);
 	}
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    token_text_equals(parser, token_index, "GROUP_REPLICATION")) {
+		return validate_start_group_replication_statement_syntax(parser, token_index + 1, last_token_index);
+	}
 	if (token_index > last_token_index) {
 		return 0;
 	}
@@ -3233,6 +3246,81 @@ static int token_is_start_replica_connection_option(const mylite_parser *parser,
 	        token_text_equals(parser, token_index, "PASSWORD") ||
 	        token_text_equals(parser, token_index, "DEFAULT_AUTH") ||
 	        token_text_equals(parser, token_index, "PLUGIN_DIR"));
+}
+
+static int validate_start_group_replication_statement_syntax(const mylite_parser *parser,
+                                                             size_t token_index,
+                                                             size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 1;
+	}
+
+	if (!validate_start_group_replication_connection_option_syntax(parser,
+	                                                               token_index,
+	                                                               last_token_index,
+	                                                               "USER",
+	                                                               &token_index)) {
+		return 0;
+	}
+
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (parser->tokens[token_index].parser_token != ',') {
+		return 0;
+	}
+	token_index++;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "PASSWORD")) {
+		if (!validate_start_group_replication_connection_option_syntax(parser,
+		                                                               token_index,
+		                                                               last_token_index,
+		                                                               "PASSWORD",
+		                                                               &token_index)) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	return validate_start_group_replication_connection_option_syntax(parser,
+	                                                                 token_index,
+	                                                                 last_token_index,
+	                                                                 "DEFAULT_AUTH",
+	                                                                 &token_index) &&
+	       token_index > last_token_index;
+}
+
+static int validate_start_group_replication_connection_option_syntax(const mylite_parser *parser,
+                                                                     size_t token_index,
+                                                                     size_t last_token_index,
+                                                                     const char *option,
+                                                                     size_t *next_token_index)
+{
+	if (token_index + 2 > last_token_index ||
+	    !token_text_equals(parser, token_index, option) ||
+	    !token_text_equals(parser, token_index + 1, "=") ||
+	    parser->tokens[token_index + 2].kind != MYLITE_TOKEN_STRING) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "USER") &&
+	    token_text_equals(parser, token_index + 2, "''")) {
+		return 0;
+	}
+	*next_token_index = token_index + 3;
+	return 1;
 }
 
 static int validate_stop_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

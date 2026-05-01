@@ -555,6 +555,7 @@ ok statements=4 kinds=start[1:2,0:13]/replication_channel,stop[4:5,15:27]/replic
 ```
 
 Group Replication start and stop statements expose the group-replication target;
+`START GROUP_REPLICATION` validates credential-option shape, and
 `STOP GROUP_REPLICATION` is validated as a bare statement:
 
 ```text

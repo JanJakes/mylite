@@ -343,6 +343,7 @@ def main() -> int:
         ("alter database default character set latin2;", 0, {"statements": "1", "ddl": "1"}),
         ("alter database db1 encryption='N';", 0, {"statements": "1", "ddl": "1"}),
         ("alter database db1 collate utf8mb4_0900_ai_ci;", 0, {"statements": "1", "ddl": "1"}),
+        ("alter database account collate binary;", 0, {"statements": "1", "ddl": "1"}),
         ("alter schema s read only default;", 0, {"statements": "1", "ddl": "1"}),
         ("alter database read only=1 default collate utf8mb4_bin;", 0, {"statements": "1", "ddl": "1"}),
         ("alter database db1 default character set = utf8mb4 read only = 0;", 0, {"statements": "1", "ddl": "1"}),

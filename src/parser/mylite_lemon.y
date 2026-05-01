@@ -1008,26 +1008,7 @@ alter_tail ::= INSTANCE alter_instance_action.
 alter_database_kind ::= DATABASE.
 alter_database_kind ::= SCHEMA.
 
-alter_database_name ::= ATOM.
-alter_database_name ::= ACCOUNT.
-alter_database_name ::= CASCADE.
-alter_database_name ::= COMPONENT.
-alter_database_name ::= COUNT.
-alter_database_name ::= DATABASE.
-alter_database_name ::= ENGINE.
-alter_database_name ::= EVENTS.
-alter_database_name ::= FIRST.
-alter_database_name ::= FULL.
-alter_database_name ::= GRANTS.
-alter_database_name ::= LABEL.
-alter_database_name ::= PLUGIN.
-alter_database_name ::= PROCESSLIST.
-alter_database_name ::= RESTRICT.
-alter_database_name ::= TABLES.
-alter_database_name ::= TABLESPACE.
-alter_database_name ::= TRIGGERS.
-alter_database_name ::= USER.
-alter_database_name ::= VARIABLES.
+alter_database_name ::= set_charset_name_part.
 
 alter_database_options ::= alter_database_option.
 alter_database_options ::= alter_database_options alter_database_option.

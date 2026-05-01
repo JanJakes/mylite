@@ -68,8 +68,8 @@ token sink:
   maintenance/exchange, and reorganize forms, tablespace/storage/union changes,
   table option
   changes, `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
-- `CREATE DATABASE` and `ALTER DATABASE` recognize charset, collation,
-  encryption, and alter-only `READ ONLY` option clauses.
+- `CREATE DATABASE` and `ALTER DATABASE` recognize schema names, charset,
+  collation, encryption, and alter-only `READ ONLY` option clauses.
 - `CREATE EVENT` and `ALTER EVENT` recognize ordered event metadata clauses
   for schedules, completion policy, enablement state, comments, and event
   bodies; `ALTER EVENT` also recognizes renames.

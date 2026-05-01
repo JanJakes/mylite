@@ -559,6 +559,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int select_modifiers = 0;
   int need_by = 0;
   int need_operand = 0;
+  int operand_clause = 0;
   int need_set_operand = 0;
   int lock_state = SELECT_LOCK_NONE;
   int saw_lock_tail = 0;
@@ -574,6 +575,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int index_hint_state = SELECT_INDEX_HINT_NONE;
   int index_hint_allow_empty = 0;
   int from_clause = 0;
+  int join_condition_slots = 0;
   int seen_from_clause = 0;
   int seen_where_clause = 0;
   int seen_group_clause = 0;
@@ -1367,6 +1369,10 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
                              "incomplete SELECT clause");
         return;
       }
+      if (operand_clause == ML_JOIN || operand_clause == ML_STRAIGHT_JOIN) {
+        join_condition_slots++;
+      }
+      operand_clause = 0;
       need_operand = 0;
     }
 
@@ -1379,7 +1385,9 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
 
     if (token_id == ML_COMMA) {
+      join_condition_slots = 0;
       need_operand = 1;
+      operand_clause = 0;
       pending_token = token;
       continue;
     }
@@ -1417,6 +1425,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
 
     if (token_id == ML_LOCK) {
       clause_phase = SELECT_PHASE_LOCK;
+      join_condition_slots = 0;
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
@@ -1426,6 +1435,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
     if (token_id == ML_FOR) {
       clause_phase = SELECT_PHASE_LOCK;
+      join_condition_slots = 0;
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
@@ -1439,6 +1449,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         return;
       }
       seen_into_clause = 1;
+      join_condition_slots = 0;
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
@@ -1457,6 +1468,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       }
       seen_limit_clause = 1;
       clause_phase = SELECT_PHASE_LIMIT;
+      join_condition_slots = 0;
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
@@ -1475,6 +1487,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       }
       seen_window_clause = 1;
       clause_phase = SELECT_PHASE_WINDOW;
+      join_condition_slots = 0;
       group_clause = 0;
       from_clause = 0;
       window_state = SELECT_WINDOW_AFTER_WINDOW;
@@ -1492,9 +1505,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       }
       seen_qualify_clause = 1;
       clause_phase = SELECT_PHASE_QUALIFY;
+      join_condition_slots = 0;
       group_clause = 0;
       from_clause = 0;
       need_operand = 1;
+      operand_clause = 0;
       pending_token = token;
       continue;
     }
@@ -1523,6 +1538,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       }
       clause_phase = token_id == ML_GROUP ? SELECT_PHASE_GROUP :
                                             SELECT_PHASE_ORDER;
+      join_condition_slots = 0;
       from_clause = 0;
       group_clause = token_id == ML_GROUP;
       order_clause = token_id == ML_ORDER;
@@ -1545,6 +1561,13 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
           return;
         }
         seen_from_clause = 1;
+        join_condition_slots = 0;
+      } else if (token_id == ML_ON || token_id == ML_USING) {
+        if (join_condition_slots <= 0) {
+          mylite_parser_reject(ctx, token, "misplaced SELECT join clause");
+          return;
+        }
+        join_condition_slots--;
       } else if (token_id == ML_WHERE) {
         if (seen_where_clause) {
           mylite_parser_reject(ctx, token, "duplicate SELECT clause");
@@ -1556,6 +1579,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         }
         seen_where_clause = 1;
         clause_phase = SELECT_PHASE_WHERE;
+        join_condition_slots = 0;
       } else if (token_id == ML_HAVING) {
         if (seen_having_clause) {
           mylite_parser_reject(ctx, token, "duplicate SELECT clause");
@@ -1567,15 +1591,20 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         }
         seen_having_clause = 1;
         clause_phase = SELECT_PHASE_HAVING;
+        join_condition_slots = 0;
+      } else if (token_id == ML_PROCEDURE) {
+        join_condition_slots = 0;
       }
       if (token_id == ML_HAVING || token_id == ML_JOIN || token_id == ML_ON ||
-          token_id == ML_PROCEDURE || token_id == ML_USING ||
+          token_id == ML_PROCEDURE || token_id == ML_STRAIGHT_JOIN ||
+          token_id == ML_USING ||
           token_id == ML_WHERE) {
         group_clause = 0;
         order_clause = 0;
       }
       from_clause = token_id == ML_FROM;
       need_operand = 1;
+      operand_clause = token_id;
       pending_token = token;
       continue;
     }
@@ -1583,6 +1612,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
+      join_condition_slots = 0;
       seen_from_clause = 0;
       seen_where_clause = 0;
       seen_group_clause = 0;
@@ -1594,6 +1624,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       seen_qualify_clause = 0;
       clause_phase = SELECT_PHASE_BODY;
       need_set_operand = 1;
+      operand_clause = 0;
       pending_token = token;
       continue;
     }
@@ -4673,8 +4704,8 @@ static int select_clause_requires_by(int token_id) {
 static int select_clause_requires_operand(int token_id) {
   return token_id == ML_FROM || token_id == ML_HAVING ||
          token_id == ML_JOIN || token_id == ML_LIMIT || token_id == ML_ON ||
-         token_id == ML_PROCEDURE || token_id == ML_USING ||
-         token_id == ML_WHERE;
+         token_id == ML_PROCEDURE || token_id == ML_STRAIGHT_JOIN ||
+         token_id == ML_USING || token_id == ML_WHERE;
 }
 
 static int select_from_starts_nth_modifier(MyliteParseContext *ctx,

@@ -1788,6 +1788,7 @@ load_statement ::= LOAD load_tail. {
 load_tail ::= DATA load_file_tail.
 load_tail ::= XML load_xml_tail.
 load_tail ::= INDEX INTO CACHE load_index_table_list.
+load_tail ::= INDEX INTO CACHE load_index_partitioned_table_spec.
 
 load_file_tail ::= load_file_priority_tail load_file_from_tail load_file_local_tail load_source_type load_file_name load_source_count_tail load_source_order_tail load_duplicate_tail INTO TABLE cache_table_ref load_data_options.
 load_xml_tail ::= load_file_priority_tail load_file_from_tail load_file_local_tail load_source_type load_file_name load_source_count_tail load_source_order_tail load_duplicate_tail INTO TABLE cache_table_ref load_xml_options.
@@ -1892,10 +1893,8 @@ load_algorithm_tail ::= ALGORITHM diagnostics_equals BULK.
 load_index_table_list ::= load_index_table_spec.
 load_index_table_list ::= load_index_table_list import_comma load_index_table_spec.
 
-load_index_table_spec ::= cache_table_ref load_index_partition_tail load_index_key_tail load_index_ignore_tail.
-
-load_index_partition_tail ::= .
-load_index_partition_tail ::= load_index_partition.
+load_index_table_spec ::= cache_table_ref load_index_key_tail load_index_ignore_tail.
+load_index_partitioned_table_spec ::= cache_table_ref load_index_partition load_index_key_tail load_index_ignore_tail.
 
 load_index_key_tail ::= .
 load_index_key_tail ::= cache_index_kind cache_key_list.
@@ -2274,14 +2273,17 @@ import_file ::= string_literal.
 cache_statement ::= CACHE INDEX cache_table_list IN cache_keycache. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
+cache_statement ::= CACHE INDEX cache_table_partitioned_spec IN cache_keycache. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+}
 
 cache_table_list ::= cache_table_spec.
 cache_table_list ::= cache_table_list import_comma cache_table_spec.
 
 cache_table_spec ::= cache_table_ref.
 cache_table_spec ::= cache_table_ref cache_index_kind cache_key_list.
-cache_table_spec ::= cache_table_ref PARTITION LP cache_partition_list RP.
-cache_table_spec ::= cache_table_ref PARTITION LP cache_partition_list RP cache_index_kind cache_key_list.
+cache_table_partitioned_spec ::= cache_table_ref PARTITION LP cache_partition_list RP.
+cache_table_partitioned_spec ::= cache_table_ref PARTITION LP cache_partition_list RP cache_index_kind cache_key_list.
 
 cache_partition_list ::= ALL.
 cache_partition_list ::= cache_partition_names.
@@ -2317,6 +2319,7 @@ cache_name_part ::= TRIGGERS.
 cache_name_part ::= USER.
 cache_name_part ::= VARIABLES.
 
+cache_key_list ::= LP RP.
 cache_key_list ::= LP cache_key_names RP.
 
 cache_key_names ::= cache_key_name.

@@ -160,8 +160,9 @@ token sink:
   column/user-variable lists, `SET` tails, and bulk-load parallel, memory, and
   algorithm options where they are unambiguous with `SET` assignment tails.
   `LOAD DATA` partition names use the shared identifier grammar.
-- `LOAD INDEX INTO CACHE` recognizes per-table partition lists, `ALL`,
-  key/index lists, and `IGNORE LEAVES`.
+- `LOAD INDEX INTO CACHE` recognizes MySQL's single-table partition form,
+  `ALL`, optional empty or named key/index lists, comma-separated non-partition
+  table lists, and `IGNORE LEAVES`.
 - `IMPORT TABLE` recognizes comma-separated string-literal file lists.
 - `EXPLAIN` and `DESCRIBE` recognize table-description forms, explainable
   statement starts including `TABLE` with non-empty tails, and numeric
@@ -219,9 +220,9 @@ token sink:
   user-variable sources.
 - XA statements recognize one-, two-, and three-part string or hex XIDs with
   numeric `formatID` values.
-- `CACHE INDEX` recognizes table, partition, key/index, and key-cache names
-  using the shared identifier grammar; `RESET PERSIST` uses the shared grammar
-  for persisted-variable names.
+- `CACHE INDEX` recognizes table, single-table partition, optional empty or
+  named key/index, and key-cache names using the shared identifier grammar;
+  `RESET PERSIST` uses the shared grammar for persisted-variable names.
 - `GET DIAGNOSTICS` recognizes optional `CURRENT`/`STACKED` diagnostics-area
   selectors; assignment targets use local/user-variable grammar and condition
   numbers may come from literal/simple, user-variable, system-variable, and

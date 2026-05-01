@@ -168,7 +168,9 @@ expose the query object kind:
 ok statements=1 kinds=do[1:4,0:8]/query
 ```
 
-Direct and parenthesized `TABLE` statements preserve their table target:
+Direct and parenthesized `TABLE` statements preserve their table target and
+validate documented `ORDER BY`, `LIMIT`, `OFFSET`, `INTO` variable-list, and
+file-export clause shape:
 
 ```text
 ok statements=1 kinds=table[1:6,0:16]/table:`db`.`t`

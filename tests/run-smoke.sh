@@ -318,6 +318,80 @@ case "$table_into_output" in
 		;;
 esac
 
+table_tail_output=$("$parser" "TABLE t ORDER BY c DESC LIMIT 5 OFFSET 2 INTO @a, local_b; TABLE t LIMIT 2, 3; TABLE t INTO OUTFILE '/tmp/t.tsv' FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '\"' LINES TERMINATED BY '\n'; TABLE t1 UNION TABLE t2")
+case "$table_tail_output" in
+	*"table"*/user_variable:@a*"table"*/table:t*"table"*/outfile:"'/tmp/t.tsv'"*"table"*/table:t1*) ;;
+	*)
+		echo "unexpected table tail output: $table_tail_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'TABLE'; then
+	echo "expected TABLE without table name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE LIMIT 1'; then
+	echo "expected TABLE without table name before LIMIT to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE t WHERE c=1'; then
+	echo "expected TABLE WHERE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE t ORDER BY c WHERE c=1'; then
+	echo "expected TABLE WHERE after ORDER BY to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE t LIMIT 1 ORDER BY c'; then
+	echo "expected TABLE ORDER BY after LIMIT to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE t ORDER BY'; then
+	echo "expected TABLE ORDER BY without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE t LIMIT 1 OFFSET'; then
+	echo "expected TABLE LIMIT OFFSET without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE t LIMIT 1 OFFSET 2 OFFSET 3'; then
+	echo "expected TABLE LIMIT with duplicate OFFSET to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE t LIMIT 1,2,3'; then
+	echo "expected TABLE LIMIT with extra comma expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE t INTO @@x'; then
+	echo "expected TABLE INTO system variable to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE t INTO @x,'; then
+	echo "expected TABLE INTO trailing variable comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "TABLE t INTO OUTFILE '/tmp/t.tsv' FIELDS TERMINATED"; then
+	echo "expected TABLE OUTFILE FIELDS TERMINATED without BY string to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "TABLE t INTO DUMPFILE '/tmp/t.bin' FIELDS TERMINATED BY ','"; then
+	echo "expected TABLE DUMPFILE options to fail" >&2
+	exit 1
+fi
+
 stored_head_output=$("$parser" 'DECLARE x INT; OPEN c; FETCH c INTO x; CLOSE c; IF x THEN RETURN x END IF; LOOP LEAVE done END LOOP; REPEAT ITERATE done UNTIL x END REPEAT; WHILE x DO SET x=x+1 END WHILE; CASE x WHEN 1 THEN RETURN 1 END CASE; LEAVE done; ITERATE done; RETURN 1')
 case "$stored_head_output" in
 	*"kinds=declare"*"open"*"fetch"*"close"*"if"*"loop"*"repeat"*"while"*"case"*"leave"*"iterate"*"return"*) ;;

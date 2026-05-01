@@ -279,6 +279,9 @@ multi-table `FROM` and `USING` forms, checks documented modifiers, delete-target
 lists including `.*`, table-reference spans, optional single-table partition
 lists, and the clause rule that `ORDER BY` and `LIMIT` apply only to
 single-table deletes.
+`TABLE` validation checks direct and parenthesized table-value statements,
+documented `ORDER BY`, `LIMIT`, `OFFSET`, set-operator tails, and final `INTO`
+variable/export targets.
 `SELECT ... INTO` and `TABLE ... INTO` assignment targets are recorded for user
 variables and local variables. `SET` system-variable targets preserve qualified
 structured names such as `keycache1.key_buffer_size`. `INTO OUTFILE` and

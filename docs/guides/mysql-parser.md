@@ -53,6 +53,10 @@ Table-maintenance statements also report the first concrete table target:
 ok statements=1 kinds=analyze[1:3,0:15]/table:t
 ```
 
+```text
+ok statements=1 kinds=drop[1:3,0:14]/table:t1
+```
+
 Standalone `VALUES` statements expose the query object kind:
 
 ```text

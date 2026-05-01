@@ -231,6 +231,15 @@ case "$object_output" in
 	;;
 esac
 
+plural_tables_output=$("$parser" 'DROP TABLES t1, t4; RENAME TABLES old TO new; ANALYZE TABLES c, cc; CHECK TABLES t1; OPTIMIZE TABLES columns_priv, db, user')
+case "$plural_tables_output" in
+	*"drop"*/table:t1*"rename"*/table:old*"analyze"*/table:c*"check"*/table:t1*"optimize"*/table:columns_priv*) ;;
+	*)
+		echo "unexpected plural TABLES output: $plural_tables_output" >&2
+		exit 1
+		;;
+esac
+
 qualified_keyword_output=$("$parser" 'CREATE TABLE db.select (id int); ALTER TABLE db.key ADD c INT; DROP TABLE db.group; SHOW CREATE PROCEDURE db.order')
 case "$qualified_keyword_output" in
 	*"create"*/table:db.select*"alter"*/table:db.key*"drop"*/table:db.group*"show"*/procedure:db.order*) ;;

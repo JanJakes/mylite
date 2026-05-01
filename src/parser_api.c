@@ -2200,7 +2200,8 @@ static size_t find_maintenance_table_name_token(const mylite_parser *parser,
                                                 size_t last_token_index)
 {
 	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
-		if (parser->tokens[token_index].parser_token == TABLE_T &&
+		if ((parser->tokens[token_index].parser_token == TABLE_T ||
+		     token_text_equals(parser, token_index, "TABLES")) &&
 		    token_can_start_object_name(&parser->tokens[token_index + 1])) {
 			return token_index + 1;
 		}
@@ -3873,6 +3874,9 @@ static mylite_statement_object_kind object_kind_from_token_sequence(const mylite
 		    parser->tokens[token_index + 1].parser_token == GROUP_T) {
 			return MYLITE_STATEMENT_OBJECT_RESOURCE_GROUP;
 		}
+		if (token_text_equals(parser, token_index, "TABLES")) {
+			return MYLITE_STATEMENT_OBJECT_TABLE;
+		}
 		if (token_text_equals(parser, token_index, "SERVER")) {
 			return MYLITE_STATEMENT_OBJECT_SERVER;
 		}
@@ -3989,7 +3993,7 @@ static size_t first_name_token_after_object(const mylite_parser *parser,
 	    parser->tokens[token_index].parser_token == GROUP_T) {
 		token_index++;
 	}
-	if (token_text_equals(parser, object_token_index, "UNDO") &&
+		if (token_text_equals(parser, object_token_index, "UNDO") &&
 	    token_index <= last_token_index &&
 	    token_text_equals(parser, token_index, "TABLESPACE")) {
 		token_index++;

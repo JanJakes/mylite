@@ -595,6 +595,30 @@ if "$parser" --quiet 'CREATE TABLE t () SELECT 1'; then
 	exit 1
 fi
 
+create_table_definition_output=$("$parser" "CREATE TABLE base (id INT NOT NULL, PRIMARY KEY (id)); CREATE TEMPORARY TABLE db.tmp (a VARCHAR(10), KEY k (a)) ENGINE=InnoDB; CREATE TABLE \"quoted name\" (i INT)")
+case "$create_table_definition_output" in
+	*"create"*/table:base*"create"*/table:db.tmp*"create"*/table:'"quoted name"'*) ;;
+	*)
+		echo "unexpected CREATE TABLE definition output: $create_table_definition_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'CREATE TABLE t'; then
+	echo "expected CREATE TABLE without a definition, LIKE, or query to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TABLE t ()'; then
+	echo "expected CREATE TABLE empty definition list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TABLE t (id INT,)'; then
+	echo "expected CREATE TABLE trailing definition comma to fail" >&2
+	exit 1
+fi
+
 create_index_output=$("$parser" "CREATE INDEX i ON t (c); CREATE UNIQUE INDEX i2 USING BTREE ON db.t (c(10) DESC, (lower(name)) ASC) KEY_BLOCK_SIZE=8 WITH PARSER parser_name COMMENT 'c' VISIBLE ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE='{}' ALGORITHM=INPLACE LOCK=NONE; CREATE FULLTEXT INDEX ft ON t (body) WITH PARSER ngram; CREATE SPATIAL INDEX sp ON t (g) USING HASH; CREATE INDEX legacy TYPE BTREE ON t (c) TYPE RTREE")
 case "$create_index_output" in
 	*"create"*/index:i*"create"*/index:i2*"create"*/index:ft*"create"*/index:sp*"create"*/index:legacy*) ;;

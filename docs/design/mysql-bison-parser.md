@@ -73,6 +73,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/alter-event.html`
 - MySQL 8.4 trigger DDL:
   `https://dev.mysql.com/doc/refman/8.4/en/create-trigger.html`
+- MySQL 8.4 CREATE TABLE statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-table.html`
 - MySQL 8.4 compact table creation forms:
   `https://dev.mysql.com/doc/refman/8.4/en/create-table-like.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/create-table-select.html`
@@ -396,6 +398,10 @@ and query-backed CTAS forms, including optional definition groups, table-option
 prefixes, `IGNORE` / `REPLACE`, optional `AS`, and nested parenthesized query
 expressions. Full column-definition grammar remains a separate table DDL
 milestone.
+Base `CREATE TABLE` validation records table targets and rejects missing, empty,
+or comma-dangling definition lists while keeping individual column, index,
+constraint, option, and partition productions permissive for the later full
+table grammar milestone.
 Resource group targets are recorded and validated for `CREATE`, `ALTER`,
 `DROP`, and `SET RESOURCE GROUP`. Server DDL targets are recorded and validated
 for `CREATE SERVER`, `ALTER SERVER`, and `DROP SERVER`. Logfile-group DDL

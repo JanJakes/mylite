@@ -80,6 +80,10 @@ Compact `CREATE TABLE` validation covers `LIKE` and query-backed CTAS forms,
 including temporary destinations, optional definition groups, table-option
 prefixes, `IGNORE` / `REPLACE`, optional `AS`, and nested parenthesized query
 expressions. Full column-definition grammar remains separate.
+Base `CREATE TABLE` forms validate the statement head and nonempty top-level
+definition-list structure, including quoted table identifiers, while keeping
+individual column, index, constraint, option, and partition productions
+permissive for the full table grammar milestone.
 `CREATE INDEX` validates standalone index modifiers, key-part-list shape,
 documented option clauses, and corpus-observed legacy `TYPE` / `RTREE` index
 type spellings while table-level index definitions stay with `CREATE TABLE`

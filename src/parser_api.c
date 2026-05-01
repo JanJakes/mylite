@@ -96,6 +96,12 @@ static int validate_create_table_compact_statement_syntax(const mylite_parser *p
 static int token_starts_create_table_compact_statement(const mylite_parser *parser,
                                                        size_t token_index,
                                                        size_t last_token_index);
+static int validate_create_table_definition_statement_syntax(const mylite_parser *parser,
+                                                             size_t token_index,
+                                                             size_t last_token_index);
+static int token_starts_create_table_definition_statement(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index);
 static int validate_create_database_statement_syntax(const mylite_parser *parser,
                                                      size_t token_index,
                                                      size_t last_token_index);
@@ -317,6 +323,7 @@ static int validate_create_table_like_tail_syntax(const mylite_parser *parser,
 static int validate_create_table_select_tail_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
+static int validate_create_table_definition_group_syntax(const mylite_parser *parser, size_t open_token_index);
 static int token_can_start_create_table_query(const mylite_parser *parser, size_t token_index);
 static int validate_alter_database_statement_syntax(const mylite_parser *parser,
                                                     size_t token_index,
@@ -2070,6 +2077,9 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (token_starts_create_table_compact_statement(parser, token_index, last_token_index)) {
 		return validate_create_table_compact_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (token_starts_create_table_definition_statement(parser, token_index, last_token_index)) {
+		return validate_create_table_definition_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (parser->tokens[token_index].parser_token == DATABASE_T ||
 	    parser->tokens[token_index].parser_token == SCHEMA_T) {
 		return validate_create_database_statement_syntax(parser, token_index, last_token_index);
@@ -3603,6 +3613,35 @@ static int token_starts_create_table_compact_statement(const mylite_parser *pars
 	return 0;
 }
 
+static int validate_create_table_definition_statement_syntax(const mylite_parser *parser,
+                                                             size_t token_index,
+                                                             size_t last_token_index)
+{
+	token_index = first_token_after_create_table_head(parser, token_index, last_token_index);
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token != '(' ||
+	    token_can_start_create_table_query(parser, token_index) ||
+	    (token_index + 1 <= last_token_index && token_text_equals(parser, token_index + 1, "LIKE")) ||
+	    !validate_create_table_definition_group_syntax(parser, token_index)) {
+		return 0;
+	}
+
+	return 1;
+}
+
+static int token_starts_create_table_definition_statement(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index)
+{
+	if (token_index <= last_token_index &&
+	    parser->tokens[token_index].parser_token == TEMPORARY_T) {
+		token_index++;
+	}
+	return token_index <= last_token_index &&
+	       token_index < parser->token_count &&
+	       parser->tokens[token_index].parser_token == TABLE_T;
+}
+
 static size_t first_token_after_create_table_head(const mylite_parser *parser,
                                                   size_t token_index,
                                                   size_t last_token_index)
@@ -3623,7 +3662,7 @@ static size_t first_token_after_create_table_head(const mylite_parser *parser,
 	    token_text_equals(parser, token_index + 2, "EXISTS")) {
 		token_index += 3;
 	}
-	if (token_index > last_token_index || !token_can_continue_object_name(&parser->tokens[token_index])) {
+	if (token_index > last_token_index || !token_can_start_object_name(&parser->tokens[token_index])) {
 		return parser->token_count;
 	}
 	return last_qualified_name_token(parser, token_index, last_token_index) + 1;
@@ -3637,7 +3676,7 @@ static int validate_create_table_like_tail_syntax(const mylite_parser *parser,
 
 	if (token_text_equals(parser, token_index, "LIKE")) {
 		token_index++;
-		if (token_index > last_token_index || !token_can_continue_object_name(&parser->tokens[token_index])) {
+		if (token_index > last_token_index || !token_can_start_object_name(&parser->tokens[token_index])) {
 			return 0;
 		}
 		return last_qualified_name_token(parser, token_index, last_token_index) == last_token_index;
@@ -3651,7 +3690,7 @@ static int validate_create_table_like_tail_syntax(const mylite_parser *parser,
 	if (close_token_index != last_token_index ||
 	    token_index + 2 > close_token_index ||
 	    !token_text_equals(parser, token_index + 1, "LIKE") ||
-	    !token_can_continue_object_name(&parser->tokens[token_index + 2])) {
+	    !token_can_start_object_name(&parser->tokens[token_index + 2])) {
 		return 0;
 	}
 
@@ -3699,6 +3738,46 @@ static int validate_create_table_select_tail_syntax(const mylite_parser *parser,
 	}
 
 	return 0;
+}
+
+static int validate_create_table_definition_group_syntax(const mylite_parser *parser, size_t open_token_index)
+{
+	size_t token_index = open_token_index + 1;
+	size_t close_token_index;
+
+	if (open_token_index >= parser->token_count ||
+	    parser->tokens[open_token_index].parser_token != '(' ||
+	    parser->tokens[open_token_index].matching_token <= open_token_index + 2) {
+		return 0;
+	}
+
+	close_token_index = parser->tokens[open_token_index].matching_token - 1;
+	while (token_index < close_token_index) {
+		int saw_definition_token = 0;
+
+		while (token_index < close_token_index && parser->tokens[token_index].parser_token != ',') {
+			size_t matching_token = parser->tokens[token_index].matching_token;
+
+			saw_definition_token = 1;
+			if (matching_token > token_index + 1) {
+				token_index = matching_token;
+			} else {
+				token_index++;
+			}
+		}
+		if (!saw_definition_token) {
+			return 0;
+		}
+		if (token_index >= close_token_index) {
+			return 1;
+		}
+		token_index++;
+		if (token_index >= close_token_index) {
+			return 0;
+		}
+	}
+
+	return 1;
 }
 
 static int token_can_start_create_table_query(const mylite_parser *parser, size_t token_index)

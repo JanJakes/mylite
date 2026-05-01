@@ -345,7 +345,7 @@ static int view_query_order_boundary(int token_id);
 static int dml_query_order_boundary(int token_id);
 static int dml_clause_operand_boundary(int token_id);
 static int dml_limit_option_token(int token_id);
-static int dml_literal_token(int token_id);
+static int dml_literal_token(int token_id, MyliteToken token);
 static int set_statement_previous_value_terminal(int token_id,
                                                  MyliteToken token);
 static int dml_row_alias_token(int token_id);
@@ -3966,7 +3966,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
       if (token_id == ML_ON || token_id == ML_USING) {
         update_table_condition_started = 1;
       } else if (!update_table_condition_started &&
-                 dml_literal_token(token_id)) {
+                 dml_literal_token(token_id, token)) {
         mylite_parser_reject(ctx, token, "invalid UPDATE table reference");
         return;
       }
@@ -10687,8 +10687,9 @@ static int create_table_column_name_needs_type_check(int token_id,
     }
   }
 
-  if (token_id == ML_BOOLEAN_NUMBER || token_id == ML_FACTOR_NUMBER ||
-      token_id == ML_NUMBER_LITERAL) {
+  if ((token_id == ML_BOOLEAN_NUMBER || token_id == ML_FACTOR_NUMBER ||
+       token_id == ML_NUMBER_LITERAL) &&
+      token_starts_numeric_literal(token)) {
     return 0;
   }
 
@@ -11810,10 +11811,11 @@ static int dml_limit_option_token(int token_id) {
          token_id == ML_QUOTED_ID;
 }
 
-static int dml_literal_token(int token_id) {
+static int dml_literal_token(int token_id, MyliteToken token) {
   return token_id == ML_BOOLEAN_NUMBER ||
          token_id == ML_DOUBLE_QUOTED_STRING ||
-         token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
+         ((token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL) &&
+          token_starts_numeric_literal(token)) ||
          token_id == ML_STRING_LITERAL;
 }
 

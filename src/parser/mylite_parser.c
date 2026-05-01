@@ -10968,7 +10968,7 @@ static int create_table_tail_option_value_token(
     return create_table_tail_option_string_token(token_id);
   }
   if (kind == CREATE_TABLE_OPTION_VALUE_ENCRYPTION) {
-    return token_id == ML_ENCRYPTION_VALUE;
+    return create_table_tail_option_string_token(token_id);
   }
   if (kind == CREATE_TABLE_OPTION_VALUE_NAME) {
     return dml_row_alias_token(token_id) ||

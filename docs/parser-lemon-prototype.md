@@ -215,7 +215,7 @@ token sink:
   size/nodegroup values, `WAIT`, and optional `ENGINE`/`STORAGE ENGINE`
   clauses.
 - `CREATE TABLESPACE` and `ALTER TABLESPACE` recognize documented
-  string-literal data files, numeric size, `WAIT`, `'Y'`/`'N'` encryption,
+  string-literal data files, numeric size, `WAIT`, string-literal encryption,
   optional-equals engine/storage-engine options, and string-literal attribute
   clauses. UNDO tablespaces use MySQL's narrower option list: required
   string-literal create data files plus optional `ENGINE`/`STORAGE ENGINE`.
@@ -264,7 +264,7 @@ token sink:
   Table-level `ENGINE_ATTRIBUTE` and `SECONDARY_ENGINE_ATTRIBUTE` changes
   require string literals.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize schema names, charset,
-  collation, `'Y'`/`'N'` encryption, and alter-only `READ ONLY` option clauses
+  collation, string-literal encryption, and alter-only `READ ONLY` option clauses
   with MySQL's `DEFAULT`/`0`/`1` value grammar.
 - `CREATE EVENT` and `ALTER EVENT` recognize ordered event metadata clauses
   for schedules, completion policy, enablement state, comments, and event

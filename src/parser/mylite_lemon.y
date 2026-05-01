@@ -451,7 +451,7 @@ database_collate_option ::= COLLATE drop_index_option_equals_tail set_collation_
 
 database_encryption_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 
-encryption_value ::= ENCRYPTION_VALUE.
+encryption_value ::= string_literal.
 
 string_literal ::= STRING_LITERAL.
 string_literal ::= SQLSTATE_VALUE.

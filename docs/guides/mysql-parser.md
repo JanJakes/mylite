@@ -212,7 +212,9 @@ ok statements=1 kinds=create[1:5,0:19]/user:'u'@'h'
 Account-management `SET` statements expose the first explicit role or user
 target. `SET ROLE` validates collection and role-list forms, and
 `SET DEFAULT ROLE` validates role defaults with required `TO` account lists.
-Bare `SET PASSWORD` statements are reported as current-user targets without an
+`SET PASSWORD` validates optional `FOR` account targets, literal assignment,
+`TO RANDOM`, `REPLACE`, and `RETAIN CURRENT PASSWORD` tails. Bare
+`SET PASSWORD` statements are reported as current-user targets without an
 object-name span:
 
 ```text

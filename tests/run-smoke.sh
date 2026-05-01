@@ -2017,6 +2017,66 @@ case "$set_account_output" in
 		;;
 esac
 
+if ! "$parser" --quiet "SET PASSWORD = 'new' REPLACE 'old'"; then
+	echo "expected SET PASSWORD REPLACE to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "SET PASSWORD = 'new' RETAIN CURRENT PASSWORD"; then
+	echo "expected SET PASSWORD RETAIN CURRENT PASSWORD to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "SET PASSWORD = 'new' REPLACE 'old' RETAIN CURRENT PASSWORD"; then
+	echo "expected SET PASSWORD REPLACE plus RETAIN CURRENT PASSWORD to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "SET PASSWORD FOR 'usr1'@'localhost' TO RANDOM"; then
+	echo "expected SET PASSWORD FOR account TO RANDOM to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET PASSWORD'; then
+	echo "expected missing SET PASSWORD auth option to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET PASSWORD FOR'; then
+	echo "expected missing SET PASSWORD FOR account to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SET PASSWORD ="; then
+	echo "expected SET PASSWORD assignment without string to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET PASSWORD TO'; then
+	echo "expected SET PASSWORD TO without RANDOM to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SET PASSWORD = 'new' REPLACE"; then
+	echo "expected SET PASSWORD REPLACE without current password to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SET PASSWORD = 'new' RETAIN CURRENT"; then
+	echo "expected incomplete SET PASSWORD RETAIN CURRENT PASSWORD to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SET PASSWORD = 'new' RETAIN CURRENT PASSWORD REPLACE 'old'"; then
+	echo "expected SET PASSWORD REPLACE after RETAIN CURRENT PASSWORD to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SET PASSWORD = 'new' REPLACE 'old' extra"; then
+	echo "expected SET PASSWORD with trailing tokens to fail" >&2
+	exit 1
+fi
+
 if ! "$parser" --quiet "SET DEFAULT ROLE NONE TO 'u'@'localhost'"; then
 	echo "expected SET DEFAULT ROLE NONE to parse" >&2
 	exit 1

@@ -153,6 +153,17 @@ static int validate_set_role_statement_syntax(const mylite_parser *parser,
 static int validate_set_default_role_statement_syntax(const mylite_parser *parser,
                                                       size_t token_index,
                                                       size_t last_token_index);
+static int validate_set_password_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int validate_set_password_auth_option_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    size_t *next_token_index);
+static int validate_set_password_tail_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index);
+static int token_is_set_password_string_value(const mylite_parser *parser, size_t token_index);
 static int validate_set_names_statement_syntax(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
@@ -2989,6 +3000,9 @@ static int validate_set_statement_syntax(const mylite_parser *parser, const myli
 	    parser->tokens[token_index + 1].parser_token == ROLE_T) {
 		return validate_set_default_role_statement_syntax(parser, token_index + 2, last_token_index);
 	}
+	if (token_text_equals(parser, token_index, "PASSWORD")) {
+		return validate_set_password_statement_syntax(parser, token_index + 1, last_token_index);
+	}
 	if (token_text_equals(parser, token_index, "NAMES")) {
 		return validate_set_names_statement_syntax(parser, token_index + 1, last_token_index);
 	}
@@ -3075,6 +3089,88 @@ static int validate_set_default_role_statement_syntax(const mylite_parser *parse
 		return 0;
 	}
 	return validate_principal_name_list_syntax(parser, token_index + 1, last_token_index, 0);
+}
+
+static int validate_set_password_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "FOR")) {
+		token_index++;
+		if (!validate_principal_name_syntax(parser, token_index, last_token_index, 1, &token_index)) {
+			return 0;
+		}
+	}
+
+	if (!validate_set_password_auth_option_syntax(parser,
+	                                              token_index,
+	                                              last_token_index,
+	                                              &token_index)) {
+		return 0;
+	}
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	return validate_set_password_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_set_password_auth_option_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    size_t *next_token_index)
+{
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "=") &&
+	    token_is_set_password_string_value(parser, token_index + 1)) {
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "TO") &&
+	    token_text_equals(parser, token_index + 1, "RANDOM")) {
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	return 0;
+}
+
+static int validate_set_password_tail_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index)
+{
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "REPLACE")) {
+		token_index++;
+		if (!token_is_set_password_string_value(parser, token_index)) {
+			return 0;
+		}
+		token_index++;
+	}
+
+	if (token_index > last_token_index) {
+		return 1;
+	}
+
+	if (token_index + 2 == last_token_index &&
+	    token_text_equals(parser, token_index, "RETAIN") &&
+	    token_text_equals(parser, token_index + 1, "CURRENT") &&
+	    token_text_equals(parser, token_index + 2, "PASSWORD")) {
+		return 1;
+	}
+
+	return 0;
+}
+
+static int token_is_set_password_string_value(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       parser->tokens[token_index].kind == MYLITE_TOKEN_STRING;
 }
 
 static int validate_set_names_statement_syntax(const mylite_parser *parser,

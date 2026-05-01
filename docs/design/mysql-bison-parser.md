@@ -333,10 +333,12 @@ preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
 `RENAME` forms. Account-management `SET` metadata is recorded for explicit
 `SET ROLE` and `SET DEFAULT ROLE` role targets, collection-form `SET ROLE`
 active-role targets, plus `SET PASSWORD FOR` and bare current-user
-`SET PASSWORD` account targets. `SET ROLE` validates `DEFAULT`, `NONE`, `ALL`,
-`ALL EXCEPT` role lists, and explicit role lists, while `SET DEFAULT ROLE`
-validates `NONE`, `ALL`, and role-list defaults with required `TO` account
-lists,
+`SET PASSWORD` account targets. `SET PASSWORD` validates optional `FOR`
+account targets, literal assignment, `TO RANDOM`, `REPLACE`, and
+`RETAIN CURRENT PASSWORD` tails. `SET ROLE` validates `DEFAULT`, `NONE`,
+`ALL`, `ALL EXCEPT` role lists, and explicit role lists, while
+`SET DEFAULT ROLE` validates `NONE`, `ALL`, and role-list defaults with
+required `TO` account lists,
 and variable-assignment `SET` metadata is recorded for explicit user-variable
 and system-variable targets, including direct unadorned `SET name = ...`
 targets at the statement boundary. User-variable targets include MySQL's quoted

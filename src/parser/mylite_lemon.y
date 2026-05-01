@@ -10,6 +10,7 @@
 %fallback ATOM ENCLOSED ESCAPED LINES OPTIONALLY ROWS STARTING TERMINATED.
 %fallback ATOM COPY EXCLUSIVE INPLACE INSTANT SHARED.
 %fallback ATOM INVISIBLE PARSER VISIBLE.
+%fallback ATOM ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS GET_MASTER_PUBLIC_KEY GET_SOURCE_PUBLIC_KEY GTID_ONLY IGNORE_SERVER_IDS MASTER_AUTO_POSITION MASTER_BIND MASTER_COMPRESSION_ALGORITHMS MASTER_CONNECT_RETRY MASTER_DELAY MASTER_HEARTBEAT_PERIOD MASTER_HOST MASTER_LOG_FILE MASTER_LOG_POS MASTER_PASSWORD MASTER_PORT MASTER_PUBLIC_KEY_PATH MASTER_RETRY_COUNT MASTER_SSL MASTER_SSL_CA MASTER_SSL_CAPATH MASTER_SSL_CERT MASTER_SSL_CIPHER MASTER_SSL_CRL MASTER_SSL_CRLPATH MASTER_SSL_KEY MASTER_SSL_VERIFY_SERVER_CERT MASTER_TLS_CIPHERSUITES MASTER_TLS_VERSION MASTER_USER MASTER_ZSTD_COMPRESSION_LEVEL NETWORK_NAMESPACE PRIVILEGE_CHECKS_USER REQUIRE_ROW_FORMAT REQUIRE_TABLE_PRIMARY_KEY_CHECK SOURCE_AUTO_POSITION SOURCE_BIND SOURCE_COMPRESSION_ALGORITHMS SOURCE_CONNECT_RETRY SOURCE_CONNECTION_AUTO_FAILOVER SOURCE_DELAY SOURCE_HEARTBEAT_PERIOD SOURCE_HOST SOURCE_PASSWORD SOURCE_PORT SOURCE_PUBLIC_KEY_PATH SOURCE_RETRY_COUNT SOURCE_SSL SOURCE_SSL_CA SOURCE_SSL_CAPATH SOURCE_SSL_CERT SOURCE_SSL_CIPHER SOURCE_SSL_CRL SOURCE_SSL_CRLPATH SOURCE_SSL_KEY SOURCE_SSL_VERIFY_SERVER_CERT SOURCE_TLS_CIPHERSUITES SOURCE_TLS_VERSION SOURCE_USER SOURCE_ZSTD_COMPRESSION_LEVEL.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -2054,9 +2055,9 @@ change_statement ::= CHANGE change_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
 }
 
-change_tail ::= MASTER TO change_options change_for_channel_tail.
+change_tail ::= MASTER TO change_master_options change_for_channel_tail.
 change_tail ::= REPLICATION FILTER change_replication_filters change_for_channel_tail.
-change_tail ::= REPLICATION change_replication_source TO change_options change_for_channel_tail.
+change_tail ::= REPLICATION change_replication_source TO change_source_options change_for_channel_tail.
 
 change_replication_source ::= SOURCE.
 
@@ -2083,19 +2084,96 @@ change_replication_filter_token ::= DOT.
 change_replication_filter_token ::= COMMA.
 change_replication_filter_token ::= LP change_replication_filter_contents RP.
 
-change_options ::= change_option.
-change_options ::= change_options import_comma change_option.
+change_source_options ::= change_source_option.
+change_source_options ::= change_source_options import_comma change_source_option.
 
-change_option ::= change_option_name diagnostics_equals change_option_value.
+change_source_option ::= change_source_option_name diagnostics_equals change_option_value.
 
-change_option_name ::= ATOM.
+change_source_option_name ::= change_shared_option_name.
+change_source_option_name ::= SOURCE_BIND.
+change_source_option_name ::= SOURCE_HOST.
+change_source_option_name ::= SOURCE_USER.
+change_source_option_name ::= SOURCE_PASSWORD.
+change_source_option_name ::= SOURCE_PORT.
+change_source_option_name ::= SOURCE_LOG_FILE.
+change_source_option_name ::= SOURCE_LOG_POS.
+change_source_option_name ::= SOURCE_AUTO_POSITION.
+change_source_option_name ::= SOURCE_HEARTBEAT_PERIOD.
+change_source_option_name ::= SOURCE_CONNECT_RETRY.
+change_source_option_name ::= SOURCE_RETRY_COUNT.
+change_source_option_name ::= SOURCE_DELAY.
+change_source_option_name ::= SOURCE_COMPRESSION_ALGORITHMS.
+change_source_option_name ::= SOURCE_ZSTD_COMPRESSION_LEVEL.
+change_source_option_name ::= SOURCE_SSL.
+change_source_option_name ::= SOURCE_SSL_CA.
+change_source_option_name ::= SOURCE_SSL_CAPATH.
+change_source_option_name ::= SOURCE_SSL_CERT.
+change_source_option_name ::= SOURCE_SSL_CRL.
+change_source_option_name ::= SOURCE_SSL_CRLPATH.
+change_source_option_name ::= SOURCE_SSL_KEY.
+change_source_option_name ::= SOURCE_SSL_CIPHER.
+change_source_option_name ::= SOURCE_SSL_VERIFY_SERVER_CERT.
+change_source_option_name ::= SOURCE_TLS_VERSION.
+change_source_option_name ::= SOURCE_TLS_CIPHERSUITES.
+change_source_option_name ::= SOURCE_PUBLIC_KEY_PATH.
+change_source_option_name ::= GET_SOURCE_PUBLIC_KEY.
+
+change_master_options ::= change_master_option.
+change_master_options ::= change_master_options import_comma change_master_option.
+
+change_master_option ::= change_master_option_name diagnostics_equals change_option_value.
+
+change_master_option_name ::= change_shared_option_name.
+change_master_option_name ::= MASTER_BIND.
+change_master_option_name ::= MASTER_HOST.
+change_master_option_name ::= MASTER_USER.
+change_master_option_name ::= MASTER_PASSWORD.
+change_master_option_name ::= MASTER_PORT.
+change_master_option_name ::= MASTER_LOG_FILE.
+change_master_option_name ::= MASTER_LOG_POS.
+change_master_option_name ::= MASTER_AUTO_POSITION.
+change_master_option_name ::= MASTER_HEARTBEAT_PERIOD.
+change_master_option_name ::= MASTER_CONNECT_RETRY.
+change_master_option_name ::= MASTER_RETRY_COUNT.
+change_master_option_name ::= MASTER_DELAY.
+change_master_option_name ::= MASTER_COMPRESSION_ALGORITHMS.
+change_master_option_name ::= MASTER_ZSTD_COMPRESSION_LEVEL.
+change_master_option_name ::= MASTER_SSL.
+change_master_option_name ::= MASTER_SSL_CA.
+change_master_option_name ::= MASTER_SSL_CAPATH.
+change_master_option_name ::= MASTER_SSL_CERT.
+change_master_option_name ::= MASTER_SSL_CRL.
+change_master_option_name ::= MASTER_SSL_CRLPATH.
+change_master_option_name ::= MASTER_SSL_KEY.
+change_master_option_name ::= MASTER_SSL_CIPHER.
+change_master_option_name ::= MASTER_SSL_VERIFY_SERVER_CERT.
+change_master_option_name ::= MASTER_TLS_VERSION.
+change_master_option_name ::= MASTER_TLS_CIPHERSUITES.
+change_master_option_name ::= MASTER_PUBLIC_KEY_PATH.
+change_master_option_name ::= GET_MASTER_PUBLIC_KEY.
+
+change_shared_option_name ::= ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS.
+change_shared_option_name ::= GTID_ONLY.
+change_shared_option_name ::= IGNORE_SERVER_IDS.
+change_shared_option_name ::= NETWORK_NAMESPACE.
+change_shared_option_name ::= PRIVILEGE_CHECKS_USER.
+change_shared_option_name ::= RELAY_LOG_FILE.
+change_shared_option_name ::= RELAY_LOG_POS.
+change_shared_option_name ::= REQUIRE_ROW_FORMAT.
+change_shared_option_name ::= REQUIRE_TABLE_PRIMARY_KEY_CHECK.
+change_shared_option_name ::= SOURCE_CONNECTION_AUTO_FAILOVER.
 
 change_option_value ::= change_option_value_token.
 change_option_value ::= change_option_value change_option_value_token.
 
 change_option_value_token ::= ATOM.
 change_option_value_token ::= LABEL.
+change_option_value_token ::= LOCAL.
+change_option_value_token ::= ON.
 change_option_value_token ::= DOT.
+change_option_value_token ::= AT_SIGN.
+change_option_value_token ::= AT_EMPTY.
+change_option_value_token ::= AT_HOST.
 change_option_value_token ::= LP change_option_value_contents RP.
 change_option_value_token ::= LB.
 change_option_value_token ::= RB.

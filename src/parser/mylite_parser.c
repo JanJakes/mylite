@@ -98,6 +98,11 @@ static int select_rollup_boundary(int token_id, MyliteToken token);
 static int select_set_operator(int token_id);
 static int select_set_option(int token_id);
 static int select_set_operand_start(int token_id);
+static int parenthesized_query_order_boundary(int token_id);
+static int parenthesized_query_order_expression_token(
+    MyliteParseContext *ctx, int token_id, MyliteToken token, int *depth,
+    int *previous_top_token_id, MyliteToken *previous_top_token,
+    int *previous_was_operator);
 static int select_window_name_token(int token_id, MyliteToken token);
 static int select_lock_table_ref_start(int token_id, MyliteToken token);
 static int select_lock_table_ref_part(int token_id);
@@ -1756,6 +1761,8 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     PAREN_QUERY_AFTER_SET_OPERAND,
     PAREN_QUERY_AFTER_ORDER,
     PAREN_QUERY_AFTER_ORDER_BY,
+    PAREN_QUERY_AFTER_ORDER_EXPR,
+    PAREN_QUERY_AFTER_ORDER_DIRECTION,
     PAREN_QUERY_AFTER_LIMIT,
     PAREN_QUERY_AFTER_LIMIT_VALUE,
     PAREN_QUERY_AFTER_LIMIT_COMMA,
@@ -1773,6 +1780,10 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
   int depth = 0;
   int state = PAREN_QUERY_IN_BODY;
   int set_option_seen = 0;
+  int order_depth = 0;
+  int order_previous_top_token_id = 0;
+  int order_previous_was_operator = 1;
+  MyliteToken order_previous_top_token = start;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -1792,6 +1803,20 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
         if (depth == 0) {
           state = PAREN_QUERY_AFTER_RP;
           pending_token = token;
+        }
+      }
+      continue;
+    }
+
+    if (order_depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        order_depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        order_depth--;
+        if (order_depth == 0) {
+          order_previous_top_token_id = token_id;
+          order_previous_top_token = token;
+          order_previous_was_operator = 0;
         }
       }
       continue;
@@ -1855,6 +1880,9 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
       }
       state = PAREN_QUERY_AFTER_ORDER_BY;
       pending_token = token;
+      order_previous_top_token_id = 0;
+      order_previous_was_operator = 1;
+      order_previous_top_token = token;
       continue;
     }
 
@@ -1864,8 +1892,75 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
                              "incomplete parenthesized query ORDER BY");
         return;
       }
-      state = PAREN_QUERY_AFTER_SET_OPERAND;
+      state = PAREN_QUERY_AFTER_ORDER_EXPR;
+    }
+
+    if (state == PAREN_QUERY_AFTER_ORDER_EXPR) {
+      if (parenthesized_query_order_boundary(token_id)) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(ctx, order_previous_top_token,
+                               "incomplete parenthesized query ORDER BY");
+          return;
+        }
+        if (token_id == ML_COMMA) {
+          state = PAREN_QUERY_AFTER_ORDER_BY;
+          pending_token = token;
+          order_previous_top_token_id = 0;
+          order_previous_was_operator = 1;
+          order_previous_top_token = token;
+          continue;
+        }
+        if (token_id == ML_LIMIT) {
+          state = PAREN_QUERY_AFTER_LIMIT;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_INTO) {
+          state = PAREN_QUERY_AFTER_INTO;
+          pending_token = token;
+          continue;
+        }
+        mylite_parser_reject(ctx, token,
+                             "malformed parenthesized query ORDER BY");
+        return;
+      }
+      if (!order_previous_was_operator &&
+          (token_id == ML_ASC || token_id == ML_DESC)) {
+        state = PAREN_QUERY_AFTER_ORDER_DIRECTION;
+        pending_token = token;
+        continue;
+      }
+      if (!parenthesized_query_order_expression_token(
+              ctx, token_id, token, &order_depth,
+              &order_previous_top_token_id, &order_previous_top_token,
+              &order_previous_was_operator)) {
+        return;
+      }
       continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_ORDER_DIRECTION) {
+      if (token_id == ML_COMMA) {
+        state = PAREN_QUERY_AFTER_ORDER_BY;
+        pending_token = token;
+        order_previous_top_token_id = 0;
+        order_previous_was_operator = 1;
+        order_previous_top_token = token;
+        continue;
+      }
+      if (token_id == ML_LIMIT) {
+        state = PAREN_QUERY_AFTER_LIMIT;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_INTO) {
+        state = PAREN_QUERY_AFTER_INTO;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed parenthesized query ORDER BY");
+      return;
     }
 
     if (state == PAREN_QUERY_AFTER_LIMIT ||
@@ -1962,6 +2057,10 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
                          "incomplete parenthesized query ORDER BY");
   } else if (state == PAREN_QUERY_AFTER_ORDER_BY) {
     mylite_parser_reject(ctx, pending_token,
+                         "incomplete parenthesized query ORDER BY");
+  } else if (state == PAREN_QUERY_AFTER_ORDER_EXPR &&
+             order_previous_was_operator) {
+    mylite_parser_reject(ctx, order_previous_top_token,
                          "incomplete parenthesized query ORDER BY");
   } else if (state == PAREN_QUERY_AFTER_LIMIT ||
              state == PAREN_QUERY_AFTER_LIMIT_COMMA ||
@@ -5226,6 +5325,41 @@ static int select_set_option(int token_id) {
 static int select_set_operand_start(int token_id) {
   return token_id == ML_LP || token_id == ML_SELECT || token_id == ML_TABLE ||
          token_id == ML_VALUES || token_id == ML_WITH;
+}
+
+static int parenthesized_query_order_boundary(int token_id) {
+  return token_id == ML_COMMA || token_id == ML_FOR || token_id == ML_INTO ||
+         token_id == ML_LIMIT || token_id == ML_LOCK || token_id == ML_RB ||
+         token_id == ML_RC || token_id == ML_RP ||
+         select_clause_requires_by(token_id) ||
+         select_clause_requires_operand(token_id) ||
+         select_set_operator(token_id);
+}
+
+static int parenthesized_query_order_expression_token(
+    MyliteParseContext *ctx, int token_id, MyliteToken token, int *depth,
+    int *previous_top_token_id, MyliteToken *previous_top_token,
+    int *previous_was_operator) {
+  if (do_expression_value_start(token_id, token) &&
+      !do_expression_operator(token_id, token) && !*previous_was_operator &&
+      do_expression_value_terminal(*previous_top_token_id,
+                                   *previous_top_token) &&
+      !do_expression_allows_adjacent(*previous_top_token_id,
+                                     *previous_top_token, token_id, token)) {
+    mylite_parser_reject(ctx, token,
+                         "malformed parenthesized query ORDER BY");
+    return 0;
+  }
+
+  if (token_opens_nested_expression(token_id)) {
+    (*depth)++;
+  } else {
+    *previous_top_token_id = token_id;
+    *previous_top_token = token;
+    *previous_was_operator = do_expression_operator(token_id, token);
+  }
+
+  return 1;
 }
 
 static int select_window_name_token(int token_id, MyliteToken token) {

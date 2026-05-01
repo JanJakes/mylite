@@ -151,6 +151,8 @@ static int query_expression_group_allows_empty(int previous_top_token_id,
 static int query_expression_group_validates_adjacent(int allow_empty,
                                                      int token_id);
 static int query_expression_group_disables_adjacent(int token_id);
+static int query_expression_malformed_operator_sequence(
+    int previous_top_token_id, MyliteToken previous_top_token, int token_id);
 static int select_window_name_token(int token_id, MyliteToken token);
 static int select_lock_table_ref_start(int token_id, MyliteToken token);
 static int select_lock_table_ref_part(int token_id);
@@ -6578,6 +6580,11 @@ static int query_expression_token(
     mylite_parser_reject(ctx, token, message);
     return 0;
   }
+  if (query_expression_malformed_operator_sequence(
+          *previous_top_token_id, *previous_top_token, token_id)) {
+    mylite_parser_reject(ctx, token, message);
+    return 0;
+  }
 
   if (token_opens_nested_expression(token_id)) {
     (*depth)++;
@@ -6692,6 +6699,11 @@ static int query_expression_stack_token(
     mylite_parser_reject(ctx, token, message);
     return 0;
   }
+  if (query_expression_malformed_operator_sequence(
+          frame->previous_top_token_id, frame->previous_top_token, token_id)) {
+    mylite_parser_reject(ctx, token, message);
+    return 0;
+  }
 
   frame->started = 1;
   frame->previous_top_token_id = token_id;
@@ -6772,6 +6784,12 @@ static int query_expression_group_validates_adjacent(int allow_empty,
 static int query_expression_group_disables_adjacent(int token_id) {
   return token_id == ML_SELECT || token_id == ML_TABLE ||
          token_id == ML_VALUES || token_id == ML_WITH;
+}
+
+static int query_expression_malformed_operator_sequence(
+    int previous_top_token_id, MyliteToken previous_top_token, int token_id) {
+  return token_id == ML_AND && previous_top_token_id == ML_ATOM &&
+         token_ascii_equal(previous_top_token, "between");
 }
 
 static int select_window_name_token(int token_id, MyliteToken token) {

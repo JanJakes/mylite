@@ -135,6 +135,7 @@ def main() -> int:
         ("select 1 from t where a=1 where b=2;", 1, {}),
         ("select 1 from t where a=1 garbage;", 1, {}),
         ("select 1 from t where a +;", 1, {}),
+        ("select 1 from t where a between and b;", 1, {}),
         ("select 1 from t where (a +);", 1, {}),
         ("select 1 from t where (a b);", 1, {}),
         ("select 1 from t where a in (1,);", 1, {}),

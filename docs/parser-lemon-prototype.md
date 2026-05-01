@@ -71,7 +71,8 @@ token sink:
   operands after set operators are rejected.
 - Expression-tail validation rejects trailing separators in nested plain
   parenthesized expression groups and empty `EXISTS()` predicates while
-  preserving empty ordinary function calls and window `OVER()` clauses.
+  preserving empty ordinary function calls and window `OVER()` clauses. It also
+  rejects `BETWEEN` expressions that omit the lower bound before `AND`.
 - `WITH` CTE wrappers dispatch their main query/body forms through the same
   validators used by top-level `SELECT`, `TABLE`, `VALUES`, parenthesized query,
   and DML statements.

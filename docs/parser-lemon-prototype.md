@@ -64,6 +64,9 @@ token sink:
 - Top-level `SELECT` validates `ORDER BY` `ASC`/`DESC` direction tails.
 - Top-level `SELECT` validates `LIMIT` comma and `OFFSET` operands.
 - Top-level `SELECT` rejects duplicate major clauses within one query block.
+- Top-level `SELECT` rejects out-of-order major clauses across `WHERE`,
+  `GROUP BY`, `HAVING`, `WINDOW`, `QUALIFY`, `ORDER BY`, `LIMIT`, and locking
+  tails.
 - Top-level `SELECT` validates named `WINDOW name AS (...)` clause lists.
 - Top-level `SELECT` rejects missing operands after `QUALIFY`.
 - Top-level `SELECT` requires complete `LOCK IN SHARE MODE` locking tails.

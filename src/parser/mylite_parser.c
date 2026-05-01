@@ -527,6 +527,17 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     SELECT_TABLESAMPLE_AFTER_PERCENTAGE,
     SELECT_TABLESAMPLE_COMPLETE
   };
+  enum {
+    SELECT_PHASE_BODY,
+    SELECT_PHASE_WHERE,
+    SELECT_PHASE_GROUP,
+    SELECT_PHASE_HAVING,
+    SELECT_PHASE_WINDOW,
+    SELECT_PHASE_QUALIFY,
+    SELECT_PHASE_ORDER,
+    SELECT_PHASE_LIMIT,
+    SELECT_PHASE_LOCK
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token;
@@ -558,6 +569,9 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int seen_order_clause = 0;
   int seen_limit_clause = 0;
   int seen_into_clause = 0;
+  int seen_window_clause = 0;
+  int seen_qualify_clause = 0;
+  int clause_phase = SELECT_PHASE_BODY;
   int partition_state = SELECT_PARTITION_NONE;
   int tablesample_state = SELECT_TABLESAMPLE_NONE;
 
@@ -1356,6 +1370,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
 
     if (token_id == ML_LOCK) {
+      clause_phase = SELECT_PHASE_LOCK;
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
@@ -1364,6 +1379,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
     if (token_id == ML_FOR) {
+      clause_phase = SELECT_PHASE_LOCK;
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
@@ -1389,7 +1405,12 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         mylite_parser_reject(ctx, token, "duplicate SELECT clause");
         return;
       }
+      if (clause_phase > SELECT_PHASE_ORDER) {
+        mylite_parser_reject(ctx, token, "out-of-order SELECT clause");
+        return;
+      }
       seen_limit_clause = 1;
+      clause_phase = SELECT_PHASE_LIMIT;
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
@@ -1398,6 +1419,16 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
     if (token_ascii_equal(token, "window")) {
+      if (seen_window_clause) {
+        mylite_parser_reject(ctx, token, "duplicate SELECT clause");
+        return;
+      }
+      if (clause_phase > SELECT_PHASE_HAVING) {
+        mylite_parser_reject(ctx, token, "out-of-order SELECT clause");
+        return;
+      }
+      seen_window_clause = 1;
+      clause_phase = SELECT_PHASE_WINDOW;
       group_clause = 0;
       from_clause = 0;
       window_state = SELECT_WINDOW_AFTER_WINDOW;
@@ -1405,6 +1436,16 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
     if (token_ascii_equal(token, "qualify")) {
+      if (seen_qualify_clause) {
+        mylite_parser_reject(ctx, token, "duplicate SELECT clause");
+        return;
+      }
+      if (clause_phase > SELECT_PHASE_WINDOW) {
+        mylite_parser_reject(ctx, token, "out-of-order SELECT clause");
+        return;
+      }
+      seen_qualify_clause = 1;
+      clause_phase = SELECT_PHASE_QUALIFY;
       group_clause = 0;
       from_clause = 0;
       need_operand = 1;
@@ -1418,14 +1459,24 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
           mylite_parser_reject(ctx, token, "duplicate SELECT clause");
           return;
         }
+        if (clause_phase > SELECT_PHASE_WHERE) {
+          mylite_parser_reject(ctx, token, "out-of-order SELECT clause");
+          return;
+        }
         seen_group_clause = 1;
       } else if (token_id == ML_ORDER) {
         if (seen_order_clause) {
           mylite_parser_reject(ctx, token, "duplicate SELECT clause");
           return;
         }
+        if (clause_phase > SELECT_PHASE_QUALIFY) {
+          mylite_parser_reject(ctx, token, "out-of-order SELECT clause");
+          return;
+        }
         seen_order_clause = 1;
       }
+      clause_phase = token_id == ML_GROUP ? SELECT_PHASE_GROUP :
+                                            SELECT_PHASE_ORDER;
       from_clause = 0;
       group_clause = token_id == ML_GROUP;
       order_clause = token_id == ML_ORDER;
@@ -1439,13 +1490,23 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
           mylite_parser_reject(ctx, token, "duplicate SELECT clause");
           return;
         }
+        if (clause_phase > SELECT_PHASE_BODY) {
+          mylite_parser_reject(ctx, token, "out-of-order SELECT clause");
+          return;
+        }
         seen_where_clause = 1;
+        clause_phase = SELECT_PHASE_WHERE;
       } else if (token_id == ML_HAVING) {
         if (seen_having_clause) {
           mylite_parser_reject(ctx, token, "duplicate SELECT clause");
           return;
         }
+        if (clause_phase > SELECT_PHASE_GROUP) {
+          mylite_parser_reject(ctx, token, "out-of-order SELECT clause");
+          return;
+        }
         seen_having_clause = 1;
+        clause_phase = SELECT_PHASE_HAVING;
       }
       if (token_id == ML_HAVING || token_id == ML_JOIN || token_id == ML_ON ||
           token_id == ML_PROCEDURE || token_id == ML_USING ||
@@ -1468,6 +1529,9 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       seen_order_clause = 0;
       seen_limit_clause = 0;
       seen_into_clause = 0;
+      seen_window_clause = 0;
+      seen_qualify_clause = 0;
+      clause_phase = SELECT_PHASE_BODY;
       need_set_operand = 1;
       pending_token = token;
       continue;

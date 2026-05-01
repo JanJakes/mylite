@@ -8,6 +8,7 @@ static int test_empty_script(void);
 static int test_use_statements(void);
 static int test_schema_lifecycle_statements(void);
 static int test_connection_charset_statements(void);
+static int test_create_table_integer_boolean_columns(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -32,6 +33,8 @@ static int expect_operator(const struct mylite_sql_ast_node *node,
                            enum mylite_sql_ast_operator expected, const char *context);
 static int expect_schema_option(const struct mylite_sql_ast_node *node,
                                 enum mylite_sql_ast_schema_option expected, const char *context);
+static int expect_column_type(const struct mylite_sql_ast_node *node,
+                              enum mylite_sql_ast_column_type expected, const char *context);
 
 int main(void)
 {
@@ -41,6 +44,7 @@ int main(void)
     failures += test_use_statements();
     failures += test_schema_lifecycle_statements();
     failures += test_connection_charset_statements();
+    failures += test_create_table_integer_boolean_columns();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -235,6 +239,171 @@ static int test_connection_charset_statements(void)
 
     failures +=
         parse_sql("SET SESSION sql_mode = 'ANSI_QUOTES';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_integer_boolean_columns(void)
+{
+    enum {
+        expected_column_count = 12,
+        int_display_width = 10,
+        integer_alias_column = 4,
+        bigint_column = 5,
+        bool_column = 6,
+        boolean_column = 7,
+        int1_column = 8,
+        int2_column = 9,
+        int3_column = 10,
+        middleint_column = 11,
+        int4_column = 2,
+        int8_column = 3,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE TABLE app.integer_types ("
+                          "a TINYINT, b SMALLINT SIGNED, c MEDIUMINT UNSIGNED, "
+                          "d INT(10), e INTEGER, f BIGINT(20) UNSIGNED, "
+                          "g BOOL, h BOOLEAN, i INT1, j INT2, k INT3, l MIDDLEINT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "create table");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "create table name");
+    failures += expect_node(columns, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "column list");
+    failures += expect_child_count(columns, expected_column_count, "integer columns");
+
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "a", "first column name");
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_TINYINT, "tinyint column");
+
+    column_type = child_at(child_at(columns, 1U), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT, "smallint column");
+    if (column_type != NULL && !column_type->column_type_signed) {
+        fprintf(stderr, "smallint signed flag was not set\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, 2U), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT, "mediumint column");
+    if (column_type != NULL && !column_type->column_type_unsigned) {
+        fprintf(stderr, "mediumint unsigned flag was not set\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, 3U), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_INT, "int column");
+    if (column_type != NULL && (!column_type->has_column_display_width ||
+                                column_type->column_display_width != int_display_width)) {
+        fprintf(stderr, "int display width was not recorded as 10\n");
+        failures = 1;
+    }
+    failures += expect_span_text(column_type, "INT(10)", "int display width span");
+
+    failures += expect_column_type(child_at(child_at(columns, integer_alias_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_INT, "integer alias column");
+    failures += expect_column_type(child_at(child_at(columns, bigint_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_BIGINT, "bigint column");
+    failures += expect_column_type(child_at(child_at(columns, bool_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_BOOL, "bool column");
+    failures += expect_column_type(child_at(child_at(columns, boolean_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN, "boolean column");
+    failures += expect_column_type(child_at(child_at(columns, int1_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_TINYINT, "int1 alias");
+    failures += expect_column_type(child_at(child_at(columns, int2_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT, "int2 alias");
+    failures += expect_column_type(child_at(child_at(columns, int3_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT, "int3 alias");
+    failures += expect_column_type(child_at(child_at(columns, middleint_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT, "middleint alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE signedness (a INT SIGNED UNSIGNED, "
+                          "b INT UNSIGNED SIGNED, c INT4, d INT8);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    columns = child_at(child_at(result.root, 0U), 1U);
+    column_type = child_at(child_at(columns, 0U), 1U);
+    if (column_type != NULL &&
+        (!column_type->column_type_signed || !column_type->column_type_unsigned)) {
+        fprintf(stderr, "mixed signedness flags were not set\n");
+        failures = 1;
+    }
+    failures += expect_column_type(child_at(child_at(columns, int4_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_INT, "int4 alias");
+    failures += expect_column_type(child_at(child_at(columns, int8_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_BIGINT, "int8 alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE `schema`.`widths` (`select` INT(0), `from` INT(255));",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_int0_alias (a INT0);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_bool_width (a BOOL(1));", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_bool_signed (a BOOL SIGNED);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_bool_unsigned (a BOOL UNSIGNED);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_boolean_width (a BOOLEAN(1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_boolean_signed (a BOOLEAN SIGNED);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_bool_unsigned (a BOOLEAN UNSIGNED);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_int_width (a INT(256));", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_int_negative (a INT(-1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_int_alias (a INT5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_int6_alias (a INT6);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_int7_alias (a INT7);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_int9_alias (a INT9);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE unsupported_attributes (a INT NOT NULL);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -622,6 +791,21 @@ static int expect_schema_option(const struct mylite_sql_ast_node *node,
         fprintf(stderr, "%s: expected schema option %s, got %s\n", context,
                 mylite_sql_ast_schema_option_name(expected),
                 mylite_sql_ast_schema_option_name(node->schema_option));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_column_type(const struct mylite_sql_ast_node *node,
+                              enum mylite_sql_ast_column_type expected, const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_COLUMN_TYPE, context);
+
+    if (node != NULL && node->column_type != expected) {
+        fprintf(stderr, "%s: expected column type %s, got %s\n", context,
+                mylite_sql_ast_column_type_name(expected),
+                mylite_sql_ast_column_type_name(node->column_type));
         failures = 1;
     }
 

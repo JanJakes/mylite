@@ -3,6 +3,7 @@
 
 #include "mylite_source_span.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 enum mylite_sql_ast_node_kind {
@@ -31,6 +32,10 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SET_NAMES_STATEMENT = 22,
     MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT = 23,
     MYLITE_SQL_AST_DEFAULT = 24,
+    MYLITE_SQL_AST_CREATE_TABLE_STATEMENT = 25,
+    MYLITE_SQL_AST_COLUMN_DEFINITION_LIST = 26,
+    MYLITE_SQL_AST_COLUMN_DEFINITION = 27,
+    MYLITE_SQL_AST_COLUMN_TYPE = 28,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -65,16 +70,32 @@ enum mylite_sql_ast_schema_option {
     MYLITE_SQL_AST_SCHEMA_OPTION_READ_ONLY = 4,
 };
 
+enum mylite_sql_ast_column_type {
+    MYLITE_SQL_AST_COLUMN_TYPE_NONE = 0,
+    MYLITE_SQL_AST_COLUMN_TYPE_TINYINT = 1,
+    MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT = 2,
+    MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT = 3,
+    MYLITE_SQL_AST_COLUMN_TYPE_INT = 4,
+    MYLITE_SQL_AST_COLUMN_TYPE_BIGINT = 5,
+    MYLITE_SQL_AST_COLUMN_TYPE_BOOL = 6,
+    MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN = 7,
+};
+
 struct mylite_sql_ast_node {
     enum mylite_sql_ast_node_kind kind;
     enum mylite_sql_ast_literal_kind literal_kind;
     enum mylite_sql_ast_operator operator_kind;
     enum mylite_sql_ast_schema_option schema_option;
+    enum mylite_sql_ast_column_type column_type;
     struct mylite_sql_source_span span;
     struct mylite_sql_ast_node *first_child;
     struct mylite_sql_ast_node *last_child;
     struct mylite_sql_ast_node *next_sibling;
     struct mylite_sql_ast_node *next_allocated;
+    bool column_type_unsigned;
+    bool column_type_signed;
+    bool has_column_display_width;
+    unsigned int column_display_width;
 };
 
 struct mylite_sql_ast {
@@ -98,6 +119,12 @@ void mylite_sql_ast_node_set_operator(struct mylite_sql_ast_node *node,
                                       enum mylite_sql_ast_operator operator_kind);
 void mylite_sql_ast_node_set_schema_option(struct mylite_sql_ast_node *node,
                                            enum mylite_sql_ast_schema_option schema_option);
+void mylite_sql_ast_node_set_column_type(struct mylite_sql_ast_node *node,
+                                         enum mylite_sql_ast_column_type column_type);
+void mylite_sql_ast_node_set_column_type_signed(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_column_type_unsigned(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_column_display_width(struct mylite_sql_ast_node *node,
+                                                  unsigned int display_width);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 
@@ -105,5 +132,6 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind);
 const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind kind);
 const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_kind);
 const char *mylite_sql_ast_schema_option_name(enum mylite_sql_ast_schema_option schema_option);
+const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type column_type);
 
 #endif

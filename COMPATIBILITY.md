@@ -334,7 +334,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| Column definition grammar | ❌ | top | Type, nullability, defaults, visibility, comments, storage, format, references, and constraints. |  |
+| Column definition grammar | ⚪ | top | Type, nullability, defaults, visibility, comments, storage, format, references, and constraints. | Parse-only `CREATE TABLE` column definitions are accepted for integer and boolean column types and return `MYLITE_UNSUPPORTED` until table DDL execution lands; other column grammar remains unsupported. See [integer and boolean column types spec](docs/specs/integer-boolean-column-types/specs.md). |
 | Silent column specification changes | ❌ | high | MySQL automatic rewrites of column specifications and SHOW CREATE output. |  |
 | Default expressions | ❌ | top | Literal and expression defaults, CURRENT_TIMESTAMP variants, and error cases. |  |
 | Generated columns | ❌ | high | Virtual/stored generated columns, dependencies, indexes, and metadata. |  |
@@ -420,19 +420,21 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `TINYINT` | ❌ | top | Signed/unsigned integer range, display width compatibility, zerofill, and metadata. |  |
-| `SMALLINT` | ❌ | high | Signed/unsigned integer range, display width compatibility, zerofill, and metadata. |  |
-| `MEDIUMINT` | ❌ | top | Signed/unsigned integer range, display width compatibility, zerofill, and metadata. |  |
-| `INT` / `INTEGER` | ❌ | top | Signed/unsigned integer range, display width compatibility, zerofill, and metadata. |  |
-| `BIGINT` | ❌ | top | Signed/unsigned integer range, overflow, unsigned arithmetic, and metadata. |  |
-| Integer type aliases | ❌ | medium | MySQL creation-time rewrites for `INT1`, `INT2`, `INT3`, `INT4`, `INT8`, and `MIDDLEINT`, including DESCRIBE and SHOW CREATE metadata. | `INT3` and `MIDDLEINT` map to `MEDIUMINT`. |
+| `TINYINT` | 🟡 | top | Signed/unsigned integer range, display width compatibility, zerofill, and metadata. | Internal descriptor normalizes signed and unsigned ranges, precision, scale, `DATA_TYPE`, and MySQL 8.4.9 `COLUMN_TYPE`; parse-only column declarations are accepted. `ZEROFILL`, table DDL execution, catalog writes, and value enforcement are deferred. See [integer and boolean column types spec](docs/specs/integer-boolean-column-types/specs.md). |
+| `SMALLINT` | 🟡 | high | Signed/unsigned integer range, display width compatibility, zerofill, and metadata. | Internal descriptor normalizes signed and unsigned ranges, precision, scale, `DATA_TYPE`, and MySQL 8.4.9 `COLUMN_TYPE`; parse-only column declarations are accepted. `ZEROFILL`, table DDL execution, catalog writes, and value enforcement are deferred. See [integer and boolean column types spec](docs/specs/integer-boolean-column-types/specs.md). |
+| `MEDIUMINT` | 🟡 | top | Signed/unsigned integer range, display width compatibility, zerofill, and metadata. | Internal descriptor normalizes signed and unsigned ranges, precision, scale, `DATA_TYPE`, and MySQL 8.4.9 `COLUMN_TYPE`; parse-only column declarations are accepted. `ZEROFILL`, table DDL execution, catalog writes, and value enforcement are deferred. See [integer and boolean column types spec](docs/specs/integer-boolean-column-types/specs.md). |
+| `INT` / `INTEGER` | 🟡 | top | Signed/unsigned integer range, display width compatibility, zerofill, and metadata. | Internal descriptor normalizes `INTEGER` to `int`, signed and unsigned ranges, precision, scale, `DATA_TYPE`, and MySQL 8.4.9 `COLUMN_TYPE`; parse-only column declarations are accepted. `ZEROFILL`, table DDL execution, catalog writes, and value enforcement are deferred. See [integer and boolean column types spec](docs/specs/integer-boolean-column-types/specs.md). |
+| `BIGINT` | 🟡 | top | Signed/unsigned integer range, overflow, unsigned arithmetic, and metadata. | Internal descriptor records signed and unsigned ranges as text, including unsigned max `18446744073709551615`, and normalizes precision, scale, `DATA_TYPE`, and `COLUMN_TYPE`; parse-only column declarations are accepted. Arithmetic, overflow enforcement, table DDL execution, and catalog writes are deferred. See [integer and boolean column types spec](docs/specs/integer-boolean-column-types/specs.md). |
+| Integer type aliases | 🟡 | medium | MySQL creation-time rewrites for `INT1`, `INT2`, `INT3`, `INT4`, `INT8`, and `MIDDLEINT`, including DESCRIBE and SHOW CREATE metadata. | Internal descriptor and parser normalize `INT1`, `INT2`, `INT3`, `INT4`, `INT8`, and `MIDDLEINT` to MySQL 8.4.9 canonical integer families. `INT0`, `INT5`, `INT6`, `INT7`, and `INT9` remain rejected. DESCRIBE and SHOW CREATE output wait for executable table DDL. See [integer and boolean column types spec](docs/specs/integer-boolean-column-types/specs.md). |
+| Integer signedness attributes | 🟡 | top | `SIGNED` and `UNSIGNED` attribute syntax, range selection, metadata, and value enforcement. | Parser accepts repeated `SIGNED`/`UNSIGNED` on integer types and the descriptor treats any `UNSIGNED` as the effective unsigned type, matching MySQL 8.4.9 metadata. Insert/update range enforcement is deferred. See [integer and boolean column types spec](docs/specs/integer-boolean-column-types/specs.md). |
+| Integer display width compatibility | 🟡 | medium | Deprecated integer display width syntax, range checking, metadata rewrites, and SHOW CREATE behavior. | Parser accepts integer display-width syntax and rejects syntactically malformed negative widths; descriptor accepts widths `0..255`, rejects widths above `255`, and preserves MySQL 8.4.9 `tinyint(1)` metadata behavior. `ZEROFILL` and SHOW CREATE output are deferred. See [integer and boolean column types spec](docs/specs/integer-boolean-column-types/specs.md). |
 | `DECIMAL` / `NUMERIC` | ❌ | top | Exact precision math, storage limits, rounding, overflow, and metadata. |  |
 | `FIXED` | ❌ | medium | Alias behavior for `DECIMAL`, including creation-time metadata rewrites. | Other-vendor compatibility type. |
 | `FLOAT` | ❌ | high | Approximate numeric parsing, rounding, special cases, and metadata. |  |
 | `DOUBLE` / `REAL` | ❌ | high | Approximate numeric parsing, rounding, REAL_AS_FLOAT mode, and metadata. |  |
 | `FLOAT4` / `FLOAT8` | ❌ | medium | Alias behavior for `FLOAT` and `DOUBLE`, including creation-time metadata rewrites. | Other-vendor compatibility types. |
 | `BIT` | ❌ | high | Bit-value storage, literals, display, and numeric/string conversion. |  |
-| `BOOL` / `BOOLEAN` | ❌ | top | Alias behavior for TINYINT(1) and expression truth rules. |  |
+| `BOOL` / `BOOLEAN` | 🟡 | top | Alias behavior for TINYINT(1) and expression truth rules. | Parser and descriptor implement column-type alias normalization to signed `tinyint(1)` metadata and reject width/signedness clauses on the aliases. Expression truth rules are deferred to expression semantics work. See [integer and boolean column types spec](docs/specs/integer-boolean-column-types/specs.md). |
 | `SERIAL` | ❌ | medium | Alias expansion to BIGINT UNSIGNED NOT NULL AUTO_INCREMENT UNIQUE. |  |
 | `DATE` | ❌ | high | Date range, zero dates, invalid dates, literals, casts, and formatting. |  |
 | `TIME` | ❌ | high | Time range, fractional seconds, negative values, casts, and formatting. |  |

@@ -28,7 +28,7 @@
 %left PLUS MINUS.
 %left STAR SLASH.
 %right UPLUS UMINUS.
-%fallback IDENTIFIER BINARY CHARSET ENCRYPTION ONLY.
+%fallback IDENTIFIER BINARY BOOL BOOLEAN CHARSET ENCRYPTION ONLY SIGNED.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -73,6 +73,9 @@ statement(A) ::= set_names_statement(B). {
     A = B;
 }
 statement(A) ::= set_character_set_statement(B). {
+    A = B;
+}
+statement(A) ::= create_table_statement(B). {
     A = B;
 }
 
@@ -142,6 +145,94 @@ set_character_set_statement(A) ::= SET(T) CHARSET charset_value(B). {
 set_character_set_statement(A) ::= SET(T) CHARSET DEFAULT(D). {
     A = mylite_sql_parser_make_set_character_set_statement(
         state, T, mylite_sql_parser_make_default(state, D));
+}
+
+create_table_statement(A) ::= CREATE(T) TABLE table_name(B) LPAREN column_definition_list(C) RPAREN. {
+    A = mylite_sql_parser_make_create_table_statement(state, T, B, C);
+}
+
+column_definition_list(A) ::= column_definition(B). {
+    A = mylite_sql_parser_make_column_definition_list(state, B);
+}
+column_definition_list(A) ::= column_definition_list(B) COMMA column_definition(C). {
+    A = mylite_sql_parser_append_column_definition(state, B, C);
+}
+
+column_definition(A) ::= identifier(B) integer_boolean_column_type(C). {
+    A = mylite_sql_parser_make_column_definition(state, B, C);
+}
+
+integer_boolean_column_type(A) ::= integer_column_type(B). {
+    A = B;
+}
+integer_boolean_column_type(A) ::= boolean_column_type(B). {
+    A = B;
+}
+
+integer_column_type(A) ::= integer_type_name(B) opt_integer_display_width(C). {
+    A = mylite_sql_parser_set_column_display_width(state, B, C);
+}
+integer_column_type(A) ::= integer_column_type(B) SIGNED(T). {
+    A = mylite_sql_parser_set_column_type_signed(state, B, T);
+}
+integer_column_type(A) ::= integer_column_type(B) UNSIGNED(T). {
+    A = mylite_sql_parser_set_column_type_unsigned(state, B, T);
+}
+
+integer_type_name(A) ::= TINYINT(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_TINYINT);
+}
+integer_type_name(A) ::= SMALLINT(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT);
+}
+integer_type_name(A) ::= MEDIUMINT(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT);
+}
+integer_type_name(A) ::= MIDDLEINT(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT);
+}
+integer_type_name(A) ::= INT(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_INT);
+}
+integer_type_name(A) ::= INTEGERKW(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_INT);
+}
+integer_type_name(A) ::= BIGINT(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BIGINT);
+}
+integer_type_name(A) ::= INT1(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_TINYINT);
+}
+integer_type_name(A) ::= INT2(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT);
+}
+integer_type_name(A) ::= INT3(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT);
+}
+integer_type_name(A) ::= INT4(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_INT);
+}
+integer_type_name(A) ::= INT8(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BIGINT);
+}
+
+opt_integer_display_width(A) ::= . {
+    A = NULL;
+}
+opt_integer_display_width(A) ::= LPAREN(L) INTEGER(T) RPAREN(R). {
+    A = mylite_sql_parser_make_integer_display_width(
+        state, (struct mylite_sql_parser_display_width_tokens){
+            .left_paren = L,
+            .integer = T,
+            .right_paren = R,
+        });
+}
+
+boolean_column_type(A) ::= BOOL(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BOOL);
+}
+boolean_column_type(A) ::= BOOLEAN(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN);
 }
 
 opt_if_not_exists(A) ::= . {

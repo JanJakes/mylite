@@ -48,6 +48,7 @@ static int test_core_metadata_catalog(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
+static int test_create_table_integer_boolean_prepare_is_unsupported(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -58,6 +59,7 @@ static int expect_no_information_schema_schemata_row(mylite_db *database, const 
 static int expect_information_schema_tables_views(mylite_db *database);
 static int expect_no_information_schema_table_schema_row(mylite_db *database,
                                                          const char *schema_name);
+static int expect_no_information_schema_table_name_row(mylite_db *database, const char *table_name);
 static int expect_empty_information_schema_table(mylite_db *database, const char *sql,
                                                  const char *const *columns, int column_count);
 static int expect_show_database_rows(mylite_db *database, const char *required,
@@ -93,6 +95,7 @@ int main(void)
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
+    failures += test_create_table_integer_boolean_prepare_is_unsupported();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -697,6 +700,56 @@ static int test_unsupported_statement(void)
     return failures;
 }
 
+static int test_create_table_integer_boolean_prepare_is_unsupported(void)
+{
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+    failures += prepare_sql(database,
+                            "CREATE TABLE app.`integer_types` ("
+                            "a TINYINT, b SMALLINT, c MEDIUMINT, d INT(0), e INTEGER, "
+                            "f BIGINT UNSIGNED, g BOOL, h BOOLEAN, i INT1, j INT8, "
+                            "`select` TINYINT(1), width255 INT(255), "
+                            "mixed INT SIGNED UNSIGNED)",
+                            MYLITE_UNSUPPORTED, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "parse-only CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += expect_no_information_schema_table_name_row(database, "integer_types");
+    failures += prepare_sql(database, "CREATE TABLE invalid_width (a INT(256));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid-width CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures +=
+        prepare_sql(database, "CREATE TABLE invalid_bool (a BOOL(1));", MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid BOOL CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database, "CREATE TABLE unsupported_attribute (a INT NOT NULL);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "unsupported-attribute CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+
+    mylite_close(database);
+    return failures;
+}
+
 static int test_parse_error(void)
 {
     mylite_db *database = NULL;
@@ -896,6 +949,33 @@ static int expect_no_information_schema_table_schema_row(mylite_db *database,
         }
         if (strcmp(mylite_column_text(stmt, tables_schema_column), schema_name) == 0) {
             fprintf(stderr, "tables unexpectedly returned row for schema '%s'\n", schema_name);
+            failures = 1;
+            break;
+        }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_no_information_schema_table_name_row(mylite_db *database, const char *table_name)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLES", MYLITE_OK, &stmt);
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "tables row");
+        if (failures != 0) {
+            break;
+        }
+        if (strcmp(mylite_column_text(stmt, tables_name_column), table_name) == 0) {
+            fprintf(stderr, "tables unexpectedly returned row for table '%s'\n", table_name);
             failures = 1;
             break;
         }

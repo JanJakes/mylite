@@ -14,7 +14,7 @@ level application surfaces.
 3. [x] Character set and collation foundation: `utf8mb4`, `utf8mb3`, `latin1`,
        `binary`, default charset/collation tracking, `SET NAMES`, and
        `SET CHARACTER SET`.
-4. [ ] Integer and boolean column types: `TINYINT`, `SMALLINT`, `MEDIUMINT`,
+4. [x] Integer and boolean column types: `TINYINT`, `SMALLINT`, `MEDIUMINT`,
        `INT`, `BIGINT`, unsigned ranges, display-width compatibility,
        `BOOL`/`BOOLEAN`, and integer aliases.
 5. [ ] String and binary column types: `CHAR`, `VARCHAR`, `TEXT` family,

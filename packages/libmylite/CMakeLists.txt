@@ -45,6 +45,7 @@ add_library(mylite STATIC
   src/sql/mylite_sqlite_translator.c
   src/storage/mylite_file_format.c
   src/storage/mylite_vfs.c
+  src/types/mylite_column_type.c
   src/version.c
 )
 add_library(MyLite::mylite ALIAS mylite)
@@ -59,6 +60,7 @@ target_include_directories(mylite
     "${CMAKE_CURRENT_SOURCE_DIR}/src/charset"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/sql"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/storage"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/types"
     "${MYLITE_SQL_PARSE_DIR}"
 )
 target_link_libraries(mylite PRIVATE MyLite::sqlite)
@@ -96,6 +98,13 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_test)
 
+  add_executable(mylite_column_type_test
+    tests/column_type_test.c
+  )
+  target_link_libraries(mylite_column_type_test PRIVATE MyLite::mylite)
+  target_include_directories(mylite_column_type_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  mylite_configure_c_target(mylite_column_type_test)
+
   add_executable(mylite_version_test
     tests/version_test.c
   )
@@ -105,5 +114,6 @@ if(BUILD_TESTING)
   add_test(NAME libmylite.lexer COMMAND mylite_lexer_test)
   add_test(NAME libmylite.parser COMMAND mylite_parser_test)
   add_test(NAME libmylite.runtime COMMAND mylite_runtime_test)
+  add_test(NAME libmylite.column_type COMMAND mylite_column_type_test)
   add_test(NAME libmylite.version COMMAND mylite_version_test)
 endif()

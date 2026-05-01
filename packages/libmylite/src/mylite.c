@@ -683,6 +683,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
         case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
             return prepare_connection_charset_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
+            return MYLITE_UNSUPPORTED;
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
             return prepare_show_schemas_statement(database, out_stmt);
         case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -708,6 +710,9 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
         case MYLITE_SQL_AST_SCHEMA_OPTION:
         case MYLITE_SQL_AST_DEFAULT:
+        case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
+        case MYLITE_SQL_AST_COLUMN_DEFINITION:
+        case MYLITE_SQL_AST_COLUMN_TYPE:
             break;
         }
     }
@@ -757,11 +762,15 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DEFAULT:
     case MYLITE_SQL_AST_IF_EXISTS:
     case MYLITE_SQL_AST_IF_NOT_EXISTS:
     case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
     case MYLITE_SQL_AST_SCHEMA_OPTION:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION:
+    case MYLITE_SQL_AST_COLUMN_TYPE:
         return MYLITE_UNSUPPORTED;
     }
 
@@ -799,11 +808,15 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
     case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_IF_EXISTS:
     case MYLITE_SQL_AST_IF_NOT_EXISTS:
     case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
     case MYLITE_SQL_AST_SCHEMA_OPTION:
     case MYLITE_SQL_AST_DEFAULT:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION:
+    case MYLITE_SQL_AST_COLUMN_TYPE:
         return MYLITE_UNSUPPORTED;
     }
 

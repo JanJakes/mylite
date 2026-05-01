@@ -12,6 +12,12 @@ struct mylite_sql_parser_state {
     bool accepted;
 };
 
+struct mylite_sql_parser_display_width_tokens {
+    struct mylite_sql_token left_paren;
+    struct mylite_sql_token integer;
+    struct mylite_sql_token right_paren;
+};
+
 void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
                                       struct mylite_sql_ast_node *root);
 void mylite_sql_parser_state_syntax_error(struct mylite_sql_parser_state *state, int parser_token,
@@ -56,6 +62,39 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_set_character_set_statement(struct mylite_sql_parser_state *state,
                                                    struct mylite_sql_token set_token,
                                                    struct mylite_sql_ast_node *character_set);
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_column_definition_list(struct mylite_sql_parser_state *state,
+                                              struct mylite_sql_ast_node *column);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_column_definition(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *list,
+                                           struct mylite_sql_ast_node *column);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_column_definition(struct mylite_sql_parser_state *state,
+                                         struct mylite_sql_ast_node *name,
+                                         struct mylite_sql_ast_node *column_type);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_column_type(struct mylite_sql_parser_state *state,
+                                   struct mylite_sql_token type_token,
+                                   enum mylite_sql_ast_column_type column_type);
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_display_width(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *column_type,
+                                           struct mylite_sql_ast_node *display_width);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_integer_display_width(struct mylite_sql_parser_state *state,
+                                             struct mylite_sql_parser_display_width_tokens tokens);
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_signed(struct mylite_sql_parser_state *state,
+                                         struct mylite_sql_ast_node *column_type,
+                                         struct mylite_sql_token signed_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_unsigned(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *column_type,
+                                           struct mylite_sql_token unsigned_token);
 struct mylite_sql_ast_node *mylite_sql_parser_make_if_exists(struct mylite_sql_parser_state *state,
                                                              struct mylite_sql_token if_token,
                                                              struct mylite_sql_token exists_token);

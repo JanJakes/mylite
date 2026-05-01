@@ -106,6 +106,45 @@ void mylite_sql_ast_node_set_schema_option(struct mylite_sql_ast_node *node,
     node->schema_option = schema_option;
 }
 
+void mylite_sql_ast_node_set_column_type(struct mylite_sql_ast_node *node,
+                                         enum mylite_sql_ast_column_type column_type)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->column_type = column_type;
+}
+
+void mylite_sql_ast_node_set_column_type_signed(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->column_type_signed = true;
+}
+
+void mylite_sql_ast_node_set_column_type_unsigned(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->column_type_unsigned = true;
+}
+
+void mylite_sql_ast_node_set_column_display_width(struct mylite_sql_ast_node *node,
+                                                  unsigned int display_width)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->has_column_display_width = true;
+    node->column_display_width = display_width;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -176,6 +215,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "set_character_set_statement";
     case MYLITE_SQL_AST_DEFAULT:
         return "default";
+    case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
+        return "create_table_statement";
+    case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
+        return "column_definition_list";
+    case MYLITE_SQL_AST_COLUMN_DEFINITION:
+        return "column_definition";
+    case MYLITE_SQL_AST_COLUMN_TYPE:
+        return "column_type";
     }
 
     return "unknown";
@@ -194,6 +241,30 @@ const char *mylite_sql_ast_schema_option_name(enum mylite_sql_ast_schema_option 
         return "encryption";
     case MYLITE_SQL_AST_SCHEMA_OPTION_READ_ONLY:
         return "read_only";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type column_type)
+{
+    switch (column_type) {
+    case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
+        return "none";
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
+        return "tinyint";
+    case MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT:
+        return "smallint";
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT:
+        return "mediumint";
+    case MYLITE_SQL_AST_COLUMN_TYPE_INT:
+        return "int";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BIGINT:
+        return "bigint";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
+        return "bool";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:
+        return "boolean";
     }
 
     return "unknown";

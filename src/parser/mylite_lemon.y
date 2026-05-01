@@ -5,7 +5,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CASCADED CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENFORCED ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MANUAL MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NONE NOT NULL NUMBER OFF ONE ONLY OPTIONS ORGANIZATION OWNER PACK_KEYS PAGE PARSE_TREE PARTITION PARTITIONING PHASE PORT PRECEDES PRESERVE PRIMARY RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STREAM STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE USE_FRM VALIDATION VALUE VCPU WAIT WITHOUT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CASCADED CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISCARD DUMPFILE DUPLICATE EACH ENABLE ENCRYPTION ENFORCED ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INTERSECT INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MANUAL MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NONE NOT NULL NUMBER OFF ONE ONLY OPTIONS ORGANIZATION OUTFILE OWNER PACK_KEYS PAGE PARSE_TREE PARTITION PARTITIONING PHASE PORT PRECEDES PRESERVE PRIMARY RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STREAM STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE USE_FRM VALIDATION VALUE VCPU WAIT WITHOUT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
 %fallback ATOM BOOLEAN_NUMBER ENCRYPTION_VALUE FACTOR_NUMBER NUMBER_LITERAL SQLSTATE_VALUE STRING_LITERAL.
 %fallback ATOM GE GT LE LT.
 %fallback ATOM STACKED.
@@ -458,7 +458,8 @@ view_body ::= view_as query_parenthesized_body.
 view_as ::= AS.
 
 view_table_tail ::= .
-view_table_tail ::= table_limit.
+view_table_tail ::= table_order_nonempty_tail table_limit_tail.
+view_table_tail ::= table_limit_nonempty_tail.
 view_table_tail ::= view_check_option.
 
 view_values_tail ::= .
@@ -3248,13 +3249,50 @@ table_statement ::= TABLE table_statement_target table_query_tail. {
 
 table_statement_target ::= cache_table_ref.
 
-table_query_tail ::= .
-table_query_tail ::= table_limit.
+table_query_tail ::= table_order_tail table_limit_tail table_into_tail.
+table_query_tail ::= values_set_operator values_union_tail.
 
-table_limit ::= LIMIT ATOM table_offset_tail.
+table_order_tail ::= .
+table_order_tail ::= table_order_nonempty_tail.
 
-table_offset_tail ::= .
-table_offset_tail ::= OFFSET ATOM.
+table_order_nonempty_tail ::= ORDER BY table_order_list.
+
+table_order_list ::= table_order_item.
+table_order_list ::= table_order_list import_comma table_order_item.
+
+table_order_item ::= table_order_expression values_order_direction.
+
+table_order_expression ::= table_order_part.
+table_order_expression ::= table_order_expression DOT table_order_part.
+
+table_order_part ::= cache_name_part.
+table_order_part ::= BOOLEAN_NUMBER.
+table_order_part ::= FACTOR_NUMBER.
+table_order_part ::= NUMBER_LITERAL.
+
+table_limit_tail ::= .
+table_limit_tail ::= table_limit_nonempty_tail.
+
+table_limit_nonempty_tail ::= LIMIT table_limit_value.
+table_limit_nonempty_tail ::= LIMIT table_limit_value import_comma table_limit_value.
+table_limit_nonempty_tail ::= LIMIT table_limit_value OFFSET table_limit_value.
+
+table_limit_value ::= BOOLEAN_NUMBER.
+table_limit_value ::= FACTOR_NUMBER.
+table_limit_value ::= NUMBER_LITERAL.
+
+table_into_tail ::= .
+table_into_tail ::= INTO table_output_target.
+
+table_output_target ::= OUTFILE string_literal load_fields_tail load_lines_tail.
+table_output_target ::= DUMPFILE string_literal.
+table_output_target ::= table_into_variable_list.
+
+table_into_variable_list ::= table_into_variable.
+table_into_variable_list ::= table_into_variable_list import_comma table_into_variable.
+
+table_into_variable ::= user_variable_name.
+table_into_variable ::= cache_name_part.
 
 values_statement ::= VALUES values_row_list values_query_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
@@ -3265,7 +3303,6 @@ values_row_list ::= values_row_list import_comma values_row.
 
 values_row ::= ROW LP values_row_contents RP.
 
-values_row_contents ::= .
 values_row_contents ::= values_row_value_list.
 
 values_row_value_list ::= values_row_value.
@@ -3301,13 +3338,20 @@ values_row_nested_token ::= LC.
 values_row_nested_token ::= RC.
 
 values_query_tail ::= .
-values_query_tail ::= UNION values_union_tail.
-values_query_tail ::= ORDER BY values_order_list.
+values_query_tail ::= values_set_operator values_union_tail.
+values_query_tail ::= ORDER BY values_order_list values_limit_optional_tail.
 values_query_tail ::= values_limit_tail.
 
-values_query_tail_nonempty ::= UNION values_union_tail.
-values_query_tail_nonempty ::= ORDER BY values_order_list.
+values_query_tail_nonempty ::= values_set_operator values_union_tail.
+values_query_tail_nonempty ::= ORDER BY values_order_list values_limit_optional_tail.
 values_query_tail_nonempty ::= values_limit_tail.
+
+values_limit_optional_tail ::= .
+values_limit_optional_tail ::= values_limit_tail.
+
+values_set_operator ::= UNION.
+values_set_operator ::= EXCEPT.
+values_set_operator ::= INTERSECT.
 
 values_union_tail ::= SELECT select_tail.
 values_union_tail ::= values_union_option SELECT select_tail.
@@ -4348,6 +4392,7 @@ keyword ::= CURSOR.
 keyword ::= EXIT.
 keyword ::= HIGH_PRIORITY.
 keyword ::= IGNORE.
+keyword ::= INTERSECT.
 keyword ::= INTO.
 keyword ::= INOUT.
 keyword ::= IO_THREAD.
@@ -4360,6 +4405,7 @@ keyword ::= OFF.
 keyword ::= ON.
 keyword ::= ORDER.
 keyword ::= OUT.
+keyword ::= OUTFILE.
 keyword ::= PASSWORD.
 keyword ::= PLUGIN_DIR.
 keyword ::= QUICK.
@@ -4371,6 +4417,7 @@ keyword ::= SQLSTATE.
 keyword ::= SQL_THREAD.
 keyword ::= DISTINCT.
 keyword ::= DISTINCTROW.
+keyword ::= DUMPFILE.
 keyword ::= SQL_BIG_RESULT.
 keyword ::= SQL_BUFFER_RESULT.
 keyword ::= SQL_CALC_FOUND_ROWS.
@@ -4641,6 +4688,7 @@ keyword_not_select_clause ::= CURSOR.
 keyword_not_select_clause ::= EXIT.
 keyword_not_select_clause ::= HIGH_PRIORITY.
 keyword_not_select_clause ::= IGNORE.
+keyword_not_select_clause ::= INTERSECT.
 keyword_not_select_clause ::= INTO.
 keyword_not_select_clause ::= INOUT.
 keyword_not_select_clause ::= IO_THREAD.
@@ -4653,6 +4701,7 @@ keyword_not_select_clause ::= OFF.
 keyword_not_select_clause ::= ON.
 keyword_not_select_clause ::= ORDER.
 keyword_not_select_clause ::= OUT.
+keyword_not_select_clause ::= OUTFILE.
 keyword_not_select_clause ::= PASSWORD.
 keyword_not_select_clause ::= PLUGIN_DIR.
 keyword_not_select_clause ::= QUICK.
@@ -4664,6 +4713,7 @@ keyword_not_select_clause ::= SQLSTATE.
 keyword_not_select_clause ::= SQL_THREAD.
 keyword_not_select_clause ::= DISTINCT.
 keyword_not_select_clause ::= DISTINCTROW.
+keyword_not_select_clause ::= DUMPFILE.
 keyword_not_select_clause ::= SQL_BIG_RESULT.
 keyword_not_select_clause ::= SQL_BUFFER_RESULT.
 keyword_not_select_clause ::= SQL_CALC_FOUND_ROWS.

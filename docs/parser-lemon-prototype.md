@@ -39,7 +39,9 @@ token sink:
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
   write payloads.
 - `VALUES` recognizes comma-separated row contents while preserving nested
-  expression bodies.
+  expression bodies, set operators, `ORDER BY`, and `LIMIT` tails.
+- `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`
+  forms, `INTO` variable lists, and file output targets.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names, read
   directions, equality/range tuple reads, `WHERE`, and numeric `LIMIT` tails.
 - `USE` recognizes one-part schema names using the shared identifier grammar.

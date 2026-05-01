@@ -141,10 +141,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SELECT ... INTO var_list` | ❌ | high | User/local variable assignment semantics. |  |
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. |  |
 | `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. |  |
-| `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. |  |
+| `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. | Parser recognizes table references, set operators, `ORDER BY`, numeric `LIMIT` forms, `INTO` variable lists, and `INTO OUTFILE`/`INTO DUMPFILE` targets. |
 | `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. |  |
 | `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. |  |
-| `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. | Parser recognizes comma-separated `VALUES ROW(...)` contents, `UNION`, `ORDER BY`, and `LIMIT` tails. |
+| `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. | Parser recognizes non-empty comma-separated `VALUES ROW(...)` contents, `UNION`/`INTERSECT`/`EXCEPT`, and combined `ORDER BY`/`LIMIT` tails. |
 
 ### 1.3 Transactional, Locking, Replication, Prepared, and Compound Statements
 

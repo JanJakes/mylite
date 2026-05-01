@@ -391,7 +391,8 @@ token sink:
   numeric `formatID` values.
 - `CACHE INDEX` recognizes table, single-table partition, optional empty or
   named key/index, and key-cache names using the shared identifier grammar;
-  `RESET PERSIST` uses the shared grammar for persisted-variable names.
+  `RESET PERSIST` uses the shared grammar for persisted-variable names while
+  rejecting wildcard targets.
 - `GET DIAGNOSTICS` recognizes optional `CURRENT`/`STACKED` diagnostics-area
   selectors; assignment targets use local/user-variable grammar and condition
   numbers may come from literal/simple, user-variable, system-variable, and

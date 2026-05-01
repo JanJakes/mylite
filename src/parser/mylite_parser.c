@@ -217,6 +217,7 @@ static int do_expression_conditional_comment_operator_between(
 static int kill_at_sign_target_token(int token_id);
 static int kill_target_allows_call(int token_id);
 static int kill_target_token(int token_id);
+static int reset_persist_name_part_token(int token_id, MyliteToken token);
 static int create_table_query_body_start(int token_id);
 static int create_table_query_expression_start(int token_id);
 static int create_table_tail_option_start_token(int token_id);
@@ -4560,6 +4561,112 @@ void mylite_parser_validate_kill_statement(MyliteParseContext *ctx,
     mylite_parser_reject(ctx, pending_token, "incomplete KILL target");
   } else if (state == KILL_IN_CALL) {
     mylite_parser_reject(ctx, pending_token, "incomplete KILL target");
+  }
+}
+
+void mylite_parser_validate_reset_statement(MyliteParseContext *ctx,
+                                            MyliteToken start) {
+  enum {
+    RESET_AFTER_RESET,
+    RESET_AFTER_PERSIST,
+    RESET_AFTER_IF,
+    RESET_AFTER_EXISTS,
+    RESET_IN_PERSIST_TARGET,
+    RESET_AFTER_PERSIST_DOT
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int state = RESET_AFTER_RESET;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      if (state == RESET_AFTER_IF || state == RESET_AFTER_EXISTS ||
+          state == RESET_AFTER_PERSIST_DOT) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete RESET PERSIST target");
+      }
+      break;
+    }
+
+    if (state == RESET_AFTER_RESET) {
+      if (token_id != ML_PERSIST) {
+        return;
+      }
+      state = RESET_AFTER_PERSIST;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == RESET_AFTER_PERSIST) {
+      if (token_id == ML_IF) {
+        state = RESET_AFTER_IF;
+        pending_token = token;
+        continue;
+      }
+      if (!reset_persist_name_part_token(token_id, token)) {
+        mylite_parser_reject(ctx, token, "malformed RESET PERSIST target");
+        return;
+      }
+      state = RESET_IN_PERSIST_TARGET;
+      continue;
+    }
+
+    if (state == RESET_AFTER_IF) {
+      if (token_id != ML_EXISTS) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete RESET PERSIST target");
+        return;
+      }
+      state = RESET_AFTER_EXISTS;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == RESET_AFTER_EXISTS) {
+      if (!reset_persist_name_part_token(token_id, token)) {
+        mylite_parser_reject(ctx, token, "malformed RESET PERSIST target");
+        return;
+      }
+      state = RESET_IN_PERSIST_TARGET;
+      continue;
+    }
+
+    if (state == RESET_IN_PERSIST_TARGET) {
+      if (token_id == ML_DOT) {
+        state = RESET_AFTER_PERSIST_DOT;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, token, "malformed RESET PERSIST target");
+      return;
+    }
+
+    if (state == RESET_AFTER_PERSIST_DOT) {
+      if (!reset_persist_name_part_token(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete RESET PERSIST target");
+        return;
+      }
+      state = RESET_IN_PERSIST_TARGET;
+      continue;
+    }
+  }
+
+  if (state == RESET_AFTER_IF || state == RESET_AFTER_EXISTS ||
+      state == RESET_AFTER_PERSIST_DOT) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete RESET PERSIST target");
   }
 }
 
@@ -9826,6 +9933,13 @@ static int kill_target_token(int token_id) {
   return token_id == ML_AT_HOST || token_id == ML_BOOLEAN_NUMBER ||
          token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
          dml_row_alias_token(token_id);
+}
+
+static int reset_persist_name_part_token(int token_id, MyliteToken token) {
+  return token_id != ML_COMMA && token_id != ML_DOT && token_id != ML_SEMI &&
+         token_id != ML_STAR && token_id != ML_AT_SIGN &&
+         token_id != ML_AT_HOST && token_id != ML_AT_EMPTY &&
+         !token_ascii_equal(token, "*");
 }
 
 static int create_table_query_body_start(int token_id) {

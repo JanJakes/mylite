@@ -2450,8 +2450,11 @@ deallocate_statement ::= DEALLOCATE PREPARE prepared_statement_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
 }
 
-reset_statement ::= RESET reset_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+reset_statement ::= RESET(A) reset_tail. {
+  mylite_parser_validate_reset_statement(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+  }
 }
 
 reset_tail ::= reset_options.

@@ -1566,6 +1566,8 @@ def main() -> int:
         ("reset slave all;", 1, {}),
         ("reset slave all extra;", 1, {}),
         ("reset replica for channel account;", 1, {}),
+        ("reset persist *;", 1, {}),
+        ("reset persist if exists *;", 1, {}),
         ("reset persist x y;", 1, {}),
         ("reset nonsense;", 1, {}),
         ("purge binary logs to 'bin.0001';", 0, {"statements": "1", "replication": "1"}),

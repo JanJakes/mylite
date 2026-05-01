@@ -249,6 +249,11 @@ if ! "$parser" --quiet '(VALUES ROW(1), ROW(2), ROW(3)) LIMIT 1 OFFSET 1'; then
 	exit 1
 fi
 
+if ! "$parser" --quiet 'VALUES ROW(1) UNION ALL SELECT 2'; then
+	echo "expected VALUES set-operation SELECT RHS to parse" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'VALUES'; then
 	echo "expected missing VALUES row constructor to fail" >&2
 	exit 1
@@ -296,6 +301,16 @@ fi
 
 if "$parser" --quiet 'VALUES ROW(1) LIMIT'; then
 	echo "expected missing VALUES LIMIT count to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW(1) UNION FOO'; then
+	echo "expected VALUES set-operation identifier RHS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW(1) UNION ALL'; then
+	echo "expected VALUES set-operation without RHS after modifier to fail" >&2
 	exit 1
 fi
 
@@ -355,6 +370,11 @@ if ! "$parser" --quiet '(TABLE r ORDER BY a LIMIT 5) ORDER BY -a LIMIT 4'; then
 	exit 1
 fi
 
+if ! "$parser" --quiet 'TABLE t UNION DISTINCT (VALUES ROW(1))'; then
+	echo "expected TABLE set-operation parenthesized VALUES RHS to parse" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'TABLE'; then
 	echo "expected TABLE without table name to fail" >&2
 	exit 1
@@ -397,6 +417,16 @@ fi
 
 if "$parser" --quiet 'TABLE t LIMIT 1,2,3'; then
 	echo "expected TABLE LIMIT with extra comma expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE t UNION FOO'; then
+	echo "expected TABLE set-operation identifier RHS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'TABLE t UNION ALL'; then
+	echo "expected TABLE set-operation without RHS after modifier to fail" >&2
 	exit 1
 fi
 

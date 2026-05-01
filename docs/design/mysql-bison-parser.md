@@ -281,10 +281,12 @@ lists, and the clause rule that `ORDER BY` and `LIMIT` apply only to
 single-table deletes.
 `VALUES` validation checks nonempty `ROW(...)` constructors, consistent row
 arity, unsupported standalone `DEFAULT` values, ordering, `LIMIT` including
-`OFFSET`, direct set-operator tails, and outer tails on parenthesized forms.
+`OFFSET`, direct set-operator tails with query-expression RHS validation, and
+outer tails on parenthesized forms.
 `TABLE` validation checks direct and parenthesized table-value statements,
 documented `ORDER BY`, `LIMIT`, `OFFSET`, set-operator tails, final `INTO`
 variable/export targets, and outer tails after parenthesized table expressions.
+`TABLE` set-operator tails use the same query-expression RHS validation.
 `SELECT ... INTO` and `TABLE ... INTO` assignment targets are recorded for user
 variables and local variables. `SET` system-variable targets preserve qualified
 structured names such as `keycache1.key_buffer_size`. `INTO OUTFILE` and

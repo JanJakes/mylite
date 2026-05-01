@@ -157,7 +157,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SAVEPOINT` | ❌ | top | Nested savepoint creation and replacement semantics. | Parser recognizes savepoint names using the shared identifier grammar. |
 | `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. | Parser recognizes optional `WORK` and savepoint names using the shared identifier grammar. |
 | `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. | Parser recognizes savepoint names using the shared identifier grammar. |
-| `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/local/next-transaction scope. | Parser recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and READ ONLY/READ WRITE access modes. |
+| `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/local/next-transaction scope. | Parser recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and READ ONLY/READ WRITE access modes in MySQL's one-isolation plus one-access shape. |
 | `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. | Parser recognizes the backup-lock statement shape. |
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. | Parser recognizes the instance unlock statement shape. |
 | `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, aliases, and implicit commit behavior. | Parser recognizes table lists, MySQL 8.4 lock types, and aliases using the shared identifier grammar; removed `LOW_PRIORITY WRITE` syntax is accepted only in permissive corpus mode. |

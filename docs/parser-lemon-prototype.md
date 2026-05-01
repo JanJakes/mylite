@@ -199,7 +199,7 @@ token sink:
 - `SET PASSWORD` recognizes MySQL 8.4 string-literal and random password
   assignment forms, including replacement and secondary-password clauses.
 - `SET TRANSACTION` recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and
-  read access modes without permissive tails.
+  read access modes in MySQL's one-isolation plus one-access shape.
 - `START TRANSACTION` recognizes comma-separated characteristics and rejects
   conflicting `READ ONLY`/`READ WRITE` access modes.
 - `COMMIT` and `ROLLBACK` recognize `WORK`, `AND [NO] CHAIN`, and

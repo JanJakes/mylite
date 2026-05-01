@@ -3836,17 +3836,22 @@ set_default_role_spec ::= NONE.
 set_default_role_spec ::= ALL.
 set_default_role_spec ::= drop_account_list.
 
-set_transaction_tail ::= set_transaction_characteristics.
+set_transaction_tail ::= set_transaction_access_mode set_transaction_isolation_tail.
+set_transaction_tail ::= set_transaction_isolation_clause set_transaction_access_tail.
 
 set_transaction_scope ::= GLOBAL.
 set_transaction_scope ::= LOCAL.
 set_transaction_scope ::= SESSION.
 
-set_transaction_characteristics ::= set_transaction_characteristic.
-set_transaction_characteristics ::= set_transaction_characteristics import_comma set_transaction_characteristic.
+set_transaction_access_tail ::= .
+set_transaction_access_tail ::= import_comma set_transaction_access_mode.
 
-set_transaction_characteristic ::= ISOLATION LEVEL set_transaction_isolation_level.
-set_transaction_characteristic ::= READ transaction_access_mode.
+set_transaction_isolation_tail ::= .
+set_transaction_isolation_tail ::= import_comma set_transaction_isolation_clause.
+
+set_transaction_access_mode ::= READ transaction_access_mode.
+
+set_transaction_isolation_clause ::= ISOLATION LEVEL set_transaction_isolation_level.
 
 set_transaction_isolation_level ::= REPEATABLE READ.
 set_transaction_isolation_level ::= READ COMMITTED.

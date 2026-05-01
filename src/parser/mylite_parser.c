@@ -278,6 +278,8 @@ static void validate_signal_statement_from(MyliteParseContext *ctx,
                                            MyliteToken start);
 static void validate_get_diagnostics_statement_from(MyliteParseContext *ctx,
                                                     MyliteToken start);
+static void validate_cursor_statement_from(MyliteParseContext *ctx,
+                                           int token_id, MyliteToken start);
 static void validate_flow_control_statement_from(MyliteParseContext *ctx,
                                                  int token_id,
                                                  MyliteToken token);
@@ -7445,6 +7447,10 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
     validate_get_diagnostics_statement_from(ctx, token);
     return;
   }
+  if (token_id == ML_OPEN || token_id == ML_FETCH || token_id == ML_CLOSE) {
+    validate_cursor_statement_from(ctx, token_id, token);
+    return;
+  }
   if (token_id == ML_DO) {
     mylite_parser_validate_do_statement(ctx, token);
     return;
@@ -7514,6 +7520,10 @@ static void validate_routine_statement_body_from(MyliteParseContext *ctx,
   }
   if (token_id == ML_GET) {
     validate_get_diagnostics_statement_from(ctx, token);
+    return;
+  }
+  if (token_id == ML_OPEN || token_id == ML_FETCH || token_id == ML_CLOSE) {
+    validate_cursor_statement_from(ctx, token_id, token);
     return;
   }
   if (routine_compound_statement_start_token(token_id) ||
@@ -7624,6 +7634,12 @@ static void validate_compound_statement_body_from(MyliteParseContext *ctx,
       if (ctx->failed) {
         return;
       }
+      continue;
+    }
+
+    if (token_id == ML_SHOW) {
+      skip_statement = 1;
+      expression_depth = 0;
       continue;
     }
 
@@ -7819,6 +7835,118 @@ static void validate_get_diagnostics_statement_from(MyliteParseContext *ctx,
     mylite_parser_reject(ctx, pending_token,
                          "incomplete GET DIAGNOSTICS assignment");
   }
+}
+
+static void validate_cursor_statement_from(MyliteParseContext *ctx,
+                                           int start_token_id,
+                                           MyliteToken start) {
+  enum {
+    CURSOR_NEED_NAME,
+    CURSOR_FETCH_AFTER_NEXT,
+    CURSOR_FETCH_NEED_NAME,
+    CURSOR_FETCH_NEED_INTO,
+    CURSOR_FETCH_NEED_TARGET,
+    CURSOR_FETCH_AFTER_TARGET,
+    CURSOR_SIMPLE_AFTER_NAME
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int state = start_token_id == ML_FETCH ? CURSOR_FETCH_NEED_NAME
+                                         : CURSOR_NEED_NAME;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (token_is_statement_terminator(token_id, token)) {
+      if (state == CURSOR_SIMPLE_AFTER_NAME ||
+          state == CURSOR_FETCH_AFTER_TARGET) {
+        return;
+      }
+      mylite_parser_reject(ctx, pending_token, "incomplete cursor statement");
+      return;
+    }
+
+    if (state == CURSOR_NEED_NAME) {
+      state = CURSOR_SIMPLE_AFTER_NAME;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == CURSOR_SIMPLE_AFTER_NAME) {
+      mylite_parser_reject(ctx, token, "malformed cursor statement");
+      return;
+    }
+
+    if (state == CURSOR_FETCH_NEED_NAME) {
+      if (token_id == ML_NEXT) {
+        state = CURSOR_FETCH_AFTER_NEXT;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_FROM) {
+        state = CURSOR_FETCH_NEED_NAME;
+        pending_token = token;
+        continue;
+      }
+      state = CURSOR_FETCH_NEED_INTO;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == CURSOR_FETCH_AFTER_NEXT) {
+      if (token_id != ML_FROM) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete cursor statement");
+        return;
+      }
+      state = CURSOR_FETCH_NEED_NAME;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == CURSOR_FETCH_NEED_INTO) {
+      if (token_id != ML_INTO) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete cursor statement");
+        return;
+      }
+      state = CURSOR_FETCH_NEED_TARGET;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == CURSOR_FETCH_NEED_TARGET) {
+      if (token_id == ML_COMMA) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete cursor statement");
+        return;
+      }
+      state = CURSOR_FETCH_AFTER_TARGET;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == CURSOR_FETCH_AFTER_TARGET) {
+      if (token_id == ML_COMMA) {
+        state = CURSOR_FETCH_NEED_TARGET;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, token, "malformed cursor statement");
+      return;
+    }
+  }
+
+  mylite_parser_reject(ctx, pending_token, "incomplete cursor statement");
 }
 
 static void validate_flow_control_statement_from(MyliteParseContext *ctx,
@@ -10281,11 +10409,13 @@ static int event_schedule_option_start(MyliteToken token) {
 
 static int routine_body_statement_start_token(int token_id) {
   return token_id == ML_BEGIN || token_id == ML_CASE ||
-         token_id == ML_CALL || token_id == ML_DECLARE || token_id == ML_DO ||
+         token_id == ML_CALL || token_id == ML_CLOSE ||
+         token_id == ML_DECLARE || token_id == ML_DO || token_id == ML_FETCH ||
          token_id == ML_GET || token_id == ML_IF || token_id == ML_LOOP ||
-         token_id == ML_REPEAT || token_id == ML_RESIGNAL || token_id == ML_RETURN ||
-         token_id == ML_SET || token_id == ML_SIGNAL || token_id == ML_UNTIL ||
-         token_id == ML_WHEN || token_id == ML_WHILE;
+         token_id == ML_OPEN || token_id == ML_REPEAT ||
+         token_id == ML_RESIGNAL || token_id == ML_RETURN ||
+         token_id == ML_SET || token_id == ML_SIGNAL ||
+         token_id == ML_UNTIL || token_id == ML_WHEN || token_id == ML_WHILE;
 }
 
 static int routine_compound_statement_start_token(int token_id) {

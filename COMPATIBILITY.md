@@ -201,9 +201,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ITERATE` | ❌ | medium | Loop iteration transfer. |  |
 | `LEAVE` | ❌ | medium | Block/loop exit transfer. |  |
 | `RETURN` | ❌ | medium | Stored-function return semantics. | Parser validates return expression tails. |
-| `OPEN` cursor | ❌ | medium | Cursor open lifecycle. |  |
-| `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. | Parser recognizes `FETCH cursor INTO ...`, `FETCH FROM cursor INTO ...`, and `FETCH NEXT FROM cursor INTO ...` forms. |
-| `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. |  |
+| `OPEN` cursor | ❌ | medium | Cursor open lifecycle. | Parser validates embedded stored-program cursor statement arity. |
+| `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. | Parser recognizes `FETCH cursor INTO ...`, `FETCH FROM cursor INTO ...`, and `FETCH NEXT FROM cursor INTO ...` forms, including embedded stored-program cursor statement arity. |
+| `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. | Parser validates embedded stored-program cursor statement arity. |
 | `GET DIAGNOSTICS` | ❌ | medium | Current and stacked diagnostics retrieval. | Parser recognizes optional `CURRENT`/`STACKED` diagnostics-area selectors, diagnostics item lists, local/user-variable assignment targets, and literal/simple, user-variable, system-variable, or dotted identifier condition numbers, with embedded stored-program bodies validating assignment separators and diagnostics item names. |
 | `SIGNAL` | ❌ | medium | User-raised SQLSTATE and condition item semantics. | Parser recognizes five-character `SQLSTATE [VALUE]` literals and condition item assignments with numeric `MYSQL_ERRNO`, literal/simple, user-variable, system-variable, and dotted local identifier values, with embedded stored-program bodies reusing `SET` assignment expression validation. |
 | `RESIGNAL` | ❌ | medium | Handler rethrow and diagnostics mutation. | Parser recognizes five-character `SQLSTATE [VALUE]` literals and condition item assignments with numeric `MYSQL_ERRNO`, literal/simple, user-variable, system-variable, and dotted local identifier values, with embedded stored-program bodies reusing `SET` assignment expression validation. |

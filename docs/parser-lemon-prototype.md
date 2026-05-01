@@ -351,6 +351,8 @@ token sink:
 - XA statements recognize string, hex, and binary XID parts while rejecting
   bare decimal XID literals.
 - Stored-program label and cursor references use the shared identifier grammar.
+- Embedded stored-program cursor statements validate `OPEN`, `FETCH`, and
+  `CLOSE` arity, including `FETCH [[NEXT] FROM] cursor INTO target [, ...]`.
 - `DECLARE`, `FETCH [[NEXT] FROM] ... INTO`, and named signal conditions use
   the shared identifier grammar for local names, with numeric MySQL error codes
   and five-character `SQLSTATE [VALUE]` literals for condition declarations and

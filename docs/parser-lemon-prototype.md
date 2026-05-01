@@ -190,8 +190,10 @@ token sink:
   bodies for dangling operators and scalar comma lists, and `CHECK` constraints
   validate `ENFORCED`/`NOT ENFORCED` tails while allowing later column
   attributes where MySQL permits them. Column definitions require a known MySQL
-  type-family start plus common attribute starts and selected closed attribute
-  values, require generated-column storage modifiers to follow generated
+  type-family start, validate common numeric and `ENUM`/`SET` type-parameter
+  lists, accept hex literals in `ENUM`/`SET` values, plus common attribute
+  starts and selected closed attribute values, require generated-column storage
+  modifiers to follow generated
   expressions, reject repeated generated-column storage modifiers, validate
   parenthesized default/generated expression bodies for dangling operators and
   scalar comma lists, and

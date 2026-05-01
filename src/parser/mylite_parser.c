@@ -2177,6 +2177,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   MyliteToken token;
   MyliteToken pending_token = start;
   MyliteToken values_row_last_token = start;
+  MyliteToken order_previous_top_token = start;
   int token_id;
   int values_row_last_token_id = 0;
   int saw_statement = 0;
@@ -2190,6 +2191,8 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int duplicate_strict = 0;
   int where_state = DML_WHERE_NONE;
   int order_state = DML_ORDER_NONE;
+  int order_previous_top_token_id = 0;
+  int order_previous_was_operator = 1;
   int limit_state = DML_LIMIT_NONE;
   int seen_where = 0;
   int seen_order = 0;
@@ -2217,6 +2220,11 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         depth++;
       } else if (token_closes_nested_expression(token_id)) {
         depth--;
+        if (depth == 0 && order_state == DML_ORDER_STARTED) {
+          order_previous_top_token_id = token_id;
+          order_previous_top_token = token;
+          order_previous_was_operator = 0;
+        }
         if (depth == 0 && values_state == DML_VALUES_IN_ROW) {
           values_state = DML_VALUES_AFTER_ROW;
         }
@@ -2572,13 +2580,24 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         return;
       }
       order_state = DML_ORDER_STARTED;
-      if (token_opens_nested_expression(token_id)) {
-        depth++;
+      order_previous_top_token_id = 0;
+      order_previous_was_operator = 1;
+      order_previous_top_token = token;
+      if (!query_order_expression_token(
+              ctx, token_id, token, &depth, &order_previous_top_token_id,
+              &order_previous_top_token, &order_previous_was_operator,
+              "malformed DML ORDER BY clause")) {
+        return;
       }
       continue;
     }
     if (order_state == DML_ORDER_STARTED) {
       if (token_id == ML_COMMA) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(ctx, order_previous_top_token,
+                               "incomplete DML ORDER BY clause");
+          return;
+        }
         order_state = DML_ORDER_AFTER_BY;
         pending_token = token;
         continue;
@@ -2588,17 +2607,38 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         return;
       }
       if (token_id == ML_ASC || token_id == ML_DESC) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(ctx, order_previous_top_token,
+                               "incomplete DML ORDER BY clause");
+          return;
+        }
         order_state = DML_ORDER_AFTER_DIRECTION;
         pending_token = token;
         continue;
       }
       if (token_id == ML_LIMIT) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(ctx, order_previous_top_token,
+                               "incomplete DML ORDER BY clause");
+          return;
+        }
         order_state = DML_ORDER_NONE;
       } else if (token_id == ML_SEMI) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(ctx, order_previous_top_token,
+                               "incomplete DML ORDER BY clause");
+          return;
+        }
         break;
+      } else if (token_closes_nested_expression(token_id)) {
+        mylite_parser_reject(ctx, token, "malformed DML ORDER BY clause");
+        return;
       } else {
-        if (token_opens_nested_expression(token_id)) {
-          depth++;
+        if (!query_order_expression_token(
+                ctx, token_id, token, &depth, &order_previous_top_token_id,
+                &order_previous_top_token, &order_previous_was_operator,
+                "malformed DML ORDER BY clause")) {
+          return;
         }
         continue;
       }
@@ -2780,6 +2820,10 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   } else if (order_state == DML_ORDER_AFTER_ORDER ||
              order_state == DML_ORDER_AFTER_BY) {
     mylite_parser_reject(ctx, pending_token,
+                         "incomplete DML ORDER BY clause");
+  } else if (order_state == DML_ORDER_STARTED &&
+             order_previous_was_operator) {
+    mylite_parser_reject(ctx, order_previous_top_token,
                          "incomplete DML ORDER BY clause");
   } else if (limit_state == DML_LIMIT_AFTER_LIMIT) {
     mylite_parser_reject(ctx, pending_token, "incomplete DML LIMIT clause");

@@ -2544,6 +2544,86 @@ case "$server_logfile_output" in
 		;;
 esac
 
+if ! "$parser" --quiet 'CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (HOST "h", DATABASE "d", USER "u", PASSWORD "p", SOCKET "sock", OWNER "o", PORT 3306)'; then
+	echo "expected CREATE SERVER full options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE SERVER 'server_one' FOREIGN DATA WRAPPER 'mysql' OPTIONS (HOST 'h')"; then
+	echo "expected CREATE SERVER with quoted names to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER SERVER s OPTIONS (USER 'sally', PORT 3307)"; then
+	echo "expected ALTER SERVER options to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE SERVER'; then
+	echo "expected CREATE SERVER without a name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE SERVER s'; then
+	echo "expected CREATE SERVER without wrapper clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE SERVER s FOREIGN DATA WRAPPER'; then
+	echo "expected CREATE SERVER without wrapper name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE SERVER s FOREIGN DATA WRAPPER mysql'; then
+	echo "expected CREATE SERVER without OPTIONS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS ()'; then
+	echo "expected CREATE SERVER empty OPTIONS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (HOST)'; then
+	echo "expected CREATE SERVER option without value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (PORT 'x')"; then
+	echo "expected CREATE SERVER PORT string value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (HOST 'h',)"; then
+	echo "expected CREATE SERVER trailing option comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (BOGUS 'x')"; then
+	echo "expected CREATE SERVER unknown option to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER SERVER'; then
+	echo "expected ALTER SERVER without a name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER SERVER s'; then
+	echo "expected ALTER SERVER without OPTIONS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER SERVER s OPTIONS ()'; then
+	echo "expected ALTER SERVER empty OPTIONS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "ALTER SERVER s OPTIONS (USER 'u') extra"; then
+	echo "expected ALTER SERVER with trailing tokens to fail" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'DROP SERVER'; then
 	echo "expected DROP SERVER without a name to fail" >&2
 	exit 1

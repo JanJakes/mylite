@@ -66,10 +66,12 @@ name lists, and `RESTRICT` / `CASCADE` tails. `DROP TABLE` also accepts
 unqualified schema target.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
 optional `IF EXISTS` with an identifier-like target.
-`DROP SERVER`, `DROP SPATIAL REFERENCE SYSTEM`, `DROP LOGFILE GROUP`,
-`DROP TABLESPACE`, and `DROP UNDO TABLESPACE` validate their required object
-names and low-level tails, including `IF EXISTS`, numeric SRIDs, and
-`ENGINE [=] name` where MySQL syntax or the corpus requires it.
+`CREATE SERVER` validates `FOREIGN DATA WRAPPER` and documented server
+`OPTIONS`, `ALTER SERVER` validates documented `OPTIONS`, and `DROP SERVER`,
+`DROP SPATIAL REFERENCE SYSTEM`, `DROP LOGFILE GROUP`, `DROP TABLESPACE`, and
+`DROP UNDO TABLESPACE` validate their required object names and low-level tails,
+including `IF EXISTS`, numeric SRIDs, and `ENGINE [=] name` where MySQL syntax
+or the corpus requires it.
 `DROP USER` and `DROP ROLE` validate optional `IF EXISTS` and account/role
 lists. Resource-group statements validate `CREATE` type/options, `ALTER`
 options including `DISABLE FORCE`, `DROP ... [FORCE]`, and `SET ... [FOR
@@ -731,7 +733,9 @@ Resource group administration exposes the group name:
 ok statements=1 kinds=create[1:7,0:36]/resource_group:rg
 ```
 
-Low-level DDL targets such as server and logfile-group names are reported too:
+Low-level DDL targets such as server and logfile-group names are reported too,
+with `CREATE SERVER` and `ALTER SERVER` validating their documented option
+lists:
 
 ```text
 ok statements=1 kinds=create[1:12,0:61]/server:s

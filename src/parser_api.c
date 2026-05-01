@@ -34,6 +34,19 @@ static int validate_create_role_statement_syntax(const mylite_parser *parser,
 static int validate_create_resource_group_statement_syntax(const mylite_parser *parser,
                                                            size_t token_index,
                                                            size_t last_token_index);
+static int validate_create_server_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int validate_server_options_clause_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 size_t *next_token_index);
+static int validate_server_option_syntax(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index,
+                                         size_t *next_token_index);
+static int token_is_server_character_option(const mylite_parser *parser, size_t token_index);
+static int token_is_server_numeric_option(const mylite_parser *parser, size_t token_index);
 static int validate_create_user_statement_syntax(const mylite_parser *parser,
                                                  size_t token_index,
                                                  size_t last_token_index);
@@ -91,6 +104,9 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 static int validate_alter_resource_group_statement_syntax(const mylite_parser *parser,
                                                           size_t token_index,
                                                           size_t last_token_index);
+static int validate_alter_server_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
 static int validate_alter_user_statement_syntax(const mylite_parser *parser,
                                                 size_t token_index,
                                                 size_t last_token_index);
@@ -1782,6 +1798,9 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (token_is_resource_group_sequence(parser, token_index, last_token_index)) {
 		return validate_create_resource_group_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (token_text_equals(parser, token_index, "SERVER")) {
+		return validate_create_server_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (parser->tokens[token_index].parser_token == USER_T) {
 		return validate_create_user_statement_syntax(parser, token_index, last_token_index);
 	}
@@ -1865,6 +1884,121 @@ static int validate_create_resource_group_statement_syntax(const mylite_parser *
 	}
 
 	return token_index > last_token_index;
+}
+
+static int validate_create_server_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	if (!token_text_equals(parser, token_index, "SERVER")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index + 4 > last_token_index ||
+	    !token_can_start_object_name(&parser->tokens[token_index]) ||
+	    !token_text_equals(parser, token_index + 1, "FOREIGN") ||
+	    !token_text_equals(parser, token_index + 2, "DATA") ||
+	    !token_text_equals(parser, token_index + 3, "WRAPPER") ||
+	    !token_can_start_object_name(&parser->tokens[token_index + 4])) {
+		return 0;
+	}
+
+	token_index += 5;
+	return validate_server_options_clause_syntax(parser,
+	                                             token_index,
+	                                             last_token_index,
+	                                             &token_index) &&
+	       token_index > last_token_index;
+}
+
+static int validate_server_options_clause_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 size_t *next_token_index)
+{
+	int saw_option = 0;
+
+	if (token_index + 2 > last_token_index ||
+	    !token_text_equals(parser, token_index, "OPTIONS") ||
+	    parser->tokens[token_index + 1].parser_token != '(') {
+		return 0;
+	}
+
+	token_index += 2;
+	while (token_index <= last_token_index) {
+		if (parser->tokens[token_index].parser_token == ')') {
+			*next_token_index = token_index + 1;
+			return saw_option;
+		}
+		if (!validate_server_option_syntax(parser,
+		                                   token_index,
+		                                   last_token_index,
+		                                   &token_index)) {
+			return 0;
+		}
+		saw_option = 1;
+
+		if (token_index > last_token_index) {
+			return 0;
+		}
+		if (parser->tokens[token_index].parser_token == ',') {
+			token_index++;
+			if (token_index > last_token_index ||
+			    parser->tokens[token_index].parser_token == ')') {
+				return 0;
+			}
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token != ')') {
+			return 0;
+		}
+	}
+
+	return 0;
+}
+
+static int validate_server_option_syntax(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index,
+                                         size_t *next_token_index)
+{
+	if (token_index + 1 > last_token_index) {
+		return 0;
+	}
+
+	if (token_is_server_character_option(parser, token_index)) {
+		if (parser->tokens[token_index + 1].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	if (token_is_server_numeric_option(parser, token_index)) {
+		if (parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	return 0;
+}
+
+static int token_is_server_character_option(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "HOST") ||
+	       token_text_equals(parser, token_index, "DATABASE") ||
+	       parser->tokens[token_index].parser_token == USER_T ||
+	       token_text_equals(parser, token_index, "PASSWORD") ||
+	       token_text_equals(parser, token_index, "SOCKET") ||
+	       token_text_equals(parser, token_index, "OWNER");
+}
+
+static int token_is_server_numeric_option(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "PORT");
 }
 
 static int validate_create_user_statement_syntax(const mylite_parser *parser,
@@ -2462,10 +2596,35 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 	if (parser->tokens[token_index].parser_token == USER_T) {
 		return validate_alter_user_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (token_text_equals(parser, token_index, "SERVER")) {
+		return validate_alter_server_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (token_is_resource_group_sequence(parser, token_index, last_token_index)) {
 		return validate_alter_resource_group_statement_syntax(parser, token_index, last_token_index);
 	}
 	return 1;
+}
+
+static int validate_alter_server_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	if (!token_text_equals(parser, token_index, "SERVER")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index ||
+	    !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	token_index++;
+	return validate_server_options_clause_syntax(parser,
+	                                             token_index,
+	                                             last_token_index,
+	                                             &token_index) &&
+	       token_index > last_token_index;
 }
 
 static int validate_alter_resource_group_statement_syntax(const mylite_parser *parser,

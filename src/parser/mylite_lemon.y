@@ -4424,7 +4424,27 @@ declare_statement ::= DECLARE(A) declare_identifier_list declare_type_start stat
 declare_statement ::= DECLARE declare_name CONDITION FOR declare_condition_value. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-declare_statement ::= DECLARE declare_name CURSOR FOR declare_cursor_query_start statement_tail. {
+declare_statement ::= DECLARE declare_name CURSOR FOR SELECT(A) statement_tail. {
+  mylite_parser_validate_select_statement_from(ctx, A);
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+declare_statement ::= DECLARE declare_name CURSOR FOR TABLE(A) statement_tail. {
+  mylite_parser_validate_select_statement_from(ctx, A);
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+declare_statement ::= DECLARE declare_name CURSOR FOR VALUES(A) statement_tail. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_validate_select_statement_from(ctx, A);
+  }
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+declare_statement ::= DECLARE declare_name CURSOR FOR WITH(A) statement_tail. {
+  mylite_parser_validate_select_statement_from(ctx, A);
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+declare_statement ::= DECLARE declare_name CURSOR FOR LP(A) statement_tail. {
+  mylite_parser_validate_parenthesized_statement(ctx, A);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 declare_statement ::= DECLARE declare_handler_action declare_handler_keyword FOR declare_handler_conditions declare_handler_statement_start statement_tail. {
@@ -4450,12 +4470,6 @@ declare_condition_value ::= SQLSTATE signal_sqlstate_value_tail SQLSTATE_VALUE.
 declare_condition_number_value ::= BOOLEAN_NUMBER.
 declare_condition_number_value ::= FACTOR_NUMBER.
 declare_condition_number_value ::= NUMBER_LITERAL.
-
-declare_cursor_query_start ::= LP.
-declare_cursor_query_start ::= SELECT.
-declare_cursor_query_start ::= TABLE.
-declare_cursor_query_start ::= VALUES.
-declare_cursor_query_start ::= WITH.
 
 declare_handler_action ::= CONTINUE.
 declare_handler_action ::= EXIT.

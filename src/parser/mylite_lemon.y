@@ -843,7 +843,7 @@ alter_tail ::= TABLESPACE cache_name_part alter_tablespace_action.
 alter_tail ::= UNDO TABLESPACE cache_name_part alter_undo_tablespace_action.
 alter_tail ::= USER drop_if_exists_tail alter_user_list account_management_options account_management_permissive_tail.
 alter_tail ::= USER drop_if_exists_tail USER LP RP alter_user_func_option_tail.
-alter_tail ::= EVENT cache_table_ref alter_event_action.
+alter_tail ::= EVENT cache_table_ref alter_event_clauses.
 alter_tail ::= alter_routine_kind cache_table_ref alter_routine_characteristics_tail.
 alter_tail ::= alter_database_kind alter_database_options.
 alter_tail ::= alter_database_kind alter_database_name alter_database_options.
@@ -954,22 +954,81 @@ alter_view_prefix ::= create_view_algorithm create_view_definer_tail create_view
 alter_view_prefix ::= create_definer_clause create_view_sql_security_tail.
 alter_view_prefix ::= create_view_sql_security.
 
-alter_definer_object_tail ::= EVENT cache_table_ref alter_event_action.
+alter_definer_object_tail ::= EVENT cache_table_ref alter_event_clauses.
 
-alter_event_action ::= ON alter_event_on_tail.
-alter_event_action ::= RENAME TO cache_table_ref create_options_tail.
-alter_event_action ::= COMMENT create_options_tail.
-alter_event_action ::= DISABLE create_options_tail.
-alter_event_action ::= ENABLE create_options_tail.
-alter_event_action ::= DO event_statement_start statement_tail.
+alter_event_clauses ::= alter_event_schedule_clause alter_event_completion_tail alter_event_rename_tail alter_event_status_tail alter_event_comment_tail alter_event_do_tail.
+alter_event_clauses ::= alter_event_completion_clause alter_event_rename_tail alter_event_status_tail alter_event_comment_tail alter_event_do_tail.
+alter_event_clauses ::= alter_event_rename_clause alter_event_status_tail alter_event_comment_tail alter_event_do_tail.
+alter_event_clauses ::= alter_event_status_clause alter_event_comment_tail alter_event_do_tail.
+alter_event_clauses ::= alter_event_comment_clause alter_event_do_tail.
+alter_event_clauses ::= alter_event_do_clause.
 
 create_event_do ::= DO.
 
-alter_event_on_tail ::= SCHEDULE event_schedule_start statement_tail.
-alter_event_on_tail ::= COMPLETION alter_event_completion_start statement_tail.
+alter_event_schedule_clause ::= ON SCHEDULE event_schedule_start alter_event_schedule_tokens.
 
-alter_event_completion_start ::= NOT.
-alter_event_completion_start ::= PRESERVE.
+alter_event_completion_tail ::= .
+alter_event_completion_tail ::= alter_event_completion_clause.
+
+alter_event_completion_clause ::= ON COMPLETION alter_event_completion.
+
+alter_event_completion ::= PRESERVE.
+alter_event_completion ::= NOT PRESERVE.
+
+alter_event_rename_tail ::= .
+alter_event_rename_tail ::= alter_event_rename_clause.
+
+alter_event_rename_clause ::= RENAME TO cache_table_ref.
+
+alter_event_status_tail ::= .
+alter_event_status_tail ::= alter_event_status_clause.
+
+alter_event_status_clause ::= ENABLE.
+alter_event_status_clause ::= DISABLE alter_event_disable_tail.
+
+alter_event_disable_tail ::= .
+alter_event_disable_tail ::= ON REPLICA.
+alter_event_disable_tail ::= ON SLAVE.
+
+alter_event_comment_tail ::= .
+alter_event_comment_tail ::= alter_event_comment_clause.
+
+alter_event_comment_clause ::= COMMENT routine_comment_value.
+
+alter_event_do_tail ::= .
+alter_event_do_tail ::= alter_event_do_clause.
+
+alter_event_do_clause ::= DO event_statement_start statement_tail.
+
+alter_event_schedule_tokens ::= alter_event_schedule_token.
+alter_event_schedule_tokens ::= alter_event_schedule_tokens alter_event_schedule_token.
+
+alter_event_schedule_nested ::= .
+alter_event_schedule_nested ::= alter_event_schedule_tokens.
+
+alter_event_schedule_token ::= ATOM.
+alter_event_schedule_token ::= LABEL.
+alter_event_schedule_token ::= AT_SIGN.
+alter_event_schedule_token ::= COMMA.
+alter_event_schedule_token ::= DOT.
+alter_event_schedule_token ::= EQUALS.
+alter_event_schedule_token ::= MINUS.
+alter_event_schedule_token ::= STAR.
+alter_event_schedule_token ::= AS.
+alter_event_schedule_token ::= BY.
+alter_event_schedule_token ::= CURRENT.
+alter_event_schedule_token ::= CURRENT_USER.
+alter_event_schedule_token ::= DAY.
+alter_event_schedule_token ::= EXISTS.
+alter_event_schedule_token ::= FROM.
+alter_event_schedule_token ::= IN.
+alter_event_schedule_token ::= INTERVAL.
+alter_event_schedule_token ::= LIMIT.
+alter_event_schedule_token ::= NOT.
+alter_event_schedule_token ::= ORDER.
+alter_event_schedule_token ::= SELECT.
+alter_event_schedule_token ::= WHERE.
+alter_event_schedule_token ::= LP alter_event_schedule_nested RP.
 
 event_statement_start ::= keyword_not_select_clause.
 event_statement_start ::= LABEL.

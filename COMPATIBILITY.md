@@ -66,7 +66,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. | Parser recognizes charset, collation, encryption, and `READ ONLY` option clauses. |
-| `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. |  |
+| `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. | Parser recognizes schedule, completion, rename, enable/disable, comment, and `DO` clauses. |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |
 | `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |

@@ -39,8 +39,8 @@ token sink:
   argument lists with nested expression bodies.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
   write payloads, and validate `SET` assignment lists, explicit `VALUE(S)`
-  row-list tails, `ROW(...)` constructors, `INSERT` row aliases, and
-  `ON DUPLICATE KEY UPDATE` assignment tails.
+  row-list tails, `ROW(...)` constructors, `INSERT` `VALUE(S)`/`SET` row
+  aliases, and `ON DUPLICATE KEY UPDATE` assignment tails.
 - Single-table `DELETE` recognizes table aliases before optional partition
   lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails, rejecting incomplete
   DML clause tails, invalid top-level `ORDER BY` direction sequences, and

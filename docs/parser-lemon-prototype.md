@@ -98,13 +98,15 @@ token sink:
   shared identifier grammar.
 - `CACHE INDEX` and `RESET PERSIST` use the shared identifier grammar for
   key-cache and persisted-variable names.
-- `GET DIAGNOSTICS` assignment targets use the shared variable-name grammar.
+- `GET DIAGNOSTICS` assignment targets use local/user-variable grammar and
+  condition numbers may come from user variables.
 - `SET NAMES` and `SET CHARACTER SET` recognize charset/collation names using
   the shared identifier grammar, `BINARY`, `DEFAULT`, optional collation, and
   comma-following variable assignments.
 - `SET` variable assignments recognize comma-separated assignment lists with
   optional per-assignment scopes and nested value expressions.
-- `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form.
+- `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form
+  with user-variable targets.
 - `EXPLAIN ... FOR SCHEMA|DATABASE name` schema specifiers are recognized.
 - `DESCRIBE` and `DESC` reuse the EXPLAIN syntax variants for execution-plan
   statements while preserving table and column description forms with shared

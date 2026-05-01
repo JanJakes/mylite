@@ -2434,7 +2434,7 @@ explain_format_clause ::= FORMAT diagnostics_equals explain_format_name.
 
 explain_format_json_clause ::= FORMAT diagnostics_equals JSON.
 
-explain_into_tail ::= INTO set_variable_name.
+explain_into_tail ::= INTO user_variable_name.
 
 explain_schema_spec ::= FOR explain_schema_kind cache_name_part.
 
@@ -3064,10 +3064,14 @@ diagnostics_condition_items ::= diagnostics_condition_items import_comma diagnos
 
 diagnostics_condition_item ::= diagnostics_target diagnostics_equals diagnostics_condition_item_name.
 
-diagnostics_target ::= set_variable_name.
+diagnostics_target ::= diagnostics_variable_name.
 
 diagnostics_condition_value ::= ATOM.
 diagnostics_condition_value ::= LABEL.
+diagnostics_condition_value ::= user_variable_name.
+
+diagnostics_variable_name ::= cache_name_part.
+diagnostics_variable_name ::= user_variable_name.
 
 diagnostics_equals ::= EQUALS.
 

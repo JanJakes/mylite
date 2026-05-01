@@ -199,7 +199,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `OPEN` cursor | ❌ | medium | Cursor open lifecycle. |  |
 | `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. |  |
 | `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. |  |
-| `GET DIAGNOSTICS` | ❌ | medium | Current and stacked diagnostics retrieval. | Parser recognizes diagnostics item lists and assignment targets using the shared variable-name grammar. |
+| `GET DIAGNOSTICS` | ❌ | medium | Current and stacked diagnostics retrieval. | Parser recognizes diagnostics item lists, local/user-variable assignment targets, and variable condition numbers. |
 | `SIGNAL` | ❌ | medium | User-raised SQLSTATE and condition item semantics. |  |
 | `RESIGNAL` | ❌ | medium | Handler rethrow and diagnostics mutation. |  |
 
@@ -244,7 +244,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. |  |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. |  |
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. | Parser recognizes table/column forms using the shared identifier grammar plus EXPLAIN-synonym variants. |
-| `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. | Parser recognizes `FORMAT=JSON INTO @var`, `FOR SCHEMA`/`FOR DATABASE` schema specifiers, and explicit `ANALYZE` statement starts. |
+| `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. | Parser recognizes `FORMAT=JSON INTO @var` with user-variable targets, `FOR SCHEMA`/`FOR DATABASE` schema specifiers, and explicit `ANALYZE` statement starts. |
 | `HELP` | ❌ | low | Server help lookup result-set semantics. |  |
 | `USE` | ❌ | top | Default schema selection in the embedded single-file model. | Parser recognizes one-part schema names using the shared identifier grammar. |
 

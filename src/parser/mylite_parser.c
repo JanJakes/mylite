@@ -191,6 +191,9 @@ static int dml_assignment_operator(int token_id);
 static int dml_assignment_target_token(int token_id);
 static int dml_assignment_value_allows_function(int token_id,
                                                 MyliteToken token);
+static int dml_parenthesized_query_start_follows(MyliteParseContext *ctx,
+                                                 MyliteToken token);
+static int dml_query_order_boundary(int token_id);
 static int dml_clause_operand_boundary(int token_id);
 static int dml_limit_option_token(int token_id);
 static int set_statement_previous_value_terminal(int token_id,
@@ -2234,6 +2237,19 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     DML_PAYLOAD_QUERY
   };
   enum {
+    DML_QUERY_TAIL_NONE,
+    DML_QUERY_TAIL_AFTER_RP,
+    DML_QUERY_TAIL_AFTER_ORDER,
+    DML_QUERY_TAIL_AFTER_ORDER_BY,
+    DML_QUERY_TAIL_ORDER_EXPR,
+    DML_QUERY_TAIL_ORDER_DIRECTION,
+    DML_QUERY_TAIL_AFTER_LIMIT,
+    DML_QUERY_TAIL_AFTER_LIMIT_VALUE,
+    DML_QUERY_TAIL_AFTER_LIMIT_COMMA,
+    DML_QUERY_TAIL_AFTER_LIMIT_OFFSET,
+    DML_QUERY_TAIL_AFTER_LIMIT_FINAL_VALUE
+  };
+  enum {
     DML_VALUES_NONE,
     DML_VALUES_AFTER_VALUES,
     DML_VALUES_AFTER_ROW_KEYWORD,
@@ -2262,6 +2278,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   MyliteToken values_row_last_token = start;
   MyliteToken where_previous_top_token = start;
   MyliteToken order_previous_top_token = start;
+  MyliteToken query_order_previous_top_token = start;
   int token_id;
   int values_row_last_token_id = 0;
   int saw_statement = 0;
@@ -2285,6 +2302,10 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int seen_order = 0;
   int seen_limit = 0;
   int payload_kind = DML_PAYLOAD_NONE;
+  int query_parenthesized_payload = 0;
+  int query_tail_state = DML_QUERY_TAIL_NONE;
+  int query_order_previous_top_token_id = 0;
+  int query_order_previous_was_operator = 1;
   int values_state = DML_VALUES_NONE;
   int set_alias_state = DML_SET_ALIAS_NONE;
 
@@ -2312,10 +2333,19 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
           order_previous_top_token = token;
           order_previous_was_operator = 0;
         }
+        if (depth == 0 && query_tail_state == DML_QUERY_TAIL_ORDER_EXPR) {
+          query_order_previous_top_token_id = token_id;
+          query_order_previous_top_token = token;
+          query_order_previous_was_operator = 0;
+        }
         if (depth == 0 && where_state == DML_WHERE_STARTED) {
           where_previous_top_token_id = token_id;
           where_previous_top_token = token;
           where_previous_was_operator = 0;
+        }
+        if (depth == 0 && query_parenthesized_payload) {
+          query_parenthesized_payload = 0;
+          query_tail_state = DML_QUERY_TAIL_AFTER_RP;
         }
         if (depth == 0 && values_state == DML_VALUES_IN_ROW) {
           values_state = DML_VALUES_AFTER_ROW;
@@ -2643,6 +2673,199 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
       continue;
     }
 
+    if (query_tail_state == DML_QUERY_TAIL_AFTER_RP) {
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      if (select_set_operator(token_id)) {
+        query_tail_state = DML_QUERY_TAIL_NONE;
+        continue;
+      }
+      if (token_id == ML_ORDER) {
+        query_tail_state = DML_QUERY_TAIL_AFTER_ORDER;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LIMIT) {
+        query_tail_state = DML_QUERY_TAIL_AFTER_LIMIT;
+        pending_token = token;
+        continue;
+      }
+      if (kind == MYLITE_STATEMENT_INSERT && token_id == ML_ON) {
+        query_tail_state = DML_QUERY_TAIL_NONE;
+        duplicate_state = DML_DUP_AFTER_ON;
+        duplicate_strict = 1;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed DML parenthesized query tail");
+      return;
+    }
+    if (query_tail_state == DML_QUERY_TAIL_AFTER_ORDER) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete DML parenthesized query ORDER BY");
+        return;
+      }
+      query_tail_state = DML_QUERY_TAIL_AFTER_ORDER_BY;
+      pending_token = token;
+      query_order_previous_top_token_id = 0;
+      query_order_previous_was_operator = 1;
+      query_order_previous_top_token = token;
+      continue;
+    }
+    if (query_tail_state == DML_QUERY_TAIL_AFTER_ORDER_BY) {
+      if (dml_query_order_boundary(token_id) || token_id == ML_ASC ||
+          token_id == ML_DESC) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete DML parenthesized query ORDER BY");
+        return;
+      }
+      query_tail_state = DML_QUERY_TAIL_ORDER_EXPR;
+    }
+    if (query_tail_state == DML_QUERY_TAIL_ORDER_EXPR) {
+      if (dml_query_order_boundary(token_id)) {
+        if (query_order_previous_was_operator) {
+          mylite_parser_reject(
+              ctx, query_order_previous_top_token,
+              "incomplete DML parenthesized query ORDER BY");
+          return;
+        }
+        if (token_id == ML_COMMA) {
+          query_tail_state = DML_QUERY_TAIL_AFTER_ORDER_BY;
+          pending_token = token;
+          query_order_previous_top_token_id = 0;
+          query_order_previous_was_operator = 1;
+          query_order_previous_top_token = token;
+          continue;
+        }
+        if (token_id == ML_LIMIT) {
+          query_tail_state = DML_QUERY_TAIL_AFTER_LIMIT;
+          pending_token = token;
+          continue;
+        }
+        if (kind == MYLITE_STATEMENT_INSERT && token_id == ML_ON) {
+          query_tail_state = DML_QUERY_TAIL_NONE;
+          duplicate_state = DML_DUP_AFTER_ON;
+          duplicate_strict = 1;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_SEMI) {
+          break;
+        }
+        mylite_parser_reject(ctx, token,
+                             "malformed DML parenthesized query ORDER BY");
+        return;
+      }
+      if (token_id == ML_ASC || token_id == ML_DESC) {
+        if (query_order_previous_was_operator) {
+          mylite_parser_reject(
+              ctx, query_order_previous_top_token,
+              "incomplete DML parenthesized query ORDER BY");
+          return;
+        }
+        query_tail_state = DML_QUERY_TAIL_ORDER_DIRECTION;
+        pending_token = token;
+        continue;
+      }
+      if (token_closes_nested_expression(token_id)) {
+        mylite_parser_reject(ctx, token,
+                             "malformed DML parenthesized query ORDER BY");
+        return;
+      }
+      if (!query_expression_token(
+              ctx, token_id, token, &depth, &query_order_previous_top_token_id,
+              &query_order_previous_top_token,
+              &query_order_previous_was_operator,
+              "malformed DML parenthesized query ORDER BY")) {
+        return;
+      }
+      continue;
+    }
+    if (query_tail_state == DML_QUERY_TAIL_ORDER_DIRECTION) {
+      if (token_id == ML_COMMA) {
+        query_tail_state = DML_QUERY_TAIL_AFTER_ORDER_BY;
+        pending_token = token;
+        query_order_previous_top_token_id = 0;
+        query_order_previous_was_operator = 1;
+        query_order_previous_top_token = token;
+        continue;
+      }
+      if (token_id == ML_LIMIT) {
+        query_tail_state = DML_QUERY_TAIL_AFTER_LIMIT;
+        pending_token = token;
+        continue;
+      }
+      if (kind == MYLITE_STATEMENT_INSERT && token_id == ML_ON) {
+        query_tail_state = DML_QUERY_TAIL_NONE;
+        duplicate_state = DML_DUP_AFTER_ON;
+        duplicate_strict = 1;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed DML parenthesized query ORDER BY");
+      return;
+    }
+    if (query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT ||
+        query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT_COMMA ||
+        query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT_OFFSET) {
+      if (!dml_limit_option_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete DML parenthesized query LIMIT");
+        return;
+      }
+      query_tail_state = query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT
+                             ? DML_QUERY_TAIL_AFTER_LIMIT_VALUE
+                             : DML_QUERY_TAIL_AFTER_LIMIT_FINAL_VALUE;
+      continue;
+    }
+    if (query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT_VALUE) {
+      if (token_id == ML_COMMA) {
+        query_tail_state = DML_QUERY_TAIL_AFTER_LIMIT_COMMA;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_OFFSET) {
+        query_tail_state = DML_QUERY_TAIL_AFTER_LIMIT_OFFSET;
+        pending_token = token;
+        continue;
+      }
+      if (kind == MYLITE_STATEMENT_INSERT && token_id == ML_ON) {
+        query_tail_state = DML_QUERY_TAIL_NONE;
+        duplicate_state = DML_DUP_AFTER_ON;
+        duplicate_strict = 1;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed DML parenthesized query LIMIT");
+      return;
+    }
+    if (query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT_FINAL_VALUE) {
+      if (kind == MYLITE_STATEMENT_INSERT && token_id == ML_ON) {
+        query_tail_state = DML_QUERY_TAIL_NONE;
+        duplicate_state = DML_DUP_AFTER_ON;
+        duplicate_strict = 1;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed DML parenthesized query LIMIT");
+      return;
+    }
+
     if (where_state == DML_WHERE_AFTER_WHERE) {
       if (dml_clause_operand_boundary(token_id) || token_id == ML_COMMA) {
         mylite_parser_reject(ctx, pending_token, "incomplete DML WHERE clause");
@@ -2868,6 +3091,17 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     if ((kind == MYLITE_STATEMENT_INSERT ||
          kind == MYLITE_STATEMENT_REPLACE) &&
         payload_kind == DML_PAYLOAD_NONE &&
+        token_id == ML_LP &&
+        dml_parenthesized_query_start_follows(ctx, token)) {
+      payload_kind = DML_PAYLOAD_QUERY;
+      query_parenthesized_payload = 1;
+      depth++;
+      continue;
+    }
+
+    if ((kind == MYLITE_STATEMENT_INSERT ||
+         kind == MYLITE_STATEMENT_REPLACE) &&
+        payload_kind == DML_PAYLOAD_NONE &&
         (token_id == ML_SELECT || token_id == ML_TABLE ||
          token_id == ML_WITH)) {
       payload_kind = DML_PAYLOAD_QUERY;
@@ -2961,6 +3195,19 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
              order_previous_was_operator) {
     mylite_parser_reject(ctx, order_previous_top_token,
                          "incomplete DML ORDER BY clause");
+  } else if (query_tail_state == DML_QUERY_TAIL_AFTER_ORDER ||
+             query_tail_state == DML_QUERY_TAIL_AFTER_ORDER_BY) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete DML parenthesized query ORDER BY");
+  } else if (query_tail_state == DML_QUERY_TAIL_ORDER_EXPR &&
+             query_order_previous_was_operator) {
+    mylite_parser_reject(ctx, query_order_previous_top_token,
+                         "incomplete DML parenthesized query ORDER BY");
+  } else if (query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT ||
+             query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT_COMMA ||
+             query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT_OFFSET) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete DML parenthesized query LIMIT");
   } else if (limit_state == DML_LIMIT_AFTER_LIMIT) {
     mylite_parser_reject(ctx, pending_token, "incomplete DML LIMIT clause");
   }
@@ -7598,6 +7845,30 @@ static int dml_assignment_value_allows_function(int token_id,
 
   return token_id == ML_ATOM && token.length == 1 &&
          strchr("!%&*+/^|", token.start[0]) != NULL;
+}
+
+static int dml_parenthesized_query_start_follows(MyliteParseContext *ctx,
+                                                 MyliteToken token) {
+  MyliteLexer lexer;
+  MyliteToken next;
+  int token_id;
+  size_t offset = token.offset + token.length;
+
+  if (offset >= ctx->length) {
+    return 0;
+  }
+
+  mylite_lexer_init(&lexer, ctx->sql + offset, ctx->length - offset, NULL);
+  token_id = mylite_lexer_next(&lexer, &next);
+
+  return token_id == ML_SELECT || token_id == ML_TABLE ||
+         token_id == ML_VALUES || token_id == ML_WITH;
+}
+
+static int dml_query_order_boundary(int token_id) {
+  return token_id == ML_COMMA || token_id == ML_LIMIT || token_id == ML_ON ||
+         token_id == ML_SEMI || select_clause_requires_by(token_id) ||
+         select_clause_requires_operand(token_id) || select_set_operator(token_id);
 }
 
 static int dml_clause_operand_boundary(int token_id) {

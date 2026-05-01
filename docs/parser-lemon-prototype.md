@@ -63,7 +63,9 @@ token sink:
 - Top-level `SELECT` validates `GROUP BY ... WITH ROLLUP` tails.
 - Top-level `SELECT` validates `ORDER BY` `ASC`/`DESC` direction tails.
 - Top-level `SELECT` validates `LIMIT` comma and `OFFSET` operands.
-- Top-level `SELECT` rejects duplicate major clauses within one query block.
+- Top-level `SELECT` rejects duplicate major clauses within one query block,
+  including real `FROM` clauses while preserving `NTH_VALUE(... FROM
+  FIRST|LAST ... OVER ...)` window-function modifiers.
 - Top-level `SELECT` rejects out-of-order major clauses across `WHERE`,
   `GROUP BY`, `HAVING`, `WINDOW`, `QUALIFY`, `ORDER BY`, `LIMIT`, and locking
   tails.

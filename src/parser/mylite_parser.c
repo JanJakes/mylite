@@ -82,6 +82,10 @@ static void format_near_token(MyliteParseContext *ctx, int token_id,
                               const MyliteToken *token);
 static int select_clause_requires_by(int token_id);
 static int select_clause_requires_operand(int token_id);
+static int select_from_starts_nth_modifier(MyliteParseContext *ctx,
+                                           MyliteToken from_token);
+static int select_from_follows_nth_value_call(MyliteParseContext *ctx,
+                                              MyliteToken from_token);
 static int select_operand_boundary(int token_id);
 static int select_modifier_flag(int token_id);
 static int select_order_direction_boundary(int token_id);
@@ -528,6 +532,13 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     SELECT_TABLESAMPLE_COMPLETE
   };
   enum {
+    SELECT_NTH_FROM_NONE,
+    SELECT_NTH_FROM_AFTER_FROM,
+    SELECT_NTH_FROM_AFTER_DIRECTION,
+    SELECT_NTH_FROM_AFTER_NULL_TREATMENT,
+    SELECT_NTH_FROM_AFTER_NULLS
+  };
+  enum {
     SELECT_PHASE_BODY,
     SELECT_PHASE_WHERE,
     SELECT_PHASE_GROUP,
@@ -563,6 +574,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int index_hint_state = SELECT_INDEX_HINT_NONE;
   int index_hint_allow_empty = 0;
   int from_clause = 0;
+  int seen_from_clause = 0;
   int seen_where_clause = 0;
   int seen_group_clause = 0;
   int seen_having_clause = 0;
@@ -574,6 +586,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int clause_phase = SELECT_PHASE_BODY;
   int partition_state = SELECT_PARTITION_NONE;
   int tablesample_state = SELECT_TABLESAMPLE_NONE;
+  int nth_from_state = SELECT_NTH_FROM_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -615,6 +628,39 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         continue;
       }
       select_prefix = 0;
+    }
+
+    if (nth_from_state == SELECT_NTH_FROM_AFTER_FROM) {
+      if (token_id == ML_FIRST || token_id == ML_LAST) {
+        nth_from_state = SELECT_NTH_FROM_AFTER_DIRECTION;
+        continue;
+      }
+      nth_from_state = SELECT_NTH_FROM_NONE;
+    }
+    if (nth_from_state == SELECT_NTH_FROM_AFTER_DIRECTION) {
+      if (token_ascii_equal(token, "over")) {
+        nth_from_state = SELECT_NTH_FROM_NONE;
+        continue;
+      }
+      if (token_id == ML_IGNORE || token_ascii_equal(token, "respect")) {
+        nth_from_state = SELECT_NTH_FROM_AFTER_NULL_TREATMENT;
+        continue;
+      }
+      nth_from_state = SELECT_NTH_FROM_NONE;
+    }
+    if (nth_from_state == SELECT_NTH_FROM_AFTER_NULL_TREATMENT) {
+      if (token_ascii_equal(token, "nulls")) {
+        nth_from_state = SELECT_NTH_FROM_AFTER_NULLS;
+        continue;
+      }
+      nth_from_state = SELECT_NTH_FROM_NONE;
+    }
+    if (nth_from_state == SELECT_NTH_FROM_AFTER_NULLS) {
+      if (token_ascii_equal(token, "over")) {
+        nth_from_state = SELECT_NTH_FROM_NONE;
+        continue;
+      }
+      nth_from_state = SELECT_NTH_FROM_NONE;
     }
 
     if (rollup_state == SELECT_ROLLUP_AFTER_WITH) {
@@ -1485,7 +1531,21 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
     if (select_clause_requires_operand(token_id)) {
-      if (token_id == ML_WHERE) {
+      if (token_id == ML_FROM) {
+        if (select_from_starts_nth_modifier(ctx, token)) {
+          nth_from_state = SELECT_NTH_FROM_AFTER_FROM;
+          continue;
+        }
+        if (seen_from_clause) {
+          mylite_parser_reject(ctx, token, "duplicate SELECT clause");
+          return;
+        }
+        if (clause_phase > SELECT_PHASE_BODY) {
+          mylite_parser_reject(ctx, token, "out-of-order SELECT clause");
+          return;
+        }
+        seen_from_clause = 1;
+      } else if (token_id == ML_WHERE) {
         if (seen_where_clause) {
           mylite_parser_reject(ctx, token, "duplicate SELECT clause");
           return;
@@ -1523,6 +1583,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
+      seen_from_clause = 0;
       seen_where_clause = 0;
       seen_group_clause = 0;
       seen_having_clause = 0;
@@ -1606,7 +1667,8 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   } else if (need_set_operand) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT set operation");
-  } else if (need_by || need_operand) {
+  } else if (nth_from_state != SELECT_NTH_FROM_NONE ||
+             need_by || need_operand) {
     mylite_parser_reject(ctx, pending_token, "incomplete SELECT clause");
   }
 }
@@ -4613,6 +4675,88 @@ static int select_clause_requires_operand(int token_id) {
          token_id == ML_JOIN || token_id == ML_LIMIT || token_id == ML_ON ||
          token_id == ML_PROCEDURE || token_id == ML_USING ||
          token_id == ML_WHERE;
+}
+
+static int select_from_starts_nth_modifier(MyliteParseContext *ctx,
+                                           MyliteToken from_token) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  size_t offset = from_token.offset + from_token.length;
+  int token_id;
+
+  if (offset >= ctx->length) {
+    return 0;
+  }
+  if (!select_from_follows_nth_value_call(ctx, from_token)) {
+    return 0;
+  }
+
+  mylite_lexer_init(&lexer, ctx->sql + offset, ctx->length - offset, NULL);
+  token_id = mylite_lexer_next(&lexer, &token);
+  if (token_id != ML_FIRST && token_id != ML_LAST) {
+    return 0;
+  }
+
+  token_id = mylite_lexer_next(&lexer, &token);
+  if (token_ascii_equal(token, "over")) {
+    return 1;
+  }
+  if (token_id != ML_IGNORE && !token_ascii_equal(token, "respect")) {
+    return 0;
+  }
+
+  token_id = mylite_lexer_next(&lexer, &token);
+  if (!token_ascii_equal(token, "nulls")) {
+    return 0;
+  }
+
+  token_id = mylite_lexer_next(&lexer, &token);
+  (void) token_id;
+  return token_ascii_equal(token, "over");
+}
+
+static int select_from_follows_nth_value_call(MyliteParseContext *ctx,
+                                              MyliteToken from_token) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken last_top_token = {0};
+  int token_id;
+  int depth = 0;
+  int nth_value_depth = 0;
+  int closed_nth_value = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, from_token.offset, NULL);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (depth > 0) {
+      if (token_id == ML_LP || token_id == ML_LB || token_id == ML_LC) {
+        depth++;
+      } else if (token_id == ML_RP || token_id == ML_RB ||
+                 token_id == ML_RC) {
+        depth--;
+        if (depth == 0 && nth_value_depth) {
+          closed_nth_value = 1;
+          nth_value_depth = 0;
+        }
+      }
+      continue;
+    }
+
+    if (token_id == ML_LP || token_id == ML_LB || token_id == ML_LC) {
+      if (token_id == ML_LP && token_ascii_equal(last_top_token, "nth_value")) {
+        nth_value_depth = 1;
+      } else {
+        nth_value_depth = 0;
+      }
+      closed_nth_value = 0;
+      depth = 1;
+      continue;
+    }
+
+    closed_nth_value = 0;
+    last_top_token = token;
+  }
+
+  return closed_nth_value;
 }
 
 static int select_operand_boundary(int token_id) {

@@ -3715,6 +3715,7 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
   int token_id;
   int saw_statement = 0;
   int depth = 0;
+  MyliteExpressionStack expression_stack = {0};
   int need_expression = 1;
   int previous_top_token_id = 0;
   int previous_was_operator = 1;
@@ -3732,15 +3733,15 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
     }
 
     if (depth > 0) {
-      if (token_opens_nested_expression(token_id)) {
-        depth++;
-      } else if (token_closes_nested_expression(token_id)) {
-        depth--;
-        if (depth == 0) {
-          previous_top_token_id = token_id;
-          previous_top_token = token;
-          previous_was_operator = 0;
-        }
+      if (!query_expression_depth_token(
+              ctx, token_id, token, &depth, &expression_stack,
+              "malformed DO expression list")) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id) && depth == 0) {
+        previous_top_token_id = token_id;
+        previous_top_token = token;
+        previous_was_operator = 0;
       }
       continue;
     }
@@ -3748,6 +3749,9 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
     if (token_id == ML_SEMI) {
       if (need_expression) {
         mylite_parser_reject(ctx, pending_token,
+                             "incomplete DO expression list");
+      } else if (previous_was_operator) {
+        mylite_parser_reject(ctx, previous_top_token,
                              "incomplete DO expression list");
       }
       break;
@@ -3763,6 +3767,7 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
       previous_top_token_id = 0;
       previous_was_operator = 1;
       pending_token = token;
+      memset(&expression_stack, 0, sizeof(expression_stack));
       continue;
     }
 
@@ -3778,27 +3783,19 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
       return;
     }
 
-    if (do_expression_value_start(token_id, token) &&
-        !do_expression_operator(token_id, token) && !previous_was_operator &&
-        do_expression_value_terminal(previous_top_token_id,
-                                     previous_top_token) &&
-        !do_expression_allows_adjacent(previous_top_token_id,
-                                       previous_top_token, token_id, token)) {
-      mylite_parser_reject(ctx, token, "malformed DO expression list");
+    if (!query_expression_token(
+            ctx, token_id, token, &depth, &previous_top_token_id,
+            &previous_top_token, &previous_was_operator, &expression_stack,
+            "malformed DO expression list")) {
       return;
-    }
-
-    if (token_opens_nested_expression(token_id)) {
-      depth++;
-    } else {
-      previous_top_token_id = token_id;
-      previous_top_token = token;
-      previous_was_operator = do_expression_operator(token_id, token);
     }
   }
 
   if (need_expression) {
     mylite_parser_reject(ctx, pending_token,
+                         "incomplete DO expression list");
+  } else if (previous_was_operator) {
+    mylite_parser_reject(ctx, previous_top_token,
                          "incomplete DO expression list");
   }
 }

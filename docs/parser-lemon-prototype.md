@@ -79,7 +79,8 @@ token sink:
   set operations.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,
   MySQL's table-scan and indexed-read direction sets, equality/range tuple
-  reads, `WHERE`, and numeric or identifier `LIMIT` tails.
+  reads, `WHERE`, and numeric or identifier `LIMIT` tails, while rejecting
+  malformed `WHERE`/`LIMIT` suffixes after `READ`.
 - `USE` recognizes one-part schema names using the shared identifier grammar.
 - Account and role names use the shared unreserved identifier grammar across
   `CREATE`/`ALTER`/`DROP` account statements.

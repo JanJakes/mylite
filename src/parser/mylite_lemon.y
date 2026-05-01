@@ -2974,8 +2974,11 @@ use_statement ::= USE use_target. {
 
 use_target ::= cache_name_part.
 
-handler_statement ::= HANDLER handler_name handler_operation. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+handler_statement ::= HANDLER(A) handler_name handler_operation. {
+  mylite_parser_validate_handler_statement(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+  }
 }
 
 handler_name ::= handler_identifier.

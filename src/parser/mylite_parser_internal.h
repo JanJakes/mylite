@@ -34,6 +34,8 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx);
 void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
                                           MyliteToken start,
                                           MyliteStatementKind kind);
+void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
+                                              MyliteToken start);
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token);
 void mylite_parser_require_row_format(MyliteParseContext *ctx,

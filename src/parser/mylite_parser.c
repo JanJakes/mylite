@@ -1781,6 +1781,189 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   }
 }
 
+void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
+                                              MyliteToken start) {
+  enum {
+    HANDLER_WHERE_NONE,
+    HANDLER_WHERE_AFTER_WHERE,
+    HANDLER_WHERE_STARTED
+  };
+  enum {
+    HANDLER_LIMIT_NONE,
+    HANDLER_LIMIT_AFTER_LIMIT,
+    HANDLER_LIMIT_AFTER_VALUE,
+    HANDLER_LIMIT_AFTER_COMMA,
+    HANDLER_LIMIT_AFTER_OFFSET,
+    HANDLER_LIMIT_AFTER_FINAL_VALUE
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int saw_read = 0;
+  int depth = 0;
+  int seen_where = 0;
+  int seen_limit = 0;
+  int where_state = HANDLER_WHERE_NONE;
+  int limit_state = HANDLER_LIMIT_NONE;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      } else {
+        continue;
+      }
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (!saw_read) {
+      if (token_id == ML_READ) {
+        saw_read = 1;
+      }
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      continue;
+    }
+
+    if (where_state == HANDLER_WHERE_AFTER_WHERE) {
+      if (token_id == ML_LIMIT || token_id == ML_ORDER ||
+          token_id == ML_SEMI || token_id == ML_WHERE) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete HANDLER WHERE clause");
+        return;
+      }
+      where_state = HANDLER_WHERE_STARTED;
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      }
+      continue;
+    }
+
+    if (where_state == HANDLER_WHERE_STARTED) {
+      if (token_id == ML_ORDER || token_id == ML_WHERE) {
+        mylite_parser_reject(ctx, token,
+                             "malformed HANDLER READ clause");
+        return;
+      }
+      if (token_id == ML_LIMIT) {
+        if (seen_limit) {
+          mylite_parser_reject(ctx, token,
+                               "malformed HANDLER READ clause");
+          return;
+        }
+        seen_limit = 1;
+        where_state = HANDLER_WHERE_NONE;
+        limit_state = HANDLER_LIMIT_AFTER_LIMIT;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      }
+      continue;
+    }
+
+    if (limit_state == HANDLER_LIMIT_AFTER_LIMIT ||
+        limit_state == HANDLER_LIMIT_AFTER_COMMA ||
+        limit_state == HANDLER_LIMIT_AFTER_OFFSET) {
+      if (!dml_limit_option_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete HANDLER LIMIT clause");
+        return;
+      }
+      if (limit_state == HANDLER_LIMIT_AFTER_LIMIT) {
+        limit_state = HANDLER_LIMIT_AFTER_VALUE;
+      } else {
+        limit_state = HANDLER_LIMIT_AFTER_FINAL_VALUE;
+      }
+      continue;
+    }
+    if (limit_state == HANDLER_LIMIT_AFTER_VALUE) {
+      if (token_id == ML_COMMA) {
+        limit_state = HANDLER_LIMIT_AFTER_COMMA;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_OFFSET) {
+        limit_state = HANDLER_LIMIT_AFTER_OFFSET;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "malformed HANDLER LIMIT clause");
+      return;
+    }
+    if (limit_state == HANDLER_LIMIT_AFTER_FINAL_VALUE) {
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "malformed HANDLER LIMIT clause");
+      return;
+    }
+
+    if (token_id == ML_SEMI) {
+      break;
+    }
+
+    if (token_id == ML_WHERE) {
+      if (seen_where || seen_limit) {
+        mylite_parser_reject(ctx, token,
+                             "malformed HANDLER READ clause");
+        return;
+      }
+      seen_where = 1;
+      where_state = HANDLER_WHERE_AFTER_WHERE;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_LIMIT) {
+      if (seen_limit) {
+        mylite_parser_reject(ctx, token,
+                             "malformed HANDLER READ clause");
+        return;
+      }
+      seen_limit = 1;
+      limit_state = HANDLER_LIMIT_AFTER_LIMIT;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      depth++;
+    }
+  }
+
+  if (where_state == HANDLER_WHERE_AFTER_WHERE) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete HANDLER WHERE clause");
+  } else if (limit_state == HANDLER_LIMIT_AFTER_LIMIT ||
+             limit_state == HANDLER_LIMIT_AFTER_COMMA ||
+             limit_state == HANDLER_LIMIT_AFTER_OFFSET) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete HANDLER LIMIT clause");
+  }
+}
+
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {

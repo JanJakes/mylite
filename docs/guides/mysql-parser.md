@@ -514,6 +514,10 @@ Transaction savepoint statements expose the savepoint handle:
 ok statements=1 kinds=savepoint[1:2,0:11]/savepoint:s
 ```
 
+```text
+ok statements=1 kinds=rollback[1:3,0:13]/savepoint:s
+```
+
 Stored-program local variable declarations expose the first declared variable:
 
 ```text

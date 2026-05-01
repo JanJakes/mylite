@@ -154,9 +154,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `START TRANSACTION` | ❌ | top | Transaction start modifiers including READ WRITE, READ ONLY, and WITH CONSISTENT SNAPSHOT. | Parser records the transaction object kind for transaction-start forms; modifiers remain body tokens. |
 | `BEGIN` / `BEGIN WORK` | ❌ | top | Transaction begin statement distinct from compound BEGIN ... END. | Parser records bare `BEGIN` and `BEGIN WORK` as transaction objects while leaving matched compound blocks objectless. |
 | `COMMIT` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. | Parser records the transaction object kind; completion modifiers remain body tokens. |
-| `ROLLBACK` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. | Parser records bare transaction rollback separately from `ROLLBACK TO SAVEPOINT` savepoint targets. |
+| `ROLLBACK` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. | Parser records bare transaction rollback separately from `ROLLBACK [WORK] TO [SAVEPOINT]` savepoint targets. |
 | `SAVEPOINT` | ❌ | top | Nested savepoint creation and replacement semantics. | Parser records the savepoint name; nested savepoint state and replacement semantics are not implemented. |
-| `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. | Parser records the savepoint name; partial rollback behavior is not implemented. |
+| `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. | Parser records the savepoint name across `ROLLBACK [WORK] TO [SAVEPOINT]` forms; partial rollback behavior is not implemented. |
 | `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. | Parser records the savepoint name; release behavior and missing-savepoint errors are not implemented. |
 | `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/next-transaction scope. | Parser records `SET [GLOBAL | SESSION] TRANSACTION` as transaction metadata; isolation and access-mode semantics are not implemented. |
 | `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. | Parser records the instance object kind; backup-lock behavior and connection-loss semantics are not implemented. |

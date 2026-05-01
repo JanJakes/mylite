@@ -273,7 +273,7 @@ and system-variable targets. Unadorned `SET name = ...` assignments remain
 objectless until semantic context can distinguish local variables from system
 variables. Connection character-set `SET NAMES` and `SET CHARACTER SET` forms
 record the target character set. Savepoint names are recorded for `SAVEPOINT`,
-`RELEASE SAVEPOINT`, and `ROLLBACK TO SAVEPOINT`.
+`RELEASE SAVEPOINT`, and `ROLLBACK [WORK] TO [SAVEPOINT]`.
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token. Parenthesized `TABLE` forms
@@ -399,8 +399,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   accounts, proxy grants, account-name normalization, rename destinations, or
   implicit current-user/current-role targets in `SET` statements.
 - Savepoint metadata records the named savepoint only. Bare `ROLLBACK` records
-  the transaction object kind, and non-savepoint `RELEASE` forms remain
-  objectless.
+  the transaction object kind, `ROLLBACK [WORK] TO [SAVEPOINT]` records the
+  savepoint name, and non-savepoint `RELEASE` forms remain objectless.
 - Parenthesized query-expression classification only identifies the leading
   query statement kind; it does not build the query-expression tree.
 - Stored-program control matching records token pairs only; it does not yet

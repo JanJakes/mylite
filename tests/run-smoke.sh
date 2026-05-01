@@ -677,9 +677,9 @@ case "$install_output" in
 		;;
 esac
 
-savepoint_output=$("$parser" 'SAVEPOINT s; RELEASE SAVEPOINT s; ROLLBACK TO SAVEPOINT `s`; ROLLBACK')
+savepoint_output=$("$parser" 'SAVEPOINT s; RELEASE SAVEPOINT s; ROLLBACK TO SAVEPOINT `s`; ROLLBACK TO `s`; ROLLBACK WORK TO s; ROLLBACK WORK TO SAVEPOINT s; ROLLBACK; ROLLBACK WORK AND CHAIN; RELEASE s')
 case "$savepoint_output" in
-	*"savepoint"*/savepoint:s*"release"*/savepoint:s*"rollback"*/savepoint:'`s`'*"rollback"*/transaction*) ;;
+	*"savepoint"*/savepoint:s*"release"*/savepoint:s*"rollback"*/savepoint:'`s`'*"rollback"*/savepoint:'`s`'*"rollback"*/savepoint:s*"rollback"*/savepoint:s*"rollback"*/transaction*"rollback"*/transaction*"release[35:36"*) ;;
 	*)
 		echo "unexpected savepoint output: $savepoint_output" >&2
 		exit 1

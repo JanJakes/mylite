@@ -218,6 +218,9 @@ static int classify_savepoint_statement_object(const mylite_parser *parser,
                                                mylite_statement *statement,
                                                size_t token_index,
                                                size_t last_token_index);
+static size_t find_rollback_savepoint_name_token(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
 static int classify_declare_statement_object(const mylite_parser *parser,
                                              mylite_statement *statement,
                                              size_t token_index,
@@ -2644,6 +2647,8 @@ static int classify_savepoint_statement_object(const mylite_parser *parser,
 
 	if (statement->kind == MYLITE_STATEMENT_SAVEPOINT) {
 		name_token_index = token_index;
+	} else if (statement->kind == MYLITE_STATEMENT_ROLLBACK) {
+		name_token_index = find_rollback_savepoint_name_token(parser, token_index, last_token_index);
 	} else {
 		name_token_index = find_savepoint_name_token(parser, token_index, last_token_index);
 	}
@@ -2657,6 +2662,35 @@ static int classify_savepoint_statement_object(const mylite_parser *parser,
 	                                        MYLITE_STATEMENT_OBJECT_SAVEPOINT,
 	                                        name_token_index,
 	                                        last_token_index);
+}
+
+static size_t find_rollback_savepoint_name_token(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    token_text_equals(parser, token_index, "WORK")) {
+		token_index++;
+	}
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    parser->tokens[token_index].parser_token != TO_T) {
+		return parser->token_count;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    parser->tokens[token_index].parser_token == SAVEPOINT_T) {
+		token_index++;
+	}
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    token_can_start_object_name(&parser->tokens[token_index])) {
+		return token_index;
+	}
+	return parser->token_count;
 }
 
 static int classify_declare_statement_object(const mylite_parser *parser,

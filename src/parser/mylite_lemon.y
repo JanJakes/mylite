@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ADD AS COLLATE DATAFILE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE FOREIGN GROUP OPTIONS PARTITION REFERENCE SYSTEM TYPE UNDOFILE VALUE WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AS COLLATE DATAFILE DISABLE ENABLE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE FORCE FOREIGN GROUP INACTIVE OPTIONS PARTITION REFERENCE SYSTEM THREAD_PRIORITY TYPE UNDOFILE VALUE VCPU WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -554,9 +554,7 @@ drop_resource_group ::= GROUP.
 drop_logfile_group ::= GROUP.
 
 drop_resource_force_tail ::= .
-drop_resource_force_tail ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "FORCE");
-}
+drop_resource_force_tail ::= FORCE.
 
 drop_reference ::= REFERENCE.
 
@@ -668,9 +666,11 @@ event_statement_start ::= ATOM(A). {
 
 alter_resource_group_actions ::= alter_resource_group_action create_options_tail.
 
-alter_resource_group_action ::= ATOM(A). {
-  mylite_parser_require_resource_group_action(ctx, A);
-}
+alter_resource_group_action ::= DISABLE.
+alter_resource_group_action ::= ENABLE.
+alter_resource_group_action ::= FORCE.
+alter_resource_group_action ::= THREAD_PRIORITY.
+alter_resource_group_action ::= VCPU.
 
 alter_tablespace_action ::= RENAME TO cache_name_part.
 alter_tablespace_action ::= alter_tablespace_option_name diagnostics_equals alter_tablespace_option_value.
@@ -683,13 +683,11 @@ alter_tablespace_option_value ::= alter_tablespace_option_value statement_token.
 alter_undo_tablespace_action ::= SET alter_undo_tablespace_state drop_tablespace_engine_tail.
 create_trigger_statement_start ::= SET.
 
-alter_undo_tablespace_state ::= ATOM(A). {
-  mylite_parser_require_token_text_any(ctx, A, "ACTIVE", "INACTIVE");
-}
+alter_undo_tablespace_state ::= ACTIVE.
+alter_undo_tablespace_state ::= INACTIVE.
 
-alter_instance_action ::= ATOM(A) alter_instance_innodb alter_instance_redo_log. {
-  mylite_parser_require_token_text_any(ctx, A, "ENABLE", "DISABLE");
-}
+alter_instance_action ::= ENABLE alter_instance_innodb alter_instance_redo_log.
+alter_instance_action ::= DISABLE alter_instance_innodb alter_instance_redo_log.
 alter_instance_action ::= ATOM(A) alter_instance_master_key_kind MASTER KEY. {
   mylite_parser_require_token_text(ctx, A, "ROTATE");
 }

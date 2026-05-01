@@ -41,8 +41,6 @@ void mylite_parser_require_create_view_algorithm(MyliteParseContext *ctx,
                                                  MyliteToken token);
 void mylite_parser_require_srs_attribute(MyliteParseContext *ctx,
                                          MyliteToken token);
-void mylite_parser_require_resource_group_action(MyliteParseContext *ctx,
-                                                 MyliteToken token);
 void mylite_parser_require_udf_return_type(MyliteParseContext *ctx,
                                            MyliteToken token);
 void mylite_parser_require_event_schedule_start(MyliteParseContext *ctx,

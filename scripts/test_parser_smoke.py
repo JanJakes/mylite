@@ -204,6 +204,7 @@ def main() -> int:
         ("alter undo tablespace u set active engine innodb;", 0, {"statements": "1", "ddl": "1"}),
         ("alter resource group rg vcpu=1;", 0, {"statements": "1", "ddl": "1"}),
         ("alter resource group rg disable force;", 0, {"statements": "1", "ddl": "1"}),
+        ("alter resource group rg thread_priority=10;", 0, {"statements": "1", "ddl": "1"}),
         ("alter server s options (user 'sally');", 0, {"statements": "1", "ddl": "1"}),
         ("alter server s options (host '127.0.0.1', database 'test');", 0, {"statements": "1", "ddl": "1"}),
         ("alter tablespace ts rename to ts2;", 0, {"statements": "1", "ddl": "1"}),

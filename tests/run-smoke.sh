@@ -1238,14 +1238,59 @@ case "$replication_channel_output" in
 		;;
 esac
 
-xa_output=$("$parser" "XA START 'x'; XA END 'x'; XA PREPARE 'x'; XA COMMIT 'x' ONE PHASE; XA ROLLBACK 'x'; XA RECOVER; XA RECOVER CONVERT XID")
+xa_output=$("$parser" "XA START 'x'; XA BEGIN X'6162', 0x62, 7 JOIN; XA START b'1010' RESUME; XA END 'x' SUSPEND FOR MIGRATE; XA PREPARE 'x'; XA COMMIT 'x' ONE PHASE; XA ROLLBACK 'x'; XA RECOVER; XA RECOVER CONVERT XID")
 case "$xa_output" in
-	*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa[23:24"*/xa_transaction*"xa[26:29"*/xa_transaction*) ;;
+	*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"X'6162'"*"xa"*/xa_transaction:"b'1010'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"/xa_transaction,xa"*/xa_transaction*) ;;
 	*)
 		echo "unexpected XA output: $xa_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'XA'; then
+	echo "expected missing XA action to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'XA START'; then
+	echo "expected missing XA START xid to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'XA START 7'; then
+	echo "expected plain numeric XA gtrid to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "XA START 'x',"; then
+	echo "expected missing XA bqual to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "XA START 'x', 'b', X'07'"; then
+	echo "expected non-integer XA formatID to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "XA START 'x' JOIN RESUME"; then
+	echo "expected duplicate XA START option to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "XA END 'x' SUSPEND FOR"; then
+	echo "expected incomplete XA END SUSPEND FOR MIGRATE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "XA COMMIT 'x' PHASE"; then
+	echo "expected malformed XA COMMIT ONE PHASE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'XA RECOVER CONVERT'; then
+	echo "expected incomplete XA RECOVER CONVERT XID to fail" >&2
+	exit 1
+fi
 
 help_output=$("$parser" "HELP 'contents'; HELP SELECT; HELP no_such_topic; HELP CREATE TABLE")
 case "$help_output" in

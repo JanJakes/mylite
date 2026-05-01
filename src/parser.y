@@ -62,12 +62,35 @@ separators:
 	;
 
 statement:
-	  statement_head top_body
+	  xa_statement
+	| statement_head top_body
 	  {
 		  if (!mylite_parser_add_statement(parser, parser->active_statement_kind)) {
 			  YYERROR;
 		  }
 	  }
+	;
+
+xa_statement:
+	  XA_T { BEGIN_STATEMENT(MYLITE_STATEMENT_XA, 1); } xa_body
+	  {
+		  if (!mylite_parser_add_statement(parser, MYLITE_STATEMENT_XA)) {
+			  YYERROR;
+		  }
+	  }
+	;
+
+xa_body:
+	  /* empty */
+	| xa_body xa_item
+	;
+
+xa_item:
+	  atom { parser->active_statement_body_items++; }
+	| group { parser->active_statement_body_items++; }
+	| BEGIN_T { parser->active_statement_body_items++; }
+	| END_T { parser->active_statement_body_items++; }
+	| END_CASE_T { parser->active_statement_body_items++; }
 	;
 
 statement_head:
@@ -105,7 +128,6 @@ statement_head:
 	| RELEASE_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_RELEASE, 1); }
 	| LOCK_T        { BEGIN_STATEMENT(MYLITE_STATEMENT_LOCK, 1); }
 	| UNLOCK_T      { BEGIN_STATEMENT(MYLITE_STATEMENT_UNLOCK, 1); }
-	| XA_T          { BEGIN_STATEMENT(MYLITE_STATEMENT_XA, 1); }
 	| PREPARE_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_PREPARE, 1); }
 	| EXECUTE_T     { BEGIN_STATEMENT(MYLITE_STATEMENT_EXECUTE, 1); }
 	| DEALLOCATE_T  { BEGIN_STATEMENT(MYLITE_STATEMENT_DEALLOCATE, 1); }

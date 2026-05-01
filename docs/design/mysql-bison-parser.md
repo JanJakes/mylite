@@ -460,7 +460,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   Group Replication metadata records only the subsystem object kind, not user
   credentials, distributed recovery, group membership, or timeout behavior.
   XA metadata records only the first XID token for XID-bearing statements and
-  the XA transaction collection for `XA RECOVER`; it does not model XA state.
+  the XA transaction collection for `XA RECOVER`; it validates XID shape,
+  `XA START` / `XA BEGIN` options, `XA END` suspend options, `XA COMMIT ONE
+  PHASE`, and `XA RECOVER CONVERT XID`, but does not model XA state.
   `HELP` metadata records quoted and unquoted search-topic text, including
   multi-token topics.
   Instance lifecycle metadata records only the instance object kind, not

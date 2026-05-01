@@ -569,7 +569,8 @@ Scoped `SET TRANSACTION` forms do the same:
 ok statements=1 kinds=set[1:5,0:31]/transaction
 ```
 
-XA transaction statements expose XID targets:
+XA transaction statements validate XID and action-option shape, then expose XID
+targets:
 
 ```text
 ok statements=1 kinds=xa[1:3,0:12]/xa_transaction:'x'

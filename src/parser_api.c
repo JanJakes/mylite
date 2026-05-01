@@ -170,6 +170,14 @@ static int validate_clone_data_directory_clause_syntax(const mylite_parser *pars
                                                        size_t *next_token_index);
 static int token_can_be_clone_account_name(const mylite_parser *parser, size_t token_index);
 static int token_can_be_clone_host_name(const mylite_parser *parser, size_t token_index);
+static int validate_xa_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_xa_xid_syntax(const mylite_parser *parser,
+                                  size_t token_index,
+                                  size_t last_token_index,
+                                  size_t *next_token_index);
+static int token_is_xa_string_value(const mylite_parser *parser, size_t token_index);
+static int token_is_xa_format_id(const mylite_parser *parser, size_t token_index);
+static int token_is_xa_prefixed_number_literal(const mylite_parser *parser, size_t token_index);
 static void classify_statement_metadata(mylite_parser *parser);
 static void classify_grouped_query_statement_kinds(mylite_parser *parser);
 static mylite_statement_kind classify_grouped_query_statement_kind(const mylite_parser *parser,
@@ -1285,6 +1293,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_DEALLOCATE:
 			if (!validate_deallocate_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid DEALLOCATE statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_XA:
+			if (!validate_xa_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid XA statement");
 				return;
 			}
 			break;
@@ -3087,6 +3101,160 @@ static int token_can_be_clone_host_name(const mylite_parser *parser, size_t toke
 	return token_can_continue_object_name(&parser->tokens[token_index]) ||
 	       parser->tokens[token_index].kind == MYLITE_TOKEN_STRING ||
 	       parser->tokens[token_index].kind == MYLITE_TOKEN_NUMBER;
+}
+
+static int validate_xa_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+	size_t next_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "RECOVER")) {
+		if (token_index == last_token_index) {
+			return 1;
+		}
+		return token_index + 2 == last_token_index &&
+		       token_text_equals(parser, token_index + 1, "CONVERT") &&
+		       token_text_equals(parser, token_index + 2, "XID");
+	}
+
+	if ((parser->tokens[token_index].parser_token == START_T ||
+	     parser->tokens[token_index].parser_token == BEGIN_T) &&
+	    validate_xa_xid_syntax(parser, token_index + 1, last_token_index, &next_token_index)) {
+		if (next_token_index > last_token_index) {
+			return 1;
+		}
+		return next_token_index == last_token_index &&
+		       (parser->tokens[next_token_index].parser_token == JOIN_T ||
+		        token_text_equals(parser, next_token_index, "RESUME"));
+	}
+
+	if (parser->tokens[token_index].parser_token == END_T &&
+	    validate_xa_xid_syntax(parser, token_index + 1, last_token_index, &next_token_index)) {
+		if (next_token_index > last_token_index) {
+			return 1;
+		}
+		if (!token_text_equals(parser, next_token_index, "SUSPEND")) {
+			return 0;
+		}
+		next_token_index++;
+		if (next_token_index > last_token_index) {
+			return 1;
+		}
+		return next_token_index + 1 == last_token_index &&
+		       token_text_equals(parser, next_token_index, "FOR") &&
+		       token_text_equals(parser, next_token_index + 1, "MIGRATE");
+	}
+
+	if ((parser->tokens[token_index].parser_token == PREPARE_T ||
+	     parser->tokens[token_index].parser_token == ROLLBACK_T) &&
+	    validate_xa_xid_syntax(parser, token_index + 1, last_token_index, &next_token_index)) {
+		return next_token_index > last_token_index;
+	}
+
+	if (parser->tokens[token_index].parser_token == COMMIT_T &&
+	    validate_xa_xid_syntax(parser, token_index + 1, last_token_index, &next_token_index)) {
+		if (next_token_index > last_token_index) {
+			return 1;
+		}
+		return next_token_index + 1 == last_token_index &&
+		       token_text_equals(parser, next_token_index, "ONE") &&
+		       token_text_equals(parser, next_token_index + 1, "PHASE");
+	}
+
+	return 0;
+}
+
+static int validate_xa_xid_syntax(const mylite_parser *parser,
+                                  size_t token_index,
+                                  size_t last_token_index,
+                                  size_t *next_token_index)
+{
+	if (token_index > last_token_index || !token_is_xa_string_value(parser, token_index)) {
+		return 0;
+	}
+	token_index++;
+
+	if (token_index > last_token_index || parser->tokens[token_index].parser_token != ',') {
+		*next_token_index = token_index;
+		return 1;
+	}
+	token_index++;
+	if (token_index > last_token_index || !token_is_xa_string_value(parser, token_index)) {
+		return 0;
+	}
+	token_index++;
+
+	if (token_index > last_token_index || parser->tokens[token_index].parser_token != ',') {
+		*next_token_index = token_index;
+		return 1;
+	}
+	token_index++;
+	if (token_index > last_token_index || !token_is_xa_format_id(parser, token_index)) {
+		return 0;
+	}
+
+	*next_token_index = token_index + 1;
+	return 1;
+}
+
+static int token_is_xa_string_value(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return parser->tokens[token_index].kind == MYLITE_TOKEN_STRING ||
+	       token_is_xa_prefixed_number_literal(parser, token_index);
+}
+
+static int token_is_xa_format_id(const mylite_parser *parser, size_t token_index)
+{
+	const mylite_token *token;
+	const char *text;
+	size_t length;
+
+	if (token_index >= parser->token_count ||
+	    parser->tokens[token_index].kind != MYLITE_TOKEN_NUMBER ||
+	    parser->tokens[token_index].start_offset >= parser->tokens[token_index].end_offset) {
+		return 0;
+	}
+	token = &parser->tokens[token_index];
+	text = parser->lexer.input + token->start_offset;
+	length = token->end_offset - token->start_offset;
+	return text[0] != '-' &&
+	       !(length >= 3 &&
+	         (text[0] == 'x' || text[0] == 'X' || text[0] == 'b' || text[0] == 'B') &&
+	         text[1] == '\'');
+}
+
+static int token_is_xa_prefixed_number_literal(const mylite_parser *parser, size_t token_index)
+{
+	const mylite_token *token;
+	const char *text;
+	size_t length;
+
+	if (token_index >= parser->token_count ||
+	    parser->tokens[token_index].kind != MYLITE_TOKEN_NUMBER) {
+		return 0;
+	}
+
+	token = &parser->tokens[token_index];
+	text = parser->lexer.input + token->start_offset;
+	length = token->end_offset - token->start_offset;
+	return (length >= 3 &&
+	        (text[0] == 'x' || text[0] == 'X' || text[0] == 'b' || text[0] == 'B') &&
+	        text[1] == '\'') ||
+	       (length >= 3 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X'));
 }
 
 static void classify_statement_metadata(mylite_parser *parser)
@@ -5016,6 +5184,7 @@ static int classify_xa_statement_object(const mylite_parser *parser,
 	}
 
 	if (parser->tokens[token_index].parser_token != START_T &&
+	    parser->tokens[token_index].parser_token != BEGIN_T &&
 	    parser->tokens[token_index].parser_token != END_T &&
 	    parser->tokens[token_index].parser_token != PREPARE_T &&
 	    parser->tokens[token_index].parser_token != COMMIT_T &&

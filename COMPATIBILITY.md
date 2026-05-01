@@ -164,12 +164,12 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. | Parser records the instance object kind; backup-lock release behavior is not implemented. |
 | `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, legacy LOW_PRIORITY WRITE routing, aliases, and implicit commit behavior. | Parser records the first named table target for singular and plural forms and validates table-list entries, optional aliases, MySQL 8.4 lock modes, and corpus-observed legacy LOW_PRIORITY WRITE forms; lock behavior, obsolete-form diagnostics, and implicit commit semantics are not implemented. |
 | `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. | Parser records the table object kind for singular and plural forms without a name and validates the statement has no table names; lock release behavior and implicit commit semantics are not implemented. |
-| `XA START` | ❌ | low | XA transaction branch start. | Parser records the first XID token; XA state management is not implemented. |
-| `XA END` | ❌ | low | XA transaction branch end. | Parser records the first XID token; XA state management is not implemented. |
-| `XA PREPARE` | ❌ | low | XA prepare phase. | Parser records the first XID token; XA prepare semantics are not implemented. |
-| `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. | Parser records the first XID token; one-phase/two-phase commit semantics are not implemented. |
-| `XA ROLLBACK` | ❌ | low | XA rollback. | Parser records the first XID token; XA rollback semantics are not implemented. |
-| `XA RECOVER` | ❌ | low | XA recovery result-set metadata. | Parser records the XA transaction collection; recovery rows are not implemented. |
+| `XA START` | ❌ | low | XA transaction branch start. | Parser records the first XID token and validates `XA START` / `XA BEGIN` XID shape plus optional `JOIN` / `RESUME`; XA state management is not implemented. |
+| `XA END` | ❌ | low | XA transaction branch end. | Parser records the first XID token and validates optional `SUSPEND [FOR MIGRATE]`; XA state management is not implemented. |
+| `XA PREPARE` | ❌ | low | XA prepare phase. | Parser records the first XID token and validates required XID syntax; XA prepare semantics are not implemented. |
+| `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. | Parser records the first XID token and validates optional `ONE PHASE`; one-phase/two-phase commit semantics are not implemented. |
+| `XA ROLLBACK` | ❌ | low | XA rollback. | Parser records the first XID token and validates required XID syntax; XA rollback semantics are not implemented. |
+| `XA RECOVER` | ❌ | low | XA recovery result-set metadata. | Parser records the XA transaction collection and validates optional `CONVERT XID`; recovery rows are not implemented. |
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. | Parser records and validates the single string event payload; event decoding and execution are not implemented. |
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser records and validates named `TO` string log files and collection-level `BEFORE` expression forms, including legacy `MASTER` spelling; binary-log purge behavior is not implemented. |
 | `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser records and validates the binary-log collection, including optional numeric `TO` file-index forms and legacy `RESET MASTER` spellings for explicit unsupported-form routing; binary-log deletion and GTID reset behavior are not implemented. |

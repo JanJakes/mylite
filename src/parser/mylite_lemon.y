@@ -3939,9 +3939,12 @@ declare_type_start ::= DATA.
 declare_type_start ::= DEFAULT.
 declare_type_start ::= LABEL.
 
-declare_condition_value ::= ATOM.
-declare_condition_value ::= LABEL.
+declare_condition_value ::= declare_condition_number_value.
 declare_condition_value ::= SQLSTATE SQLSTATE_VALUE.
+
+declare_condition_number_value ::= BOOLEAN_NUMBER.
+declare_condition_number_value ::= FACTOR_NUMBER.
+declare_condition_number_value ::= NUMBER_LITERAL.
 
 declare_cursor_query_start ::= LP.
 declare_cursor_query_start ::= SELECT.
@@ -3959,7 +3962,11 @@ declare_handler_conditions ::= declare_handler_condition.
 declare_handler_conditions ::= declare_handler_conditions COMMA declare_handler_condition.
 
 declare_handler_condition ::= declare_condition_value.
+declare_handler_condition ::= declare_condition_name.
 declare_handler_condition ::= declare_not declare_found.
+
+declare_condition_name ::= ATOM.
+declare_condition_name ::= LABEL.
 
 declare_not ::= NOT.
 

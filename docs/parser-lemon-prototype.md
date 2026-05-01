@@ -89,6 +89,8 @@ token sink:
   forms, including replacement and secondary-password clauses.
 - `SET TRANSACTION` recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and
   read access modes without permissive tails.
+- `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, and `RELEASE SAVEPOINT` recognize
+  savepoint names using the shared identifier grammar.
 - `SET NAMES` and `SET CHARACTER SET` recognize their charset/default forms,
   optional collation, and comma-following variable assignments.
 - `SET` variable assignments recognize comma-separated assignment lists with

@@ -1771,8 +1771,7 @@ savepoint_statement ::= SAVEPOINT savepoint_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
 
-savepoint_name ::= ATOM.
-savepoint_name ::= LABEL.
+savepoint_name ::= cache_name_part.
 
 release_statement ::= RELEASE SAVEPOINT savepoint_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
@@ -3175,8 +3174,7 @@ rollback_to_savepoint_tail ::= TO SAVEPOINT savepoint_reference.
 rollback_to_savepoint_tail ::= WORK TO savepoint_reference.
 rollback_to_savepoint_tail ::= WORK TO SAVEPOINT savepoint_reference.
 
-savepoint_reference ::= ATOM.
-savepoint_reference ::= LABEL.
+savepoint_reference ::= cache_name_part.
 
 set_statement ::= SET set_names_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);

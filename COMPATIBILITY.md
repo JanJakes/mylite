@@ -154,9 +154,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `BEGIN` / `BEGIN WORK` | ❌ | top | Transaction begin statement distinct from compound BEGIN ... END. |  |
 | `COMMIT` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. |  |
 | `ROLLBACK` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. |  |
-| `SAVEPOINT` | ❌ | top | Nested savepoint creation and replacement semantics. |  |
-| `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. |  |
-| `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. |  |
+| `SAVEPOINT` | ❌ | top | Nested savepoint creation and replacement semantics. | Parser recognizes savepoint names using the shared identifier grammar. |
+| `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. | Parser recognizes optional `WORK` and savepoint names using the shared identifier grammar. |
+| `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. | Parser recognizes savepoint names using the shared identifier grammar. |
 | `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/local/next-transaction scope. | Parser recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and READ ONLY/READ WRITE access modes. |
 | `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. |  |
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. |  |

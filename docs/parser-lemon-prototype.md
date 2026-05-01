@@ -158,10 +158,10 @@ token sink:
   `ALGORITHM`/`LOCK` options, tablespace discard/import forms, and validated
   `ADD`/`CHANGE`/`MODIFY` column type starts plus column-definition attribute
   starts and selected closed attribute values, index key-part prefix lengths,
-  `ASC`/`DESC` tails, and closed index `USING`/`TYPE` values. `ADD FOREIGN
-  KEY` child/reference column-list envelopes and referential-action tails are
-  also validated, and `ADD CHECK` requires a non-empty parenthesized expression
-  body plus a valid
+  `ASC`/`DESC` tails, and index option values including closed index
+  `USING`/`TYPE` values. `ADD FOREIGN KEY` child/reference column-list
+  envelopes and referential-action tails are also validated, and `ADD CHECK`
+  requires a non-empty parenthesized expression body plus a valid
   `ENFORCED`/`NOT ENFORCED` tail when present.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;
   `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body.

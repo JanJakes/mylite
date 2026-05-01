@@ -3304,6 +3304,14 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
     ALTER_COLUMN_EXPECT_TYPE,
     ALTER_COLUMN_IN_DEFINITION
   };
+  enum {
+    ALTER_INDEX_OPTION_READY,
+    ALTER_INDEX_OPTION_NUMBER,
+    ALTER_INDEX_OPTION_STRING,
+    ALTER_INDEX_OPTION_USING,
+    ALTER_INDEX_OPTION_AFTER_WITH,
+    ALTER_INDEX_OPTION_AFTER_WITH_PARSER
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token = start;
@@ -3327,6 +3335,9 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   ColumnDefinitionTailState column_tail_state =
       COLUMN_DEFINITION_TAIL_READY;
   int validate_key_list = 0;
+  int add_index_options = 0;
+  int add_index_option_state = ALTER_INDEX_OPTION_READY;
+  int add_index_option_equals = 0;
   int index_using_pending = 0;
   int depth = 0;
   int key_state = ALTER_INDEX_KEY_NEED_PART;
@@ -3430,8 +3441,12 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
           return;
         }
         validate_key_list = 0;
+        depth = 0;
         add_scan = 0;
         add_index_candidate = 0;
+        add_index_options = 1;
+        add_index_option_state = ALTER_INDEX_OPTION_READY;
+        add_index_option_equals = 0;
         continue;
       }
 
@@ -3716,6 +3731,12 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
     }
 
     if (token_id == ML_SEMI) {
+      if (add_index_options &&
+          add_index_option_state != ALTER_INDEX_OPTION_READY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete ALTER TABLE index option");
+        return;
+      }
       break;
     }
 
@@ -3732,8 +3753,17 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
                              "incomplete ALTER TABLE index USING");
         return;
       }
+      if (add_index_options &&
+          add_index_option_state != ALTER_INDEX_OPTION_READY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete ALTER TABLE index option");
+        return;
+      }
       add_scan = 0;
       add_index_candidate = 0;
+      add_index_options = 0;
+      add_index_option_state = ALTER_INDEX_OPTION_READY;
+      add_index_option_equals = 0;
       add_foreign_state = ALTER_FK_NONE;
       check_pending = 0;
       check_tail_state = ALTER_CHECK_NONE;
@@ -3746,6 +3776,99 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       column_tail_state = COLUMN_DEFINITION_TAIL_READY;
       index_using_pending = 0;
       continue;
+    }
+
+    if (add_index_options) {
+      if (add_index_option_state == ALTER_INDEX_OPTION_NUMBER) {
+        if (token_id == ML_EQUALS && !add_index_option_equals) {
+          add_index_option_equals = 1;
+          continue;
+        }
+        if (!create_table_tail_option_number_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "invalid ALTER TABLE index option");
+          return;
+        }
+        add_index_option_state = ALTER_INDEX_OPTION_READY;
+        add_index_option_equals = 0;
+        continue;
+      }
+
+      if (add_index_option_state == ALTER_INDEX_OPTION_STRING) {
+        if (token_id == ML_EQUALS && !add_index_option_equals) {
+          add_index_option_equals = 1;
+          continue;
+        }
+        if (!create_table_tail_option_string_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "invalid ALTER TABLE index option");
+          return;
+        }
+        add_index_option_state = ALTER_INDEX_OPTION_READY;
+        add_index_option_equals = 0;
+        continue;
+      }
+
+      if (add_index_option_state == ALTER_INDEX_OPTION_USING) {
+        if (!index_using_type_token(token)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "invalid ALTER TABLE index option");
+          return;
+        }
+        add_index_option_state = ALTER_INDEX_OPTION_READY;
+        continue;
+      }
+
+      if (add_index_option_state == ALTER_INDEX_OPTION_AFTER_WITH) {
+        if (token_id != ML_PARSER) {
+          mylite_parser_reject(ctx, pending_token,
+                               "invalid ALTER TABLE index option");
+          return;
+        }
+        add_index_option_state = ALTER_INDEX_OPTION_AFTER_WITH_PARSER;
+        pending_token = token;
+        continue;
+      }
+
+      if (add_index_option_state == ALTER_INDEX_OPTION_AFTER_WITH_PARSER) {
+        if (!dml_row_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "invalid ALTER TABLE index option");
+          return;
+        }
+        add_index_option_state = ALTER_INDEX_OPTION_READY;
+        continue;
+      }
+
+      if (token_id == ML_KEY_BLOCK_SIZE) {
+        add_index_option_state = ALTER_INDEX_OPTION_NUMBER;
+        add_index_option_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_COMMENT || token_id == ML_ENGINE_ATTRIBUTE ||
+          token_id == ML_SECONDARY_ENGINE_ATTRIBUTE) {
+        add_index_option_state = ALTER_INDEX_OPTION_STRING;
+        add_index_option_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_USING || token_id == ML_TYPE) {
+        add_index_option_state = ALTER_INDEX_OPTION_USING;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_WITH) {
+        add_index_option_state = ALTER_INDEX_OPTION_AFTER_WITH;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_VISIBLE || token_id == ML_INVISIBLE) {
+        continue;
+      }
+
+      mylite_parser_reject(ctx, token, "invalid ALTER TABLE index option");
+      return;
     }
 
     if (alter_column_state != ALTER_COLUMN_NONE) {
@@ -4007,6 +4130,10 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   } else if (validate_key_list) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE index key part");
+  } else if (add_index_options &&
+             add_index_option_state != ALTER_INDEX_OPTION_READY) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete ALTER TABLE index option");
   } else if (index_using_pending) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE index USING");

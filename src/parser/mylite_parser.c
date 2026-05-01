@@ -477,7 +477,8 @@ static int select_clause_requires_by(int token_id) {
 
 static int select_clause_requires_operand(int token_id) {
   return token_id == ML_FROM || token_id == ML_HAVING || token_id == ML_INTO ||
-         token_id == ML_LIMIT || token_id == ML_PROCEDURE ||
+         token_id == ML_JOIN || token_id == ML_LIMIT || token_id == ML_ON ||
+         token_id == ML_PROCEDURE || token_id == ML_USING ||
          token_id == ML_WHERE;
 }
 

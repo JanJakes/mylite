@@ -137,7 +137,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. |  |
-| `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser rejects missing operands for major top-level clause starts such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `INTO`, trailing top-level comma separators, and incomplete `UNION`/`INTERSECT`/`EXCEPT` set operations; full expression/query grammar remains incomplete. |
+| `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser rejects missing operands for major top-level clause starts such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `INTO`, top-level `JOIN`/`ON`/`USING` clauses, trailing top-level comma separators, and incomplete `UNION`/`INTERSECT`/`EXCEPT` set operations; full expression/query grammar remains incomplete. |
 | `SELECT ... INTO var_list` | ❌ | high | User/local variable assignment semantics. |  |
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. |  |
 | `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. |  |

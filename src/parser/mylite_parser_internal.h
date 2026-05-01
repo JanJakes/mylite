@@ -51,9 +51,6 @@ void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
 void mylite_parser_require_profile_type(MyliteParseContext *ctx,
                                         MyliteToken first,
                                         MyliteToken second);
-void mylite_parser_require_start_until_log_pair(MyliteParseContext *ctx,
-                                                MyliteToken file,
-                                                MyliteToken pos);
 void mylite_parser_require_check_table_option(MyliteParseContext *ctx,
                                               MyliteToken token);
 void mylite_parser_require_explain_format(MyliteParseContext *ctx,

@@ -365,13 +365,14 @@ EXPLAIN INTO exposes the user-variable output target:
 ok statements=1 kinds=explain[1:8,0:39]/user_variable:@plan
 ```
 
-KILL statements expose numeric and user-variable processlist ids as connection
-or query targets:
+KILL statements expose processlist-id expressions as connection or query
+targets:
 
 ```text
 ok statements=1 kinds=kill[1:2,0:8]/connection:123
 ok statements=1 kinds=kill[1:3,0:14]/query:123
 ok statements=1 kinds=kill[1:3,0:21]/query:@thread_id
+ok statements=1 kinds=kill[1:4,0:20]/connection:CONNECTION_ID()
 ```
 
 Binary log statements expose explicit log-file targets:

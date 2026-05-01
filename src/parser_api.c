@@ -159,6 +159,12 @@ static int classify_kill_statement_object(const mylite_parser *parser,
                                           size_t token_index,
                                           size_t last_token_index);
 static int token_can_start_processlist_id(const mylite_token *token);
+static int token_can_start_processlist_expression(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int processlist_expression_is_single_target(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
 static int classify_clone_statement_object(const mylite_parser *parser,
                                            mylite_statement *statement,
                                            size_t token_index,
@@ -2249,7 +2255,8 @@ static int classify_kill_statement_object(const mylite_parser *parser,
 
 	if (token_index > last_token_index ||
 	    token_index >= parser->token_count ||
-	    !token_can_start_processlist_id(&parser->tokens[token_index])) {
+	    !token_can_start_processlist_expression(parser, token_index, last_token_index) ||
+	    !processlist_expression_is_single_target(parser, token_index, last_token_index)) {
 		return 0;
 	}
 
@@ -2257,13 +2264,59 @@ static int classify_kill_statement_object(const mylite_parser *parser,
 	                                             statement,
 	                                             object_kind,
 	                                             token_index,
-	                                             token_index);
+	                                             last_token_index);
 }
 
 static int token_can_start_processlist_id(const mylite_token *token)
 {
 	return token->kind == MYLITE_TOKEN_NUMBER ||
 	       token->kind == MYLITE_TOKEN_USER_VARIABLE;
+}
+
+static int token_can_start_processlist_expression(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	const mylite_token *token;
+
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	token = &parser->tokens[token_index];
+	if (token_can_start_processlist_id(token) ||
+	    token->kind == MYLITE_TOKEN_STRING ||
+	    token->kind == MYLITE_TOKEN_PARAMETER ||
+	    token->kind == MYLITE_TOKEN_SYSTEM_VARIABLE) {
+		return 1;
+	}
+
+	if (token_index + 1 > last_token_index ||
+	    parser->tokens[token_index + 1].parser_token != '(') {
+		return 0;
+	}
+	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_KEYWORD;
+}
+
+static int processlist_expression_is_single_target(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == ',') {
+			return 0;
+		}
+		token_index++;
+	}
+	return 1;
 }
 
 static int classify_clone_statement_object(const mylite_parser *parser,

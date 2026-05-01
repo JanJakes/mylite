@@ -29,6 +29,10 @@ static void remove_statements_covered_by_previous(mylite_parser *parser, size_t 
 static void validate_statement_syntax(mylite_parser *parser);
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_rollback_savepoint_statement_syntax(const mylite_parser *parser,
+                                                        const mylite_statement *statement);
 static int validate_kill_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static void classify_statement_metadata(mylite_parser *parser);
 static void classify_grouped_query_statement_kinds(mylite_parser *parser);
@@ -1012,6 +1016,24 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_SAVEPOINT:
+			if (!validate_savepoint_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid SAVEPOINT statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_RELEASE:
+			if (!validate_release_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid RELEASE statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_ROLLBACK:
+			if (!validate_rollback_savepoint_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid ROLLBACK statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_RESTART:
 			if (!validate_single_token_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid RESTART statement");
@@ -1041,6 +1063,70 @@ static int validate_use_statement_syntax(const mylite_parser *parser, const myli
 
 	token_index++;
 	last_token_index = statement->last_token - 1;
+	return token_index == last_token_index &&
+	       token_can_continue_object_name(&parser->tokens[token_index]);
+}
+
+static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	return token_index == last_token_index &&
+	       token_can_continue_object_name(&parser->tokens[token_index]);
+}
+
+static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	return token_index + 1 == last_token_index &&
+	       token_index < parser->token_count &&
+	       parser->tokens[token_index].parser_token == SAVEPOINT_T &&
+	       token_can_continue_object_name(&parser->tokens[token_index + 1]);
+}
+
+static int validate_rollback_savepoint_statement_syntax(const mylite_parser *parser,
+                                                        const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "WORK")) {
+		token_index++;
+	}
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    parser->tokens[token_index].parser_token != TO_T) {
+		return 1;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    parser->tokens[token_index].parser_token == SAVEPOINT_T) {
+		token_index++;
+	}
+
 	return token_index == last_token_index &&
 	       token_can_continue_object_name(&parser->tokens[token_index]);
 }

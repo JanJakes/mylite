@@ -309,7 +309,8 @@ variable-name forms. Structured system-variable targets include the predefined
 targets may use keyword-shaped names when followed by an assignment operator.
 Connection character-set `SET NAMES` and `SET CHARACTER SET` forms record the
 target character set. Savepoint names are recorded for `SAVEPOINT`,
-`RELEASE SAVEPOINT`, and `ROLLBACK [WORK] TO [SAVEPOINT]`.
+`RELEASE SAVEPOINT`, and `ROLLBACK [WORK] TO [SAVEPOINT]`; those forms reject
+missing names, non-identifier targets, and trailing tokens.
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token. Parenthesized `TABLE` forms
@@ -451,7 +452,7 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   implicit current-user/current-role targets in `SET` statements.
 - Savepoint metadata records the named savepoint only. Bare `ROLLBACK` records
   the transaction object kind, `ROLLBACK [WORK] TO [SAVEPOINT]` records the
-  savepoint name, and non-savepoint `RELEASE` forms remain objectless.
+  savepoint name, and non-savepoint `RELEASE` forms are rejected.
 - Parenthesized query-expression classification only identifies the leading
   query statement kind; it does not build the query-expression tree.
 - Stored-program control matching records token pairs only; it does not yet

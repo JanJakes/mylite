@@ -827,14 +827,49 @@ case "$install_output" in
 		;;
 esac
 
-savepoint_output=$("$parser" 'SAVEPOINT s; RELEASE SAVEPOINT s; ROLLBACK TO SAVEPOINT `s`; ROLLBACK TO `s`; ROLLBACK WORK TO s; ROLLBACK WORK TO SAVEPOINT s; ROLLBACK; ROLLBACK WORK AND CHAIN; RELEASE s')
+savepoint_output=$("$parser" 'SAVEPOINT s; SAVEPOINT `select`; RELEASE SAVEPOINT s; ROLLBACK TO SAVEPOINT `s`; ROLLBACK TO `s`; ROLLBACK WORK TO s; ROLLBACK WORK TO SAVEPOINT s; ROLLBACK; ROLLBACK WORK AND CHAIN')
 case "$savepoint_output" in
-	*"savepoint"*/savepoint:s*"release"*/savepoint:s*"rollback"*/savepoint:'`s`'*"rollback"*/savepoint:'`s`'*"rollback"*/savepoint:s*"rollback"*/savepoint:s*"rollback"*/transaction*"rollback"*/transaction*"release[35:36"*) ;;
+	*"savepoint"*/savepoint:s*"savepoint"*/savepoint:'`select`'*"release"*/savepoint:s*"rollback"*/savepoint:'`s`'*"rollback"*/savepoint:'`s`'*"rollback"*/savepoint:s*"rollback"*/savepoint:s*"rollback"*/transaction*"rollback"*/transaction*) ;;
 	*)
 		echo "unexpected savepoint output: $savepoint_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'SAVEPOINT 1'; then
+	echo "expected numeric SAVEPOINT name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SAVEPOINT s extra'; then
+	echo "expected trailing SAVEPOINT tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RELEASE s'; then
+	echo "expected RELEASE without SAVEPOINT to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RELEASE SAVEPOINT'; then
+	echo "expected missing RELEASE SAVEPOINT name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ROLLBACK TO'; then
+	echo "expected missing ROLLBACK TO name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ROLLBACK TO @s'; then
+	echo "expected variable ROLLBACK TO name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ROLLBACK TO SAVEPOINT s extra'; then
+	echo "expected trailing ROLLBACK TO tokens to fail" >&2
+	exit 1
+fi
 
 transaction_output=$("$parser" "BEGIN; BEGIN WORK; BEGIN NOT ATOMIC SELECT 1 END; START TRANSACTION; START TRANSACTION READ WRITE; START REPLICA FOR CHANNEL 'ch'; COMMIT; COMMIT AND CHAIN; ROLLBACK; ROLLBACK AND NO CHAIN; ROLLBACK TO SAVEPOINT s; SET TRANSACTION ISOLATION LEVEL READ COMMITTED; SET SESSION TRANSACTION READ ONLY; SET GLOBAL TRANSACTION READ WRITE; SET LOCAL TRANSACTION READ ONLY; SET SESSION sql_mode = 'ANSI'")
 case "$transaction_output" in

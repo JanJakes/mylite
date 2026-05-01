@@ -207,7 +207,8 @@ token sink:
   for persisted-variable names.
 - `GET DIAGNOSTICS` recognizes optional `CURRENT`/`STACKED` diagnostics-area
   selectors; assignment targets use local/user-variable grammar and condition
-  numbers may come from user variables.
+  numbers may come from literal/simple, user-variable, system-variable, and
+  dotted identifier values.
 - `SIGNAL` and `RESIGNAL` recognize five-character `SQLSTATE [VALUE]` literals
   and condition item assignments with numeric `MYSQL_ERRNO`, literal/simple,
   user-variable, system-variable, and dotted local identifier values.

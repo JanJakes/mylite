@@ -3487,6 +3487,15 @@ diagnostics_target ::= diagnostics_variable_name.
 diagnostics_condition_value ::= ATOM.
 diagnostics_condition_value ::= LABEL.
 diagnostics_condition_value ::= user_variable_name.
+diagnostics_condition_value ::= AT_EMPTY set_variable_part.
+diagnostics_condition_value ::= AT_EMPTY set_variable_part DOT set_variable_part.
+diagnostics_condition_value ::= AT_EMPTY set_variable_part DOT set_variable_part DOT set_variable_part.
+diagnostics_condition_value ::= signal_allowed_identifier_part DOT signal_allowed_identifier_part.
+diagnostics_condition_value ::= signal_allowed_identifier_part DOT signal_allowed_identifier_part DOT signal_allowed_identifier_part.
+
+signal_allowed_identifier_part ::= cache_name_part.
+signal_allowed_identifier_part ::= FLUSH.
+signal_allowed_identifier_part ::= SQL_BUFFER_RESULT.
 
 diagnostics_variable_name ::= cache_name_part.
 diagnostics_variable_name ::= user_variable_name.
@@ -3550,8 +3559,12 @@ signal_mysql_errno_value ::= NUMBER_LITERAL.
 signal_information_value ::= ATOM.
 signal_information_value ::= LABEL.
 signal_information_value ::= DEFAULT.
-signal_information_value ::= AT_EMPTY set_variable_part set_variable_dot_tail.
-signal_information_value ::= set_variable_part DOT set_variable_part set_variable_dot_tail.
+signal_information_value ::= user_variable_name.
+signal_information_value ::= AT_EMPTY set_variable_part.
+signal_information_value ::= AT_EMPTY set_variable_part DOT set_variable_part.
+signal_information_value ::= AT_EMPTY set_variable_part DOT set_variable_part DOT set_variable_part.
+signal_information_value ::= signal_allowed_identifier_part DOT signal_allowed_identifier_part.
+signal_information_value ::= signal_allowed_identifier_part DOT signal_allowed_identifier_part DOT signal_allowed_identifier_part.
 
 begin_statement ::= BEGIN. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);

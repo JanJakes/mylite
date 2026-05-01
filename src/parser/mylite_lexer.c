@@ -670,6 +670,7 @@ static int keyword_token(const MyliteToken *token) {
       {"TABLES", ML_TABLES},
       {"TABLESPACE", ML_TABLESPACE},
       {"TEMPORARY", ML_TEMPORARY},
+      {"THEN", ML_THEN},
       {"TO", ML_TO},
       {"TRANSACTION", ML_TRANSACTION},
       {"TRIGGER", ML_TRIGGER},

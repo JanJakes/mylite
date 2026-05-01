@@ -2534,11 +2534,20 @@ expression_start_keyword ::= TRUNCATE.
 expression_start_keyword ::= USER.
 expression_start_keyword ::= VALUES.
 
-if_statement ::= IF expression_start required_statement_tail. {
+if_statement ::= IF if_condition_start while_condition_tail THEN statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
+if_statement ::= IF LP statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PERMISSIVE);
+}
 
-elseif_statement ::= ELSEIF expression_start required_statement_tail. {
+if_condition_start ::= ATOM.
+if_condition_start ::= LABEL.
+if_condition_start ::= expression_start_keyword.
+if_condition_start ::= LB.
+if_condition_start ::= LC.
+
+elseif_statement ::= ELSEIF expression_start while_condition_tail THEN statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
@@ -2601,7 +2610,7 @@ until_statement ::= UNTIL expression_start statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-when_statement ::= WHEN expression_start required_statement_tail. {
+when_statement ::= WHEN expression_start while_condition_tail THEN statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
@@ -2912,6 +2921,7 @@ keyword ::= SECURITY.
 keyword ::= SQL.
 keyword ::= SPATIAL.
 keyword ::= TEMPORARY.
+keyword ::= THEN.
 keyword ::= TRANSACTION.
 keyword ::= UNDO.
 keyword ::= UNION.
@@ -3129,6 +3139,7 @@ keyword_not_select_clause ::= SECURITY.
 keyword_not_select_clause ::= SQL.
 keyword_not_select_clause ::= SPATIAL.
 keyword_not_select_clause ::= TEMPORARY.
+keyword_not_select_clause ::= THEN.
 keyword_not_select_clause ::= TRANSACTION.
 keyword_not_select_clause ::= UNDO.
 keyword_not_select_clause ::= UNION.

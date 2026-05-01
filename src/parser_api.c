@@ -54,6 +54,20 @@ static int token_can_start_lock_table_name(const mylite_parser *parser, size_t t
 static int token_can_start_lock_table_alias(const mylite_parser *parser, size_t token_index);
 static int token_is_lock_table_mode(const mylite_parser *parser, size_t token_index);
 static int validate_unlock_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_cursor_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int cursor_statement_is_compound_label_token(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static int validate_open_close_cursor_statement_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index);
+static int validate_fetch_cursor_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int validate_fetch_variable_list_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index);
+static int token_can_start_fetch_variable(const mylite_token *token);
 static int validate_cache_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_load_index_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_table_index_list_syntax(const mylite_parser *parser,
@@ -1292,6 +1306,14 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_OPEN:
+		case MYLITE_STATEMENT_FETCH:
+		case MYLITE_STATEMENT_CLOSE:
+			if (!validate_cursor_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid cursor statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_CACHE:
 			if (!validate_cache_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid CACHE statement");
@@ -1888,6 +1910,127 @@ static int validate_unlock_statement_syntax(const mylite_parser *parser, const m
 	       (token_text_equals(parser, token_index, "INSTANCE") ||
 	        parser->tokens[token_index].parser_token == TABLE_T ||
 	        token_text_equals(parser, token_index, "TABLES"));
+}
+
+static int validate_cursor_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	last_token_index = statement->last_token - 1;
+	if (cursor_statement_is_compound_label_token(parser, token_index, last_token_index)) {
+		return 1;
+	}
+
+	token_index++;
+	if (statement->kind == MYLITE_STATEMENT_FETCH) {
+		return validate_fetch_cursor_statement_syntax(parser, token_index, last_token_index);
+	}
+	return validate_open_close_cursor_statement_syntax(parser, token_index, last_token_index);
+}
+
+static int cursor_statement_is_compound_label_token(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	if (token_index + 1 <= last_token_index &&
+	    token_index + 1 < parser->token_count) {
+		size_t offset;
+
+		if (token_text_equals(parser, token_index + 1, ":")) {
+			return 1;
+		}
+		for (offset = parser->tokens[token_index].end_offset;
+		     offset < parser->tokens[token_index + 1].start_offset;
+		     offset++) {
+			if (parser->lexer.input[offset] == ':') {
+				return 1;
+			}
+		}
+	}
+	if (token_index > 0) {
+		int previous_token = parser->tokens[token_index - 1].parser_token;
+
+		return previous_token == END_LOOP_T ||
+		       previous_token == END_REPEAT_T ||
+		       previous_token == END_WHILE_T ||
+		       previous_token == LEAVE_T ||
+		       previous_token == ITERATE_T;
+	}
+	return 0;
+}
+
+static int validate_open_close_cursor_statement_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index)
+{
+	return token_index == last_token_index &&
+	       token_index < parser->token_count &&
+	       token_can_continue_object_name(&parser->tokens[token_index]);
+}
+
+static int validate_fetch_cursor_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "NEXT")) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "FROM")) {
+			return 0;
+		}
+		token_index += 2;
+	} else if (token_text_equals(parser, token_index, "FROM")) {
+		token_index++;
+	}
+
+	if (token_index + 2 > last_token_index ||
+	    !token_can_continue_object_name(&parser->tokens[token_index]) ||
+	    parser->tokens[token_index + 1].parser_token != INTO_T) {
+		return 0;
+	}
+
+	return validate_fetch_variable_list_syntax(parser, token_index + 2, last_token_index);
+}
+
+static int validate_fetch_variable_list_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!token_can_start_fetch_variable(&parser->tokens[token_index])) {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static int token_can_start_fetch_variable(const mylite_token *token)
+{
+	return token->kind == MYLITE_TOKEN_USER_VARIABLE ||
+	       token_can_start_local_variable_name(token);
 }
 
 static int validate_cache_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

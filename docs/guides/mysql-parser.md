@@ -747,7 +747,8 @@ ok statements=1 kinds=if[1:7,0:26]
 ok statements=1 kinds=begin[1:6,0:23]
 ```
 
-Cursor operations expose their cursor handle:
+Cursor operations expose their cursor handle and validate handle-only
+`OPEN` / `CLOSE` forms plus `FETCH` target-list shape:
 
 ```text
 ok statements=1 kinds=open[1:2,0:6]/cursor:c

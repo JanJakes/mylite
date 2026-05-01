@@ -493,9 +493,10 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
 - Stored-program control matching records token pairs only; it does not yet
   validate label binding, declaration ordering, cursor scope, or control-flow
   semantics.
-- Cursor metadata records the first cursor handle only, skipping documented
-  `FETCH` direction/from prefixes. It does not yet validate declaration scope,
-  result shape, fetch target lists, or cursor lifecycle.
+- Cursor metadata records the first cursor handle, validates `OPEN` and `CLOSE`
+  handle-only forms, and validates `FETCH` direction/from prefixes plus
+  nonempty target lists. It does not yet validate declaration scope, result
+  shape, target assignment, or cursor lifecycle.
 - Local variable metadata records only the first declared variable name. It does
   not expand comma-separated declaration lists, validate type/default clauses,
   or model block scope.

@@ -119,14 +119,59 @@ case "$compound_span_output" in
 		;;
 esac
 
-cursor_output=$("$parser" 'DECLARE c CURSOR FOR SELECT 1; DECLARE x INT; OPEN c; FETCH c INTO x; FETCH FROM c INTO x; FETCH NEXT FROM c INTO x; CLOSE c; CREATE TABLE cursor (id int)')
+cursor_output=$("$parser" 'DECLARE c CURSOR FOR SELECT 1; DECLARE x INT; DECLARE y INT; OPEN c; FETCH c INTO x; FETCH c INTO x, y; FETCH FROM c INTO x; FETCH NEXT FROM c INTO x; CLOSE c; CREATE TABLE cursor (id int)')
 case "$cursor_output" in
-	*"declare"*/cursor:c*"declare"*/local_variable:x*"open"*/cursor:c*"fetch"*/cursor:c*"fetch"*/cursor:c*"fetch"*/cursor:c*"close"*/cursor:c*"create"*/table:cursor*) ;;
+	*"declare"*/cursor:c*"declare"*/local_variable:x*"declare"*/local_variable:y*"open"*/cursor:c*"fetch"*/cursor:c*"fetch"*/cursor:c*"fetch"*/cursor:c*"fetch"*/cursor:c*"close"*/cursor:c*"create"*/table:cursor*) ;;
 	*)
 		echo "unexpected cursor output: $cursor_output" >&2
 		exit 1
 	;;
 esac
+
+if "$parser" --quiet 'OPEN'; then
+	echo "expected missing OPEN cursor name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'OPEN c extra'; then
+	echo "expected trailing OPEN cursor tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FETCH c'; then
+	echo "expected FETCH without INTO list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FETCH c INTO'; then
+	echo "expected FETCH without INTO target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FETCH NEXT c INTO x'; then
+	echo "expected FETCH NEXT without FROM to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FETCH FROM INTO x'; then
+	echo "expected FETCH FROM without cursor name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FETCH c INTO x,'; then
+	echo "expected trailing FETCH variable comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FETCH c INTO 1'; then
+	echo "expected numeric FETCH target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CLOSE c extra'; then
+	echo "expected trailing CLOSE cursor tokens to fail" >&2
+	exit 1
+fi
 
 declare_condition_sql=$(cat <<'SQL'
 DECLARE cond CONDITION FOR SQLSTATE '45000';

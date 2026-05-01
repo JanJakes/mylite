@@ -2110,9 +2110,18 @@ signal_information_items ::= signal_information_items import_comma signal_inform
 
 signal_information_item ::= signal_condition_item_name diagnostics_equals signal_information_value.
 
-signal_condition_item_name ::= ATOM(A). {
-  mylite_parser_require_signal_condition_item(ctx, A);
-}
+signal_condition_item_name ::= CATALOG_NAME.
+signal_condition_item_name ::= CLASS_ORIGIN.
+signal_condition_item_name ::= COLUMN_NAME.
+signal_condition_item_name ::= CONSTRAINT_CATALOG.
+signal_condition_item_name ::= CONSTRAINT_NAME.
+signal_condition_item_name ::= CONSTRAINT_SCHEMA.
+signal_condition_item_name ::= CURSOR_NAME.
+signal_condition_item_name ::= MESSAGE_TEXT.
+signal_condition_item_name ::= MYSQL_ERRNO.
+signal_condition_item_name ::= SCHEMA_NAME.
+signal_condition_item_name ::= SUBCLASS_ORIGIN.
+signal_condition_item_name ::= TABLE_NAME.
 
 signal_information_value ::= ATOM.
 signal_information_value ::= LABEL.

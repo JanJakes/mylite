@@ -51,8 +51,6 @@ void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
 void mylite_parser_require_profile_type(MyliteParseContext *ctx,
                                         MyliteToken first,
                                         MyliteToken second);
-void mylite_parser_require_signal_condition_item(MyliteParseContext *ctx,
-                                                 MyliteToken token);
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token);
 

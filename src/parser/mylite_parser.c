@@ -378,32 +378,6 @@ void mylite_parser_require_profile_type(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &first);
 }
 
-void mylite_parser_require_signal_condition_item(MyliteParseContext *ctx,
-                                                 MyliteToken token) {
-  static const char *const items[] = {
-      "CATALOG_NAME",
-      "CLASS_ORIGIN",
-      "COLUMN_NAME",
-      "CONSTRAINT_CATALOG",
-      "CONSTRAINT_NAME",
-      "CONSTRAINT_SCHEMA",
-      "CURSOR_NAME",
-      "MESSAGE_TEXT",
-      "MYSQL_ERRNO",
-      "SCHEMA_NAME",
-      "SUBCLASS_ORIGIN",
-      "TABLE_NAME",
-  };
-
-  if (ctx->failed || token_ascii_matches_any(&token, items,
-                                             sizeof(items) / sizeof(items[0]))) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {

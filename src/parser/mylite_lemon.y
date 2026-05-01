@@ -645,10 +645,16 @@ alter_event_action ::= RENAME TO cache_table_ref create_options_tail.
 alter_event_action ::= ATOM(A) create_options_tail. {
   mylite_parser_require_event_atom_action(ctx, A);
 }
-alter_event_action ::= DO required_statement_tail.
+alter_event_action ::= DO event_statement_start statement_tail.
 
-alter_event_on_tail ::= ATOM(A) required_statement_tail. {
-  mylite_parser_require_token_text_any(ctx, A, "SCHEDULE", "COMPLETION");
+alter_event_on_tail ::= ATOM(A) ATOM(B) statement_tail. {
+  mylite_parser_require_alter_event_on_tail(ctx, A, B);
+}
+
+event_statement_start ::= keyword_not_select_clause.
+event_statement_start ::= LABEL.
+event_statement_start ::= ATOM(A). {
+  mylite_parser_require_event_statement_atom(ctx, A);
 }
 
 alter_resource_group_actions ::= alter_resource_group_action create_options_tail.

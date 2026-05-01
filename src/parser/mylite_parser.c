@@ -297,6 +297,49 @@ void mylite_parser_require_event_atom_action(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
+void mylite_parser_require_alter_event_on_tail(MyliteParseContext *ctx,
+                                               MyliteToken clause,
+                                               MyliteToken first) {
+  if (ctx->failed) {
+    return;
+  }
+
+  if (token_ascii_equals(&clause, "SCHEDULE")) {
+    mylite_parser_require_event_schedule_start(ctx, first);
+    return;
+  }
+
+  if (token_ascii_equals(&clause, "COMPLETION")) {
+    mylite_parser_require_token_text_any(ctx, first, "NOT", "PRESERVE");
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &clause);
+}
+
+void mylite_parser_require_event_statement_atom(MyliteParseContext *ctx,
+                                                MyliteToken token) {
+  static const char *const starters[] = {
+      "COMMENT",
+      "DETERMINISTIC",
+      "LANGUAGE",
+      "MODIFIES",
+      "NOT",
+      "READS",
+      "SQL",
+  };
+
+  if (ctx->failed || (token.length > 0 && token.start[0] == '`') ||
+      token_ascii_matches_any(&token, starters,
+                              sizeof(starters) / sizeof(starters[0]))) {
+    return;
+  }
+
+  ctx->failed = 1;
+  format_near_token(ctx, 0, &token);
+}
+
 void mylite_parser_require_create_procedure_tail_atom(MyliteParseContext *ctx,
                                                       MyliteToken token) {
   static const char *const starters[] = {

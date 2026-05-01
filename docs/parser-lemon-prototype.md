@@ -48,7 +48,7 @@ token sink:
 - Single-table `DELETE` recognizes table aliases before optional partition
   lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails, rejecting incomplete
   DML clause tails, invalid top-level `ORDER BY` direction sequences, malformed
-  `ORDER BY` adjacent operands and dangling operators, and out-of-order
+  `WHERE`/`ORDER BY` adjacent operands and dangling operators, and out-of-order
   top-level DML clauses.
 - `VALUES` recognizes comma-separated row contents while preserving nested
   expression bodies, set operators, `ORDER BY`, and `LIMIT` tails.

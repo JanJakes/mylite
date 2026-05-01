@@ -2260,6 +2260,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   MyliteToken token;
   MyliteToken pending_token = start;
   MyliteToken values_row_last_token = start;
+  MyliteToken where_previous_top_token = start;
   MyliteToken order_previous_top_token = start;
   int token_id;
   int values_row_last_token_id = 0;
@@ -2273,6 +2274,9 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int duplicate_state = DML_DUP_NONE;
   int duplicate_strict = 0;
   int where_state = DML_WHERE_NONE;
+  int where_previous_top_token_id = 0;
+  int where_previous_was_operator = 1;
+  int where_match_list = 0;
   int order_state = DML_ORDER_NONE;
   int order_previous_top_token_id = 0;
   int order_previous_was_operator = 1;
@@ -2307,6 +2311,11 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
           order_previous_top_token_id = token_id;
           order_previous_top_token = token;
           order_previous_was_operator = 0;
+        }
+        if (depth == 0 && where_state == DML_WHERE_STARTED) {
+          where_previous_top_token_id = token_id;
+          where_previous_top_token = token;
+          where_previous_was_operator = 0;
         }
         if (depth == 0 && values_state == DML_VALUES_IN_ROW) {
           values_state = DML_VALUES_AFTER_ROW;
@@ -2635,15 +2644,55 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     }
 
     if (where_state == DML_WHERE_AFTER_WHERE) {
-      if (dml_clause_operand_boundary(token_id)) {
+      if (dml_clause_operand_boundary(token_id) || token_id == ML_COMMA) {
         mylite_parser_reject(ctx, pending_token, "incomplete DML WHERE clause");
         return;
       }
       where_state = DML_WHERE_STARTED;
-      if (token_opens_nested_expression(token_id)) {
-        depth++;
+      where_previous_top_token_id = 0;
+      where_previous_was_operator = 1;
+      where_match_list = 0;
+      where_previous_top_token = token;
+    }
+    if (where_state == DML_WHERE_STARTED) {
+      if (token_id == ML_COMMA) {
+        if (!where_match_list) {
+          mylite_parser_reject(ctx, token, "malformed DML WHERE clause");
+          return;
+        }
+        where_previous_top_token_id = 0;
+        where_previous_was_operator = 1;
+        where_previous_top_token = token;
+        continue;
       }
-      continue;
+      if (dml_clause_operand_boundary(token_id)) {
+        if (where_previous_was_operator) {
+          mylite_parser_reject(ctx, where_previous_top_token,
+                               "incomplete DML WHERE clause");
+          return;
+        }
+        where_state = DML_WHERE_NONE;
+        where_match_list = 0;
+        if (token_id == ML_SEMI) {
+          break;
+        }
+      } else if (token_closes_nested_expression(token_id)) {
+        mylite_parser_reject(ctx, token, "malformed DML WHERE clause");
+        return;
+      } else {
+        if (!query_expression_token(
+                ctx, token_id, token, &depth, &where_previous_top_token_id,
+                &where_previous_top_token, &where_previous_was_operator,
+                "malformed DML WHERE clause")) {
+          return;
+        }
+        if (token_ascii_equal(token, "match")) {
+          where_match_list = 1;
+        } else if (where_match_list && token_ascii_equal(token, "against")) {
+          where_match_list = 0;
+        }
+        continue;
+      }
     }
 
     if (order_state == DML_ORDER_AFTER_ORDER) {
@@ -2900,6 +2949,10 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
                          "incomplete INSERT SET row alias");
   } else if (where_state == DML_WHERE_AFTER_WHERE) {
     mylite_parser_reject(ctx, pending_token, "incomplete DML WHERE clause");
+  } else if (where_state == DML_WHERE_STARTED &&
+             where_previous_was_operator) {
+    mylite_parser_reject(ctx, where_previous_top_token,
+                         "incomplete DML WHERE clause");
   } else if (order_state == DML_ORDER_AFTER_ORDER ||
              order_state == DML_ORDER_AFTER_BY) {
     mylite_parser_reject(ctx, pending_token,

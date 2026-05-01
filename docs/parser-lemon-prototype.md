@@ -107,10 +107,12 @@ token sink:
   definitions, and validate table-level index key-part prefix lengths plus
   `ASC`/`DESC` tails plus table-level foreign-key child/reference column-list
   envelopes and referential-action tails. Column and table `CHECK` constraints
-  require non-empty parenthesized expression bodies, and table-level `CHECK`
-  constraints validate `ENFORCED`/`NOT ENFORCED` tails. Column definitions
-  require a known MySQL type-family start; trailing table options must start
-  with known MySQL table-option keywords, including
+  require non-empty parenthesized expression bodies, and `CHECK` constraints
+  validate `ENFORCED`/`NOT ENFORCED` tails while allowing later column
+  attributes where MySQL permits them. Column definitions require a known MySQL
+  type-family start plus common attribute starts and selected closed attribute
+  values; trailing table options must start with known MySQL table-option
+  keywords, including
   `AUTOEXTEND_SIZE` and `START TRANSACTION`, and
   no-definition and post-definition CTAS forms are recognized explicitly,
   including `IGNORE`/`REPLACE` duplicate-handling modifiers.

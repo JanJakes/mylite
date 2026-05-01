@@ -249,7 +249,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. | Parser recognizes the standalone statement. |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. | Parser recognizes the standalone statement. |
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. | Parser recognizes table/column forms using the shared identifier grammar plus EXPLAIN-synonym variants, including numeric `FOR CONNECTION` ids with optional `FORMAT` clauses and non-empty explainable statement tails. |
-| `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. | Parser recognizes table-description forms, `FORMAT=JSON INTO @var` with user-variable targets, `FOR SCHEMA`/`FOR DATABASE` schema specifiers, numeric `FOR CONNECTION` ids with optional `FORMAT` clauses, explicit `ANALYZE` statement starts, and non-empty explainable statement tails. |
+| `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. | Parser recognizes table-description forms, `FORMAT=JSON INTO @var` with user-variable targets, `FOR SCHEMA`/`FOR DATABASE` schema specifiers, numeric `FOR CONNECTION` ids with optional `FORMAT` clauses, explicit `ANALYZE` statement starts, and non-empty explainable statement tails including `TABLE`. |
 | `HELP` | ❌ | low | Server help lookup result-set semantics. | Parser recognizes string, identifier, and keyword help topics. |
 | `USE` | ❌ | top | Default schema selection in the embedded single-file model. | Parser recognizes one-part schema names using the shared identifier grammar. |
 

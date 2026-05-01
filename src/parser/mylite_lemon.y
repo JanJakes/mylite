@@ -2855,6 +2855,7 @@ explain_analyze_query_start ::= INSERT.
 explain_analyze_query_start ::= LP.
 explain_analyze_query_start ::= REPLACE.
 explain_analyze_query_start ::= SELECT.
+explain_analyze_query_start ::= TABLE.
 explain_analyze_query_start ::= UPDATE.
 explain_analyze_query_start ::= WITH.
 
@@ -2867,6 +2868,7 @@ explain_query_start ::= INSERT.
 explain_query_start ::= LP.
 explain_query_start ::= REPLACE.
 explain_query_start ::= SELECT.
+explain_query_start ::= TABLE.
 explain_query_start ::= UPDATE.
 explain_query_start ::= WITH.
 

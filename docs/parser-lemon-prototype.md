@@ -160,8 +160,8 @@ token sink:
   key/index lists, and `IGNORE LEAVES`.
 - `IMPORT TABLE` recognizes comma-separated string-literal file lists.
 - `EXPLAIN` and `DESCRIBE` recognize table-description forms, explainable
-  statement starts with non-empty tails, and numeric `FOR CONNECTION` ids with
-  optional `FORMAT` clauses.
+  statement starts including `TABLE` with non-empty tails, and numeric
+  `FOR CONNECTION` ids with optional `FORMAT` clauses.
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
 - `CHANGE REPLICATION SOURCE TO` recognizes documented MySQL 8.4 source option

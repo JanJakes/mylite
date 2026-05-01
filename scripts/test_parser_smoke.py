@@ -135,6 +135,7 @@ def main() -> int:
         ("select 1,;", 1, {}),
         ("select 1 as;", 1, {}),
         ("select 1 as from t;", 1, {}),
+        ("select 1 as +;", 1, {}),
         ("select 1 as, 2;", 1, {}),
         ("select 1 as a b;", 1, {}),
         ("select 1 into @;", 1, {}),

@@ -9208,9 +9208,18 @@ static int select_alias_token(int token_id, MyliteToken token) {
   if (token_id == ML_FROM || select_expression_clause_boundary(token_id, token)) {
     return 0;
   }
+  if (do_expression_operator(token_id, token)) {
+    return 0;
+  }
+  if (token_id == ML_ATOM) {
+    return 1;
+  }
 
-  if (dml_row_alias_token(token_id) || token_id == ML_DOUBLE_QUOTED_STRING ||
+  if (token_id == ML_QUOTED_ID || token_id == ML_DOUBLE_QUOTED_STRING ||
       token_id == ML_STRING_LITERAL) {
+    return 1;
+  }
+  if (dml_row_alias_token(token_id)) {
     return 1;
   }
 

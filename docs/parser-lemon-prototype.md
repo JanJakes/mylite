@@ -28,7 +28,9 @@ token sink:
   have explicit grammar productions.
 - Stored function signatures require empty or comma-separated input parameter
   lists, and stored procedure signatures accept `IN`/`OUT`/`INOUT` modes while
-  preserving nested type bodies.
+  preserving nested type bodies. Stored routine bodies validate direct and
+  compound `RETURN`, `DO`, `SET`, and local-variable `DECLARE` expression
+  bodies through the existing reusable validators.
 - Loadable UDF declarations and plugin installs require string-literal
   `SONAME` values.
 - `CREATE VIEW` and `ALTER VIEW` recognize algorithm, definer, SQL security,

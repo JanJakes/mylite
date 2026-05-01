@@ -221,8 +221,12 @@ create_tail ::= EVENT(A) create_if_not_exists_tail cache_table_ref create_event_
 create_tail ::= TRIGGER(A) create_if_not_exists_tail cache_table_ref create_trigger_body. {
   mylite_parser_validate_trigger_statement(ctx, A);
 }
-create_tail ::= FUNCTION create_if_not_exists_tail cache_table_ref create_function_tail.
-create_tail ::= PROCEDURE create_if_not_exists_tail cache_table_ref create_procedure_tail.
+create_tail ::= FUNCTION(A) create_if_not_exists_tail cache_table_ref create_function_tail. {
+  mylite_parser_validate_create_function_statement(ctx, A);
+}
+create_tail ::= PROCEDURE(A) create_if_not_exists_tail cache_table_ref create_procedure_tail. {
+  mylite_parser_validate_create_procedure_statement(ctx, A);
+}
 
 create_index_kind ::= UNIQUE.
 create_index_kind ::= FULLTEXT.
@@ -558,8 +562,12 @@ create_definer_object_tail ::= EVENT(A) create_if_not_exists_tail cache_table_re
 create_definer_object_tail ::= TRIGGER(A) create_if_not_exists_tail cache_table_ref create_trigger_body. {
   mylite_parser_validate_trigger_statement(ctx, A);
 }
-create_definer_object_tail ::= FUNCTION create_if_not_exists_tail cache_table_ref create_function_tail.
-create_definer_object_tail ::= PROCEDURE create_if_not_exists_tail cache_table_ref create_procedure_tail.
+create_definer_object_tail ::= FUNCTION(A) create_if_not_exists_tail cache_table_ref create_function_tail. {
+  mylite_parser_validate_create_function_statement(ctx, A);
+}
+create_definer_object_tail ::= PROCEDURE(A) create_if_not_exists_tail cache_table_ref create_procedure_tail. {
+  mylite_parser_validate_create_procedure_statement(ctx, A);
+}
 
 create_event_body ::= alter_event_schedule_clause alter_event_completion_tail alter_event_status_tail alter_event_comment_tail create_event_do event_statement_start statement_tail.
 

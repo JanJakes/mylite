@@ -96,6 +96,7 @@ token sink:
   and numeric thread-id assignment lists.
 - `START REPLICA` and legacy `START SLAVE` recognize thread, `UNTIL`,
   connection, and channel clauses with numeric log-position values.
+- `RESET BINARY LOGS AND GTIDS` recognizes optional numeric `TO` index values.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes and literal,
   shared-identifier local-variable, or user-variable targets.
 - `LOCK TABLES` recognizes table lists, aliases, and MySQL lock types using the

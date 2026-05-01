@@ -2084,7 +2084,11 @@ reset_tail ::= REPLICA reset_replica_tail.
 reset_tail ::= SLAVE reset_replica_tail.
 
 reset_binary_logs_tail ::= .
-reset_binary_logs_tail ::= TO ATOM.
+reset_binary_logs_tail ::= TO reset_binary_logs_index.
+
+reset_binary_logs_index ::= BOOLEAN_NUMBER.
+reset_binary_logs_index ::= FACTOR_NUMBER.
+reset_binary_logs_index ::= NUMBER_LITERAL.
 
 reset_gtids ::= GTIDS.
 

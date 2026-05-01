@@ -170,7 +170,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `XA RECOVER` | ❌ | low | XA recovery result-set metadata. |  |
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. |  |
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. |  |
-| `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. |  |
+| `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser recognizes optional numeric `TO` index values. |
 | `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |
 | `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. | Parser recognizes MySQL 8.4 filter names, parenthesized rule lists, empty rule lists, rewrite-db pairs, and optional channel clauses. |
 | `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. | Parser recognizes documented MySQL 8.4 source option names, legacy `CHANGE MASTER TO` option names, typed numeric/boolean option values where grammar-constrained, generic values for string/list/enum options, and channel names. |

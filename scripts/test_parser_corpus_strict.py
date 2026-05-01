@@ -45,8 +45,6 @@ EXPECTED_FRAGMENT_FAILURES = [
     # keeps accepting the legacy test row.
     34746,
     41408,
-    # Bare ALTER TABLE REORGANIZE PARTITION negative-test fragment.
-    43296,
     # Removed RESET SLAVE syntax.
     44234,
     # Removed SHOW SLAVE HOSTS syntax.

@@ -452,11 +452,11 @@
 #define ML_IMPORT                         452
 #define ML_RENAME                         453
 #define ML_TO                             454
-#define ML_CHANGE                         455
-#define ML_ANALYZE                        456
-#define ML_OPTIMIZE                       457
-#define ML_REPAIR                         458
-#define ML_TRUNCATE                       459
+#define ML_REPAIR                         455
+#define ML_TRUNCATE                       456
+#define ML_CHANGE                         457
+#define ML_ANALYZE                        458
+#define ML_OPTIMIZE                       459
 #define ML_ORDER                          460
 #define ML_INTO                           461
 #define ML_KEYS                           462

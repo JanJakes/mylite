@@ -1346,8 +1346,11 @@ alter_table_enforcement ::= NOT ENFORCED.
 alter_table_visibility ::= VISIBLE.
 alter_table_visibility ::= INVISIBLE.
 
-alter_table_partition_action ::= alter_table_partition_maintenance_kind PARTITION load_partition_names.
-alter_table_partition_action ::= COALESCE PARTITION alter_table_partition_count.
+alter_table_partition_action ::= alter_table_partition_binlog_maintenance_kind PARTITION table_admin_optional_binlog load_partition_names.
+alter_table_partition_action ::= CHECK PARTITION load_partition_names check_table_options.
+alter_table_partition_action ::= REPAIR PARTITION table_admin_optional_binlog load_partition_names repair_table_options.
+alter_table_partition_action ::= COALESCE PARTITION table_admin_optional_binlog alter_table_partition_count.
+alter_table_partition_action ::= TRUNCATE PARTITION load_partition_names.
 alter_table_partition_action ::= REMOVE PARTITIONING.
 alter_table_partition_action ::= EXCHANGE PARTITION alter_table_partition_name WITH TABLE cache_table_ref alter_table_exchange_validation_tail.
 
@@ -1403,12 +1406,9 @@ alter_table_definition_token ::= RB.
 alter_table_definition_token ::= LC.
 alter_table_definition_token ::= RC.
 
-alter_table_partition_maintenance_kind ::= ANALYZE.
-alter_table_partition_maintenance_kind ::= CHECK.
-alter_table_partition_maintenance_kind ::= OPTIMIZE.
-alter_table_partition_maintenance_kind ::= REBUILD.
-alter_table_partition_maintenance_kind ::= REPAIR.
-alter_table_partition_maintenance_kind ::= TRUNCATE.
+alter_table_partition_binlog_maintenance_kind ::= ANALYZE.
+alter_table_partition_binlog_maintenance_kind ::= OPTIMIZE.
+alter_table_partition_binlog_maintenance_kind ::= REBUILD.
 
 alter_table_exchange_validation_tail ::= .
 alter_table_exchange_validation_tail ::= WITH VALIDATION.
@@ -1502,10 +1502,10 @@ alter_table_union_tables_tail ::= alter_table_union_tables.
 alter_table_union_tables ::= cache_table_ref.
 alter_table_union_tables ::= alter_table_union_tables COMMA cache_table_ref.
 
-alter_table_reorganize_action ::= REORGANIZE PARTITION alter_table_partition_names INTO LP alter_table_reorganize_definitions RP.
-alter_table_reorganize_action ::= REORGANIZE(A) PARTITION. {
-  mylite_parser_require_permissive(ctx, A);
-}
+alter_table_reorganize_action ::= REORGANIZE PARTITION table_admin_optional_binlog alter_table_reorganize_tail.
+
+alter_table_reorganize_tail ::= .
+alter_table_reorganize_tail ::= alter_table_partition_names INTO LP alter_table_reorganize_definitions RP.
 
 alter_table_reorganize_definitions ::= create_table_definition_token.
 alter_table_reorganize_definitions ::= alter_table_reorganize_definitions create_table_definition_token.

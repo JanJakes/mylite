@@ -8109,7 +8109,7 @@ static int validate_rename_statement_syntax(const mylite_parser *parser, const m
 	if (parser->tokens[token_index].parser_token == USER_T) {
 		return validate_rename_user_statement_syntax(parser, token_index + 1, last_token_index);
 	}
-	return 1;
+	return 0;
 }
 
 static int validate_rename_table_statement_syntax(const mylite_parser *parser,

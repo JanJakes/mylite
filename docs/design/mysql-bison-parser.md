@@ -351,7 +351,8 @@ also validates partition and field/line clauses, while `LOAD XML` validates
 `ROWS IDENTIFIED BY`; file access and import execution remain later runtime
 work.
 `RENAME TABLE` validates comma-separated `old TO new` rename pairs, while the
-corpus-observed `RENAME TABLES` spelling remains accepted for parser coverage.
+corpus-observed `RENAME TABLES` spelling remains accepted for parser coverage;
+unknown `RENAME` object families are rejected.
 `DROP TABLE` and `DROP VIEW` validate optional `IF EXISTS`, comma-separated
 name lists, and `RESTRICT` / `CASCADE` tails; `DROP TABLE` also accepts
 `TEMPORARY` and corpus-observed `TABLES` forms. `DROP` now rejects unknown

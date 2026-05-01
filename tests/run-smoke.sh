@@ -1583,6 +1583,11 @@ if "$parser" --quiet 'RENAME'; then
 	exit 1
 fi
 
+if "$parser" --quiet 'RENAME FOO'; then
+	echo "expected unknown RENAME object type to fail" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'RENAME TABLE'; then
 	echo "expected missing RENAME TABLE pair to fail" >&2
 	exit 1

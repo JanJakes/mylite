@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER AS BACKUP BEFORE BUCKETS COLLATE CONSISTENT DATAFILE DISABLE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN GROUP HISTOGRAM INACTIVE INFILE INNODB INVOKER KEYRING LEAVES ONLY OPTIONS PARTITION PRECEDES REDO_LOG REFERENCE RELOAD RETURNS ROTATE SCHEDULE SNAPSHOT SONAME SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER AS BACKUP BEFORE BUCKETS CHANNEL COLLATE CONSISTENT DATAFILE DISABLE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EXISTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN GROUP GTIDS HISTOGRAM INACTIVE INFILE INNODB INVOKER KEYRING LEAVES ONLY OPTIONS PARTITION PRECEDES REDO_LOG REFERENCE RELOAD RETURNS ROTATE SCHEDULE SNAPSHOT SONAME SOURCE SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -838,15 +838,12 @@ start_thread_type ::= SQL_THREAD.
 start_until_tail ::= .
 start_until_tail ::= UNTIL start_until_spec.
 
-start_until_spec ::= ATOM(A) start_option_equals ATOM. {
-  mylite_parser_require_token_text_any(ctx, A, "SQL_BEFORE_GTIDS", "SQL_AFTER_GTIDS");
-}
+start_until_spec ::= SQL_BEFORE_GTIDS start_option_equals ATOM.
+start_until_spec ::= SQL_AFTER_GTIDS start_option_equals ATOM.
 start_until_spec ::= ATOM(A) start_option_equals ATOM import_comma ATOM(B) start_option_equals ATOM. {
   mylite_parser_require_start_until_log_pair(ctx, A, B);
 }
-start_until_spec ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "SQL_AFTER_MTS_GAPS");
-}
+start_until_spec ::= SQL_AFTER_MTS_GAPS.
 
 start_connection_tail ::= start_user_option start_password_option start_default_auth_option start_plugin_dir_option.
 
@@ -1169,17 +1166,13 @@ reset_tail ::= SLAVE reset_replica_tail.
 reset_binary_logs_tail ::= .
 reset_binary_logs_tail ::= TO ATOM.
 
-reset_gtids ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "GTIDS");
-}
+reset_gtids ::= GTIDS.
 
 reset_persist_tail ::= .
 reset_persist_tail ::= reset_persist_target.
 reset_persist_tail ::= IF reset_exists reset_persist_target.
 
-reset_exists ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "EXISTS");
-}
+reset_exists ::= EXISTS.
 
 reset_persist_target ::= reset_persist_name.
 reset_persist_target ::= reset_persist_name DOT reset_persist_name.
@@ -1195,9 +1188,7 @@ reset_replica_tail ::= ALL reset_channel_tail.
 
 reset_channel_tail ::= FOR reset_channel reset_channel_name.
 
-reset_channel ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "CHANNEL");
-}
+reset_channel ::= CHANNEL.
 
 reset_channel_name ::= ATOM.
 reset_channel_name ::= LABEL.
@@ -1209,9 +1200,7 @@ purge_statement ::= PURGE purge_log_kind LOGS purge_tail. {
 purge_tail ::= TO purge_log_name.
 purge_tail ::= purge_before expression_start statement_tail.
 
-purge_before ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "BEFORE");
-}
+purge_before ::= BEFORE.
 
 purge_log_kind ::= BINARY.
 purge_log_kind ::= MASTER.
@@ -1226,9 +1215,7 @@ change_statement ::= CHANGE change_tail. {
 change_tail ::= MASTER TO change_options change_for_channel_tail.
 change_tail ::= REPLICATION change_replication_source TO change_options change_for_channel_tail.
 
-change_replication_source ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "SOURCE");
-}
+change_replication_source ::= SOURCE.
 
 change_options ::= change_option.
 change_options ::= change_options import_comma change_option.

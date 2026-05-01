@@ -318,6 +318,7 @@ def main() -> int:
         ("start replica;", 0, {"statements": "1", "transaction": "1"}),
         ("start replica io_thread, sql_thread for channel 'ch1';", 0, {"statements": "1", "transaction": "1"}),
         ("start replica until source_log_file = 'bin.000001', source_log_pos = 4;", 0, {"statements": "1", "transaction": "1"}),
+        ("start replica until sql_before_gtids = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1';", 0, {"statements": "1", "transaction": "1"}),
         ("start slave until sql_after_mts_gaps;", 0, {"statements": "1", "transaction": "1"}),
         ("start replica user = 'u' password = 'p' default_auth = 'mysql_native_password' plugin_dir = '/tmp' for channel 'ch1';", 0, {"statements": "1", "transaction": "1"}),
         ("start group_replication;", 0, {"statements": "1", "transaction": "1"}),

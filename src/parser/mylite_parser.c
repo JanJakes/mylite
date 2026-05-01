@@ -127,6 +127,7 @@ static int validate_create_table_index_key_list(MyliteParseContext *ctx,
                                                 MyliteLexer *lexer,
                                                 MyliteToken start);
 static int create_index_prefix_length_token(int token_id);
+static int index_using_type_token(MyliteToken token);
 static int alter_table_add_index_marker(int token_id);
 static int alter_table_add_non_index_marker(int token_id);
 static int event_interval_unit_token(MyliteToken token);
@@ -2527,6 +2528,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       COLUMN_DEFINITION_TAIL_READY;
   int element_start = 0;
   int constraint_prefix = 0;
+  int index_using_pending = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -2851,6 +2853,11 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
                              "incomplete CREATE TABLE index key part");
         return;
       }
+      if (index_using_pending) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete CREATE TABLE index USING");
+        return;
+      }
       if (column_in_definition &&
           !column_definition_tail_complete(column_tail_state)) {
         mylite_parser_reject(ctx, pending_token,
@@ -2865,6 +2872,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       column_needs_type = 0;
       column_in_definition = 0;
       column_tail_state = COLUMN_DEFINITION_TAIL_READY;
+      index_using_pending = 0;
       continue;
     }
 
@@ -2914,6 +2922,16 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       continue;
     }
 
+    if (index_using_pending) {
+      if (!index_using_type_token(token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "invalid CREATE TABLE index USING");
+        return;
+      }
+      index_using_pending = 0;
+      continue;
+    }
+
     if (!element_start && constraint_prefix == 0 && !index_candidate) {
       continue;
     }
@@ -2949,6 +2967,12 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
     if (element_start && alter_table_add_index_marker(token_id)) {
       index_candidate = 1;
       element_start = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (index_candidate && (token_id == ML_USING || token_id == ML_TYPE)) {
+      index_using_pending = 1;
       pending_token = token;
       continue;
     }
@@ -2991,6 +3015,9 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
   } else if (index_candidate) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE TABLE index key part");
+  } else if (index_using_pending) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete CREATE TABLE index USING");
   }
 }
 
@@ -3013,6 +3040,9 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
   int saw_statement = 0;
   int saw_on = 0;
   int in_key_list = 0;
+  int key_list_done = 0;
+  int create_index_name_seen = 0;
+  int index_using_pending = 0;
   int depth = 0;
   int key_state = INDEX_KEY_NEED_PART;
 
@@ -3028,6 +3058,24 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
     }
 
     if (!saw_on) {
+      if (!create_index_name_seen) {
+        create_index_name_seen = 1;
+        continue;
+      }
+      if (index_using_pending) {
+        if (!index_using_type_token(token)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "invalid CREATE INDEX USING");
+          return;
+        }
+        index_using_pending = 0;
+        continue;
+      }
+      if (token_id == ML_USING || token_id == ML_TYPE) {
+        index_using_pending = 1;
+        pending_token = token;
+        continue;
+      }
       if (token_id == ML_ON) {
         saw_on = 1;
       }
@@ -3038,6 +3086,26 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
     }
 
     if (!in_key_list) {
+      if (key_list_done) {
+        if (index_using_pending) {
+          if (!index_using_type_token(token)) {
+            mylite_parser_reject(ctx, pending_token,
+                                 "invalid CREATE INDEX USING");
+            return;
+          }
+          index_using_pending = 0;
+          continue;
+        }
+        if (token_id == ML_USING || token_id == ML_TYPE) {
+          index_using_pending = 1;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_SEMI) {
+          break;
+        }
+        continue;
+      }
       if (token_id == ML_LP) {
         in_key_list = 1;
         depth = 1;
@@ -3103,8 +3171,11 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
           key_state == INDEX_KEY_IN_FUNCTION) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete CREATE INDEX key part");
+        return;
       }
-      return;
+      in_key_list = 0;
+      key_list_done = 1;
+      continue;
     }
 
     if (token_id == ML_COMMA) {
@@ -3158,6 +3229,9 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
   if (in_key_list) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE INDEX key part");
+  } else if (index_using_pending) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete CREATE INDEX USING");
   }
 }
 
@@ -3223,6 +3297,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   ColumnDefinitionTailState column_tail_state =
       COLUMN_DEFINITION_TAIL_READY;
   int validate_key_list = 0;
+  int index_using_pending = 0;
   int depth = 0;
   int key_state = ALTER_INDEX_KEY_NEED_PART;
 
@@ -3622,6 +3697,11 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
                              "incomplete ALTER TABLE column definition");
         return;
       }
+      if (index_using_pending) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete ALTER TABLE index USING");
+        return;
+      }
       add_scan = 0;
       add_index_candidate = 0;
       add_foreign_state = ALTER_FK_NONE;
@@ -3634,6 +3714,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       alter_column_state = ALTER_COLUMN_NONE;
       alter_column_optional_keyword = 0;
       column_tail_state = COLUMN_DEFINITION_TAIL_READY;
+      index_using_pending = 0;
       continue;
     }
 
@@ -3769,6 +3850,16 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       continue;
     }
 
+    if (add_index_candidate && index_using_pending) {
+      if (!index_using_type_token(token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "invalid ALTER TABLE index USING");
+        return;
+      }
+      index_using_pending = 0;
+      continue;
+    }
+
     if (token_id == ML_CONSTRAINT) {
       add_constraint_prefix = 1;
       pending_token = token;
@@ -3834,6 +3925,13 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       continue;
     }
 
+    if (add_index_candidate &&
+        (token_id == ML_USING || token_id == ML_TYPE)) {
+      index_using_pending = 1;
+      pending_token = token;
+      continue;
+    }
+
     if (!add_index_candidate && token_id != ML_LP) {
       add_column_type_pending =
           create_table_column_name_needs_type_check(token_id, token);
@@ -3879,6 +3977,9 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   } else if (validate_key_list) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE index key part");
+  } else if (index_using_pending) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete ALTER TABLE index USING");
   }
 }
 
@@ -5262,6 +5363,11 @@ static int validate_create_table_index_key_list(MyliteParseContext *ctx,
 static int create_index_prefix_length_token(int token_id) {
   return token_id == ML_BOOLEAN_NUMBER || token_id == ML_FACTOR_NUMBER ||
          token_id == ML_NUMBER_LITERAL;
+}
+
+static int index_using_type_token(MyliteToken token) {
+  return token_ascii_equal(token, "btree") || token_ascii_equal(token, "hash") ||
+         token_ascii_equal(token, "rtree");
 }
 
 static int alter_table_add_index_marker(int token_id) {

@@ -100,13 +100,15 @@ token sink:
   `IGNORE UNKNOWN USER`.
 - `CREATE INDEX` recognizes non-empty functional/key-part lists and standalone
   index options including parser plugins, string-literal comments, visibility,
-  string-literal attributes, numeric `KEY_BLOCK_SIZE`, `ALGORITHM`, and `LOCK`,
+  string-literal attributes, numeric `KEY_BLOCK_SIZE`, closed `USING`/`TYPE`
+  values, `ALGORITHM`, and `LOCK`,
   while validating standalone key-part prefix lengths and `ASC`/`DESC` tails.
 - `CREATE TABLE` table-definition bodies require non-empty comma-separated
   elements while preserving nested token bodies for column and constraint
   definitions, and validate table-level index key-part prefix lengths plus
-  `ASC`/`DESC` tails plus table-level foreign-key child/reference column-list
-  envelopes and referential-action tails. Column and table `CHECK` constraints
+  `ASC`/`DESC` tails and closed `USING`/`TYPE` values plus table-level
+  foreign-key child/reference column-list envelopes and referential-action
+  tails. Column and table `CHECK` constraints
   require non-empty parenthesized expression bodies, and `CHECK` constraints
   validate `ENFORCED`/`NOT ENFORCED` tails while allowing later column
   attributes where MySQL permits them. Column definitions require a known MySQL
@@ -154,10 +156,10 @@ token sink:
   `ALGORITHM`/`LOCK` options, tablespace discard/import forms, and validated
   `ADD`/`CHANGE`/`MODIFY` column type starts plus column-definition attribute
   starts and selected closed attribute values, index key-part prefix lengths,
-  and `ASC`/`DESC` tails. `ADD FOREIGN KEY` child/reference column-list
-  envelopes and referential-action tails are also validated, and `ADD CHECK`
-  requires a
-  non-empty parenthesized expression body plus a valid
+  `ASC`/`DESC` tails, and closed index `USING`/`TYPE` values. `ADD FOREIGN
+  KEY` child/reference column-list envelopes and referential-action tails are
+  also validated, and `ADD CHECK` requires a non-empty parenthesized expression
+  body plus a valid
   `ENFORCED`/`NOT ENFORCED` tail when present.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;
   `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body.

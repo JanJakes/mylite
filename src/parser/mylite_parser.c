@@ -2984,6 +2984,7 @@ void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token = start;
+  MyliteToken where_previous_top_token = start;
   int token_id;
   int saw_statement = 0;
   int saw_read = 0;
@@ -2991,6 +2992,9 @@ void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
   int seen_where = 0;
   int seen_limit = 0;
   int where_state = HANDLER_WHERE_NONE;
+  int where_previous_top_token_id = 0;
+  int where_previous_was_operator = 1;
+  int where_match_list = 0;
   int limit_state = HANDLER_LIMIT_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
@@ -3008,6 +3012,11 @@ void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
         depth++;
       } else if (token_closes_nested_expression(token_id)) {
         depth--;
+        if (depth == 0 && where_state == HANDLER_WHERE_STARTED) {
+          where_previous_top_token_id = token_id;
+          where_previous_top_token = token;
+          where_previous_was_operator = 0;
+        }
       }
       continue;
     }
@@ -3024,19 +3033,31 @@ void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
 
     if (where_state == HANDLER_WHERE_AFTER_WHERE) {
       if (token_id == ML_LIMIT || token_id == ML_ORDER ||
-          token_id == ML_SEMI || token_id == ML_WHERE) {
+          token_id == ML_SEMI || token_id == ML_WHERE ||
+          token_id == ML_COMMA) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete HANDLER WHERE clause");
         return;
       }
       where_state = HANDLER_WHERE_STARTED;
-      if (token_opens_nested_expression(token_id)) {
-        depth++;
-      }
-      continue;
+      where_previous_top_token_id = 0;
+      where_previous_was_operator = 1;
+      where_match_list = 0;
+      where_previous_top_token = token;
     }
 
     if (where_state == HANDLER_WHERE_STARTED) {
+      if (token_id == ML_COMMA) {
+        if (!where_match_list) {
+          mylite_parser_reject(ctx, token,
+                               "malformed HANDLER WHERE clause");
+          return;
+        }
+        where_previous_top_token_id = 0;
+        where_previous_was_operator = 1;
+        where_previous_top_token = token;
+        continue;
+      }
       if (token_id == ML_ORDER || token_id == ML_WHERE) {
         mylite_parser_reject(ctx, token,
                              "malformed HANDLER READ clause");
@@ -3048,17 +3069,40 @@ void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
                                "malformed HANDLER READ clause");
           return;
         }
+        if (where_previous_was_operator) {
+          mylite_parser_reject(ctx, where_previous_top_token,
+                               "incomplete HANDLER WHERE clause");
+          return;
+        }
         seen_limit = 1;
         where_state = HANDLER_WHERE_NONE;
+        where_match_list = 0;
         limit_state = HANDLER_LIMIT_AFTER_LIMIT;
         pending_token = token;
         continue;
       }
       if (token_id == ML_SEMI) {
+        if (where_previous_was_operator) {
+          mylite_parser_reject(ctx, where_previous_top_token,
+                               "incomplete HANDLER WHERE clause");
+          return;
+        }
         break;
       }
-      if (token_opens_nested_expression(token_id)) {
-        depth++;
+      if (token_closes_nested_expression(token_id)) {
+        mylite_parser_reject(ctx, token, "malformed HANDLER WHERE clause");
+        return;
+      }
+      if (!query_expression_token(
+              ctx, token_id, token, &depth, &where_previous_top_token_id,
+              &where_previous_top_token, &where_previous_was_operator,
+              "malformed HANDLER WHERE clause")) {
+        return;
+      }
+      if (token_ascii_equal(token, "match")) {
+        where_match_list = 1;
+      } else if (where_match_list && token_ascii_equal(token, "against")) {
+        where_match_list = 0;
       }
       continue;
     }
@@ -3140,6 +3184,10 @@ void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
 
   if (where_state == HANDLER_WHERE_AFTER_WHERE) {
     mylite_parser_reject(ctx, pending_token,
+                         "incomplete HANDLER WHERE clause");
+  } else if (where_state == HANDLER_WHERE_STARTED &&
+             where_previous_was_operator) {
+    mylite_parser_reject(ctx, where_previous_top_token,
                          "incomplete HANDLER WHERE clause");
   } else if (limit_state == HANDLER_LIMIT_AFTER_LIMIT ||
              limit_state == HANDLER_LIMIT_AFTER_COMMA ||

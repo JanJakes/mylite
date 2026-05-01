@@ -149,7 +149,8 @@ token sink:
   directories, string-literal compression/password/connection/engine
   attributes, `AUTOEXTEND_SIZE`, `TABLE_CHECKSUM`, `START TRANSACTION`,
   `ALGORITHM`/`LOCK` options, tablespace discard/import forms, and validated
-  `ADD`/`CHANGE`/`MODIFY` column type starts, index key-part prefix lengths,
+  `ADD`/`CHANGE`/`MODIFY` column type starts plus column-definition attribute
+  starts and selected closed attribute values, index key-part prefix lengths,
   and `ASC`/`DESC` tails. `ADD FOREIGN KEY` child/reference column-list
   envelopes and referential-action tails are also validated, and `ADD CHECK`
   requires a

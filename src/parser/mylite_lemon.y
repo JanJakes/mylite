@@ -3498,7 +3498,10 @@ with_query_body ::= UPDATE update_tail.
 with_query_body ::= query_parenthesized_body.
 
 table_statement ::= TABLE table_statement_target table_query_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  mylite_parser_validate_select_statement(ctx);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  }
 }
 
 table_statement_target ::= cache_table_ref.

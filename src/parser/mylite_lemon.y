@@ -713,10 +713,14 @@ account_tls_option ::= SUBJECT user_option_value.
 account_resource_options ::= account_resource_option.
 account_resource_options ::= account_resource_options account_resource_option.
 
-account_resource_option ::= MAX_QUERIES_PER_HOUR user_option_value.
-account_resource_option ::= MAX_UPDATES_PER_HOUR user_option_value.
-account_resource_option ::= MAX_CONNECTIONS_PER_HOUR user_option_value.
-account_resource_option ::= MAX_USER_CONNECTIONS user_option_value.
+account_resource_option ::= MAX_QUERIES_PER_HOUR account_resource_count.
+account_resource_option ::= MAX_UPDATES_PER_HOUR account_resource_count.
+account_resource_option ::= MAX_CONNECTIONS_PER_HOUR account_resource_count.
+account_resource_option ::= MAX_USER_CONNECTIONS account_resource_count.
+
+account_resource_count ::= BOOLEAN_NUMBER.
+account_resource_count ::= FACTOR_NUMBER.
+account_resource_count ::= NUMBER_LITERAL.
 
 account_password_option ::= PASSWORD EXPIRE.
 account_password_option ::= PASSWORD EXPIRE DEFAULT.

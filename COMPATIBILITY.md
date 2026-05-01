@@ -73,7 +73,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. |  |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. |  |
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. |  |
-| `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. |  |
+| `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser recognizes rename, option assignment, `ADD DATAFILE`, and `DROP DATAFILE` actions. |
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. |  |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |
 | `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. |  |

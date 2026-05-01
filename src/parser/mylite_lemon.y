@@ -719,6 +719,8 @@ alter_resource_group_action ::= THREAD_PRIORITY.
 alter_resource_group_action ::= VCPU.
 
 alter_tablespace_action ::= RENAME TO cache_name_part.
+alter_tablespace_action ::= ADD create_datafile ATOM create_options_tail.
+alter_tablespace_action ::= DROP create_datafile ATOM create_options_tail.
 alter_tablespace_action ::= alter_tablespace_option_name diagnostics_equals alter_tablespace_option_value.
 
 alter_tablespace_option_name ::= ATOM.

@@ -217,6 +217,8 @@ def main() -> int:
         ("alter server s options (user 'sally');", 0, {"statements": "1", "ddl": "1"}),
         ("alter server s options (host '127.0.0.1', database 'test');", 0, {"statements": "1", "ddl": "1"}),
         ("alter tablespace ts rename to ts2;", 0, {"statements": "1", "ddl": "1"}),
+        ("alter tablespace ts add datafile 'x.dat' engine ndb;", 0, {"statements": "1", "ddl": "1"}),
+        ("alter tablespace ts drop datafile 'x.dat' engine ndb;", 0, {"statements": "1", "ddl": "1"}),
         ("alter tablespace ts encryption='N';", 0, {"statements": "1", "ddl": "1"}),
         ("alter undo tablespace u set inactive engine innodb;", 0, {"statements": "1", "ddl": "1"}),
         ("alter view db1.v1 as select 1;", 0, {"statements": "1", "ddl": "1"}),

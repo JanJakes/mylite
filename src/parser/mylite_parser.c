@@ -186,24 +186,6 @@ void mylite_parser_require_token_text_any(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
-void mylite_parser_require_create_view_algorithm(MyliteParseContext *ctx,
-                                                 MyliteToken token) {
-  static const char *const algorithms[] = {
-      "MERGE",
-      "TEMPTABLE",
-      "UNDEFINED",
-  };
-
-  if (ctx->failed ||
-      token_ascii_matches_any(&token, algorithms,
-                              sizeof(algorithms) / sizeof(algorithms[0]))) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
 void mylite_parser_require_udf_return_type(MyliteParseContext *ctx,
                                            MyliteToken token) {
   static const char *const types[] = {

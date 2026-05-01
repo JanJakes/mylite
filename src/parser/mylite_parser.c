@@ -8,6 +8,14 @@
 #include "mylite_parser_internal.h"
 #include "generated/mylite_lemon.h"
 
+typedef enum DmlAssignmentMode {
+  DML_ASSIGNMENT_NONE = 0,
+  DML_ASSIGNMENT_UPDATE,
+  DML_ASSIGNMENT_INSERT_SET,
+  DML_ASSIGNMENT_REPLACE_SET,
+  DML_ASSIGNMENT_DUPLICATE
+} DmlAssignmentMode;
+
 static void result_init(MyliteParseResult *result);
 static MyliteParseStatus parse_sql(const char *sql, size_t length,
                                    int permissive,
@@ -44,6 +52,13 @@ static int select_tablesample_percentage_token(int token_id);
 static int select_charset_name_token(int token_id, MyliteToken token);
 static int select_limit_option_token(int token_id);
 static int select_string_literal_token(int token_id);
+static int dml_assignment_boundary(int mode, int token_id);
+static int dml_assignment_operator(int token_id);
+static int dml_assignment_target_token(int token_id);
+static int dml_clause_operand_boundary(int token_id);
+static int dml_limit_option_token(int token_id);
+static int token_opens_nested_expression(int token_id);
+static int token_closes_nested_expression(int token_id);
 static int token_ascii_equal(MyliteToken token, const char *expected);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
@@ -1374,6 +1389,376 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   }
 }
 
+void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
+                                          MyliteToken start,
+                                          MyliteStatementKind kind) {
+  enum {
+    DML_ASSIGN_NONE,
+    DML_ASSIGN_TARGET,
+    DML_ASSIGN_AFTER_TARGET,
+    DML_ASSIGN_AFTER_DOT,
+    DML_ASSIGN_VALUE
+  };
+  enum {
+    DML_DUP_NONE,
+    DML_DUP_AFTER_ON,
+    DML_DUP_AFTER_DUPLICATE,
+    DML_DUP_AFTER_KEY
+  };
+  enum {
+    DML_WHERE_NONE,
+    DML_WHERE_AFTER_WHERE,
+    DML_WHERE_STARTED
+  };
+  enum {
+    DML_ORDER_NONE,
+    DML_ORDER_AFTER_ORDER,
+    DML_ORDER_AFTER_BY,
+    DML_ORDER_STARTED,
+    DML_ORDER_AFTER_DIRECTION
+  };
+  enum {
+    DML_LIMIT_NONE,
+    DML_LIMIT_AFTER_LIMIT,
+    DML_LIMIT_AFTER_VALUE
+  };
+  enum {
+    DML_PAYLOAD_NONE,
+    DML_PAYLOAD_SET,
+    DML_PAYLOAD_VALUES,
+    DML_PAYLOAD_QUERY
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int depth = 0;
+  int assignment_state = DML_ASSIGN_NONE;
+  int assignment_mode = DML_ASSIGNMENT_NONE;
+  int assignment_value_started = 0;
+  int duplicate_state = DML_DUP_NONE;
+  int duplicate_strict = 0;
+  int where_state = DML_WHERE_NONE;
+  int order_state = DML_ORDER_NONE;
+  int limit_state = DML_LIMIT_NONE;
+  int payload_kind = DML_PAYLOAD_NONE;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      } else {
+        continue;
+      }
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (assignment_state != DML_ASSIGN_NONE) {
+      int boundary = dml_assignment_boundary(assignment_mode, token_id);
+      if (token_id == ML_SEMI || boundary) {
+        if (assignment_state != DML_ASSIGN_VALUE ||
+            !assignment_value_started) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete DML assignment");
+          return;
+        }
+        assignment_state = DML_ASSIGN_NONE;
+        assignment_mode = DML_ASSIGNMENT_NONE;
+        assignment_value_started = 0;
+        if (token_id == ML_SEMI) {
+          break;
+        }
+      } else if (token_id == ML_COMMA) {
+        if (assignment_state != DML_ASSIGN_VALUE ||
+            !assignment_value_started) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete DML assignment");
+          return;
+        }
+        assignment_state = DML_ASSIGN_TARGET;
+        assignment_value_started = 0;
+        pending_token = token;
+        continue;
+      } else if (assignment_state == DML_ASSIGN_TARGET) {
+        if (!dml_assignment_target_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete DML assignment");
+          return;
+        }
+        assignment_state = DML_ASSIGN_AFTER_TARGET;
+        continue;
+      } else if (assignment_state == DML_ASSIGN_AFTER_TARGET) {
+        if (token_id == ML_DOT) {
+          assignment_state = DML_ASSIGN_AFTER_DOT;
+          pending_token = token;
+          continue;
+        }
+        if (!dml_assignment_operator(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete DML assignment");
+          return;
+        }
+        assignment_state = DML_ASSIGN_VALUE;
+        assignment_value_started = 0;
+        pending_token = token;
+        continue;
+      } else if (assignment_state == DML_ASSIGN_AFTER_DOT) {
+        if (!dml_assignment_target_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete DML assignment");
+          return;
+        }
+        assignment_state = DML_ASSIGN_AFTER_TARGET;
+        continue;
+      } else if (assignment_state == DML_ASSIGN_VALUE) {
+        if (dml_clause_operand_boundary(token_id) ||
+            token_id == ML_COMMA || token_id == ML_SEMI) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete DML assignment");
+          return;
+        }
+        assignment_value_started = 1;
+        if (token_opens_nested_expression(token_id)) {
+          depth++;
+        }
+        continue;
+      }
+    }
+
+    if (duplicate_state == DML_DUP_AFTER_ON) {
+      if (token_id != ML_DUPLICATE) {
+        if (duplicate_strict) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete INSERT duplicate key clause");
+          return;
+        }
+        duplicate_state = DML_DUP_NONE;
+        continue;
+      }
+      duplicate_state = DML_DUP_AFTER_DUPLICATE;
+      continue;
+    }
+    if (duplicate_state == DML_DUP_AFTER_DUPLICATE) {
+      if (token_id != ML_KEY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete INSERT duplicate key clause");
+        return;
+      }
+      duplicate_state = DML_DUP_AFTER_KEY;
+      continue;
+    }
+    if (duplicate_state == DML_DUP_AFTER_KEY) {
+      if (token_id != ML_UPDATE) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete INSERT duplicate key clause");
+        return;
+      }
+      duplicate_state = DML_DUP_NONE;
+      assignment_state = DML_ASSIGN_TARGET;
+      assignment_mode = DML_ASSIGNMENT_DUPLICATE;
+      assignment_value_started = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (where_state == DML_WHERE_AFTER_WHERE) {
+      if (dml_clause_operand_boundary(token_id)) {
+        mylite_parser_reject(ctx, pending_token, "incomplete DML WHERE clause");
+        return;
+      }
+      where_state = DML_WHERE_STARTED;
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      }
+      continue;
+    }
+
+    if (order_state == DML_ORDER_AFTER_ORDER) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete DML ORDER BY clause");
+        return;
+      }
+      order_state = DML_ORDER_AFTER_BY;
+      pending_token = token;
+      continue;
+    }
+    if (order_state == DML_ORDER_AFTER_BY) {
+      if (token_id == ML_COMMA || dml_clause_operand_boundary(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete DML ORDER BY clause");
+        return;
+      }
+      order_state = DML_ORDER_STARTED;
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      }
+      continue;
+    }
+    if (order_state == DML_ORDER_STARTED) {
+      if (token_id == ML_COMMA) {
+        order_state = DML_ORDER_AFTER_BY;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_ASC || token_id == ML_DESC) {
+        order_state = DML_ORDER_AFTER_DIRECTION;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LIMIT) {
+        order_state = DML_ORDER_NONE;
+      } else if (token_id == ML_SEMI) {
+        break;
+      } else {
+        if (token_opens_nested_expression(token_id)) {
+          depth++;
+        }
+        continue;
+      }
+    }
+    if (order_state == DML_ORDER_AFTER_DIRECTION) {
+      if (token_id == ML_COMMA) {
+        order_state = DML_ORDER_AFTER_BY;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LIMIT) {
+        order_state = DML_ORDER_NONE;
+      } else if (token_id == ML_SEMI) {
+        break;
+      } else {
+        mylite_parser_reject(ctx, pending_token,
+                             "malformed DML ORDER BY direction");
+        return;
+      }
+    }
+
+    if (limit_state == DML_LIMIT_AFTER_LIMIT) {
+      if (!dml_limit_option_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete DML LIMIT clause");
+        return;
+      }
+      limit_state = DML_LIMIT_AFTER_VALUE;
+      continue;
+    }
+    if (limit_state == DML_LIMIT_AFTER_VALUE) {
+      if (token_id == ML_SEMI) {
+        break;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "malformed DML LIMIT clause");
+      return;
+    }
+
+    if (token_id == ML_SEMI) {
+      break;
+    }
+
+    if (kind == MYLITE_STATEMENT_UPDATE && token_id == ML_SET) {
+      assignment_state = DML_ASSIGN_TARGET;
+      assignment_mode = DML_ASSIGNMENT_UPDATE;
+      assignment_value_started = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if ((kind == MYLITE_STATEMENT_INSERT ||
+         kind == MYLITE_STATEMENT_REPLACE) &&
+        payload_kind == DML_PAYLOAD_NONE && token_id == ML_SET) {
+      payload_kind = DML_PAYLOAD_SET;
+      assignment_state = DML_ASSIGN_TARGET;
+      assignment_mode = kind == MYLITE_STATEMENT_INSERT
+                            ? DML_ASSIGNMENT_INSERT_SET
+                            : DML_ASSIGNMENT_REPLACE_SET;
+      assignment_value_started = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (kind == MYLITE_STATEMENT_INSERT && token_id == ML_ON) {
+      duplicate_state = DML_DUP_AFTER_ON;
+      duplicate_strict = payload_kind != DML_PAYLOAD_QUERY;
+      pending_token = token;
+      continue;
+    }
+
+    if ((kind == MYLITE_STATEMENT_INSERT ||
+         kind == MYLITE_STATEMENT_REPLACE) &&
+        payload_kind == DML_PAYLOAD_NONE &&
+        (token_id == ML_VALUE || token_id == ML_VALUES)) {
+      payload_kind = DML_PAYLOAD_VALUES;
+      continue;
+    }
+
+    if ((kind == MYLITE_STATEMENT_INSERT ||
+         kind == MYLITE_STATEMENT_REPLACE) &&
+        payload_kind == DML_PAYLOAD_NONE &&
+        (token_id == ML_SELECT || token_id == ML_TABLE ||
+         token_id == ML_WITH)) {
+      payload_kind = DML_PAYLOAD_QUERY;
+      continue;
+    }
+
+    if ((kind == MYLITE_STATEMENT_UPDATE ||
+         kind == MYLITE_STATEMENT_DELETE) &&
+        token_id == ML_WHERE) {
+      where_state = DML_WHERE_AFTER_WHERE;
+      pending_token = token;
+      continue;
+    }
+
+    if ((kind == MYLITE_STATEMENT_UPDATE ||
+         kind == MYLITE_STATEMENT_DELETE) &&
+        token_id == ML_ORDER) {
+      order_state = DML_ORDER_AFTER_ORDER;
+      pending_token = token;
+      continue;
+    }
+
+    if ((kind == MYLITE_STATEMENT_UPDATE ||
+         kind == MYLITE_STATEMENT_DELETE) &&
+        token_id == ML_LIMIT) {
+      limit_state = DML_LIMIT_AFTER_LIMIT;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      depth++;
+    }
+  }
+
+  if (assignment_state != DML_ASSIGN_NONE) {
+    if (assignment_state == DML_ASSIGN_VALUE && assignment_value_started) {
+      return;
+    }
+    mylite_parser_reject(ctx, pending_token, "incomplete DML assignment");
+  } else if (duplicate_state != DML_DUP_NONE) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete INSERT duplicate key clause");
+  } else if (where_state == DML_WHERE_AFTER_WHERE) {
+    mylite_parser_reject(ctx, pending_token, "incomplete DML WHERE clause");
+  } else if (order_state == DML_ORDER_AFTER_ORDER ||
+             order_state == DML_ORDER_AFTER_BY) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete DML ORDER BY clause");
+  } else if (limit_state == DML_LIMIT_AFTER_LIMIT) {
+    mylite_parser_reject(ctx, pending_token, "incomplete DML LIMIT clause");
+  }
+}
+
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {
@@ -1587,6 +1972,51 @@ static int select_limit_option_token(int token_id) {
 
 static int select_string_literal_token(int token_id) {
   return token_id == ML_DOUBLE_QUOTED_STRING || token_id == ML_STRING_LITERAL;
+}
+
+static int dml_assignment_boundary(int mode, int token_id) {
+  if (mode == DML_ASSIGNMENT_UPDATE) {
+    return token_id == ML_LIMIT || token_id == ML_ORDER || token_id == ML_WHERE;
+  }
+  if (mode == DML_ASSIGNMENT_INSERT_SET) {
+    return token_id == ML_ON;
+  }
+
+  return 0;
+}
+
+static int dml_assignment_operator(int token_id) {
+  return token_id == ML_ASSIGN || token_id == ML_EQUALS;
+}
+
+static int dml_assignment_target_token(int token_id) {
+  return token_id != ML_ASSIGN && token_id != ML_COMMA &&
+         token_id != ML_DOT && token_id != ML_DUPLICATE &&
+         token_id != ML_EQUALS && token_id != ML_KEY &&
+         token_id != ML_LB && token_id != ML_LC && token_id != ML_LIMIT &&
+         token_id != ML_LP && token_id != ML_ON && token_id != ML_ORDER &&
+         token_id != ML_RB && token_id != ML_RC && token_id != ML_RP &&
+         token_id != ML_SEMI && token_id != ML_UPDATE &&
+         token_id != ML_WHERE;
+}
+
+static int dml_clause_operand_boundary(int token_id) {
+  return token_id == ML_LIMIT || token_id == ML_ORDER ||
+         token_id == ML_SEMI || token_id == ML_WHERE;
+}
+
+static int dml_limit_option_token(int token_id) {
+  return token_id == ML_ATOM || token_id == ML_BOOLEAN_NUMBER ||
+         token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
+         token_id == ML_QUOTED_ID;
+}
+
+static int token_opens_nested_expression(int token_id) {
+  return token_id == ML_LP || token_id == ML_LB || token_id == ML_LC;
+}
+
+static int token_closes_nested_expression(int token_id) {
+  return token_id == ML_RP || token_id == ML_RB || token_id == ML_RC;
 }
 
 static void result_init(MyliteParseResult *result) {

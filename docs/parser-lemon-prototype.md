@@ -38,9 +38,11 @@ token sink:
 - `CALL` recognizes one- and two-part routine names plus comma-separated
   argument lists with nested expression bodies.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
-  write payloads.
+  write payloads, and validate `SET` assignment lists plus
+  `ON DUPLICATE KEY UPDATE` assignment tails.
 - Single-table `DELETE` recognizes table aliases before optional partition
-  lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails.
+  lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails, rejecting incomplete
+  DML clause tails and invalid top-level `ORDER BY` direction sequences.
 - `VALUES` recognizes comma-separated row contents while preserving nested
   expression bodies, set operators, `ORDER BY`, and `LIMIT` tails.
 - `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`

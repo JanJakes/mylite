@@ -3176,8 +3176,11 @@ shutdown_statement ::= SHUTDOWN. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-insert_statement ::= INSERT insert_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_INSERT);
+insert_statement ::= INSERT(A) insert_tail. {
+  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_INSERT);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_INSERT);
+  }
 }
 
 insert_tail ::= dml_insert_target dml_write_body.
@@ -3194,8 +3197,11 @@ dml_insert_modifier ::= LOW_PRIORITY.
 dml_insert_target ::= cache_table_ref.
 dml_insert_target ::= INTO cache_table_ref.
 
-replace_statement ::= REPLACE replace_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLACE);
+replace_statement ::= REPLACE(A) replace_tail. {
+  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_REPLACE);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLACE);
+  }
 }
 
 replace_tail ::= dml_replace_target dml_write_body.
@@ -3295,8 +3301,11 @@ dml_write_duplicate_tail ::= DUPLICATE KEY UPDATE update_assignment_start.
 dml_write_start ::= VALUES.
 dml_write_start ::= VALUE.
 
-update_statement ::= UPDATE update_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UPDATE);
+update_statement ::= UPDATE(A) update_tail. {
+  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_UPDATE);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UPDATE);
+  }
 }
 
 update_tail ::= dml_update_table_reference_tokens SET update_assignment_start.
@@ -3359,8 +3368,11 @@ dml_update_table_reference_nested_token ::= RB.
 dml_update_table_reference_nested_token ::= LC.
 dml_update_table_reference_nested_token ::= RC.
 
-delete_statement ::= DELETE delete_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DELETE);
+delete_statement ::= DELETE(A) delete_tail. {
+  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_DELETE);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DELETE);
+  }
 }
 
 delete_tail ::= delete_core.

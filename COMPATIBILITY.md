@@ -117,15 +117,15 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | `CALL` | ❌ | medium | Procedure invocation, result sets, OUT/INOUT parameters, and diagnostics. | Parser recognizes one- and two-part routine names plus comma-separated argument lists with nested expression bodies. |
-| `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. | Parser recognizes priority modifiers, table aliases before optional partition lists, and `WHERE`/`ORDER BY`/`LIMIT` tails. |
+| `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. | Parser recognizes priority modifiers, table aliases before optional partition lists, `WHERE`/`ORDER BY`/`LIMIT` tails, and rejects incomplete DML clause tails plus invalid top-level `ORDER BY` direction sequences. |
 | `DELETE` (multi-table) | ❌ | high | Multi-table delete forms using FROM and USING, join semantics, and affected rows. |  |
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. |  |
 | `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. | Parser recognizes one- and two-part table names, aliases, key names, MySQL's table-scan and indexed-read direction sets, equality/range tuple reads, `WHERE`, and numeric or identifier `LIMIT` tails. |
 | `IMPORT TABLE` | ❌ | low | Transportable tablespace import syntax and diagnostics. | Parser recognizes comma-separated string-literal import file lists. |
-| `INSERT ... VALUES` | ❌ | top | Multi-row values, defaults, generated columns, warnings, affected rows, and insert ids. | Parser recognizes empty and comma-separated column lists before write payloads. |
-| `INSERT ... SET` | ❌ | top | MySQL SET-form insert semantics. |  |
+| `INSERT ... VALUES` | ❌ | top | Multi-row values, defaults, generated columns, warnings, affected rows, and insert ids. | Parser recognizes empty and comma-separated column lists before write payloads and validates `ON DUPLICATE KEY UPDATE` assignment-list tails. |
+| `INSERT ... SET` | ❌ | top | MySQL SET-form insert semantics. | Parser validates comma-separated assignment lists, dotted assignment targets, nested expression values, and duplicate-key update tails. |
 | `INSERT ... SELECT` | ❌ | high | Insert from query expression with locking, defaults, and metadata inference. |  |
-| `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | top | Conflict target resolution, VALUES()/row aliases, affected rows, and warnings. |  |
+| `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | top | Conflict target resolution, VALUES()/row aliases, affected rows, and warnings. | Parser validates the `ON DUPLICATE KEY UPDATE` keyword chain and non-empty comma-separated assignment lists. |
 | `INSERT IGNORE` | ❌ | top | Duplicate, conversion, and constraint warning demotion rules. |  |
 | `INSERT DELAYED` | ❌ | low | Deprecated delayed insert syntax and MySQL-compatible diagnostics. |  |
 | `INSERT LOW_PRIORITY` / `HIGH_PRIORITY` | ❌ | low | Priority modifiers and embedded-compatible treatment. |  |
@@ -134,7 +134,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `LOAD XML INFILE` | ❌ | low | Server-side XML import syntax, row matching, namespaces, SET clause, warnings, and security restrictions. | Parser recognizes optional `FROM`, `INFILE`/`URL`/`S3` sources, string-literal file names, priority/local modifiers, duplicate handling, source counts, primary-key-order hints, character sets, compression, `ROWS IDENTIFIED BY`, numeric ignored-row counts, field/user-variable lists, `SET` tails, and unambiguous parallel/memory/bulk algorithm options. |
 | `LOAD XML LOCAL INFILE` | ❌ | low | Client-side XML import request behavior and embedded-compatible diagnostics. | Parser recognizes the `LOCAL` form and the same string-literal XML-file clauses as non-local `LOAD XML`. |
 | `REPLACE ... VALUES` | ❌ | top | Delete-then-insert semantics, cascades, triggers, affected rows, and auto-increment behavior. | Parser recognizes empty and comma-separated column lists before write payloads. |
-| `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
+| `REPLACE ... SET` | ❌ | high | SET-form replace semantics. | Parser validates comma-separated assignment lists, dotted assignment targets, and nested expression values. |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. |  |
 | `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser rejects missing operands for major top-level clause starts such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, `QUALIFY`, and `INTO`, top-level `JOIN`/`ON`/`USING` clauses, malformed `LIMIT` comma/`OFFSET` tails, malformed named `WINDOW` clauses, trailing top-level comma separators, incomplete `UNION`/`INTERSECT`/`EXCEPT` set operations, malformed `LOCK IN SHARE MODE` tails, malformed `FOR UPDATE`/`FOR SHARE` locking tails while preserving index-hint `FOR` forms, and `INTO OUTFILE`/`INTO DUMPFILE` without file names; full expression/query grammar remains incomplete. |
@@ -142,7 +142,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. | Parser requires the file-name string and validates basic character-set, field, and line option tails; export execution is not implemented. |
 | `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. | Parser requires the file-name string; export execution is not implemented. |
 | `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. | Parser recognizes table references, set operators, `ORDER BY`, numeric or identifier `LIMIT` forms, `INTO` variable lists, and `INTO OUTFILE`/`INTO DUMPFILE` targets. |
-| `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. |  |
+| `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. | Parser validates comma-separated assignment lists, dotted assignment targets, nested expression values, and incomplete `WHERE`/`ORDER BY`/`LIMIT` tails. |
 | `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. |  |
 | `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. | Parser recognizes non-empty comma-separated `VALUES ROW(...)` contents, `UNION`/`INTERSECT`/`EXCEPT`, and combined `ORDER BY`/`LIMIT` tails. |
 

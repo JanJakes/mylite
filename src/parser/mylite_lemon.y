@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AS COLLATE DATAFILE DISABLE ENABLE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE FORCE FOREIGN GROUP INACTIVE OPTIONS PARTITION REFERENCE SYSTEM THREAD_PRIORITY TYPE UNDOFILE VALUE VCPU WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AS COLLATE DATAFILE DISABLE ENABLE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE FORCE FOREIGN GROUP INACTIVE INNODB KEYRING OPTIONS PARTITION REDO_LOG REFERENCE RELOAD ROTATE SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE VALUE VCPU WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -688,31 +688,18 @@ alter_undo_tablespace_state ::= INACTIVE.
 
 alter_instance_action ::= ENABLE alter_instance_innodb alter_instance_redo_log.
 alter_instance_action ::= DISABLE alter_instance_innodb alter_instance_redo_log.
-alter_instance_action ::= ATOM(A) alter_instance_master_key_kind MASTER KEY. {
-  mylite_parser_require_token_text(ctx, A, "ROTATE");
-}
-alter_instance_action ::= ATOM(A) alter_instance_reload_target. {
-  mylite_parser_require_token_text(ctx, A, "RELOAD");
-}
+alter_instance_action ::= ROTATE alter_instance_master_key_kind MASTER KEY.
+alter_instance_action ::= RELOAD alter_instance_reload_target.
 
-alter_instance_innodb ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "INNODB");
-}
+alter_instance_innodb ::= INNODB.
 
-alter_instance_redo_log ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "REDO_LOG");
-}
+alter_instance_redo_log ::= REDO_LOG.
 
 alter_instance_master_key_kind ::= alter_instance_innodb.
 alter_instance_master_key_kind ::= BINLOG.
 
-alter_instance_reload_target ::= ATOM(A) alter_instance_reload_tls_tail(B). {
-  if (B) {
-    mylite_parser_require_token_text(ctx, A, "TLS");
-  } else {
-    mylite_parser_require_token_text_any(ctx, A, "TLS", "KEYRING");
-  }
-}
+alter_instance_reload_target ::= TLS alter_instance_reload_tls_tail.
+alter_instance_reload_target ::= KEYRING.
 
 alter_instance_reload_tls_tail(A) ::= alter_instance_reload_channel_tail(B) alter_instance_reload_rollback_tail(C). {
   A = B || C;

@@ -272,6 +272,7 @@ def main() -> int:
         ("alter instance;", 1, {}),
         ("alter instance reload;", 1, {}),
         ("alter instance reload tls rollback on error;", 1, {}),
+        ("alter instance reload keyring for channel mysql_main;", 1, {}),
         ("alter instance rotate innodb key;", 1, {}),
         ("alter instance enable innodb;", 1, {}),
         ("alter algorithm view v1 as select 1;", 1, {}),

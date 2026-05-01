@@ -394,6 +394,65 @@ if "$parser" --quiet 'CREATE OR VIEW v AS SELECT 1'; then
 	exit 1
 fi
 
+event_output=$("$parser" "CREATE DEFINER=CURRENT_USER EVENT e1 ON SCHEDULE EVERY 1 DAY DO SELECT 1; CREATE DEFINER=mysqltest_u1@localhost EVENT db.e2 ON SCHEDULE AT CURRENT_TIMESTAMP + INTERVAL 1 HOUR ON COMPLETION NOT PRESERVE DISABLE ON REPLICA COMMENT 'c' DO SELECT 2; CREATE EVENT e3 ON SCHEDULE EVERY 1 WEEK DO BEGIN SELECT 1; END; ALTER DEFINER=mysqltest_u1@localhost EVENT e1; ALTER DEFINER=mysqltest_u1@localhost EVENT e1 ON SCHEDULE EVERY '2:3' DAY_HOUR STARTS CURRENT_TIMESTAMP + INTERVAL 1 HOUR ENDS CURRENT_TIMESTAMP + INTERVAL 2 HOUR; ALTER EVENT e1 ON COMPLETION PRESERVE RENAME TO db.e2 ENABLE COMMENT 'x'; ALTER EVENT db.e2 DISABLE ON SLAVE DO SELECT 2")
+case "$event_output" in
+	*"create"*/event:e1*"create"*/event:db.e2*"create"*/event:e3*"alter"*/event:e1*"alter"*/event:e1*"alter"*/event:e1*"alter"*/event:db.e2*) ;;
+	*)
+		echo "unexpected event DDL output: $event_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'CREATE EVENT e DO SELECT 1'; then
+	echo "expected CREATE EVENT without schedule to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE EVENT e ON SCHEDULE EVERY 1 DAY'; then
+	echo "expected CREATE EVENT without body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE EVENT e ON SCHEDULE DO SELECT 1'; then
+	echo "expected CREATE EVENT without schedule form to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE EVENT e ON SCHEDULE EVERY 1 DO SELECT 1'; then
+	echo "expected CREATE EVENT interval without unit to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE EVENT e ON SCHEDULE EVERY 1 DAY COMMENT x DO SELECT 1'; then
+	echo "expected CREATE EVENT nonstring comment to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE DEFINER user@localhost EVENT e ON SCHEDULE EVERY 1 DAY DO SELECT 1'; then
+	echo "expected CREATE EVENT DEFINER without equals to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER EVENT e'; then
+	echo "expected ALTER EVENT without changes to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER EVENT e ON SCHEDULE EVERY 1'; then
+	echo "expected ALTER EVENT interval without unit to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER EVENT e RENAME e2'; then
+	echo "expected ALTER EVENT RENAME without TO to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER EVENT e DISABLE ON SOURCE'; then
+	echo "expected ALTER EVENT invalid status tail to fail" >&2
+	exit 1
+fi
+
 create_index_output=$("$parser" "CREATE INDEX i ON t (c); CREATE UNIQUE INDEX i2 USING BTREE ON db.t (c(10) DESC, (lower(name)) ASC) KEY_BLOCK_SIZE=8 WITH PARSER parser_name COMMENT 'c' VISIBLE ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE='{}' ALGORITHM=INPLACE LOCK=NONE; CREATE FULLTEXT INDEX ft ON t (body) WITH PARSER ngram; CREATE SPATIAL INDEX sp ON t (g) USING HASH; CREATE INDEX legacy TYPE BTREE ON t (c) TYPE RTREE")
 case "$create_index_output" in
 	*"create"*/index:i*"create"*/index:i2*"create"*/index:ft*"create"*/index:sp*"create"*/index:legacy*) ;;

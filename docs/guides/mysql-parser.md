@@ -79,6 +79,10 @@ grammar work.
 `CREATE VIEW` and `ALTER VIEW` validate view header clauses, optional
 column-list groups, required `AS` query bodies, and trailing check-option
 clauses while leaving view dependency analysis to later phases.
+`CREATE EVENT` and `ALTER EVENT` validate optional definer clauses, event names,
+schedule forms, completion behavior, status clauses, comments, renames, and
+required or optional `DO` bodies while leaving scheduler metadata and execution
+to later phases.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
 optional `IF EXISTS` with an identifier-like target.
 `CREATE SERVER` validates `FOREIGN DATA WRAPPER` and documented server

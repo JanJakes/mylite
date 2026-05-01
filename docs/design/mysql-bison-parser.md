@@ -66,6 +66,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 view DDL:
   `https://dev.mysql.com/doc/refman/8.4/en/create-view.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/alter-view.html`
+- MySQL 8.4 event DDL:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-event.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/alter-event.html`
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
@@ -370,6 +373,10 @@ lists are syntax-validated, matching MySQL's default-database syntax.
 Stored-object `DEFINER = user` clauses are skipped during object scanning so
 routine, event, trigger, and view targets are not confused with definer account
 tokens.
+`CREATE EVENT` and `ALTER EVENT` validate optional definer clauses, event names,
+schedule forms, completion behavior, status clauses, comments, renames, and
+required or optional `DO` bodies while leaving event-scheduler metadata and
+execution semantics to later phases.
 Resource group targets are recorded and validated for `CREATE`, `ALTER`,
 `DROP`, and `SET RESOURCE GROUP`. Server DDL targets are recorded and validated
 for `CREATE SERVER`, `ALTER SERVER`, and `DROP SERVER`. Logfile-group DDL

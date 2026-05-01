@@ -355,7 +355,35 @@ create_trigger_statement_start ::= SELECT.
 create_trigger_statement_start ::= UPDATE.
 
 create_function_tail ::= create_udf_tail.
-create_function_tail ::= routine_signature create_returns statement_token required_statement_tail.
+create_function_tail ::= routine_signature create_returns create_function_return_tail create_function_body_start statement_tail.
+
+create_function_return_tail ::= create_function_return_token.
+create_function_return_tail ::= create_function_return_tail create_function_return_token.
+
+create_function_return_nested ::= .
+create_function_return_nested ::= create_function_return_nested create_function_return_token.
+
+create_function_return_token ::= ATOM.
+create_function_return_token ::= LABEL.
+create_function_return_token ::= BINARY.
+create_function_return_token ::= CHARACTER.
+create_function_return_token ::= CHARSET.
+create_function_return_token ::= COLLATION.
+create_function_return_token ::= COMMA.
+create_function_return_token ::= DATA.
+create_function_return_token ::= DEFAULT.
+create_function_return_token ::= DEFINER.
+create_function_return_token ::= DOT.
+create_function_return_token ::= NO.
+create_function_return_token ::= READ.
+create_function_return_token ::= SECURITY.
+create_function_return_token ::= SET.
+create_function_return_token ::= SQL.
+create_function_return_token ::= USER.
+create_function_return_token ::= LP create_function_return_nested RP.
+
+create_function_body_start ::= BEGIN.
+create_function_body_start ::= RETURN.
 
 create_procedure_tail ::= routine_signature create_procedure_tail_start statement_tail.
 

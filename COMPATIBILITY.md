@@ -247,7 +247,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. | Parser records the instance target and rejects body tokens; embedded-compatible shutdown behavior and diagnostics are not implemented. |
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. | Parser records direct table targets and explainable query targets; result-set shape and query-plan semantics are not implemented. |
 | `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, INTO, and FOR CONNECTION. | Parser records direct table targets, named connection targets, `EXPLAIN ... INTO` user-variable targets, and explainable query targets; optimizer plans and result rows are not implemented. |
-| `HELP` | ❌ | low | Server help lookup result-set semantics. | Parser records quoted and unquoted help topics; help-table lookup rows are not implemented. |
+| `HELP` | ❌ | low | Server help lookup result-set semantics. | Parser records and validates single string-literal help topics plus corpus-observed unquoted identifier/keyword topics; help-table lookup rows are not implemented. |
 | `USE` | ❌ | top | Default schema selection in the embedded single-file model. | Parser records the schema target and rejects missing names, string/variable targets, qualified names, and trailing tokens; default-schema session state is not implemented. |
 
 ### 1.5 SHOW Statements

@@ -1292,14 +1292,29 @@ if "$parser" --quiet 'XA RECOVER CONVERT'; then
 	exit 1
 fi
 
-help_output=$("$parser" "HELP 'contents'; HELP SELECT; HELP no_such_topic; HELP CREATE TABLE")
+help_output=$("$parser" "HELP 'contents'; HELP SELECT; HELP no_such_topic; HELP CREATE TABLE; HELP 'CREATE TABLE'")
 case "$help_output" in
-	*"help"*/help_topic:"'contents'"*"help"*/help_topic:SELECT*"help"*/help_topic:no_such_topic*"help"*/help_topic:"CREATE TABLE"*) ;;
+	*"help"*/help_topic:"'contents'"*"help"*/help_topic:SELECT*"help"*/help_topic:no_such_topic*"help"*/help_topic:"CREATE TABLE"*"help"*/help_topic:"'CREATE TABLE'"*) ;;
 	*)
 		echo "unexpected HELP output: $help_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'HELP @topic'; then
+	echo "expected HELP variable topic to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "HELP 'CREATE' 'TABLE'"; then
+	echo "expected multiple HELP topic tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HELP ,'; then
+	echo "expected punctuation HELP topic to fail" >&2
+	exit 1
+fi
 
 clone_output=$("$parser" "CLONE LOCAL DATA DIRECTORY = '/tmp/clone'; CLONE LOCAL DATA DIRECTORY '/tmp/clone2'; CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY 'p'; CLONE INSTANCE FROM 'u'@'h':3306 IDENTIFIED BY 'p' DATA DIRECTORY = '/tmp/clone' REQUIRE NO SSL; CLONE INSTANCE FROM 'u' @ 'h' : 3306 IDENTIFIED BY 'p' REQUIRE SSL")
 case "$clone_output" in

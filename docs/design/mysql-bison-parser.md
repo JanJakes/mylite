@@ -463,8 +463,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   the XA transaction collection for `XA RECOVER`; it validates XID shape,
   `XA START` / `XA BEGIN` options, `XA END` suspend options, `XA COMMIT ONE
   PHASE`, and `XA RECOVER CONVERT XID`, but does not model XA state.
-  `HELP` metadata records quoted and unquoted search-topic text, including
-  multi-token topics.
+  `HELP` metadata records and validates single string-literal search topics
+  plus corpus-observed unquoted identifier/keyword topics.
   Instance lifecycle metadata records only the instance object kind, not
   privilege, connection-loss, shutdown, or restart semantics.
   `SHOW PROFILE` metadata records query targets for bare forms and numeric

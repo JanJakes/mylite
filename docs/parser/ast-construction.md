@@ -20,6 +20,9 @@ expression nodes.
   spans.
 - Top-level statement views classify each parsed statement and expose stable
   statement spans for the analyzer.
+- Statement target descriptors expose all currently known targets for
+  multi-target statements such as `DROP TABLE`, `RENAME TABLE`, multi-table
+  `DELETE`, and joined `UPDATE`.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
   still cover the full current corpus.
 - The AST is opaque in the public API and freed with `mylite_ast_free()`.
@@ -43,6 +46,17 @@ expression nodes.
 - top-level statement span
 - top-level target kind
 - top-level target, schema, and name spans where the target is known
+- indexed target descriptors with role, kind, full span, schema span, and name
+  span
+
+The original single-target accessors remain compatibility helpers and mirror
+the first indexed target. The indexed API should be used by new analyzer and
+typed-AST code so statements that naturally mention several targets do not lose
+information. Target roles are currently:
+
+- `primary` for ordinary DDL/DML table, database, view, routine, account, or
+  variable targets
+- `source` and `destination` for each `RENAME TABLE source TO destination` pair
 
 The tree is not yet the final semantic MyLite AST. It is a complete generated
 parse tree with a typed statement classification and target descriptor layer
@@ -67,8 +81,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 1, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.432263 qps=481844 mbps=36.64 avg_us=2.075
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=18.627941 qps=373316 mbps=28.39 avg_us=2.679 avg_nodes=74.5 avg_ast_bytes=9842.2 avg_statements=1.00 avg_targets=0.59
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.980099 qps=497429 mbps=37.83 avg_us=2.010
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=18.323371 qps=379521 mbps=28.86 avg_us=2.635 avg_nodes=74.5 avg_ast_bytes=9851.6 avg_statements=1.00 avg_targets=0.59
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -76,14 +90,23 @@ Before semantic actions were generated, syntax-only parsing measured about
 the generated reduce actions, but with AST building disabled, so it avoids arena
 allocation while paying some action-call overhead.
 
+Current release build size on the same machine:
+
+```text
+generated parser C: 72,852 lines, 5,637,339 bytes
+generated parser object: 996K on disk, 905,398 bytes text/data/other
+parser support object: 49K on disk, 35,835 bytes text/data/other
+lexer object: 74K on disk, 39,564 bytes text/data/other
+libmylite_parser.a: 1.1M on disk
+mylite-parse: 975K on disk
+```
+
 ## Next Work
 
 - Replace temporary recognizer placeholder roots with real grammar productions
   or explicit typed placeholder statements.
 - Add typed AST nodes for the analyzer's first statement families underneath
-  the statement classification and target descriptor layer.
-- Expand target descriptors for multi-target statements such as `DROP TABLE`,
-  `RENAME TABLE`, multi-table `DELETE`, and joined `UPDATE`.
+  the statement classification and indexed target descriptor layer.
 - Decide whether syntax-only builds should use a separate no-action generated
   parser if the action overhead matters.
 - Add tree-shape tests for representative DDL, DML, expressions, stored

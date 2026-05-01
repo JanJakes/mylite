@@ -66,12 +66,20 @@ typedef enum MyliteStatementTargetKind {
   MYLITE_STATEMENT_TARGET_UNKNOWN
 } MyliteStatementTargetKind;
 
+typedef enum MyliteStatementTargetRole {
+  MYLITE_STATEMENT_TARGET_ROLE_NONE = 0,
+  MYLITE_STATEMENT_TARGET_ROLE_PRIMARY,
+  MYLITE_STATEMENT_TARGET_ROLE_SOURCE,
+  MYLITE_STATEMENT_TARGET_ROLE_DESTINATION
+} MyliteStatementTargetRole;
+
 MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result);
 MyliteParseStatus mylite_parse_sql_ast(const char *sql, MyliteAst **ast,
                                        MyliteParseResult *result);
 const char *mylite_parse_status_name(MyliteParseStatus status);
 const char *mylite_statement_kind_name(MyliteStatementKind kind);
 const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
+const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
 
 void mylite_ast_free(MyliteAst *ast);
 const MyliteAstNode *mylite_ast_root(const MyliteAst *ast);
@@ -91,6 +99,29 @@ size_t mylite_ast_statement_target_schema_start(const MyliteAst *ast, size_t ind
 size_t mylite_ast_statement_target_schema_end(const MyliteAst *ast, size_t index);
 size_t mylite_ast_statement_target_name_start(const MyliteAst *ast, size_t index);
 size_t mylite_ast_statement_target_name_end(const MyliteAst *ast, size_t index);
+size_t mylite_ast_statement_target_count(const MyliteAst *ast, size_t statement_index);
+MyliteStatementTargetKind mylite_ast_statement_target_kind_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index);
+MyliteStatementTargetRole mylite_ast_statement_target_role_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index);
+size_t mylite_ast_statement_target_start_at(const MyliteAst *ast,
+                                            size_t statement_index,
+                                            size_t target_index);
+size_t mylite_ast_statement_target_end_at(const MyliteAst *ast,
+                                          size_t statement_index,
+                                          size_t target_index);
+size_t mylite_ast_statement_target_schema_start_at(const MyliteAst *ast,
+                                                   size_t statement_index,
+                                                   size_t target_index);
+size_t mylite_ast_statement_target_schema_end_at(const MyliteAst *ast,
+                                                 size_t statement_index,
+                                                 size_t target_index);
+size_t mylite_ast_statement_target_name_start_at(const MyliteAst *ast,
+                                                 size_t statement_index,
+                                                 size_t target_index);
+size_t mylite_ast_statement_target_name_end_at(const MyliteAst *ast,
+                                               size_t statement_index,
+                                               size_t target_index);
 MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node);
 unsigned mylite_ast_node_rule_id(const MyliteAstNode *node);
 const char *mylite_ast_node_symbol_name(const MyliteAstNode *node);

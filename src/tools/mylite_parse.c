@@ -107,12 +107,14 @@ static void dump_statements(const MyliteAst *ast) {
   printf("statements=%zu nodes=%zu ast_bytes=%zu\n", count,
          mylite_ast_node_count(ast), mylite_ast_allocated_bytes(ast));
   for (size_t i = 0; i < count; i++) {
-    printf("statement[%zu] kind=%s symbol=%s span=%zu..%zu target=%s:%zu..%zu "
-           "schema=%zu..%zu name=%zu..%zu\n",
+    size_t target_count = mylite_ast_statement_target_count(ast, i);
+    printf("statement[%zu] kind=%s symbol=%s span=%zu..%zu targets=%zu "
+           "target=%s:%zu..%zu schema=%zu..%zu name=%zu..%zu\n",
            i,
            mylite_statement_kind_name(mylite_ast_statement_kind(ast, i)),
            mylite_ast_statement_symbol_name(ast, i),
            mylite_ast_statement_start(ast, i), mylite_ast_statement_end(ast, i),
+           target_count,
            mylite_statement_target_kind_name(mylite_ast_statement_target_kind(ast, i)),
            mylite_ast_statement_target_start(ast, i),
            mylite_ast_statement_target_end(ast, i),
@@ -120,6 +122,21 @@ static void dump_statements(const MyliteAst *ast) {
            mylite_ast_statement_target_schema_end(ast, i),
            mylite_ast_statement_target_name_start(ast, i),
            mylite_ast_statement_target_name_end(ast, i));
+    for (size_t j = 0; j < target_count; j++) {
+      printf("  target[%zu] role=%s kind=%s span=%zu..%zu schema=%zu..%zu "
+             "name=%zu..%zu\n",
+             j,
+             mylite_statement_target_role_name(
+                 mylite_ast_statement_target_role_at(ast, i, j)),
+             mylite_statement_target_kind_name(
+                 mylite_ast_statement_target_kind_at(ast, i, j)),
+             mylite_ast_statement_target_start_at(ast, i, j),
+             mylite_ast_statement_target_end_at(ast, i, j),
+             mylite_ast_statement_target_schema_start_at(ast, i, j),
+             mylite_ast_statement_target_schema_end_at(ast, i, j),
+             mylite_ast_statement_target_name_start_at(ast, i, j),
+             mylite_ast_statement_target_name_end_at(ast, i, j));
+    }
   }
 }
 

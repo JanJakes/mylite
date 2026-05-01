@@ -73,10 +73,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
           ast_bytes += mylite_ast_allocated_bytes(ast);
           statements += mylite_ast_statement_count(ast);
           for (size_t i = 0; i < mylite_ast_statement_count(ast); i++) {
-            if (mylite_ast_statement_target_kind(ast, i) !=
-                MYLITE_STATEMENT_TARGET_NONE) {
-              targets++;
-            }
+            targets += mylite_ast_statement_target_count(ast, i);
           }
         }
         mylite_ast_free(ast);

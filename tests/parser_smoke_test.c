@@ -3,6 +3,14 @@
 #include <stdio.h>
 #include <string.h>
 
+typedef struct ExpectedAstTarget {
+  MyliteStatementTargetRole role;
+  MyliteStatementTargetKind kind;
+  const char *target;
+  const char *schema;
+  const char *name;
+} ExpectedAstTarget;
+
 static int expect_parse_ok(const char *sql);
 static int expect_ast_ok(const char *sql, const char *root_symbol);
 static int expect_ast_statements(const char *sql, size_t count,
@@ -11,6 +19,9 @@ static int expect_ast_target(const char *sql, MyliteStatementKind statement_kind
                              MyliteStatementTargetKind target_kind,
                              const char *target, const char *schema,
                              const char *name);
+static int expect_ast_targets(const char *sql, MyliteStatementKind statement_kind,
+                              const ExpectedAstTarget *targets,
+                              size_t target_count);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
 
@@ -499,6 +510,89 @@ int main(void) {
   failures += expect_ast_target("SET @a = 1", MYLITE_STATEMENT_SET,
                                 MYLITE_STATEMENT_TARGET_VARIABLE, "@a", NULL,
                                 "@a");
+  {
+    const ExpectedAstTarget targets[] = {
+        {MYLITE_STATEMENT_TARGET_ROLE_PRIMARY, MYLITE_STATEMENT_TARGET_TABLE,
+         "db1.t1", "db1", "t1"},
+        {MYLITE_STATEMENT_TARGET_ROLE_PRIMARY, MYLITE_STATEMENT_TARGET_TABLE,
+         "db2.t2", "db2", "t2"}};
+    failures += expect_ast_targets("DROP TABLE db1.t1, db2.t2",
+                                   MYLITE_STATEMENT_DROP, targets,
+                                   sizeof(targets) / sizeof(targets[0]));
+  }
+  {
+    const ExpectedAstTarget targets[] = {
+        {MYLITE_STATEMENT_TARGET_ROLE_SOURCE, MYLITE_STATEMENT_TARGET_TABLE,
+         "db1.t1", "db1", "t1"},
+        {MYLITE_STATEMENT_TARGET_ROLE_DESTINATION, MYLITE_STATEMENT_TARGET_TABLE,
+         "db1.t2", "db1", "t2"},
+        {MYLITE_STATEMENT_TARGET_ROLE_SOURCE, MYLITE_STATEMENT_TARGET_TABLE,
+         "db2.a", "db2", "a"},
+        {MYLITE_STATEMENT_TARGET_ROLE_DESTINATION, MYLITE_STATEMENT_TARGET_TABLE,
+         "db2.b", "db2", "b"}};
+    failures += expect_ast_targets(
+        "RENAME TABLE db1.t1 TO db1.t2, db2.a TO db2.b",
+        MYLITE_STATEMENT_RENAME, targets,
+        sizeof(targets) / sizeof(targets[0]));
+  }
+  {
+    const ExpectedAstTarget targets[] = {
+        {MYLITE_STATEMENT_TARGET_ROLE_PRIMARY, MYLITE_STATEMENT_TARGET_TABLE,
+         "db1.t1", "db1", "t1"},
+        {MYLITE_STATEMENT_TARGET_ROLE_PRIMARY, MYLITE_STATEMENT_TARGET_TABLE,
+         "db2.t2", "db2", "t2"}};
+    failures += expect_ast_targets(
+        "UPDATE db1.t1 JOIN db2.t2 ON t1.id = t2.id SET t1.id = 1",
+        MYLITE_STATEMENT_UPDATE, targets,
+        sizeof(targets) / sizeof(targets[0]));
+  }
+  {
+    const ExpectedAstTarget targets[] = {
+        {MYLITE_STATEMENT_TARGET_ROLE_PRIMARY, MYLITE_STATEMENT_TARGET_TABLE,
+         "db1.t1", "db1", "t1"},
+        {MYLITE_STATEMENT_TARGET_ROLE_PRIMARY, MYLITE_STATEMENT_TARGET_TABLE,
+         "db2.t2", "db2", "t2"}};
+    failures += expect_ast_targets(
+        "DELETE db1.t1, db2.t2 FROM db1.t1 JOIN db2.t2 ON t1.id = t2.id",
+        MYLITE_STATEMENT_DELETE, targets,
+        sizeof(targets) / sizeof(targets[0]));
+  }
+  {
+    const ExpectedAstTarget targets[] = {
+        {MYLITE_STATEMENT_TARGET_ROLE_PRIMARY, MYLITE_STATEMENT_TARGET_TABLE,
+         "t1.*", NULL, "t1"}};
+    failures += expect_ast_targets("DELETE t1.* FROM t1",
+                                   MYLITE_STATEMENT_DELETE, targets,
+                                   sizeof(targets) / sizeof(targets[0]));
+  }
+  {
+    const ExpectedAstTarget targets[] = {
+        {MYLITE_STATEMENT_TARGET_ROLE_PRIMARY, MYLITE_STATEMENT_TARGET_TABLE,
+         "db1.t1", "db1", "t1"}};
+    failures += expect_ast_targets(
+        "DELETE FROM db1.t1 WHERE EXISTS (SELECT 1 FROM db2.t2)",
+        MYLITE_STATEMENT_DELETE, targets,
+        sizeof(targets) / sizeof(targets[0]));
+  }
+  {
+    const ExpectedAstTarget targets[] = {
+        {MYLITE_STATEMENT_TARGET_ROLE_PRIMARY, MYLITE_STATEMENT_TARGET_TABLE,
+         "db1.t1", "db1", "t1"}};
+    failures += expect_ast_targets(
+        "UPDATE db1.t1 JOIN (SELECT * FROM db2.t2) dt ON t1.id = dt.id "
+        "SET t1.id = 1",
+        MYLITE_STATEMENT_UPDATE, targets,
+        sizeof(targets) / sizeof(targets[0]));
+  }
+  {
+    const ExpectedAstTarget targets[] = {
+        {MYLITE_STATEMENT_TARGET_ROLE_PRIMARY, MYLITE_STATEMENT_TARGET_TABLE,
+         "db1.t1", "db1", "t1"}};
+    failures += expect_ast_targets(
+        "WITH cte AS (SELECT * FROM db2.t2) UPDATE db1.t1 SET id = 1",
+        MYLITE_STATEMENT_UPDATE, targets,
+        sizeof(targets) / sizeof(targets[0]));
+  }
 
   return failures == 0 ? 0 : 1;
 }
@@ -564,7 +658,11 @@ static int expect_ast_target(const char *sql, MyliteStatementKind statement_kind
   int failed = 0;
   if (mylite_ast_statement_count(ast) != 1 ||
       mylite_ast_statement_kind(ast, 0) != statement_kind ||
+      mylite_ast_statement_target_count(ast, 0) != 1 ||
       mylite_ast_statement_target_kind(ast, 0) != target_kind ||
+      mylite_ast_statement_target_role_at(ast, 0, 0) !=
+          MYLITE_STATEMENT_TARGET_ROLE_PRIMARY ||
+      mylite_ast_statement_target_kind_at(ast, 0, 0) != target_kind ||
       !span_matches(sql, mylite_ast_statement_target_start(ast, 0),
                     mylite_ast_statement_target_end(ast, 0), target) ||
       !span_matches(sql, mylite_ast_statement_target_schema_start(ast, 0),
@@ -573,7 +671,7 @@ static int expect_ast_target(const char *sql, MyliteStatementKind statement_kind
                     mylite_ast_statement_target_name_end(ast, 0), name)) {
     fprintf(stderr,
             "AST target failed: %s\nkind=%s target_kind=%s target=%zu..%zu "
-            "schema=%zu..%zu name=%zu..%zu\n",
+            "schema=%zu..%zu name=%zu..%zu target_count=%zu\n",
             sql, mylite_statement_kind_name(mylite_ast_statement_kind(ast, 0)),
             mylite_statement_target_kind_name(mylite_ast_statement_target_kind(ast, 0)),
             mylite_ast_statement_target_start(ast, 0),
@@ -581,8 +679,69 @@ static int expect_ast_target(const char *sql, MyliteStatementKind statement_kind
             mylite_ast_statement_target_schema_start(ast, 0),
             mylite_ast_statement_target_schema_end(ast, 0),
             mylite_ast_statement_target_name_start(ast, 0),
-            mylite_ast_statement_target_name_end(ast, 0));
+            mylite_ast_statement_target_name_end(ast, 0),
+            mylite_ast_statement_target_count(ast, 0));
     failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_ast_targets(const char *sql, MyliteStatementKind statement_kind,
+                              const ExpectedAstTarget *targets,
+                              size_t target_count) {
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "AST targets parse failed: %s\nstatus=%s offset=%zu token=%d message=%s\n",
+            sql, mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  int failed = 0;
+  if (mylite_ast_statement_count(ast) != 1 ||
+      mylite_ast_statement_kind(ast, 0) != statement_kind ||
+      mylite_ast_statement_target_count(ast, 0) != target_count) {
+    fprintf(stderr,
+            "AST targets header failed: %s\nkind=%s target_count=%zu\n",
+            sql, mylite_statement_kind_name(mylite_ast_statement_kind(ast, 0)),
+            mylite_ast_statement_target_count(ast, 0));
+    failed = 1;
+  }
+
+  size_t actual_count = mylite_ast_statement_target_count(ast, 0);
+  for (size_t i = 0; i < target_count && i < actual_count; i++) {
+    if (mylite_ast_statement_target_role_at(ast, 0, i) != targets[i].role ||
+        mylite_ast_statement_target_kind_at(ast, 0, i) != targets[i].kind ||
+        !span_matches(sql, mylite_ast_statement_target_start_at(ast, 0, i),
+                      mylite_ast_statement_target_end_at(ast, 0, i),
+                      targets[i].target) ||
+        !span_matches(sql, mylite_ast_statement_target_schema_start_at(ast, 0, i),
+                      mylite_ast_statement_target_schema_end_at(ast, 0, i),
+                      targets[i].schema) ||
+        !span_matches(sql, mylite_ast_statement_target_name_start_at(ast, 0, i),
+                      mylite_ast_statement_target_name_end_at(ast, 0, i),
+                      targets[i].name)) {
+      fprintf(stderr,
+              "AST target[%zu] failed: %s\nrole=%s kind=%s target=%zu..%zu "
+              "schema=%zu..%zu name=%zu..%zu\n",
+              i, sql,
+              mylite_statement_target_role_name(
+                  mylite_ast_statement_target_role_at(ast, 0, i)),
+              mylite_statement_target_kind_name(
+                  mylite_ast_statement_target_kind_at(ast, 0, i)),
+              mylite_ast_statement_target_start_at(ast, 0, i),
+              mylite_ast_statement_target_end_at(ast, 0, i),
+              mylite_ast_statement_target_schema_start_at(ast, 0, i),
+              mylite_ast_statement_target_schema_end_at(ast, 0, i),
+              mylite_ast_statement_target_name_start_at(ast, 0, i),
+              mylite_ast_statement_target_name_end_at(ast, 0, i));
+      failed = 1;
+    }
   }
 
   mylite_ast_free(ast);

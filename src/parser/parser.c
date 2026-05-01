@@ -15,10 +15,23 @@ typedef struct MyliteAstChunk {
   unsigned char data[];
 } MyliteAstChunk;
 
+typedef struct MyliteAstStatementTarget {
+  MyliteStatementTargetKind kind;
+  MyliteStatementTargetRole role;
+  size_t start;
+  size_t end;
+  size_t schema_start;
+  size_t schema_end;
+  size_t name_start;
+  size_t name_end;
+} MyliteAstStatementTarget;
+
 typedef struct MyliteAstStatement {
   const MyliteAstNode *node;
   const char *symbol_name;
   MyliteStatementKind kind;
+  MyliteAstStatementTarget *targets;
+  size_t target_count;
   MyliteStatementTargetKind target_kind;
   size_t start;
   size_t end;
@@ -71,32 +84,54 @@ static MyliteAstNode *mylite_ast_make_node(MyliteParserState *state,
 static void mylite_ast_set_node_span_from_children(MyliteAstNode *node);
 static int mylite_ast_finalize_statements(MyliteAst *ast);
 static size_t mylite_ast_count_top_level_statements(const MyliteAstNode *node);
-static void mylite_ast_fill_top_level_statements(MyliteAst *ast,
-                                                 const MyliteAstNode *node,
-                                                 size_t *index);
-static void mylite_ast_init_statement(MyliteAstStatement *statement,
-                                      const MyliteAstNode *node);
+static int mylite_ast_fill_top_level_statements(MyliteAst *ast,
+                                                const MyliteAstNode *node,
+                                                size_t *index);
+static int mylite_ast_init_statement(MyliteAstStatement *statement,
+                                     MyliteAst *ast, const MyliteAstNode *node);
 static const MyliteAstNode *mylite_ast_statement_payload(const MyliteAstNode *node);
 static MyliteStatementKind mylite_ast_classify_statement(const char *symbol_name);
-static void mylite_ast_set_statement_target(MyliteAstStatement *statement,
-                                            const MyliteAstNode *payload);
+static int mylite_ast_set_statement_target(MyliteAstStatement *statement,
+                                           MyliteAst *ast,
+                                           const MyliteAstNode *payload);
 static MyliteStatementTargetKind mylite_ast_target_kind_for_statement(
     MyliteStatementKind kind, const char *symbol_name);
-static const MyliteAstNode *mylite_ast_find_target_node(const MyliteAstNode *node,
-                                                        MyliteStatementTargetKind kind);
+static int mylite_ast_collect_statement_targets(MyliteAst *ast,
+                                                MyliteAstStatement *statement,
+                                                const MyliteAstNode *payload);
+static int mylite_ast_collect_rename_targets(MyliteAst *ast,
+                                             MyliteAstStatement *statement,
+                                             const MyliteAstNode *node);
+static int mylite_ast_collect_symbol_targets(MyliteAst *ast,
+                                             MyliteAstStatement *statement,
+                                             const MyliteAstNode *node,
+                                             const char *symbol_name,
+                                             MyliteStatementTargetKind kind,
+                                             MyliteStatementTargetRole role);
+static int mylite_ast_append_statement_target(MyliteAst *ast,
+                                              MyliteAstStatement *statement,
+                                              MyliteStatementTargetKind kind,
+                                              MyliteStatementTargetRole role,
+                                              const MyliteAstNode *target);
+static void mylite_ast_fill_statement_target(MyliteAstStatementTarget *target,
+                                             MyliteStatementTargetKind kind,
+                                             MyliteStatementTargetRole role,
+                                             const MyliteAstNode *node);
+static void mylite_ast_mirror_first_statement_target(MyliteAstStatement *statement);
 static const MyliteAstNode *mylite_ast_find_first_symbol(const MyliteAstNode *node,
                                                          const char *symbol_name);
 static const MyliteAstNode *mylite_ast_find_first_token(const MyliteAstNode *node,
                                                         int token);
-static void mylite_ast_set_target_spans(MyliteAstStatement *statement,
-                                        const MyliteAstNode *target);
-static void mylite_ast_set_table_name_parts(MyliteAstStatement *statement,
-                                            const MyliteAstNode *target);
+static int mylite_ast_is_nested_target_boundary(const MyliteAstNode *node);
+static void mylite_ast_set_table_name_parts(MyliteAstStatementTarget *target,
+                                            const MyliteAstNode *node);
 static int symbol_is_one_of(const char *symbol_name, const char *const *symbols,
                             size_t count);
 static int symbol_has_prefix(const char *symbol_name, const char *prefix);
 static const MyliteAstStatement *mylite_ast_statement_at(const MyliteAst *ast,
                                                          size_t index);
+static const MyliteAstStatementTarget *mylite_ast_statement_target_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index);
 static void mylite_parser_state_no_memory(MyliteParserState *state);
 static int accepts_mysqltest_harness_statement(const char *sql);
 static int accepts_parenthesized_create_table_set_statement(const char *sql);
@@ -225,6 +260,20 @@ const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind) {
   return "unknown";
 }
 
+const char *mylite_statement_target_role_name(MyliteStatementTargetRole role) {
+  switch (role) {
+    case MYLITE_STATEMENT_TARGET_ROLE_NONE:
+      return "none";
+    case MYLITE_STATEMENT_TARGET_ROLE_PRIMARY:
+      return "primary";
+    case MYLITE_STATEMENT_TARGET_ROLE_SOURCE:
+      return "source";
+    case MYLITE_STATEMENT_TARGET_ROLE_DESTINATION:
+      return "destination";
+  }
+  return "unknown";
+}
+
 void mylite_ast_free(MyliteAst *ast) {
   if (ast == NULL) {
     return;
@@ -313,6 +362,74 @@ size_t mylite_ast_statement_target_name_start(const MyliteAst *ast, size_t index
 size_t mylite_ast_statement_target_name_end(const MyliteAst *ast, size_t index) {
   const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
   return statement == NULL ? 0 : statement->target_name_end;
+}
+
+size_t mylite_ast_statement_target_count(const MyliteAst *ast,
+                                         size_t statement_index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? 0 : statement->target_count;
+}
+
+MyliteStatementTargetKind mylite_ast_statement_target_kind_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? MYLITE_STATEMENT_TARGET_NONE : target->kind;
+}
+
+MyliteStatementTargetRole mylite_ast_statement_target_role_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? MYLITE_STATEMENT_TARGET_ROLE_NONE : target->role;
+}
+
+size_t mylite_ast_statement_target_start_at(const MyliteAst *ast,
+                                            size_t statement_index,
+                                            size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? 0 : target->start;
+}
+
+size_t mylite_ast_statement_target_end_at(const MyliteAst *ast,
+                                          size_t statement_index,
+                                          size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? 0 : target->end;
+}
+
+size_t mylite_ast_statement_target_schema_start_at(const MyliteAst *ast,
+                                                   size_t statement_index,
+                                                   size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? 0 : target->schema_start;
+}
+
+size_t mylite_ast_statement_target_schema_end_at(const MyliteAst *ast,
+                                                 size_t statement_index,
+                                                 size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? 0 : target->schema_end;
+}
+
+size_t mylite_ast_statement_target_name_start_at(const MyliteAst *ast,
+                                                 size_t statement_index,
+                                                 size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? 0 : target->name_start;
+}
+
+size_t mylite_ast_statement_target_name_end_at(const MyliteAst *ast,
+                                               size_t statement_index,
+                                               size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? 0 : target->name_end;
 }
 
 MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node) {
@@ -601,10 +718,14 @@ static int mylite_ast_finalize_statements(MyliteAst *ast) {
   ast->statement_count = count;
 
   size_t index = 0;
-  mylite_ast_fill_top_level_statements(ast, ast->root, &index);
+  if (!mylite_ast_fill_top_level_statements(ast, ast->root, &index)) {
+    return 0;
+  }
   if (index == 0) {
     const MyliteAstNode *payload = ast->root;
-    mylite_ast_init_statement(&ast->statements[0], payload);
+    if (!mylite_ast_init_statement(&ast->statements[0], ast, payload)) {
+      return 0;
+    }
   }
   return 1;
 }
@@ -629,33 +750,38 @@ static size_t mylite_ast_count_top_level_statements(const MyliteAstNode *node) {
   return count;
 }
 
-static void mylite_ast_fill_top_level_statements(MyliteAst *ast,
-                                                 const MyliteAstNode *node,
-                                                 size_t *index) {
+static int mylite_ast_fill_top_level_statements(MyliteAst *ast,
+                                                const MyliteAstNode *node,
+                                                size_t *index) {
   if (ast == NULL || node == NULL || index == NULL || node->symbol_name == NULL ||
       *index >= ast->statement_count) {
-    return;
+    return 1;
   }
 
   if (strcmp(node->symbol_name, "nt_statement") == 0) {
-    mylite_ast_init_statement(&ast->statements[*index], node);
+    if (!mylite_ast_init_statement(&ast->statements[*index], ast, node)) {
+      return 0;
+    }
     (*index)++;
-    return;
+    return 1;
   }
 
   if (strcmp(node->symbol_name, "input") != 0 &&
       strcmp(node->symbol_name, "nt_start") != 0 &&
       strcmp(node->symbol_name, "nt_statement_list") != 0) {
-    return;
+    return 1;
   }
 
   for (size_t i = 0; i < node->child_count; i++) {
-    mylite_ast_fill_top_level_statements(ast, node->children[i], index);
+    if (!mylite_ast_fill_top_level_statements(ast, node->children[i], index)) {
+      return 0;
+    }
   }
+  return 1;
 }
 
-static void mylite_ast_init_statement(MyliteAstStatement *statement,
-                                      const MyliteAstNode *node) {
+static int mylite_ast_init_statement(MyliteAstStatement *statement, MyliteAst *ast,
+                                     const MyliteAstNode *node) {
   const MyliteAstNode *payload = mylite_ast_statement_payload(node);
   if (payload == NULL) {
     payload = node;
@@ -665,7 +791,7 @@ static void mylite_ast_init_statement(MyliteAstStatement *statement,
   statement->kind = mylite_ast_classify_statement(statement->symbol_name);
   statement->start = mylite_ast_node_start(node);
   statement->end = mylite_ast_node_end(node);
-  mylite_ast_set_statement_target(statement, payload);
+  return mylite_ast_set_statement_target(statement, ast, payload);
 }
 
 static const MyliteAstNode *mylite_ast_statement_payload(const MyliteAstNode *node) {
@@ -803,25 +929,30 @@ static MyliteStatementKind mylite_ast_classify_statement(const char *symbol_name
   return MYLITE_STATEMENT_UNKNOWN;
 }
 
-static void mylite_ast_set_statement_target(MyliteAstStatement *statement,
-                                            const MyliteAstNode *payload) {
+static int mylite_ast_set_statement_target(MyliteAstStatement *statement,
+                                           MyliteAst *ast,
+                                           const MyliteAstNode *payload) {
   if (statement == NULL) {
-    return;
+    return 1;
   }
 
   statement->target_kind =
       mylite_ast_target_kind_for_statement(statement->kind, statement->symbol_name);
   if (statement->target_kind == MYLITE_STATEMENT_TARGET_NONE) {
-    return;
+    return 1;
   }
-
-  const MyliteAstNode *target =
-      mylite_ast_find_target_node(payload, statement->target_kind);
-  if (target == NULL) {
+  if (statement->target_kind == MYLITE_STATEMENT_TARGET_UNKNOWN) {
+    return 1;
+  }
+  if (!mylite_ast_collect_statement_targets(ast, statement, payload)) {
+    return 0;
+  }
+  if (statement->target_count == 0) {
     statement->target_kind = MYLITE_STATEMENT_TARGET_UNKNOWN;
-    return;
+    return 1;
   }
-  mylite_ast_set_target_spans(statement, target);
+  mylite_ast_mirror_first_statement_target(statement);
+  return 1;
 }
 
 static MyliteStatementTargetKind mylite_ast_target_kind_for_statement(
@@ -866,41 +997,198 @@ static MyliteStatementTargetKind mylite_ast_target_kind_for_statement(
   }
 }
 
-static const MyliteAstNode *mylite_ast_find_target_node(const MyliteAstNode *node,
-                                                        MyliteStatementTargetKind kind) {
-  if (node == NULL) {
-    return NULL;
-  }
+static int mylite_ast_collect_statement_targets(MyliteAst *ast,
+                                                MyliteAstStatement *statement,
+                                                const MyliteAstNode *payload) {
+  MyliteStatementTargetKind kind = statement->target_kind;
+  size_t before = statement->target_count;
+  const MyliteAstNode *target = NULL;
+
   if (kind == MYLITE_STATEMENT_TARGET_TABLE) {
-    return mylite_ast_find_first_symbol(node, "nt_table_name");
-  }
-  if (kind == MYLITE_STATEMENT_TARGET_DATABASE) {
-    const MyliteAstNode *target = mylite_ast_find_first_symbol(node, "nt_db_name");
-    return target != NULL ? target : mylite_ast_find_first_symbol(node, "nt_table_name");
-  }
-  if (kind == MYLITE_STATEMENT_TARGET_VIEW) {
-    const MyliteAstNode *target = mylite_ast_find_first_symbol(node, "nt_view_name");
-    return target != NULL ? target : mylite_ast_find_first_symbol(node, "nt_table_name");
-  }
-  if (kind == MYLITE_STATEMENT_TARGET_ROUTINE) {
-    return mylite_ast_find_first_symbol(node, "nt_table_name");
-  }
-  if (kind == MYLITE_STATEMENT_TARGET_ACCOUNT) {
-    return mylite_ast_find_first_symbol(node, "nt_username");
-  }
-  if (kind == MYLITE_STATEMENT_TARGET_VARIABLE) {
-    const MyliteAstNode *target =
-        mylite_ast_find_first_token(node, MYLITE_TOK_SINGLE_AT_IDENTIFIER);
-    if (target != NULL) {
-      return target;
+    if (statement->symbol_name != NULL &&
+        strcmp(statement->symbol_name, "nt_rename_table_stmt") == 0) {
+      return mylite_ast_collect_rename_targets(ast, statement, payload);
     }
-    target = mylite_ast_find_first_token(node, MYLITE_TOK_DOUBLE_AT_IDENTIFIER);
-    if (target != NULL) {
-      return target;
+    if (statement->kind == MYLITE_STATEMENT_DELETE) {
+      if (!mylite_ast_collect_symbol_targets(ast, statement, payload,
+                                             "nt_table_name_opt_wild", kind,
+                                             MYLITE_STATEMENT_TARGET_ROLE_PRIMARY)) {
+        return 0;
+      }
+      if (statement->target_count > before) {
+        return 1;
+      }
+      return mylite_ast_collect_symbol_targets(ast, statement, payload,
+                                               "nt_table_name", kind,
+                                               MYLITE_STATEMENT_TARGET_ROLE_PRIMARY);
     }
-    return mylite_ast_find_first_symbol(node, "nt_variable_name");
+    if (statement->kind == MYLITE_STATEMENT_UPDATE) {
+      const MyliteAstNode *target_scope =
+          mylite_ast_find_first_symbol(payload, "nt_update_stmt_no_with");
+      if (target_scope == NULL) {
+        target_scope = payload;
+      }
+      target = mylite_ast_find_first_symbol(target_scope, "nt_table_ref");
+      if (target != NULL) {
+        if (!mylite_ast_collect_symbol_targets(ast, statement, target,
+                                               "nt_table_name", kind,
+                                               MYLITE_STATEMENT_TARGET_ROLE_PRIMARY)) {
+          return 0;
+        }
+        if (statement->target_count > before) {
+          return 1;
+        }
+      }
+    }
+    if (statement->symbol_name != NULL &&
+        strcmp(statement->symbol_name, "nt_drop_table_stmt") == 0) {
+      return mylite_ast_collect_symbol_targets(ast, statement, payload,
+                                               "nt_table_name", kind,
+                                               MYLITE_STATEMENT_TARGET_ROLE_PRIMARY);
+    }
+    target = mylite_ast_find_first_symbol(payload, "nt_table_name");
+  } else if (kind == MYLITE_STATEMENT_TARGET_DATABASE) {
+    target = mylite_ast_find_first_symbol(payload, "nt_db_name");
+    if (target == NULL) {
+      target = mylite_ast_find_first_symbol(payload, "nt_table_name");
+    }
+  } else if (kind == MYLITE_STATEMENT_TARGET_VIEW) {
+    target = mylite_ast_find_first_symbol(payload, "nt_view_name");
+    if (target == NULL) {
+      target = mylite_ast_find_first_symbol(payload, "nt_table_name");
+    }
+  } else if (kind == MYLITE_STATEMENT_TARGET_ROUTINE) {
+    target = mylite_ast_find_first_symbol(payload, "nt_table_name");
+  } else if (kind == MYLITE_STATEMENT_TARGET_ACCOUNT) {
+    target = mylite_ast_find_first_symbol(payload, "nt_username");
+  } else if (kind == MYLITE_STATEMENT_TARGET_VARIABLE) {
+    target = mylite_ast_find_first_token(payload, MYLITE_TOK_SINGLE_AT_IDENTIFIER);
+    if (target == NULL) {
+      target = mylite_ast_find_first_token(payload, MYLITE_TOK_DOUBLE_AT_IDENTIFIER);
+    }
+    if (target == NULL) {
+      target = mylite_ast_find_first_symbol(payload, "nt_variable_name");
+    }
   }
-  return NULL;
+
+  if (target == NULL) {
+    return 1;
+  }
+  return mylite_ast_append_statement_target(ast, statement, kind,
+                                            MYLITE_STATEMENT_TARGET_ROLE_PRIMARY,
+                                            target);
+}
+
+static int mylite_ast_collect_rename_targets(MyliteAst *ast,
+                                             MyliteAstStatement *statement,
+                                             const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_table_to_table") == 0) {
+    if (node->child_count >= 3 &&
+        (!mylite_ast_append_statement_target(
+             ast, statement, MYLITE_STATEMENT_TARGET_TABLE,
+             MYLITE_STATEMENT_TARGET_ROLE_SOURCE, node->children[0]) ||
+         !mylite_ast_append_statement_target(
+             ast, statement, MYLITE_STATEMENT_TARGET_TABLE,
+             MYLITE_STATEMENT_TARGET_ROLE_DESTINATION, node->children[2]))) {
+      return 0;
+    }
+    return 1;
+  }
+
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_collect_rename_targets(ast, statement, node->children[i])) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_collect_symbol_targets(MyliteAst *ast,
+                                             MyliteAstStatement *statement,
+                                             const MyliteAstNode *node,
+                                             const char *symbol_name,
+                                             MyliteStatementTargetKind kind,
+                                             MyliteStatementTargetRole role) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (node->symbol_name != NULL && strcmp(node->symbol_name, symbol_name) == 0) {
+    return mylite_ast_append_statement_target(ast, statement, kind, role, node);
+  }
+  if (mylite_ast_is_nested_target_boundary(node)) {
+    return 1;
+  }
+
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_collect_symbol_targets(ast, statement, node->children[i],
+                                           symbol_name, kind, role)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_append_statement_target(MyliteAst *ast,
+                                              MyliteAstStatement *statement,
+                                              MyliteStatementTargetKind kind,
+                                              MyliteStatementTargetRole role,
+                                              const MyliteAstNode *target) {
+  if (ast == NULL || statement == NULL || target == NULL) {
+    return 1;
+  }
+
+  size_t next_count = statement->target_count + 1;
+  MyliteAstStatementTarget *targets =
+      mylite_ast_alloc(ast, next_count * sizeof(*targets));
+  if (targets == NULL) {
+    return 0;
+  }
+  if (statement->target_count > 0) {
+    memcpy(targets, statement->targets,
+           statement->target_count * sizeof(*targets));
+  }
+  mylite_ast_fill_statement_target(&targets[statement->target_count], kind, role,
+                                   target);
+  statement->targets = targets;
+  statement->target_count = next_count;
+  return 1;
+}
+
+static void mylite_ast_fill_statement_target(MyliteAstStatementTarget *target,
+                                             MyliteStatementTargetKind kind,
+                                             MyliteStatementTargetRole role,
+                                             const MyliteAstNode *node) {
+  target->kind = kind;
+  target->role = role;
+  target->start = mylite_ast_node_start(node);
+  target->end = mylite_ast_node_end(node);
+  target->name_start = target->start;
+  target->name_end = target->end;
+  if (kind == MYLITE_STATEMENT_TARGET_TABLE ||
+      kind == MYLITE_STATEMENT_TARGET_DATABASE ||
+      kind == MYLITE_STATEMENT_TARGET_VIEW ||
+      kind == MYLITE_STATEMENT_TARGET_ROUTINE) {
+    mylite_ast_set_table_name_parts(target, node);
+  }
+}
+
+static void mylite_ast_mirror_first_statement_target(MyliteAstStatement *statement) {
+  if (statement == NULL || statement->target_count == 0) {
+    return;
+  }
+
+  const MyliteAstStatementTarget *target = &statement->targets[0];
+  statement->target_kind = target->kind;
+  statement->target_start = target->start;
+  statement->target_end = target->end;
+  statement->target_schema_start = target->schema_start;
+  statement->target_schema_end = target->schema_end;
+  statement->target_name_start = target->name_start;
+  statement->target_name_end = target->name_end;
 }
 
 static const MyliteAstNode *mylite_ast_find_first_symbol(const MyliteAstNode *node,
@@ -938,30 +1226,31 @@ static const MyliteAstNode *mylite_ast_find_first_token(const MyliteAstNode *nod
   return NULL;
 }
 
-static void mylite_ast_set_target_spans(MyliteAstStatement *statement,
-                                        const MyliteAstNode *target) {
-  statement->target_start = mylite_ast_node_start(target);
-  statement->target_end = mylite_ast_node_end(target);
-  statement->target_name_start = statement->target_start;
-  statement->target_name_end = statement->target_end;
-  if (statement->target_kind == MYLITE_STATEMENT_TARGET_TABLE ||
-      statement->target_kind == MYLITE_STATEMENT_TARGET_DATABASE ||
-      statement->target_kind == MYLITE_STATEMENT_TARGET_VIEW ||
-      statement->target_kind == MYLITE_STATEMENT_TARGET_ROUTINE) {
-    mylite_ast_set_table_name_parts(statement, target);
+static int mylite_ast_is_nested_target_boundary(const MyliteAstNode *node) {
+  if (node == NULL || node->symbol_name == NULL) {
+    return 0;
   }
+
+  static const char *const symbols[] = {
+      "nt_sub_select",
+      "nt_select_stmt",
+      "nt_select_stmt_with_clause",
+      "nt_set_opr_stmt",
+  };
+  return symbol_is_one_of(node->symbol_name, symbols,
+                          sizeof(symbols) / sizeof(symbols[0]));
 }
 
-static void mylite_ast_set_table_name_parts(MyliteAstStatement *statement,
-                                            const MyliteAstNode *target) {
-  if (target == NULL || target->child_count < 3) {
+static void mylite_ast_set_table_name_parts(MyliteAstStatementTarget *target,
+                                            const MyliteAstNode *node) {
+  if (target == NULL || node == NULL) {
     return;
   }
 
   const MyliteAstNode *schema = NULL;
   const MyliteAstNode *name = NULL;
-  for (size_t i = 0; i < target->child_count; i++) {
-    const MyliteAstNode *child = target->children[i];
+  for (size_t i = 0; i < node->child_count; i++) {
+    const MyliteAstNode *child = node->children[i];
     if (child == NULL || child->symbol_name == NULL ||
         strcmp(child->symbol_name, "nt_identifier") != 0) {
       continue;
@@ -975,10 +1264,13 @@ static void mylite_ast_set_table_name_parts(MyliteAstStatement *statement,
   }
 
   if (schema != NULL && name != NULL) {
-    statement->target_schema_start = mylite_ast_node_start(schema);
-    statement->target_schema_end = mylite_ast_node_end(schema);
-    statement->target_name_start = mylite_ast_node_start(name);
-    statement->target_name_end = mylite_ast_node_end(name);
+    target->schema_start = mylite_ast_node_start(schema);
+    target->schema_end = mylite_ast_node_end(schema);
+    target->name_start = mylite_ast_node_start(name);
+    target->name_end = mylite_ast_node_end(name);
+  } else if (schema != NULL) {
+    target->name_start = mylite_ast_node_start(schema);
+    target->name_end = mylite_ast_node_end(schema);
   }
 }
 
@@ -1003,6 +1295,16 @@ static const MyliteAstStatement *mylite_ast_statement_at(const MyliteAst *ast,
     return NULL;
   }
   return &ast->statements[index];
+}
+
+static const MyliteAstStatementTarget *mylite_ast_statement_target_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  if (statement == NULL || target_index >= statement->target_count) {
+    return NULL;
+  }
+  return &statement->targets[target_index];
 }
 
 static void mylite_parser_state_no_memory(MyliteParserState *state) {

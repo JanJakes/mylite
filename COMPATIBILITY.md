@@ -125,7 +125,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `INSERT ... VALUES` | ❌ | top | Multi-row values, defaults, generated columns, warnings, affected rows, and insert ids. | Parser recognizes empty and comma-separated column lists before write payloads and validates explicit `VALUE(S)` row-list tails, empty rows, `ROW(...)` constructors, optional row aliases, and `ON DUPLICATE KEY UPDATE` assignment-list tails. |
 | `INSERT ... SET` | ❌ | top | MySQL SET-form insert semantics. | Parser validates comma-separated assignment lists, dotted assignment targets, nested expression values, rejects repeated `SET` continuations, optional row aliases, and duplicate-key update tails. |
 | `INSERT ... SELECT` | ❌ | high | Insert from query expression with locking, defaults, and metadata inference. |  |
-| `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | top | Conflict target resolution, VALUES()/row aliases, affected rows, and warnings. | Parser validates the `ON DUPLICATE KEY UPDATE` keyword chain and non-empty comma-separated assignment lists. |
+| `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | top | Conflict target resolution, VALUES()/row aliases, affected rows, and warnings. | Parser validates the `ON DUPLICATE KEY UPDATE` keyword chain, non-empty comma-separated assignment lists, and malformed post-value continuations while preserving `VALUES()` assignment expressions. |
 | `INSERT IGNORE` | ❌ | top | Duplicate, conversion, and constraint warning demotion rules. |  |
 | `INSERT DELAYED` | ❌ | low | Deprecated delayed insert syntax and MySQL-compatible diagnostics. |  |
 | `INSERT LOW_PRIORITY` / `HIGH_PRIORITY` | ❌ | low | Priority modifiers and embedded-compatible treatment. |  |

@@ -23,6 +23,8 @@ token sink:
   structurally.
 - Account-reference forms that permit `CURRENT_USER` or `CURRENT_USER()` now
   have explicit grammar productions.
+- Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`
+  and `OR REPLACE` variants.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,

@@ -84,7 +84,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
 | `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. |  |
 | `CREATE SERVER` | ❌ | low | Foreign server metadata syntax. |  |
-| `CREATE SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system catalog DDL. |  |
+| `CREATE SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system catalog DDL. | Parser recognizes bare, `IF NOT EXISTS`, and `OR REPLACE` syntax. |
 | `CREATE TABLE` | ❌ | top | Column definitions, constraints, indexes, table options, generated columns, and partitions; see section 3.1. |  |
 | `CREATE TEMPORARY TABLE` | ❌ | high | Session-scoped table lifecycle and name shadowing. |  |
 | `CREATE TABLE ... LIKE` | ❌ | high | Exact metadata cloning rules. |  |
@@ -101,7 +101,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
 | `DROP PROCEDURE` | ❌ | medium | Stored-procedure deletion and metadata cleanup. |  |
 | `DROP SERVER` | ❌ | low | Foreign server metadata deletion. |  |
-| `DROP SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system deletion and dependency checks. |  |
+| `DROP SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system deletion and dependency checks. | Parser recognizes optional `IF EXISTS`. |
 | `DROP TABLE` | ❌ | top | Multi-table drop, temporary tables, foreign-key checks, and warnings. |  |
 | `DROP TABLESPACE` | ❌ | low | Tablespace deletion syntax and diagnostics. |  |
 | `DROP UNDO TABLESPACE` | ❌ | low | Undo tablespace deletion syntax present in the MySQL 8.4 parser source. |  |

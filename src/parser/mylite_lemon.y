@@ -1889,10 +1889,20 @@ dml_write_parenthesized_query_token ::= LC.
 dml_write_parenthesized_query_token ::= RC.
 
 dml_write_after_parenthesized_query ::= .
-dml_write_after_parenthesized_query ::= UNION required_statement_tail.
-dml_write_after_parenthesized_query ::= ORDER BY required_statement_tail.
-dml_write_after_parenthesized_query ::= LIMIT required_statement_tail.
-dml_write_after_parenthesized_query ::= ON required_statement_tail.
+dml_write_after_parenthesized_query ::= UNION dml_write_union_tail.
+dml_write_after_parenthesized_query ::= ORDER BY expression_start statement_tail.
+dml_write_after_parenthesized_query ::= LIMIT ATOM statement_tail.
+dml_write_after_parenthesized_query ::= ON dml_write_duplicate_tail.
+
+dml_write_union_tail ::= dml_write_union_query_start required_statement_tail.
+dml_write_union_tail ::= values_union_option dml_write_union_query_start required_statement_tail.
+
+dml_write_union_query_start ::= dml_write_query_start.
+dml_write_union_query_start ::= LP.
+
+dml_write_duplicate_tail ::= ATOM(A) KEY UPDATE update_assignment_start. {
+  mylite_parser_require_token_text(ctx, A, "DUPLICATE");
+}
 
 dml_write_start ::= VALUES.
 dml_write_start ::= SELECT.

@@ -122,8 +122,9 @@ token sink:
   validate `ENFORCED`/`NOT ENFORCED` tails while allowing later column
   attributes where MySQL permits them. Column definitions require a known MySQL
   type-family start plus common attribute starts and selected closed attribute
-  values, and column-level `REFERENCES` clauses validate the referenced
-  column-list envelope plus referential-action tails. Trailing table options
+  values, reject repeated generated-column storage modifiers, and column-level
+  `REFERENCES` clauses validate the referenced column-list envelope plus
+  referential-action tails. Trailing table options
   must start with known MySQL table-option keywords and validate selected value
   domains, including numeric options, string-literal options, closed
   `INSERT_METHOD`, closed `ROW_FORMAT`, storage values, `UNION` lists, and
@@ -167,8 +168,9 @@ token sink:
   attributes, `AUTOEXTEND_SIZE`, `TABLE_CHECKSUM`, `START TRANSACTION`,
   `ALGORITHM`/`LOCK` options, tablespace discard/import forms, and validated
   `ADD`/`CHANGE`/`MODIFY` column type starts plus column-definition attribute
-  starts and selected closed attribute values, index key-part prefix lengths,
-  `ASC`/`DESC` tails, and index option values including closed index
+  starts and selected closed attribute values including repeated generated-column
+  storage modifier rejection, index key-part prefix lengths, `ASC`/`DESC` tails,
+  and index option values including closed index
   `USING`/`TYPE` values. `ADD FOREIGN KEY` child/reference column-list
   envelopes and referential-action tails are also validated, and `ADD CHECK`
   requires a non-empty parenthesized expression body plus a valid

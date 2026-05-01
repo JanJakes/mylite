@@ -356,10 +356,10 @@ Shared parser-level `SHOW ... LIKE` filters require string-literal patterns.
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| Column definition grammar | ❌ | top | Type, nullability, defaults, visibility, comments, storage, format, references, and constraints. | `CREATE TABLE` and `ALTER TABLE ADD`/`CHANGE`/`MODIFY` validate type starts, common attribute starts, closed `COLUMN_FORMAT`/`STORAGE` values, and column-level `REFERENCES` envelopes while keeping expression bodies permissive. |
+| Column definition grammar | ❌ | top | Type, nullability, defaults, visibility, comments, storage, format, references, and constraints. | `CREATE TABLE` and `ALTER TABLE ADD`/`CHANGE`/`MODIFY` validate type starts, common attribute starts, closed `COLUMN_FORMAT`/`STORAGE` values, reject repeated generated-column storage modifiers, and validate column-level `REFERENCES` envelopes while keeping expression bodies permissive. |
 | Silent column specification changes | ❌ | high | MySQL automatic rewrites of column specifications and SHOW CREATE output. |  |
 | Default expressions | ❌ | top | Literal and expression defaults, CURRENT_TIMESTAMP variants, and error cases. |  |
-| Generated columns | ❌ | high | Virtual/stored generated columns, dependencies, indexes, and metadata. |  |
+| Generated columns | ❌ | high | Virtual/stored generated columns, dependencies, indexes, and metadata. | Parser recognizes generated-column heads and rejects repeated or conflicting `VIRTUAL`/`STORED` storage modifiers in `CREATE TABLE` and `ALTER TABLE ADD`/`CHANGE`/`MODIFY` column definitions. |
 | Invisible columns | ❌ | medium | Implicit column lists, SELECT * behavior, and metadata flags. |  |
 | Generated invisible primary keys | ❌ | low | MySQL-generated invisible primary key behavior, metadata, and dump/replication interactions. |  |
 | AUTO_INCREMENT columns | ❌ | top | Allocation, persistence, lock modes, explicit values, and overflow behavior. |  |

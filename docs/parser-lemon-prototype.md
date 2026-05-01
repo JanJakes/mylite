@@ -32,6 +32,8 @@ token sink:
 - `EXPLAIN ANALYZE` has explicit statement-start handling and rejects
   unsupported non-`TREE` format names.
 - `ALTER TABLESPACE` recognizes `ADD DATAFILE` and `DROP DATAFILE` actions.
+- `SHOW CREATE DATABASE` and `SHOW CREATE SCHEMA` recognize optional
+  `IF NOT EXISTS`.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,

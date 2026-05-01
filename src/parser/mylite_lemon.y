@@ -1481,16 +1481,18 @@ show_count_star ::= STAR.
 show_count_kind ::= ERRORS.
 show_count_kind ::= WARNINGS.
 
+show_create_tail ::= show_create_database_kind create_if_not_exists_tail cache_name_part.
 show_create_tail ::= show_create_named_kind cache_table_ref.
 show_create_tail ::= USER show_create_user_target.
 
 show_create_user_target ::= rename_user_account.
 
-show_create_named_kind ::= DATABASE.
+show_create_database_kind ::= DATABASE.
+show_create_database_kind ::= SCHEMA.
+
 show_create_named_kind ::= EVENT.
 show_create_named_kind ::= FUNCTION.
 show_create_named_kind ::= PROCEDURE.
-show_create_named_kind ::= SCHEMA.
 show_create_named_kind ::= TABLE.
 show_create_named_kind ::= TRIGGER.
 show_create_named_kind ::= VIEW.

@@ -39,7 +39,8 @@ token sink:
   and `LOCK`.
 - `CREATE TABLE` table-definition bodies require non-empty comma-separated
   elements while preserving nested token bodies for column and constraint
-  definitions.
+  definitions; trailing table options must start with known MySQL table-option
+  keywords, and post-definition CTAS forms are recognized explicitly.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   documented NDB logfile options, and required `ENGINE` clauses.
 - `CREATE TABLESPACE`, `CREATE UNDO TABLESPACE`, and `ALTER TABLESPACE`

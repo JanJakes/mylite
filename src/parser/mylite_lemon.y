@@ -236,7 +236,7 @@ create_database_kind ::= SCHEMA.
 
 create_database_tail ::= create_database_options_tail.
 
-create_table_tail ::= LP create_table_elements RP create_options_tail.
+create_table_tail ::= LP create_table_elements RP create_table_post_definition_tail.
 create_table_tail ::= LIKE cache_table_ref.
 create_table_tail ::= SELECT select_tail.
 create_table_tail ::= AS SELECT select_tail.
@@ -250,6 +250,28 @@ create_table_tail ::= query_parenthesized_body.
 create_table_tail ::= AS query_parenthesized_body.
 create_table_tail ::= AS LP LP dml_write_query_start required_statement_tail.
 create_table_tail ::= create_table_tail_option_start required_statement_tail.
+
+create_table_post_definition_tail ::= .
+create_table_post_definition_tail ::= create_table_tail_option_start required_statement_tail.
+create_table_post_definition_tail ::= create_table_ctas_tail.
+create_table_post_definition_tail ::= START TRANSACTION.
+
+create_table_ctas_tail ::= create_table_ctas_modifier_tail create_table_ctas_body.
+
+create_table_ctas_modifier_tail ::= .
+create_table_ctas_modifier_tail ::= IGNORE.
+create_table_ctas_modifier_tail ::= REPLACE.
+
+create_table_ctas_body ::= SELECT select_tail.
+create_table_ctas_body ::= AS SELECT select_tail.
+create_table_ctas_body ::= TABLE table_statement_target table_query_tail.
+create_table_ctas_body ::= AS TABLE table_statement_target table_query_tail.
+create_table_ctas_body ::= VALUES values_row_list values_query_tail.
+create_table_ctas_body ::= AS VALUES values_row_list values_query_tail.
+create_table_ctas_body ::= WITH with_recursive_tail with_cte_list with_query_body.
+create_table_ctas_body ::= AS WITH with_recursive_tail with_cte_list with_query_body.
+create_table_ctas_body ::= query_parenthesized_body.
+create_table_ctas_body ::= AS query_parenthesized_body.
 
 create_table_elements ::= create_table_element.
 create_table_elements ::= create_table_elements COMMA create_table_element.
@@ -341,6 +363,7 @@ create_table_tail_option_start ::= PACK_KEYS.
 create_table_tail_option_start ::= PASSWORD.
 create_table_tail_option_start ::= PARTITION.
 create_table_tail_option_start ::= ROW_FORMAT.
+create_table_tail_option_start ::= SECONDARY_ENGINE.
 create_table_tail_option_start ::= SECONDARY_ENGINE_ATTRIBUTE.
 create_table_tail_option_start ::= STATS_AUTO_RECALC.
 create_table_tail_option_start ::= STATS_PERSISTENT.

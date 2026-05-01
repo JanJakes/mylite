@@ -304,7 +304,7 @@ create_definer_object_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref
 create_definer_object_tail ::= FUNCTION create_if_not_exists_tail cache_table_ref create_function_tail.
 create_definer_object_tail ::= PROCEDURE create_if_not_exists_tail cache_table_ref create_procedure_tail.
 
-create_event_body ::= ON create_schedule event_schedule_start required_statement_tail.
+create_event_body ::= ON create_schedule event_schedule_start create_event_before_do create_event_do event_statement_start statement_tail.
 
 create_schedule ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "SCHEDULE");
@@ -313,6 +313,18 @@ create_schedule ::= ATOM(A). {
 event_schedule_start ::= ATOM(A). {
   mylite_parser_require_event_schedule_start(ctx, A);
 }
+
+create_event_before_do ::= .
+create_event_before_do ::= create_event_before_do create_event_before_do_token.
+
+create_event_before_do_nested ::= .
+create_event_before_do_nested ::= create_event_before_do_nested create_event_before_do_token.
+
+create_event_before_do_token ::= ATOM.
+create_event_before_do_token ::= LABEL.
+create_event_before_do_token ::= ON.
+create_event_before_do_token ::= COMMA.
+create_event_before_do_token ::= LP create_event_before_do_nested RP.
 
 create_trigger_body ::= create_trigger_time create_trigger_event ON cache_table_ref FOR create_each ROW create_trigger_statement_tail.
 
@@ -646,6 +658,8 @@ alter_event_action ::= ATOM(A) create_options_tail. {
   mylite_parser_require_event_atom_action(ctx, A);
 }
 alter_event_action ::= DO event_statement_start statement_tail.
+
+create_event_do ::= DO.
 
 alter_event_on_tail ::= ATOM(A) ATOM(B) statement_tail. {
   mylite_parser_require_alter_event_on_tail(ctx, A, B);

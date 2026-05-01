@@ -727,6 +727,7 @@ def main() -> int:
         ("cache index t key (a) garbage k;", 1, {}),
         ("cache nonsense;", 1, {}),
         ("kill query @id;", 0, {"statements": "1", "admin": "1"}),
+        ("kill first;", 0, {"statements": "1", "admin": "1"}),
         ("kill @id;", 0, {"statements": "1", "admin": "1"}),
         ("kill @`id`;", 0, {"statements": "1", "admin": "1"}),
         ("kill connection @id;", 0, {"statements": "1", "admin": "1"}),

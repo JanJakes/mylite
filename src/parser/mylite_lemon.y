@@ -1991,8 +1991,7 @@ kill_tail ::= kill_mode kill_target.
 kill_mode ::= CONNECTION.
 kill_mode ::= QUERY.
 
-kill_target ::= ATOM.
-kill_target ::= LABEL.
+kill_target ::= cache_name_part.
 kill_target ::= user_variable_name.
 
 deallocate_statement ::= DEALLOCATE PREPARE prepared_statement_name. {

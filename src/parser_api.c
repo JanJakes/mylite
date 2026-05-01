@@ -290,6 +290,9 @@ static int validate_execute_statement_syntax(const mylite_parser *parser, const 
 static int validate_deallocate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_drop_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_drop_prepare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_drop_database_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
 static int validate_drop_index_statement_syntax(const mylite_parser *parser,
                                                 size_t token_index,
                                                 size_t last_token_index);
@@ -4434,6 +4437,10 @@ static int validate_drop_statement_syntax(const mylite_parser *parser, const myl
 	if (parser->tokens[token_index + 1].parser_token == PREPARE_T) {
 		return validate_drop_prepare_statement_syntax(parser, statement);
 	}
+	if (parser->tokens[token_index + 1].parser_token == DATABASE_T ||
+	    parser->tokens[token_index + 1].parser_token == SCHEMA_T) {
+		return validate_drop_database_statement_syntax(parser, token_index + 1, last_token_index);
+	}
 	if (parser->tokens[token_index + 1].parser_token == INDEX_T) {
 		return validate_drop_index_statement_syntax(parser, token_index + 1, last_token_index);
 	}
@@ -4466,6 +4473,27 @@ static int validate_drop_prepare_statement_syntax(const mylite_parser *parser, c
 	}
 	return token_index + 2 == last_token_index &&
 	       token_can_continue_object_name(&parser->tokens[token_index + 2]);
+}
+
+static int validate_drop_database_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	if (token_index >= parser->token_count ||
+	    (parser->tokens[token_index].parser_token != DATABASE_T &&
+	     parser->tokens[token_index].parser_token != SCHEMA_T)) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "IF") &&
+	    token_text_equals(parser, token_index + 1, "EXISTS")) {
+		token_index += 2;
+	}
+
+	return token_index == last_token_index &&
+	       token_can_continue_object_name(&parser->tokens[token_index]);
 }
 
 static int validate_drop_index_statement_syntax(const mylite_parser *parser,

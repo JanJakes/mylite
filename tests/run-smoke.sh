@@ -438,6 +438,35 @@ if "$parser" --quiet 'DROP VIEW v, CASCADE'; then
 	exit 1
 fi
 
+drop_database_output=$("$parser" 'DROP DATABASE IF EXISTS db; DROP SCHEMA `s`')
+case "$drop_database_output" in
+	*"drop"*/database:db*"drop"*/schema:'`s`'*) ;;
+	*)
+		echo "unexpected DROP DATABASE/SCHEMA output: $drop_database_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'DROP DATABASE'; then
+	echo "expected missing DROP DATABASE name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP DATABASE IF EXISTS'; then
+	echo "expected missing DROP DATABASE IF EXISTS name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP DATABASE db extra'; then
+	echo "expected trailing DROP DATABASE tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP SCHEMA db.name'; then
+	echo "expected qualified DROP SCHEMA name to fail" >&2
+	exit 1
+fi
+
 rename_table_output=$("$parser" 'RENAME TABLE old TO new; RENAME TABLE db.old TO other.new, a TO b; RENAME TABLES t2 TO t0, t4 TO t2')
 case "$rename_table_output" in
 	*"rename"*/table:old*"rename"*/table:db.old*"rename"*/table:t2*) ;;

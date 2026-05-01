@@ -272,6 +272,8 @@ corpus-observed `RENAME TABLES` spelling remains accepted for parser coverage.
 `DROP TABLE` and `DROP VIEW` validate optional `IF EXISTS`, comma-separated
 name lists, and `RESTRICT` / `CASCADE` tails; `DROP TABLE` also accepts
 `TEMPORARY` and corpus-observed `TABLES` forms.
+`DROP DATABASE` and `DROP SCHEMA` validate optional `IF EXISTS` with a single
+unqualified schema target.
 Prepared-statement names are recorded in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`; those forms
 validate handle names, `PREPARE ... FROM` sources, and `EXECUTE ... USING`

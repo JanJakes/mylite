@@ -94,7 +94,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax present in the MySQL 8.4 parser source. | Parser records the undo tablespace target; storage-engine behavior is not implemented. |
 | `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. | Parser records the trigger target while skipping optional definer account clauses; trigger execution is not implemented. |
 | `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. | Parser records the view target while skipping optional definer account clauses; view metadata and expansion are not implemented. |
-| `DROP DATABASE` / `DROP SCHEMA` | ❌ | high | Schema removal, metadata cleanup, warnings, and embedded single-file constraints. |  |
+| `DROP DATABASE` / `DROP SCHEMA` | ❌ | high | Schema removal, metadata cleanup, warnings, and embedded single-file constraints. | Parser records the schema target and validates optional `IF EXISTS` with a single unqualified schema name; metadata cleanup, default-schema effects, warnings, and embedded file constraints are not implemented. |
 | `DROP EVENT` | ❌ | medium | Event metadata deletion. |  |
 | `DROP FUNCTION` (stored) | ❌ | medium | Stored-function deletion and routine metadata cleanup. |  |
 | `DROP FUNCTION` (loadable) | ❌ | low | Loadable-function deregistration syntax. |  |

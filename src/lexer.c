@@ -580,6 +580,13 @@ static int read_variable(mylite_parser *parser)
 		system_variable = 1;
 		advance_byte(lexer);
 	}
+	if (!system_variable &&
+	    (current_char(lexer) == '\'' || current_char(lexer) == '"')) {
+		return read_string(parser, current_char(lexer)) == 0 ? 0 : USER_VARIABLE;
+	}
+	if (!system_variable && current_char(lexer) == '`') {
+		return read_quoted_identifier(parser) == 0 ? 0 : USER_VARIABLE;
+	}
 	while (is_word_part(current_char(lexer)) || current_char(lexer) == '.' || current_char(lexer) == '$') {
 		advance_byte(lexer);
 	}

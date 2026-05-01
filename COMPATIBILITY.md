@@ -483,7 +483,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | String literals | ❌ | top | Escapes, introducers, national character set, binary literals, sql_mode effects, and concatenation. |  |
 | Temporal literals | ❌ | top | DATE/TIME/TIMESTAMP literal syntax and coercion. |  |
 | JSON path literals | ❌ | high | Path grammar, quoting, wildcards, ranges, and errors. |  |
-| User variables | ❌ | high | Type retention, coercion, assignment, charset/collation, and result metadata. | Parser records explicit user-variable assignment targets in `SELECT ... INTO`, `SET`, and statement-level `GET DIAGNOSTICS`; runtime state is not implemented. |
+| User variables | ❌ | high | Type retention, coercion, assignment, charset/collation, and result metadata. | Parser records explicit user-variable assignment targets in `SELECT ... INTO`, `SET`, and statement-level `GET DIAGNOSTICS`, including quoted user-variable names in `SET`; runtime state is not implemented. |
 | Local variables | ❌ | medium | Stored-program variable typing, scope, and diagnostics. |  |
 | Type conversion | ❌ | top | Expression, comparison, assignment, insert/update, aggregate, and function argument conversion rules. |  |
 | Collation coercibility | ❌ | top | Coercibility ranks, illegal mix diagnostics, and result collation derivation. |  |

@@ -252,6 +252,7 @@ static size_t last_account_name_token(const mylite_parser *parser,
                                       size_t last_token_index);
 static int token_is_current_user_function_name(const mylite_parser *parser, size_t token_index);
 static int token_pair_is_empty_parentheses(const mylite_parser *parser, size_t open_token_index);
+static int token_is_account_host_suffix(const mylite_parser *parser, size_t token_index);
 static int token_is_account_at_marker(const mylite_parser *parser, size_t token_index);
 static int classify_show_statement_object(const mylite_parser *parser,
                                           mylite_statement *statement,
@@ -2864,6 +2865,10 @@ static size_t last_account_name_token(const mylite_parser *parser,
 	    token_pair_is_empty_parentheses(parser, first_name_token + 1)) {
 		return first_name_token + 2;
 	}
+	if (first_name_token + 1 <= last_token_index &&
+	    token_is_account_host_suffix(parser, first_name_token + 1)) {
+		return first_name_token + 1;
+	}
 	if (first_name_token + 2 <= last_token_index &&
 	    token_is_account_at_marker(parser, first_name_token + 1) &&
 	    token_can_start_object_name(&parser->tokens[first_name_token + 2])) {
@@ -2883,6 +2888,14 @@ static int token_pair_is_empty_parentheses(const mylite_parser *parser, size_t o
 	       parser->tokens[open_token_index].parser_token == '(' &&
 	       parser->tokens[open_token_index + 1].parser_token == ')' &&
 	       parser->tokens[open_token_index].matching_token == open_token_index + 2;
+}
+
+static int token_is_account_host_suffix(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       parser->tokens[token_index].parser_token == USER_VARIABLE &&
+	       parser->tokens[token_index].end_offset > parser->tokens[token_index].start_offset + 1 &&
+	       parser->lexer.input[parser->tokens[token_index].start_offset] == '@';
 }
 
 static int token_is_account_at_marker(const mylite_parser *parser, size_t token_index)

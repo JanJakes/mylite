@@ -275,8 +275,9 @@ and variable-assignment `SET` metadata is recorded for explicit user-variable
 and system-variable targets. Unadorned `SET name = ...` assignments remain
 objectless until semantic context can distinguish local variables from system
 variables, except for the documented `SET sql_log_bin = ...` system-variable
-form. Connection character-set `SET NAMES` and `SET CHARACTER SET` forms
-record the target character set. Savepoint names are recorded for `SAVEPOINT`,
+form. User-variable targets include MySQL's quoted variable-name forms.
+Connection character-set `SET NAMES` and `SET CHARACTER SET` forms record the
+target character set. Savepoint names are recorded for `SAVEPOINT`,
 `RELEASE SAVEPOINT`, and `ROLLBACK [WORK] TO [SAVEPOINT]`.
 Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
@@ -433,6 +434,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   16-character label limit, or label binding.
 - Skips ordinary comments. MySQL executable `/*! ... */` comments are tokenized
   as SQL because they can carry required syntax.
+- Treats quoted user-variable names such as `@'my-var'`, `@"my-var"`, and
+  `` @`my-var` `` as single user-variable tokens.
 - Accepts unknown statement starts as `unknown`; later grammar work should
   reduce that surface as concrete productions land.
 - Rejects bare known statement keywords such as `SELECT`, `CREATE`, and `SET`,

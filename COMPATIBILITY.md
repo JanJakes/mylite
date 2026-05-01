@@ -157,7 +157,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SAVEPOINT` | ❌ | top | Nested savepoint creation and replacement semantics. |  |
 | `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. |  |
 | `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. |  |
-| `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/next-transaction scope. |  |
+| `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/local/next-transaction scope. | Parser recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and READ ONLY/READ WRITE access modes. |
 | `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. |  |
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. |  |
 | `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. |  |

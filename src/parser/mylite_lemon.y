@@ -2384,7 +2384,7 @@ set_statement ::= SET set_assignment. {
 set_statement ::= SET set_assignment_scope set_assignment. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET set_assignment_scope TRANSACTION set_transaction_tail. {
+set_statement ::= SET set_transaction_scope TRANSACTION set_transaction_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 
@@ -2448,12 +2448,24 @@ set_default_role_spec ::= NONE.
 set_default_role_spec ::= ALL.
 set_default_role_spec ::= drop_account_list.
 
-set_transaction_tail ::= set_transaction_token statement_tail.
+set_transaction_tail ::= set_transaction_characteristics.
 
-set_transaction_token ::= ATOM.
-set_transaction_token ::= READ.
-set_transaction_token ::= WITH.
-set_transaction_token ::= WRITE.
+set_transaction_scope ::= GLOBAL.
+set_transaction_scope ::= LOCAL.
+set_transaction_scope ::= SESSION.
+
+set_transaction_characteristics ::= set_transaction_characteristic.
+set_transaction_characteristics ::= set_transaction_characteristics import_comma set_transaction_characteristic.
+
+set_transaction_characteristic ::= ISOLATION LEVEL set_transaction_isolation_level.
+set_transaction_characteristic ::= READ transaction_access_mode.
+
+set_transaction_isolation_level ::= REPEATABLE READ.
+set_transaction_isolation_level ::= READ COMMITTED.
+set_transaction_isolation_level ::= READ UNCOMMITTED.
+set_transaction_isolation_level ::= SERIALIZABLE.
+
+%fallback ATOM COMMITTED ISOLATION LEVEL REPEATABLE SERIALIZABLE UNCOMMITTED.
 
 set_assignment_scope ::= GLOBAL.
 set_assignment_scope ::= LOCAL.
@@ -3144,6 +3156,12 @@ keyword ::= SSL.
 keyword ::= STRAIGHT_JOIN.
 keyword ::= TO.
 keyword ::= WORK.
+keyword ::= COMMITTED.
+keyword ::= ISOLATION.
+keyword ::= LEVEL.
+keyword ::= REPEATABLE.
+keyword ::= SERIALIZABLE.
+keyword ::= UNCOMMITTED.
 
 keyword_not_select_clause ::= SELECT.
 keyword_not_select_clause ::= WITH.
@@ -3368,3 +3386,9 @@ keyword_not_select_clause ::= SSL.
 keyword_not_select_clause ::= STRAIGHT_JOIN.
 keyword_not_select_clause ::= TO.
 keyword_not_select_clause ::= WORK.
+keyword_not_select_clause ::= COMMITTED.
+keyword_not_select_clause ::= ISOLATION.
+keyword_not_select_clause ::= LEVEL.
+keyword_not_select_clause ::= REPEATABLE.
+keyword_not_select_clause ::= SERIALIZABLE.
+keyword_not_select_clause ::= UNCOMMITTED.

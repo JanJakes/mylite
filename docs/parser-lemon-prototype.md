@@ -35,6 +35,8 @@ token sink:
   lists rather than permissive token tails.
 - `SET PASSWORD` recognizes MySQL 8.4 literal and random password assignment
   forms, including replacement and secondary-password clauses.
+- `SET TRANSACTION` recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and
+  read access modes without permissive tails.
 - `SET NAMES` and `SET CHARACTER SET` recognize their charset/default forms,
   optional collation, and comma-following variable assignments.
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form.

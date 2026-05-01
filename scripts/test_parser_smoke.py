@@ -239,6 +239,7 @@ def main() -> int:
         ("alter table db1.t1 add column c int;", 0, {"statements": "1", "ddl": "1"}),
         ("alter table t1;", 0, {"statements": "1", "ddl": "1"}),
         ("alter table t1 force;", 0, {"statements": "1", "ddl": "1"}),
+        ("alter table t1 coalesce partition 1;", 0, {"statements": "1", "ddl": "1"}),
         ("alter algorithm=merge view v1 as select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("alter algorithm=temptable definer=u@localhost view v2 as select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("alter definer=u@localhost sql security invoker view v3 as select 1;", 0, {"statements": "1", "ddl": "1"}),

@@ -207,57 +207,6 @@ void mylite_parser_require_create_procedure_tail_atom(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &token);
 }
 
-void mylite_parser_require_alter_table_action_start(MyliteParseContext *ctx,
-                                                    MyliteToken token) {
-  static const char *const starters[] = {
-      "ADD",
-      "ALGORITHM",
-      "ANALYZE",
-      "AUTO_INCREMENT",
-      "AVG_ROW_LENGTH",
-      "CHANGE",
-      "CHECK",
-      "CHECKSUM",
-      "COALESCE",
-      "COMMENT",
-      "CONVERT",
-      "DISABLE",
-      "DISCARD",
-      "ENABLE",
-      "ENCRYPTION",
-      "EXCHANGE",
-      "FORCE",
-      "IMPORT",
-      "INSERT_METHOD",
-      "KEY_BLOCK_SIZE",
-      "LOCK",
-      "MAX_ROWS",
-      "MIN_ROWS",
-      "MODIFY",
-      "OPTIMIZE",
-      "ORDER",
-      "PACK_KEYS",
-      "PARTITION",
-      "REBUILD",
-      "REMOVE",
-      "REORGANIZE",
-      "REPAIR",
-      "ROW_FORMAT",
-      "SECONDARY_ENGINE",
-      "STORAGE",
-      "TRUNCATE",
-  };
-
-  if (ctx->failed ||
-      token_ascii_matches_any(&token, starters,
-                              sizeof(starters) / sizeof(starters[0]))) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
 void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
                                         MyliteToken token,
                                         const char *prefix) {

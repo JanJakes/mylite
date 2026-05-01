@@ -905,6 +905,8 @@ def main() -> int:
         ("explain for select;", 1, {}),
         ("explain from;", 1, {}),
         ("use test;", 0, {"statements": "1", "utility": "1"}),
+        ("use account;", 0, {"statements": "1", "utility": "1"}),
+        ("use first;", 0, {"statements": "1", "utility": "1"}),
         ("use test extra;", 1, {}),
         ("use select;", 1, {}),
         ("handler t open;", 0, {"statements": "1", "utility": "1"}),

@@ -2484,9 +2484,7 @@ use_statement ::= USE use_target. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 
-use_target ::= ATOM.
-use_target ::= LABEL.
-use_target ::= FIRST.
+use_target ::= cache_name_part.
 
 handler_statement ::= HANDLER handler_name handler_operation. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);

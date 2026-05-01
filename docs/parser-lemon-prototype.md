@@ -38,7 +38,9 @@ token sink:
   `LIMIT` suffixes, malformed `SELECT` operands after set operators before
   `WITH CHECK OPTION`, and `VALUES ROW(...)` row-expression tails.
 - `CALL` recognizes one- and two-part routine names plus comma-separated
-  argument lists with nested expression bodies.
+  argument lists with nested expression bodies, while rejecting malformed
+  argument adjacent operands, dangling operators, and invalid plain
+  parenthesized groups.
 - `DO` recognizes comma-separated expression lists while rejecting dangling
   separators, adjacent top-level operands, and top-level query-clause tails.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before

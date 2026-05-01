@@ -3092,7 +3092,10 @@ call_identifier ::= cache_name_part.
 
 call_arguments ::= .
 call_arguments ::= LP RP.
-call_arguments ::= LP call_argument_list RP.
+call_arguments ::= LP(A) call_argument_list RP. {
+  mylite_parser_validate_parenthesized_expression_list_from(
+      ctx, A, "malformed CALL argument list");
+}
 call_arguments ::= LP(A) call_argument_list. {
   mylite_parser_require_permissive(ctx, A);
 }

@@ -116,7 +116,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `CALL` | ❌ | medium | Procedure invocation, result sets, OUT/INOUT parameters, and diagnostics. | Parser recognizes one- and two-part routine names plus comma-separated argument lists with nested expression bodies. |
+| `CALL` | ❌ | medium | Procedure invocation, result sets, OUT/INOUT parameters, and diagnostics. | Parser recognizes one- and two-part routine names plus comma-separated argument lists with nested expression bodies, and rejects malformed argument adjacent operands, dangling operators, and invalid plain parenthesized groups. |
 | `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. | Parser recognizes priority modifiers, table aliases before optional partition lists, `WHERE`/`ORDER BY`/`LIMIT` tails, and rejects incomplete, repeated, or out-of-order DML clause tails plus invalid top-level `ORDER BY` direction sequences and malformed `WHERE`/`ORDER BY` adjacent operands, dangling operators, and trailing separators including inside plain parenthesized expression groups. |
 | `DELETE` (multi-table) | ❌ | high | Multi-table delete forms using FROM and USING, join semantics, and affected rows. |  |
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. | Parser recognizes comma-separated expression lists and rejects dangling separators, adjacent top-level operands, and top-level query-clause tails such as `FROM`/`WHERE`/`ORDER BY`/`LIMIT`. |

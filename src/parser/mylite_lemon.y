@@ -196,6 +196,7 @@ create_database_tail ::= create_database_option_start create_options_tail.
 create_table_tail ::= LP create_table_definition_tokens RP create_options_tail.
 create_table_tail ::= LIKE cache_table_ref.
 create_table_tail ::= SELECT select_tail.
+create_table_tail ::= TABLE table_statement_target table_query_tail.
 create_table_tail ::= create_table_query_start required_statement_tail.
 create_table_tail ::= ATOM(A) required_statement_tail. {
   mylite_parser_require_create_table_tail_atom(ctx, A);
@@ -217,7 +218,6 @@ create_table_definition_token ::= RC.
 
 create_table_query_start ::= WITH.
 create_table_query_start ::= VALUES.
-create_table_query_start ::= TABLE.
 create_table_query_start ::= CHARACTER.
 create_table_query_start ::= CHARSET.
 create_table_query_start ::= DEFAULT.
@@ -277,6 +277,7 @@ create_view_security_kind ::= ATOM(A). {
 }
 
 view_body ::= view_as SELECT select_tail.
+view_body ::= view_as TABLE table_statement_target table_query_tail.
 view_body ::= view_as view_query_start required_statement_tail.
 
 view_as ::= ATOM(A). {
@@ -284,7 +285,6 @@ view_as ::= ATOM(A). {
 }
 
 view_query_start ::= LP.
-view_query_start ::= TABLE.
 view_query_start ::= VALUES.
 view_query_start ::= WITH.
 
@@ -1847,6 +1847,7 @@ dml_write_payload ::= LP dml_write_column_tokens RP dml_write_after_column_list.
 dml_write_payload ::= LP dml_write_query_start dml_write_parenthesized_query_tail RP dml_write_after_parenthesized_query.
 dml_write_payload ::= SET update_assignment_start.
 dml_write_payload ::= SELECT select_tail.
+dml_write_payload ::= TABLE table_statement_target table_query_tail.
 dml_write_payload ::= dml_write_start required_statement_tail.
 
 dml_write_column_tokens ::= .
@@ -1870,6 +1871,7 @@ dml_write_column_token ::= LP dml_write_column_tokens RP.
 dml_write_after_column_list ::= dml_write_start required_statement_tail.
 dml_write_after_column_list ::= SET update_assignment_start.
 dml_write_after_column_list ::= SELECT select_tail.
+dml_write_after_column_list ::= TABLE table_statement_target table_query_tail.
 dml_write_after_column_list ::= LP dml_write_query_start dml_write_parenthesized_query_tail RP dml_write_after_parenthesized_query.
 
 dml_write_query_start ::= SELECT.
@@ -1898,6 +1900,8 @@ dml_write_after_parenthesized_query ::= ON dml_write_duplicate_tail.
 
 dml_write_union_tail ::= SELECT select_tail.
 dml_write_union_tail ::= values_union_option SELECT select_tail.
+dml_write_union_tail ::= TABLE table_statement_target table_query_tail.
+dml_write_union_tail ::= values_union_option TABLE table_statement_target table_query_tail.
 dml_write_union_tail ::= dml_write_union_query_start required_statement_tail.
 dml_write_union_tail ::= values_union_option dml_write_union_query_start required_statement_tail.
 
@@ -1915,7 +1919,6 @@ dml_write_start ::= ATOM(A). {
 }
 
 dml_write_nonselect_query_start ::= WITH.
-dml_write_nonselect_query_start ::= TABLE.
 
 update_statement ::= UPDATE update_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UPDATE);
@@ -2023,6 +2026,12 @@ delete_partition_marker ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "PARTITION");
 }
 
+with_statement ::= WITH with_recursive_tail with_cte_list SELECT select_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+}
+with_statement ::= WITH with_recursive_tail with_cte_list TABLE table_statement_target table_query_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+}
 with_statement ::= WITH with_recursive_tail with_cte_list with_query_start required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
 }
@@ -2067,8 +2076,6 @@ with_query_start ::= LP.
 with_query_start ::= DELETE.
 with_query_start ::= INSERT.
 with_query_start ::= REPLACE.
-with_query_start ::= SELECT.
-with_query_start ::= TABLE.
 with_query_start ::= UPDATE.
 with_query_start ::= VALUES.
 
@@ -2115,6 +2122,8 @@ values_query_tail ::= values_limit_tail.
 
 values_union_tail ::= SELECT select_tail.
 values_union_tail ::= values_union_option SELECT select_tail.
+values_union_tail ::= TABLE table_statement_target table_query_tail.
+values_union_tail ::= values_union_option TABLE table_statement_target table_query_tail.
 values_union_tail ::= values_union_query_start required_statement_tail.
 values_union_tail ::= values_union_option values_union_query_start required_statement_tail.
 
@@ -2122,7 +2131,6 @@ values_union_option ::= ALL.
 values_union_option ::= DISTINCT.
 
 values_union_query_start ::= LP.
-values_union_query_start ::= TABLE.
 values_union_query_start ::= VALUES.
 values_union_query_start ::= WITH.
 

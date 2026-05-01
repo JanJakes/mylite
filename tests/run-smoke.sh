@@ -829,6 +829,51 @@ case "$binary_log_output" in
 		;;
 esac
 
+if "$parser" --quiet 'PURGE'; then
+	echo "expected missing PURGE body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'PURGE BINARY LOGS'; then
+	echo "expected missing PURGE BINARY LOGS action to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'PURGE BINARY LOGS TO'; then
+	echo "expected missing PURGE BINARY LOGS TO target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'PURGE BINARY LOGS TO @log_file'; then
+	echo "expected variable PURGE BINARY LOGS TO target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "PURGE BINARY LOGS TO 'bin.000001' extra"; then
+	echo "expected trailing PURGE BINARY LOGS TO tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'PURGE BINARY LOGS BEFORE'; then
+	echo "expected missing PURGE BINARY LOGS BEFORE expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'PURGE BINARY LOGS BEFORE ,'; then
+	echo "expected invalid PURGE BINARY LOGS BEFORE expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "PURGE RELAY LOGS TO 'relay.000001'"; then
+	echo "expected unsupported PURGE RELAY LOGS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "PURGE BINARY TO 'bin.000001'"; then
+	echo "expected missing PURGE LOGS keyword to fail" >&2
+	exit 1
+fi
+
 relay_log_output=$("$parser" "SHOW RELAYLOG EVENTS IN 'relay.000001' FROM 4; SHOW RELAYLOG EVENTS FOR CHANNEL 'ch'; SHOW RELAYLOG EVENTS; SHOW RELAYLOG EVENTS IN 'relay.000001' FOR CHANNEL 'ch'")
 case "$relay_log_output" in
 	*"show"*/relay_log:"'relay.000001'"*"show"*/replication_channel:"'ch'"*"show"*/relay_log*"show"*/relay_log:"'relay.000001'"*) ;;

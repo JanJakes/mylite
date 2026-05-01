@@ -247,7 +247,8 @@ connection and query targets in `KILL`, binary log event
 payloads in `BINLOG`, binary log targets in `SHOW BINARY LOGS`,
 legacy `SHOW MASTER LOGS`,
 `SHOW BINARY LOG STATUS`, `SHOW MASTER STATUS`, `SHOW BINLOG EVENTS`,
-`PURGE BINARY LOGS TO ...`, `PURGE BINARY LOGS BEFORE ...`, and
+validated `PURGE BINARY LOGS TO ...` string targets and
+`PURGE BINARY LOGS BEFORE ...` expression forms, and
 `RESET BINARY LOGS AND GTIDS`, including legacy `RESET MASTER` routing, relay
 log targets in `SHOW RELAYLOG EVENTS IN ...`, replication channel targets in
 channel-only

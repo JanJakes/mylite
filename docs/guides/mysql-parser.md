@@ -454,7 +454,9 @@ SHOW BINARY LOGS exposes the binary-log collection, including the legacy
 ok statements=1 kinds=show[1:3,0:16]/binary_log
 ```
 
-PURGE BINARY LOGS exposes named or collection binary-log targets:
+PURGE BINARY LOGS validates `TO` string log-file targets and `BEFORE`
+expression forms, including the legacy `MASTER` spelling, and exposes named or
+collection binary-log targets:
 
 ```text
 ok statements=1 kinds=purge[1:7,0:30]/binary_log

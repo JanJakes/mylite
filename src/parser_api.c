@@ -71,6 +71,10 @@ static int token_can_start_table_index_item_name(const mylite_parser *parser,
                                                  size_t token_index,
                                                  int allow_primary);
 static int token_can_start_key_cache_name(const mylite_parser *parser, size_t token_index);
+static int validate_purge_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_nonempty_expression_tail_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1129,6 +1133,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_PURGE:
+			if (!validate_purge_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid PURGE statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_SAVEPOINT:
 			if (!validate_savepoint_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid SAVEPOINT statement");
@@ -1830,6 +1840,49 @@ static int token_can_start_key_cache_name(const mylite_parser *parser, size_t to
 	}
 	return token_can_continue_object_name(&parser->tokens[token_index]) ||
 	       parser->tokens[token_index].parser_token == DEFAULT_T;
+}
+
+static int validate_purge_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index + 3 > last_token_index ||
+	    token_index + 3 >= parser->token_count ||
+	    (!token_text_equals(parser, token_index, "BINARY") &&
+	     !token_text_equals(parser, token_index, "MASTER")) ||
+	    !token_text_equals(parser, token_index + 1, "LOGS")) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (parser->tokens[token_index].parser_token == TO_T) {
+		return token_index + 1 == last_token_index &&
+		       parser->tokens[token_index + 1].kind == MYLITE_TOKEN_STRING;
+	}
+	if (token_text_equals(parser, token_index, "BEFORE")) {
+		return validate_nonempty_expression_tail_syntax(parser, token_index + 1, last_token_index);
+	}
+	return 0;
+}
+
+static int validate_nonempty_expression_tail_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    parser->tokens[token_index].parser_token == ',' ||
+	    parser->tokens[last_token_index].parser_token == ',') {
+		return 0;
+	}
+	return 1;
 }
 
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

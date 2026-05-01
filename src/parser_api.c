@@ -2534,6 +2534,7 @@ static int classify_transaction_statement_object(const mylite_parser *parser,
 		if (token_index + 1 <= last_token_index &&
 		    token_index + 1 < parser->token_count &&
 		    (token_text_equals(parser, token_index, "GLOBAL") ||
+		     token_text_equals(parser, token_index, "LOCAL") ||
 		     token_text_equals(parser, token_index, "SESSION")) &&
 		    parser->tokens[token_index + 1].parser_token == TRANSACTION_T) {
 			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_TRANSACTION);

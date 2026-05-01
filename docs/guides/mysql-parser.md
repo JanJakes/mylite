@@ -521,6 +521,12 @@ Transaction-control statements expose the transaction object kind:
 ok statements=1 kinds=start[1:4,0:28]/transaction
 ```
 
+Scoped `SET TRANSACTION` forms do the same:
+
+```text
+ok statements=1 kinds=set[1:5,0:31]/transaction
+```
+
 XA transaction statements expose XID targets:
 
 ```text

@@ -2958,11 +2958,14 @@ handler_as ::= AS.
 
 handler_alias ::= cache_name_part.
 
-handler_read_tail ::= handler_read_direction handler_read_suffix.
+handler_read_tail ::= handler_scan_direction handler_read_suffix.
 handler_read_tail ::= handler_read_index handler_read_direction handler_read_suffix.
 handler_read_tail ::= handler_read_index handler_read_operator handler_read_tuple handler_read_suffix.
 
 handler_read_index ::= cache_name_part.
+
+handler_scan_direction ::= FIRST.
+handler_scan_direction ::= NEXT.
 
 handler_read_direction ::= FIRST.
 handler_read_direction ::= NEXT.

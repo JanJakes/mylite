@@ -120,7 +120,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. | Parser recognizes priority modifiers, table aliases before optional partition lists, and `WHERE`/`ORDER BY`/`LIMIT` tails. |
 | `DELETE` (multi-table) | ❌ | high | Multi-table delete forms using FROM and USING, join semantics, and affected rows. |  |
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. |  |
-| `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. | Parser recognizes one- and two-part table names, aliases, key names, read directions, equality/range tuple reads, `WHERE`, and numeric `LIMIT` tails. |
+| `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. | Parser recognizes one- and two-part table names, aliases, key names, MySQL's table-scan and indexed-read direction sets, equality/range tuple reads, `WHERE`, and numeric `LIMIT` tails. |
 | `IMPORT TABLE` | ❌ | low | Transportable tablespace import syntax and diagnostics. | Parser recognizes comma-separated string-literal import file lists. |
 | `INSERT ... VALUES` | ❌ | top | Multi-row values, defaults, generated columns, warnings, affected rows, and insert ids. | Parser recognizes empty and comma-separated column lists before write payloads. |
 | `INSERT ... SET` | ❌ | top | MySQL SET-form insert semantics. |  |

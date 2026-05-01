@@ -45,8 +45,9 @@ token sink:
   expression bodies, set operators, `ORDER BY`, and `LIMIT` tails.
 - `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`
   forms, `INTO` variable lists, and file output targets.
-- `HANDLER` recognizes one- and two-part table names, aliases, key names, read
-  directions, equality/range tuple reads, `WHERE`, and numeric `LIMIT` tails.
+- `HANDLER` recognizes one- and two-part table names, aliases, key names,
+  MySQL's table-scan and indexed-read direction sets, equality/range tuple
+  reads, `WHERE`, and numeric `LIMIT` tails.
 - `USE` recognizes one-part schema names using the shared identifier grammar.
 - Account and role names use the shared unreserved identifier grammar across
   `CREATE`/`ALTER`/`DROP` account statements.

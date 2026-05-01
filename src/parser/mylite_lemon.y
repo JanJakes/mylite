@@ -930,12 +930,9 @@ drop_host_name ::= drop_account_ident drop_host_dot_tail.
 drop_host_dot_tail ::= .
 drop_host_dot_tail ::= drop_host_dot_tail DOT drop_account_ident.
 
-drop_account_ident ::= ATOM.
-drop_account_ident ::= ACCOUNT.
-drop_account_ident ::= LABEL.
+drop_account_ident ::= set_charset_name_part.
 drop_account_ident ::= MASTER.
 drop_account_ident ::= ROLE.
-drop_account_ident ::= USER.
 
 drop_name_list ::= cache_table_ref.
 drop_name_list ::= drop_name_list COMMA cache_table_ref.

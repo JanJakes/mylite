@@ -207,11 +207,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `ALTER USER` | ❌ | medium | Authentication plugins, passwords, MFA, TLS, resources, lock/expire, comments, attributes, and default roles. | Parser recognizes account lists, authentication clauses, MFA factor add/modify/drop, WebAuthn registration clauses, TLS/resource/password/lock options, comments, attributes, default roles, `USER()`, and `DISCARD OLD PASSWORD`. |
-| `CREATE USER` | ❌ | medium | User creation syntax, IF NOT EXISTS, auth factors, TLS, resources, password options, and comments. | Parser recognizes account lists, authentication clauses, multi-factor authentication chains, initial-authentication clauses, default roles, TLS/resource/password/lock options, comments, and attributes. |
-| `CREATE ROLE` | ❌ | medium | Role creation syntax and metadata. |  |
-| `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
-| `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. |  |
+| `ALTER USER` | ❌ | medium | Authentication plugins, passwords, MFA, TLS, resources, lock/expire, comments, attributes, and default roles. | Parser recognizes account lists using shared unreserved identifier grammar, authentication clauses, MFA factor add/modify/drop, WebAuthn registration clauses, TLS/resource/password/lock options, comments, attributes, default roles, `USER()`, and `DISCARD OLD PASSWORD`. |
+| `CREATE USER` | ❌ | medium | User creation syntax, IF NOT EXISTS, auth factors, TLS, resources, password options, and comments. | Parser recognizes account lists using shared unreserved identifier grammar, authentication clauses, multi-factor authentication chains, initial-authentication clauses, default roles, TLS/resource/password/lock options, comments, and attributes. |
+| `CREATE ROLE` | ❌ | medium | Role creation syntax and metadata. | Parser recognizes role account names using shared unreserved identifier grammar. |
+| `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. | Parser recognizes `CURRENT_USER`/`CURRENT_USER()` and account references using shared unreserved identifier grammar. |
+| `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. | Parser recognizes role account names using shared unreserved identifier grammar. |
 | `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. | Parser recognizes recipient authentication/resource clauses, `WITH GRANT OPTION`, `WITH ADMIN OPTION`, and `AS user WITH ROLE ...` tails. |
 | `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
 | `REVOKE` | ❌ | medium | Privilege and role revocation semantics. | Parser recognizes `IGNORE UNKNOWN USER`, proxy revocation shape, and all/grant-option revocation tails. |

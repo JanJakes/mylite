@@ -36,6 +36,8 @@ token sink:
 - `HANDLER` recognizes one- and two-part table names, aliases, key names, read
   directions, tuple reads, `WHERE`, and `LIMIT` tails.
 - `USE` recognizes one-part schema names using the shared identifier grammar.
+- Account and role names use the shared unreserved identifier grammar across
+  `CREATE`/`ALTER`/`DROP` account statements.
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
   clauses, TLS/resource/password/lock options, comments, attributes, and
   default-role clauses rather than generic token tails, including MFA,

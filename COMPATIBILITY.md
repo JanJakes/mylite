@@ -317,7 +317,7 @@ while preserving common MySQL expression forms.
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | Query expression grammar | ❌ | top | Parenthesized query expressions, query terms, and query primary rules. |  |
-| `WITH` common table expressions | ❌ | high | Non-recursive CTEs, column lists, name shadowing, and scope. |  |
+| `WITH` common table expressions | ❌ | high | Non-recursive CTEs, column lists, name shadowing, and scope. | Parser recognizes CTE lists and routes main `SELECT`, `TABLE`, `VALUES`, parenthesized query, and DML bodies through their existing syntax validators. |
 | `WITH RECURSIVE` | ❌ | high | Recursive CTE execution, cycle behavior, limits, and type inference. |  |
 | Projection list | ❌ | top | Expression aliases, wildcard expansion, qualified wildcards, duplicate names, and metadata. |  |
 | Table references | ❌ | top | Base tables, aliases, schema qualifiers, derived tables, table functions, and parentheses. |  |

@@ -3451,7 +3451,9 @@ delete_partition_list ::= cache_name_part.
 delete_partition_list ::= delete_partition_list import_comma cache_name_part.
 
 with_statement ::= WITH with_recursive_tail with_cte_list with_query_body. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  }
 }
 
 with_recursive_tail ::= .
@@ -3488,14 +3490,30 @@ with_cte_body_token ::= RB.
 with_cte_body_token ::= LC.
 with_cte_body_token ::= RC.
 
-with_query_body ::= SELECT select_tail.
-with_query_body ::= TABLE table_statement_target table_query_tail.
-with_query_body ::= VALUES values_row_list values_query_tail.
-with_query_body ::= DELETE delete_tail.
-with_query_body ::= INSERT insert_tail.
-with_query_body ::= REPLACE replace_tail.
-with_query_body ::= UPDATE update_tail.
-with_query_body ::= query_parenthesized_body.
+with_query_body ::= SELECT(A) select_tail. {
+  mylite_parser_validate_select_statement_from(ctx, A);
+}
+with_query_body ::= TABLE(A) table_statement_target table_query_tail. {
+  mylite_parser_validate_select_statement_from(ctx, A);
+}
+with_query_body ::= VALUES(A) values_row_list values_query_tail. {
+  mylite_parser_validate_select_statement_from(ctx, A);
+}
+with_query_body ::= DELETE(A) delete_tail. {
+  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_DELETE);
+}
+with_query_body ::= INSERT(A) insert_tail. {
+  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_INSERT);
+}
+with_query_body ::= REPLACE(A) replace_tail. {
+  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_REPLACE);
+}
+with_query_body ::= UPDATE(A) update_tail. {
+  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_UPDATE);
+}
+with_query_body ::= LP(A) dml_write_query_start dml_write_parenthesized_query_tail RP query_parenthesized_tail. {
+  mylite_parser_validate_parenthesized_statement(ctx, A);
+}
 
 table_statement ::= TABLE table_statement_target table_query_tail. {
   mylite_parser_validate_select_statement(ctx);

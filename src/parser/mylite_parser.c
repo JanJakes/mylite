@@ -85,6 +85,8 @@ static void set_parser_error(MyliteParseContext *ctx, const MyliteToken *token,
                              const char *message);
 static void format_near_token(MyliteParseContext *ctx, int token_id,
                               const MyliteToken *token);
+static void validate_select_statement_from(MyliteParseContext *ctx,
+                                           int use_start, MyliteToken start);
 static int select_clause_requires_by(int token_id);
 static int select_clause_requires_operand(int token_id);
 static int select_from_starts_nth_modifier(MyliteParseContext *ctx,
@@ -476,6 +478,17 @@ void mylite_parser_record_empty_statement(MyliteParseContext *ctx) {
 }
 
 void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
+  MyliteToken start = {0};
+  validate_select_statement_from(ctx, 0, start);
+}
+
+void mylite_parser_validate_select_statement_from(MyliteParseContext *ctx,
+                                                  MyliteToken start) {
+  validate_select_statement_from(ctx, 1, start);
+}
+
+static void validate_select_statement_from(MyliteParseContext *ctx,
+                                           int use_start, MyliteToken start) {
   enum {
     SELECT_MODIFIER_ALL = 1 << 0,
     SELECT_MODIFIER_DISTINCT = 1 << 1
@@ -642,7 +655,8 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
     if (!saw_select) {
-      if (token_id == ML_SELECT) {
+      if ((!use_start || token.offset >= start.offset) &&
+          token_id == ML_SELECT) {
         saw_select = 1;
       }
       continue;

@@ -52,6 +52,8 @@ void mylite_parser_validate_set_statement(MyliteParseContext *ctx,
                                            MyliteToken start);
 void mylite_parser_validate_show_statement(MyliteParseContext *ctx,
                                             MyliteToken start);
+void mylite_parser_validate_grant_statement(MyliteParseContext *ctx,
+                                             MyliteToken start, int revoke);
 void mylite_parser_validate_values_statement_from(MyliteParseContext *ctx,
                                                   MyliteToken start);
 void mylite_parser_validate_parenthesized_expression_list_from(

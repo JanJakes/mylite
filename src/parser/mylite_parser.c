@@ -351,6 +351,8 @@ static int set_statement_previous_value_terminal(int token_id,
 static int dml_row_alias_token(int token_id);
 static int dml_values_unclosed_string_fragment(int token_id,
                                                MyliteToken token);
+static int grant_object_start_token(int token_id, MyliteToken token,
+                                    int proxy_grant);
 static int token_opens_nested_expression(int token_id);
 static int token_closes_nested_expression(int token_id);
 static int token_ascii_equal(MyliteToken token, const char *expected);
@@ -4866,6 +4868,69 @@ void mylite_parser_validate_show_statement(MyliteParseContext *ctx,
              previous_was_operator) {
     mylite_parser_reject(ctx, previous_top_token,
                          "incomplete SHOW WHERE clause");
+  }
+}
+
+void mylite_parser_validate_grant_statement(MyliteParseContext *ctx,
+                                            MyliteToken start, int revoke) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  int token_id;
+  int saw_statement = 0;
+  int depth = 0;
+  int in_object = 0;
+  int object_seen = 0;
+  int proxy_grant = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      return;
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      depth++;
+      continue;
+    }
+
+    if (!in_object) {
+      if (token_id == ML_PROXY) {
+        proxy_grant = 1;
+      }
+      if (token_id == ML_ON) {
+        in_object = 1;
+        object_seen = 0;
+      }
+      continue;
+    }
+
+    if ((!revoke && token_id == ML_TO) || (revoke && token_id == ML_FROM)) {
+      return;
+    }
+
+    if (!object_seen) {
+      if (!grant_object_start_token(token_id, token, proxy_grant)) {
+        mylite_parser_reject(ctx, token, "invalid grant object");
+        return;
+      }
+      object_seen = 1;
+    }
   }
 }
 
@@ -11881,6 +11946,21 @@ static int dml_values_unclosed_string_fragment(int token_id,
   }
 
   return 1;
+}
+
+static int grant_object_start_token(int token_id, MyliteToken token,
+                                    int proxy_grant) {
+  if (proxy_grant && (token_id == ML_DOUBLE_QUOTED_STRING ||
+                      token_id == ML_STRING_LITERAL)) {
+    return 1;
+  }
+
+  if (token_id == ML_STAR || token_id == ML_FUNCTION ||
+      token_id == ML_PROCEDURE || token_id == ML_TABLESPACE) {
+    return 1;
+  }
+
+  return !token_is_invalid_identifier_atom(token, 0);
 }
 
 static int token_opens_nested_expression(int token_id) {

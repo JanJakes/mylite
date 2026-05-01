@@ -4189,12 +4189,18 @@ set_variable_part ::= AT_HOST.
 set_variable_part ::= FLUSH.
 set_variable_part ::= SQL_BUFFER_RESULT.
 
-grant_statement ::= GRANT grant_subject_list grant_destination_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+grant_statement ::= GRANT(A) grant_subject_list grant_destination_tail. {
+  mylite_parser_validate_grant_statement(ctx, A, 0);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+  }
 }
 
-revoke_statement ::= REVOKE revoke_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+revoke_statement ::= REVOKE(A) revoke_tail. {
+  mylite_parser_validate_grant_statement(ctx, A, 1);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+  }
 }
 
 grant_destination_tail ::= ON grant_object TO grant_recipient_list grant_tail_options.

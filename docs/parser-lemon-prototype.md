@@ -92,6 +92,9 @@ token sink:
   stray suffixes that are not valid following `SELECT` clauses.
 - Top-level `SELECT` also rejects incomplete `UNION`/`INTERSECT`/`EXCEPT`
   set operations and repeated set-operation option tokens.
+- Top-level parenthesized query expressions reject stray suffixes after the
+  outer `)`, allow `INTO` variable tails, and require set-operation tails to
+  start with a query operand.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,
   MySQL's table-scan and indexed-read direction sets, equality/range tuple
   reads, `WHERE`, and numeric or identifier `LIMIT` tails, while rejecting

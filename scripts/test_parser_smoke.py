@@ -2128,6 +2128,17 @@ def main() -> int:
         ("end if label1;", 1, {}),
         ("end nonsense extra;", 1, {}),
         ("(select 1);", 0, {"statements": "1", "select": "1"}),
+        ("(select 1) union all select 2;", 0, {"statements": "1", "select": "1"}),
+        ("(select 1) order by 1;", 0, {"statements": "1", "select": "1"}),
+        ("(select 1) limit 1;", 0, {"statements": "1", "select": "1"}),
+        ("(select 1) into @var;", 0, {"statements": "1", "select": "1"}),
+        ("(select 1) limit 1 into @var;", 0, {"statements": "1", "select": "1"}),
+        ("(select 1) garbage;", 1, {}),
+        ("(select 1) union garbage;", 1, {}),
+        ("(select 1) union all all select 2;", 1, {}),
+        ("(select 1) order;", 1, {}),
+        ("(select 1) limit;", 1, {}),
+        ("(select 1) into;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

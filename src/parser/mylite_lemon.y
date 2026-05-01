@@ -4404,8 +4404,11 @@ end_tail ::= CASE.
 end_label_tail ::= .
 end_label_tail ::= stored_program_label_ref.
 
-parenthesized_statement ::= LP statement_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+parenthesized_statement ::= LP(A) statement_tail. {
+  mylite_parser_validate_parenthesized_statement(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  }
 }
 
 permissive_start(A) ::= ATOM(B). {

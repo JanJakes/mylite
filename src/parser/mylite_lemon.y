@@ -462,7 +462,9 @@ view_as ::= AS.
 
 view_table_tail ::= .
 view_table_tail ::= table_order_nonempty_tail table_limit_tail.
+view_table_tail ::= table_order_nonempty_tail table_limit_tail view_check_option.
 view_table_tail ::= table_limit_nonempty_tail.
+view_table_tail ::= table_limit_nonempty_tail view_check_option.
 view_table_tail ::= view_check_option.
 
 view_values_tail ::= .

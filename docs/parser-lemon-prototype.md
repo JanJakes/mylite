@@ -48,8 +48,8 @@ token sink:
   authentication/resource clauses, `AS ... WITH ROLE`, and
   `IGNORE UNKNOWN USER`.
 - `CREATE INDEX` recognizes non-empty functional/key-part lists and standalone
-  index options including parser plugins, visibility, attributes, `ALGORITHM`,
-  and `LOCK`.
+  index options including parser plugins, visibility, attributes, numeric
+  `KEY_BLOCK_SIZE`, `ALGORITHM`, and `LOCK`.
 - `CREATE TABLE` table-definition bodies require non-empty comma-separated
   elements while preserving nested token bodies for column and constraint
   definitions; trailing table options must start with known MySQL table-option

@@ -181,6 +181,7 @@ def main() -> int:
         ("create index idx on t (a) algorithm;", 1, {}),
         ("create index idx on t (a) lock bogus;", 1, {}),
         ("create index idx on t (a) with parser;", 1, {}),
+        ("create index idx on t (a) key_block_size=large;", 1, {}),
         ("create logfile group lg;", 1, {}),
         ("create logfile group lg add datafile 'u.dat';", 1, {}),
         ("create logfile group lg add undofile 'u.dat' wait;", 1, {}),

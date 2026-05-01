@@ -218,7 +218,7 @@ create_index_key_part_token ::= RC.
 create_index_options_tail ::= .
 create_index_options_tail ::= create_index_options_tail create_index_option.
 
-create_index_option ::= KEY_BLOCK_SIZE drop_index_option_equals_tail ATOM.
+create_index_option ::= KEY_BLOCK_SIZE drop_index_option_equals_tail index_number_value.
 create_index_option ::= USING cache_name_part.
 create_index_option ::= create_index_type cache_name_part.
 create_index_option ::= WITH PARSER cache_name_part.
@@ -228,6 +228,10 @@ create_index_option ::= INVISIBLE.
 create_index_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
 create_index_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
 create_index_option ::= drop_index_option.
+
+index_number_value ::= BOOLEAN_NUMBER.
+index_number_value ::= FACTOR_NUMBER.
+index_number_value ::= NUMBER_LITERAL.
 
 create_table_prefix ::= TABLE.
 create_table_prefix ::= TEMPORARY TABLE.

@@ -67,10 +67,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | --- | --- | --- | --- | --- |
 | `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. | Parser recognizes charset, collation, encryption, and `READ ONLY` option clauses. |
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. |  |
-| `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. |  |
+| `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |
 | `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
-| `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. |  |
+| `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. |  |
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. |  |
 | `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser recognizes rename, option assignment, `ADD DATAFILE`, and `DROP DATAFILE` actions. |

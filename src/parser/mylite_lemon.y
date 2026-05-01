@@ -844,7 +844,7 @@ alter_tail ::= UNDO TABLESPACE cache_name_part alter_undo_tablespace_action.
 alter_tail ::= USER drop_if_exists_tail alter_user_list account_management_options account_management_permissive_tail.
 alter_tail ::= USER drop_if_exists_tail USER LP RP alter_user_func_option_tail.
 alter_tail ::= EVENT cache_table_ref alter_event_action.
-alter_tail ::= alter_routine_kind cache_table_ref create_options_tail.
+alter_tail ::= alter_routine_kind cache_table_ref alter_routine_characteristics_tail.
 alter_tail ::= alter_database_kind alter_database_options.
 alter_tail ::= alter_database_kind alter_database_name alter_database_options.
 alter_tail ::= VIEW cache_table_ref view_column_tail view_body.
@@ -887,6 +887,19 @@ alter_database_read_value ::= ATOM.
 
 alter_routine_kind ::= FUNCTION.
 alter_routine_kind ::= PROCEDURE.
+
+alter_routine_characteristics_tail ::= .
+alter_routine_characteristics_tail ::= alter_routine_characteristics_tail alter_routine_characteristic.
+
+alter_routine_characteristic ::= COMMENT routine_comment_value.
+alter_routine_characteristic ::= LANGUAGE SQL.
+alter_routine_characteristic ::= CONTAINS SQL.
+alter_routine_characteristic ::= NO SQL.
+alter_routine_characteristic ::= READS SQL DATA.
+alter_routine_characteristic ::= MODIFIES SQL DATA.
+alter_routine_characteristic ::= SQL SECURITY create_view_security_kind.
+
+routine_comment_value ::= ATOM.
 
 alter_table_tail ::= alter_table_action_start create_options_tail.
 

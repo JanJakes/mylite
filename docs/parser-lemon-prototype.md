@@ -35,6 +35,8 @@ token sink:
   `LOCK`.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize charset, collation,
   encryption, and alter-only `READ ONLY` option clauses.
+- `ALTER FUNCTION` and `ALTER PROCEDURE` recognize routine characteristics:
+  comments, `LANGUAGE SQL`, SQL data access, and SQL security.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`
   and `OR REPLACE` variants.
 - `DROP INDEX` recognizes MySQL's `ALGORITHM` and `LOCK` option tails.

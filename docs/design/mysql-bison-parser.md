@@ -443,7 +443,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   kinds after optional `LOCAL` / `NO_WRITE_TO_BINLOG` modifiers, validate
   comma-separated option lists, and preserve legacy `FLUSH HOSTS` routing.
   Table-maintenance metadata records only the first concrete table target and
-  leaves malformed or name-less forms objectless.
+  validates table lists, optional logging modifiers, `CHECK TABLE` options,
+  `CHECKSUM TABLE` options, `REPAIR TABLE` options, and `ANALYZE TABLE`
+  histogram update/drop clause shape.
   `RESET PERSIST` metadata records the first variable name when present,
   validates `IF EXISTS` only with a variable name, and records bare full
   persisted-variable reset forms as unnamed system-variable collection targets.

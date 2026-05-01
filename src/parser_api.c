@@ -107,6 +107,36 @@ static int validate_flush_option_syntax(const mylite_parser *parser,
                                         size_t token_index,
                                         size_t last_token_index,
                                         size_t *next_token_index);
+static int validate_maintenance_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_analyze_statement_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index);
+static int validate_histogram_column_list_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 size_t *next_token_index);
+static int token_can_start_histogram_column_name(const mylite_parser *parser, size_t token_index);
+static int validate_check_statement_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index);
+static int validate_checksum_statement_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index);
+static int validate_optimize_statement_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index);
+static int validate_repair_statement_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index);
+static int validate_maintenance_table_name_list_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index);
+static int token_can_start_maintenance_table_name(const mylite_parser *parser, size_t token_index);
+static int token_is_maintenance_table_keyword(const mylite_parser *parser, size_t token_index);
+static int token_is_check_table_option(const mylite_parser *parser, size_t token_index);
+static int token_is_checksum_table_option(const mylite_parser *parser, size_t token_index);
+static int token_is_repair_table_option(const mylite_parser *parser, size_t token_index);
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1183,6 +1213,16 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_ANALYZE:
+		case MYLITE_STATEMENT_CHECK:
+		case MYLITE_STATEMENT_CHECKSUM:
+		case MYLITE_STATEMENT_OPTIMIZE:
+		case MYLITE_STATEMENT_REPAIR:
+			if (!validate_maintenance_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid table maintenance statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_SAVEPOINT:
 			if (!validate_savepoint_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid SAVEPOINT statement");
@@ -2252,6 +2292,341 @@ static int validate_flush_option_syntax(const mylite_parser *parser,
 	}
 
 	return 0;
+}
+
+static int validate_maintenance_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == LOCAL_T ||
+	    token_text_equals(parser, token_index, "NO_WRITE_TO_BINLOG")) {
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	switch (statement->kind) {
+	case MYLITE_STATEMENT_ANALYZE:
+		return validate_analyze_statement_syntax(parser, token_index, last_token_index);
+	case MYLITE_STATEMENT_CHECK:
+		return validate_check_statement_syntax(parser, token_index, last_token_index);
+	case MYLITE_STATEMENT_CHECKSUM:
+		return validate_checksum_statement_syntax(parser, token_index, last_token_index);
+	case MYLITE_STATEMENT_OPTIMIZE:
+		return validate_optimize_statement_syntax(parser, token_index, last_token_index);
+	case MYLITE_STATEMENT_REPAIR:
+		return validate_repair_statement_syntax(parser, token_index, last_token_index);
+	default:
+		return 0;
+	}
+}
+
+static int validate_analyze_statement_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (parser->tokens[token_index].parser_token == FORMAT_T) {
+		token_index++;
+		if (token_index > last_token_index || !token_text_equals(parser, token_index, "=")) {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index ||
+		    !token_can_start_maintenance_table_name(parser, token_index)) {
+			return 0;
+		}
+		token_index++;
+	}
+
+	if (!token_is_maintenance_table_keyword(parser, token_index) ||
+	    !validate_maintenance_table_name_list_syntax(parser,
+	                                                 token_index + 1,
+	                                                 last_token_index,
+	                                                 &next_token_index)) {
+		return 0;
+	}
+
+	if (next_token_index > last_token_index) {
+		return 1;
+	}
+	if (next_token_index + 2 <= last_token_index &&
+	    token_text_equals(parser, next_token_index, "UPDATE") &&
+	    token_text_equals(parser, next_token_index + 1, "HISTOGRAM") &&
+	    parser->tokens[next_token_index + 2].parser_token == ON_T) {
+		next_token_index += 3;
+		if (!validate_histogram_column_list_syntax(parser,
+		                                           next_token_index,
+		                                           last_token_index,
+		                                           &next_token_index)) {
+			return 0;
+		}
+		if (next_token_index > last_token_index) {
+			return 1;
+		}
+		if (token_text_equals(parser, next_token_index, "WITH")) {
+			return next_token_index + 2 == last_token_index &&
+			       parser->tokens[next_token_index + 1].kind == MYLITE_TOKEN_NUMBER &&
+			       token_text_equals(parser, next_token_index + 2, "BUCKETS");
+		}
+		if ((token_text_equals(parser, next_token_index, "MANUAL") ||
+		     token_text_equals(parser, next_token_index, "AUTO")) &&
+		    next_token_index + 1 == last_token_index &&
+		    token_text_equals(parser, next_token_index + 1, "UPDATE")) {
+			return 1;
+		}
+		if (token_text_equals(parser, next_token_index, "USING") &&
+		    token_text_equals(parser, next_token_index + 1, "DATA") &&
+		    next_token_index + 2 == last_token_index &&
+		    parser->tokens[next_token_index + 2].kind == MYLITE_TOKEN_STRING) {
+			return 1;
+		}
+		return 0;
+	}
+	if (next_token_index + 2 <= last_token_index &&
+	    token_text_equals(parser, next_token_index, "DROP") &&
+	    token_text_equals(parser, next_token_index + 1, "HISTOGRAM") &&
+	    parser->tokens[next_token_index + 2].parser_token == ON_T) {
+		next_token_index += 3;
+		return validate_histogram_column_list_syntax(parser,
+		                                             next_token_index,
+		                                             last_token_index,
+		                                             &next_token_index) &&
+		       next_token_index > last_token_index;
+	}
+	return 0;
+}
+
+static int validate_histogram_column_list_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 size_t *next_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		size_t last_name_token;
+
+		if (!token_can_start_histogram_column_name(parser, token_index)) {
+			return 0;
+		}
+		last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+		token_index = last_name_token + 1;
+		if (token_index > last_token_index ||
+		    token_text_equals(parser, token_index, "WITH") ||
+		    token_text_equals(parser, token_index, "USING") ||
+		    token_text_equals(parser, token_index, "MANUAL") ||
+		    token_text_equals(parser, token_index, "AUTO")) {
+			break;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index ||
+		    token_text_equals(parser, token_index, "WITH") ||
+		    token_text_equals(parser, token_index, "USING") ||
+		    token_text_equals(parser, token_index, "MANUAL") ||
+		    token_text_equals(parser, token_index, "AUTO")) {
+			return 0;
+		}
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int token_can_start_histogram_column_name(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return token_can_continue_object_name(&parser->tokens[token_index]);
+}
+
+static int validate_check_statement_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (!token_is_maintenance_table_keyword(parser, token_index) ||
+	    !validate_maintenance_table_name_list_syntax(parser,
+	                                                 token_index + 1,
+	                                                 last_token_index,
+	                                                 &next_token_index)) {
+		return 0;
+	}
+
+	while (next_token_index <= last_token_index) {
+		if (token_text_equals(parser, next_token_index, "FOR")) {
+			if (next_token_index + 1 > last_token_index ||
+			    !token_text_equals(parser, next_token_index + 1, "UPGRADE")) {
+				return 0;
+			}
+			next_token_index += 2;
+			continue;
+		}
+		if (!token_is_check_table_option(parser, next_token_index)) {
+			return 0;
+		}
+		next_token_index++;
+	}
+	return 1;
+}
+
+static int validate_checksum_statement_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (!token_is_maintenance_table_keyword(parser, token_index) ||
+	    !validate_maintenance_table_name_list_syntax(parser,
+	                                                 token_index + 1,
+	                                                 last_token_index,
+	                                                 &next_token_index)) {
+		return 0;
+	}
+	if (next_token_index > last_token_index) {
+		return 1;
+	}
+	return next_token_index == last_token_index &&
+	       token_is_checksum_table_option(parser, next_token_index);
+}
+
+static int validate_optimize_statement_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	size_t next_token_index;
+
+	return token_is_maintenance_table_keyword(parser, token_index) &&
+	       validate_maintenance_table_name_list_syntax(parser,
+	                                                   token_index + 1,
+	                                                   last_token_index,
+	                                                   &next_token_index) &&
+	       next_token_index > last_token_index;
+}
+
+static int validate_repair_statement_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (!token_is_maintenance_table_keyword(parser, token_index) ||
+	    !validate_maintenance_table_name_list_syntax(parser,
+	                                                 token_index + 1,
+	                                                 last_token_index,
+	                                                 &next_token_index)) {
+		return 0;
+	}
+
+	while (next_token_index <= last_token_index) {
+		if (!token_is_repair_table_option(parser, next_token_index)) {
+			return 0;
+		}
+		next_token_index++;
+	}
+	return 1;
+}
+
+static int validate_maintenance_table_name_list_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		size_t last_name_token;
+
+		if (!token_can_start_maintenance_table_name(parser, token_index)) {
+			return 0;
+		}
+		last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+		token_index = last_name_token + 1;
+		if (token_index > last_token_index ||
+		    token_text_equals(parser, token_index, "UPDATE") ||
+		    token_text_equals(parser, token_index, "DROP") ||
+		    token_text_equals(parser, token_index, "FOR") ||
+		    token_is_check_table_option(parser, token_index) ||
+		    token_is_checksum_table_option(parser, token_index) ||
+		    token_is_repair_table_option(parser, token_index)) {
+			break;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index ||
+		    token_text_equals(parser, token_index, "UPDATE") ||
+		    token_text_equals(parser, token_index, "DROP") ||
+		    token_text_equals(parser, token_index, "FOR") ||
+		    token_is_check_table_option(parser, token_index) ||
+		    token_is_checksum_table_option(parser, token_index) ||
+		    token_is_repair_table_option(parser, token_index)) {
+			return 0;
+		}
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int token_can_start_maintenance_table_name(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return token_can_continue_object_name(&parser->tokens[token_index]);
+}
+
+static int token_is_maintenance_table_keyword(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (parser->tokens[token_index].parser_token == TABLE_T ||
+	        token_text_equals(parser, token_index, "TABLES"));
+}
+
+static int token_is_check_table_option(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "QUICK") ||
+	       token_text_equals(parser, token_index, "FAST") ||
+	       token_text_equals(parser, token_index, "MEDIUM") ||
+	       token_text_equals(parser, token_index, "EXTENDED") ||
+	       token_text_equals(parser, token_index, "CHANGED");
+}
+
+static int token_is_checksum_table_option(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "QUICK") ||
+	       token_text_equals(parser, token_index, "EXTENDED");
+}
+
+static int token_is_repair_table_option(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "QUICK") ||
+	       token_text_equals(parser, token_index, "EXTENDED") ||
+	       token_text_equals(parser, token_index, "USE_FRM");
 }
 
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

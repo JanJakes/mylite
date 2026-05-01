@@ -1060,14 +1060,89 @@ if "$parser" --quiet "FLUSH BINARY LOGS FOR CHANNEL 'ch'"; then
 	exit 1
 fi
 
-maintenance_output=$("$parser" 'ANALYZE TABLE t; CHECK TABLE `db`.`t`; CHECKSUM TABLE t QUICK; OPTIMIZE TABLE t; REPAIR TABLE t USE_FRM; ANALYZE FORMAT=JSON TABLE t; CHECKSUM TABLE QUICK')
+maintenance_output=$("$parser" 'ANALYZE TABLE t; CHECK TABLE `db`.`t`; CHECKSUM TABLE t QUICK; OPTIMIZE TABLE t; REPAIR TABLE t USE_FRM; ANALYZE FORMAT=JSON TABLE t; ANALYZE TABLE t UPDATE HISTOGRAM ON c WITH 10 BUCKETS; ANALYZE TABLE t DROP HISTOGRAM ON c, d; CHECK TABLE t FAST QUICK FOR UPGRADE; OPTIMIZE LOCAL TABLE t, u; REPAIR NO_WRITE_TO_BINLOG TABLE t QUICK EXTENDED USE_FRM')
 case "$maintenance_output" in
-	*"analyze"*/table:t*"check"*/table:'`db`.`t`'*"checksum"*/table:t*"optimize"*/table:t*"repair"*/table:t*"analyze"*/table:t*"checksum[32:34"*) ;;
+	*"analyze"*/table:t*"check"*/table:'`db`.`t`'*"checksum"*/table:t*"optimize"*/table:t*"repair"*/table:t*"analyze"*/table:t*"analyze"*/table:t*"analyze"*/table:t*"check"*/table:t*"optimize"*/table:t*"repair"*/table:t*) ;;
 	*)
 		echo "unexpected maintenance output: $maintenance_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'ANALYZE'; then
+	echo "expected missing ANALYZE body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ANALYZE TABLE'; then
+	echo "expected missing ANALYZE TABLE target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ANALYZE TABLE t,'; then
+	echo "expected trailing ANALYZE TABLE comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ANALYZE FORMAT TABLE t'; then
+	echo "expected malformed ANALYZE FORMAT clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ANALYZE TABLE t UPDATE HISTOGRAM'; then
+	echo "expected incomplete ANALYZE UPDATE HISTOGRAM clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ANALYZE TABLE t UPDATE HISTOGRAM ON'; then
+	echo "expected missing ANALYZE histogram column to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ANALYZE TABLE t UPDATE HISTOGRAM ON c WITH BUCKETS'; then
+	echo "expected malformed ANALYZE histogram bucket clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHECK TABLE'; then
+	echo "expected missing CHECK TABLE target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHECK TABLE t UNKNOWN'; then
+	echo "expected unknown CHECK TABLE option to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHECK TABLE t FOR'; then
+	echo "expected incomplete CHECK TABLE FOR UPGRADE clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHECKSUM TABLE'; then
+	echo "expected missing CHECKSUM TABLE target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CHECKSUM TABLE t QUICK EXTENDED'; then
+	echo "expected duplicate CHECKSUM TABLE option to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'OPTIMIZE TABLE t QUICK'; then
+	echo "expected OPTIMIZE TABLE option to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'REPAIR TABLE'; then
+	echo "expected missing REPAIR TABLE target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'REPAIR TABLE t UNKNOWN'; then
+	echo "expected unknown REPAIR TABLE option to fail" >&2
+	exit 1
+fi
 
 reset_output=$("$parser" 'RESET PERSIST max_connections; RESET PERSIST IF EXISTS autocommit; RESET PERSIST; RESET BINARY LOGS AND GTIDS; RESET BINARY LOGS AND GTIDS TO 100; RESET MASTER; RESET MASTER TO 100; RESET REPLICA, BINARY LOGS AND GTIDS TO 101')
 case "$reset_output" in

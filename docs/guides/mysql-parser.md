@@ -47,7 +47,9 @@ the MySQL 8.4.9 target version:
 ok statements=1 kinds=set[1:4,9:18]/user_variable:@ok
 ```
 
-Table-maintenance statements also report the first concrete table target:
+Table-maintenance statements validate table lists, logging modifiers, supported
+maintenance options, and `ANALYZE TABLE` histogram clause shape, then report
+the first concrete table target:
 
 ```text
 ok statements=1 kinds=analyze[1:3,0:15]/table:t

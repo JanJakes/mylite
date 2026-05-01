@@ -224,11 +224,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. |  |
 | `DROP RESOURCE GROUP` | ❌ | low | Resource group deletion syntax. |  |
 | `SET RESOURCE GROUP` | ❌ | low | Thread assignment to resource groups. |  |
-| `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. | Parser records the first concrete table target, including `ANALYZE FORMAT=... TABLE`; statistics behavior is not implemented. |
-| `CHECK TABLE` | ❌ | high | Table consistency checks and result-set metadata. | Parser records the first concrete table target; check behavior and result rows are not implemented. |
-| `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. | Parser records the first concrete table target and leaves nameless modifier-only forms objectless; checksum behavior is not implemented. |
-| `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. | Parser records the first concrete table target; optimization behavior and result rows are not implemented. |
-| `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. | Parser records the first concrete table target; repair behavior and result rows are not implemented. |
+| `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. | Parser records the first concrete table target and validates table lists, `ANALYZE FORMAT=... TABLE`, and histogram update/drop clause shape; statistics behavior is not implemented. |
+| `CHECK TABLE` | ❌ | high | Table consistency checks and result-set metadata. | Parser records the first concrete table target and validates table lists plus documented check options; check behavior and result rows are not implemented. |
+| `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. | Parser records the first concrete table target and validates table lists plus optional `QUICK` / `EXTENDED`; checksum behavior is not implemented. |
+| `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. | Parser records the first concrete table target and validates table lists plus optional logging modifiers; optimization behavior and result rows are not implemented. |
+| `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. | Parser records the first concrete table target and validates table lists plus documented repair options; repair behavior and result rows are not implemented. |
 | `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. | Parser records the first component URI target and validates comma-separated string URI lists plus optional `SET` assignment clauses; component registry behavior is not implemented. |
 | `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. | Parser records the first component URI target and validates comma-separated string URI lists; component registry behavior is not implemented. |
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. | Parser records the plugin name target and validates `SONAME` string syntax; plugin loading and registry behavior are not implemented. |

@@ -688,6 +688,7 @@ static int keyword_token(const MyliteToken *token) {
       {"INITIAL", ML_INITIAL},
       {"INITIATE", ML_INITIATE},
       {"INSTANCE", ML_INSTANCE},
+      {"INSTANT", ML_INSTANT},
       {"INNODB", ML_INNODB},
       {"INSERT", ML_INSERT},
       {"INSTALL", ML_INSTALL},

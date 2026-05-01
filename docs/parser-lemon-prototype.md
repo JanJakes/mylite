@@ -41,7 +41,8 @@ token sink:
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
   `OPTIONS` names and value requirements.
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,
-  `ENABLE/DISABLE KEYS`, and tablespace discard/import forms.
+  `ENABLE/DISABLE KEYS`, `ALGORITHM`/`LOCK` options, and tablespace
+  discard/import forms.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize charset, collation,
   encryption, and alter-only `READ ONLY` option clauses.
 - `CREATE EVENT` and `ALTER EVENT` recognize ordered event metadata clauses

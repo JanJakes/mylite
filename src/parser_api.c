@@ -82,6 +82,10 @@ static int classify_get_statement_object(const mylite_parser *parser,
                                          mylite_statement *statement,
                                          size_t token_index,
                                          size_t last_token_index);
+static int classify_label_target_statement_object(const mylite_parser *parser,
+                                                  mylite_statement *statement,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
 static size_t find_get_diagnostics_target_token(const mylite_parser *parser,
                                                 size_t token_index,
                                                 size_t last_token_index);
@@ -1433,11 +1437,7 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 		return classify_cursor_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_LEAVE:
 	case MYLITE_STATEMENT_ITERATE:
-		return set_statement_direct_object_name(parser,
-		                                        statement,
-		                                        MYLITE_STATEMENT_OBJECT_LABEL,
-		                                        name_token_index,
-		                                        last_token_index);
+		return classify_label_target_statement_object(parser, statement, name_token_index, last_token_index);
 	case MYLITE_STATEMENT_SHOW:
 		return classify_show_statement_object(parser, statement, name_token_index, last_token_index);
 	default:
@@ -1679,6 +1679,24 @@ static int token_can_start_diagnostics_condition_number(const mylite_token *toke
 	       token->kind == MYLITE_TOKEN_NUMBER ||
 	       token->kind == MYLITE_TOKEN_USER_VARIABLE ||
 	       token->kind == MYLITE_TOKEN_SYSTEM_VARIABLE;
+}
+
+static int classify_label_target_statement_object(const mylite_parser *parser,
+                                                  mylite_statement *statement,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    !token_can_start_label_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	return set_statement_direct_object_name_range(parser,
+	                                              statement,
+	                                              MYLITE_STATEMENT_OBJECT_LABEL,
+	                                              token_index,
+	                                              token_index);
 }
 
 static int classify_describe_or_explain_statement_object(const mylite_parser *parser,

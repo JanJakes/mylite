@@ -172,6 +172,19 @@ case "$signal_output" in
 		;;
 esac
 
+label_target_keyword_output=$("$parser" "LEAVE open; ITERATE engine; LEAVE no; ITERATE read; LEAVE \`read\`; LEAVE 'done'")
+case "$label_target_keyword_output" in
+	*"/label:no"*|*"/label:read"*|*"/label:'done'"*)
+		echo "unexpected restricted label target output: $label_target_keyword_output" >&2
+		exit 1
+		;;
+	*"leave"*/label:open*"iterate"*/label:engine*"leave[7:8"*"iterate[10:11"*"leave"*/label:'`read`'*) ;;
+	*)
+		echo "unexpected label target keyword output: $label_target_keyword_output" >&2
+		exit 1
+		;;
+esac
+
 labeled_statement_output=$("$parser" 'done: LOOP LEAVE done; END LOOP done; rpt: REPEAT ITERATE rpt; UNTIL done END REPEAT rpt; wh: WHILE done DO LEAVE wh; END WHILE wh; blk: BEGIN SELECT 1; END blk')
 case "$labeled_statement_output" in
 	*"loop"*/label:done*"repeat"*/label:rpt*"while"*/label:wh*"begin"*/label:blk*) ;;

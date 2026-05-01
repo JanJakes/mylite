@@ -569,6 +569,8 @@ ok statements=1 kinds=open[1:2,0:6]/cursor:c
 ok statements=1 kinds=leave[1:2,0:10]/label:done
 ```
 
+Label targets use the same keyword rules as label declarations.
+
 Leading labels on `BEGIN`, `LOOP`, `REPEAT`, and `WHILE` are reported too:
 
 ```text

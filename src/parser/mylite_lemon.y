@@ -1533,8 +1533,13 @@ describe_statement ::= DESCRIBE describe_tail. {
 describe_statement ::= DESC describe_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
 }
+describe_statement ::= DESCRIBE describe_explain_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+}
+describe_statement ::= DESC describe_explain_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+}
 
-describe_tail ::= SELECT select_tail.
 describe_tail ::= describe_table_ref.
 describe_tail ::= describe_table_ref describe_column_ref.
 
@@ -1546,6 +1551,24 @@ describe_column_ref ::= LABEL.
 
 describe_name_part ::= ATOM.
 describe_name_part ::= LABEL.
+
+describe_explain_tail ::= describe_explain_query_start required_statement_tail.
+describe_explain_tail ::= explain_schema_spec describe_explain_query_start required_statement_tail.
+describe_explain_tail ::= explain_format_clause describe_explain_query_start required_statement_tail.
+describe_explain_tail ::= explain_format_clause explain_schema_spec describe_explain_query_start required_statement_tail.
+describe_explain_tail ::= explain_format_json_clause explain_into_tail describe_explain_query_start required_statement_tail.
+describe_explain_tail ::= explain_format_json_clause explain_into_tail explain_schema_spec describe_explain_query_start required_statement_tail.
+describe_explain_tail ::= FOR CONNECTION ATOM.
+
+describe_explain_query_start ::= ANALYZE.
+describe_explain_query_start ::= DELETE.
+describe_explain_query_start ::= INSERT.
+describe_explain_query_start ::= LP.
+describe_explain_query_start ::= REPLACE.
+describe_explain_query_start ::= SELECT.
+describe_explain_query_start ::= TABLE.
+describe_explain_query_start ::= UPDATE.
+describe_explain_query_start ::= WITH.
 
 explain_statement ::= EXPLAIN explain_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);

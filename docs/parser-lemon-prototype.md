@@ -27,6 +27,8 @@ token sink:
   and `OR REPLACE` variants.
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form.
 - `EXPLAIN ... FOR SCHEMA|DATABASE name` schema specifiers are recognized.
+- `DESCRIBE` and `DESC` reuse the EXPLAIN syntax variants for execution-plan
+  statements while preserving table and column description forms.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,

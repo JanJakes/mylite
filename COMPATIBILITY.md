@@ -243,7 +243,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. |  |
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. |  |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. |  |
-| `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. |  |
+| `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. | Parser recognizes table/column forms and EXPLAIN-synonym variants. |
 | `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. | Parser recognizes `FORMAT=JSON INTO @var` and `FOR SCHEMA`/`FOR DATABASE` schema specifiers. |
 | `HELP` | ❌ | low | Server help lookup result-set semantics. |  |
 | `USE` | ❌ | top | Default schema selection in the embedded single-file model. |  |

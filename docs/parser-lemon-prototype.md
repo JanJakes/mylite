@@ -65,7 +65,8 @@ token sink:
   a preceding joined table, including nested outer-join condition chains.
 - Top-level `SELECT` validates `GROUP BY ... WITH ROLLUP` tails.
 - Top-level `SELECT` validates `ORDER BY` `ASC`/`DESC` direction tails.
-- Top-level `SELECT` validates `LIMIT` comma and `OFFSET` operands.
+- Top-level `SELECT` validates `LIMIT` comma, `OFFSET`, and adjacent-operand
+  forms.
 - Top-level `SELECT` rejects duplicate major clauses within one query block,
   including real `FROM` clauses while preserving `NTH_VALUE(... FROM
   FIRST|LAST ... OVER ...)` window-function modifiers.

@@ -1308,10 +1308,15 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         pending_token = token;
         continue;
       }
+      if (select_limit_option_token(token_id)) {
+        mylite_parser_reject(ctx, token, "malformed SELECT LIMIT clause");
+        return;
+      }
       limit_state = SELECT_LIMIT_NONE;
     }
     if (limit_state == SELECT_LIMIT_AFTER_FINAL_VALUE) {
-      if (token_id == ML_COMMA || token_id == ML_OFFSET) {
+      if (token_id == ML_COMMA || token_id == ML_OFFSET ||
+          select_limit_option_token(token_id)) {
         mylite_parser_reject(ctx, token, "malformed SELECT LIMIT clause");
         return;
       }

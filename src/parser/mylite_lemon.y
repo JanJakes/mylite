@@ -999,7 +999,7 @@ alter_table_algorithm_value ::= COPY.
 
 alter_table_rename_action_tail ::= .
 alter_table_rename_action_tail ::= COMMA alter_table_rename_after_comma.
-alter_table_rename_action_tail ::= alter_table_partition_option_start create_options_tail.
+alter_table_rename_action_tail ::= alter_table_trailing_partition_option.
 
 alter_table_rename_after_comma ::= alter_table_algorithm_lock_option alter_table_algorithm_lock_tail.
 alter_table_rename_after_comma ::= alter_table_rename_action alter_table_rename_action_tail.
@@ -1036,7 +1036,7 @@ alter_table_rename_identifier ::= cache_name_part.
 
 alter_table_drop_action_tail ::= .
 alter_table_drop_action_tail ::= COMMA alter_table_drop_after_comma.
-alter_table_drop_action_tail ::= alter_table_partition_option_start create_options_tail.
+alter_table_drop_action_tail ::= alter_table_trailing_partition_option.
 
 alter_table_drop_after_comma ::= alter_table_algorithm_lock_option alter_table_algorithm_lock_tail.
 alter_table_drop_after_comma ::= alter_table_rename_action alter_table_rename_action_tail.
@@ -1077,7 +1077,7 @@ alter_table_drop_identifier ::= cache_name_part.
 
 alter_table_alter_action_tail ::= .
 alter_table_alter_action_tail ::= COMMA alter_table_alter_after_comma.
-alter_table_alter_action_tail ::= alter_table_partition_option_start create_options_tail.
+alter_table_alter_action_tail ::= alter_table_trailing_partition_option.
 
 alter_table_alter_after_comma ::= alter_table_algorithm_lock_option alter_table_algorithm_lock_tail.
 alter_table_alter_after_comma ::= alter_table_rename_action alter_table_rename_action_tail.
@@ -1121,6 +1121,9 @@ alter_table_partition_action ::= REMOVE PARTITIONING.
 alter_table_partition_action ::= EXCHANGE PARTITION load_partition_name WITH TABLE cache_table_ref alter_table_exchange_validation_tail.
 
 alter_table_partition_definition_action ::= PARTITION BY required_statement_tail.
+
+alter_table_trailing_partition_option ::= REMOVE PARTITIONING.
+alter_table_trailing_partition_option ::= PARTITION BY required_statement_tail.
 
 alter_table_add_action ::= ADD alter_table_add_start required_statement_tail.
 
@@ -1232,9 +1235,6 @@ alter_table_union_tables ::= cache_table_ref.
 alter_table_union_tables ::= alter_table_union_tables COMMA cache_table_ref.
 
 alter_table_reorganize_action ::= REORGANIZE PARTITION create_options_tail.
-
-alter_table_partition_option_start ::= REMOVE.
-alter_table_partition_option_start ::= PARTITION.
 
 alter_table_keys_action ::= ENABLE KEYS.
 alter_table_keys_action ::= DISABLE KEYS.

@@ -1468,7 +1468,13 @@ alter_table_union_tables_tail ::= alter_table_union_tables.
 alter_table_union_tables ::= cache_table_ref.
 alter_table_union_tables ::= alter_table_union_tables COMMA cache_table_ref.
 
-alter_table_reorganize_action ::= REORGANIZE PARTITION create_options_tail.
+alter_table_reorganize_action ::= REORGANIZE PARTITION load_partition_names INTO LP alter_table_reorganize_definitions RP.
+alter_table_reorganize_action ::= REORGANIZE(A) PARTITION. {
+  mylite_parser_require_permissive(ctx, A);
+}
+
+alter_table_reorganize_definitions ::= create_table_definition_token.
+alter_table_reorganize_definitions ::= alter_table_reorganize_definitions create_table_definition_token.
 
 alter_table_keys_action ::= ENABLE KEYS.
 alter_table_keys_action ::= DISABLE KEYS.

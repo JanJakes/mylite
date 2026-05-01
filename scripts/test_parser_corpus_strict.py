@@ -24,6 +24,8 @@ EXPECTED_FRAGMENT_FAILURES = [
     # Bare ALTER TABLE negative-test fragments.
     31132,
     41408,
+    # Bare ALTER TABLE REORGANIZE PARTITION negative-test fragment.
+    43296,
     # Malformed CREATE USER negative-test artifact with a trailing quote.
     54522,
 ]

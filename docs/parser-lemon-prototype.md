@@ -77,6 +77,8 @@ token sink:
   tablespace/storage/union changes,
   table option changes with numeric/boolean/default value domains,
   `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
+  `REORGANIZE PARTITION` requires partition names and a non-empty `INTO (...)`
+  body.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize schema names, charset,
   collation, `'Y'`/`'N'` encryption, and alter-only `READ ONLY` option clauses
   with MySQL's `DEFAULT`/`0`/`1` value grammar.

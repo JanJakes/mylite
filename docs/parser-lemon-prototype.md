@@ -134,6 +134,8 @@ token sink:
   directions in `GROUP BY` expression lists.
 - Top-level `SELECT` rejects adjacent bare operands and dangling operators in
   `ORDER BY` expression lists.
+- Top-level and query-body `SELECT` list tails reject incomplete `AS` aliases
+  and stray tokens after explicit aliases.
 - Top-level `SELECT` requires `INTO OUTFILE` and `INTO DUMPFILE` to include
   the mandatory file-name string.
 - Top-level `SELECT ... INTO OUTFILE` validates the basic `CHARACTER SET`,

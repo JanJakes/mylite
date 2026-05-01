@@ -97,6 +97,7 @@ static int is_unclosed_set_assignment_fragment(const char *sql, size_t length);
 static size_t skip_leading_space(const char *sql, size_t length);
 static int ascii_alpha_equal(char actual, char expected);
 static int is_word_boundary(char ch);
+static int token_contains_identifier_letter(MyliteToken token);
 static void set_parser_error(MyliteParseContext *ctx, const MyliteToken *token,
                              const char *message);
 static void format_near_token(MyliteParseContext *ctx, int token_id,
@@ -115,6 +116,7 @@ static int select_from_starts_nth_modifier(MyliteParseContext *ctx,
 static int select_from_follows_nth_value_call(MyliteParseContext *ctx,
                                               MyliteToken from_token);
 static int select_expression_clause_boundary(int token_id, MyliteToken token);
+static int select_alias_token(int token_id, MyliteToken token);
 static int select_operand_boundary(int token_id);
 static int select_modifier_flag(int token_id);
 static int select_order_direction_boundary(int token_id);
@@ -574,6 +576,20 @@ static int ascii_alpha_equal(char actual, char expected) {
 static int is_word_boundary(char ch) {
   return ch == '\0' || ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' ||
          ch == '\f' || ch == '(' || ch == '=' || ch == ':' || ch == ';';
+}
+
+static int token_contains_identifier_letter(MyliteToken token) {
+  size_t i;
+
+  for (i = 0; i < token.length; i++) {
+    unsigned char ch = (unsigned char) token.start[i];
+    if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+        ch == '_' || ch == '$') {
+      return 1;
+    }
+  }
+
+  return 0;
 }
 
 void mylite_parser_accept(MyliteParseContext *ctx) {
@@ -8155,6 +8171,8 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
   int previous_was_operator = 1;
   int expression_started = 0;
   int select_prefix = 1;
+  int alias_pending = 0;
+  int alias_complete = 0;
   MyliteExpressionStack expression_stack = {0};
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
@@ -8195,7 +8213,22 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
       continue;
     }
 
+    if (alias_pending) {
+      if (!select_alias_token(token_id, token)) {
+        mylite_parser_reject(ctx, previous_top_token,
+                             "incomplete SELECT expression alias");
+        return;
+      }
+      alias_pending = 0;
+      alias_complete = 1;
+      previous_top_token_id = token_id;
+      previous_top_token = token;
+      previous_was_operator = 0;
+      continue;
+    }
+
     if ((parenthesized_boundary && token_id == ML_RP) ||
+        (alias_complete && token_closes_nested_expression(token_id)) ||
         token_is_statement_terminator(token_id, token) ||
         token_id == ML_FROM ||
         select_expression_clause_boundary(token_id, token)) {
@@ -8216,13 +8249,27 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
       previous_top_token_id = 0;
       previous_was_operator = 1;
       previous_top_token = token;
+      alias_pending = 0;
+      alias_complete = 0;
       continue;
     }
 
-    if (token_id == ML_AS && previous_was_operator) {
-      mylite_parser_reject(ctx, previous_top_token,
-                           "incomplete SELECT expression clause");
+    if (alias_complete) {
+      mylite_parser_reject(ctx, token, "malformed SELECT expression alias");
       return;
+    }
+
+    if (token_id == ML_AS) {
+      if (!expression_started || previous_was_operator) {
+        mylite_parser_reject(ctx, previous_top_token,
+                             "incomplete SELECT expression clause");
+        return;
+      }
+      alias_pending = 1;
+      previous_top_token_id = token_id;
+      previous_top_token = token;
+      previous_was_operator = 1;
+      continue;
     }
 
     if (token_opens_nested_expression(token_id)) {
@@ -8259,7 +8306,10 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
     expression_started = 1;
   }
 
-  if (expression_started && previous_was_operator) {
+  if (alias_pending) {
+    mylite_parser_reject(ctx, previous_top_token,
+                         "incomplete SELECT expression alias");
+  } else if (expression_started && previous_was_operator) {
     mylite_parser_reject(ctx, previous_top_token,
                          "incomplete SELECT expression clause");
   }
@@ -9092,6 +9142,21 @@ static int select_expression_clause_boundary(int token_id, MyliteToken token) {
          token_id == ML_ORDER || token_id == ML_WHERE ||
          select_set_operator(token_id) || token_ascii_equal(token, "qualify") ||
          token_ascii_equal(token, "window");
+}
+
+static int select_alias_token(int token_id, MyliteToken token) {
+  if (token_id == ML_FROM || select_expression_clause_boundary(token_id, token)) {
+    return 0;
+  }
+
+  if (dml_row_alias_token(token_id) || token_id == ML_DOUBLE_QUOTED_STRING ||
+      token_id == ML_STRING_LITERAL) {
+    return 1;
+  }
+
+  return (token_id == ML_BOOLEAN_NUMBER || token_id == ML_FACTOR_NUMBER ||
+          token_id == ML_NUMBER_LITERAL) &&
+         token_contains_identifier_letter(token);
 }
 
 static int select_operand_boundary(int token_id) {

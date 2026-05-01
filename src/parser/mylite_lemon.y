@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM PARTITION VALUE DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -1847,6 +1847,7 @@ dml_write_payload ::= SET update_assignment_start.
 dml_write_payload ::= SELECT select_tail.
 dml_write_payload ::= TABLE table_statement_target table_query_tail.
 dml_write_payload ::= WITH with_recursive_tail with_cte_list with_query_body.
+dml_write_payload ::= dml_write_partition_clause dml_write_payload.
 dml_write_payload ::= dml_write_start required_statement_tail.
 
 dml_write_column_tokens ::= .
@@ -1866,6 +1867,8 @@ dml_write_column_token ::= USER.
 dml_write_column_token ::= XML.
 dml_write_column_token ::= COMMA.
 dml_write_column_token ::= LP dml_write_column_tokens RP.
+
+dml_write_partition_clause ::= PARTITION LP delete_partition_list RP.
 
 dml_write_after_column_list ::= dml_write_start required_statement_tail.
 dml_write_after_column_list ::= SET update_assignment_start.
@@ -1921,9 +1924,7 @@ dml_write_duplicate_tail ::= ATOM(A) KEY UPDATE update_assignment_start. {
 }
 
 dml_write_start ::= VALUES.
-dml_write_start ::= ATOM(A). {
-  mylite_parser_require_dml_write_atom_start(ctx, A);
-}
+dml_write_start ::= VALUE.
 
 update_statement ::= UPDATE update_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UPDATE);
@@ -2022,14 +2023,10 @@ delete_after_from_tail ::= ORDER BY expression_start statement_tail.
 delete_after_from_tail ::= LIMIT ATOM.
 delete_after_from_tail ::= delete_partition_clause delete_after_from_tail.
 
-delete_partition_clause ::= delete_partition_marker LP delete_partition_list RP.
+delete_partition_clause ::= PARTITION LP delete_partition_list RP.
 
 delete_partition_list ::= cache_name_part.
 delete_partition_list ::= delete_partition_list import_comma cache_name_part.
-
-delete_partition_marker ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "PARTITION");
-}
 
 with_statement ::= WITH with_recursive_tail with_cte_list with_query_body. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);

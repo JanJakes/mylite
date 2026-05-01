@@ -129,10 +129,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `INSERT IGNORE` | ❌ | top | Duplicate, conversion, and constraint warning demotion rules. |  |
 | `INSERT DELAYED` | ❌ | low | Deprecated delayed insert syntax and MySQL-compatible diagnostics. |  |
 | `INSERT LOW_PRIORITY` / `HIGH_PRIORITY` | ❌ | low | Priority modifiers and embedded-compatible treatment. |  |
-| `LOAD DATA INFILE` | ❌ | high | Server-side text import syntax, field/line options, user variables, SET clause, warnings, and security restrictions. |  |
-| `LOAD DATA LOCAL INFILE` | ❌ | high | Client-side LOCAL INFILE request flow, security controls, warnings, and protocol interaction. |  |
-| `LOAD XML INFILE` | ❌ | low | Server-side XML import syntax, row matching, namespaces, SET clause, warnings, and security restrictions. |  |
-| `LOAD XML LOCAL INFILE` | ❌ | low | Client-side XML import request behavior and embedded-compatible diagnostics. |  |
+| `LOAD DATA INFILE` | ❌ | high | Server-side text import syntax, field/line options, user variables, SET clause, warnings, and security restrictions. | Parser recognizes priority/local modifiers, duplicate handling, partitions, character sets, field/line options, ignored rows, column lists, and `SET` tails. |
+| `LOAD DATA LOCAL INFILE` | ❌ | high | Client-side LOCAL INFILE request flow, security controls, warnings, and protocol interaction. | Parser recognizes the `LOCAL` form and the same data-file clauses as non-local `LOAD DATA`. |
+| `LOAD XML INFILE` | ❌ | low | Server-side XML import syntax, row matching, namespaces, SET clause, warnings, and security restrictions. | Parser recognizes priority/local modifiers, duplicate handling, character sets, `ROWS IDENTIFIED BY`, ignored rows, field lists, and `SET` tails. |
+| `LOAD XML LOCAL INFILE` | ❌ | low | Client-side XML import request behavior and embedded-compatible diagnostics. | Parser recognizes the `LOCAL` form and the same XML-file clauses as non-local `LOAD XML`. |
 | `REPLACE ... VALUES` | ❌ | top | Delete-then-insert semantics, cascades, triggers, affected rows, and auto-increment behavior. |  |
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |

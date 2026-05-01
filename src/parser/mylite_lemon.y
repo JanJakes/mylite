@@ -4,6 +4,7 @@
 %default_type {MyliteToken}
 %fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NONE NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PACK_KEYS PAGE PARSE_TREE PARTITION PHASE PRECEDES PRESERVE RANDOM READS REAL REBUILD REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
 %fallback ATOM FACTOR_NUMBER.
+%fallback ATOM ENCLOSED ESCAPED LINES OPTIONALLY ROWS STARTING TERMINATED.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -1024,26 +1025,80 @@ load_statement ::= LOAD load_tail. {
 }
 
 load_tail ::= DATA load_file_tail.
-load_tail ::= XML load_file_tail.
+load_tail ::= XML load_xml_tail.
 load_tail ::= INDEX INTO CACHE cache_table_list load_index_tail.
 
-load_file_tail ::= load_infile ATOM load_file_table_tail.
-load_file_tail ::= load_file_modifier load_file_tail.
+load_file_tail ::= load_file_priority_tail load_file_local_tail load_infile load_file_name load_duplicate_tail INTO TABLE cache_table_ref load_data_options.
+load_xml_tail ::= load_file_priority_tail load_file_local_tail load_infile load_file_name load_duplicate_tail INTO TABLE cache_table_ref load_xml_options.
 
-load_file_modifier ::= LOW_PRIORITY.
-load_file_modifier ::= LOCAL.
-load_file_modifier ::= CONCURRENT.
+load_file_priority_tail ::= .
+load_file_priority_tail ::= LOW_PRIORITY.
+load_file_priority_tail ::= CONCURRENT.
+
+load_file_local_tail ::= .
+load_file_local_tail ::= LOCAL.
 
 load_infile ::= INFILE.
 
-load_file_table_tail ::= INTO TABLE cache_table_ref load_file_options_tail.
-load_file_table_tail ::= load_duplicate_handling INTO TABLE cache_table_ref load_file_options_tail.
+load_file_name ::= ATOM.
 
-load_file_options_tail ::= .
-load_file_options_tail ::= load_file_options_tail statement_token.
+load_duplicate_tail ::= .
+load_duplicate_tail ::= IGNORE.
+load_duplicate_tail ::= REPLACE.
 
-load_duplicate_handling ::= IGNORE.
-load_duplicate_handling ::= REPLACE.
+load_data_options ::= load_partition_tail load_character_set_tail load_fields_tail load_lines_tail load_ignore_tail load_column_list_tail load_set_tail.
+load_xml_options ::= load_character_set_tail load_xml_rows_tail load_ignore_tail load_column_list_tail load_set_tail.
+
+load_partition_tail ::= .
+load_partition_tail ::= load_partition LP load_partition_names RP.
+
+load_character_set_tail ::= .
+load_character_set_tail ::= CHARACTER SET set_charset_name.
+
+load_fields_tail ::= .
+load_fields_tail ::= load_fields_kind load_field_options.
+
+load_fields_kind ::= FIELDS.
+load_fields_kind ::= COLUMNS.
+
+load_field_options ::= .
+load_field_options ::= load_field_options load_field_option.
+
+load_field_option ::= TERMINATED BY load_file_name.
+load_field_option ::= OPTIONALLY ENCLOSED BY load_file_name.
+load_field_option ::= ENCLOSED BY load_file_name.
+load_field_option ::= ESCAPED BY load_file_name.
+
+load_lines_tail ::= .
+load_lines_tail ::= LINES load_line_options.
+
+load_line_options ::= .
+load_line_options ::= load_line_options load_line_option.
+
+load_line_option ::= STARTING BY load_file_name.
+load_line_option ::= TERMINATED BY load_file_name.
+
+load_xml_rows_tail ::= .
+load_xml_rows_tail ::= ROWS IDENTIFIED BY load_file_name.
+
+load_ignore_tail ::= .
+load_ignore_tail ::= IGNORE ATOM load_ignore_unit.
+
+load_ignore_unit ::= LINES.
+load_ignore_unit ::= ROWS.
+
+load_column_list_tail ::= .
+load_column_list_tail ::= LP RP.
+load_column_list_tail ::= LP load_column_list RP.
+
+load_column_list ::= load_column_ref.
+load_column_list ::= load_column_list import_comma load_column_ref.
+
+load_column_ref ::= cache_name_part.
+load_column_ref ::= AT_SIGN cache_name_part.
+
+load_set_tail ::= .
+load_set_tail ::= SET update_assignment_start.
 
 load_index_tail ::= .
 load_index_tail ::= load_index_partition.
@@ -3285,8 +3340,10 @@ keyword ::= ENGINE.
 keyword ::= ENGINES.
 keyword ::= ERRORS.
 keyword ::= ERROR.
+keyword ::= ESCAPED.
 keyword ::= EVENTS.
 keyword ::= EXTENDED.
+keyword ::= ENCLOSED.
 keyword ::= FIELDS.
 keyword ::= FIRST.
 keyword ::= FILTER.
@@ -3301,6 +3358,7 @@ keyword ::= INDEXES.
 keyword ::= KEY.
 keyword ::= KEYS.
 keyword ::= LAST.
+keyword ::= LINES.
 keyword ::= PLUGINS.
 keyword ::= LOGS.
 keyword ::= OPTIMIZER_COSTS.
@@ -3390,11 +3448,15 @@ keyword ::= NEVER.
 keyword ::= OLD.
 keyword ::= OPTION.
 keyword ::= OPTIONAL.
+keyword ::= OPTIONALLY.
 keyword ::= PASSWORD_LOCK_TIME.
 keyword ::= PROXY.
 keyword ::= REGISTRATION.
 keyword ::= REUSE.
+keyword ::= ROWS.
+keyword ::= STARTING.
 keyword ::= SUBJECT.
+keyword ::= TERMINATED.
 keyword ::= UNBOUNDED.
 keyword ::= UNREGISTER.
 keyword ::= UNKNOWN.
@@ -3550,8 +3612,10 @@ keyword_not_select_clause ::= ENGINE.
 keyword_not_select_clause ::= ENGINES.
 keyword_not_select_clause ::= ERRORS.
 keyword_not_select_clause ::= ERROR.
+keyword_not_select_clause ::= ESCAPED.
 keyword_not_select_clause ::= EVENTS.
 keyword_not_select_clause ::= EXTENDED.
+keyword_not_select_clause ::= ENCLOSED.
 keyword_not_select_clause ::= FIELDS.
 keyword_not_select_clause ::= FIRST.
 keyword_not_select_clause ::= FILTER.
@@ -3566,6 +3630,7 @@ keyword_not_select_clause ::= INDEXES.
 keyword_not_select_clause ::= KEY.
 keyword_not_select_clause ::= KEYS.
 keyword_not_select_clause ::= LAST.
+keyword_not_select_clause ::= LINES.
 keyword_not_select_clause ::= PLUGINS.
 keyword_not_select_clause ::= LOGS.
 keyword_not_select_clause ::= OPTIMIZER_COSTS.
@@ -3654,11 +3719,15 @@ keyword_not_select_clause ::= NEVER.
 keyword_not_select_clause ::= OLD.
 keyword_not_select_clause ::= OPTION.
 keyword_not_select_clause ::= OPTIONAL.
+keyword_not_select_clause ::= OPTIONALLY.
 keyword_not_select_clause ::= PASSWORD_LOCK_TIME.
 keyword_not_select_clause ::= PROXY.
 keyword_not_select_clause ::= REGISTRATION.
 keyword_not_select_clause ::= REUSE.
+keyword_not_select_clause ::= ROWS.
+keyword_not_select_clause ::= STARTING.
 keyword_not_select_clause ::= SUBJECT.
+keyword_not_select_clause ::= TERMINATED.
 keyword_not_select_clause ::= UNBOUNDED.
 keyword_not_select_clause ::= UNREGISTER.
 keyword_not_select_clause ::= UNKNOWN.

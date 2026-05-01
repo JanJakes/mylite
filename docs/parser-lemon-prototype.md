@@ -34,6 +34,9 @@ token sink:
   and `OR REPLACE` variants.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, VCPU ranges, force modifiers, and thread-id assignment lists.
+- `LOAD DATA` and `LOAD XML` recognize file modifiers, duplicate handling,
+  partition or row-matching clauses, character sets, field/line options,
+  ignored rows, column lists, and `SET` tails.
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
 - `SHOW PARSE_TREE` recognizes SELECT and WITH SELECT inputs as a

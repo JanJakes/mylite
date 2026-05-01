@@ -258,7 +258,10 @@ targets in `FLUSH`, table targets in `FLUSH TABLES`, and
 table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 `REPAIR`. The permissive parser also preserves first table targets for
 corpus-observed plural `TABLES` spellings while semantic validation remains a
-later grammar responsibility. Prepared-statement names are recorded in
+later grammar responsibility. `USE` has targeted syntax validation for the
+single identifier-like schema-name form MySQL accepts, rejecting missing names,
+quoted strings, variables, qualified names, and trailing tokens.
+Prepared-statement names are recorded in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Persisted
 system-variable targets are recorded for `RESET PERSIST`. Local clone
 directories and remote donor endpoints are recorded for `CLONE`. Replication

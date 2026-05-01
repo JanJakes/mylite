@@ -338,6 +338,40 @@ case "$utility_object_output" in
 		;;
 esac
 
+use_output=$("$parser" 'USE db; USE `select`; USE transaction')
+case "$use_output" in
+	*"use"*/database:db*"use"*/database:'`select`'*"use"*/database:transaction*) ;;
+	*)
+		echo "unexpected USE output: $use_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'USE'; then
+	echo "expected missing USE schema to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'USE db extra'; then
+	echo "expected trailing USE tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'USE db.test'; then
+	echo "expected qualified USE schema to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'USE "db"'; then
+	echo "expected quoted-string USE schema to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'USE @db'; then
+	echo "expected variable USE schema to fail" >&2
+	exit 1
+fi
+
 table_lock_output=$("$parser" 'LOCK TABLE t READ; LOCK TABLES `db`.`lt` AS l WRITE; UNLOCK TABLES; UNLOCK TABLE; UNLOCK INSTANCE')
 case "$table_lock_output" in
 	*"lock"*/table:t*"lock"*/table:'`db`.`lt`'*"unlock"*/table*"unlock"*/table*"unlock"*/instance*) ;;

@@ -108,6 +108,14 @@ static int select_charset_name_token(int token_id, MyliteToken token);
 static int select_limit_option_token(int token_id);
 static int select_string_literal_token(int token_id);
 static int do_clause_boundary(int token_id);
+static int do_expression_operator(int token_id, MyliteToken token);
+static int do_expression_value_start(int token_id, MyliteToken token);
+static int do_expression_value_terminal(int token_id, MyliteToken token);
+static int do_expression_allows_adjacent(int previous_id,
+                                         MyliteToken previous, int current_id,
+                                         MyliteToken current);
+static int do_expression_conditional_comment_operator_between(
+    MyliteToken previous, MyliteToken current);
 static int kill_at_sign_target_token(int token_id);
 static int kill_target_allows_call(int token_id);
 static int kill_target_token(int token_id);
@@ -2574,6 +2582,9 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
   int saw_statement = 0;
   int depth = 0;
   int need_expression = 1;
+  int previous_top_token_id = 0;
+  int previous_was_operator = 1;
+  MyliteToken previous_top_token = start;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -2591,6 +2602,11 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
         depth++;
       } else if (token_closes_nested_expression(token_id)) {
         depth--;
+        if (depth == 0) {
+          previous_top_token_id = token_id;
+          previous_top_token = token;
+          previous_was_operator = 0;
+        }
       }
       continue;
     }
@@ -2610,6 +2626,8 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
         return;
       }
       need_expression = 1;
+      previous_top_token_id = 0;
+      previous_was_operator = 1;
       pending_token = token;
       continue;
     }
@@ -2626,8 +2644,22 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
       return;
     }
 
+    if (do_expression_value_start(token_id, token) &&
+        !do_expression_operator(token_id, token) && !previous_was_operator &&
+        do_expression_value_terminal(previous_top_token_id,
+                                     previous_top_token) &&
+        !do_expression_allows_adjacent(previous_top_token_id,
+                                       previous_top_token, token_id, token)) {
+      mylite_parser_reject(ctx, token, "malformed DO expression list");
+      return;
+    }
+
     if (token_opens_nested_expression(token_id)) {
       depth++;
+    } else {
+      previous_top_token_id = token_id;
+      previous_top_token = token;
+      previous_was_operator = do_expression_operator(token_id, token);
     }
   }
 
@@ -5013,6 +5045,118 @@ static int do_clause_boundary(int token_id) {
   return token_id == ML_FROM || token_id == ML_GROUP || token_id == ML_HAVING ||
          token_id == ML_INTO || token_id == ML_LIMIT || token_id == ML_ORDER ||
          token_id == ML_WHERE;
+}
+
+static int do_expression_operator(int token_id, MyliteToken token) {
+  if (token_id == ML_AND || token_id == ML_ASSIGN || token_id == ML_COLLATE ||
+      token_id == ML_EQUALS || token_id == ML_GE || token_id == ML_GT ||
+      token_id == ML_IN || token_id == ML_LE || token_id == ML_LIKE ||
+      token_id == ML_LT || token_id == ML_MINUS || token_id == ML_NOT ||
+      token_id == ML_OR || token_id == ML_STAR || token_id == ML_USING) {
+    return 1;
+  }
+
+  if (token_id != ML_ATOM) {
+    return 0;
+  }
+
+  if (token.length == 1 && strchr("!%&*+/^|~", token.start[0]) != NULL) {
+    return 1;
+  }
+
+  return token_ascii_equal(token, "against") ||
+         token_ascii_equal(token, "between") || token_ascii_equal(token, "div") ||
+         token_ascii_equal(token, "escape") || token_ascii_equal(token, "is") ||
+         token_ascii_equal(token, "member") || token_ascii_equal(token, "mod") ||
+         token_ascii_equal(token, "of") || token_ascii_equal(token, "over") ||
+         token_ascii_equal(token, "regexp") || token_ascii_equal(token, "rlike") ||
+         token_ascii_equal(token, "sounds") || token_ascii_equal(token, "xor");
+}
+
+static int do_expression_value_start(int token_id, MyliteToken token) {
+  (void) token;
+  return token_id == ML_AT_HOST || token_id == ML_AT_SIGN ||
+         token_id == ML_ATOM || token_id == ML_BOOLEAN_NUMBER ||
+         token_id == ML_DOUBLE_QUOTED_STRING ||
+         token_id == ML_FACTOR_NUMBER || token_id == ML_LB ||
+         token_id == ML_LC || token_id == ML_LP ||
+         token_id == ML_NULL || token_id == ML_NUMBER_LITERAL ||
+         token_id == ML_QUOTED_ID || token_id == ML_STRING_LITERAL;
+}
+
+static int do_expression_value_terminal(int token_id, MyliteToken token) {
+  (void) token;
+  return token_id == ML_AT_HOST || token_id == ML_ATOM ||
+         token_id == ML_BOOLEAN_NUMBER ||
+         token_id == ML_DOUBLE_QUOTED_STRING ||
+         token_id == ML_FACTOR_NUMBER || token_id == ML_NULL ||
+         token_id == ML_NUMBER_LITERAL || token_id == ML_QUOTED_ID ||
+         token_id == ML_RB || token_id == ML_RC || token_id == ML_RP ||
+         token_id == ML_STRING_LITERAL;
+}
+
+static int do_expression_allows_adjacent(int previous_id,
+                                         MyliteToken previous, int current_id,
+                                         MyliteToken current) {
+  if (current_id == ML_LP &&
+      (previous_id == ML_ATOM || previous_id == ML_QUOTED_ID)) {
+    return 1;
+  }
+
+  if (previous_id == ML_RP && current_id == ML_ATOM) {
+    return 1;
+  }
+
+  if ((current_id == ML_FACTOR_NUMBER || current_id == ML_NUMBER_LITERAL) &&
+      current.length > 0 &&
+      (current.start[0] == '+' || current.start[0] == '-')) {
+    return 1;
+  }
+
+  if (do_expression_conditional_comment_operator_between(previous, current)) {
+    return 1;
+  }
+
+  if ((previous_id == ML_STRING_LITERAL ||
+       previous_id == ML_DOUBLE_QUOTED_STRING) &&
+      (current_id == ML_STRING_LITERAL ||
+       current_id == ML_DOUBLE_QUOTED_STRING)) {
+    return 1;
+  }
+
+  if ((current_id == ML_STRING_LITERAL ||
+       current_id == ML_DOUBLE_QUOTED_STRING) &&
+      previous_id == ML_ATOM) {
+    return previous.length > 0 &&
+           (previous.start[0] == '_' || token_ascii_equal(previous, "date") ||
+            token_ascii_equal(previous, "n") ||
+            token_ascii_equal(previous, "time") ||
+            token_ascii_equal(previous, "timestamp"));
+  }
+
+  return 0;
+}
+
+static int do_expression_conditional_comment_operator_between(
+    MyliteToken previous, MyliteToken current) {
+  const char *cursor = previous.start + previous.length;
+  const char *end = current.start;
+  int in_conditional_comment = 0;
+
+  while (cursor < end) {
+    if (!in_conditional_comment && end - cursor >= 3 && cursor[0] == '/' &&
+        cursor[1] == '*' && cursor[2] == '!') {
+      in_conditional_comment = 1;
+      cursor += 3;
+      continue;
+    }
+    if (in_conditional_comment && strchr("!%&*+-/<=>^|~", *cursor) != NULL) {
+      return 1;
+    }
+    cursor++;
+  }
+
+  return 0;
 }
 
 static int kill_at_sign_target_token(int token_id) {

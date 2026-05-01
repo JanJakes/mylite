@@ -556,6 +556,45 @@ if "$parser" --quiet 'CREATE DEFINER user@localhost PROCEDURE p() SELECT 1'; the
 	exit 1
 fi
 
+create_table_compact_output=$("$parser" "CREATE TEMPORARY TABLE IF NOT EXISTS new_tbl LIKE orig_tbl; CREATE TABLE db.new2 (LIKE db.orig2); CREATE TABLE ctas AS SELECT * FROM src; CREATE TABLE ctas2 (id INT PRIMARY KEY) ENGINE=InnoDB IGNORE SELECT id FROM src; CREATE TABLE ctas3 REPLACE AS WITH c AS (SELECT 1 AS id) SELECT id FROM c; CREATE TABLE ctas4 AS (SELECT 1); CREATE TABLE ctas5 AS ((VALUES ROW (1, 1), ROW (2, 2) ORDER BY column_0 LIMIT 2) ORDER BY column_1 LIMIT 1)")
+case "$create_table_compact_output" in
+	*"create"*/table:new_tbl*"create"*/table:db.new2*"create"*/table:ctas*"create"*/table:ctas2*"create"*/table:ctas3*"create"*/table:ctas4*"create"*/table:ctas5*) ;;
+	*)
+		echo "unexpected compact CREATE TABLE output: $create_table_compact_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'CREATE TABLE t LIKE'; then
+	echo "expected CREATE TABLE LIKE without source to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TABLE t (LIKE)'; then
+	echo "expected parenthesized CREATE TABLE LIKE without source to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TABLE t LIKE old extra'; then
+	echo "expected CREATE TABLE LIKE with trailing tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TABLE t AS'; then
+	echo "expected CREATE TABLE AS without query to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TABLE t IGNORE'; then
+	echo "expected CREATE TABLE IGNORE without query to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE TABLE t () SELECT 1'; then
+	echo "expected CREATE TABLE SELECT with empty definition list to fail" >&2
+	exit 1
+fi
+
 create_index_output=$("$parser" "CREATE INDEX i ON t (c); CREATE UNIQUE INDEX i2 USING BTREE ON db.t (c(10) DESC, (lower(name)) ASC) KEY_BLOCK_SIZE=8 WITH PARSER parser_name COMMENT 'c' VISIBLE ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE='{}' ALGORITHM=INPLACE LOCK=NONE; CREATE FULLTEXT INDEX ft ON t (body) WITH PARSER ngram; CREATE SPATIAL INDEX sp ON t (g) USING HASH; CREATE INDEX legacy TYPE BTREE ON t (c) TYPE RTREE")
 case "$create_index_output" in
 	*"create"*/index:i*"create"*/index:i2*"create"*/index:ft*"create"*/index:sp*"create"*/index:legacy*) ;;

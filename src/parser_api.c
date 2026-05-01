@@ -90,6 +90,12 @@ static int validate_create_trigger_statement_syntax(const mylite_parser *parser,
 static int token_starts_trigger_statement(const mylite_parser *parser,
                                           size_t token_index,
                                           size_t last_token_index);
+static int validate_create_table_compact_statement_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index);
+static int token_starts_create_table_compact_statement(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index);
 static int validate_create_database_statement_syntax(const mylite_parser *parser,
                                                      size_t token_index,
                                                      size_t last_token_index);
@@ -302,6 +308,16 @@ static int validate_trigger_order_clause_syntax(const mylite_parser *parser,
                                                 size_t *next_token_index);
 static int token_is_trigger_time(const mylite_parser *parser, size_t token_index);
 static int token_is_trigger_event(const mylite_parser *parser, size_t token_index);
+static size_t first_token_after_create_table_head(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int validate_create_table_like_tail_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int validate_create_table_select_tail_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static int token_can_start_create_table_query(const mylite_parser *parser, size_t token_index);
 static int validate_alter_database_statement_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
@@ -2051,6 +2067,9 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (token_starts_trigger_statement(parser, token_index, last_token_index)) {
 		return validate_create_trigger_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (token_starts_create_table_compact_statement(parser, token_index, last_token_index)) {
+		return validate_create_table_compact_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (parser->tokens[token_index].parser_token == DATABASE_T ||
 	    parser->tokens[token_index].parser_token == SCHEMA_T) {
 		return validate_create_database_statement_syntax(parser, token_index, last_token_index);
@@ -3530,6 +3549,173 @@ static int token_is_trigger_event(const mylite_parser *parser, size_t token_inde
 	return parser->tokens[token_index].parser_token == INSERT_T ||
 	       parser->tokens[token_index].parser_token == UPDATE_T ||
 	       parser->tokens[token_index].parser_token == DELETE_T;
+}
+
+static int validate_create_table_compact_statement_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index)
+{
+	token_index = first_token_after_create_table_head(parser, token_index, last_token_index);
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "LIKE") ||
+	    (parser->tokens[token_index].parser_token == '(' &&
+	     token_index + 1 <= last_token_index &&
+	     token_text_equals(parser, token_index + 1, "LIKE"))) {
+		return validate_create_table_like_tail_syntax(parser, token_index, last_token_index);
+	}
+
+	return validate_create_table_select_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int token_starts_create_table_compact_statement(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index)
+{
+	token_index = first_token_after_create_table_head(parser, token_index, last_token_index);
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "LIKE") ||
+	    (parser->tokens[token_index].parser_token == '(' &&
+	     token_index + 1 <= last_token_index &&
+	     token_text_equals(parser, token_index + 1, "LIKE"))) {
+		return 1;
+	}
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (token_can_start_create_table_query(parser, token_index) ||
+		    token_text_equals(parser, token_index, "AS") ||
+		    token_text_equals(parser, token_index, "IGNORE") ||
+		    token_text_equals(parser, token_index, "REPLACE")) {
+			return 1;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+	return 0;
+}
+
+static size_t first_token_after_create_table_head(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	if (token_index <= last_token_index &&
+	    parser->tokens[token_index].parser_token == TEMPORARY_T) {
+		token_index++;
+	}
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token != TABLE_T) {
+		return parser->token_count;
+	}
+
+	token_index++;
+	if (token_index + 2 <= last_token_index &&
+	    token_text_equals(parser, token_index, "IF") &&
+	    token_text_equals(parser, token_index + 1, "NOT") &&
+	    token_text_equals(parser, token_index + 2, "EXISTS")) {
+		token_index += 3;
+	}
+	if (token_index > last_token_index || !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return parser->token_count;
+	}
+	return last_qualified_name_token(parser, token_index, last_token_index) + 1;
+}
+
+static int validate_create_table_like_tail_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	size_t close_token_index;
+
+	if (token_text_equals(parser, token_index, "LIKE")) {
+		token_index++;
+		if (token_index > last_token_index || !token_can_continue_object_name(&parser->tokens[token_index])) {
+			return 0;
+		}
+		return last_qualified_name_token(parser, token_index, last_token_index) == last_token_index;
+	}
+
+	if (parser->tokens[token_index].parser_token != '(' ||
+	    parser->tokens[token_index].matching_token <= token_index + 1) {
+		return 0;
+	}
+	close_token_index = parser->tokens[token_index].matching_token - 1;
+	if (close_token_index != last_token_index ||
+	    token_index + 2 > close_token_index ||
+	    !token_text_equals(parser, token_index + 1, "LIKE") ||
+	    !token_can_continue_object_name(&parser->tokens[token_index + 2])) {
+		return 0;
+	}
+
+	return last_qualified_name_token(parser, token_index + 2, close_token_index) == close_token_index - 1;
+}
+
+static int validate_create_table_select_tail_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	if (token_index <= last_token_index &&
+	    parser->tokens[token_index].parser_token == '(' &&
+	    !token_can_start_create_table_query(parser, token_index)) {
+		if (parser->tokens[token_index].matching_token <= token_index + 2) {
+			return 0;
+		}
+		token_index = parser->tokens[token_index].matching_token;
+	}
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (token_text_equals(parser, token_index, "IGNORE") ||
+		    token_text_equals(parser, token_index, "REPLACE")) {
+			token_index++;
+			if (token_index <= last_token_index && token_text_equals(parser, token_index, "AS")) {
+				token_index++;
+			}
+			return token_index <= last_token_index &&
+			       token_can_start_create_table_query(parser, token_index);
+		}
+		if (token_text_equals(parser, token_index, "AS")) {
+			token_index++;
+			return token_index <= last_token_index &&
+			       token_can_start_create_table_query(parser, token_index);
+		}
+		if (token_can_start_create_table_query(parser, token_index)) {
+			return 1;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+
+	return 0;
+}
+
+static int token_can_start_create_table_query(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == SELECT_T ||
+	    parser->tokens[token_index].parser_token == WITH_T ||
+	    parser->tokens[token_index].parser_token == TABLE_T ||
+	    parser->tokens[token_index].parser_token == VALUES_T) {
+		return 1;
+	}
+	return parser->tokens[token_index].parser_token == '(' &&
+	       token_index + 1 < parser->token_count &&
+	       parser->tokens[token_index].matching_token > token_index + 1 &&
+	       token_can_start_create_table_query(parser, token_index + 1);
 }
 
 static int validate_create_database_statement_syntax(const mylite_parser *parser,

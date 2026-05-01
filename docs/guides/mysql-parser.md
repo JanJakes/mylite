@@ -76,6 +76,10 @@ documented routine characteristics, and nonempty bodies without executing or
 analyzing routine semantics yet.
 `ALTER FUNCTION` and `ALTER PROCEDURE` validate documented routine
 characteristics without changing parameters or bodies.
+Compact `CREATE TABLE` validation covers `LIKE` and query-backed CTAS forms,
+including temporary destinations, optional definition groups, table-option
+prefixes, `IGNORE` / `REPLACE`, optional `AS`, and nested parenthesized query
+expressions. Full column-definition grammar remains separate.
 `CREATE INDEX` validates standalone index modifiers, key-part-list shape,
 documented option clauses, and corpus-observed legacy `TYPE` / `RTREE` index
 type spellings while table-level index definitions stay with `CREATE TABLE`

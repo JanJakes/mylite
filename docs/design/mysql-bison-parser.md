@@ -73,6 +73,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/alter-event.html`
 - MySQL 8.4 trigger DDL:
   `https://dev.mysql.com/doc/refman/8.4/en/create-trigger.html`
+- MySQL 8.4 compact table creation forms:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-table-like.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/create-table-select.html`
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
@@ -388,6 +391,11 @@ Stored `CREATE PROCEDURE` and `CREATE FUNCTION` validate optional definer and
 `IF NOT EXISTS`, parameter-list shape, stored-function `RETURNS` types,
 documented routine characteristics, and nonempty simple or compound bodies while
 leaving routine metadata and execution semantics to later phases.
+Compact table creation validation covers `CREATE [TEMPORARY] TABLE ... LIKE`
+and query-backed CTAS forms, including optional definition groups, table-option
+prefixes, `IGNORE` / `REPLACE`, optional `AS`, and nested parenthesized query
+expressions. Full column-definition grammar remains a separate table DDL
+milestone.
 Resource group targets are recorded and validated for `CREATE`, `ALTER`,
 `DROP`, and `SET RESOURCE GROUP`. Server DDL targets are recorded and validated
 for `CREATE SERVER`, `ALTER SERVER`, and `DROP SERVER`. Logfile-group DDL

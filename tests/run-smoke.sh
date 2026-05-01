@@ -1850,6 +1850,15 @@ if ! "$parser" --quiet "SELECT 1 UNION (SELECT 2 INTO OUTFILE 'parser.test.file2
 	exit 1
 fi
 
+parenthesized_select_into_output=$("$parser" "(SELECT 1 INTO @v); SELECT 1 UNION (SELECT 2 INTO OUTFILE 'parser.test.file2'); (SELECT 1 UNION SELECT 1 FROM DUAL FOR UPDATE INTO @var)")
+case "$parenthesized_select_into_output" in
+	*"select"*/user_variable:@v*"select"*/outfile:"'parser.test.file2'"*"select"*/user_variable:@var*) ;;
+	*)
+		echo "unexpected parenthesized SELECT INTO output: $parenthesized_select_into_output" >&2
+		exit 1
+		;;
+esac
+
 if "$parser" --quiet 'SELECT INTO @x'; then
 	echo "expected SELECT INTO without select expression to fail" >&2
 	exit 1

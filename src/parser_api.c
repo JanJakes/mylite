@@ -17380,22 +17380,16 @@ static size_t find_select_into_target_token(const mylite_parser *parser,
                                             const mylite_statement *statement,
                                             mylite_statement_object_kind *object_kind)
 {
-	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t token_index;
 	size_t last_token_index;
 
-	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+	if (statement->first_token == 0 || statement->last_token < statement->first_token) {
 		return parser->token_count;
 	}
 
-	token_index++;
+	token_index = statement->first_token - 1;
 	last_token_index = statement->last_token - 1;
 	while (token_index + 1 <= last_token_index && token_index < parser->token_count) {
-		size_t matching_token = parser->tokens[token_index].matching_token;
-
-		if (matching_token > token_index + 1) {
-			token_index = matching_token;
-			continue;
-		}
 		if (parser->tokens[token_index].parser_token == INTO_T) {
 			return find_into_target_token(parser, token_index, last_token_index, object_kind);
 		}

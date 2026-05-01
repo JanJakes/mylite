@@ -296,9 +296,10 @@ clause shells such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`,
 leaving full table-reference, expression, and query-expression analysis to a
 later phase. `FOR GROUP BY` and `FOR ORDER BY` inside index hints are not
 treated as SELECT clause boundaries.
-`SELECT ... INTO` validation checks the single top-level `INTO` rule, variable
-target-list separators, parenthesized query-expression boundaries, OUTFILE
-character-set and field/line options, and DUMPFILE target shape.
+`SELECT ... INTO` validation and target classification check the single
+top-level `INTO` rule, variable target-list separators, parenthesized
+query-expression boundaries, OUTFILE character-set and field/line options, and
+DUMPFILE target shape.
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table
@@ -530,7 +531,8 @@ preserve the named table target.
 expressions, and rejects CTE shells that do not expose an outer DML/query
 statement.
 Plain `SELECT` and `WITH` query statements are recorded as query targets unless
-they expose a more specific `INTO` target.
+they expose a more specific `INTO` target, including parenthesized and
+set-operation terms.
 SELECT validation walks nested `SELECT` tokens so malformed parenthesized
 selects and set-operation RHS terms are rejected even before full query
 expression AST construction exists.

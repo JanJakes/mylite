@@ -373,6 +373,12 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
 
+    if (token_id == ML_COMMA) {
+      need_operand = 1;
+      pending_token = token;
+      continue;
+    }
+
     if (select_clause_requires_by(token_id)) {
       need_by = 1;
       pending_token = token;

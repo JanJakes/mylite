@@ -32,6 +32,7 @@ token sink:
   `IGNORE UNKNOWN USER`.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`
   and `OR REPLACE` variants.
+- `DROP INDEX` recognizes MySQL's `ALGORITHM` and `LOCK` option tails.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, VCPU ranges, force modifiers, and thread-id assignment lists.
 - `LOAD DATA` and `LOAD XML` recognize file modifiers, duplicate handling,

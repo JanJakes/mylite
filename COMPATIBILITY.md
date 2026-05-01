@@ -97,7 +97,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP EVENT` | ❌ | medium | Event metadata deletion. |  |
 | `DROP FUNCTION` (stored) | ❌ | medium | Stored-function deletion and routine metadata cleanup. |  |
 | `DROP FUNCTION` (loadable) | ❌ | low | Loadable-function deregistration syntax. |  |
-| `DROP INDEX` | ❌ | top | Standalone index removal semantics. |  |
+| `DROP INDEX` | ❌ | top | Standalone index removal semantics. | Parser recognizes optional `ALGORITHM` and `LOCK` clauses. |
 | `DROP LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
 | `DROP PROCEDURE` | ❌ | medium | Stored-procedure deletion and metadata cleanup. |  |
 | `DROP SERVER` | ❌ | low | Foreign server metadata deletion. |  |

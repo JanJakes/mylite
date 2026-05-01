@@ -5,6 +5,7 @@
 %fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NONE NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PACK_KEYS PAGE PARSE_TREE PARTITION PHASE PRECEDES PRESERVE RANDOM READS REAL REBUILD REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
 %fallback ATOM FACTOR_NUMBER.
 %fallback ATOM ENCLOSED ESCAPED LINES OPTIONALLY ROWS STARTING TERMINATED.
+%fallback ATOM COPY EXCLUSIVE INPLACE SHARED.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -784,7 +785,22 @@ drop_tablespace_engine_tail ::= ENGINE cache_name_part.
 drop_index_name ::= cache_name_part.
 
 drop_index_options_tail ::= .
-drop_index_options_tail ::= drop_index_options_tail statement_token.
+drop_index_options_tail ::= drop_index_options_tail drop_index_option.
+
+drop_index_option ::= ALGORITHM drop_index_option_equals_tail drop_index_algorithm.
+drop_index_option ::= LOCK drop_index_option_equals_tail drop_index_lock.
+
+drop_index_option_equals_tail ::= .
+drop_index_option_equals_tail ::= diagnostics_equals.
+
+drop_index_algorithm ::= DEFAULT.
+drop_index_algorithm ::= INPLACE.
+drop_index_algorithm ::= COPY.
+
+drop_index_lock ::= DEFAULT.
+drop_index_lock ::= NONE.
+drop_index_lock ::= SHARED.
+drop_index_lock ::= EXCLUSIVE.
 
 drop_database_kind ::= DATABASE.
 drop_database_kind ::= SCHEMA.
@@ -3333,6 +3349,7 @@ keyword ::= CHARACTER.
 keyword ::= CHARSET.
 keyword ::= COLLATION.
 keyword ::= COLUMNS.
+keyword ::= COPY.
 keyword ::= COUNT.
 keyword ::= DATABASES.
 keyword ::= DEFAULT_AUTH.
@@ -3342,6 +3359,7 @@ keyword ::= ERRORS.
 keyword ::= ERROR.
 keyword ::= ESCAPED.
 keyword ::= EVENTS.
+keyword ::= EXCLUSIVE.
 keyword ::= EXTENDED.
 keyword ::= ENCLOSED.
 keyword ::= FIELDS.
@@ -3355,6 +3373,7 @@ keyword ::= GLOBAL.
 keyword ::= GRANTS.
 keyword ::= HOSTS.
 keyword ::= INDEXES.
+keyword ::= INPLACE.
 keyword ::= KEY.
 keyword ::= KEYS.
 keyword ::= LAST.
@@ -3371,6 +3390,7 @@ keyword ::= RELAY.
 keyword ::= REPLICAS.
 keyword ::= SCHEMAS.
 keyword ::= SESSION.
+keyword ::= SHARED.
 keyword ::= STATUS.
 keyword ::= STOP.
 keyword ::= STORAGE.
@@ -3605,6 +3625,7 @@ keyword_not_select_clause ::= CHARACTER.
 keyword_not_select_clause ::= CHARSET.
 keyword_not_select_clause ::= COLLATION.
 keyword_not_select_clause ::= COLUMNS.
+keyword_not_select_clause ::= COPY.
 keyword_not_select_clause ::= COUNT.
 keyword_not_select_clause ::= DATABASES.
 keyword_not_select_clause ::= DEFAULT_AUTH.
@@ -3614,6 +3635,7 @@ keyword_not_select_clause ::= ERRORS.
 keyword_not_select_clause ::= ERROR.
 keyword_not_select_clause ::= ESCAPED.
 keyword_not_select_clause ::= EVENTS.
+keyword_not_select_clause ::= EXCLUSIVE.
 keyword_not_select_clause ::= EXTENDED.
 keyword_not_select_clause ::= ENCLOSED.
 keyword_not_select_clause ::= FIELDS.
@@ -3627,6 +3649,7 @@ keyword_not_select_clause ::= GLOBAL.
 keyword_not_select_clause ::= GRANTS.
 keyword_not_select_clause ::= HOSTS.
 keyword_not_select_clause ::= INDEXES.
+keyword_not_select_clause ::= INPLACE.
 keyword_not_select_clause ::= KEY.
 keyword_not_select_clause ::= KEYS.
 keyword_not_select_clause ::= LAST.
@@ -3643,6 +3666,7 @@ keyword_not_select_clause ::= RELAY.
 keyword_not_select_clause ::= REPLICAS.
 keyword_not_select_clause ::= SCHEMAS.
 keyword_not_select_clause ::= SESSION.
+keyword_not_select_clause ::= SHARED.
 keyword_not_select_clause ::= STATUS.
 keyword_not_select_clause ::= STORAGE.
 keyword_not_select_clause ::= TRIGGERS.

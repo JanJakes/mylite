@@ -228,6 +228,21 @@ case "$object_output" in
 	*)
 		echo "unexpected object output: $object_output" >&2
 		exit 1
+	;;
+esac
+
+database_option_output=$("$parser" 'ALTER DATABASE CHARACTER SET utf8mb4; ALTER SCHEMA DEFAULT COLLATE utf8mb4_bin; ALTER DATABASE READ ONLY = DEFAULT; ALTER DATABASE db READ ONLY = 1')
+case "$database_option_output" in
+	*"/database:CHARACTER"*|*"/schema:utf8mb4_bin"*|*"/database:READ"*)
+		echo "unexpected nameless database option target: $database_option_output" >&2
+		exit 1
+		;;
+esac
+case "$database_option_output" in
+	*"alter"*/database*"alter"*/schema*"alter"*/database*"alter"*/database:db*) ;;
+	*)
+		echo "unexpected database option output: $database_option_output" >&2
+		exit 1
 		;;
 esac
 

@@ -98,6 +98,13 @@ ok statements=1 kinds=install[1:5,0:30]/plugin:p
 ok statements=1 kinds=create[1:7,0:50]/undo_tablespace:uts
 ```
 
+Nameless default-database option forms keep the database object kind without
+inventing a target name:
+
+```text
+ok statements=1 kinds=alter[1:5,0:36]/database
+```
+
 Grant and revoke principal targets preserve the first account span:
 
 ```text

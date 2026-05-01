@@ -348,6 +348,9 @@ static void set_statement_object_name(const mylite_parser *parser,
                                       mylite_statement *statement,
                                       size_t object_token_index,
                                       size_t last_token_index);
+static int token_starts_alter_database_option(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index);
 static void set_statement_object_name_from_first_token(const mylite_parser *parser,
                                                        mylite_statement *statement,
                                                        size_t first_name_token,
@@ -3751,6 +3754,13 @@ static void set_statement_object_name(const mylite_parser *parser,
 {
 	size_t first_name_token = first_name_token_after_object(parser, object_token_index, last_token_index);
 
+	if (statement->kind == MYLITE_STATEMENT_ALTER &&
+	    (statement->object_kind == MYLITE_STATEMENT_OBJECT_DATABASE ||
+	     statement->object_kind == MYLITE_STATEMENT_OBJECT_SCHEMA) &&
+	    token_starts_alter_database_option(parser, object_token_index + 1, last_token_index)) {
+		return;
+	}
+
 	if (statement->object_kind == MYLITE_STATEMENT_OBJECT_USER ||
 	    statement->object_kind == MYLITE_STATEMENT_OBJECT_ROLE) {
 		set_statement_account_name_from_first_token(parser, statement, first_name_token, last_token_index);
@@ -3758,6 +3768,34 @@ static void set_statement_object_name(const mylite_parser *parser,
 	}
 
 	set_statement_object_name_from_first_token(parser, statement, first_name_token, last_token_index);
+}
+
+static int token_starts_alter_database_option(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == DEFAULT_T) {
+		token_index++;
+		if (token_index > last_token_index || token_index >= parser->token_count) {
+			return 0;
+		}
+	}
+
+	if (parser->tokens[token_index].parser_token == CHARACTER_T &&
+	    token_index + 1 <= last_token_index &&
+	    parser->tokens[token_index + 1].parser_token == SET_T) {
+		return 1;
+	}
+
+	return token_text_equals(parser, token_index, "COLLATE") ||
+	       token_text_equals(parser, token_index, "ENCRYPTION") ||
+	       (parser->tokens[token_index].parser_token == READ_T &&
+	        token_index + 1 <= last_token_index &&
+	        token_text_equals(parser, token_index + 1, "ONLY"));
 }
 
 static void set_statement_object_name_from_first_token(const mylite_parser *parser,

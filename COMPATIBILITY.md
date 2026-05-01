@@ -66,7 +66,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. |  |
+| `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. | Parser records explicit database/schema targets and nameless default-database option forms without inventing an option-value target; runtime database metadata changes are not implemented. |
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. |  |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. |  |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |

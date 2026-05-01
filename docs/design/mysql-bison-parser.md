@@ -262,6 +262,9 @@ recorded for `INSTALL` and `UNINSTALL` administrative statements.
 Local `CLONE` directory targets and remote `CLONE INSTANCE` donor endpoints
 are recorded as direct targets.
 `STOP` has an explicit statement kind for replication-control statements.
+Nameless `ALTER DATABASE` / `ALTER SCHEMA` option forms are recorded with the
+database or schema object kind and no invented target name, matching MySQL's
+default-database syntax.
 Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`, and
 `SET RESOURCE GROUP`. Server, logfile-group, tablespace, and undo-tablespace
 DDL targets are recorded for the low-level storage/metadata statements that

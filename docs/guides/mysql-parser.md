@@ -72,7 +72,8 @@ Standalone `VALUES` statements expose the query object kind:
 ok statements=1 kinds=values[1:10,0:21]/query
 ```
 
-`DO` expression statements also expose the query object kind:
+`DO` expression statements validate top-level expression-list separators and
+expose the query object kind:
 
 ```text
 ok statements=1 kinds=do[1:4,0:8]/query

@@ -138,7 +138,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. |  |
-| `DO` | ❌ | medium | Execute expression lists without returning result sets. | Parser records `DO` statements as query targets; expression evaluation, side effects, warnings, and affected-row metadata are not implemented. |
+| `DO` | ❌ | medium | Execute expression lists without returning result sets. | Parser records `DO` statements as query targets and validates top-level expression-list separator shape; expression evaluation, side effects, warnings, and affected-row metadata are not implemented. |
 | `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser records ordinary `SELECT` and `WITH` query statements as query targets; query expression AST, result metadata, and execution semantics are not implemented. |
 | `SELECT ... INTO var_list` | ❌ | high | User/local variable assignment semantics. | Parser accepts variable-assignment forms and records the first user/local variable target; assignment semantics and multi-target validation are not implemented. |
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. | Parser accepts the form and records the literal export-file target; field/line options and file I/O behavior are not implemented. |

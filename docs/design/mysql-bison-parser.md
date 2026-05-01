@@ -329,7 +329,8 @@ they expose a more specific `INTO` target.
 Standalone `VALUES` statements are recorded as query targets because MySQL
 treats them as DML statements that return row sets.
 `DO` statements are recorded as query targets too because they execute
-expressions without exposing a table, schema, or administrative target.
+expressions without exposing a table, schema, or administrative target, and
+they validate top-level expression-list separator shape.
 Stored-program statement heads such as `DECLARE`, cursor operations, `IF`,
 `CASE`, loop forms, `LEAVE`, `ITERATE`, and `RETURN` have explicit statement
 kinds. Compound-control tokens are structurally matched for `BEGIN ... END`,

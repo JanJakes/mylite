@@ -59,14 +59,29 @@ case "$values_query_output" in
 		;;
 esac
 
-do_query_output=$("$parser" 'DO 1 + 1; DO SLEEP(1)')
+do_query_output=$("$parser" 'DO 1 + 1; DO SLEEP(1); DO 1, SLEEP(0), @a := 2; DO (SELECT @x:=b FROM t1 WHERE a=5); DO ST_AsText(@p) AS p')
 case "$do_query_output" in
-	*"kinds=do[1:4,0:8]/query,do[6:10,10:21]/query"*) ;;
+	*"kinds=do[1:4,0:8]/query,do[6:10,10:21]/query,do"*/query*",do"*/query*",do"*/query*) ;;
 	*)
 		echo "unexpected DO query output: $do_query_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'DO , 1'; then
+	echo "expected leading DO expression-list comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DO 1,'; then
+	echo "expected trailing DO expression-list comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DO 1,,2'; then
+	echo "expected empty DO expression-list item to fail" >&2
+	exit 1
+fi
 
 table_query_output=$("$parser" 'TABLE t; (TABLE `db`.`t`); ((TABLE t)) ORDER BY c LIMIT 1')
 case "$table_query_output" in

@@ -31,6 +31,10 @@ static int validate_use_statement_syntax(const mylite_parser *parser, const myli
 static int validate_truncate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_call_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_call_argument_list_syntax(const mylite_parser *parser, size_t open_token_index);
+static int validate_do_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_expression_list_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index);
 static int validate_import_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_binlog_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_install_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1167,6 +1171,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_DO:
+			if (!validate_do_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid DO statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_IMPORT:
 			if (!validate_import_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid IMPORT statement");
@@ -1441,6 +1451,52 @@ static int validate_call_argument_list_syntax(const mylite_parser *parser, size_
 		expecting_argument = 0;
 	}
 	return !expecting_argument;
+}
+
+static int validate_do_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	return validate_expression_list_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_expression_list_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	int expecting_expression = 1;
+
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (matching_token > token_index + 1) {
+			expecting_expression = 0;
+			token_index = matching_token;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == ',') {
+			if (expecting_expression) {
+				return 0;
+			}
+			expecting_expression = 1;
+			token_index++;
+			continue;
+		}
+		expecting_expression = 0;
+		token_index++;
+	}
+	return !expecting_expression;
 }
 
 static int validate_import_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

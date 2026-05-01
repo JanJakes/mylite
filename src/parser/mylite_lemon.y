@@ -2684,6 +2684,7 @@ describe_explain_tail ::= explain_format_json_clause explain_into_tail describe_
 describe_explain_tail ::= explain_format_json_clause explain_into_tail explain_schema_spec describe_explain_query_start required_statement_tail.
 describe_explain_tail ::= explain_analyze_tail.
 describe_explain_tail ::= FOR CONNECTION explain_connection_id.
+describe_explain_tail ::= explain_format_clause FOR CONNECTION explain_connection_id.
 
 describe_explain_query_start ::= DELETE.
 describe_explain_query_start ::= INSERT.
@@ -2707,6 +2708,7 @@ explain_tail ::= explain_format_json_clause explain_into_tail explain_query_star
 explain_tail ::= explain_format_json_clause explain_into_tail explain_schema_spec explain_query_start required_statement_tail.
 explain_tail ::= explain_analyze_tail.
 explain_tail ::= FOR CONNECTION explain_connection_id.
+explain_tail ::= explain_format_clause FOR CONNECTION explain_connection_id.
 
 explain_format_clause ::= FORMAT diagnostics_equals explain_format_name.
 

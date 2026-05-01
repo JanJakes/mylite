@@ -146,7 +146,8 @@ token sink:
   and `IGNORE LEAVES`.
 - `IMPORT TABLE` recognizes comma-separated string-literal file lists.
 - `EXPLAIN` and `DESCRIBE` recognize table-description forms, explainable
-  statement starts with non-empty tails, and numeric `FOR CONNECTION` ids.
+  statement starts with non-empty tails, and numeric `FOR CONNECTION` ids with
+  optional `FORMAT` clauses.
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
 - `CHANGE REPLICATION SOURCE TO` recognizes documented MySQL 8.4 source option
@@ -203,7 +204,8 @@ token sink:
 - `SET` variable assignments recognize comma-separated assignment lists with
   optional per-assignment scopes and nested value expressions.
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form
-  with user-variable targets.
+  with user-variable targets, while `INTO` is still rejected for
+  `FOR CONNECTION` plans.
 - `EXPLAIN ... FOR SCHEMA|DATABASE name` schema specifiers are recognized.
 - `DESCRIBE` and `DESC` reuse the EXPLAIN syntax variants for execution-plan
   statements while preserving table and column description forms with shared

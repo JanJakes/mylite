@@ -28,6 +28,9 @@ token sink:
 - Stored function signatures require empty or comma-separated input parameter
   lists, and stored procedure signatures accept `IN`/`OUT`/`INOUT` modes while
   preserving nested type bodies.
+- `CREATE VIEW` and `ALTER VIEW` recognize algorithm, definer, SQL security,
+  column lists, view body starts, and explicit check-option tails for
+  non-`SELECT` body forms.
 - `CALL` recognizes one- and two-part routine names plus comma-separated
   argument lists with nested expression bodies.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before

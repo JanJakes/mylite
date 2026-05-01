@@ -557,6 +557,7 @@ static int keyword_token(const MyliteToken *token) {
       {"CALL", ML_CALL},
       {"CATALOG_NAME", ML_CATALOG_NAME},
       {"CASCADE", ML_CASCADE},
+      {"CASCADED", ML_CASCADED},
       {"CASE", ML_CASE},
       {"CHANGE", ML_CHANGE},
       {"CHANGED", ML_CHANGED},

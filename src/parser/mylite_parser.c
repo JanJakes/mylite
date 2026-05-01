@@ -55,7 +55,8 @@ typedef enum ColumnDefinitionTailState {
 } ColumnDefinitionTailState;
 
 enum {
-  COLUMN_DEFINITION_FLAG_GENERATED_STORAGE = 1 << 0
+  COLUMN_DEFINITION_FLAG_GENERATED_EXPRESSION = 1 << 0,
+  COLUMN_DEFINITION_FLAG_GENERATED_STORAGE = 1 << 1
 };
 
 typedef enum CreateTableOptionValueKind {
@@ -5849,6 +5850,9 @@ static int column_definition_tail_token(
       *pending_token = token;
       return 1;
     }
+    if (*state == COLUMN_DEFINITION_TAIL_AFTER_AS) {
+      *flags |= COLUMN_DEFINITION_FLAG_GENERATED_EXPRESSION;
+    }
     *state = COLUMN_DEFINITION_TAIL_READY;
     (*depth)++;
     return 1;
@@ -6344,6 +6348,10 @@ static int column_definition_tail_token(
   }
 
   if (token_ascii_equal(token, "stored") || token_ascii_equal(token, "virtual")) {
+    if ((*flags & COLUMN_DEFINITION_FLAG_GENERATED_EXPRESSION) == 0) {
+      mylite_parser_reject(ctx, token, message);
+      return 0;
+    }
     if ((*flags & COLUMN_DEFINITION_FLAG_GENERATED_STORAGE) != 0) {
       mylite_parser_reject(ctx, token, message);
       return 0;

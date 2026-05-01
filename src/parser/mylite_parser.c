@@ -166,6 +166,8 @@ static int expression_start_follows_double_at_assignment(
 static void validate_with_statement_from(MyliteParseContext *ctx,
                                          MyliteToken start,
                                          const char *message);
+static void validate_with_cte_body_from(MyliteParseContext *ctx,
+                                        MyliteToken start);
 static void validate_query_body_from(MyliteParseContext *ctx, int token_id,
                                      MyliteToken token);
 static int with_cte_name_token(int token_id);
@@ -266,7 +268,8 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
                                                   int token_id,
                                                   MyliteToken token);
 static void validate_select_list_tail_from(MyliteParseContext *ctx,
-                                           MyliteToken start);
+                                           MyliteToken start,
+                                           int parenthesized_boundary);
 static void validate_routine_statement_body_from(MyliteParseContext *ctx,
                                                  int token_id,
                                                  MyliteToken token);
@@ -4562,6 +4565,10 @@ static void validate_with_statement_from(MyliteParseContext *ctx,
       } else if (token_closes_nested_expression(token_id)) {
         depth--;
         if (depth == 0) {
+          validate_with_cte_body_from(ctx, pending_token);
+          if (ctx->failed) {
+            return;
+          }
           state = WITH_AFTER_CTE_BODY;
         }
       }
@@ -4586,12 +4593,50 @@ static void validate_with_statement_from(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, pending_token, message);
 }
 
+static void validate_with_cte_body_from(MyliteParseContext *ctx,
+                                        MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  int token_id;
+  int saw_body = 0;
+  int depth = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_body) {
+      if (token.offset == start.offset) {
+        saw_body = 1;
+        depth = 1;
+      }
+      continue;
+    }
+
+    if (depth == 1 && token_id == ML_SELECT) {
+      validate_select_list_tail_from(ctx, token, 1);
+      if (ctx->failed) {
+        return;
+      }
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      depth++;
+      continue;
+    }
+    if (token_closes_nested_expression(token_id)) {
+      depth--;
+      if (depth == 0) {
+        return;
+      }
+    }
+  }
+}
+
 static void validate_query_body_from(MyliteParseContext *ctx, int token_id,
                                      MyliteToken token) {
   if (token_id == ML_SELECT) {
     mylite_parser_validate_select_statement_from(ctx, token);
     if (!ctx->failed) {
-      validate_select_list_tail_from(ctx, token);
+      validate_select_list_tail_from(ctx, token, 0);
     }
     return;
   }
@@ -7479,7 +7524,7 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
   if (token_id == ML_SELECT) {
     mylite_parser_validate_select_statement_from(ctx, token);
     if (!ctx->failed) {
-      validate_select_list_tail_from(ctx, token);
+      validate_select_list_tail_from(ctx, token, 0);
     }
     return;
   }
@@ -7520,7 +7565,8 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
 }
 
 static void validate_select_list_tail_from(MyliteParseContext *ctx,
-                                           MyliteToken start) {
+                                           MyliteToken start,
+                                           int parenthesized_boundary) {
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken previous_top_token = start;
@@ -7563,10 +7609,11 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
       continue;
     }
 
-    if (token_is_statement_terminator(token_id, token) ||
+    if ((parenthesized_boundary && token_id == ML_RP) ||
+        token_is_statement_terminator(token_id, token) ||
         token_id == ML_FROM ||
         select_expression_clause_boundary(token_id, token)) {
-      if (expression_started && previous_was_operator) {
+      if (!expression_started || previous_was_operator) {
         mylite_parser_reject(ctx, previous_top_token,
                              "incomplete SELECT expression clause");
       }
@@ -10595,7 +10642,8 @@ static int routine_body_statement_start_token(int token_id) {
 static int routine_direct_query_body_start_token(int token_id) {
   return token_id == ML_DELETE || token_id == ML_INSERT ||
          token_id == ML_REPLACE || token_id == ML_SELECT ||
-         token_id == ML_UPDATE || token_id == ML_VALUES;
+         token_id == ML_TABLE || token_id == ML_UPDATE ||
+         token_id == ML_VALUES || token_id == ML_WITH;
 }
 
 static int routine_compound_statement_start_token(int token_id) {

@@ -3516,7 +3516,8 @@ delete_partition_clause ::= PARTITION LP delete_partition_list RP.
 delete_partition_list ::= cache_name_part.
 delete_partition_list ::= delete_partition_list import_comma cache_name_part.
 
-with_statement ::= WITH with_recursive_tail with_cte_list with_query_body. {
+with_statement ::= WITH(A) with_recursive_tail with_cte_list with_query_body. {
+  mylite_parser_validate_with_statement_from(ctx, A);
   if (!ctx->failed) {
     mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
   }

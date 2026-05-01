@@ -274,8 +274,8 @@ token sink:
 - `ALTER FUNCTION` and `ALTER PROCEDURE` recognize routine characteristics:
   comments, `LANGUAGE SQL`, SQL data access, and SQL security.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`,
-  `OR REPLACE`, numeric SRS ids, documented string-literal attribute forms, and
-  numeric organization authority codes.
+  `OR REPLACE`, bare numeric SRS ids, documented string-literal attribute forms,
+  and numeric organization authority codes.
 - `DROP INDEX` recognizes MySQL's identifier-valued `ALGORITHM` and `LOCK`
   option tails.
 - `TRUNCATE TABLE` recognizes optional `TABLE` and one- or two-part table

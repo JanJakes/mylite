@@ -204,7 +204,9 @@ create_tail ::= create_index_kind INDEX(A) create_index_name create_index_using_
 }
 create_tail ::= LOGFILE create_logfile_group cache_name_part create_logfile_group_tail.
 create_tail ::= RESOURCE create_resource_group cache_name_part create_resource_group_tail.
+create_tail ::= SPATIAL create_reference create_system create_if_not_exists_tail srs_id.
 create_tail ::= SPATIAL create_reference create_system create_if_not_exists_tail srs_id create_srs_attributes.
+create_tail ::= OR REPLACE SPATIAL create_reference create_system srs_id.
 create_tail ::= OR REPLACE SPATIAL create_reference create_system srs_id create_srs_attributes.
 create_tail ::= SERVER cache_name_part create_server_tail.
 create_tail ::= TABLESPACE cache_name_part create_tablespace_tail.

@@ -478,6 +478,8 @@ view_values_check_union_tail ::= VALUES values_row_list.
 view_values_check_union_tail ::= values_union_option VALUES values_row_list.
 view_values_check_union_tail ::= TABLE table_statement_target.
 view_values_check_union_tail ::= values_union_option TABLE table_statement_target.
+view_values_check_union_tail ::= LP dml_write_query_start dml_write_parenthesized_query_tail RP.
+view_values_check_union_tail ::= values_union_option LP dml_write_query_start dml_write_parenthesized_query_tail RP.
 
 view_parenthesized_tail ::= .
 view_parenthesized_tail ::= UNION dml_write_union_tail.

@@ -473,6 +473,56 @@ case "$signal_output" in
 		;;
 esac
 
+if "$parser" --quiet 'SIGNAL'; then
+	echo "expected SIGNAL without condition value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SIGNAL SET MESSAGE_TEXT = "x"'; then
+	echo "expected SIGNAL without condition before SET to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SIGNAL SQLSTATE'; then
+	echo "expected SIGNAL SQLSTATE without literal to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SIGNAL SQLSTATE VALUE @state'; then
+	echo "expected SIGNAL SQLSTATE with nonliteral value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SIGNAL 1051'; then
+	echo "expected SIGNAL numeric condition value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SIGNAL SQLSTATE "45000" SET MESSAGE_TEXT'; then
+	echo "expected SIGNAL item without assignment to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SIGNAL SQLSTATE "45000" SET MESSAGE_TEXT ='; then
+	echo "expected SIGNAL item without value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SIGNAL SQLSTATE "45000" SET MESSAGE_TEXT = "x",'; then
+	echo "expected trailing SIGNAL information comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SIGNAL SQLSTATE "45000" SET BAD_ITEM = "x"'; then
+	echo "expected unknown SIGNAL information item to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESIGNAL SQLSTATE "45000" MESSAGE_TEXT = "x"'; then
+	echo "expected RESIGNAL condition without SET marker to fail" >&2
+	exit 1
+fi
+
 label_target_keyword_output=$("$parser" "LEAVE open; ITERATE engine; LEAVE no; ITERATE read; LEAVE \`read\`; LEAVE 'done'")
 case "$label_target_keyword_output" in
 	*"/label:no"*|*"/label:read"*|*"/label:'done'"*)

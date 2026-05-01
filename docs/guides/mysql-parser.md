@@ -776,6 +776,10 @@ ok statements=1 kinds=signal[1:3,0:23]/sqlstate:'45000'
 ok statements=1 kinds=resignal[1:2,0:21]/condition:my_condition
 ```
 
+`SIGNAL` and `RESIGNAL` validate documented condition values and
+signal-information item assignment lists. Bare `RESIGNAL` and `RESIGNAL SET ...`
+remain valid objectless handler statements.
+
 DECLARE CONDITION exposes the declared condition name:
 
 ```text

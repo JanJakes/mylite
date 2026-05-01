@@ -287,7 +287,7 @@ Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table
 forms, `EXPLAIN ... INTO`, `EXPLAIN ... FOR CONNECTION`,
-`SIGNAL` / `RESIGNAL` condition values,
+`SIGNAL` / `RESIGNAL` condition values and signal-information item lists,
 `LOAD ... INTO TABLE`,
 `CACHE INDEX`, `LOAD INDEX INTO CACHE`, `LOCK` / `UNLOCK TABLES`,
 `SHOW CREATE ...`,
@@ -570,7 +570,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   OUT/INOUT binding semantics.
   `SIGNAL` and `RESIGNAL` metadata records only the explicit SQLSTATE literal
   or named condition value. Bare `RESIGNAL` and `RESIGNAL SET ...` forms remain
-  objectless, and signal information item assignments are not yet classified.
+  objectless. Parser validation checks the documented condition-value shape and
+  signal-information item assignment lists while leaving handler context and
+  diagnostics-area mutation to runtime.
   `SHOW` metadata is similarly limited to forms with a clear table, view, event,
   trigger, schema, or account target. `SHOW COLUMNS` / `FIELDS` and
   `SHOW INDEX` / `KEYS` metadata records the inspected table target.

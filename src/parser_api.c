@@ -891,6 +891,18 @@ static int validate_principal_statement_tail_syntax(const mylite_parser *parser,
 static int token_starts_principal_statement_tail(const mylite_parser *parser,
                                                  size_t token_index,
                                                  int is_grant);
+static int validate_signal_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_signal_condition_value_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index,
+                                                  size_t *next_token_index);
+static int validate_signal_information_list_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int validate_signal_information_item_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int token_is_signal_information_item_name(const mylite_parser *parser, size_t token_index);
 static int validate_start_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_start_transaction_statement_syntax(const mylite_parser *parser,
                                                        size_t token_index,
@@ -2219,6 +2231,13 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_REVOKE:
 			if (!validate_principal_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid principal statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_SIGNAL:
+		case MYLITE_STATEMENT_RESIGNAL:
+			if (!validate_signal_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid SIGNAL or RESIGNAL statement");
 				return;
 			}
 			break;
@@ -11357,6 +11376,137 @@ static int token_starts_principal_statement_tail(const mylite_parser *parser,
 		       parser->tokens[token_index].parser_token == AS_T;
 	}
 	return parser->tokens[token_index].parser_token == IGNORE_T;
+}
+
+static int validate_signal_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+	int is_signal = statement->kind == MYLITE_STATEMENT_SIGNAL;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index) {
+		return !is_signal;
+	}
+
+	if (!is_signal && parser->tokens[token_index].parser_token == SET_T) {
+		return validate_signal_information_list_syntax(parser, token_index + 1, last_token_index);
+	}
+
+	if (!validate_signal_condition_value_syntax(parser, token_index, last_token_index, &token_index)) {
+		return 0;
+	}
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (parser->tokens[token_index].parser_token != SET_T) {
+		return 0;
+	}
+	return validate_signal_information_list_syntax(parser, token_index + 1, last_token_index);
+}
+
+static int validate_signal_condition_value_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index,
+                                                  size_t *next_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "SQLSTATE")) {
+		token_index++;
+		if (token_index <= last_token_index && token_text_equals(parser, token_index, "VALUE")) {
+			token_index++;
+		}
+		if (token_index > last_token_index ||
+		    parser->tokens[token_index].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	if (!token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	*next_token_index = token_index + 1;
+	return 1;
+}
+
+static int validate_signal_information_list_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		size_t item_last_token = token_index;
+
+		while (item_last_token <= last_token_index && item_last_token < parser->token_count) {
+			size_t matching_token = parser->tokens[item_last_token].matching_token;
+
+			if (matching_token > item_last_token + 1) {
+				item_last_token = matching_token;
+				continue;
+			}
+			if (parser->tokens[item_last_token].parser_token == ',') {
+				break;
+			}
+			item_last_token++;
+		}
+		if (item_last_token == token_index ||
+		    !validate_signal_information_item_syntax(parser, token_index, item_last_token - 1)) {
+			return 0;
+		}
+		token_index = item_last_token;
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static int validate_signal_information_item_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	if (token_index + 2 > last_token_index ||
+	    !token_is_signal_information_item_name(parser, token_index) ||
+	    !token_text_equals(parser, token_index + 1, "=")) {
+		return 0;
+	}
+	return validate_nonempty_expression_tail_syntax(parser, token_index + 2, last_token_index);
+}
+
+static int token_is_signal_information_item_name(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "CLASS_ORIGIN") ||
+	       token_text_equals(parser, token_index, "SUBCLASS_ORIGIN") ||
+	       token_text_equals(parser, token_index, "MESSAGE_TEXT") ||
+	       token_text_equals(parser, token_index, "MYSQL_ERRNO") ||
+	       token_text_equals(parser, token_index, "CONSTRAINT_CATALOG") ||
+	       token_text_equals(parser, token_index, "CONSTRAINT_SCHEMA") ||
+	       token_text_equals(parser, token_index, "CONSTRAINT_NAME") ||
+	       token_text_equals(parser, token_index, "CATALOG_NAME") ||
+	       token_text_equals(parser, token_index, "SCHEMA_NAME") ||
+	       token_text_equals(parser, token_index, "TABLE_NAME") ||
+	       token_text_equals(parser, token_index, "COLUMN_NAME") ||
+	       token_text_equals(parser, token_index, "CURSOR_NAME");
 }
 
 static int validate_start_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

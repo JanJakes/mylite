@@ -503,6 +503,79 @@ case "$diagnostics_output" in
 		;;
 esac
 
+diagnostics_string_condition_output=$("$parser" 'GET STACKED DIAGNOSTICS CONDITION "1" @state = RETURNED_SQLSTATE, msg = MESSAGE_TEXT')
+case "$diagnostics_string_condition_output" in
+	*"get"*/diagnostics_condition:'"1"'*) ;;
+	*)
+		echo "unexpected string condition GET DIAGNOSTICS output: $diagnostics_string_condition_output" >&2
+		exit 1
+		;;
+esac
+
+diagnostics_null_condition_output=$("$parser" 'GET DIAGNOSTICS CONDITION NULL @origin = CLASS_ORIGIN')
+case "$diagnostics_null_condition_output" in
+	*"get"*/diagnostics_condition:NULL*) ;;
+	*)
+		echo "unexpected NULL condition GET DIAGNOSTICS output: $diagnostics_null_condition_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'GET'; then
+	echo "expected bare GET to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'GET CURRENT'; then
+	echo "expected GET CURRENT without DIAGNOSTICS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'GET DIAGNOSTICS'; then
+	echo "expected GET DIAGNOSTICS without items to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'GET NEXT DIAGNOSTICS @n = NUMBER'; then
+	echo "expected unknown GET DIAGNOSTICS area to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'GET DIAGNOSTICS @n'; then
+	echo "expected GET DIAGNOSTICS target without assignment to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'GET DIAGNOSTICS @n = MESSAGE_TEXT'; then
+	echo "expected statement GET DIAGNOSTICS condition item to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'GET DIAGNOSTICS @@n = NUMBER'; then
+	echo "expected GET DIAGNOSTICS system-variable target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'GET DIAGNOSTICS CONDITION'; then
+	echo "expected GET DIAGNOSTICS CONDITION without number to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'GET DIAGNOSTICS CONDITION 1'; then
+	echo "expected GET DIAGNOSTICS CONDITION without items to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'GET DIAGNOSTICS CONDITION 1 @n = NUMBER'; then
+	echo "expected condition GET DIAGNOSTICS statement item to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'GET DIAGNOSTICS CONDITION 1 @msg = MESSAGE_TEXT,'; then
+	echo "expected trailing GET DIAGNOSTICS condition item comma to fail" >&2
+	exit 1
+fi
+
 label_output=$("$parser" 'LEAVE done; ITERATE done; RETURN done')
 case "$label_output" in
 	*"leave"*/label:done*"iterate"*/label:done*"return[7:8"*) ;;

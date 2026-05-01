@@ -926,6 +926,20 @@ static int validate_signal_information_item_syntax(const mylite_parser *parser,
                                                    size_t token_index,
                                                    size_t last_token_index);
 static int token_is_signal_information_item_name(const mylite_parser *parser, size_t token_index);
+static int validate_get_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_get_diagnostics_assignment_list_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           int is_statement_area);
+static int validate_get_diagnostics_assignment_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index,
+                                                      int is_statement_area,
+                                                      size_t *next_token_index);
+static int token_can_start_get_diagnostics_target(const mylite_parser *parser, size_t token_index);
+static int token_is_get_diagnostics_item_name(const mylite_parser *parser,
+                                              size_t token_index,
+                                              int is_statement_area);
 static int validate_start_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_start_transaction_statement_syntax(const mylite_parser *parser,
                                                        size_t token_index,
@@ -2267,6 +2281,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_RESIGNAL:
 			if (!validate_signal_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid SIGNAL or RESIGNAL statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_GET:
+			if (!validate_get_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid GET statement");
 				return;
 			}
 			break;
@@ -11775,6 +11795,128 @@ static int token_is_signal_information_item_name(const mylite_parser *parser, si
 	       token_text_equals(parser, token_index, "CURSOR_NAME");
 }
 
+static int validate_get_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index <= last_token_index &&
+	    (token_text_equals(parser, token_index, "CURRENT") ||
+	     token_text_equals(parser, token_index, "STACKED"))) {
+		token_index++;
+	}
+	if (token_index > last_token_index || !token_text_equals(parser, token_index, "DIAGNOSTICS")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "CONDITION")) {
+		token_index++;
+		if (token_index > last_token_index ||
+		    !token_can_start_diagnostics_condition_number(&parser->tokens[token_index])) {
+			return 0;
+		}
+		return validate_get_diagnostics_assignment_list_syntax(parser,
+		                                                       token_index + 1,
+		                                                       last_token_index,
+		                                                       0);
+	}
+	return validate_get_diagnostics_assignment_list_syntax(parser, token_index, last_token_index, 1);
+}
+
+static int validate_get_diagnostics_assignment_list_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           int is_statement_area)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_get_diagnostics_assignment_syntax(parser,
+		                                                token_index,
+		                                                last_token_index,
+		                                                is_statement_area,
+		                                                &token_index)) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static int validate_get_diagnostics_assignment_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index,
+                                                      int is_statement_area,
+                                                      size_t *next_token_index)
+{
+	if (token_index + 2 > last_token_index ||
+	    !token_can_start_get_diagnostics_target(parser, token_index) ||
+	    !token_text_equals(parser, token_index + 1, "=") ||
+	    !token_is_get_diagnostics_item_name(parser, token_index + 2, is_statement_area)) {
+		return 0;
+	}
+
+	*next_token_index = token_index + 3;
+	return 1;
+}
+
+static int token_can_start_get_diagnostics_target(const mylite_parser *parser, size_t token_index)
+{
+	mylite_statement_object_kind object_kind;
+
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+
+	object_kind = variable_object_kind_from_token(&parser->tokens[token_index]);
+	return object_kind != MYLITE_STATEMENT_OBJECT_NONE &&
+	       object_kind != MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE;
+}
+
+static int token_is_get_diagnostics_item_name(const mylite_parser *parser,
+                                              size_t token_index,
+                                              int is_statement_area)
+{
+	if (is_statement_area) {
+		return token_text_equals(parser, token_index, "NUMBER") ||
+		       token_text_equals(parser, token_index, "ROW_COUNT");
+	}
+	return token_text_equals(parser, token_index, "CLASS_ORIGIN") ||
+	       token_text_equals(parser, token_index, "SUBCLASS_ORIGIN") ||
+	       token_text_equals(parser, token_index, "RETURNED_SQLSTATE") ||
+	       token_text_equals(parser, token_index, "MESSAGE_TEXT") ||
+	       token_text_equals(parser, token_index, "MYSQL_ERRNO") ||
+	       token_text_equals(parser, token_index, "CONSTRAINT_CATALOG") ||
+	       token_text_equals(parser, token_index, "CONSTRAINT_SCHEMA") ||
+	       token_text_equals(parser, token_index, "CONSTRAINT_NAME") ||
+	       token_text_equals(parser, token_index, "CATALOG_NAME") ||
+	       token_text_equals(parser, token_index, "SCHEMA_NAME") ||
+	       token_text_equals(parser, token_index, "TABLE_NAME") ||
+	       token_text_equals(parser, token_index, "COLUMN_NAME") ||
+	       token_text_equals(parser, token_index, "CURSOR_NAME");
+}
+
 static int validate_start_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
 {
 	size_t token_index = find_statement_kind_token(parser, statement);
@@ -14257,9 +14399,11 @@ static int token_can_start_diagnostics_condition_number(const mylite_token *toke
 {
 	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
 	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
+	       token->kind == MYLITE_TOKEN_STRING ||
 	       token->kind == MYLITE_TOKEN_NUMBER ||
 	       token->kind == MYLITE_TOKEN_USER_VARIABLE ||
-	       token->kind == MYLITE_TOKEN_SYSTEM_VARIABLE;
+	       token->kind == MYLITE_TOKEN_SYSTEM_VARIABLE ||
+	       token->parser_token == NULL_T;
 }
 
 static int classify_label_target_statement_object(const mylite_parser *parser,

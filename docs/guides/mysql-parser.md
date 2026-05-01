@@ -802,6 +802,10 @@ GET DIAGNOSTICS CONDITION exposes the requested condition-area index:
 ok statements=1 kinds=get[1:8,0:62]/diagnostics_condition:1
 ```
 
+`GET DIAGNOSTICS` validates `CURRENT` / `STACKED` selectors, statement and
+condition item names, assignment targets, comma-separated item lists, and
+literal or variable condition numbers.
+
 Resource group administration exposes the group name:
 
 ```text

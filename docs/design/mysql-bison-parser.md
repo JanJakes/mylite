@@ -525,9 +525,12 @@ targets.
 Named condition declarations are recorded for `DECLARE ... CONDITION`, which
 validates `CONDITION FOR` condition values. The first handled condition value is
 recorded for `DECLARE ... HANDLER`, which validates handler actions, required
-`FOR`, condition lists, and a nonempty handler body. `GET DIAGNOSTICS
-... CONDITION` records the requested diagnostics condition area number.
-Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
+`FOR`, condition lists, and a nonempty handler body. `GET DIAGNOSTICS`
+validates optional `CURRENT` / `STACKED` area selectors, statement-area and
+condition-area assignment lists, variable targets, documented item names, and
+literal or variable condition numbers. `... CONDITION` forms also record the
+requested diagnostics condition area number. Statement-level `GET DIAGNOSTICS`
+records the first explicit assignment target.
 
 ## Boundaries
 
@@ -683,8 +686,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   `FOR`. It does not expand multi-condition lists, validate handler action,
   bind named conditions, or execute handler bodies.
 - `GET DIAGNOSTICS` metadata records only the requested condition-area index in
-  `... CONDITION n` forms. Statement-level diagnostics item lists and individual
-  assignment targets remain body tokens only.
+  `... CONDITION n` forms or the first statement-level assignment target.
+  Remaining item-list assignments stay body tokens after shape validation.
 - Label metadata records direct `LEAVE` / `ITERATE` targets and leading label
   declarations. It does not yet validate end labels, duplicate labels, the
   16-character label limit, or label binding.

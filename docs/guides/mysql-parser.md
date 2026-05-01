@@ -71,8 +71,9 @@ optional `IF EXISTS` with an identifier-like target.
 names and low-level tails, including `IF EXISTS`, numeric SRIDs, and
 `ENGINE [=] name` where MySQL syntax or the corpus requires it.
 `DROP USER` and `DROP ROLE` validate optional `IF EXISTS` and account/role
-lists, while `DROP RESOURCE GROUP` validates the required group name and
-optional `FORCE`. `RENAME USER` validates comma-separated
+lists. Resource-group statements validate `CREATE` type/options, `ALTER`
+options including `DISABLE FORCE`, `DROP ... [FORCE]`, and `SET ... [FOR
+thread_id [, ...]]` forms. `RENAME USER` validates comma-separated
 `old_user TO new_user` account pairs.
 
 Standalone `DROP INDEX` records the index target and validates the required

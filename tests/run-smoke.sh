@@ -2450,6 +2450,76 @@ case "$resource_group_output" in
 		;;
 esac
 
+if ! "$parser" --quiet 'CREATE RESOURCE GROUP rg TYPE=USER VCPU=0-3,9 THREAD_PRIORITY=5 DISABLE'; then
+	echo "expected CREATE RESOURCE GROUP options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'ALTER RESOURCE GROUP rg VCPU = 0-63 THREAD_PRIORITY = -20 DISABLE FORCE'; then
+	echo "expected ALTER RESOURCE GROUP options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'SET RESOURCE GROUP rg FOR 14, 78, 4'; then
+	echo "expected SET RESOURCE GROUP thread list to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE RESOURCE GROUP rg'; then
+	echo "expected CREATE RESOURCE GROUP without TYPE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE RESOURCE GROUP rg TYPE'; then
+	echo "expected CREATE RESOURCE GROUP incomplete TYPE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE RESOURCE GROUP rg TYPE = OTHER'; then
+	echo "expected CREATE RESOURCE GROUP invalid TYPE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE RESOURCE GROUP rg TYPE = USER VCPU = 0,'; then
+	echo "expected CREATE RESOURCE GROUP trailing VCPU comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE RESOURCE GROUP rg TYPE = USER DISABLE FORCE'; then
+	echo "expected CREATE RESOURCE GROUP DISABLE FORCE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER RESOURCE GROUP rg'; then
+	echo "expected ALTER RESOURCE GROUP without options to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER RESOURCE GROUP rg ENABLE FORCE'; then
+	echo "expected ALTER RESOURCE GROUP ENABLE FORCE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER RESOURCE GROUP rg VCPU ='; then
+	echo "expected ALTER RESOURCE GROUP incomplete VCPU to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET RESOURCE GROUP'; then
+	echo "expected SET RESOURCE GROUP without name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET RESOURCE GROUP rg FOR'; then
+	echo "expected SET RESOURCE GROUP FOR without thread list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET RESOURCE GROUP rg FOR 1,'; then
+	echo "expected SET RESOURCE GROUP trailing thread comma to fail" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'DROP RESOURCE GROUP'; then
 	echo "expected missing DROP RESOURCE GROUP name to fail" >&2
 	exit 1

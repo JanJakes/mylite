@@ -288,9 +288,13 @@ optional `IF EXISTS`, `DROP SPATIAL REFERENCE SYSTEM` requires a numeric SRID,
 `DROP LOGFILE GROUP` requires `ENGINE [=] name`, and `DROP TABLESPACE` /
 `DROP UNDO TABLESPACE` accept the corpus-observed optional engine tail.
 Account and resource DDL validation covers `DROP USER` and `DROP ROLE` with
-optional `IF EXISTS` plus comma-separated account/role lists, and
-`DROP RESOURCE GROUP group_name [FORCE]`. `RENAME USER` validates
-comma-separated `old_user TO new_user` account pairs.
+optional `IF EXISTS` plus comma-separated account/role lists. Resource-group
+validation covers `CREATE RESOURCE GROUP` required `TYPE` plus optional `VCPU`,
+`THREAD_PRIORITY`, and `ENABLE`/`DISABLE` clauses, `ALTER RESOURCE GROUP`
+modifiable `VCPU`, `THREAD_PRIORITY`, `ENABLE`, and `DISABLE [FORCE]` clauses,
+`DROP RESOURCE GROUP group_name [FORCE]`, and `SET RESOURCE GROUP` optional
+thread-id lists. `RENAME USER` validates comma-separated `old_user TO new_user`
+account pairs.
 Prepared-statement names are recorded in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`; those forms
 validate handle names, `PREPARE ... FROM` sources, and `EXECUTE ... USING`
@@ -322,12 +326,12 @@ default-database syntax.
 Stored-object `DEFINER = user` clauses are skipped during object scanning so
 routine, event, trigger, and view targets are not confused with definer account
 tokens.
-Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`, and
-`SET RESOURCE GROUP`. Server, logfile-group, tablespace, and undo-tablespace
-DDL targets are recorded for the low-level storage/metadata statements that
-expose a direct name. Standalone `DROP INDEX` records the index target and
-validates the required `ON` table clause plus optional `ALGORITHM` and `LOCK`
-clauses. Instance-level `ALTER`, `LOCK`, `UNLOCK`, `RESTART`, and
+Resource group targets are recorded and validated for `CREATE`, `ALTER`,
+`DROP`, and `SET RESOURCE GROUP`. Server, logfile-group, tablespace, and
+undo-tablespace DDL targets are recorded for the low-level storage/metadata
+statements that expose a direct name. Standalone `DROP INDEX` records the index
+target and validates the required `ON` table clause plus optional `ALGORITHM`
+and `LOCK` clauses. Instance-level `ALTER`, `LOCK`, `UNLOCK`, `RESTART`, and
 `SHUTDOWN`
 statements are recorded with an object kind but no object-name span. `RESTART`
 and `SHUTDOWN` reject body tokens because MySQL accepts only the bare statement

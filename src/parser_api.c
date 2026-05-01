@@ -31,6 +31,9 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 static int validate_create_role_statement_syntax(const mylite_parser *parser,
                                                  size_t token_index,
                                                  size_t last_token_index);
+static int validate_create_resource_group_statement_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index);
 static int validate_create_user_statement_syntax(const mylite_parser *parser,
                                                  size_t token_index,
                                                  size_t last_token_index);
@@ -85,6 +88,9 @@ static int token_is_create_user_auth_hash(const mylite_parser *parser, size_t to
 static int token_can_be_create_user_auth_plugin(const mylite_parser *parser, size_t token_index);
 static int token_is_create_user_resource_option(const mylite_parser *parser, size_t token_index);
 static int validate_alter_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_alter_resource_group_statement_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index);
 static int validate_alter_user_statement_syntax(const mylite_parser *parser,
                                                 size_t token_index,
                                                 size_t last_token_index);
@@ -134,6 +140,21 @@ static int token_starts_alter_user_entry_option(const mylite_parser *parser, siz
 static int token_starts_alter_user_factor(const mylite_parser *parser,
                                           size_t token_index,
                                           size_t last_token_index);
+static int token_is_resource_group_sequence(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index);
+static int validate_resource_group_vcpu_clause_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index,
+                                                      size_t *next_token_index);
+static int validate_resource_group_vcpu_spec_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    size_t *next_token_index);
+static int validate_resource_group_thread_priority_clause_syntax(const mylite_parser *parser,
+                                                                 size_t token_index,
+                                                                 size_t last_token_index,
+                                                                 size_t *next_token_index);
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_truncate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_rename_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -271,6 +292,9 @@ static int validate_set_password_tail_syntax(const mylite_parser *parser,
                                              size_t token_index,
                                              size_t last_token_index);
 static int token_is_set_password_string_value(const mylite_parser *parser, size_t token_index);
+static int validate_set_resource_group_statement_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index);
 static int validate_set_names_statement_syntax(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
@@ -1755,6 +1779,9 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (parser->tokens[token_index].parser_token == ROLE_T) {
 		return validate_create_role_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (token_is_resource_group_sequence(parser, token_index, last_token_index)) {
+		return validate_create_resource_group_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (parser->tokens[token_index].parser_token == USER_T) {
 		return validate_create_user_statement_syntax(parser, token_index, last_token_index);
 	}
@@ -1784,6 +1811,60 @@ static int validate_create_role_statement_syntax(const mylite_parser *parser,
 	                                           token_index,
 	                                           last_token_index,
 	                                           0);
+}
+
+static int validate_create_resource_group_statement_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index)
+{
+	if (!token_is_resource_group_sequence(parser, token_index, last_token_index)) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index > last_token_index ||
+	    !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index++;
+
+	if (token_index > last_token_index || !token_text_equals(parser, token_index, "TYPE")) {
+		return 0;
+	}
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+		token_index++;
+	}
+	if (token_index > last_token_index ||
+	    (!token_text_equals(parser, token_index, "SYSTEM") &&
+	     !token_text_equals(parser, token_index, "USER"))) {
+		return 0;
+	}
+	token_index++;
+
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "VCPU")) {
+		if (!validate_resource_group_vcpu_clause_syntax(parser,
+		                                                token_index,
+		                                                last_token_index,
+		                                                &token_index)) {
+			return 0;
+		}
+	}
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "THREAD_PRIORITY")) {
+		if (!validate_resource_group_thread_priority_clause_syntax(parser,
+		                                                           token_index,
+		                                                           last_token_index,
+		                                                           &token_index)) {
+			return 0;
+		}
+	}
+	if (token_index <= last_token_index &&
+	    (token_text_equals(parser, token_index, "ENABLE") ||
+	     token_text_equals(parser, token_index, "DISABLE"))) {
+		token_index++;
+	}
+
+	return token_index > last_token_index;
 }
 
 static int validate_create_user_statement_syntax(const mylite_parser *parser,
@@ -2381,7 +2462,62 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 	if (parser->tokens[token_index].parser_token == USER_T) {
 		return validate_alter_user_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (token_is_resource_group_sequence(parser, token_index, last_token_index)) {
+		return validate_alter_resource_group_statement_syntax(parser, token_index, last_token_index);
+	}
 	return 1;
+}
+
+static int validate_alter_resource_group_statement_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index)
+{
+	int saw_option = 0;
+
+	if (!token_is_resource_group_sequence(parser, token_index, last_token_index)) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index > last_token_index ||
+	    !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index++;
+
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "VCPU")) {
+		if (!validate_resource_group_vcpu_clause_syntax(parser,
+		                                                token_index,
+		                                                last_token_index,
+		                                                &token_index)) {
+			return 0;
+		}
+		saw_option = 1;
+	}
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "THREAD_PRIORITY")) {
+		if (!validate_resource_group_thread_priority_clause_syntax(parser,
+		                                                           token_index,
+		                                                           last_token_index,
+		                                                           &token_index)) {
+			return 0;
+		}
+		saw_option = 1;
+	}
+	if (token_index <= last_token_index &&
+	    (token_text_equals(parser, token_index, "ENABLE") ||
+	     token_text_equals(parser, token_index, "DISABLE"))) {
+		int is_disable = token_text_equals(parser, token_index, "DISABLE");
+
+		token_index++;
+		if (is_disable &&
+		    token_index <= last_token_index &&
+		    token_text_equals(parser, token_index, "FORCE")) {
+			token_index++;
+		}
+		saw_option = 1;
+	}
+
+	return saw_option && token_index > last_token_index;
 }
 
 static int validate_alter_user_statement_syntax(const mylite_parser *parser,
@@ -2795,6 +2931,101 @@ static int token_starts_alter_user_factor(const mylite_parser *parser,
 	       (token_text_equals(parser, token_index, "2") ||
 	        token_text_equals(parser, token_index, "3")) &&
 	       token_text_equals(parser, token_index + 1, "FACTOR");
+}
+
+static int token_is_resource_group_sequence(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index)
+{
+	return token_index + 1 <= last_token_index &&
+	       token_text_equals(parser, token_index, "RESOURCE") &&
+	       parser->tokens[token_index + 1].parser_token == GROUP_T;
+}
+
+static int validate_resource_group_vcpu_clause_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index,
+                                                      size_t *next_token_index)
+{
+	int saw_spec = 0;
+
+	if (token_index > last_token_index || !token_text_equals(parser, token_index, "VCPU")) {
+		return 0;
+	}
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+		token_index++;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_resource_group_vcpu_spec_syntax(parser,
+		                                              token_index,
+		                                              last_token_index,
+		                                              &token_index)) {
+			return 0;
+		}
+		saw_spec = 1;
+
+		if (token_index > last_token_index ||
+		    parser->tokens[token_index].parser_token != ',') {
+			break;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	*next_token_index = token_index;
+	return saw_spec;
+}
+
+static int validate_resource_group_vcpu_spec_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    size_t *next_token_index)
+{
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].kind != MYLITE_TOKEN_NUMBER) {
+		return 0;
+	}
+	token_index++;
+
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "-")) {
+		token_index++;
+		if (parser->tokens[token_index].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		token_index++;
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_resource_group_thread_priority_clause_syntax(const mylite_parser *parser,
+                                                                 size_t token_index,
+                                                                 size_t last_token_index,
+                                                                 size_t *next_token_index)
+{
+	if (token_index > last_token_index || !token_text_equals(parser, token_index, "THREAD_PRIORITY")) {
+		return 0;
+	}
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+		token_index++;
+	}
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "-")) {
+		token_index++;
+	}
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].kind != MYLITE_TOKEN_NUMBER) {
+		return 0;
+	}
+
+	*next_token_index = token_index + 1;
+	return 1;
 }
 
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
@@ -4183,6 +4414,9 @@ static int validate_set_statement_syntax(const mylite_parser *parser, const myli
 	if (token_text_equals(parser, token_index, "PASSWORD")) {
 		return validate_set_password_statement_syntax(parser, token_index + 1, last_token_index);
 	}
+	if (token_is_resource_group_sequence(parser, token_index, last_token_index)) {
+		return validate_set_resource_group_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (token_text_equals(parser, token_index, "NAMES")) {
 		return validate_set_names_statement_syntax(parser, token_index + 1, last_token_index);
 	}
@@ -4351,6 +4585,51 @@ static int token_is_set_password_string_value(const mylite_parser *parser, size_
 {
 	return token_index < parser->token_count &&
 	       parser->tokens[token_index].kind == MYLITE_TOKEN_STRING;
+}
+
+static int validate_set_resource_group_statement_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index)
+{
+	if (!token_is_resource_group_sequence(parser, token_index, last_token_index)) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index > last_token_index ||
+	    !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index++;
+
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (!token_text_equals(parser, token_index, "FOR")) {
+		return 0;
+	}
+	token_index++;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		if (parser->tokens[token_index].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return 1;
 }
 
 static int validate_set_names_statement_syntax(const mylite_parser *parser,

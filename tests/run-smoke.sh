@@ -455,6 +455,95 @@ case "$compound_span_output" in
 		;;
 esac
 
+compound_clause_output=$("$parser" 'IF x THEN BEGIN SELECT 1; END; ELSEIF y THEN SELECT 2; ELSE SELECT 3; END IF; CASE x WHEN 1 THEN SELECT 1; WHEN 2 THEN SELECT 2; ELSE BEGIN END; END CASE; WHILE x DO IF y THEN SELECT 1; END IF; END WHILE wh')
+case "$compound_clause_output" in
+	*"kinds=if"*"case"*"while"*) ;;
+	*)
+		echo "unexpected compound clause output: $compound_clause_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'IF x SELECT 1; END IF'; then
+	echo "expected IF without THEN to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'IF x THEN END IF'; then
+	echo "expected IF with empty THEN body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'IF x THEN SELECT 1; ELSEIF THEN SELECT 2; END IF'; then
+	echo "expected ELSEIF without condition to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'IF x THEN SELECT 1; ELSE SELECT 2; ELSE SELECT 3; END IF'; then
+	echo "expected repeated IF ELSE clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CASE ELSE SELECT 1; END CASE'; then
+	echo "expected CASE without WHEN to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CASE WHEN x SELECT 1; END CASE'; then
+	echo "expected CASE WHEN without THEN to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CASE WHEN x THEN END CASE'; then
+	echo "expected CASE with empty WHEN body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CASE WHEN x THEN SELECT 1; WHEN THEN SELECT 2; END CASE'; then
+	echo "expected CASE WHEN without condition to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOOP END LOOP'; then
+	echo "expected LOOP without body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOOP ; END LOOP'; then
+	echo "expected LOOP with separator-only body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'REPEAT SELECT 1; END REPEAT'; then
+	echo "expected REPEAT without UNTIL to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'REPEAT UNTIL x END REPEAT'; then
+	echo "expected REPEAT without body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'REPEAT SELECT 1; UNTIL END REPEAT'; then
+	echo "expected REPEAT without condition to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'WHILE x SELECT 1; END WHILE'; then
+	echo "expected WHILE without DO to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'WHILE DO SELECT 1; END WHILE'; then
+	echo "expected WHILE without condition to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'WHILE x DO END WHILE'; then
+	echo "expected WHILE without body to fail" >&2
+	exit 1
+fi
+
 cursor_output=$("$parser" 'DECLARE c CURSOR FOR SELECT 1; DECLARE x INT; DECLARE y INT; OPEN c; FETCH c INTO x; FETCH c INTO x, y; FETCH FROM c INTO x; FETCH NEXT FROM c INTO x; CLOSE c; CREATE TABLE cursor (id int)')
 case "$cursor_output" in
 	*"declare"*/cursor:c*"declare"*/local_variable:x*"declare"*/local_variable:y*"open"*/cursor:c*"fetch"*/cursor:c*"fetch"*/cursor:c*"fetch"*/cursor:c*"fetch"*/cursor:c*"close"*/cursor:c*"create"*/table:cursor*) ;;

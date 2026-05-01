@@ -519,9 +519,14 @@ matched for `BEGIN ... END`,
 `IF ... END IF`, `CASE ... END CASE`, `LOOP ... END LOOP`,
 `REPEAT ... END REPEAT`, and `WHILE ... END WHILE` without misclassifying
 `BEGIN WORK`, `IF(...)` expressions, or `IF [NOT] EXISTS` clauses as compound
-block starts. Standalone matched compound and flow-control blocks keep
-semicolon-delimited bodies in one statement span, with optional end labels
-included in that span where MySQL allows them. Local variable names are
+block starts. Already-matched nested `BEGIN ... END` and `CASE ... END`
+expression tokens are ignored by the control matcher so they do not steal the
+outer stored-program block ending. Standalone matched compound and flow-control
+blocks keep semicolon-delimited bodies in one statement span, with optional end
+labels included in that span where MySQL allows them. `IF`, `CASE`, `LOOP`,
+`REPEAT`, and `WHILE` validate their top-level clause markers, nonempty
+conditions where required, and nonempty branch or loop bodies. Local variable
+names are
 recorded for ordinary `DECLARE` statements, which validate comma-separated
 names, a nonempty type span, and optional nonempty `DEFAULT` expression. Cursor
 names are recorded for `DECLARE ... CURSOR`, `OPEN`, `FETCH`, including
@@ -684,9 +689,9 @@ records the first explicit assignment target.
   savepoint name, and non-savepoint `RELEASE` forms are rejected.
 - Parenthesized query-expression classification only identifies the leading
   query statement kind; it does not build the query-expression tree.
-- Stored-program control matching records token pairs only; it does not yet
-  validate label binding, declaration ordering, cursor scope, or control-flow
-  semantics.
+- Stored-program control matching and validators record token pairs and clause
+  shape only; they do not yet validate label binding, declaration ordering,
+  cursor scope, or control-flow semantics.
 - Cursor metadata records the first cursor handle, validates `OPEN` and `CLOSE`
   handle-only forms, and validates `FETCH` direction/from prefixes plus
   nonempty target lists. It does not yet validate declaration scope, result

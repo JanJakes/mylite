@@ -38,6 +38,7 @@ endif()
 add_library(mylite STATIC
   "${MYLITE_SQL_PARSE_C}"
   src/mylite.c
+  src/charset/mylite_charset.c
   src/sql/mylite_ast.c
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c
@@ -55,6 +56,7 @@ target_include_directories(mylite
     "$<INSTALL_INTERFACE:include>"
   PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/charset"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/sql"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/storage"
     "${MYLITE_SQL_PARSE_DIR}"
@@ -86,6 +88,7 @@ if(BUILD_TESTING)
   )
   target_link_libraries(mylite_runtime_test PRIVATE MyLite::mylite MyLite::sqlite)
   target_include_directories(mylite_runtime_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/storage"
   )
   target_compile_definitions(mylite_runtime_test PRIVATE

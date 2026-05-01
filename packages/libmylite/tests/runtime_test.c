@@ -1,6 +1,7 @@
 #include <mylite/mylite.h>
 
 #include "mylite_file_format.h"
+#include "mylite_internal.h"
 #include "mylite_vfs.h"
 #include "sqlite3.h"
 
@@ -42,6 +43,7 @@ struct expected_schemata_row {
 static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_schema_lifecycle(void);
+static int test_character_set_collation_foundation(void);
 static int test_core_metadata_catalog(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
@@ -60,6 +62,8 @@ static int expect_empty_information_schema_table(mylite_db *database, const char
                                                  const char *const *columns, int column_count);
 static int expect_show_database_rows(mylite_db *database, const char *required,
                                      const char *forbidden);
+static int expect_connection_state(mylite_db *database, const char *client, const char *connection,
+                                   const char *results, const char *collation, const char *context);
 static int expect_column_names(const mylite_stmt *stmt, const char *const *expected, int count,
                                const char *context);
 static void remove_runtime_test_files(void);
@@ -84,6 +88,7 @@ int main(void)
     failures += test_select_integer_literal();
     failures += test_select_integer_literal_with_semicolon();
     failures += test_schema_lifecycle();
+    failures += test_character_set_collation_foundation();
     failures += test_core_metadata_catalog();
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
@@ -209,6 +214,162 @@ static int test_schema_lifecycle(void)
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "DROP DATABASE read_only_value", MYLITE_DONE);
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_character_set_collation_foundation(void)
+{
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+    failures += expect_connection_state(database, "utf8mb4", "utf8mb4", "utf8mb4",
+                                        "utf8mb4_0900_ai_ci", "initial connection charset");
+
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+    failures += expect_connection_state(database, "utf8mb4", "utf8mb4", "utf8mb4",
+                                        "utf8mb4_0900_ai_ci", "set names utf8mb4");
+    failures += execute_sql(database, "SET NAMES latin1 COLLATE latin1_bin", MYLITE_DONE);
+    failures += expect_connection_state(database, "latin1", "latin1", "latin1", "latin1_bin",
+                                        "set names latin1 explicit collation");
+    failures += execute_sql(database, "SET NAMES binary", MYLITE_DONE);
+    failures += expect_connection_state(database, "binary", "binary", "binary", "binary",
+                                        "set names binary");
+    failures += execute_sql(database, "SET NAMES UTF8MB4 COLLATE UTF8MB4_BIN", MYLITE_DONE);
+    failures += expect_connection_state(database, "utf8mb4", "utf8mb4", "utf8mb4", "utf8mb4_bin",
+                                        "set names uppercase normalized");
+    failures += execute_sql(database, "SET NAMES 'utf8mb3' COLLATE 'utf8mb3_bin'", MYLITE_DONE);
+    failures += expect_connection_state(database, "utf8mb3", "utf8mb3", "utf8mb3", "utf8mb3_bin",
+                                        "set names quoted utf8mb3");
+    failures += execute_sql(database, "SET NAMES DEFAULT", MYLITE_DONE);
+    failures += expect_connection_state(database, "utf8mb4", "utf8mb4", "utf8mb4",
+                                        "utf8mb4_0900_ai_ci", "set names default");
+
+    failures += execute_sql(database, "SET CHARACTER SET utf8mb3", MYLITE_DONE);
+    failures +=
+        expect_connection_state(database, "utf8mb3", "utf8mb4", "utf8mb3", "utf8mb4_0900_ai_ci",
+                                "set character set no selected schema");
+    failures += execute_sql(database, "SET CHARACTER SET binary", MYLITE_DONE);
+    failures +=
+        expect_connection_state(database, "binary", "utf8mb4", "binary", "utf8mb4_0900_ai_ci",
+                                "set character set binary no selected schema");
+    failures += execute_sql(database, "SET CHARSET 'latin1'", MYLITE_DONE);
+    failures +=
+        expect_connection_state(database, "latin1", "utf8mb4", "latin1", "utf8mb4_0900_ai_ci",
+                                "set charset quoted no selected schema");
+    failures += execute_sql(database, "SET CHARACTER SET DEFAULT", MYLITE_DONE);
+    failures += expect_connection_state(database, "utf8mb4", "utf8mb4", "utf8mb4",
+                                        "utf8mb4_0900_ai_ci", "set character set default");
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_charset_session DEFAULT CHARACTER SET latin1 "
+                            "COLLATE latin1_bin",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_charset_session", MYLITE_DONE);
+    failures += execute_sql(database, "SET CHARACTER SET utf8mb4", MYLITE_DONE);
+    failures += expect_connection_state(database, "utf8mb4", "latin1", "utf8mb4", "latin1_bin",
+                                        "set character set selected schema default");
+    failures += execute_sql(database, "SET NAMES utf8mb4 COLLATE utf8mb4_bin", MYLITE_DONE);
+    failures += execute_sql(database, "SET CHARACTER SET DEFAULT", MYLITE_DONE);
+    failures += expect_connection_state(database, "utf8mb4", "latin1", "utf8mb4", "latin1_bin",
+                                        "set character set default selected schema");
+    failures += execute_sql(database, "DROP DATABASE mylite_charset_session", MYLITE_DONE);
+
+    failures += prepare_sql(database, "SET NAMES nosuchcharset", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "set names unknown charset");
+    failures += expect_contains(mylite_error_message(database), "Unknown character set",
+                                "set names unknown charset error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SET NAMES utf8mb4 COLLATE nosuchcollation", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "set names unknown collation");
+    failures += expect_contains(mylite_error_message(database), "Unknown collation",
+                                "set names unknown collation error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SET NAMES utf8mb4 COLLATE latin1_bin", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "set names incompatible collation");
+    failures += expect_contains(mylite_error_message(database), "not valid for CHARACTER SET",
+                                "set names incompatible collation error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SET CHARACTER SET nosuchcharset", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "set character set unknown charset");
+    failures += expect_contains(mylite_error_message(database), "Unknown character set",
+                                "set character set unknown charset error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_charset_upper DEFAULT CHARACTER SET UTF8MB4 "
+                            "COLLATE UTF8MB4_BIN",
+                            MYLITE_DONE);
+    failures +=
+        expect_information_schema_schemata_row(database, &(const struct expected_schemata_row){
+                                                             .schema_name = "mylite_charset_upper",
+                                                             .character_set = "utf8mb4",
+                                                             .collation = "utf8mb4_bin",
+                                                             .encryption = "NO",
+                                                         });
+    failures += execute_sql(database, "DROP DATABASE mylite_charset_upper", MYLITE_DONE);
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_charset_collate COLLATE latin1_bin",
+                            MYLITE_DONE);
+    failures += expect_information_schema_schemata_row(database,
+                                                       &(const struct expected_schemata_row){
+                                                           .schema_name = "mylite_charset_collate",
+                                                           .character_set = "latin1",
+                                                           .collation = "latin1_bin",
+                                                           .encryption = "NO",
+                                                       });
+    failures += execute_sql(database, "ALTER DATABASE mylite_charset_collate CHARACTER SET utf8mb3",
+                            MYLITE_DONE);
+    failures += expect_information_schema_schemata_row(database,
+                                                       &(const struct expected_schemata_row){
+                                                           .schema_name = "mylite_charset_collate",
+                                                           .character_set = "utf8mb3",
+                                                           .collation = "utf8mb3_general_ci",
+                                                           .encryption = "NO",
+                                                       });
+    failures += execute_sql(database, "ALTER DATABASE mylite_charset_collate COLLATE latin1_bin",
+                            MYLITE_DONE);
+    failures += expect_information_schema_schemata_row(database,
+                                                       &(const struct expected_schemata_row){
+                                                           .schema_name = "mylite_charset_collate",
+                                                           .character_set = "latin1",
+                                                           .collation = "latin1_bin",
+                                                           .encryption = "NO",
+                                                       });
+    failures += execute_sql(database, "DROP DATABASE mylite_charset_collate", MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "CREATE DATABASE mylite_charset_bad DEFAULT CHARACTER SET "
+                            "nosuchcharset",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "create unknown charset");
+    failures += expect_contains(mylite_error_message(database), "Unknown character set",
+                                "create unknown charset error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "CREATE DATABASE mylite_charset_bad DEFAULT CHARACTER SET utf8mb4 "
+                            "COLLATE latin1_bin",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "create incompatible charset collation");
+    failures += expect_contains(mylite_error_message(database), "not valid for CHARACTER SET",
+                                "create incompatible charset collation error");
+    mylite_finalize(stmt);
 
     mylite_close(database);
     return failures;
@@ -793,6 +954,19 @@ static int expect_show_database_rows(mylite_db *database, const char *required,
     }
 
     mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_connection_state(mylite_db *database, const char *client, const char *connection,
+                                   const char *results, const char *collation, const char *context)
+{
+    int failures = 0;
+
+    failures += expect_string(mylite_connection_character_set_client(database), client, context);
+    failures +=
+        expect_string(mylite_connection_character_set_connection(database), connection, context);
+    failures += expect_string(mylite_connection_character_set_results(database), results, context);
+    failures += expect_string(mylite_connection_collation_connection(database), collation, context);
     return failures;
 }
 

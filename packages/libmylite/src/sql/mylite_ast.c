@@ -170,6 +170,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "schema_option_list";
     case MYLITE_SQL_AST_SCHEMA_OPTION:
         return "schema_option";
+    case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
+        return "set_names_statement";
+    case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
+        return "set_character_set_statement";
+    case MYLITE_SQL_AST_DEFAULT:
+        return "default";
     }
 
     return "unknown";

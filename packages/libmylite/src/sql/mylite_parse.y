@@ -28,7 +28,7 @@
 %left PLUS MINUS.
 %left STAR SLASH.
 %right UPLUS UMINUS.
-%fallback IDENTIFIER CHARSET ENCRYPTION ONLY.
+%fallback IDENTIFIER BINARY CHARSET ENCRYPTION ONLY.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -69,6 +69,12 @@ statement(A) ::= drop_schema_statement(B). {
 statement(A) ::= show_schemas_statement(B). {
     A = B;
 }
+statement(A) ::= set_names_statement(B). {
+    A = B;
+}
+statement(A) ::= set_character_set_statement(B). {
+    A = B;
+}
 
 use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
@@ -106,6 +112,36 @@ show_schemas_statement(A) ::= SHOW(T) DATABASES(D). {
 }
 show_schemas_statement(A) ::= SHOW(T) SCHEMAS(D). {
     A = mylite_sql_parser_make_show_schemas_statement(state, T, D);
+}
+
+set_names_statement(A) ::= SET(T) NAMES charset_value(B) opt_set_names_collation(C). {
+    A = mylite_sql_parser_make_set_names_statement(state, T, B, C);
+}
+set_names_statement(A) ::= SET(T) NAMES DEFAULT(D). {
+    A = mylite_sql_parser_make_set_names_statement(
+        state, T, mylite_sql_parser_make_default(state, D), NULL);
+}
+
+opt_set_names_collation(A) ::= . {
+    A = NULL;
+}
+opt_set_names_collation(A) ::= COLLATE charset_value(B). {
+    A = B;
+}
+
+set_character_set_statement(A) ::= SET(T) CHARACTER SET charset_value(B). {
+    A = mylite_sql_parser_make_set_character_set_statement(state, T, B);
+}
+set_character_set_statement(A) ::= SET(T) CHARACTER SET DEFAULT(D). {
+    A = mylite_sql_parser_make_set_character_set_statement(
+        state, T, mylite_sql_parser_make_default(state, D));
+}
+set_character_set_statement(A) ::= SET(T) CHARSET charset_value(B). {
+    A = mylite_sql_parser_make_set_character_set_statement(state, T, B);
+}
+set_character_set_statement(A) ::= SET(T) CHARSET DEFAULT(D). {
+    A = mylite_sql_parser_make_set_character_set_statement(
+        state, T, mylite_sql_parser_make_default(state, D));
 }
 
 opt_if_not_exists(A) ::= . {
@@ -172,6 +208,19 @@ schema_option_value(A) ::= identifier(B). {
 }
 schema_option_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+schema_option_value(A) ::= BINARY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+charset_value(A) ::= identifier(B). {
+    A = B;
+}
+charset_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+charset_value(A) ::= BINARY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
 
 read_only_value(A) ::= DEFAULT(T). {

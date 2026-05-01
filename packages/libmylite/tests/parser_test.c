@@ -7,6 +7,7 @@
 static int test_empty_script(void);
 static int test_use_statements(void);
 static int test_schema_lifecycle_statements(void);
+static int test_connection_charset_statements(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -39,6 +40,7 @@ int main(void)
     failures += test_empty_script();
     failures += test_use_statements();
     failures += test_schema_lifecycle_statements();
+    failures += test_connection_charset_statements();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -163,6 +165,76 @@ static int test_schema_lifecycle_statements(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW DATABASES LIKE 'my%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_connection_charset_statements(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SET NAMES utf8mb4;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SET_NAMES_STATEMENT, "set names");
+    failures += expect_span_text(child_at(statement, 0U), "utf8mb4", "set names charset");
+    failures += expect_child_count(statement, 1U, "set names child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET NAMES 'latin1' COLLATE 'latin1_bin';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SET_NAMES_STATEMENT, "set names collate");
+    failures += expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "set names quoted charset");
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "set names quoted collation");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET NAMES binary; SET NAMES DEFAULT;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 2U, "set names script");
+    failures +=
+        expect_span_text(child_at(child_at(result.root, 0U), 0U), "binary", "set names binary");
+    failures += expect_node(child_at(child_at(result.root, 1U), 0U), MYLITE_SQL_AST_DEFAULT,
+                            "set names default");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET CHARACTER SET utf8mb3;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT, "set character set");
+    failures += expect_span_text(child_at(statement, 0U), "utf8mb3", "set character set charset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET CHARACTER SET 'latin1';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT, "set character set");
+    failures += expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "set character set quoted charset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET CHARSET binary;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT, "set charset");
+    failures += expect_span_text(child_at(statement, 0U), "binary", "set charset charset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET CHARSET DEFAULT;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT, "set charset default");
+    failures +=
+        expect_node(child_at(statement, 0U), MYLITE_SQL_AST_DEFAULT, "set charset default value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SET NAMES DEFAULT COLLATE utf8mb4_bin;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SET SESSION sql_mode = 'ANSI_QUOTES';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

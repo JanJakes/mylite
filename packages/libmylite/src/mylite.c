@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "mylite_charset.h"
+#include "mylite_internal.h"
 #include "mylite_parser.h"
 #include "mylite_sqlite_translator.h"
 #include "mylite_vfs.h"
@@ -16,6 +18,8 @@ enum mylite_stmt_kind {
     MYLITE_STMT_ALTER_SCHEMA = 2,
     MYLITE_STMT_DROP_SCHEMA = 3,
     MYLITE_STMT_USE_SCHEMA = 4,
+    MYLITE_STMT_SET_NAMES = 5,
+    MYLITE_STMT_SET_CHARACTER_SET = 6,
 };
 
 enum mylite_information_schema_table {
@@ -41,10 +45,24 @@ struct mylite_schema_presence {
     bool is_system;
 };
 
+struct mylite_schema_default {
+    const char *character_set;
+    const char *collation;
+};
+
+struct mylite_connection_charset_request {
+    const char *character_set_name;
+    const char *collation_name;
+};
+
 struct mylite_db {
     sqlite3 *sqlite;
     char *error_message;
     char *selected_schema;
+    const char *character_set_client;
+    const char *character_set_connection;
+    const char *character_set_results;
+    const char *collation_connection;
 };
 
 struct mylite_stmt {
@@ -56,6 +74,9 @@ struct mylite_stmt {
     bool if_not_exists;
     bool executed;
     struct mylite_schema_options options;
+    char *character_set_name;
+    char *collation_name;
+    bool use_default_connection_charset;
 };
 
 static const char schema_catalog_sql[] = "CREATE TABLE IF NOT EXISTS __mylite_schema_catalog("
@@ -253,6 +274,9 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
 static int prepare_schema_lifecycle_statement(mylite_db *database,
                                               const struct mylite_sql_ast_node *statement,
                                               mylite_stmt **out_stmt);
+static int prepare_connection_charset_statement(mylite_db *database,
+                                                const struct mylite_sql_ast_node *statement,
+                                                mylite_stmt **out_stmt);
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt);
 static int prepare_information_schema_select_statement(mylite_db *database,
                                                        const struct mylite_sql_ast_node *statement,
@@ -267,6 +291,13 @@ static int execute_create_schema_statement(mylite_stmt *stmt);
 static int execute_alter_schema_statement(mylite_stmt *stmt);
 static int execute_drop_schema_statement(mylite_stmt *stmt);
 static int execute_use_schema_statement(mylite_stmt *stmt);
+static int execute_set_names_statement(mylite_stmt *stmt);
+static int execute_set_character_set_statement(mylite_stmt *stmt);
+static int set_names_connection_state(mylite_db *database,
+                                      struct mylite_connection_charset_request request);
+static int set_character_set_connection_state(mylite_db *database, const char *character_set_name);
+static int set_default_connection_state(mylite_db *database);
+static int selected_schema_default(mylite_db *database, struct mylite_schema_default *out_default);
 static int schema_exists(mylite_db *database, const char *schema_name,
                          struct mylite_schema_presence *out_presence);
 static int insert_schema(mylite_db *database, const char *schema_name,
@@ -291,10 +322,18 @@ static int copy_statement_schema_name(const struct mylite_sql_ast_node *statemen
                                       enum mylite_stmt_kind kind, char **out_schema_name);
 static int copy_schema_options(const struct mylite_sql_ast_node *statement,
                                enum mylite_stmt_kind kind, struct mylite_schema_options *options);
+static int copy_connection_charset_statement(const struct mylite_sql_ast_node *statement,
+                                             mylite_stmt *stmt);
 static int apply_schema_option(const struct mylite_sql_ast_node *option,
                                struct mylite_schema_options *options);
-static int validate_schema_options(mylite_db *database,
-                                   const struct mylite_schema_options *options);
+static int normalize_schema_options(mylite_db *database, struct mylite_schema_options *options);
+static int normalize_schema_charset_and_collation(mylite_db *database,
+                                                  struct mylite_schema_options *options);
+static int normalize_schema_option_text(mylite_db *database, char **target, const char *value);
+static int set_unknown_charset_error(mylite_db *database, const char *name);
+static int set_unknown_collation_error(mylite_db *database, const char *name);
+static int set_collation_charset_error(mylite_db *database, const char *collation,
+                                       const char *character_set);
 static bool is_valid_encryption_value(const char *value);
 static bool ascii_case_equal(const char *left, const char *right);
 static char *copy_identifier_span(const struct mylite_sql_ast_node *node);
@@ -434,6 +473,8 @@ void mylite_finalize(mylite_stmt *stmt)
 
     sqlite3_finalize(stmt->sqlite_stmt);
     free(stmt->schema_name);
+    free(stmt->character_set_name);
+    free(stmt->collation_name);
     schema_options_deinit(&stmt->options);
     free(stmt);
 }
@@ -505,6 +546,26 @@ const char *mylite_column_text(const mylite_stmt *stmt, int column)
     return (const char *)sqlite3_column_text(stmt->sqlite_stmt, column);
 }
 
+const char *mylite_connection_character_set_client(const mylite_db *database)
+{
+    return database == NULL ? NULL : database->character_set_client;
+}
+
+const char *mylite_connection_character_set_connection(const mylite_db *database)
+{
+    return database == NULL ? NULL : database->character_set_connection;
+}
+
+const char *mylite_connection_character_set_results(const mylite_db *database)
+{
+    return database == NULL ? NULL : database->character_set_results;
+}
+
+const char *mylite_connection_collation_connection(const mylite_db *database)
+{
+    return database == NULL ? NULL : database->collation_connection;
+}
+
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
                                 mylite_db **out_db)
 {
@@ -531,6 +592,7 @@ static int open_sqlite_database(const char *filename, int flags, const char *vfs
         return rc;
     }
 
+    (void)set_default_connection_state(database);
     *out_db = database;
     return MYLITE_OK;
 }
@@ -618,6 +680,9 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
         case MYLITE_SQL_AST_USE_STATEMENT:
             return prepare_schema_lifecycle_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
+        case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
+            return prepare_connection_charset_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
             return prepare_show_schemas_statement(database, out_stmt);
         case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -642,6 +707,7 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_IF_NOT_EXISTS:
         case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
         case MYLITE_SQL_AST_SCHEMA_OPTION:
+        case MYLITE_SQL_AST_DEFAULT:
             break;
         }
     }
@@ -689,10 +755,55 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
+    case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
+    case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
+    case MYLITE_SQL_AST_DEFAULT:
     case MYLITE_SQL_AST_IF_EXISTS:
     case MYLITE_SQL_AST_IF_NOT_EXISTS:
     case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
     case MYLITE_SQL_AST_SCHEMA_OPTION:
+        return MYLITE_UNSUPPORTED;
+    }
+
+    return prepare_custom_statement(database, kind, statement, out_stmt);
+}
+
+static int prepare_connection_charset_statement(mylite_db *database,
+                                                const struct mylite_sql_ast_node *statement,
+                                                mylite_stmt **out_stmt)
+{
+    enum mylite_stmt_kind kind = MYLITE_STMT_SQLITE;
+
+    switch (statement->kind) {
+    case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
+        kind = MYLITE_STMT_SET_NAMES;
+        break;
+    case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
+        kind = MYLITE_STMT_SET_CHARACTER_SET;
+        break;
+    case MYLITE_SQL_AST_SCRIPT:
+    case MYLITE_SQL_AST_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_USE_STATEMENT:
+    case MYLITE_SQL_AST_SELECT_LIST:
+    case MYLITE_SQL_AST_SELECT_ITEM:
+    case MYLITE_SQL_AST_FROM_DUAL:
+    case MYLITE_SQL_AST_FROM_TABLE:
+    case MYLITE_SQL_AST_IDENTIFIER:
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+    case MYLITE_SQL_AST_WILDCARD:
+    case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+    case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
+    case MYLITE_SQL_AST_IF_EXISTS:
+    case MYLITE_SQL_AST_IF_NOT_EXISTS:
+    case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
+    case MYLITE_SQL_AST_SCHEMA_OPTION:
+    case MYLITE_SQL_AST_DEFAULT:
         return MYLITE_UNSUPPORTED;
     }
 
@@ -771,9 +882,23 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
         .kind = kind,
     };
 
-    status = copy_statement_schema_name(statement, kind, &stmt->schema_name);
-    if (status == MYLITE_OK) {
-        status = copy_schema_options(statement, kind, &stmt->options);
+    switch (kind) {
+    case MYLITE_STMT_CREATE_SCHEMA:
+    case MYLITE_STMT_ALTER_SCHEMA:
+    case MYLITE_STMT_DROP_SCHEMA:
+    case MYLITE_STMT_USE_SCHEMA:
+        status = copy_statement_schema_name(statement, kind, &stmt->schema_name);
+        if (status == MYLITE_OK) {
+            status = copy_schema_options(statement, kind, &stmt->options);
+        }
+        break;
+    case MYLITE_STMT_SET_NAMES:
+    case MYLITE_STMT_SET_CHARACTER_SET:
+        status = copy_connection_charset_statement(statement, stmt);
+        break;
+    case MYLITE_STMT_SQLITE:
+        status = MYLITE_UNSUPPORTED;
+        break;
     }
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
@@ -818,6 +943,12 @@ static int execute_custom_statement(mylite_stmt *stmt)
     case MYLITE_STMT_USE_SCHEMA:
         status = execute_use_schema_statement(stmt);
         break;
+    case MYLITE_STMT_SET_NAMES:
+        status = execute_set_names_statement(stmt);
+        break;
+    case MYLITE_STMT_SET_CHARACTER_SET:
+        status = execute_set_character_set_statement(stmt);
+        break;
     case MYLITE_STMT_SQLITE:
         status = MYLITE_MISUSE;
         break;
@@ -829,7 +960,7 @@ static int execute_custom_statement(mylite_stmt *stmt)
 static int execute_create_schema_statement(mylite_stmt *stmt)
 {
     struct mylite_schema_presence presence;
-    int status = validate_schema_options(stmt->database, &stmt->options);
+    int status = normalize_schema_options(stmt->database, &stmt->options);
 
     if (status != MYLITE_OK) {
         return status;
@@ -855,7 +986,7 @@ static int execute_alter_schema_statement(mylite_stmt *stmt)
     const char *schema_name =
         stmt->schema_name == NULL ? stmt->database->selected_schema : stmt->schema_name;
     struct mylite_schema_presence presence;
-    int status = validate_schema_options(stmt->database, &stmt->options);
+    int status = normalize_schema_options(stmt->database, &stmt->options);
 
     if (status != MYLITE_OK) {
         return status;
@@ -933,6 +1064,151 @@ static int execute_use_schema_statement(mylite_stmt *stmt)
     return set_selected_schema(stmt->database, stmt->schema_name);
 }
 
+static int execute_set_names_statement(mylite_stmt *stmt)
+{
+    if (stmt->use_default_connection_charset) {
+        return set_default_connection_state(stmt->database);
+    }
+    return set_names_connection_state(stmt->database,
+                                      (struct mylite_connection_charset_request){
+                                          .character_set_name = stmt->character_set_name,
+                                          .collation_name = stmt->collation_name,
+                                      });
+}
+
+static int execute_set_character_set_statement(mylite_stmt *stmt)
+{
+    if (stmt->use_default_connection_charset) {
+        return set_character_set_connection_state(stmt->database, mylite_charset_default_name());
+    }
+    return set_character_set_connection_state(stmt->database, stmt->character_set_name);
+}
+
+static int set_names_connection_state(mylite_db *database,
+                                      struct mylite_connection_charset_request request)
+{
+    const struct mylite_charset *character_set = mylite_charset_lookup(request.character_set_name);
+    const struct mylite_collation *collation = NULL;
+
+    if (character_set == NULL) {
+        return set_unknown_charset_error(database, request.character_set_name);
+    }
+
+    if (request.collation_name == NULL) {
+        collation = mylite_collation_lookup(character_set->default_collation);
+    } else {
+        collation = mylite_collation_lookup(request.collation_name);
+        if (collation == NULL) {
+            return set_unknown_collation_error(database, request.collation_name);
+        }
+        if (!mylite_charset_collation_match(character_set, collation)) {
+            return set_collation_charset_error(database, collation->name, character_set->name);
+        }
+    }
+
+    database->character_set_client = character_set->name;
+    database->character_set_connection = character_set->name;
+    database->character_set_results = character_set->name;
+    database->collation_connection = collation->name;
+    return MYLITE_OK;
+}
+
+static int set_character_set_connection_state(mylite_db *database, const char *character_set_name)
+{
+    struct mylite_schema_default schema_default;
+    const struct mylite_charset *character_set = mylite_charset_lookup(character_set_name);
+    const struct mylite_collation *connection_collation = NULL;
+    int status = MYLITE_OK;
+
+    if (character_set == NULL) {
+        return set_unknown_charset_error(database, character_set_name);
+    }
+
+    status = selected_schema_default(database, &schema_default);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    connection_collation = mylite_collation_lookup(schema_default.collation);
+    if (connection_collation == NULL) {
+        return set_unknown_collation_error(database, schema_default.collation);
+    }
+
+    database->character_set_client = character_set->name;
+    database->character_set_connection = connection_collation->character_set;
+    database->character_set_results = character_set->name;
+    database->collation_connection = connection_collation->name;
+    return MYLITE_OK;
+}
+
+static int set_default_connection_state(mylite_db *database)
+{
+    database->character_set_client = mylite_charset_default_name();
+    database->character_set_connection = mylite_charset_default_name();
+    database->character_set_results = mylite_charset_default_name();
+    database->collation_connection = mylite_charset_default_collation_name();
+    return MYLITE_OK;
+}
+
+static int selected_schema_default(mylite_db *database, struct mylite_schema_default *out_default)
+{
+    sqlite3_stmt *stmt = NULL;
+    static const char sql[] =
+        "SELECT default_character_set, default_collation FROM __mylite_schema_catalog "
+        "WHERE name = ?";
+    int rc = SQLITE_OK;
+
+    *out_default = (struct mylite_schema_default){
+        .character_set = mylite_charset_default_name(),
+        .collation = mylite_charset_default_collation_name(),
+    };
+    if (database->selected_schema == NULL) {
+        return MYLITE_OK;
+    }
+
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(database);
+    }
+
+    sqlite3_bind_text(stmt, 1, database->selected_schema, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        const char *character_set = (const char *)sqlite3_column_text(stmt, 0);
+        const char *collation = (const char *)sqlite3_column_text(stmt, 1);
+        const struct mylite_charset *character_set_entry = mylite_charset_lookup(character_set);
+        const struct mylite_collation *collation_entry = mylite_collation_lookup(collation);
+
+        if (character_set_entry == NULL) {
+            int status = set_unknown_charset_error(database, character_set);
+            sqlite3_finalize(stmt);
+            return status;
+        }
+        if (collation_entry == NULL) {
+            int status = set_unknown_collation_error(database, collation);
+            sqlite3_finalize(stmt);
+            return status;
+        }
+        sqlite3_finalize(stmt);
+        *out_default = (struct mylite_schema_default){
+            .character_set = character_set_entry->name,
+            .collation = collation_entry->name,
+        };
+        return MYLITE_OK;
+    }
+
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        return set_sqlite_error(database);
+    }
+
+    if (set_error_message(database, "Selected schema default charset is unavailable") ==
+        MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_EXEC_ERROR;
+}
+
 static int schema_exists(mylite_db *database, const char *schema_name,
                          struct mylite_schema_presence *out_presence)
 {
@@ -975,8 +1251,10 @@ static int insert_schema(mylite_db *database, const char *schema_name,
         "INSERT INTO __mylite_schema_catalog("
         "name, default_character_set, default_collation, default_encryption, read_only, is_system)"
         " VALUES(?, ?, ?, ?, ?, 0)";
-    const char *character_set = options->character_set == NULL ? "utf8mb4" : options->character_set;
-    const char *collation = options->collation == NULL ? "utf8mb4_0900_ai_ci" : options->collation;
+    const char *character_set =
+        options->character_set == NULL ? mylite_charset_default_name() : options->character_set;
+    const char *collation =
+        options->collation == NULL ? mylite_charset_default_collation_name() : options->collation;
     const char *encryption = options->encryption == NULL ? "N" : options->encryption;
     int read_only = 0;
     int rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
@@ -1252,6 +1530,8 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
         break;
     case MYLITE_STMT_DROP_SCHEMA:
     case MYLITE_STMT_USE_SCHEMA:
+    case MYLITE_STMT_SET_NAMES:
+    case MYLITE_STMT_SET_CHARACTER_SET:
     case MYLITE_STMT_SQLITE:
         return MYLITE_OK;
     }
@@ -1261,6 +1541,31 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
         status = apply_schema_option(option, options);
         if (status != MYLITE_OK) {
             return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int copy_connection_charset_statement(const struct mylite_sql_ast_node *statement,
+                                             mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *character_set = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *collation = child_at(statement, 1U);
+
+    if (character_set != NULL && character_set->kind == MYLITE_SQL_AST_DEFAULT) {
+        stmt->use_default_connection_charset = true;
+        return MYLITE_OK;
+    }
+
+    stmt->character_set_name = copy_schema_text_span(character_set);
+    if (stmt->character_set_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    if (collation != NULL) {
+        stmt->collation_name = copy_schema_text_span(collation);
+        if (stmt->collation_name == NULL) {
+            return MYLITE_NOMEM;
         }
     }
     return MYLITE_OK;
@@ -1316,8 +1621,10 @@ static int apply_schema_option(const struct mylite_sql_ast_node *option,
     return MYLITE_OK;
 }
 
-static int validate_schema_options(mylite_db *database, const struct mylite_schema_options *options)
+static int normalize_schema_options(mylite_db *database, struct mylite_schema_options *options)
 {
+    int status = MYLITE_OK;
+
     if (options->invalid_encryption) {
         (void)set_error_message(database, "Incorrect argument (should be Y or N) value");
         return MYLITE_EXEC_ERROR;
@@ -1326,7 +1633,94 @@ static int validate_schema_options(mylite_db *database, const struct mylite_sche
         (void)set_error_message(database, "Incorrect READ ONLY value");
         return MYLITE_EXEC_ERROR;
     }
+
+    status = normalize_schema_charset_and_collation(database, options);
+    return status;
+}
+
+static int normalize_schema_charset_and_collation(mylite_db *database,
+                                                  struct mylite_schema_options *options)
+{
+    const struct mylite_charset *character_set = mylite_charset_lookup(options->character_set);
+    const struct mylite_collation *collation = mylite_collation_lookup(options->collation);
+    int status = MYLITE_OK;
+
+    if (options->character_set != NULL && character_set == NULL) {
+        return set_unknown_charset_error(database, options->character_set);
+    }
+    if (options->collation != NULL && collation == NULL) {
+        return set_unknown_collation_error(database, options->collation);
+    }
+    if (character_set != NULL && collation != NULL &&
+        !mylite_charset_collation_match(character_set, collation)) {
+        return set_collation_charset_error(database, collation->name, character_set->name);
+    }
+    if (character_set == NULL && collation == NULL) {
+        return MYLITE_OK;
+    }
+
+    if (character_set == NULL) {
+        character_set = mylite_charset_lookup(collation->character_set);
+    }
+    if (collation == NULL) {
+        collation = mylite_collation_lookup(character_set->default_collation);
+    }
+    if (character_set == NULL || collation == NULL) {
+        (void)set_error_message(database, "Unsupported charset/collation registry entry");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    status = normalize_schema_option_text(database, &options->character_set, character_set->name);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return normalize_schema_option_text(database, &options->collation, collation->name);
+}
+
+static int normalize_schema_option_text(mylite_db *database, char **target, const char *value)
+{
+    char *copy = copy_span_text(value, strlen(value));
+
+    if (copy == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    free(*target);
+    *target = copy;
     return MYLITE_OK;
+}
+
+static int set_unknown_charset_error(mylite_db *database, const char *name)
+{
+    int status = set_error_message_parts(database, "Unknown character set: '", name, "'");
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_unknown_collation_error(mylite_db *database, const char *name)
+{
+    int status = set_error_message_parts(database, "Unknown collation: '", name, "'");
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_collation_charset_error(mylite_db *database, const char *collation,
+                                       const char *character_set)
+{
+    char *prefix = NULL;
+    int status = MYLITE_EXEC_ERROR;
+
+    if (set_error_message_parts(database, "COLLATION '", collation,
+                                "' is not valid for CHARACTER SET '") == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+
+    prefix = database->error_message;
+    database->error_message = NULL;
+    status = set_error_message_parts(database, prefix, character_set, "'");
+    free(prefix);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static bool is_valid_encryption_value(const char *value)

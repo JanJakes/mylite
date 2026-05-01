@@ -49,6 +49,13 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
                                               struct mylite_sql_token show_token,
                                               struct mylite_sql_token schemas_token);
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *character_set, struct mylite_sql_ast_node *collation);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_set_character_set_statement(struct mylite_sql_parser_state *state,
+                                                   struct mylite_sql_token set_token,
+                                                   struct mylite_sql_ast_node *character_set);
 struct mylite_sql_ast_node *mylite_sql_parser_make_if_exists(struct mylite_sql_parser_state *state,
                                                              struct mylite_sql_token if_token,
                                                              struct mylite_sql_token exists_token);
@@ -87,6 +94,8 @@ mylite_sql_parser_make_from_table(struct mylite_sql_parser_state *state,
                                   struct mylite_sql_ast_node *table_name);
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(struct mylite_sql_parser_state *state,
                                                               struct mylite_sql_token token);
+struct mylite_sql_ast_node *mylite_sql_parser_make_default(struct mylite_sql_parser_state *state,
+                                                           struct mylite_sql_token token);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_qualified_identifier(struct mylite_sql_parser_state *state,
                                             struct mylite_sql_ast_node *left,

@@ -14,8 +14,10 @@ schema behavior for:
 The implementation is intentionally embedded-compatible. A MyLite database file
 stores multiple MySQL schema names in one SQLite payload instead of mapping each
 schema to an operating-system directory. Table metadata, information schema
-views, schema-qualified table execution, charset/collation validation, warning
-storage, and privileges are later features.
+views, schema-qualified table execution, warning storage, and privileges are
+later features. Charset/collation validation for the initial registry is
+covered by the
+[character set/collation foundation spec](../character-set-collation-foundation/specs.md).
 
 ## Sources
 
@@ -134,8 +136,9 @@ Compatibility gaps:
 
 - No warning is exposed for duplicate `CREATE DATABASE IF NOT EXISTS` because
   the public diagnostics API does not yet expose warning records.
-- Charset and collation values are stored but not fully validated. The
-  charset/collation catalog is a later feature.
+- Charset and collation values are validated and normalized for the initial
+  `utf8mb4`, `utf8mb3`, `latin1`, and `binary` registry. Full MySQL charset
+  and collation catalog coverage is a later feature.
 - Encryption values are limited to quoted `Y` and `N` values.
 - Privilege checks and `LOCK TABLES` interactions are not implemented.
 

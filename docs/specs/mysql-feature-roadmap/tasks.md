@@ -11,7 +11,7 @@ level application surfaces.
        `ALTER DATABASE`, `DROP DATABASE`, and `SHOW DATABASES`.
 2. [x] Core metadata catalog: internal schema/table/column/index storage plus
        `INFORMATION_SCHEMA.SCHEMATA`, `TABLES`, `COLUMNS`, and `STATISTICS`.
-3. [ ] Character set and collation foundation: `utf8mb4`, `utf8mb3`, `latin1`,
+3. [x] Character set and collation foundation: `utf8mb4`, `utf8mb3`, `latin1`,
        `binary`, default charset/collation tracking, `SET NAMES`, and
        `SET CHARACTER SET`.
 4. [ ] Integer and boolean column types: `TINYINT`, `SMALLINT`, `MEDIUMINT`,

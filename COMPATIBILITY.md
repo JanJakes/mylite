@@ -55,7 +55,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `ALTER DATABASE` / `ALTER SCHEMA` | 🟡 | high | Database default character set, collation, encryption, and read-only options. | Implemented for the MyLite schema catalog, including omitted-name default-schema targeting; charset/collation validation, full read-only enforcement, privileges, and warning records are deferred. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md). |
+| `ALTER DATABASE` / `ALTER SCHEMA` | 🟡 | high | Database default character set, collation, encryption, and read-only options. | Implemented for the MyLite schema catalog, including omitted-name default-schema targeting and validation for the initial `utf8mb4`, `utf8mb3`, `latin1`, and `binary` charset/collation registry; full read-only enforcement, privileges, and warning records are deferred. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md) and [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. |  |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. |  |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |
@@ -66,7 +66,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. |  |
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. |  |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |
-| `CREATE DATABASE` / `CREATE SCHEMA` | 🟡 | high | Database creation syntax, defaults, warnings, and single-file mapping. | Implemented as catalog rows inside the single `.mylite` file, with `IF NOT EXISTS`, stored defaults, and encryption value validation; warning records and full charset/collation validation are deferred. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md). |
+| `CREATE DATABASE` / `CREATE SCHEMA` | 🟡 | high | Database creation syntax, defaults, warnings, and single-file mapping. | Implemented as catalog rows inside the single `.mylite` file, with `IF NOT EXISTS`, normalized charset/collation defaults for the initial registry, and encryption value validation; warning records and full charset/collation catalog coverage are deferred. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md) and [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. |  |
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. |  |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
@@ -222,9 +222,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. |  |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. |  |
 | `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. |  |
-| `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. |  |
-| `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. |  |
-| `SET NAMES` | ❌ | top | Connection character set and collation semantics. |  |
+| `SET` | 🟡 | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | `SET NAMES` and `SET CHARACTER SET` are implemented for the initial charset/collation registry; general variable assignment, user variables, persisted variables, and transaction forms are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
+| `SET CHARACTER SET` | 🟡 | top | Connection character-set shorthand semantics. | Implemented for `utf8mb4`, `utf8mb3`, `latin1`, `binary`, and `DEFAULT`, with handle-owned session state and selected-schema/default-schema collation behavior; `SHOW VARIABLES` exposure is deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
+| `SET NAMES` | 🟡 | top | Connection character set and collation semantics. | Implemented for `utf8mb4`, `utf8mb3`, `latin1`, `binary`, optional compatible `COLLATE`, and `DEFAULT`, with MySQL-runtime-verified unknown/incompatible value behavior; numeric error-code exposure and `SHOW VARIABLES` are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. |  |
 | `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. |  |
 | `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. |  |
@@ -484,7 +484,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `armscii8` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `ascii` | ❌ | medium | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `big5` | ❌ | medium | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
-| `binary` | ❌ | high | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
+| `binary` | 🟡 | high | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. | Recognized in the internal registry with default collation `binary` for schema defaults and connection charset state; binary string comparison/conversion semantics and metadata listing are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | `cp1250` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `cp1251` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `cp1256` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
@@ -506,7 +506,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `keybcs2` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `koi8r` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `koi8u` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
-| `latin1` | ❌ | high | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
+| `latin1` | 🟡 | high | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. | Recognized in the internal registry with default collation `latin1_swedish_ci` and `latin1_bin` compatibility validation for schema defaults and connection charset state; conversion/comparison semantics and metadata listing are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | `latin2` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `latin5` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `latin7` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
@@ -517,8 +517,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `tis620` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `ucs2` | ❌ | medium | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `ujis` | ❌ | medium | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
-| `utf8mb3` | ❌ | top | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
-| `utf8mb4` | ❌ | top | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
+| `utf8mb3` | 🟡 | top | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. | Recognized in the internal registry with default collation `utf8mb3_general_ci` and `utf8mb3_bin` compatibility validation for schema defaults and connection charset state; conversion/comparison semantics and metadata listing are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
+| `utf8mb4` | 🟡 | top | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. | Recognized in the internal registry with default collation `utf8mb4_0900_ai_ci` and `utf8mb4_bin` compatibility validation for schema defaults and connection charset state; conversion/comparison semantics and metadata listing are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | `utf16` | ❌ | medium | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `utf16le` | ❌ | medium | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `utf32` | ❌ | medium | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
@@ -528,10 +528,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| Collation catalog entries | ❌ | top | Expose every MySQL 8.4 collation through metadata, SHOW COLLATION, and charset/collation validation. |  |
-| Default collation selection | ❌ | top | Match server, database, table, column, literal, and expression default collation resolution. |  |
+| Collation catalog entries | 🟡 | top | Expose every MySQL 8.4 collation through metadata, SHOW COLLATION, and charset/collation validation. | Internal registry validates `binary`, `latin1_swedish_ci`, `latin1_bin`, `utf8mb3_general_ci`, `utf8mb3_bin`, `utf8mb4_0900_ai_ci`, and `utf8mb4_bin`; full `SHOW COLLATION`/`INFORMATION_SCHEMA.COLLATIONS` exposure and all MySQL collations are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
+| Default collation selection | 🟡 | top | Match server, database, table, column, literal, and expression default collation resolution. | Implemented for server defaults, schema defaults, `SET NAMES`, `SET CHARACTER SET`, and schema DDL over the initial registry; table, column, literal, and expression default resolution are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | Unicode Collation Algorithm families | ❌ | top | Match utf8mb4_0900, unicode, language-specific, accent-sensitive, case-sensitive, and kana-sensitive behavior where MySQL exposes it. |  |
-| Binary collations | ❌ | top | Match binary string ordering, equality, case sensitivity, and metadata flags. |  |
+| Binary collations | 🟡 | top | Match binary string ordering, equality, case sensitivity, and metadata flags. | `binary`, `latin1_bin`, `utf8mb3_bin`, and `utf8mb4_bin` are recognized for validation and session/schema defaults; comparison, ordering, and metadata flags are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | PAD SPACE and NO PAD collations | ❌ | top | Match trailing-space comparison, uniqueness, ordering, and index behavior. |  |
 | Collation coercibility rules | ❌ | top | Match coercibility ranks, illegal mix diagnostics, and result collation derivation. |  |
 | WEIGHT_STRING behavior | ❌ | medium | Match sort weight generation for supported collations and strings. |  |
@@ -1464,7 +1464,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | Default schema | 🟡 | top | DATABASE()/SCHEMA(), USE, schema-qualified names, and single-file mapping. | `USE` stores handle-owned default schema state and dropping the selected schema clears it; `DATABASE()`/`SCHEMA()` expressions and schema-qualified object execution are deferred. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md). |
-| Connection character set state | ❌ | top | character_set_client, character_set_connection, character_set_results, collation_connection, and SET NAMES behavior. |  |
+| Connection character set state | 🟡 | top | character_set_client, character_set_connection, character_set_results, collation_connection, and SET NAMES behavior. | Handle-owned state is implemented for `SET NAMES` and `SET CHARACTER SET` over the initial registry; general `SHOW VARIABLES`, `SELECT @@...`, protocol metadata, and direct system-variable assignment are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | Time zone state | ❌ | top | global/session time_zone, system_time_zone, temporal functions, TIMESTAMP conversion, and named time zones. |  |
 | Autocommit state | ❌ | top | autocommit behavior, implicit transactions, and transaction boundary metadata. |  |
 | Last insert id | ❌ | top | LAST_INSERT_ID(), OK packet insert id, explicit LAST_INSERT_ID(expr), and multi-row behavior. |  |
@@ -1620,12 +1620,12 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `caching_sha2_password_digest_rounds` | ❌ | low | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `caching_sha2_password_private_key_path` | ❌ | low | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `caching_sha2_password_public_key_path` | ❌ | low | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
-| `character_set_client` | ❌ | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
-| `character_set_connection` | ❌ | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
-| `character_set_database` | ❌ | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
+| `character_set_client` | 🟡 | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. | Stored as handle-owned session state and updated by `SET NAMES`/`SET CHARACTER SET`; SQL variable exposure and direct assignment are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
+| `character_set_connection` | 🟡 | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. | Stored as handle-owned session state and updated by `SET NAMES`/`SET CHARACTER SET`; SQL variable exposure and direct assignment are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
+| `character_set_database` | 🟡 | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. | Reflected through schema catalog defaults for selected-schema behavior in `SET CHARACTER SET`; SQL variable exposure is deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | `character_set_filesystem` | ❌ | high | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
-| `character_set_results` | ❌ | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
-| `character_set_server` | ❌ | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
+| `character_set_results` | 🟡 | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. | Stored as handle-owned session state and updated by `SET NAMES`/`SET CHARACTER SET`; SQL variable exposure and direct assignment are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
+| `character_set_server` | 🟡 | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. | Fixed internally as `utf8mb4` for default connection and schema behavior; SQL variable exposure is deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | `character_set_system` | ❌ | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `character_sets_dir` | ❌ | high | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `check_proxy_users` | ❌ | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
@@ -1643,9 +1643,9 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `clone_ssl_cert` | ❌ | low | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `clone_ssl_key` | ❌ | low | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `clone_valid_donor_list` | ❌ | low | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
-| `collation_connection` | ❌ | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
-| `collation_database` | ❌ | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
-| `collation_server` | ❌ | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
+| `collation_connection` | 🟡 | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. | Stored as handle-owned session state and updated by `SET NAMES`/`SET CHARACTER SET`; SQL variable exposure and direct assignment are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
+| `collation_database` | 🟡 | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. | Reflected through schema catalog defaults for selected-schema behavior in `SET CHARACTER SET`; SQL variable exposure is deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
+| `collation_server` | 🟡 | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. | Fixed internally as `utf8mb4_0900_ai_ci` for default connection and schema behavior; SQL variable exposure is deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | `completion_type` | ❌ | high | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `component_masking.dictionaries_flush_interval_seconds` | ❌ | low | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `component_masking.masking_database` | ❌ | low | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |

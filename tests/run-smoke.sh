@@ -569,13 +569,13 @@ case "$binlog_event_output" in
 		;;
 esac
 
-kill_output=$("$parser" 'KILL 123; KILL QUERY 456; KILL CONNECTION 789; KILL QUERY; KILL QUERY @id; KILL USER "u"')
+kill_output=$("$parser" 'KILL 123; KILL QUERY 456; KILL CONNECTION 789; KILL @id; KILL QUERY @thread_id; KILL QUERY; KILL USER "u"')
 case "$kill_output" in
-	*"/connection:@id"*|*"/connection:USER"*|*"/query:@id"*)
+	*"/connection:USER"*)
 		echo "unexpected KILL non-numeric connection output: $kill_output" >&2
 		exit 1
 		;;
-	*"kill"*/connection:123*"kill"*/query:456*"kill"*/connection:789*"kill[12:13"*"kill[15:17"*"kill[19:21"*) ;;
+	*"kill"*/connection:123*"kill"*/query:456*"kill"*/connection:789*"kill"*/connection:@id*"kill"*/query:@thread_id*"kill[19:20"*"kill[22:24"*) ;;
 	*)
 		echo "unexpected KILL output: $kill_output" >&2
 		exit 1

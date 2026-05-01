@@ -2248,16 +2248,17 @@ static int classify_kill_statement_object(const mylite_parser *parser,
 		return 0;
 	}
 
-	return set_statement_direct_object_name(parser,
-	                                        statement,
-	                                        object_kind,
-	                                        token_index,
-	                                        last_token_index);
+	return set_statement_direct_object_name_range(parser,
+	                                             statement,
+	                                             object_kind,
+	                                             token_index,
+	                                             token_index);
 }
 
 static int token_can_start_processlist_id(const mylite_token *token)
 {
-	return token->kind == MYLITE_TOKEN_NUMBER;
+	return token->kind == MYLITE_TOKEN_NUMBER ||
+	       token->kind == MYLITE_TOKEN_USER_VARIABLE;
 }
 
 static int classify_clone_statement_object(const mylite_parser *parser,

@@ -311,12 +311,12 @@ static int lexer_quoted_identifier(MyliteLexer *lexer, MyliteToken *token) {
         continue;
       }
       token->length = lexer->offset - token->offset;
-      return ML_ATOM;
+      return ML_QUOTED_ID;
     }
   }
 
   token->length = lexer->offset - token->offset;
-  return ML_ATOM;
+  return ML_QUOTED_ID;
 }
 
 static int lexer_dollar_quoted_string(MyliteLexer *lexer,
@@ -549,6 +549,7 @@ static int keyword_token(const MyliteToken *token) {
       {"CONSTRAINT_CATALOG", ML_CONSTRAINT_CATALOG},
       {"CONSTRAINT_NAME", ML_CONSTRAINT_NAME},
       {"CONSTRAINT_SCHEMA", ML_CONSTRAINT_SCHEMA},
+      {"CONTAINS", ML_CONTAINS},
       {"CONTEXT", ML_CONTEXT},
       {"CONTINUE", ML_CONTINUE},
       {"CONVERT", ML_CONVERT},
@@ -571,6 +572,7 @@ static int keyword_token(const MyliteToken *token) {
       {"DECLARE", ML_DECLARE},
       {"DEALLOCATE", ML_DEALLOCATE},
       {"DELETE", ML_DELETE},
+      {"DETERMINISTIC", ML_DETERMINISTIC},
       {"DESC", ML_DESC},
       {"DESCRIBE", ML_DESCRIBE},
       {"DESCRIPTION", ML_DESCRIPTION},
@@ -663,6 +665,7 @@ static int keyword_token(const MyliteToken *token) {
       {"KEYRING", ML_KEYRING},
       {"KEYS", ML_KEYS},
       {"KILL", ML_KILL},
+      {"LANGUAGE", ML_LANGUAGE},
       {"LAST", ML_LAST},
       {"LEAVE", ML_LEAVE},
       {"LEAVES", ML_LEAVES},
@@ -683,6 +686,7 @@ static int keyword_token(const MyliteToken *token) {
       {"MERGE", ML_MERGE},
       {"MIGRATE", ML_MIGRATE},
       {"MIN_ROWS", ML_MIN_ROWS},
+      {"MODIFIES", ML_MODIFIES},
       {"MODIFY", ML_MODIFY},
       {"MUTEX", ML_MUTEX},
       {"MYSQL_ERRNO", ML_MYSQL_ERRNO},
@@ -720,6 +724,7 @@ static int keyword_token(const MyliteToken *token) {
       {"QUERY", ML_QUERY},
       {"QUICK", ML_QUICK},
       {"READ", ML_READ},
+      {"READS", ML_READS},
       {"REAL", ML_REAL},
       {"REBUILD", ML_REBUILD},
       {"RECOVER", ML_RECOVER},

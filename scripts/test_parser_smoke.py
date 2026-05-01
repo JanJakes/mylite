@@ -61,6 +61,7 @@ def main() -> int:
         ("create function f2() returns int deterministic reads sql data return 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create function udf1 returns integer soname 'x.so';", 0, {"statements": "1", "ddl": "1"}),
         ("create procedure if not exists p1() select 1;", 0, {"statements": "1", "ddl": "1"}),
+        ("create procedure p_det() deterministic reads sql data select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create aggregate function agg returns int soname 'x.so';", 0, {"statements": "1", "ddl": "1"}),
         ("create aggregate function agg2 returns decimal soname 'x.so';", 0, {"statements": "1", "ddl": "1"}),
         ("create view db1.v1 as select 1;", 0, {"statements": "1", "ddl": "1"}),

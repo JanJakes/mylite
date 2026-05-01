@@ -16,12 +16,8 @@ static void set_parser_error(MyliteParseContext *ctx, const MyliteToken *token,
                              const char *message);
 static void format_near_token(MyliteParseContext *ctx, int token_id,
                               const MyliteToken *token);
-static int token_ascii_matches_any(const MyliteToken *token,
-                                   const char *const *texts,
-                                   size_t text_count);
 static int token_ascii_starts_with(const MyliteToken *token,
                                    const char *prefix);
-static int token_ascii_equals(const MyliteToken *token, const char *text);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
                                    MyliteParseResult *result) {
@@ -162,51 +158,6 @@ void mylite_parser_record_empty_statement(MyliteParseContext *ctx) {
   ctx->result->statement_kind_counts[MYLITE_STATEMENT_EMPTY]++;
 }
 
-void mylite_parser_require_event_statement_atom(MyliteParseContext *ctx,
-                                                MyliteToken token) {
-  static const char *const starters[] = {
-      "COMMENT",
-      "DETERMINISTIC",
-      "LANGUAGE",
-      "MODIFIES",
-      "NOT",
-      "READS",
-      "SQL",
-  };
-
-  if (ctx->failed || (token.length > 0 && token.start[0] == '`') ||
-      token_ascii_matches_any(&token, starters,
-                              sizeof(starters) / sizeof(starters[0]))) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
-void mylite_parser_require_create_procedure_tail_atom(MyliteParseContext *ctx,
-                                                      MyliteToken token) {
-  static const char *const starters[] = {
-      "COMMENT",
-      "CONTAINS",
-      "DETERMINISTIC",
-      "LANGUAGE",
-      "MODIFIES",
-      "NOT",
-      "READS",
-      "SQL",
-  };
-
-  if (ctx->failed || (token.length > 0 && token.start[0] == '`') ||
-      token_ascii_matches_any(&token, starters,
-                              sizeof(starters) / sizeof(starters[0]))) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
 void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
                                         MyliteToken token,
                                         const char *prefix) {
@@ -266,20 +217,6 @@ static void format_near_token(MyliteParseContext *ctx, int token_id,
            "syntax error near '%s'", snippet);
 }
 
-static int token_ascii_matches_any(const MyliteToken *token,
-                                   const char *const *texts,
-                                   size_t text_count) {
-  size_t i;
-
-  for (i = 0; i < text_count; i++) {
-    if (token_ascii_equals(token, texts[i])) {
-      return 1;
-    }
-  }
-
-  return 0;
-}
-
 static int token_ascii_starts_with(const MyliteToken *token,
                                    const char *prefix) {
   size_t i;
@@ -300,25 +237,4 @@ static int token_ascii_starts_with(const MyliteToken *token,
   }
 
   return prefix[i] == '\0';
-}
-
-static int token_ascii_equals(const MyliteToken *token, const char *text) {
-  size_t i;
-
-  for (i = 0; i < token->length && text[i] != '\0'; i++) {
-    unsigned char a = (unsigned char) token->start[i];
-    unsigned char b = (unsigned char) text[i];
-
-    if (a >= 'a' && a <= 'z') {
-      a = (unsigned char) (a - 'a' + 'A');
-    }
-    if (b >= 'a' && b <= 'z') {
-      b = (unsigned char) (b - 'a' + 'A');
-    }
-    if (a != b) {
-      return 0;
-    }
-  }
-
-  return i == token->length && text[i] == '\0';
 }

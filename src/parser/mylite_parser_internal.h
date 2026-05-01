@@ -30,10 +30,6 @@ void mylite_parser_syntax_error(MyliteParseContext *ctx, int token_id,
 void mylite_parser_record_statement(MyliteParseContext *ctx,
                                     MyliteStatementKind kind);
 void mylite_parser_record_empty_statement(MyliteParseContext *ctx);
-void mylite_parser_require_event_statement_atom(MyliteParseContext *ctx,
-                                                MyliteToken token);
-void mylite_parser_require_create_procedure_tail_atom(MyliteParseContext *ctx,
-                                                      MyliteToken token);
 void mylite_parser_require_token_prefix(MyliteParseContext *ctx,
                                         MyliteToken token,
                                         const char *prefix);

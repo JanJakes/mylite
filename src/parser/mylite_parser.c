@@ -325,6 +325,17 @@ void mylite_parser_require_storage_type(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, token, "invalid storage option");
 }
 
+void mylite_parser_require_xid_number(MyliteParseContext *ctx,
+                                      MyliteToken token) {
+  if (token.length > 2 && token.start[0] == '0' &&
+      (token.start[1] == 'x' || token.start[1] == 'X' ||
+       token.start[1] == 'b' || token.start[1] == 'B')) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid XA XID literal");
+}
+
 void mylite_parser_reject(MyliteParseContext *ctx, MyliteToken token,
                           const char *message) {
   if (ctx->failed) {

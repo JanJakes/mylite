@@ -36,6 +36,8 @@ void mylite_parser_require_row_format(MyliteParseContext *ctx,
                                       MyliteToken token);
 void mylite_parser_require_storage_type(MyliteParseContext *ctx,
                                         MyliteToken token);
+void mylite_parser_require_xid_number(MyliteParseContext *ctx,
+                                      MyliteToken token);
 void mylite_parser_reject(MyliteParseContext *ctx, MyliteToken token,
                           const char *message);
 

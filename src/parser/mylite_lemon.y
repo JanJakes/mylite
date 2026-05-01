@@ -2625,7 +2625,9 @@ xa_xid ::= xa_xid_part import_comma xa_xid_part.
 xa_xid ::= xa_xid_part import_comma xa_xid_part import_comma xa_format_id.
 
 xa_xid_part ::= string_literal.
-xa_xid_part ::= NUMBER_LITERAL.
+xa_xid_part ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_xid_number(ctx, A);
+}
 
 xa_format_id ::= BOOLEAN_NUMBER.
 xa_format_id ::= FACTOR_NUMBER.

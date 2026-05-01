@@ -217,6 +217,8 @@ token sink:
   combination.
 - `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, and `RELEASE SAVEPOINT` recognize
   savepoint names using the shared identifier grammar.
+- XA statements recognize string, hex, and binary XID parts while rejecting
+  bare decimal XID literals.
 - Stored-program label and cursor references use the shared identifier grammar.
 - `DECLARE`, `FETCH [[NEXT] FROM] ... INTO`, and named signal conditions use
   the shared identifier grammar for local names, with numeric MySQL error codes

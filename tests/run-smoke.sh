@@ -508,9 +508,18 @@ esac
 
 flush_output=$("$parser" 'FLUSH TABLES t; FLUSH LOCAL TABLES t; FLUSH NO_WRITE_TO_BINLOG TABLES `db`.`t`; FLUSH TABLES WITH READ LOCK; FLUSH BINARY LOGS; FLUSH LOCAL BINARY LOGS; FLUSH PRIVILEGES; FLUSH STATUS')
 case "$flush_output" in
-	*"flush"*/table:t*"flush"*/table:t*"flush"*/table:'`db`.`t`'*"flush[17:21"*"flush"*/binary_log*"flush"*/binary_log*"flush"*/privilege*"flush"*/status_variable*) ;;
+	*"flush"*/table:t*"flush"*/table:t*"flush"*/table:'`db`.`t`'*"flush[17:21"*/table*"flush"*/binary_log*"flush"*/binary_log*"flush"*/privilege*"flush"*/status_variable*) ;;
 	*)
 		echo "unexpected FLUSH output: $flush_output" >&2
+		exit 1
+		;;
+esac
+
+flush_table_collection_output=$("$parser" 'FLUSH TABLES; FLUSH TABLES WITH READ LOCK; FLUSH TABLE WITH READ LOCK; FLUSH TABLES t FOR EXPORT; FLUSH TABLES t, u WITH READ LOCK')
+case "$flush_table_collection_output" in
+	*"flush[1:2"*/table*"flush[4:8"*/table*"flush[10:14"*/table*"flush"*/table:t*"flush"*/table:t*) ;;
+	*)
+		echo "unexpected FLUSH table collection output: $flush_table_collection_output" >&2
 		exit 1
 		;;
 esac

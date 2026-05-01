@@ -324,10 +324,14 @@ PURGE BINARY LOGS exposes named or collection binary-log targets:
 ok statements=1 kinds=purge[1:7,0:30]/binary_log
 ```
 
-FLUSH TABLES exposes the first table target:
+FLUSH TABLES exposes the first table target or the table collection:
 
 ```text
 ok statements=1 kinds=flush[1:3,0:14]/table:t
+```
+
+```text
+ok statements=1 kinds=flush[1:2,0:12]/table
 ```
 
 FLUSH RELAY LOGS exposes explicit channel names:

@@ -2012,6 +2012,14 @@ static int classify_flush_statement_object(const mylite_parser *parser,
 	}
 
 	name_token_index = find_flush_table_name_token(parser, token_index, last_token_index);
+	if (name_token_index >= parser->token_count &&
+	    token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    (parser->tokens[token_index].parser_token == TABLE_T ||
+	     token_text_equals(parser, token_index, "TABLES"))) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_TABLE);
+	}
+
 	return set_statement_direct_object_name(parser,
 	                                        statement,
 	                                        MYLITE_STATEMENT_OBJECT_TABLE,

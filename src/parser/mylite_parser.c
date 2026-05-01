@@ -6740,6 +6740,10 @@ static int query_expression_group_allows_empty(int previous_top_token_id,
     return 0;
   }
 
+  if (previous_top_token_id == ML_EXISTS) {
+    return 0;
+  }
+
   if (previous_top_token_id == ML_ATOM &&
       token_ascii_equal(previous_top_token, "over")) {
     return 1;
@@ -6871,10 +6875,11 @@ static int do_clause_boundary(int token_id) {
 
 static int do_expression_operator(int token_id, MyliteToken token) {
   if (token_id == ML_AND || token_id == ML_ASSIGN || token_id == ML_COLLATE ||
-      token_id == ML_EQUALS || token_id == ML_GE || token_id == ML_GT ||
-      token_id == ML_IN || token_id == ML_LE || token_id == ML_LIKE ||
-      token_id == ML_LT || token_id == ML_MINUS || token_id == ML_NOT ||
-      token_id == ML_OR || token_id == ML_STAR || token_id == ML_USING) {
+      token_id == ML_COMMA || token_id == ML_EQUALS || token_id == ML_GE ||
+      token_id == ML_GT || token_id == ML_IN || token_id == ML_LE ||
+      token_id == ML_LIKE || token_id == ML_LT || token_id == ML_MINUS ||
+      token_id == ML_NOT || token_id == ML_OR || token_id == ML_STAR ||
+      token_id == ML_USING) {
     return 1;
   }
 

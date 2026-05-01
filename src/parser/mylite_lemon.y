@@ -185,7 +185,25 @@ create_index_using_tail ::= create_index_type cache_name_part.
 
 create_index_type ::= TYPE.
 
-create_index_tail ::= LP create_table_definition_tokens RP create_index_options_tail.
+create_index_tail ::= LP create_index_key_parts RP create_index_options_tail.
+
+create_index_key_parts ::= create_index_key_part.
+create_index_key_parts ::= create_index_key_parts COMMA create_index_key_part.
+
+create_index_key_part ::= create_index_key_part_tokens.
+
+create_index_key_part_tokens ::= create_index_key_part_token.
+create_index_key_part_tokens ::= create_index_key_part_tokens create_index_key_part_token.
+
+create_index_key_part_token ::= ATOM.
+create_index_key_part_token ::= LABEL.
+create_index_key_part_token ::= keyword.
+create_index_key_part_token ::= DOT.
+create_index_key_part_token ::= LP create_table_definition_tokens RP.
+create_index_key_part_token ::= LB.
+create_index_key_part_token ::= RB.
+create_index_key_part_token ::= LC.
+create_index_key_part_token ::= RC.
 
 create_index_options_tail ::= .
 create_index_options_tail ::= create_index_options_tail create_index_option.

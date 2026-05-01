@@ -968,6 +968,8 @@ def main() -> int:
         ("explain for;", 1, {}),
         ("explain for connection;", 1, {}),
         ("explain for connection 1 extra;", 1, {}),
+        ("explain for connection abc;", 1, {}),
+        ("desc for connection abc;", 1, {}),
         ("explain for select;", 1, {}),
         ("explain from;", 1, {}),
         ("use test;", 0, {"statements": "1", "utility": "1"}),

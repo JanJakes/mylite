@@ -100,6 +100,7 @@ token sink:
   partition or row-matching clauses, character sets, field/line options,
   numeric ignored-row counts, column/user-variable lists, and `SET` tails.
   `LOAD DATA` partition names use the shared identifier grammar.
+- `EXPLAIN` and `DESCRIBE` recognize numeric `FOR CONNECTION` ids.
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
 - `CHANGE REPLICATION SOURCE TO` recognizes documented MySQL 8.4 source option

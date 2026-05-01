@@ -2488,7 +2488,7 @@ describe_explain_tail ::= explain_format_clause explain_schema_spec describe_exp
 describe_explain_tail ::= explain_format_json_clause explain_into_tail describe_explain_query_start required_statement_tail.
 describe_explain_tail ::= explain_format_json_clause explain_into_tail explain_schema_spec describe_explain_query_start required_statement_tail.
 describe_explain_tail ::= explain_analyze_tail.
-describe_explain_tail ::= FOR CONNECTION ATOM.
+describe_explain_tail ::= FOR CONNECTION explain_connection_id.
 
 describe_explain_query_start ::= DELETE.
 describe_explain_query_start ::= INSERT.
@@ -2510,7 +2510,7 @@ explain_tail ::= explain_format_clause explain_schema_spec explain_query_start s
 explain_tail ::= explain_format_json_clause explain_into_tail explain_query_start statement_tail.
 explain_tail ::= explain_format_json_clause explain_into_tail explain_schema_spec explain_query_start statement_tail.
 explain_tail ::= explain_analyze_tail.
-explain_tail ::= FOR CONNECTION ATOM.
+explain_tail ::= FOR CONNECTION explain_connection_id.
 
 explain_format_clause ::= FORMAT diagnostics_equals explain_format_name.
 
@@ -2522,6 +2522,10 @@ explain_schema_spec ::= FOR explain_schema_kind cache_name_part.
 
 explain_schema_kind ::= SCHEMA.
 explain_schema_kind ::= DATABASE.
+
+explain_connection_id ::= BOOLEAN_NUMBER.
+explain_connection_id ::= FACTOR_NUMBER.
+explain_connection_id ::= NUMBER_LITERAL.
 
 explain_analyze_tail ::= ANALYZE explain_analyze_format_tail explain_schema_tail explain_analyze_query_start statement_tail.
 

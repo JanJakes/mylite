@@ -14,6 +14,10 @@ token sink:
 - A Lemon grammar recognizes MySQL statement families for DDL, DML,
   transactions, utility statements, administration statements, replication/XA,
   and stored-program statement starts.
+- Closed keyword subgrammars for routine characteristics, table options,
+  diagnostics items, replication options, profile types, UDF return types, and
+  other statement modifiers are represented directly in Lemon rather than
+  validated by C string checks.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,
@@ -50,7 +54,8 @@ The corpus is downloaded to `tests/parser/.cache/` and is not committed.
 The corpus runner uses permissive mode because the CSV includes extracted
 mysqltest fragments and negative-test inputs that are not standalone MySQL
 statements. Strict mode currently rejects those fragment starts while accepting
-the recognized MySQL statement families.
+the recognized MySQL statement families. `make test-parser` also runs the
+strict corpus check and verifies the current known fragment-failure list.
 
 ## Next steps
 

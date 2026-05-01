@@ -23,7 +23,7 @@ OBJECTS := \
 	$(BUILD_DIR)/mylite_lemon.o \
 	$(BUILD_DIR)/mylite_parse.o
 
-.PHONY: all clean regen-parser test-parser
+.PHONY: all clean regen-parser test-parser test-parser-strict
 
 all: $(BUILD_DIR)/mylite-parse
 
@@ -60,6 +60,10 @@ regen-parser: $(PARSER_GEN_C) $(PARSER_GEN_H)
 test-parser: all
 	python3 scripts/test_parser_smoke.py --exe $(BUILD_DIR)/mylite-parse
 	python3 scripts/test_parser_corpus.py --exe $(BUILD_DIR)/mylite-parse
+	python3 scripts/test_parser_corpus_strict.py --exe $(BUILD_DIR)/mylite-parse
+
+test-parser-strict: all
+	python3 scripts/test_parser_corpus_strict.py --exe $(BUILD_DIR)/mylite-parse
 
 clean:
 	rm -rf $(BUILD_DIR)

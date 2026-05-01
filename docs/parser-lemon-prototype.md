@@ -30,7 +30,8 @@ token sink:
   lists, and stored procedure signatures accept `IN`/`OUT`/`INOUT` modes while
   preserving nested type bodies. Stored routine bodies validate direct and
   compound `RETURN`, `DO`, `SET`, local-variable `DECLARE`, and control-flow
-  condition expressions through the existing reusable validators.
+  condition expressions through the existing reusable validators; direct
+  procedure DML and `VALUES` bodies reuse the DML/VALUES validators.
 - Loadable UDF declarations and plugin installs require string-literal
   `SONAME` values.
 - `CREATE VIEW` and `ALTER VIEW` recognize algorithm, definer, SQL security,

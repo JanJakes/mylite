@@ -295,6 +295,7 @@ static int validate_embedded_set_value(MyliteParseContext *ctx,
                                        MyliteLexer *lexer, int token_id,
                                        MyliteToken token);
 static int routine_body_statement_start_token(int token_id);
+static int routine_direct_query_body_start_token(int token_id);
 static int routine_compound_statement_start_token(int token_id);
 static int routine_end_suffix_token(int token_id);
 static int diagnostics_item_name_token(int token_id);
@@ -7339,7 +7340,8 @@ void mylite_parser_validate_create_procedure_statement(MyliteParseContext *ctx,
     if (routine_characteristic_token(&lexer, &token_id, &token)) {
       continue;
     }
-    if (routine_body_statement_start_token(token_id)) {
+    if (routine_body_statement_start_token(token_id) ||
+        routine_direct_query_body_start_token(token_id)) {
       validate_routine_statement_body_from(ctx, token_id, token);
     }
     return;
@@ -10466,6 +10468,12 @@ static int routine_body_statement_start_token(int token_id) {
          token_id == ML_RESIGNAL || token_id == ML_RETURN ||
          token_id == ML_SET || token_id == ML_SIGNAL ||
          token_id == ML_UNTIL || token_id == ML_WHEN || token_id == ML_WHILE;
+}
+
+static int routine_direct_query_body_start_token(int token_id) {
+  return token_id == ML_DELETE || token_id == ML_INSERT ||
+         token_id == ML_REPLACE || token_id == ML_UPDATE ||
+         token_id == ML_VALUES;
 }
 
 static int routine_compound_statement_start_token(int token_id) {

@@ -232,7 +232,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. | Parser recognizes table lists and optional `QUICK`/`EXTENDED` modifiers. |
 | `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers and table lists. |
 | `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, table lists, and `QUICK`/`EXTENDED`/`USE_FRM` options. |
-| `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. | Parser recognizes string-literal component file lists and optional `SET` assignments with global/persist scopes. |
+| `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. | Parser recognizes string-literal component file lists and optional `SET` assignments with global/persist scopes, and rejects malformed assignment values with adjacent operands, dangling operators, and invalid plain parenthesized groups. |
 | `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. | Parser recognizes comma-separated string-literal component file lists. |
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar and required string-literal `SONAME` file values. |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar. |

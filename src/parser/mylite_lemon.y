@@ -2296,7 +2296,10 @@ component_install_tail ::= SET component_install_assignments.
 component_install_assignments ::= component_install_assignment.
 component_install_assignments ::= component_install_assignments import_comma component_install_assignment.
 
-component_install_assignment ::= component_install_assignment_scope component_install_name diagnostics_equals component_install_value.
+component_install_assignment ::= component_install_assignment_scope component_install_name diagnostics_equals component_install_value(A). {
+  mylite_parser_validate_expression_from(
+      ctx, A, "malformed INSTALL COMPONENT assignment");
+}
 
 component_install_assignment_scope ::= .
 component_install_assignment_scope ::= GLOBAL.

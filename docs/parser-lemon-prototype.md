@@ -243,7 +243,8 @@ token sink:
 - `INSTALL PLUGIN` and `UNINSTALL PLUGIN` recognize plugin names using the
   shared identifier grammar.
 - `INSTALL COMPONENT` and `UNINSTALL COMPONENT` recognize string-literal
-  component file lists and optional scoped `SET` assignments for installs.
+  component file lists and optional scoped `SET` assignments for installs,
+  while rejecting malformed component assignment values.
 - `ANALYZE TABLE` recognizes table lists and histogram update/drop clauses using
   the shared identifier grammar for table and column names, with numeric
   histogram bucket counts, MySQL 8.4 automatic/manual histogram update modes,

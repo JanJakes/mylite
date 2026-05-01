@@ -59,6 +59,10 @@ ok statements=1 kinds=analyze[1:3,0:15]/table:t
 ok statements=1 kinds=drop[1:3,0:14]/table:t1
 ```
 
+`DROP TABLE` and `DROP VIEW` validate optional `IF EXISTS`, comma-separated
+name lists, and `RESTRICT` / `CASCADE` tails. `DROP TABLE` also accepts
+`TEMPORARY` and corpus-observed `TABLES` forms.
+
 Standalone `DROP INDEX` records the index target and validates the required
 `ON` table clause plus optional `ALGORITHM` and `LOCK` clauses:
 

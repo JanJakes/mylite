@@ -269,6 +269,9 @@ validates a single identifier-like or qualified table target across optional
 key-comparison value lists, and optional `WHERE` / `LIMIT` tails, and `CLOSE`.
 `RENAME TABLE` validates comma-separated `old TO new` rename pairs, while the
 corpus-observed `RENAME TABLES` spelling remains accepted for parser coverage.
+`DROP TABLE` and `DROP VIEW` validate optional `IF EXISTS`, comma-separated
+name lists, and `RESTRICT` / `CASCADE` tails; `DROP TABLE` also accepts
+`TEMPORARY` and corpus-observed `TABLES` forms.
 Prepared-statement names are recorded in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`; those forms
 validate handle names, `PREPARE ... FROM` sources, and `EXECUTE ... USING`

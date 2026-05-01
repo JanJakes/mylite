@@ -389,6 +389,55 @@ if "$parser" --quiet 'DROP INDEX i ON t LOCK=BAD'; then
 	exit 1
 fi
 
+drop_table_view_output=$("$parser" 'DROP TABLE IF EXISTS t1, db.t2 RESTRICT; DROP TEMPORARY TABLES IF EXISTS tmp1, tmp2; DROP VIEW IF EXISTS v1, db.v2 CASCADE')
+case "$drop_table_view_output" in
+	*"drop"*/table:t1*"drop"*/table:tmp1*"drop"*/view:v1*) ;;
+	*)
+		echo "unexpected DROP TABLE/VIEW output: $drop_table_view_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'DROP TABLE'; then
+	echo "expected missing DROP TABLE list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP TABLE IF EXISTS'; then
+	echo "expected missing DROP TABLE IF EXISTS list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP TABLE t,'; then
+	echo "expected trailing DROP TABLE comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP TABLE t RESTRICT CASCADE'; then
+	echo "expected multiple DROP TABLE tail options to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP TEMPORARY VIEW v'; then
+	echo "expected DROP TEMPORARY VIEW to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP VIEW'; then
+	echo "expected missing DROP VIEW list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP VIEW IF EXISTS'; then
+	echo "expected missing DROP VIEW IF EXISTS list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP VIEW v, CASCADE'; then
+	echo "expected missing DROP VIEW name before tail option to fail" >&2
+	exit 1
+fi
+
 rename_table_output=$("$parser" 'RENAME TABLE old TO new; RENAME TABLE db.old TO other.new, a TO b; RENAME TABLES t2 TO t0, t4 TO t2')
 case "$rename_table_output" in
 	*"rename"*/table:old*"rename"*/table:db.old*"rename"*/table:t2*) ;;

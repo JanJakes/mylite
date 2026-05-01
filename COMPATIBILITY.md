@@ -103,11 +103,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP PROCEDURE` | ❌ | medium | Stored-procedure deletion and metadata cleanup. |  |
 | `DROP SERVER` | ❌ | low | Foreign server metadata deletion. |  |
 | `DROP SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system deletion and dependency checks. |  |
-| `DROP TABLE` | ❌ | top | Multi-table drop, temporary tables, foreign-key checks, and warnings. |  |
+| `DROP TABLE` | ❌ | top | Multi-table drop, temporary tables, foreign-key checks, and warnings. | Parser records the first table target and validates optional `TEMPORARY`, optional `IF EXISTS`, table lists, corpus-observed `TABLES`, and `RESTRICT` / `CASCADE` tails; metadata removal, implicit commits, warnings, and foreign-key diagnostics are not implemented. |
 | `DROP TABLESPACE` | ❌ | low | Tablespace deletion syntax and diagnostics. |  |
 | `DROP UNDO TABLESPACE` | ❌ | low | Undo tablespace deletion syntax present in the MySQL 8.4 parser source. | Parser records the undo tablespace target; storage-engine behavior is not implemented. |
 | `DROP TRIGGER` | ❌ | high | Trigger deletion and metadata cleanup. |  |
-| `DROP VIEW` | ❌ | high | Multi-view drop and warnings. |  |
+| `DROP VIEW` | ❌ | high | Multi-view drop and warnings. | Parser records the first view target and validates optional `IF EXISTS`, view lists, and `RESTRICT` / `CASCADE` tails; metadata removal, warnings, and diagnostics are not implemented. |
 | `RENAME TABLE` | ❌ | top | Atomic multi-table rename semantics. | Parser records the first source table and validates single and multi-pair `RENAME TABLE old TO new` lists, including corpus-observed `RENAME TABLES`; atomic metadata updates, dependency handling, and diagnostics are not implemented. |
 | `TRUNCATE TABLE` | ❌ | top | DDL-like truncate, auto-increment reset, implicit commit, and foreign-key restrictions. | Parser records and validates a single table target across optional `TABLE` forms; truncate behavior, implicit commit, and diagnostics are not implemented. |
 | Atomic DDL | ❌ | top | Atomicity and crash-safety expectations for MySQL DDL equivalents. |  |

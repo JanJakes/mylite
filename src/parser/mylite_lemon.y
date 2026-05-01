@@ -760,8 +760,8 @@ resource_group_vcpu_clause ::= VCPU resource_group_optional_equals resource_grou
 resource_group_vcpu_list ::= resource_group_vcpu_spec.
 resource_group_vcpu_list ::= resource_group_vcpu_list import_comma resource_group_vcpu_spec.
 
-resource_group_vcpu_spec ::= ATOM.
-resource_group_vcpu_spec ::= ATOM MINUS ATOM.
+resource_group_vcpu_spec ::= resource_group_number_value.
+resource_group_vcpu_spec ::= resource_group_number_value MINUS resource_group_number_value.
 
 resource_group_thread_priority_tail ::= .
 resource_group_thread_priority_tail ::= resource_group_thread_priority_clause.
@@ -775,7 +775,11 @@ resource_group_state_tail ::= DISABLE.
 resource_group_optional_equals ::= .
 resource_group_optional_equals ::= diagnostics_equals.
 
-resource_group_signed_atom ::= ATOM.
+resource_group_signed_atom ::= resource_group_number_value.
+
+resource_group_number_value ::= BOOLEAN_NUMBER.
+resource_group_number_value ::= FACTOR_NUMBER.
+resource_group_number_value ::= NUMBER_LITERAL.
 
 create_resource_type ::= create_type_marker diagnostics_equals create_resource_type_value.
 

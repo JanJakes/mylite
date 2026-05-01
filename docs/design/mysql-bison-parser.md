@@ -407,9 +407,12 @@ Group Replication start/stop statements record the group-replication subsystem
 target. XA transaction XID targets are recorded for the
 XID-bearing XA statements, while `XA RECOVER` records the XA transaction
 collection. Non-XA transaction-control statements record the
-transaction object kind for `BEGIN`, `BEGIN WORK`, `START TRANSACTION`,
-`COMMIT`, bare `ROLLBACK`, and `SET [GLOBAL | LOCAL | SESSION] TRANSACTION`, while
-leaving compound `BEGIN ... END` blocks objectless. `COMMIT` and non-savepoint
+transaction object kind for validated `BEGIN`, `BEGIN WORK`,
+`START TRANSACTION`, `COMMIT`, bare `ROLLBACK`, and
+`SET [GLOBAL | LOCAL | SESSION] TRANSACTION`, while leaving compound
+`BEGIN ... END` blocks objectless. `BEGIN` validation rejects extra
+transaction tails and MySQL-unsupported compound `BEGIN [NOT] ATOMIC` clauses.
+`COMMIT` and non-savepoint
 `ROLLBACK` validate MySQL completion-clause ordering for `AND [NO] CHAIN` and
 `[NO] RELEASE`, and `START TRANSACTION` validates comma-separated transaction
 characteristics. Quoted `HELP` search

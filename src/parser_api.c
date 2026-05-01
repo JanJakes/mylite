@@ -970,6 +970,10 @@ static int token_is_repair_table_option(const mylite_parser *parser, size_t toke
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_begin_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int begin_compound_starts_unsupported_atomic_clause(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t end_token_index);
 static int validate_commit_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_rollback_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_rollback_savepoint_clause(const mylite_parser *parser,
@@ -2430,6 +2434,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_RELEASE:
 			if (!validate_release_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid RELEASE statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_BEGIN:
+			if (!validate_begin_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid BEGIN statement");
 				return;
 			}
 			break;
@@ -12544,6 +12554,50 @@ static int validate_release_statement_syntax(const mylite_parser *parser, const 
 	       token_can_continue_object_name(&parser->tokens[token_index + 1]);
 }
 
+static int validate_begin_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+	size_t matching_token;
+	size_t end_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	last_token_index = statement->last_token - 1;
+	matching_token = parser->tokens[token_index].matching_token;
+	if (matching_token == 0) {
+		if (token_index == last_token_index) {
+			return 1;
+		}
+		return token_index + 1 == last_token_index &&
+		       token_text_equals(parser, token_index + 1, "WORK");
+	}
+
+	end_token_index = find_compound_statement_end_token(parser, token_index, END_T);
+	if (end_token_index >= parser->token_count ||
+	    !validate_compound_statement_end_tail_syntax(parser, statement, end_token_index, 1)) {
+		return 0;
+	}
+	return !begin_compound_starts_unsupported_atomic_clause(parser, token_index + 1, end_token_index);
+}
+
+static int begin_compound_starts_unsupported_atomic_clause(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t end_token_index)
+{
+	if (token_index >= end_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "ATOMIC")) {
+		return 1;
+	}
+	return token_index + 1 < end_token_index &&
+	       parser->tokens[token_index].parser_token == NOT_T &&
+	       token_text_equals(parser, token_index + 1, "ATOMIC");
+}
+
 static int validate_commit_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
 {
 	size_t token_index = find_statement_kind_token(parser, statement);
@@ -15214,6 +15268,7 @@ static size_t find_statement_kind_token(const mylite_parser *parser, const mylit
 	case MYLITE_STATEMENT_LOOP: desired_token = LOOP_T; break;
 	case MYLITE_STATEMENT_REPEAT: desired_token = REPEAT_T; break;
 	case MYLITE_STATEMENT_WHILE: desired_token = WHILE_T; break;
+	case MYLITE_STATEMENT_BEGIN: desired_token = BEGIN_T; break;
 	default:
 		return statement->first_token - 1;
 	}

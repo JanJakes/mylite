@@ -497,6 +497,65 @@ if "$parser" --quiet 'CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW'; then
 	exit 1
 fi
 
+create_routine_output=$("$parser" "CREATE DEFINER=CURRENT_USER PROCEDURE p(IN a INT, OUT b VARCHAR(32)) COMMENT 'p' LANGUAGE SQL MODIFIES SQL DATA SQL SECURITY INVOKER BEGIN SET b = a; END; CREATE PROCEDURE p_keywords(IN value INT, IN start BIGINT) SELECT value; CREATE FUNCTION IF NOT EXISTS db.f(x INT, y DECIMAL(10,2)) RETURNS DECIMAL(10,2) DETERMINISTIC READS SQL DATA RETURN x + y; CREATE DEFINER=routine@localhost FUNCTION f2() RETURNS SET('a','b') NOT DETERMINISTIC CONTAINS SQL BEGIN RETURN 'a'; END")
+case "$create_routine_output" in
+	*"create"*/procedure:p*"create"*/procedure:p_keywords*"create"*/function:db.f*"create"*/function:f2*) ;;
+	*)
+		echo "unexpected CREATE routine output: $create_routine_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'CREATE PROCEDURE p SELECT 1'; then
+	echo "expected CREATE PROCEDURE without parameter list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE PROCEDURE p(IN a) SELECT 1'; then
+	echo "expected CREATE PROCEDURE parameter without type to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE PROCEDURE p(IN a INT,) SELECT 1'; then
+	echo "expected CREATE PROCEDURE trailing parameter comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE PROCEDURE p() COMMENT x SELECT 1'; then
+	echo "expected CREATE PROCEDURE nonstring comment to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE PROCEDURE p() LANGUAGE JAVASCRIPT SELECT 1'; then
+	echo "expected CREATE PROCEDURE invalid language to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE FUNCTION f(x INT) RETURN x'; then
+	echo "expected CREATE FUNCTION without RETURNS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE FUNCTION f(IN x INT) RETURNS INT RETURN x'; then
+	echo "expected CREATE FUNCTION parameter mode to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE FUNCTION f() RETURNS DETERMINISTIC RETURN 1'; then
+	echo "expected CREATE FUNCTION without return type to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE FUNCTION f() RETURNS INT SQL SECURITY CURRENT_USER RETURN 1'; then
+	echo "expected CREATE FUNCTION invalid SQL SECURITY value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE DEFINER user@localhost PROCEDURE p() SELECT 1'; then
+	echo "expected CREATE PROCEDURE DEFINER without equals to fail" >&2
+	exit 1
+fi
+
 create_index_output=$("$parser" "CREATE INDEX i ON t (c); CREATE UNIQUE INDEX i2 USING BTREE ON db.t (c(10) DESC, (lower(name)) ASC) KEY_BLOCK_SIZE=8 WITH PARSER parser_name COMMENT 'c' VISIBLE ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE='{}' ALGORITHM=INPLACE LOCK=NONE; CREATE FULLTEXT INDEX ft ON t (body) WITH PARSER ngram; CREATE SPATIAL INDEX sp ON t (g) USING HASH; CREATE INDEX legacy TYPE BTREE ON t (c) TYPE RTREE")
 case "$create_index_output" in
 	*"create"*/index:i*"create"*/index:i2*"create"*/index:ft*"create"*/index:sp*"create"*/index:legacy*) ;;

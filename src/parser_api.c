@@ -38,6 +38,24 @@ static int token_starts_create_loadable_function_statement(const mylite_parser *
                                                            size_t token_index,
                                                            size_t last_token_index);
 static int token_is_loadable_function_return_type(const mylite_parser *parser, size_t token_index);
+static int validate_create_routine_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static int validate_routine_parameter_list_syntax(const mylite_parser *parser,
+                                                  size_t open_token_index,
+                                                  int is_function);
+static int validate_create_routine_characteristic_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index,
+                                                         size_t *next_token_index);
+static int token_starts_create_routine_statement(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
+static int token_is_routine_parameter_mode(const mylite_parser *parser, size_t token_index);
+static int token_starts_create_routine_characteristic(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index);
+static int token_can_start_stored_function_body(const mylite_parser *parser, size_t token_index);
 static int validate_create_index_statement_syntax(const mylite_parser *parser,
                                                   size_t token_index,
                                                   size_t last_token_index);
@@ -2018,6 +2036,9 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (token_starts_create_loadable_function_statement(parser, token_index, last_token_index)) {
 		return validate_create_loadable_function_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (token_starts_create_routine_statement(parser, token_index, last_token_index)) {
+		return validate_create_routine_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (token_starts_create_index_statement(parser, token_index, last_token_index)) {
 		return validate_create_index_statement_syntax(parser, token_index, last_token_index);
 	}
@@ -2179,6 +2200,301 @@ static int token_is_loadable_function_return_type(const mylite_parser *parser, s
 	       token_text_equals(parser, token_index, "INTEGER") ||
 	       token_text_equals(parser, token_index, "REAL") ||
 	       token_text_equals(parser, token_index, "DECIMAL");
+}
+
+static int validate_create_routine_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	int is_function;
+
+	if (token_text_equals(parser, token_index, "DEFINER")) {
+		if (!validate_definer_clause_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+	}
+	if (token_index > last_token_index ||
+	    (parser->tokens[token_index].parser_token != FUNCTION_T &&
+	     parser->tokens[token_index].parser_token != PROCEDURE_T)) {
+		return 0;
+	}
+	is_function = parser->tokens[token_index].parser_token == FUNCTION_T;
+
+	token_index++;
+	if (token_index + 2 <= last_token_index &&
+	    token_text_equals(parser, token_index, "IF") &&
+	    token_text_equals(parser, token_index + 1, "NOT") &&
+	    token_text_equals(parser, token_index + 2, "EXISTS")) {
+		token_index += 3;
+	}
+	if (token_index + 1 > last_token_index || !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	token_index = last_qualified_name_token(parser, token_index, last_token_index) + 1;
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token != '(' ||
+	    !validate_routine_parameter_list_syntax(parser, token_index, is_function)) {
+		return 0;
+	}
+	token_index = parser->tokens[token_index].matching_token;
+
+	if (is_function) {
+		int saw_return_type = 0;
+
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index, "RETURNS")) {
+			return 0;
+		}
+		token_index++;
+		while (token_index <= last_token_index &&
+		       !token_starts_create_routine_characteristic(parser, token_index, last_token_index) &&
+		       !token_can_start_stored_function_body(parser, token_index)) {
+			size_t matching_token = parser->tokens[token_index].matching_token;
+
+			saw_return_type = 1;
+			if (matching_token > token_index + 1) {
+				token_index = matching_token;
+			} else {
+				token_index++;
+			}
+		}
+		if (!saw_return_type) {
+			return 0;
+		}
+	}
+
+	while (token_index <= last_token_index &&
+	       token_starts_create_routine_characteristic(parser, token_index, last_token_index)) {
+		if (!validate_create_routine_characteristic_syntax(parser,
+		                                                   token_index,
+		                                                   last_token_index,
+		                                                   &token_index)) {
+			return 0;
+		}
+	}
+
+	return token_index <= last_token_index;
+}
+
+static int validate_routine_parameter_list_syntax(const mylite_parser *parser,
+                                                  size_t open_token_index,
+                                                  int is_function)
+{
+	size_t token_index = open_token_index + 1;
+	size_t close_token_index;
+
+	if (open_token_index >= parser->token_count ||
+	    parser->tokens[open_token_index].parser_token != '(' ||
+	    parser->tokens[open_token_index].matching_token <= open_token_index) {
+		return 0;
+	}
+
+	close_token_index = parser->tokens[open_token_index].matching_token - 1;
+	if (token_index >= close_token_index) {
+		return 1;
+	}
+
+	while (token_index < close_token_index) {
+		int saw_type_token = 0;
+
+		if (token_is_routine_parameter_mode(parser, token_index)) {
+			if (is_function) {
+				return 0;
+			}
+			token_index++;
+		}
+		if (token_index >= close_token_index ||
+		    !token_can_start_local_variable_name(&parser->tokens[token_index])) {
+			return 0;
+		}
+		token_index++;
+
+		while (token_index < close_token_index && parser->tokens[token_index].parser_token != ',') {
+			size_t matching_token = parser->tokens[token_index].matching_token;
+
+			saw_type_token = 1;
+			if (matching_token > token_index + 1) {
+				token_index = matching_token;
+			} else {
+				token_index++;
+			}
+		}
+		if (!saw_type_token) {
+			return 0;
+		}
+		if (token_index >= close_token_index) {
+			return 1;
+		}
+		token_index++;
+		if (token_index >= close_token_index) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+static int validate_create_routine_characteristic_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index,
+                                                         size_t *next_token_index)
+{
+	if (token_text_equals(parser, token_index, "COMMENT")) {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "LANGUAGE")) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "SQL")) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "DETERMINISTIC")) {
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "NOT")) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "DETERMINISTIC")) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "CONTAINS") ||
+	    parser->tokens[token_index].parser_token == NO_T) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "SQL")) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "READS") ||
+	    token_text_equals(parser, token_index, "MODIFIES")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "SQL") ||
+		    !token_text_equals(parser, token_index + 2, "DATA")) {
+			return 0;
+		}
+		*next_token_index = token_index + 3;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "SQL")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "SECURITY") ||
+		    (!token_text_equals(parser, token_index + 2, "DEFINER") &&
+		     !token_text_equals(parser, token_index + 2, "INVOKER"))) {
+			return 0;
+		}
+		*next_token_index = token_index + 3;
+		return 1;
+	}
+
+	return 0;
+}
+
+static int token_starts_create_routine_statement(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == PROCEDURE_T) {
+		return 1;
+	}
+	if (parser->tokens[token_index].parser_token == FUNCTION_T) {
+		return 1;
+	}
+	if (!token_text_equals(parser, token_index, "DEFINER")) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+		size_t definer_clause_last_token = last_definer_clause_token(parser, token_index, last_token_index);
+
+		if (definer_clause_last_token > token_index) {
+			token_index = definer_clause_last_token + 1;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == FUNCTION_T ||
+		    parser->tokens[token_index].parser_token == PROCEDURE_T) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token == DATABASE_T ||
+		    parser->tokens[token_index].parser_token == EVENT_T ||
+		    parser->tokens[token_index].parser_token == INDEX_T ||
+		    parser->tokens[token_index].parser_token == ROLE_T ||
+		    parser->tokens[token_index].parser_token == SCHEMA_T ||
+		    parser->tokens[token_index].parser_token == TABLE_T ||
+		    parser->tokens[token_index].parser_token == TRIGGER_T ||
+		    parser->tokens[token_index].parser_token == VIEW_T ||
+		    token_text_equals(parser, token_index, "SERVER") ||
+		    token_text_equals(parser, token_index, "TABLESPACE")) {
+			return 0;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+	return 0;
+}
+
+static int token_is_routine_parameter_mode(const mylite_parser *parser, size_t token_index)
+{
+	return parser->tokens[token_index].parser_token == IN_T ||
+	       token_text_equals(parser, token_index, "OUT") ||
+	       token_text_equals(parser, token_index, "INOUT");
+}
+
+static int token_starts_create_routine_characteristic(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "NOT")) {
+		return token_index + 1 <= last_token_index &&
+		       token_text_equals(parser, token_index + 1, "DETERMINISTIC");
+	}
+	return token_text_equals(parser, token_index, "COMMENT") ||
+	       token_text_equals(parser, token_index, "LANGUAGE") ||
+	       token_text_equals(parser, token_index, "DETERMINISTIC") ||
+	       token_text_equals(parser, token_index, "CONTAINS") ||
+	       parser->tokens[token_index].parser_token == NO_T ||
+	       token_text_equals(parser, token_index, "READS") ||
+	       token_text_equals(parser, token_index, "MODIFIES") ||
+	       token_text_equals(parser, token_index, "SQL");
+}
+
+static int token_can_start_stored_function_body(const mylite_parser *parser, size_t token_index)
+{
+	return parser->tokens[token_index].parser_token == BEGIN_T ||
+	       parser->tokens[token_index].parser_token == RETURN_T ||
+	       parser->tokens[token_index].parser_token == SELECT_T ||
+	       parser->tokens[token_index].parser_token == INSERT_T ||
+	       parser->tokens[token_index].parser_token == UPDATE_T ||
+	       parser->tokens[token_index].parser_token == DELETE_T ||
+	       parser->tokens[token_index].parser_token == WITH_T ||
+	       parser->tokens[token_index].parser_token == DO_T ||
+	       parser->tokens[token_index].parser_token == CALL_T ||
+	       parser->tokens[token_index].parser_token == CASE_T ||
+	       parser->tokens[token_index].parser_token == IF_T ||
+	       parser->tokens[token_index].parser_token == LOOP_T ||
+	       parser->tokens[token_index].parser_token == REPEAT_T ||
+	       parser->tokens[token_index].parser_token == WHILE_T;
 }
 
 static int validate_create_index_statement_syntax(const mylite_parser *parser,
@@ -13065,9 +13381,11 @@ static int token_can_be_unquoted_local_name_keyword(int token)
 	case OPEN_T:
 	case READ_T:
 	case RETURN_T:
+	case START_T:
 	case STOP_T:
 	case TO_T:
 	case TRANSACTION_T:
+	case VALUE_T:
 	case WRITE_T:
 		return 1;
 	default:

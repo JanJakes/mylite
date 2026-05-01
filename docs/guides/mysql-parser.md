@@ -69,7 +69,11 @@ character-set, collation, encryption, and `READ ONLY`. `DROP DATABASE` and
 `DROP SCHEMA` validate optional `IF EXISTS` with a single unqualified schema
 target.
 Unambiguous `CREATE FUNCTION` loadable-function forms validate documented
-`RETURNS` and `SONAME` clauses without tightening stored-function bodies yet.
+`RETURNS` and `SONAME` clauses separately from stored routine creation.
+Stored `CREATE PROCEDURE` and `CREATE FUNCTION` forms validate optional definer
+and `IF NOT EXISTS`, parameter-list shape, stored-function `RETURNS` types,
+documented routine characteristics, and nonempty bodies without executing or
+analyzing routine semantics yet.
 `ALTER FUNCTION` and `ALTER PROCEDURE` validate documented routine
 characteristics without changing parameters or bodies.
 `CREATE INDEX` validates standalone index modifiers, key-part-list shape,

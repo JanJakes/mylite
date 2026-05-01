@@ -59,6 +59,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 routine alteration statements:
   `https://dev.mysql.com/doc/refman/8.4/en/alter-function.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/alter-procedure.html`
+- MySQL 8.4 routine creation statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-procedure.html`
 - MySQL 8.4 loadable-function DDL:
   `https://dev.mysql.com/doc/refman/8.4/en/create-function-loadable.html`
 - MySQL 8.4 standalone index DDL:
@@ -382,6 +384,10 @@ execution semantics to later phases.
 `CREATE TRIGGER` validates optional definer and `IF NOT EXISTS`, trigger timing
 and event, table target, `FOR EACH ROW`, optional ordering clauses, and nonempty
 bodies while leaving trigger metadata and execution to later phases.
+Stored `CREATE PROCEDURE` and `CREATE FUNCTION` validate optional definer and
+`IF NOT EXISTS`, parameter-list shape, stored-function `RETURNS` types,
+documented routine characteristics, and nonempty simple or compound bodies while
+leaving routine metadata and execution semantics to later phases.
 Resource group targets are recorded and validated for `CREATE`, `ALTER`,
 `DROP`, and `SET RESOURCE GROUP`. Server DDL targets are recorded and validated
 for `CREATE SERVER`, `ALTER SERVER`, and `DROP SERVER`. Logfile-group DDL

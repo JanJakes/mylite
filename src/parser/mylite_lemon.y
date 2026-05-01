@@ -2836,7 +2836,7 @@ clone_port ::= NUMBER_LITERAL.
 
 clone_identified ::= IDENTIFIED.
 
-clone_password ::= ATOM.
+clone_password ::= string_literal.
 
 clone_remote_tail ::= clone_data_directory_tail clone_require_ssl_tail.
 

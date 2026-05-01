@@ -22,7 +22,8 @@ token sink:
   validated by C string checks.
 - MySQL 8.4 administration forms such as `SHOW BINARY LOG STATUS` and
   `CLONE INSTANCE ... [DATA DIRECTORY ...] [REQUIRE [NO] SSL]` are recognized
-  structurally, with numeric remote clone ports.
+  structurally, with numeric remote clone ports and string-literal clone
+  passwords and data directories.
 - Account-reference forms that permit `CURRENT_USER` or `CURRENT_USER()` now
   have explicit grammar productions.
 - Stored function signatures require empty or comma-separated input parameter

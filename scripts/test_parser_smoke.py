@@ -1104,6 +1104,7 @@ def main() -> int:
         ("clone instance from 'u'@'h' identified by 'p';", 1, {}),
         ("clone instance from 'u'@'h': identified by 'p';", 1, {}),
         ("clone instance from 'u'@'h':mysql identified by 'p';", 1, {}),
+        ("clone instance from 'u'@'h':3306 identified by p;", 1, {}),
         ("clone instance from 'u'@'h':3306 identified by 'p' data directory;", 1, {}),
         ("clone instance from 'u'@'h':3306 identified by 'p' require;", 1, {}),
         ("clone instance from 'u'@'h':3306 identified by 'p' require no;", 1, {}),

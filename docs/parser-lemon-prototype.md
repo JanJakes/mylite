@@ -158,8 +158,9 @@ token sink:
 - Stored-program label and cursor references use the shared identifier grammar.
 - `DECLARE`, `FETCH ... INTO`, and named signal conditions use the shared
   identifier grammar for local names, with five-character SQLSTATE literals.
-- Prepared-statement names, `PREPARE ... FROM` user-variable sources, and
-  `EXECUTE ... USING` user-variable lists use the shared identifier grammar.
+- Prepared-statement names and `EXECUTE ... USING` user-variable lists use the
+  shared identifier grammar; `PREPARE ... FROM` accepts string-literal and
+  user-variable sources.
 - XA statements recognize one-, two-, and three-part XIDs with numeric
   `formatID` values.
 - `CACHE INDEX` and `RESET PERSIST` use the shared identifier grammar for

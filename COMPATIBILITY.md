@@ -179,7 +179,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. | Parser recognizes thread and channel clauses with channel names using the shared identifier grammar. |
 | `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. | Parser recognizes comma-separated string-literal user, password, and default-auth options. |
 | `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. |  |
-| `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. | Parser recognizes prepared-statement names and user-variable sources using the shared identifier grammar. |
+| `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. | Parser recognizes prepared-statement names, string-literal sources, and user-variable sources. |
 | `EXECUTE` | ❌ | high | Prepared-statement execution with USING variables and result metadata. | Parser recognizes prepared-statement names and `USING` user-variable lists using shared identifier grammar. |
 | `DEALLOCATE PREPARE` / `DROP PREPARE` | ❌ | high | Prepared statement cleanup. | Parser recognizes prepared-statement names using the shared identifier grammar. |
 | `BEGIN ... END` | ❌ | medium | Compound statement block scope for stored programs and events. |  |

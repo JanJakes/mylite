@@ -3054,6 +3054,10 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   int add_foreign_state = ALTER_FK_NONE;
   int check_pending = 0;
   int check_tail_state = ALTER_CHECK_NONE;
+  int add_column_expect_name = 0;
+  int add_column_type_pending = 0;
+  int add_column_in_definition = 0;
+  int add_constraint_prefix = 0;
   int validate_key_list = 0;
   int depth = 0;
   int key_state = ALTER_INDEX_KEY_NEED_PART;
@@ -3436,6 +3440,10 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       add_foreign_state = ALTER_FK_NONE;
       check_pending = 0;
       check_tail_state = ALTER_CHECK_NONE;
+      add_column_expect_name = 0;
+      add_column_type_pending = 0;
+      add_column_in_definition = 0;
+      add_constraint_prefix = 0;
       continue;
     }
 
@@ -3445,11 +3453,79 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       add_foreign_state = ALTER_FK_NONE;
       check_pending = 0;
       check_tail_state = ALTER_CHECK_NONE;
+      add_column_expect_name = 0;
+      add_column_type_pending = 0;
+      add_column_in_definition = 0;
+      add_constraint_prefix = 0;
       pending_token = token;
       continue;
     }
 
     if (!add_scan) {
+      continue;
+    }
+
+    if (add_column_type_pending) {
+      if (!create_table_column_type_start(token_id, token)) {
+        mylite_parser_reject(ctx, token, "invalid ALTER TABLE column type");
+        return;
+      }
+      add_column_type_pending = 0;
+      add_column_in_definition = 1;
+      continue;
+    }
+
+    if (add_column_in_definition) {
+      if (token_id == ML_CHECK) {
+        check_pending = 1;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LP) {
+        depth = 1;
+      }
+      continue;
+    }
+
+    if (token_id == ML_CONSTRAINT) {
+      add_constraint_prefix = 1;
+      pending_token = token;
+      continue;
+    }
+
+    if (add_constraint_prefix > 0) {
+      if (alter_table_add_index_marker(token_id)) {
+        add_index_candidate = 1;
+        add_constraint_prefix = 0;
+        continue;
+      }
+      if (token_id == ML_FOREIGN) {
+        add_foreign_state = ALTER_FK_AFTER_FOREIGN;
+        add_constraint_prefix = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_CHECK) {
+        check_pending = 1;
+        add_constraint_prefix = 0;
+        pending_token = token;
+        continue;
+      }
+      if (add_constraint_prefix == 1) {
+        add_constraint_prefix = 2;
+      }
+      continue;
+    }
+
+    if (token_id == ML_COLUMN) {
+      add_column_expect_name = 1;
+      continue;
+    }
+
+    if (add_column_expect_name && token_id == ML_LP) {
+      depth = 1;
+      add_scan = 0;
+      add_column_expect_name = 0;
       continue;
     }
 
@@ -3476,6 +3552,14 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       continue;
     }
 
+    if (!add_index_candidate && token_id != ML_LP) {
+      add_column_type_pending =
+          create_table_column_name_needs_type_check(token_id, token);
+      add_column_expect_name = 0;
+      pending_token = token;
+      continue;
+    }
+
     if (token_id == ML_LP) {
       if (add_index_candidate) {
         validate_key_list = 1;
@@ -3498,6 +3582,9 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   } else if (check_tail_state == ALTER_CHECK_AFTER_NOT) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE CHECK constraint");
+  } else if (add_column_type_pending) {
+    mylite_parser_reject(ctx, pending_token,
+                         "invalid ALTER TABLE column type");
   } else if (validate_key_list) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE index key part");
@@ -4282,7 +4369,7 @@ static int alter_table_add_index_marker(int token_id) {
 
 static int alter_table_add_non_index_marker(int token_id) {
   return token_id == ML_CHECK || token_id == ML_COLUMN ||
-         token_id == ML_FOREIGN;
+         token_id == ML_FOREIGN || token_id == ML_PARTITION;
 }
 
 static int event_interval_unit_token(MyliteToken token) {

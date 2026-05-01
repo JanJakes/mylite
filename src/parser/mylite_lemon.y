@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ADD AS COLLATE DATAFILE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE GROUP PARTITION UNDOFILE VALUE DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ADD AS COLLATE DATAFILE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE FOREIGN GROUP OPTIONS PARTITION REFERENCE SYSTEM TYPE UNDOFILE VALUE WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -178,9 +178,7 @@ create_index_using_tail ::= .
 create_index_using_tail ::= USING cache_name_part.
 create_index_using_tail ::= create_index_type cache_name_part.
 
-create_index_type ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "TYPE");
-}
+create_index_type ::= TYPE.
 
 create_index_tail ::= LP create_table_definition_tokens RP create_options_tail.
 
@@ -429,14 +427,10 @@ create_resource_group ::= GROUP.
 
 create_resource_type ::= create_type_marker diagnostics_equals create_resource_type_value.
 
-create_type_marker ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "TYPE");
-}
+create_type_marker ::= TYPE.
 
 create_resource_type_value ::= USER.
-create_resource_type_value ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "SYSTEM");
-}
+create_resource_type_value ::= SYSTEM.
 
 create_logfile_group ::= GROUP.
 
@@ -459,19 +453,13 @@ create_undo_tablespace_tail ::= create_add create_datafile ATOM create_options_t
 
 create_server_tail ::= create_foreign DATA create_wrapper cache_name_part create_server_options.
 
-create_foreign ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "FOREIGN");
-}
+create_foreign ::= FOREIGN.
 
-create_wrapper ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "WRAPPER");
-}
+create_wrapper ::= WRAPPER.
 
 create_server_options ::= create_options_marker LP create_server_option_tokens RP.
 
-create_options_marker ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "OPTIONS");
-}
+create_options_marker ::= OPTIONS.
 
 create_server_option_tokens ::= .
 create_server_option_tokens ::= create_server_option_tokens create_server_option_token.
@@ -486,13 +474,9 @@ create_server_option_token ::= RB.
 create_server_option_token ::= LC.
 create_server_option_token ::= RC.
 
-create_reference ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "REFERENCE");
-}
+create_reference ::= REFERENCE.
 
-create_system ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "SYSTEM");
-}
+create_system ::= SYSTEM.
 
 create_srs_attribute_start ::= ATOM(A). {
   mylite_parser_require_srs_attribute(ctx, A);
@@ -574,13 +558,9 @@ drop_resource_force_tail ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "FORCE");
 }
 
-drop_reference ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "REFERENCE");
-}
+drop_reference ::= REFERENCE.
 
-drop_system ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "SYSTEM");
-}
+drop_system ::= SYSTEM.
 
 drop_tablespace_engine_tail ::= .
 drop_tablespace_engine_tail ::= ENGINE cache_name_part.

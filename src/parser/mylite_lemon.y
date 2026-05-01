@@ -1845,6 +1845,7 @@ dml_write_body ::= dml_write_payload.
 
 dml_write_payload ::= LP dml_write_column_tokens RP dml_write_after_column_list.
 dml_write_payload ::= LP dml_write_query_start dml_write_parenthesized_query_tail RP dml_write_after_parenthesized_query.
+dml_write_payload ::= SET update_assignment_start.
 dml_write_payload ::= dml_write_start required_statement_tail.
 
 dml_write_column_tokens ::= .
@@ -1866,6 +1867,7 @@ dml_write_column_token ::= COMMA.
 dml_write_column_token ::= LP dml_write_column_tokens RP.
 
 dml_write_after_column_list ::= dml_write_start required_statement_tail.
+dml_write_after_column_list ::= SET update_assignment_start.
 dml_write_after_column_list ::= LP dml_write_query_start dml_write_parenthesized_query_tail RP dml_write_after_parenthesized_query.
 
 dml_write_query_start ::= SELECT.
@@ -1894,7 +1896,6 @@ dml_write_after_parenthesized_query ::= ON required_statement_tail.
 
 dml_write_start ::= VALUES.
 dml_write_start ::= SELECT.
-dml_write_start ::= SET.
 dml_write_start ::= WITH.
 dml_write_start ::= TABLE.
 dml_write_start ::= ATOM(A). {

@@ -404,8 +404,8 @@ static int lexer_number(MyliteLexer *lexer, MyliteToken *token) {
     lexer_advance(lexer);
   }
 
-  while (isalnum(lexer_peek(lexer, 0)) || lexer_peek(lexer, 0) == '.' ||
-         lexer_peek(lexer, 0) == '_') {
+  while (is_identifier_continue(lexer_peek(lexer, 0)) ||
+         lexer_peek(lexer, 0) == '.') {
     lexer_advance(lexer);
     if ((lexer_peek(lexer, 0) == '+' || lexer_peek(lexer, 0) == '-') &&
         lexer->offset > token->offset &&

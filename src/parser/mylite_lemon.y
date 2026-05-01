@@ -1134,14 +1134,18 @@ drop_account_host ::= AT_HOST drop_host_dot_tail.
 drop_account_host ::= AT_SIGN drop_host_name.
 drop_account_host ::= AT_EMPTY.
 
-drop_host_name ::= drop_account_ident drop_host_dot_tail.
+drop_host_name ::= drop_host_ident drop_host_dot_tail.
 
 drop_host_dot_tail ::= .
-drop_host_dot_tail ::= drop_host_dot_tail DOT drop_account_ident.
+drop_host_dot_tail ::= drop_host_dot_tail DOT drop_host_ident.
 
 drop_account_ident ::= set_charset_name_part.
 drop_account_ident ::= MASTER.
 drop_account_ident ::= ROLE.
+
+drop_host_ident ::= ATOM.
+drop_host_ident ::= MASTER.
+drop_host_ident ::= ROLE.
 
 drop_name_list ::= cache_table_ref.
 drop_name_list ::= drop_name_list COMMA cache_table_ref.
@@ -1871,7 +1875,7 @@ truncate_tail ::= truncate_table_ref.
 truncate_table_ref ::= truncate_table_part.
 truncate_table_ref ::= truncate_table_part DOT truncate_table_part.
 
-truncate_table_part ::= cache_name_part.
+truncate_table_part ::= strict_name_part.
 
 load_statement ::= LOAD load_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
@@ -2401,32 +2405,37 @@ cache_partition_names ::= cache_partition_names import_comma cache_name_part.
 cache_index_kind ::= INDEX.
 cache_index_kind ::= KEY.
 
-cache_table_ref ::= cache_name_part.
-cache_table_ref ::= cache_name_part DOT cache_name_part.
+cache_table_ref ::= strict_name_part.
+cache_table_ref ::= strict_name_part DOT strict_name_part.
 
-cache_name_part ::= ATOM(A). {
+strict_name_part ::= cache_name_part(A). {
   mylite_parser_require_identifier_atom(ctx, A);
 }
-cache_name_part ::= ACCOUNT.
-cache_name_part ::= CASCADE.
-cache_name_part ::= COMPONENT.
-cache_name_part ::= COUNT.
-cache_name_part ::= DATABASE.
-cache_name_part ::= LABEL.
-cache_name_part ::= DEFAULT.
-cache_name_part ::= ENGINE.
-cache_name_part ::= EVENTS.
-cache_name_part ::= FIRST.
-cache_name_part ::= FULL.
-cache_name_part ::= GRANTS.
-cache_name_part ::= PLUGIN.
-cache_name_part ::= PROCESSLIST.
-cache_name_part ::= RESTRICT.
-cache_name_part ::= TABLES.
-cache_name_part ::= TABLESPACE.
-cache_name_part ::= TRIGGERS.
-cache_name_part ::= USER.
-cache_name_part ::= VARIABLES.
+
+cache_name_part(A) ::= ATOM(B). {
+  A = B;
+  mylite_parser_require_name_atom(ctx, A);
+}
+cache_name_part(A) ::= ACCOUNT(B). { A = B; }
+cache_name_part(A) ::= CASCADE(B). { A = B; }
+cache_name_part(A) ::= COMPONENT(B). { A = B; }
+cache_name_part(A) ::= COUNT(B). { A = B; }
+cache_name_part(A) ::= DATABASE(B). { A = B; }
+cache_name_part(A) ::= LABEL(B). { A = B; }
+cache_name_part(A) ::= DEFAULT(B). { A = B; }
+cache_name_part(A) ::= ENGINE(B). { A = B; }
+cache_name_part(A) ::= EVENTS(B). { A = B; }
+cache_name_part(A) ::= FIRST(B). { A = B; }
+cache_name_part(A) ::= FULL(B). { A = B; }
+cache_name_part(A) ::= GRANTS(B). { A = B; }
+cache_name_part(A) ::= PLUGIN(B). { A = B; }
+cache_name_part(A) ::= PROCESSLIST(B). { A = B; }
+cache_name_part(A) ::= RESTRICT(B). { A = B; }
+cache_name_part(A) ::= TABLES(B). { A = B; }
+cache_name_part(A) ::= TABLESPACE(B). { A = B; }
+cache_name_part(A) ::= TRIGGERS(B). { A = B; }
+cache_name_part(A) ::= USER(B). { A = B; }
+cache_name_part(A) ::= VARIABLES(B). { A = B; }
 
 cache_key_list ::= LP RP.
 cache_key_list ::= LP cache_key_names RP.
@@ -2978,9 +2987,9 @@ describe_tail ::= describe_table_ref describe_column_ref.
 describe_table_ref ::= describe_name_part.
 describe_table_ref ::= describe_name_part DOT describe_name_part.
 
-describe_column_ref ::= cache_name_part.
+describe_column_ref ::= strict_name_part.
 
-describe_name_part ::= cache_name_part.
+describe_name_part ::= strict_name_part.
 
 describe_explain_tail ::= describe_explain_query_start required_statement_tail.
 describe_explain_tail ::= explain_schema_spec describe_explain_query_start required_statement_tail.
@@ -3455,6 +3464,10 @@ dml_update_table_reference_continuation ::= dml_update_table_reference_head.
 dml_update_table_reference_continuation ::= dml_update_table_reference_keyword.
 dml_update_table_reference_continuation ::= COMMA.
 dml_update_table_reference_continuation ::= EQUALS.
+dml_update_table_reference_continuation ::= BOOLEAN_NUMBER.
+dml_update_table_reference_continuation ::= FACTOR_NUMBER.
+dml_update_table_reference_continuation ::= NUMBER_LITERAL.
+dml_update_table_reference_continuation ::= STRING_LITERAL.
 dml_update_table_reference_continuation ::= MINUS.
 dml_update_table_reference_continuation ::= STAR.
 
@@ -3513,8 +3526,8 @@ dml_delete_table_list ::= dml_delete_table_ref.
 dml_delete_table_list ::= dml_delete_table_list import_comma dml_delete_table_ref.
 
 dml_delete_table_ref ::= cache_table_ref.
-dml_delete_table_ref ::= cache_name_part DOT STAR.
-dml_delete_table_ref ::= cache_name_part DOT cache_name_part DOT STAR.
+dml_delete_table_ref ::= strict_name_part DOT STAR.
+dml_delete_table_ref ::= strict_name_part DOT strict_name_part DOT STAR.
 
 dml_delete_source_start ::= cache_table_ref.
 dml_delete_source_start ::= LP.
@@ -3788,7 +3801,7 @@ execute_using_arg ::= user_variable_name.
 user_variable_name ::= AT_HOST set_variable_dot_tail.
 user_variable_name ::= AT_SIGN set_variable_part set_variable_dot_tail.
 
-prepared_statement_name ::= cache_name_part.
+prepared_statement_name ::= strict_name_part.
 
 get_statement ::= GET diagnostics_area_tail DIAGNOSTICS diagnostics_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
@@ -3999,7 +4012,7 @@ set_charset_name ::= set_charset_name_part.
 set_collation_value ::= set_charset_name_part.
 
 set_charset_name_part ::= ATOM(A). {
-  mylite_parser_require_identifier_atom(ctx, A);
+  mylite_parser_require_charset_name_atom(ctx, A);
 }
 set_charset_name_part ::= ACCOUNT.
 set_charset_name_part ::= CASCADE.

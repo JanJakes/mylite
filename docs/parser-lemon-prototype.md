@@ -15,6 +15,9 @@ token sink:
   uses are explicit so object-name grammar rejects MySQL-invalid wildcard names.
 - Operator-like fallback tokens are rejected in shared object-name productions
   while remaining available in expression and permissive statement bodies.
+- Numeric and single-quoted literals are rejected in strict object-name
+  productions while numeric-leading identifiers, double-quoted identifiers, and
+  quoted account/charset strings remain valid.
 - A Lemon grammar recognizes MySQL statement families for DDL, DML,
   transactions, utility statements, administration statements, replication/XA,
   and stored-program statement starts.

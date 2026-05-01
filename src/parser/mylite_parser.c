@@ -98,6 +98,14 @@ static size_t skip_leading_space(const char *sql, size_t length);
 static int ascii_alpha_equal(char actual, char expected);
 static int is_word_boundary(char ch);
 static int token_contains_identifier_letter(MyliteToken token);
+static int token_is_invalid_identifier_atom(MyliteToken token,
+                                            int allow_string_literal);
+static int token_starts_numeric_literal(MyliteToken token);
+static int token_is_hex_literal(MyliteToken token, size_t offset);
+static int token_is_binary_literal(MyliteToken token, size_t offset);
+static int token_is_decimal_literal(MyliteToken token, size_t offset);
+static int ascii_is_digit(char ch);
+static int ascii_is_hex_digit(char ch);
 static void set_parser_error(MyliteParseContext *ctx, const MyliteToken *token,
                              const char *message);
 static void format_near_token(MyliteParseContext *ctx, int token_id,
@@ -337,6 +345,7 @@ static int view_query_order_boundary(int token_id);
 static int dml_query_order_boundary(int token_id);
 static int dml_clause_operand_boundary(int token_id);
 static int dml_limit_option_token(int token_id);
+static int dml_literal_token(int token_id);
 static int set_statement_previous_value_terminal(int token_id,
                                                  MyliteToken token);
 static int dml_row_alias_token(int token_id);
@@ -3171,6 +3180,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int query_order_previous_was_operator = 1;
   int values_state = DML_VALUES_NONE;
   int set_alias_state = DML_SET_ALIAS_NONE;
+  int update_table_condition_started = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -3949,6 +3959,17 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
       assignment_value_started = 0;
       pending_token = token;
       continue;
+    }
+
+    if (kind == MYLITE_STATEMENT_UPDATE &&
+        assignment_state == DML_ASSIGN_NONE) {
+      if (token_id == ML_ON || token_id == ML_USING) {
+        update_table_condition_started = 1;
+      } else if (!update_table_condition_started &&
+                 dml_literal_token(token_id)) {
+        mylite_parser_reject(ctx, token, "invalid UPDATE table reference");
+        return;
+      }
     }
 
     if ((kind == MYLITE_STATEMENT_INSERT ||
@@ -9192,15 +9213,24 @@ void mylite_parser_require_xid_number(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, token, "invalid XA XID literal");
 }
 
+void mylite_parser_require_name_atom(MyliteParseContext *ctx,
+                                     MyliteToken token) {
+  if (token_is_invalid_identifier_atom(token, 1)) {
+    mylite_parser_reject(ctx, token, "invalid identifier");
+  }
+}
+
 void mylite_parser_require_identifier_atom(MyliteParseContext *ctx,
                                            MyliteToken token) {
-  if (token.length == 1 && strchr("-=.:@", token.start[0]) != NULL) {
+  if (token_is_invalid_identifier_atom(token, 0)) {
     mylite_parser_reject(ctx, token, "invalid identifier");
-    return;
   }
+}
 
-  if (token.length > 0 && token.start[0] == '@') {
-    mylite_parser_reject(ctx, token, "invalid identifier");
+void mylite_parser_require_charset_name_atom(MyliteParseContext *ctx,
+                                             MyliteToken token) {
+  if (token_is_invalid_identifier_atom(token, 1)) {
+    mylite_parser_reject(ctx, token, "invalid character set name");
   }
 }
 
@@ -9225,6 +9255,121 @@ static int token_ascii_equal(MyliteToken token, const char *expected) {
   }
 
   return i == token.length && expected[i] == '\0';
+}
+
+static int token_is_invalid_identifier_atom(MyliteToken token,
+                                            int allow_string_literal) {
+  if (token.length == 0) {
+    return 0;
+  }
+
+  if (token.length == 1 &&
+      strchr("+-=.:@/%&|!~^?", token.start[0]) != NULL) {
+    return 1;
+  }
+
+  if (token.start[0] == '@') {
+    return 1;
+  }
+
+  if (!allow_string_literal && token.start[0] == '\'') {
+    return 1;
+  }
+
+  return token_starts_numeric_literal(token);
+}
+
+static int token_starts_numeric_literal(MyliteToken token) {
+  size_t offset = 0;
+
+  if (token.length == 0) {
+    return 0;
+  }
+
+  if ((token.start[0] == '+' || token.start[0] == '-') && token.length > 1 &&
+      ascii_is_digit(token.start[1])) {
+    offset = 1;
+  }
+
+  if (!ascii_is_digit(token.start[offset])) {
+    return 0;
+  }
+
+  if (token_is_hex_literal(token, offset) ||
+      token_is_binary_literal(token, offset)) {
+    return 1;
+  }
+
+  return token_is_decimal_literal(token, offset);
+}
+
+static int token_is_hex_literal(MyliteToken token, size_t offset) {
+  size_t i;
+
+  if (token.length <= offset + 2 || token.start[offset] != '0' ||
+      (token.start[offset + 1] != 'x' && token.start[offset + 1] != 'X')) {
+    return 0;
+  }
+
+  for (i = offset + 2; i < token.length; i++) {
+    if (!ascii_is_hex_digit(token.start[i])) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+static int token_is_binary_literal(MyliteToken token, size_t offset) {
+  size_t i;
+
+  if (token.length <= offset + 2 || token.start[offset] != '0' ||
+      (token.start[offset + 1] != 'b' && token.start[offset + 1] != 'B')) {
+    return 0;
+  }
+
+  for (i = offset + 2; i < token.length; i++) {
+    if (token.start[i] != '0' && token.start[i] != '1') {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+static int token_is_decimal_literal(MyliteToken token, size_t offset) {
+  size_t i = offset;
+
+  while (i < token.length && ascii_is_digit(token.start[i])) {
+    i++;
+  }
+
+  if (i == token.length || token.start[i] == '.') {
+    return 1;
+  }
+
+  if ((token.start[i] == 'e' || token.start[i] == 'E') &&
+      i + 1 < token.length) {
+    size_t exponent = i + 1;
+    if ((token.start[exponent] == '+' || token.start[exponent] == '-') &&
+        exponent + 1 < token.length) {
+      exponent++;
+    }
+    if (ascii_is_digit(token.start[exponent])) {
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+static int ascii_is_digit(char ch) {
+  return ch >= '0' && ch <= '9';
+}
+
+static int ascii_is_hex_digit(char ch) {
+  return ascii_is_digit(ch) || (ch >= 'a' && ch <= 'f') ||
+         (ch >= 'A' && ch <= 'F');
 }
 
 static int select_clause_requires_by(int token_id) {
@@ -11656,6 +11801,13 @@ static int dml_limit_option_token(int token_id) {
   return token_id == ML_ATOM || token_id == ML_BOOLEAN_NUMBER ||
          token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
          token_id == ML_QUOTED_ID;
+}
+
+static int dml_literal_token(int token_id) {
+  return token_id == ML_BOOLEAN_NUMBER ||
+         token_id == ML_DOUBLE_QUOTED_STRING ||
+         token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
+         token_id == ML_STRING_LITERAL;
 }
 
 static int set_statement_previous_value_terminal(int token_id,

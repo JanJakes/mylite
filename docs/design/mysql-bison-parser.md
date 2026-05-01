@@ -166,6 +166,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/create-tablespace.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/alter-tablespace.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/drop-tablespace.html`
+- MySQL 8.4 spatial reference system DDL:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-spatial-reference-system.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/drop-spatial-reference-system.html`
 - MySQL 8.4 instance-level statements:
   `https://dev.mysql.com/doc/refman/8.4/en/alter-instance.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/lock-instance-for-backup.html`,
@@ -294,10 +297,11 @@ requires a nonempty documented `OPTIONS` list, `CREATE LOGFILE GROUP` and
 clause, `CREATE TABLESPACE`, `CREATE UNDO TABLESPACE`, `ALTER TABLESPACE`, and
 `ALTER UNDO TABLESPACE` validate documented datafile, size, encryption,
 logfile-group, state, storage-engine, and engine-attribute clause shapes,
-`DROP SERVER` accepts optional `IF EXISTS`, `DROP SPATIAL REFERENCE SYSTEM`
-requires a numeric SRID, `DROP LOGFILE GROUP` requires `ENGINE [=] name`, and
-`DROP TABLESPACE` / `DROP UNDO TABLESPACE` accept the corpus-observed optional
-engine tail.
+`CREATE SPATIAL REFERENCE SYSTEM` validates numeric SRIDs and documented SRS
+attributes, `DROP SERVER` accepts optional `IF EXISTS`, `DROP SPATIAL REFERENCE
+SYSTEM` requires a numeric SRID, `DROP LOGFILE GROUP` requires an engine clause,
+and `DROP TABLESPACE` / `DROP UNDO TABLESPACE` accept the
+corpus-observed optional engine tail.
 Account and resource DDL validation covers `DROP USER` and `DROP ROLE` with
 optional `IF EXISTS` plus comma-separated account/role lists. Resource-group
 validation covers `CREATE RESOURCE GROUP` required `TYPE` plus optional `VCPU`,
@@ -342,10 +346,11 @@ Resource group targets are recorded and validated for `CREATE`, `ALTER`,
 for `CREATE SERVER`, `ALTER SERVER`, and `DROP SERVER`. Logfile-group DDL
 targets are recorded and validated for create, alter, and drop logfile-group
 forms. Tablespace and undo-tablespace DDL targets are recorded and validated for
-create, alter, and drop tablespace forms. Standalone `DROP INDEX` records the
-index target and validates the required `ON` table clause plus optional
-`ALGORITHM` and `LOCK` clauses. Instance-level `ALTER`, `LOCK`, `UNLOCK`,
-`RESTART`, and `SHUTDOWN`
+create, alter, and drop tablespace forms. Spatial reference system DDL records
+and validates numeric SRID targets for create and drop forms. Standalone
+`DROP INDEX` records the index target and validates the required `ON` table
+clause plus optional `ALGORITHM` and `LOCK` clauses. Instance-level `ALTER`,
+`LOCK`, `UNLOCK`, `RESTART`, and `SHUTDOWN`
 statements are recorded with an object kind but no object-name span. `RESTART`
 and `SHUTDOWN` reject body tokens because MySQL accepts only the bare statement
 forms. Principal

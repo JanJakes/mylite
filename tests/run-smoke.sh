@@ -2844,6 +2844,76 @@ if "$parser" --quiet "ALTER UNDO TABLESPACE uts ADD DATAFILE 'x'"; then
 	exit 1
 fi
 
+if ! "$parser" --quiet "CREATE SPATIAL REFERENCE SYSTEM 4120 NAME 'srs' DEFINITION 'def' ORGANIZATION 'EPSG' IDENTIFIED BY 4120 DESCRIPTION 'desc'"; then
+	echo "expected CREATE SPATIAL REFERENCE SYSTEM full attributes to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE SPATIAL REFERENCE SYSTEM IF NOT EXISTS 4121 NAME 'srs'"; then
+	echo "expected CREATE SPATIAL REFERENCE SYSTEM IF NOT EXISTS to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE OR REPLACE SPATIAL REFERENCE SYSTEM 4122 NAME 'srs' ORGANIZATION 'EPSG' IDENTIFIED BY 4122"; then
+	echo "expected CREATE OR REPLACE SPATIAL REFERENCE SYSTEM to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE SPATIAL REFERENCE SYSTEM'; then
+	echo "expected CREATE SPATIAL REFERENCE SYSTEM without SRID to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE SPATIAL REFERENCE SYSTEM IF EXISTS 4120 NAME 'srs'"; then
+	echo "expected CREATE SPATIAL REFERENCE SYSTEM IF EXISTS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE OR SPATIAL REFERENCE SYSTEM 4120 NAME 'srs'"; then
+	echo "expected malformed CREATE OR SPATIAL REFERENCE SYSTEM to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE OR REPLACE SPATIAL REFERENCE SYSTEM IF NOT EXISTS 4120 NAME 'srs'"; then
+	echo "expected CREATE OR REPLACE SPATIAL REFERENCE SYSTEM with IF NOT EXISTS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE SPATIAL REFERENCE SYSTEM srs NAME 'srs'"; then
+	echo "expected CREATE SPATIAL REFERENCE SYSTEM nonnumeric SRID to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE SPATIAL REFERENCE SYSTEM 4120'; then
+	echo "expected CREATE SPATIAL REFERENCE SYSTEM without attributes to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE SPATIAL REFERENCE SYSTEM 4120 NAME'; then
+	echo "expected CREATE SPATIAL REFERENCE SYSTEM NAME without string to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE SPATIAL REFERENCE SYSTEM 4120 ORGANIZATION 'EPSG' BY 4120"; then
+	echo "expected CREATE SPATIAL REFERENCE SYSTEM ORGANIZATION without IDENTIFIED to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE SPATIAL REFERENCE SYSTEM 4120 ORGANIZATION 'EPSG' IDENTIFIED BY 'x'"; then
+	echo "expected CREATE SPATIAL REFERENCE SYSTEM nonnumeric organization id to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE SPATIAL REFERENCE SYSTEM 4120 NAME 'srs' NAME 'duplicate'"; then
+	echo "expected CREATE SPATIAL REFERENCE SYSTEM duplicate NAME to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE SPATIAL REFERENCE SYSTEM 4120 NAME 'srs' EXTRA 'x'"; then
+	echo "expected CREATE SPATIAL REFERENCE SYSTEM unknown attribute to fail" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'DROP SERVER'; then
 	echo "expected DROP SERVER without a name to fail" >&2
 	exit 1

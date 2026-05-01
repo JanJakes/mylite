@@ -72,10 +72,12 @@ GROUP` and `ALTER LOGFILE GROUP` validate `ADD UNDOFILE`, size/comment options,
 `WAIT`, and required storage engines, `CREATE TABLESPACE`, `CREATE UNDO
 TABLESPACE`, `ALTER TABLESPACE`, and `ALTER UNDO TABLESPACE` validate their
 documented datafile, size, logfile-group, encryption, state, storage-engine, and
-engine-attribute clauses, and `DROP SERVER`, `DROP SPATIAL REFERENCE SYSTEM`,
-`DROP LOGFILE GROUP`, `DROP TABLESPACE`, and `DROP UNDO TABLESPACE` validate
-their required object names and low-level tails, including `IF EXISTS`, numeric
-SRIDs, and `ENGINE [=] name` where MySQL syntax or the corpus requires it.
+engine-attribute clauses, `CREATE SPATIAL REFERENCE SYSTEM` validates numeric
+SRIDs and documented attributes, and `DROP SERVER`, `DROP SPATIAL REFERENCE
+SYSTEM`, `DROP LOGFILE GROUP`, `DROP TABLESPACE`, and `DROP UNDO TABLESPACE`
+validate their required object names and low-level tails, including optional
+`IF EXISTS`, numeric SRIDs, and `ENGINE [=] name` where MySQL syntax or the corpus
+requires it.
 `DROP USER` and `DROP ROLE` validate optional `IF EXISTS` and account/role
 lists. Resource-group statements validate `CREATE` type/options, `ALTER`
 options including `DISABLE FORCE`, `DROP ... [FORCE]`, and `SET ... [FOR
@@ -740,7 +742,8 @@ ok statements=1 kinds=create[1:7,0:36]/resource_group:rg
 Low-level DDL targets such as server and logfile-group names are reported too,
 with `CREATE SERVER`, `ALTER SERVER`, `CREATE LOGFILE GROUP`, and
 `ALTER LOGFILE GROUP` validating their documented option lists. Tablespace and
-undo-tablespace DDL targets are also reported and syntax-validated:
+undo-tablespace DDL targets are also reported and syntax-validated, as are
+spatial reference system SRID targets:
 
 ```text
 ok statements=1 kinds=create[1:12,0:61]/server:s

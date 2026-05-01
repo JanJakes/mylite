@@ -85,7 +85,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser records and validates the logfile group target with required `ADD UNDOFILE`, documented optional size, nodegroup, wait, and comment clauses, and required `ENGINE [=] name`; NDB storage behavior, range checks, engine validation, and diagnostics are not implemented. |
 | `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. | Parser records the procedure target while skipping optional definer account clauses; stored-procedure semantics are not implemented. |
 | `CREATE SERVER` | ❌ | low | Foreign server metadata syntax. | Parser records and validates the server target with required `FOREIGN DATA WRAPPER` and a nonempty documented `OPTIONS` list; foreign-server metadata, option truncation, range checks, and diagnostics are not implemented. |
-| `CREATE SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system catalog DDL. |  |
+| `CREATE SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system catalog DDL. | Parser records and validates the SRID target with documented `CREATE OR REPLACE`, optional `IF NOT EXISTS`, and SRS attributes (`NAME`, `DEFINITION`, `ORGANIZATION ... IDENTIFIED BY`, `DESCRIPTION`); SRS catalog writes, dependency checks, range checks, privileges, and diagnostics are not implemented. |
 | `CREATE TABLE` | ❌ | top | Column definitions, constraints, indexes, table options, generated columns, and partitions; see section 3.1. |  |
 | `CREATE TEMPORARY TABLE` | ❌ | high | Session-scoped table lifecycle and name shadowing. |  |
 | `CREATE TABLE ... LIKE` | ❌ | high | Exact metadata cloning rules. |  |

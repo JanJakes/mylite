@@ -80,6 +80,17 @@ static int validate_tablespace_engine_attribute_clause_syntax(const mylite_parse
 static int validate_tablespace_optional_storage_tail_syntax(const mylite_parser *parser,
                                                             size_t token_index,
                                                             size_t last_token_index);
+static int validate_create_spatial_reference_system_statement_syntax(const mylite_parser *parser,
+                                                                     size_t token_index,
+                                                                     size_t last_token_index);
+static int validate_spatial_reference_system_attribute_syntax(const mylite_parser *parser,
+                                                              size_t token_index,
+                                                              size_t last_token_index,
+                                                              size_t *next_token_index,
+                                                              int *attribute_kind);
+static int token_is_create_spatial_reference_system_start(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index);
 static int validate_create_server_statement_syntax(const mylite_parser *parser,
                                                    size_t token_index,
                                                    size_t last_token_index);
@@ -592,9 +603,9 @@ static int token_is_undo_tablespace_sequence(const mylite_parser *parser,
                                              size_t token_index,
                                              size_t last_token_index);
 static int token_is_tablespace_token(const mylite_parser *parser, size_t token_index);
-static int token_is_drop_spatial_reference_system_token(const mylite_parser *parser,
-                                                        size_t token_index,
-                                                        size_t last_token_index);
+static int token_is_spatial_reference_system_sequence(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index);
 static int token_is_drop_stored_object_token(int token);
 static int token_is_drop_resource_group_token(const mylite_parser *parser,
                                               size_t token_index,
@@ -1876,6 +1887,14 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (token_is_tablespace_token(parser, token_index)) {
 		return validate_create_tablespace_statement_syntax(parser, token_index, last_token_index, 0);
 	}
+	if (token_is_create_spatial_reference_system_start(parser, token_index, last_token_index) ||
+	    (token_text_equals(parser, token_index, "OR") &&
+	     token_index + 1 <= last_token_index &&
+	     token_text_equals(parser, token_index + 1, "SPATIAL"))) {
+		return validate_create_spatial_reference_system_statement_syntax(parser,
+		                                                                 token_index,
+		                                                                 last_token_index);
+	}
 	if (token_text_equals(parser, token_index, "SERVER")) {
 		return validate_create_server_statement_syntax(parser, token_index, last_token_index);
 	}
@@ -2416,6 +2435,122 @@ static int validate_tablespace_optional_storage_tail_syntax(const mylite_parser 
 		}
 	}
 	return token_index > last_token_index;
+}
+
+static int validate_create_spatial_reference_system_statement_syntax(const mylite_parser *parser,
+                                                                     size_t token_index,
+                                                                     size_t last_token_index)
+{
+	int seen_attributes = 0;
+	int saw_attribute = 0;
+
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "OR") &&
+	    token_text_equals(parser, token_index + 1, "REPLACE")) {
+		token_index += 2;
+		if (!token_is_spatial_reference_system_sequence(parser, token_index, last_token_index)) {
+			return 0;
+		}
+		token_index += 3;
+	} else {
+		if (!token_is_spatial_reference_system_sequence(parser, token_index, last_token_index)) {
+			return 0;
+		}
+		token_index += 3;
+		if (token_index + 2 <= last_token_index &&
+		    token_text_equals(parser, token_index, "IF") &&
+		    token_text_equals(parser, token_index + 1, "NOT") &&
+		    token_text_equals(parser, token_index + 2, "EXISTS")) {
+			token_index += 3;
+		}
+	}
+
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].kind != MYLITE_TOKEN_NUMBER) {
+		return 0;
+	}
+	token_index++;
+
+	while (token_index <= last_token_index) {
+		int attribute_kind = 0;
+
+		if (!validate_spatial_reference_system_attribute_syntax(parser,
+		                                                        token_index,
+		                                                        last_token_index,
+		                                                        &token_index,
+		                                                        &attribute_kind)) {
+			return 0;
+		}
+		if ((seen_attributes & attribute_kind) != 0) {
+			return 0;
+		}
+		seen_attributes |= attribute_kind;
+		saw_attribute = 1;
+	}
+
+	return saw_attribute;
+}
+
+static int validate_spatial_reference_system_attribute_syntax(const mylite_parser *parser,
+                                                              size_t token_index,
+                                                              size_t last_token_index,
+                                                              size_t *next_token_index,
+                                                              int *attribute_kind)
+{
+	if (token_text_equals(parser, token_index, "NAME")) {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		*attribute_kind = 1 << 0;
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "DEFINITION")) {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		*attribute_kind = 1 << 1;
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "ORGANIZATION")) {
+		if (token_index + 4 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_STRING ||
+		    !token_text_equals(parser, token_index + 2, "IDENTIFIED") ||
+		    !token_text_equals(parser, token_index + 3, "BY") ||
+		    parser->tokens[token_index + 4].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		*attribute_kind = 1 << 2;
+		*next_token_index = token_index + 5;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "DESCRIPTION")) {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		*attribute_kind = 1 << 3;
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	return 0;
+}
+
+static int token_is_create_spatial_reference_system_start(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index)
+{
+	if (token_is_spatial_reference_system_sequence(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	return token_index + 4 <= last_token_index &&
+	       token_text_equals(parser, token_index, "OR") &&
+	       token_text_equals(parser, token_index + 1, "REPLACE") &&
+	       token_is_spatial_reference_system_sequence(parser, token_index + 2, last_token_index);
 }
 
 static int validate_create_server_statement_syntax(const mylite_parser *parser,
@@ -7085,7 +7220,7 @@ static int validate_drop_statement_syntax(const mylite_parser *parser, const myl
 	if (token_text_equals(parser, token_index + 1, "SERVER")) {
 		return validate_drop_server_statement_syntax(parser, token_index + 1, last_token_index);
 	}
-	if (token_is_drop_spatial_reference_system_token(parser, token_index + 1, last_token_index)) {
+	if (token_is_spatial_reference_system_sequence(parser, token_index + 1, last_token_index)) {
 		return validate_drop_spatial_reference_system_statement_syntax(parser, token_index + 1, last_token_index);
 	}
 	if (token_is_undo_tablespace_sequence(parser, token_index + 1, last_token_index)) {
@@ -7210,7 +7345,7 @@ static int validate_drop_spatial_reference_system_statement_syntax(const mylite_
                                                                    size_t token_index,
                                                                    size_t last_token_index)
 {
-	if (!token_is_drop_spatial_reference_system_token(parser, token_index, last_token_index)) {
+	if (!token_is_spatial_reference_system_sequence(parser, token_index, last_token_index)) {
 		return 0;
 	}
 
@@ -7571,9 +7706,9 @@ static int token_is_logfile_group_sequence(const mylite_parser *parser,
 	       parser->tokens[token_index + 1].parser_token == GROUP_T;
 }
 
-static int token_is_drop_spatial_reference_system_token(const mylite_parser *parser,
-                                                        size_t token_index,
-                                                        size_t last_token_index)
+static int token_is_spatial_reference_system_sequence(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index)
 {
 	return token_index + 2 <= last_token_index &&
 	       token_index + 2 < parser->token_count &&

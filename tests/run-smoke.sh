@@ -1366,6 +1366,65 @@ if "$parser" --quiet 'LOAD INDEX INTO CACHE t IN DEFAULT'; then
 	exit 1
 fi
 
+load_import_output=$("$parser" "LOAD DATA INFILE 'x' INTO TABLE db.t PARTITION (p0, p1) CHARACTER SET utf8mb4 FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '\"' LINES TERMINATED BY '\n' IGNORE 1 LINES (a, @b) SET b = concat(@b, '!'); LOAD XML LOCAL INFILE 'x' INTO TABLE t ROWS IDENTIFIED BY '<row>' IGNORE 2 ROWS (a, @b) SET b = DEFAULT")
+case "$load_import_output" in
+	*"load"*/table:db.t*"load"*/table:t*) ;;
+	*)
+		echo "unexpected LOAD DATA/XML output: $load_import_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'LOAD DATA'; then
+	echo "expected LOAD DATA without INFILE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "LOAD DATA INFILE 'x'"; then
+	echo "expected LOAD DATA without INTO TABLE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "LOAD DATA INFILE 1 INTO TABLE t"; then
+	echo "expected LOAD DATA with nonstring INFILE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "LOAD DATA INFILE 'x' INTO t"; then
+	echo "expected LOAD DATA INTO without TABLE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "LOAD DATA INFILE 'x' INTO TABLE t FIELDS TERMINATED"; then
+	echo "expected LOAD DATA FIELDS TERMINATED without BY string to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "LOAD DATA INFILE 'x' INTO TABLE t IGNORE LINES"; then
+	echo "expected LOAD DATA IGNORE without row count to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "LOAD DATA INFILE 'x' INTO TABLE t (a,)"; then
+	echo "expected LOAD DATA trailing column-list comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "LOAD DATA INFILE 'x' INTO TABLE t SET c="; then
+	echo "expected LOAD DATA SET without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "LOAD XML INFILE 'x' INTO TABLE t ROWS IDENTIFIED"; then
+	echo "expected LOAD XML ROWS IDENTIFIED without BY tag to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "LOAD XML INFILE 'x' INTO TABLE t FIELDS TERMINATED BY ','"; then
+	echo "expected LOAD XML to reject LOAD DATA field clauses" >&2
+	exit 1
+fi
+
 truncate_output=$("$parser" 'TRUNCATE t; TRUNCATE TABLE `db`.`t`; TRUNCATE TABLE `select`')
 case "$truncate_output" in
 	*"truncate"*/table:t*"truncate"*/table:'`db`.`t`'*"truncate"*/table:'`select`'*) ;;

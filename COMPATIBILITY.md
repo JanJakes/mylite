@@ -130,10 +130,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `INSERT IGNORE` | ❌ | top | Duplicate, conversion, and constraint warning demotion rules. |  |
 | `INSERT DELAYED` | ❌ | low | Deprecated delayed insert syntax and MySQL-compatible diagnostics. |  |
 | `INSERT LOW_PRIORITY` / `HIGH_PRIORITY` | ❌ | low | Priority modifiers and embedded-compatible treatment. |  |
-| `LOAD DATA INFILE` | ❌ | high | Server-side text import syntax, field/line options, user variables, SET clause, warnings, and security restrictions. |  |
-| `LOAD DATA LOCAL INFILE` | ❌ | high | Client-side LOCAL INFILE request flow, security controls, warnings, and protocol interaction. |  |
-| `LOAD XML INFILE` | ❌ | low | Server-side XML import syntax, row matching, namespaces, SET clause, warnings, and security restrictions. |  |
-| `LOAD XML LOCAL INFILE` | ❌ | low | Client-side XML import request behavior and embedded-compatible diagnostics. |  |
+| `LOAD DATA INFILE` | ❌ | high | Server-side text import syntax, field/line options, user variables, SET clause, warnings, and security restrictions. | Parser records the target table and validates the documented statement head, string `INFILE`, optional duplicate-key handling, `INTO TABLE`, partition, character-set, field/line, row-skip, column/user-variable list, and `SET` clause shapes; file access, import execution, conversion, warnings, security checks, and diagnostics are not implemented. |
+| `LOAD DATA LOCAL INFILE` | ❌ | high | Client-side LOCAL INFILE request flow, security controls, warnings, and protocol interaction. | Parser accepts and validates the `LOCAL` modifier on the same syntax skeleton as `LOAD DATA INFILE`; client file-transfer protocol behavior, security controls, import execution, warnings, and diagnostics are not implemented. |
+| `LOAD XML INFILE` | ❌ | low | Server-side XML import syntax, row matching, namespaces, SET clause, warnings, and security restrictions. | Parser records the target table and validates the documented statement head, string `INFILE`, optional duplicate-key handling, `INTO TABLE`, character-set, `ROWS IDENTIFIED BY`, row-skip, field/user-variable list, and `SET` clause shapes; XML parsing, row matching, namespace handling, import execution, warnings, security checks, and diagnostics are not implemented. |
+| `LOAD XML LOCAL INFILE` | ❌ | low | Client-side LOCAL INFILE request behavior and embedded-compatible diagnostics. | Parser accepts and validates the `LOCAL` modifier on the same syntax skeleton as `LOAD XML INFILE`; client file-transfer protocol behavior, security controls, XML import execution, warnings, and diagnostics are not implemented. |
 | `REPLACE ... VALUES` | ❌ | top | Delete-then-insert semantics, cascades, triggers, affected rows, and auto-increment behavior. |  |
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |

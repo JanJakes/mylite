@@ -202,6 +202,11 @@ storage-engine handler cursor state is not implemented.
 syntax, including optional partition and index-name groups. `CACHE INDEX`
 also validates the `IN key_cache_name` clause, while `LOAD INDEX` accepts
 `IGNORE LEAVES`.
+`LOAD DATA` and `LOAD XML` validate their import statement skeletons, including
+string `INFILE` inputs, `INTO TABLE` targets, optional `LOCAL`, duplicate-key,
+character-set, row-skip, column/user-variable list, and `SET` clauses. `LOAD
+DATA` additionally validates partition and field/line clauses; `LOAD XML`
+validates `ROWS IDENTIFIED BY`.
 
 `LOCK TABLES` accepts MySQL 8.4 table-lock lists with optional aliases,
 `READ [LOCAL]` or `WRITE` modes, and the corpus-observed legacy

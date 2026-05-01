@@ -43,6 +43,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/import-table.html`
 - MySQL 8.4 CALL statement:
   `https://dev.mysql.com/doc/refman/8.4/en/call.html`
+- MySQL 8.4 LOAD DATA and LOAD XML statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/load-data.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/load-xml.html`
 - MySQL 8.4 condition signaling statements:
   `https://dev.mysql.com/doc/refman/8.4/en/signal.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/resignal.html`
@@ -308,6 +311,12 @@ validates a single identifier-like or qualified table target across optional
 `HANDLER` validates direct table-access forms: `OPEN` with an optional
 `[AS] alias`, `READ` using documented no-index directions, indexed directions,
 key-comparison value lists, and optional `WHERE` / `LIMIT` tails, and `CLOSE`.
+`LOAD DATA` and `LOAD XML` validate string `INFILE` inputs, optional priority,
+`LOCAL`, duplicate-key handling, `INTO TABLE` targets, character-set clauses,
+row-skip clauses, field/user-variable lists, and `SET` assignments. `LOAD DATA`
+also validates partition and field/line clauses, while `LOAD XML` validates
+`ROWS IDENTIFIED BY`; file access and import execution remain later runtime
+work.
 `RENAME TABLE` validates comma-separated `old TO new` rename pairs, while the
 corpus-observed `RENAME TABLES` spelling remains accepted for parser coverage.
 `DROP TABLE` and `DROP VIEW` validate optional `IF EXISTS`, comma-separated

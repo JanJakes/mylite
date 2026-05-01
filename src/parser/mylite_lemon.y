@@ -1048,7 +1048,7 @@ drop_reference ::= REFERENCE.
 drop_system ::= SYSTEM.
 
 drop_tablespace_engine_tail ::= .
-drop_tablespace_engine_tail ::= ENGINE cache_name_part.
+drop_tablespace_engine_tail ::= ENGINE drop_index_option_equals_tail cache_name_part.
 
 drop_index_name ::= cache_name_part.
 

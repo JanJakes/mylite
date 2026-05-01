@@ -74,7 +74,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. | Parser recognizes the documented `OPTIONS` names and value requirements. |
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. | Parser recognizes selected closed actions including comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `FORCE`, `ENABLE/DISABLE KEYS`, `RENAME` forms, `DROP` forms, `ALTER` subactions, charset/order changes, partition definition/maintenance/exchange/reorganize forms with numeric coalesce counts, tablespace/storage/union changes, table option changes with numeric/boolean/default value domains, `ALGORITHM`/`LOCK` options, and tablespace discard/import forms. |
 | `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser recognizes rename, `ADD/DROP DATAFILE`, numeric size, `'Y'`/`'N'` encryption, engine, and attribute clauses. |
-| `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. |  |
+| `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. | Parser recognizes `SET ACTIVE`/`SET INACTIVE` plus optional `ENGINE [=] name` tails. |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. | Parser recognizes column lists, view body starts, and non-SELECT `WITH [CASCADED|LOCAL] CHECK OPTION` tails. |
 | `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. | Parser recognizes charset, collation, and `'Y'`/`'N'` encryption option clauses. |
 | `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. | Parser recognizes schedule, completion, enable/disable, comment, and required `DO` clauses. |
@@ -103,8 +103,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP SERVER` | ❌ | low | Foreign server metadata deletion. |  |
 | `DROP SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system deletion and dependency checks. | Parser recognizes numeric SRS ids and optional `IF EXISTS`. |
 | `DROP TABLE` | ❌ | top | Multi-table drop, temporary tables, foreign-key checks, and warnings. |  |
-| `DROP TABLESPACE` | ❌ | low | Tablespace deletion syntax and diagnostics. |  |
-| `DROP UNDO TABLESPACE` | ❌ | low | Undo tablespace deletion syntax present in the MySQL 8.4 parser source. |  |
+| `DROP TABLESPACE` | ❌ | low | Tablespace deletion syntax and diagnostics. | Parser recognizes optional `ENGINE [=] name` tails. |
+| `DROP UNDO TABLESPACE` | ❌ | low | Undo tablespace deletion syntax present in the MySQL 8.4 parser source. | Parser recognizes optional `ENGINE [=] name` tails. |
 | `DROP TRIGGER` | ❌ | high | Trigger deletion and metadata cleanup. |  |
 | `DROP VIEW` | ❌ | high | Multi-view drop and warnings. |  |
 | `RENAME TABLE` | ❌ | top | Atomic multi-table rename semantics. |  |

@@ -62,9 +62,9 @@ token sink:
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   documented NDB logfile options with numeric size/nodegroup values, and
   required `ENGINE` clauses.
-- `CREATE TABLESPACE`, `CREATE UNDO TABLESPACE`, and `ALTER TABLESPACE`
-  recognize documented data-file, numeric size, `'Y'`/`'N'` encryption,
-  engine, and attribute clauses.
+- `CREATE TABLESPACE`, `CREATE UNDO TABLESPACE`, `ALTER TABLESPACE`, and
+  undo/drop tablespace tails recognize documented data-file, numeric size,
+  `'Y'`/`'N'` encryption, optional-equals engine, and attribute clauses.
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
   `OPTIONS` names, string-valued options, and numeric ports.
 - `ALTER INSTANCE` recognizes redo-log enable/disable, InnoDB/binlog master-key

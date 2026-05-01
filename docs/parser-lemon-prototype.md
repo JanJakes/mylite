@@ -120,7 +120,7 @@ token sink:
   `INSERT_METHOD`, closed `ROW_FORMAT`, storage values, `UNION` lists, and
   `START TRANSACTION`. No-definition and post-definition CTAS forms are
   recognized explicitly, including `IGNORE`/`REPLACE` duplicate-handling
-  modifiers.
+  modifiers, and no-definition table-option forms must include a query body.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   string-literal file names, documented NDB logfile options with numeric
   size/nodegroup values, `WAIT`, and optional `ENGINE`/`STORAGE ENGINE`

@@ -4644,6 +4644,8 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
   int value_kind = CREATE_TABLE_OPTION_VALUE_NONE;
   int value_saw_equals = 0;
   int need_option_after_comma = 0;
+  int saw_definition_body = 0;
+  int option_tail_without_body = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -4801,6 +4803,7 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
     if (token_id == ML_LP) {
       state = CREATE_TABLE_TAIL_SKIP_BODY;
       depth = 1;
+      saw_definition_body = 1;
       continue;
     }
 
@@ -4808,6 +4811,9 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
       if (need_option_after_comma) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete CREATE TABLE table option");
+      } else if (option_tail_without_body) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete CREATE TABLE query body");
       }
       return;
     }
@@ -4833,31 +4839,37 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
     }
 
     if (token_id == ML_DEFAULT) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_AFTER_DEFAULT;
       pending_token = token;
       continue;
     }
     if (token_id == ML_CHARACTER) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_AFTER_CHARACTER;
       pending_token = token;
       continue;
     }
     if (token_id == ML_DATA) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_AFTER_DATA;
       pending_token = token;
       continue;
     }
     if (token_id == ML_INDEX) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_AFTER_INDEX;
       pending_token = token;
       continue;
     }
     if (token_id == ML_START) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_AFTER_START;
       pending_token = token;
       continue;
     }
     if (token_id == ML_UNION) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_AFTER_UNION;
       value_saw_equals = 0;
       pending_token = token;
@@ -4867,40 +4879,50 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
     if (token_id == ML_AUTOEXTEND_SIZE || token_id == ML_AUTO_INCREMENT ||
         token_id == ML_AVG_ROW_LENGTH || token_id == ML_KEY_BLOCK_SIZE ||
         token_id == ML_MAX_ROWS || token_id == ML_MIN_ROWS) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_EXPECT_VALUE;
       value_kind = CREATE_TABLE_OPTION_VALUE_NUMBER;
     } else if (token_id == ML_CHECKSUM || token_id == ML_DELAY_KEY_WRITE) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_EXPECT_VALUE;
       value_kind = CREATE_TABLE_OPTION_VALUE_NUMBER;
     } else if (token_id == ML_PACK_KEYS ||
                token_id == ML_STATS_AUTO_RECALC ||
                token_id == ML_STATS_PERSISTENT ||
                token_id == ML_STATS_SAMPLE_PAGES) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_EXPECT_VALUE;
       value_kind = CREATE_TABLE_OPTION_VALUE_DEFAULT_NUMBER;
     } else if (token_id == ML_COMMENT || token_id == ML_COMPRESSION ||
                token_id == ML_CONNECTION || token_id == ML_PASSWORD ||
                token_id == ML_ENGINE_ATTRIBUTE ||
                token_id == ML_SECONDARY_ENGINE_ATTRIBUTE) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_EXPECT_VALUE;
       value_kind = CREATE_TABLE_OPTION_VALUE_STRING;
     } else if (token_id == ML_ENCRYPTION) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_EXPECT_VALUE;
       value_kind = CREATE_TABLE_OPTION_VALUE_ENCRYPTION;
     } else if (token_id == ML_ENGINE || token_id == ML_SECONDARY_ENGINE ||
                token_id == ML_TABLESPACE) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_EXPECT_VALUE;
       value_kind = CREATE_TABLE_OPTION_VALUE_NAME;
     } else if (token_id == ML_CHARSET || token_id == ML_COLLATE) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_EXPECT_VALUE;
       value_kind = CREATE_TABLE_OPTION_VALUE_CHARSET;
     } else if (token_id == ML_INSERT_METHOD) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_EXPECT_VALUE;
       value_kind = CREATE_TABLE_OPTION_VALUE_INSERT_METHOD;
     } else if (token_id == ML_ROW_FORMAT) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_EXPECT_VALUE;
       value_kind = CREATE_TABLE_OPTION_VALUE_ROW_FORMAT;
     } else if (token_id == ML_STORAGE) {
+      option_tail_without_body = !saw_definition_body;
       state = CREATE_TABLE_TAIL_EXPECT_VALUE;
       value_kind = CREATE_TABLE_OPTION_VALUE_STORAGE;
     } else {
@@ -4922,6 +4944,9 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
       state == CREATE_TABLE_TAIL_UNION_BODY || need_option_after_comma) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE TABLE table option");
+  } else if (option_tail_without_body) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete CREATE TABLE query body");
   }
 }
 

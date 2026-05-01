@@ -2233,35 +2233,120 @@ set_first_token ::= SESSION.
 set_first_token ::= SQL_BUFFER_RESULT.
 set_first_token ::= TRANSACTION.
 
-grant_statement ::= GRANT privilege_first_token required_statement_tail. {
+grant_statement ::= GRANT grant_subject_list grant_destination_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-revoke_statement ::= REVOKE privilege_first_token required_statement_tail. {
+revoke_statement ::= REVOKE revoke_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-privilege_first_token ::= ALTER.
-privilege_first_token ::= ALL.
-privilege_first_token ::= ATOM.
-privilege_first_token ::= CREATE.
-privilege_first_token ::= DELETE.
-privilege_first_token ::= DROP.
-privilege_first_token ::= EVENT.
-privilege_first_token ::= EXECUTE.
-privilege_first_token ::= GRANT.
-privilege_first_token ::= IF.
-privilege_first_token ::= INDEX.
-privilege_first_token ::= INSERT.
-privilege_first_token ::= LABEL.
-privilege_first_token ::= LOCK.
-privilege_first_token ::= REPLICATION.
-privilege_first_token ::= ROLE.
-privilege_first_token ::= SELECT.
-privilege_first_token ::= SHOW.
-privilege_first_token ::= SHUTDOWN.
-privilege_first_token ::= TRIGGER.
-privilege_first_token ::= UPDATE.
+grant_destination_tail ::= ON grant_object TO grant_recipient_list.
+grant_destination_tail ::= TO grant_recipient_list.
+
+revoke_tail ::= grant_subject_list revoke_destination_tail.
+revoke_tail ::= IF reset_exists grant_subject_list revoke_destination_tail.
+
+revoke_destination_tail ::= ON grant_object FROM grant_recipient_list.
+revoke_destination_tail ::= FROM grant_recipient_list.
+
+grant_subject_list ::= grant_subject_item.
+grant_subject_list ::= grant_subject_list COMMA grant_subject_item.
+
+grant_subject_item ::= grant_subject_part.
+grant_subject_item ::= grant_subject_item grant_subject_part.
+
+grant_subject_part ::= grant_subject_token.
+grant_subject_part ::= LP grant_subject_parenthesized RP.
+
+grant_subject_parenthesized ::= .
+grant_subject_parenthesized ::= grant_subject_parenthesized grant_subject_parenthesized_token.
+
+grant_subject_parenthesized_token ::= ATOM.
+grant_subject_parenthesized_token ::= LABEL.
+grant_subject_parenthesized_token ::= keyword.
+grant_subject_parenthesized_token ::= DOT.
+grant_subject_parenthesized_token ::= COMMA.
+grant_subject_parenthesized_token ::= LP grant_subject_parenthesized RP.
+grant_subject_parenthesized_token ::= LB.
+grant_subject_parenthesized_token ::= RB.
+grant_subject_parenthesized_token ::= LC.
+grant_subject_parenthesized_token ::= RC.
+
+grant_subject_token ::= ALL.
+grant_subject_token ::= ALTER.
+grant_subject_token ::= ATOM.
+grant_subject_token ::= CONNECTION.
+grant_subject_token ::= CREATE.
+grant_subject_token ::= DATA.
+grant_subject_token ::= DATABASE.
+grant_subject_token ::= DATABASES.
+grant_subject_token ::= DELETE.
+grant_subject_token ::= DROP.
+grant_subject_token ::= EVENT.
+grant_subject_token ::= EXECUTE.
+grant_subject_token ::= FUNCTION.
+grant_subject_token ::= GRANT.
+grant_subject_token ::= GROUP_REPLICATION.
+grant_subject_token ::= INDEX.
+grant_subject_token ::= INSERT.
+grant_subject_token ::= LABEL.
+grant_subject_token ::= LOCK.
+grant_subject_token ::= NO.
+grant_subject_token ::= PRIVILEGES.
+grant_subject_token ::= PROCEDURE.
+grant_subject_token ::= REPLICATION.
+grant_subject_token ::= ROLE.
+grant_subject_token ::= SELECT.
+grant_subject_token ::= SHOW.
+grant_subject_token ::= SHUTDOWN.
+grant_subject_token ::= SLAVE.
+grant_subject_token ::= TABLE.
+grant_subject_token ::= TABLES.
+grant_subject_token ::= TABLESPACE.
+grant_subject_token ::= TEMPORARY.
+grant_subject_token ::= TRIGGER.
+grant_subject_token ::= UPDATE.
+grant_subject_token ::= USER.
+grant_subject_token ::= VIEW.
+
+grant_object ::= grant_object_token.
+grant_object ::= grant_object grant_object_token.
+
+grant_object_token ::= ATOM.
+grant_object_token ::= LABEL.
+grant_object_token ::= DOT.
+grant_object_token ::= COMPONENT.
+grant_object_token ::= DATABASE.
+grant_object_token ::= DATABASES.
+grant_object_token ::= DEFAULT.
+grant_object_token ::= FUNCTION.
+grant_object_token ::= PLUGIN.
+grant_object_token ::= PROCEDURE.
+grant_object_token ::= TABLE.
+grant_object_token ::= TABLES.
+grant_object_token ::= TABLESPACE.
+grant_object_token ::= USER.
+
+grant_recipient_list ::= grant_recipient.
+grant_recipient_list ::= grant_recipient_list COMMA grant_recipient.
+
+grant_recipient ::= drop_account_name grant_recipient_option_tail.
+
+grant_recipient_option_tail ::= .
+grant_recipient_option_tail ::= grant_recipient_option_tail grant_recipient_option_token.
+
+grant_recipient_option_nested ::= .
+grant_recipient_option_nested ::= grant_recipient_option_nested grant_recipient_option_token.
+
+grant_recipient_option_token ::= ATOM.
+grant_recipient_option_token ::= LABEL.
+grant_recipient_option_token ::= keyword.
+grant_recipient_option_token ::= LP grant_recipient_option_nested RP.
+grant_recipient_option_token ::= LB.
+grant_recipient_option_token ::= RB.
+grant_recipient_option_token ::= LC.
+grant_recipient_option_token ::= RC.
 
 leave_statement ::= LEAVE stored_program_label_ref. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

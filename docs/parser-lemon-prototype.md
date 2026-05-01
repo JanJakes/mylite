@@ -62,11 +62,12 @@ token sink:
   definitions; trailing table options must start with known MySQL table-option
   keywords, and post-definition CTAS forms are recognized explicitly.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
-  documented NDB logfile options with numeric size/nodegroup values, and
-  required `ENGINE` clauses.
+  string-literal file names, documented NDB logfile options with numeric
+  size/nodegroup values, and required `ENGINE` clauses.
 - `CREATE TABLESPACE`, `CREATE UNDO TABLESPACE`, `ALTER TABLESPACE`, and
-  undo/drop tablespace tails recognize documented data-file, numeric size,
-  `'Y'`/`'N'` encryption, optional-equals engine, and attribute clauses.
+  undo/drop tablespace tails recognize documented string-literal data files,
+  numeric size, `'Y'`/`'N'` encryption, optional-equals engine, and attribute
+  clauses.
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
   `OPTIONS` names, string-valued options, and numeric ports.
 - `ALTER INSTANCE` recognizes redo-log enable/disable, InnoDB/binlog master-key
@@ -97,8 +98,8 @@ token sink:
   references using the shared identifier grammar.
 - `INSTALL PLUGIN` and `UNINSTALL PLUGIN` recognize plugin names using the
   shared identifier grammar.
-- `INSTALL COMPONENT` and `UNINSTALL COMPONENT` recognize component file lists
-  and optional scoped `SET` assignments for installs.
+- `INSTALL COMPONENT` and `UNINSTALL COMPONENT` recognize string-literal
+  component file lists and optional scoped `SET` assignments for installs.
 - `ANALYZE TABLE` recognizes table lists and histogram update/drop clauses using
   the shared identifier grammar for table and column names, with numeric
   histogram bucket counts.
@@ -108,7 +109,8 @@ token sink:
   attributes, numeric VCPU ranges, numeric thread priorities, force modifiers,
   and numeric thread-id assignment lists.
 - `START REPLICA` and legacy `START SLAVE` recognize thread, `UNTIL`,
-  connection, and channel clauses with numeric log-position values.
+  connection, and channel clauses with string-literal log/GTID/user option
+  values and numeric log-position values.
 - `RESET BINARY LOGS AND GTIDS` recognizes optional numeric `TO` index values.
 - `BINLOG` requires a string-literal payload, and `PURGE BINARY LOGS ... TO`
   requires a string-literal log name.
@@ -119,11 +121,13 @@ token sink:
 - `LOCK INSTANCE FOR BACKUP`, `UNLOCK INSTANCE`, and `UNLOCK TABLES` have
   closed statement shapes.
 - `LOAD DATA` and `LOAD XML` recognize file modifiers, duplicate handling,
-  partition or row-matching clauses, character sets, field/line options,
-  numeric ignored-row counts, column/user-variable lists, and `SET` tails.
+  string-literal file names, partition or row-matching clauses, character sets,
+  field/line options, numeric ignored-row counts, column/user-variable lists,
+  and `SET` tails.
   `LOAD DATA` partition names use the shared identifier grammar.
 - `LOAD INDEX INTO CACHE` recognizes table/key lists, partition lists, `ALL`,
   and `IGNORE LEAVES`.
+- `IMPORT TABLE` recognizes comma-separated string-literal file lists.
 - `EXPLAIN` and `DESCRIBE` recognize numeric `FOR CONNECTION` ids.
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.

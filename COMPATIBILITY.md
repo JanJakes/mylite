@@ -69,7 +69,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. | Parser recognizes schedule, completion, rename, enable/disable, comment, and `DO` clauses. |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. | Parser recognizes redo-log enable/disable, InnoDB/binlog master-key rotation, TLS reload with channel and no-rollback options, and keyring reload. |
-| `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, numeric `INITIAL_SIZE`, `WAIT`, and required `ENGINE`. |
+| `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE` with string-literal file names, numeric `INITIAL_SIZE`, `WAIT`, and required `ENGINE`. |
 | `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. | Parser recognizes the documented `OPTIONS` names and value requirements. |
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. | Parser recognizes selected closed actions including comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `FORCE`, `ENABLE/DISABLE KEYS`, `RENAME` forms, `DROP` forms, `ALTER` subactions, charset/order changes, partition definition/maintenance/exchange/reorganize forms with numeric coalesce counts, tablespace/storage/union changes, table option changes with numeric/boolean/default value domains, `ALGORITHM`/`LOCK` options, and tablespace discard/import forms. `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names; `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body. |
@@ -81,7 +81,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. | Parser recognizes empty and comma-separated input parameter signatures with nested type bodies. |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. | Parser recognizes UDF return types and requires string-literal `SONAME` values. |
 | `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. | Parser recognizes non-empty functional/key-part lists plus index options for parser plugins, comments, visibility, engine attributes, numeric `KEY_BLOCK_SIZE`, `USING`, `ALGORITHM`, and `LOCK`. |
-| `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, NDB numeric size/nodegroup options, comments, `WAIT`, and required `ENGINE`. |
+| `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE` with string-literal file names, NDB numeric size/nodegroup options, comments, `WAIT`, and required `ENGINE`. |
 | `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. | Parser recognizes empty and comma-separated `IN`/`OUT`/`INOUT` parameter signatures with nested type bodies. |
 | `CREATE SERVER` | ❌ | low | Foreign server metadata syntax. | Parser recognizes `FOREIGN DATA WRAPPER` with documented `OPTIONS` names, string-valued options, and numeric ports. |
 | `CREATE SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system catalog DDL. | Parser recognizes numeric SRS ids, bare, `IF NOT EXISTS`, `OR REPLACE`, and documented SRS attribute syntax with numeric organization authority codes. |
@@ -89,7 +89,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE TEMPORARY TABLE` | ❌ | high | Session-scoped table lifecycle and name shadowing. |  |
 | `CREATE TABLE ... LIKE` | ❌ | high | Exact metadata cloning rules. |  |
 | `CREATE TABLE ... SELECT` | ❌ | high | CTAS type inference, default handling, indexes, and atomicity. |  |
-| `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. | Parser recognizes data files, numeric autoextend/file-block sizes, `'Y'`/`'N'` encryption, NDB logfile/size/nodegroup/comment options, engine, and engine attributes. |
+| `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. | Parser recognizes string-literal data files, numeric autoextend/file-block sizes, `'Y'`/`'N'` encryption, NDB logfile/size/nodegroup/comment options, engine, and engine attributes. |
 | `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax present in the MySQL 8.4 parser source. |  |
 | `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. |  |
 | `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. | Parser recognizes algorithm, definer, SQL security, column lists, view body starts, and non-SELECT `WITH [CASCADED|LOCAL] CHECK OPTION` tails. |
@@ -121,7 +121,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DELETE` (multi-table) | ❌ | high | Multi-table delete forms using FROM and USING, join semantics, and affected rows. |  |
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. |  |
 | `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. | Parser recognizes one- and two-part table names, aliases, key names, read directions, tuple reads, `WHERE`, and numeric `LIMIT` tails. |
-| `IMPORT TABLE` | ❌ | low | Transportable tablespace import syntax and diagnostics. |  |
+| `IMPORT TABLE` | ❌ | low | Transportable tablespace import syntax and diagnostics. | Parser recognizes comma-separated string-literal import file lists. |
 | `INSERT ... VALUES` | ❌ | top | Multi-row values, defaults, generated columns, warnings, affected rows, and insert ids. | Parser recognizes empty and comma-separated column lists before write payloads. |
 | `INSERT ... SET` | ❌ | top | MySQL SET-form insert semantics. |  |
 | `INSERT ... SELECT` | ❌ | high | Insert from query expression with locking, defaults, and metadata inference. |  |
@@ -129,10 +129,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `INSERT IGNORE` | ❌ | top | Duplicate, conversion, and constraint warning demotion rules. |  |
 | `INSERT DELAYED` | ❌ | low | Deprecated delayed insert syntax and MySQL-compatible diagnostics. |  |
 | `INSERT LOW_PRIORITY` / `HIGH_PRIORITY` | ❌ | low | Priority modifiers and embedded-compatible treatment. |  |
-| `LOAD DATA INFILE` | ❌ | high | Server-side text import syntax, field/line options, user variables, SET clause, warnings, and security restrictions. | Parser recognizes priority/local modifiers, duplicate handling, partition names, character sets, field/line options, numeric ignored-row counts, column/user-variable lists, and `SET` tails. |
-| `LOAD DATA LOCAL INFILE` | ❌ | high | Client-side LOCAL INFILE request flow, security controls, warnings, and protocol interaction. | Parser recognizes the `LOCAL` form and the same data-file clauses as non-local `LOAD DATA`. |
-| `LOAD XML INFILE` | ❌ | low | Server-side XML import syntax, row matching, namespaces, SET clause, warnings, and security restrictions. | Parser recognizes priority/local modifiers, duplicate handling, character sets, `ROWS IDENTIFIED BY`, numeric ignored-row counts, field/user-variable lists, and `SET` tails. |
-| `LOAD XML LOCAL INFILE` | ❌ | low | Client-side XML import request behavior and embedded-compatible diagnostics. | Parser recognizes the `LOCAL` form and the same XML-file clauses as non-local `LOAD XML`. |
+| `LOAD DATA INFILE` | ❌ | high | Server-side text import syntax, field/line options, user variables, SET clause, warnings, and security restrictions. | Parser recognizes string-literal file names, priority/local modifiers, duplicate handling, partition names, character sets, field/line options, numeric ignored-row counts, column/user-variable lists, and `SET` tails. |
+| `LOAD DATA LOCAL INFILE` | ❌ | high | Client-side LOCAL INFILE request flow, security controls, warnings, and protocol interaction. | Parser recognizes the `LOCAL` form and the same string-literal data-file clauses as non-local `LOAD DATA`. |
+| `LOAD XML INFILE` | ❌ | low | Server-side XML import syntax, row matching, namespaces, SET clause, warnings, and security restrictions. | Parser recognizes string-literal file names, priority/local modifiers, duplicate handling, character sets, `ROWS IDENTIFIED BY`, numeric ignored-row counts, field/user-variable lists, and `SET` tails. |
+| `LOAD XML LOCAL INFILE` | ❌ | low | Client-side XML import request behavior and embedded-compatible diagnostics. | Parser recognizes the `LOCAL` form and the same string-literal XML-file clauses as non-local `LOAD XML`. |
 | `REPLACE ... VALUES` | ❌ | top | Delete-then-insert semantics, cascades, triggers, affected rows, and auto-increment behavior. | Parser recognizes empty and comma-separated column lists before write payloads. |
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
@@ -175,9 +175,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. | Parser recognizes MySQL 8.4 filter names, parenthesized rule lists, empty rule lists, rewrite-db pairs, and optional channel clauses. |
 | `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. | Parser recognizes documented MySQL 8.4 source option names, legacy `CHANGE MASTER TO` option names, typed numeric/boolean option values where grammar-constrained, generic values for string/list/enum options, and channel names. |
 | `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. | Parser recognizes `ALL` and channel names using the shared identifier grammar. |
-| `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. | Parser recognizes thread, until, connection, and channel clauses with numeric log positions and channel names using the shared identifier grammar. |
+| `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. | Parser recognizes thread, until, connection, and channel clauses with string-literal log/GTID/user option values, numeric log positions, and channel names using the shared identifier grammar. |
 | `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. | Parser recognizes thread and channel clauses with channel names using the shared identifier grammar. |
-| `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. |  |
+| `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. | Parser recognizes comma-separated string-literal user, password, and default-auth options. |
 | `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. |  |
 | `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. | Parser recognizes prepared-statement names and user-variable sources using the shared identifier grammar. |
 | `EXECUTE` | ❌ | high | Prepared-statement execution with USING variables and result metadata. | Parser recognizes prepared-statement names and `USING` user-variable lists using shared identifier grammar. |
@@ -227,11 +227,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. | Parser recognizes table lists and optional `QUICK`/`EXTENDED` modifiers. |
 | `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers and table lists. |
 | `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, table lists, and `QUICK`/`EXTENDED`/`USE_FRM` options. |
-| `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. | Parser recognizes component file lists and optional `SET` assignments with global/persist scopes. |
-| `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. | Parser recognizes comma-separated component file lists. |
+| `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. | Parser recognizes string-literal component file lists and optional `SET` assignments with global/persist scopes. |
+| `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. | Parser recognizes comma-separated string-literal component file lists. |
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar and required string-literal `SONAME` file values. |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar. |
-| `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser recognizes local clone and remote `CLONE INSTANCE` syntax, including numeric remote ports plus optional data directory and SSL clauses. |
+| `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser recognizes local clone and remote `CLONE INSTANCE` syntax, including numeric remote ports plus optional string-literal data directory and SSL clauses. |
 | `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser recognizes comma-separated variable assignment lists with optional per-assignment scopes and nested value expressions. |
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser recognizes charset names using the shared identifier grammar, `BINARY`, `DEFAULT`, and comma-following variable assignments. |
 | `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser recognizes charset/collation names using the shared identifier grammar, `BINARY`, `DEFAULT`, optional `COLLATE`, and comma-following variable assignments. |

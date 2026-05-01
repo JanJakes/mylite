@@ -400,7 +400,12 @@ database_encryption_option ::= ENCRYPTION drop_index_option_equals_tail encrypti
 
 encryption_value ::= ENCRYPTION_VALUE.
 
-create_udf_tail ::= create_returns create_udf_return_type create_soname STRING_LITERAL.
+string_literal ::= STRING_LITERAL.
+string_literal ::= SQLSTATE_VALUE.
+string_literal ::= ENCRYPTION_VALUE.
+string_literal ::= DOUBLE_QUOTED_STRING.
+
+create_udf_tail ::= create_returns create_udf_return_type create_soname string_literal.
 
 create_returns ::= RETURNS.
 
@@ -830,7 +835,7 @@ create_resource_type_value ::= SYSTEM.
 
 create_logfile_group ::= GROUP.
 
-create_logfile_group_tail ::= create_add create_undofile ATOM create_logfile_group_options_tail logfile_group_engine_clause.
+create_logfile_group_tail ::= create_add create_undofile string_literal create_logfile_group_options_tail logfile_group_engine_clause.
 
 create_add ::= ADD.
 
@@ -848,7 +853,7 @@ create_logfile_group_option ::= NODEGROUP drop_index_option_equals_tail tablespa
 create_logfile_group_option ::= WAIT.
 create_logfile_group_option ::= COMMENT drop_index_option_equals_tail ATOM.
 
-alter_logfile_group_tail ::= create_add create_undofile ATOM alter_logfile_group_options_tail logfile_group_engine_clause.
+alter_logfile_group_tail ::= create_add create_undofile string_literal alter_logfile_group_options_tail logfile_group_engine_clause.
 
 alter_logfile_group_options_tail ::= .
 alter_logfile_group_options_tail ::= alter_logfile_group_options_tail alter_logfile_group_option.
@@ -863,7 +868,7 @@ create_tablespace_tail ::= create_tablespace_options_tail.
 create_tablespace_options_tail ::= .
 create_tablespace_options_tail ::= create_tablespace_options_tail create_tablespace_option.
 
-create_tablespace_option ::= create_add create_datafile ATOM.
+create_tablespace_option ::= create_add create_datafile string_literal.
 create_tablespace_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= FILE_BLOCK_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
@@ -877,7 +882,7 @@ create_tablespace_option ::= COMMENT drop_index_option_equals_tail ATOM.
 create_tablespace_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
 create_tablespace_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
 
-create_undo_tablespace_tail ::= create_add create_datafile ATOM create_tablespace_post_datafile_options_tail.
+create_undo_tablespace_tail ::= create_add create_datafile string_literal create_tablespace_post_datafile_options_tail.
 
 create_tablespace_post_datafile_options_tail ::= .
 create_tablespace_post_datafile_options_tail ::= create_tablespace_post_datafile_options_tail create_tablespace_post_datafile_option.
@@ -905,12 +910,12 @@ create_options_marker ::= OPTIONS.
 create_server_option_list ::= create_server_option.
 create_server_option_list ::= create_server_option_list import_comma create_server_option.
 
-create_server_option ::= HOST ATOM.
-create_server_option ::= DATABASE ATOM.
-create_server_option ::= USER ATOM.
-create_server_option ::= PASSWORD ATOM.
-create_server_option ::= SOCKET ATOM.
-create_server_option ::= OWNER ATOM.
+create_server_option ::= HOST string_literal.
+create_server_option ::= DATABASE string_literal.
+create_server_option ::= USER string_literal.
+create_server_option ::= PASSWORD string_literal.
+create_server_option ::= SOCKET string_literal.
+create_server_option ::= OWNER string_literal.
 create_server_option ::= PORT create_server_port.
 
 create_server_port ::= BOOLEAN_NUMBER.
@@ -1590,8 +1595,8 @@ alter_resource_group_force_tail ::= .
 alter_resource_group_force_tail ::= FORCE.
 
 alter_tablespace_action ::= RENAME TO cache_name_part.
-alter_tablespace_action ::= ADD create_datafile ATOM alter_tablespace_datafile_options_tail.
-alter_tablespace_action ::= DROP create_datafile ATOM alter_tablespace_datafile_options_tail.
+alter_tablespace_action ::= ADD create_datafile string_literal alter_tablespace_datafile_options_tail.
+alter_tablespace_action ::= DROP create_datafile string_literal alter_tablespace_datafile_options_tail.
 alter_tablespace_action ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
 alter_tablespace_action ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 alter_tablespace_action ::= ENGINE drop_index_option_equals_tail cache_name_part.
@@ -1702,7 +1707,7 @@ load_file_local_tail ::= LOCAL.
 
 load_infile ::= INFILE.
 
-load_file_name ::= ATOM.
+load_file_name ::= string_literal.
 
 load_duplicate_tail ::= .
 load_duplicate_tail ::= IGNORE.
@@ -1829,10 +1834,10 @@ start_thread_type ::= SQL_THREAD.
 start_until_tail ::= .
 start_until_tail ::= UNTIL start_until_spec.
 
-start_until_spec ::= SQL_BEFORE_GTIDS start_option_equals ATOM.
-start_until_spec ::= SQL_AFTER_GTIDS start_option_equals ATOM.
-start_until_spec ::= SOURCE_LOG_FILE start_option_equals ATOM import_comma SOURCE_LOG_POS start_option_equals start_log_position_value.
-start_until_spec ::= RELAY_LOG_FILE start_option_equals ATOM import_comma RELAY_LOG_POS start_option_equals start_log_position_value.
+start_until_spec ::= SQL_BEFORE_GTIDS start_option_equals string_literal.
+start_until_spec ::= SQL_AFTER_GTIDS start_option_equals string_literal.
+start_until_spec ::= SOURCE_LOG_FILE start_option_equals string_literal import_comma SOURCE_LOG_POS start_option_equals start_log_position_value.
+start_until_spec ::= RELAY_LOG_FILE start_option_equals string_literal import_comma RELAY_LOG_POS start_option_equals start_log_position_value.
 start_until_spec ::= SQL_AFTER_MTS_GAPS.
 
 start_log_position_value ::= BOOLEAN_NUMBER.
@@ -1842,16 +1847,16 @@ start_log_position_value ::= NUMBER_LITERAL.
 start_connection_tail ::= start_user_option start_password_option start_default_auth_option start_plugin_dir_option.
 
 start_user_option ::= .
-start_user_option ::= USER start_option_equals ATOM.
+start_user_option ::= USER start_option_equals string_literal.
 
 start_password_option ::= .
-start_password_option ::= PASSWORD start_option_equals ATOM.
+start_password_option ::= PASSWORD start_option_equals string_literal.
 
 start_default_auth_option ::= .
-start_default_auth_option ::= DEFAULT_AUTH start_option_equals ATOM.
+start_default_auth_option ::= DEFAULT_AUTH start_option_equals string_literal.
 
 start_plugin_dir_option ::= .
-start_plugin_dir_option ::= PLUGIN_DIR start_option_equals ATOM.
+start_plugin_dir_option ::= PLUGIN_DIR start_option_equals string_literal.
 
 start_group_replication_tail ::= .
 start_group_replication_tail ::= start_group_replication_options.
@@ -1859,9 +1864,9 @@ start_group_replication_tail ::= start_group_replication_options.
 start_group_replication_options ::= start_group_replication_option.
 start_group_replication_options ::= start_group_replication_options import_comma start_group_replication_option.
 
-start_group_replication_option ::= USER start_option_equals ATOM.
-start_group_replication_option ::= PASSWORD start_option_equals ATOM.
-start_group_replication_option ::= DEFAULT_AUTH start_option_equals ATOM.
+start_group_replication_option ::= USER start_option_equals string_literal.
+start_group_replication_option ::= PASSWORD start_option_equals string_literal.
+start_group_replication_option ::= DEFAULT_AUTH start_option_equals string_literal.
 
 start_option_equals ::= EQUALS.
 
@@ -2025,7 +2030,7 @@ plugin_admin_statement ::= UNINSTALL plugin_uninstall_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-plugin_admin_tail ::= PLUGIN plugin_name plugin_soname STRING_LITERAL.
+plugin_admin_tail ::= PLUGIN plugin_name plugin_soname string_literal.
 plugin_admin_tail ::= COMPONENT component_file_list component_install_tail.
 
 plugin_uninstall_tail ::= PLUGIN plugin_name.
@@ -2072,7 +2077,7 @@ component_install_value_inner_token ::= LC component_install_value_inner RC.
 component_file_list ::= component_file.
 component_file_list ::= component_file_list import_comma component_file.
 
-component_file ::= ATOM.
+component_file ::= string_literal.
 
 plugin_soname ::= SONAME.
 
@@ -2087,7 +2092,7 @@ import_file_list ::= import_file_list import_comma import_file.
 
 import_comma ::= COMMA.
 
-import_file ::= ATOM.
+import_file ::= string_literal.
 
 cache_statement ::= CACHE INDEX cache_table_list IN cache_keycache. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
@@ -2203,7 +2208,7 @@ purge_before ::= BEFORE.
 purge_log_kind ::= BINARY.
 purge_log_kind ::= MASTER.
 
-purge_log_name ::= STRING_LITERAL.
+purge_log_name ::= string_literal.
 
 change_statement ::= CHANGE change_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
@@ -2812,7 +2817,7 @@ binlog_statement ::= BINLOG binlog_payload. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
 }
 
-binlog_payload ::= STRING_LITERAL.
+binlog_payload ::= string_literal.
 
 clone_statement ::= CLONE clone_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
@@ -2854,7 +2859,7 @@ clone_ssl ::= NO SSL.
 
 clone_directory ::= DIRECTORY.
 
-clone_directory_path ::= ATOM.
+clone_directory_path ::= string_literal.
 
 flush_statement ::= FLUSH flush_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);

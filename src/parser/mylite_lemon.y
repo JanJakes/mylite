@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXCHANGE EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PACK_KEYS PAGE PARTITION PHASE PRECEDES PRESERVE READS REAL REBUILD REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REQUIRE RESUME RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXCHANGE EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PACK_KEYS PAGE PARTITION PHASE PRECEDES PRESERVE READS REAL REBUILD REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REQUIRE RESUME RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -152,7 +152,7 @@ create_tail ::= AGGREGATE FUNCTION cache_table_ref create_udf_tail.
 create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_ref create_index_tail.
 create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref create_index_tail.
 create_tail ::= LOGFILE create_logfile_group cache_name_part create_logfile_group_tail.
-create_tail ::= RESOURCE create_resource_group cache_name_part create_resource_type create_options_tail.
+create_tail ::= RESOURCE create_resource_group cache_name_part create_resource_group_tail.
 create_tail ::= SPATIAL create_reference create_system create_if_not_exists_tail cache_name_part create_srs_attribute_start statement_token create_options_tail.
 create_tail ::= OR REPLACE SPATIAL create_reference create_system cache_name_part create_srs_attribute_start statement_token create_options_tail.
 create_tail ::= SERVER cache_name_part create_server_tail.
@@ -441,6 +441,35 @@ create_user_tail ::= create_user_tail statement_token.
 
 create_resource_group ::= GROUP.
 
+create_resource_group_tail ::= create_resource_type create_resource_group_options_tail.
+
+create_resource_group_options_tail ::= resource_group_vcpu_tail resource_group_thread_priority_tail resource_group_state_tail.
+
+resource_group_vcpu_tail ::= .
+resource_group_vcpu_tail ::= resource_group_vcpu_clause.
+
+resource_group_vcpu_clause ::= VCPU resource_group_optional_equals resource_group_vcpu_list.
+
+resource_group_vcpu_list ::= resource_group_vcpu_spec.
+resource_group_vcpu_list ::= resource_group_vcpu_list import_comma resource_group_vcpu_spec.
+
+resource_group_vcpu_spec ::= ATOM.
+resource_group_vcpu_spec ::= ATOM MINUS ATOM.
+
+resource_group_thread_priority_tail ::= .
+resource_group_thread_priority_tail ::= resource_group_thread_priority_clause.
+
+resource_group_thread_priority_clause ::= THREAD_PRIORITY resource_group_optional_equals resource_group_signed_atom.
+
+resource_group_state_tail ::= .
+resource_group_state_tail ::= ENABLE.
+resource_group_state_tail ::= DISABLE.
+
+resource_group_optional_equals ::= .
+resource_group_optional_equals ::= diagnostics_equals.
+
+resource_group_signed_atom ::= ATOM.
+
 create_resource_type ::= create_type_marker diagnostics_equals create_resource_type_value.
 
 create_type_marker ::= TYPE.
@@ -710,13 +739,18 @@ event_statement_start ::= NOT.
 event_statement_start ::= QUOTED_ID.
 event_statement_start ::= READS.
 
-alter_resource_group_actions ::= alter_resource_group_action create_options_tail.
+alter_resource_group_actions ::= resource_group_vcpu_clause resource_group_thread_priority_tail alter_resource_group_state_tail.
+alter_resource_group_actions ::= resource_group_thread_priority_clause alter_resource_group_state_tail.
+alter_resource_group_actions ::= alter_resource_group_state_clause.
 
-alter_resource_group_action ::= DISABLE.
-alter_resource_group_action ::= ENABLE.
-alter_resource_group_action ::= FORCE.
-alter_resource_group_action ::= THREAD_PRIORITY.
-alter_resource_group_action ::= VCPU.
+alter_resource_group_state_tail ::= .
+alter_resource_group_state_tail ::= alter_resource_group_state_clause.
+
+alter_resource_group_state_clause ::= ENABLE.
+alter_resource_group_state_clause ::= DISABLE alter_resource_group_force_tail.
+
+alter_resource_group_force_tail ::= .
+alter_resource_group_force_tail ::= FORCE.
 
 alter_tablespace_action ::= RENAME TO cache_name_part.
 alter_tablespace_action ::= ADD create_datafile ATOM create_options_tail.
@@ -2310,7 +2344,7 @@ set_statement ::= SET ROLE set_role_tail. {
 set_statement ::= SET DEFAULT ROLE set_role_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET RESOURCE create_resource_group cache_name_part statement_tail. {
+set_statement ::= SET RESOURCE create_resource_group cache_name_part set_resource_group_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 set_statement ::= SET TRANSACTION set_transaction_tail. {
@@ -2332,6 +2366,14 @@ set_charset_value ::= ATOM.
 set_charset_value ::= BINARY.
 set_charset_value ::= DEFAULT.
 set_charset_value ::= LABEL.
+
+set_resource_group_tail ::= .
+set_resource_group_tail ::= FOR set_resource_group_thread_list.
+
+set_resource_group_thread_list ::= set_resource_group_thread.
+set_resource_group_thread_list ::= set_resource_group_thread_list import_comma set_resource_group_thread.
+
+set_resource_group_thread ::= ATOM.
 
 set_password_tail ::= set_password_operator set_value_start statement_tail.
 set_password_tail ::= FOR set_password_target set_password_operator set_value_start statement_tail.

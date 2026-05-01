@@ -137,7 +137,8 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
       break;
   }
 
-  if (isdigit(c)) {
+  if (isdigit(c) ||
+      ((c == '-' || c == '+') && isdigit(lexer_peek(lexer, 1)))) {
     return lexer_number(lexer, token);
   }
 
@@ -427,6 +428,9 @@ static int lexer_operator(MyliteLexer *lexer, MyliteToken *token) {
 
   if (c == '=') {
     return ML_EQUALS;
+  }
+  if (c == '-') {
+    return ML_MINUS;
   }
   if (c == '*') {
     return ML_STAR;

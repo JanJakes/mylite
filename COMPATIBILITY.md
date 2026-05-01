@@ -218,10 +218,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SET DEFAULT ROLE` | ❌ | medium | Default role assignment. |  |
 | `SET PASSWORD` | ❌ | medium | Password assignment semantics. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
 | `SET ROLE` | ❌ | medium | Active-role selection. |  |
-| `CREATE RESOURCE GROUP` | ❌ | low | Thread resource group creation syntax. |  |
-| `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. |  |
-| `DROP RESOURCE GROUP` | ❌ | low | Resource group deletion syntax. |  |
-| `SET RESOURCE GROUP` | ❌ | low | Thread assignment to resource groups. |  |
+| `CREATE RESOURCE GROUP` | ❌ | low | Thread resource group creation syntax. | Parser recognizes `TYPE`, optional VCPU ranges, thread priority, and enable/disable clauses. |
+| `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. | Parser recognizes VCPU ranges, thread priority, enable, and `DISABLE [FORCE]` clauses. |
+| `DROP RESOURCE GROUP` | ❌ | low | Resource group deletion syntax. | Parser recognizes the optional `FORCE` modifier. |
+| `SET RESOURCE GROUP` | ❌ | low | Thread assignment to resource groups. | Parser recognizes optional `FOR` thread-id lists. |
 | `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. |  |
 | `CHECK TABLE` | ❌ | high | Table consistency checks and result-set metadata. |  |
 | `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. |  |

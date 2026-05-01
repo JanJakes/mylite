@@ -928,16 +928,7 @@ create_tablespace_option ::= COMMENT drop_index_option_equals_tail string_litera
 create_tablespace_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
 create_tablespace_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
 
-create_undo_tablespace_tail ::= create_add create_datafile string_literal create_tablespace_post_datafile_options_tail.
-
-create_tablespace_post_datafile_options_tail ::= .
-create_tablespace_post_datafile_options_tail ::= create_tablespace_post_datafile_options_tail create_tablespace_post_datafile_option.
-
-create_tablespace_post_datafile_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
-create_tablespace_post_datafile_option ::= FILE_BLOCK_SIZE drop_index_option_equals_tail tablespace_number_value.
-create_tablespace_post_datafile_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
-create_tablespace_post_datafile_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
-create_tablespace_post_datafile_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
+create_undo_tablespace_tail ::= create_add create_datafile string_literal undo_tablespace_options_tail.
 
 tablespace_number_value ::= BOOLEAN_NUMBER.
 tablespace_number_value ::= FACTOR_NUMBER.
@@ -1010,7 +1001,7 @@ drop_tail(A) ::= RESOURCE drop_resource_group cache_name_part drop_resource_forc
 drop_tail(A) ::= SPATIAL drop_reference drop_system drop_if_exists_tail srs_id. {
   A = MYLITE_STATEMENT_DDL;
 }
-drop_tail(A) ::= UNDO TABLESPACE cache_name_part drop_tablespace_engine_tail. {
+drop_tail(A) ::= UNDO TABLESPACE cache_name_part undo_tablespace_options_tail. {
   A = MYLITE_STATEMENT_DDL;
 }
 drop_tail(A) ::= PREPARE prepared_statement_name. {
@@ -1105,10 +1096,21 @@ drop_tablespace_options ::= drop_tablespace_option.
 drop_tablespace_options ::= drop_tablespace_options drop_tablespace_option.
 drop_tablespace_options ::= drop_tablespace_options COMMA drop_tablespace_option.
 
-drop_tablespace_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
-drop_tablespace_option ::= STORAGE ENGINE drop_index_option_equals_tail cache_name_part.
+drop_tablespace_option ::= tablespace_engine_option.
 drop_tablespace_option ::= WAIT.
 drop_tablespace_option ::= NO_WAIT.
+
+undo_tablespace_options_tail ::= .
+undo_tablespace_options_tail ::= undo_tablespace_options.
+
+undo_tablespace_options ::= undo_tablespace_option.
+undo_tablespace_options ::= undo_tablespace_options undo_tablespace_option.
+undo_tablespace_options ::= undo_tablespace_options COMMA undo_tablespace_option.
+
+undo_tablespace_option ::= tablespace_engine_option.
+
+tablespace_engine_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
+tablespace_engine_option ::= STORAGE ENGINE drop_index_option_equals_tail cache_name_part.
 
 drop_index_name ::= cache_name_part.
 
@@ -1687,7 +1689,7 @@ alter_tablespace_datafile_option ::= INITIAL_SIZE drop_index_option_equals_tail 
 alter_tablespace_datafile_option ::= WAIT.
 alter_tablespace_datafile_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
 
-alter_undo_tablespace_action ::= SET alter_undo_tablespace_state drop_tablespace_engine_tail.
+alter_undo_tablespace_action ::= SET alter_undo_tablespace_state undo_tablespace_options_tail.
 
 alter_undo_tablespace_state ::= ACTIVE.
 alter_undo_tablespace_state ::= INACTIVE.

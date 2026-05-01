@@ -74,7 +74,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. | Parser recognizes the documented `OPTIONS` names and value requirements. |
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. | Parser recognizes selected closed actions including comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `FORCE`, `ENABLE/DISABLE KEYS`, `RENAME` forms, `DROP` forms including column-drop `RESTRICT`/`CASCADE` tails, `ALTER` subactions, charset/order changes, partition definition/maintenance/exchange/reorganize forms with binlog modifiers, CHECK/REPAIR options, and numeric coalesce counts, tablespace/storage/union changes, secondary-engine load/unload actions, table option changes with numeric/boolean/default value domains, string-literal engine attributes, `ALGORITHM`/`LOCK` options, and tablespace discard/import forms. `DROP` and `EXCHANGE PARTITION` require concrete partition names; `REORGANIZE PARTITION ... INTO (...)` also requires concrete partition names and a non-empty `INTO (...)` body. |
 | `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser recognizes rename, `ADD/DROP DATAFILE`, numeric size, `'Y'`/`'N'` encryption, engine, and string-literal attribute clauses. |
-| `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. | Parser recognizes `SET ACTIVE`/`SET INACTIVE` plus optional `ENGINE [=] name` tails. |
+| `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. | Parser recognizes `SET ACTIVE`/`SET INACTIVE` plus optional `ENGINE`/`STORAGE ENGINE` option lists. |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. | Parser recognizes column lists, view body starts, and `WITH [CASCADED|LOCAL] CHECK OPTION` tails on non-plain-`SELECT` bodies including parenthesized query expressions. |
 | `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. | Parser recognizes charset, collation, and `'Y'`/`'N'` encryption option clauses. |
 | `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. | Parser recognizes schedule, completion, enable/disable including `DISABLE ON REPLICA`/`SLAVE`, comment, and required `DO` clauses. |
@@ -90,7 +90,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE TABLE ... LIKE` | ❌ | high | Exact metadata cloning rules. |  |
 | `CREATE TABLE ... SELECT` | ❌ | high | CTAS type inference, default handling, indexes, and atomicity. |  |
 | `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. | Parser recognizes string-literal data files, numeric autoextend/file-block sizes, `'Y'`/`'N'` encryption, NDB logfile/size/nodegroup/comment options, engine, and string-literal engine attributes. |
-| `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax present in the MySQL 8.4 parser source. |  |
+| `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax present in the MySQL 8.4 parser source. | Parser recognizes required string-literal data files plus optional `ENGINE`/`STORAGE ENGINE` option lists. |
 | `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. | Parser recognizes trigger timing, event, target table, optional ordering, definer forms, and stored-program statement starts for single-statement trigger bodies. |
 | `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. | Parser recognizes algorithm, definer, SQL security, column lists, view body starts, and `WITH [CASCADED|LOCAL] CHECK OPTION` tails on non-plain-`SELECT` bodies including parenthesized query expressions. |
 | `DROP DATABASE` / `DROP SCHEMA` | ❌ | high | Schema removal, metadata cleanup, warnings, and embedded single-file constraints. |  |
@@ -104,7 +104,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system deletion and dependency checks. | Parser recognizes numeric SRS ids and optional `IF EXISTS`. |
 | `DROP TABLE` | ❌ | top | Multi-table drop, temporary tables, foreign-key checks, and warnings. |  |
 | `DROP TABLESPACE` | ❌ | low | Tablespace deletion syntax and diagnostics. | Parser recognizes optional `ENGINE`/`STORAGE ENGINE` and `WAIT`/`NO_WAIT` option lists. |
-| `DROP UNDO TABLESPACE` | ❌ | low | Undo tablespace deletion syntax present in the MySQL 8.4 parser source. | Parser recognizes optional `ENGINE`/`STORAGE ENGINE` and `WAIT`/`NO_WAIT` option lists. |
+| `DROP UNDO TABLESPACE` | ❌ | low | Undo tablespace deletion syntax present in the MySQL 8.4 parser source. | Parser recognizes optional `ENGINE`/`STORAGE ENGINE` option lists. |
 | `DROP TRIGGER` | ❌ | high | Trigger deletion and metadata cleanup. |  |
 | `DROP VIEW` | ❌ | high | Multi-view drop and warnings. |  |
 | `RENAME TABLE` | ❌ | top | Atomic multi-table rename semantics. |  |

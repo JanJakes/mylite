@@ -265,6 +265,8 @@ static void validate_trigger_body_statement(MyliteParseContext *ctx,
 static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
                                                   int token_id,
                                                   MyliteToken token);
+static void validate_select_list_tail_from(MyliteParseContext *ctx,
+                                           MyliteToken start);
 static void validate_routine_statement_body_from(MyliteParseContext *ctx,
                                                  int token_id,
                                                  MyliteToken token);
@@ -788,7 +790,7 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
       continue;
     }
 
-    if (token_id == ML_SEMI) {
+    if (token_is_statement_terminator(token_id, token)) {
       break;
     }
 
@@ -4586,7 +4588,14 @@ static void validate_with_statement_from(MyliteParseContext *ctx,
 
 static void validate_query_body_from(MyliteParseContext *ctx, int token_id,
                                      MyliteToken token) {
-  if (token_id == ML_SELECT || token_id == ML_TABLE) {
+  if (token_id == ML_SELECT) {
+    mylite_parser_validate_select_statement_from(ctx, token);
+    if (!ctx->failed) {
+      validate_select_list_tail_from(ctx, token);
+    }
+    return;
+  }
+  if (token_id == ML_TABLE) {
     mylite_parser_validate_select_statement_from(ctx, token);
     return;
   }
@@ -7467,7 +7476,14 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
     validate_embedded_set_statement_from(ctx, token);
     return;
   }
-  if (token_id == ML_SELECT || token_id == ML_TABLE) {
+  if (token_id == ML_SELECT) {
+    mylite_parser_validate_select_statement_from(ctx, token);
+    if (!ctx->failed) {
+      validate_select_list_tail_from(ctx, token);
+    }
+    return;
+  }
+  if (token_id == ML_TABLE) {
     mylite_parser_validate_select_statement_from(ctx, token);
     return;
   }
@@ -7500,6 +7516,112 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
   }
   if (token_id == ML_UPDATE) {
     mylite_parser_validate_dml_statement(ctx, token, MYLITE_STATEMENT_UPDATE);
+  }
+}
+
+static void validate_select_list_tail_from(MyliteParseContext *ctx,
+                                           MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken previous_top_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int depth = 0;
+  int previous_top_token_id = 0;
+  int previous_was_operator = 1;
+  int expression_started = 0;
+  int select_prefix = 1;
+  MyliteExpressionStack expression_stack = {0};
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (select_prefix) {
+      if (select_modifier_flag(token_id)) {
+        continue;
+      }
+      select_prefix = 0;
+    }
+
+    if (depth > 0) {
+      if (!query_expression_depth_token(
+              ctx, token_id, token, &depth, &expression_stack,
+              "malformed SELECT expression clause")) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id) && depth == 0) {
+        previous_top_token_id = token_id;
+        previous_top_token = token;
+        previous_was_operator = 0;
+      }
+      continue;
+    }
+
+    if (token_is_statement_terminator(token_id, token) ||
+        token_id == ML_FROM ||
+        select_expression_clause_boundary(token_id, token)) {
+      if (expression_started && previous_was_operator) {
+        mylite_parser_reject(ctx, previous_top_token,
+                             "incomplete SELECT expression clause");
+      }
+      return;
+    }
+
+    if (token_id == ML_COMMA) {
+      if (!expression_started || previous_was_operator) {
+        mylite_parser_reject(ctx, previous_top_token,
+                             "incomplete SELECT expression clause");
+        return;
+      }
+      expression_started = 0;
+      previous_top_token_id = 0;
+      previous_was_operator = 1;
+      previous_top_token = token;
+      continue;
+    }
+
+    if (token_id == ML_AS && previous_was_operator) {
+      mylite_parser_reject(ctx, previous_top_token,
+                           "incomplete SELECT expression clause");
+      return;
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      if (!query_expression_token(
+              ctx, token_id, token, &depth, &previous_top_token_id,
+              &previous_top_token, &previous_was_operator, &expression_stack,
+              "malformed SELECT expression clause")) {
+        return;
+      }
+      expression_started = 1;
+      continue;
+    }
+
+    if (token_id == ML_STAR &&
+        (!expression_started || previous_top_token_id == ML_DOT ||
+         previous_was_operator)) {
+      previous_top_token_id = token_id;
+      previous_top_token = token;
+      previous_was_operator = 0;
+      expression_started = 1;
+      continue;
+    }
+
+    previous_top_token_id = token_id;
+    previous_top_token = token;
+    previous_was_operator = do_expression_operator(token_id, token);
+    expression_started = 1;
+  }
+
+  if (expression_started && previous_was_operator) {
+    mylite_parser_reject(ctx, previous_top_token,
+                         "incomplete SELECT expression clause");
   }
 }
 
@@ -10472,8 +10594,8 @@ static int routine_body_statement_start_token(int token_id) {
 
 static int routine_direct_query_body_start_token(int token_id) {
   return token_id == ML_DELETE || token_id == ML_INSERT ||
-         token_id == ML_REPLACE || token_id == ML_UPDATE ||
-         token_id == ML_VALUES;
+         token_id == ML_REPLACE || token_id == ML_SELECT ||
+         token_id == ML_UPDATE || token_id == ML_VALUES;
 }
 
 static int routine_compound_statement_start_token(int token_id) {

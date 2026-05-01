@@ -31,7 +31,8 @@ token sink:
   preserving nested type bodies. Stored routine bodies validate direct and
   compound `RETURN`, `DO`, `SET`, local-variable `DECLARE`, and control-flow
   condition expressions through the existing reusable validators; direct
-  procedure DML and `VALUES` bodies reuse the DML/VALUES validators.
+  procedure DML, `VALUES`, and `SELECT` bodies reuse the DML/VALUES/query
+  validators.
 - Loadable UDF declarations and plugin installs require string-literal
   `SONAME` values.
 - `CREATE VIEW` and `ALTER VIEW` recognize algorithm, definer, SQL security,
@@ -201,11 +202,11 @@ token sink:
   recognizes scheduler status tails including `DISABLE ON REPLICA` and
   deprecated `DISABLE ON SLAVE` immediately after the schedule. Recognized
   single-statement event bodies are routed through the existing statement
-  validators.
+  validators, including direct `SELECT` list-tail checks.
 - `CREATE TRIGGER` recognizes timing, event, target table, optional ordering,
   and stored-program statement starts for single-statement trigger bodies, and
   recognized body starts including flow-control conditions reuse existing
-  statement validators.
+  statement validators, including direct `SELECT` list-tail checks.
 - `ALTER INSTANCE` recognizes redo-log enable/disable, InnoDB/binlog master-key
   rotation, TLS reload with channel/no-rollback options, and keyring reload.
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,

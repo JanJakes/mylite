@@ -33,6 +33,7 @@ static int select_into_output_option_start(int token_id);
 static int select_outfile_field_option_start(int token_id);
 static int select_outfile_line_option_start(int token_id);
 static int select_charset_name_token(int token_id, MyliteToken token);
+static int select_limit_option_token(int token_id);
 static int select_string_literal_token(int token_id);
 static int token_ascii_equal(MyliteToken token, const char *expected);
 
@@ -338,6 +339,14 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     SELECT_INTO_AFTER_LINE_OPTION,
     SELECT_INTO_AFTER_LINE_BY
   };
+  enum {
+    SELECT_LIMIT_NONE,
+    SELECT_LIMIT_AFTER_LIMIT,
+    SELECT_LIMIT_AFTER_FIRST_VALUE,
+    SELECT_LIMIT_AFTER_COMMA,
+    SELECT_LIMIT_AFTER_OFFSET,
+    SELECT_LIMIT_AFTER_FINAL_VALUE
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token;
@@ -352,6 +361,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int into_state = SELECT_INTO_NONE;
   int outfile_fields = 0;
   int outfile_lines = 0;
+  int limit_state = SELECT_LIMIT_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -763,6 +773,42 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
 
+    if (limit_state == SELECT_LIMIT_AFTER_LIMIT ||
+        limit_state == SELECT_LIMIT_AFTER_COMMA ||
+        limit_state == SELECT_LIMIT_AFTER_OFFSET) {
+      if (!select_limit_option_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT LIMIT clause");
+        return;
+      }
+      if (limit_state == SELECT_LIMIT_AFTER_LIMIT) {
+        limit_state = SELECT_LIMIT_AFTER_FIRST_VALUE;
+      } else {
+        limit_state = SELECT_LIMIT_AFTER_FINAL_VALUE;
+      }
+      continue;
+    }
+    if (limit_state == SELECT_LIMIT_AFTER_FIRST_VALUE) {
+      if (token_id == ML_COMMA) {
+        limit_state = SELECT_LIMIT_AFTER_COMMA;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_OFFSET) {
+        limit_state = SELECT_LIMIT_AFTER_OFFSET;
+        pending_token = token;
+        continue;
+      }
+      limit_state = SELECT_LIMIT_NONE;
+    }
+    if (limit_state == SELECT_LIMIT_AFTER_FINAL_VALUE) {
+      if (token_id == ML_COMMA || token_id == ML_OFFSET) {
+        mylite_parser_reject(ctx, token, "malformed SELECT LIMIT clause");
+        return;
+      }
+      limit_state = SELECT_LIMIT_NONE;
+    }
+
     if (need_by) {
       if (token_id != ML_BY) {
         mylite_parser_reject(ctx, pending_token,
@@ -825,6 +871,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       pending_token = token;
       continue;
     }
+    if (token_id == ML_LIMIT) {
+      limit_state = SELECT_LIMIT_AFTER_LIMIT;
+      pending_token = token;
+      continue;
+    }
 
     if (select_clause_requires_by(token_id)) {
       need_by = 1;
@@ -876,6 +927,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
              into_state == SELECT_INTO_AFTER_LINE_BY) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT INTO OUTFILE lines option");
+  } else if (limit_state == SELECT_LIMIT_AFTER_LIMIT ||
+             limit_state == SELECT_LIMIT_AFTER_COMMA ||
+             limit_state == SELECT_LIMIT_AFTER_OFFSET) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT LIMIT clause");
   } else if (need_set_operand) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT set operation");
@@ -1018,6 +1074,12 @@ static int select_outfile_line_option_start(int token_id) {
 static int select_charset_name_token(int token_id, MyliteToken token) {
   return token_id == ML_ATOM || token_id == ML_BINARY ||
          token_id == ML_QUOTED_ID || token_ascii_equal(token, "binary");
+}
+
+static int select_limit_option_token(int token_id) {
+  return token_id == ML_ATOM || token_id == ML_BOOLEAN_NUMBER ||
+         token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
+         token_id == ML_QUOTED_ID;
 }
 
 static int select_string_literal_token(int token_id) {

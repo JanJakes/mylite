@@ -51,6 +51,7 @@ token sink:
   lists and major clauses.
 - Top-level `SELECT` rejects missing operands for top-level `JOIN`, `ON`, and
   `USING` join clauses.
+- Top-level `SELECT` validates `LIMIT` comma and `OFFSET` operands.
 - Top-level `SELECT` requires complete `LOCK IN SHARE MODE` locking tails.
 - Top-level `SELECT` validates `FOR UPDATE`/`FOR SHARE` locking tails including
   optional `OF` table lists, `NOWAIT`, and `SKIP LOCKED`, while preserving

@@ -159,10 +159,44 @@ static int validate_start_transaction_characteristic_syntax(const mylite_parser 
                                                             size_t *next_token_index,
                                                             int *seen_snapshot,
                                                             int *seen_read_mode);
+static int validate_start_replica_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int validate_start_replica_until_clause_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index,
+                                                      size_t *next_token_index);
+static int validate_start_replica_log_position_until_clause_syntax(const mylite_parser *parser,
+                                                                   size_t token_index,
+                                                                   size_t last_token_index,
+                                                                   const char *log_file_option,
+                                                                   const char *log_pos_option,
+                                                                   size_t *next_token_index);
+static int validate_start_replica_gtid_until_clause_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           size_t *next_token_index);
+static int validate_start_replica_connection_option_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           size_t *next_token_index,
+                                                           int *seen_user,
+                                                           int *seen_password,
+                                                           int *seen_default_auth,
+                                                           int *seen_plugin_dir);
+static int token_is_start_replica_tail_boundary(const mylite_parser *parser, size_t token_index);
+static int token_is_start_replica_gtid_set_token(const mylite_parser *parser, size_t token_index);
+static int token_is_start_replica_connection_option(const mylite_parser *parser, size_t token_index);
 static int validate_stop_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_stop_replica_statement_syntax(const mylite_parser *parser,
                                                   size_t token_index,
                                                   size_t last_token_index);
+static int validate_replication_thread_type_list_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index,
+                                                        size_t *next_token_index,
+                                                        int *seen_io_thread,
+                                                        int *seen_sql_thread);
 static int validate_replication_channel_clause_syntax(const mylite_parser *parser,
                                                       size_t token_index,
                                                       size_t last_token_index,
@@ -2864,6 +2898,15 @@ static int validate_start_statement_syntax(const mylite_parser *parser, const my
 	    parser->tokens[token_index].parser_token == TRANSACTION_T) {
 		return validate_start_transaction_statement_syntax(parser, token_index + 1, last_token_index);
 	}
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    (token_text_equals(parser, token_index, "REPLICA") ||
+	     token_text_equals(parser, token_index, "SLAVE"))) {
+		return validate_start_replica_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+	if (token_index > last_token_index) {
+		return 0;
+	}
 
 	return 1;
 }
@@ -2936,6 +2979,262 @@ static int validate_start_transaction_characteristic_syntax(const mylite_parser 
 	return 0;
 }
 
+static int validate_start_replica_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	int seen_io_thread = 0;
+	int seen_sql_thread = 0;
+	int seen_user = 0;
+	int seen_password = 0;
+	int seen_default_auth = 0;
+	int seen_plugin_dir = 0;
+	int seen_connection_option = 0;
+
+	if (!validate_replication_thread_type_list_syntax(parser,
+	                                                  token_index,
+	                                                  last_token_index,
+	                                                  &token_index,
+	                                                  &seen_io_thread,
+	                                                  &seen_sql_thread)) {
+		return 0;
+	}
+
+	if (token_index <= last_token_index &&
+	    token_text_equals(parser, token_index, "UNTIL")) {
+		if (!validate_start_replica_until_clause_syntax(parser,
+		                                                token_index,
+		                                                last_token_index,
+		                                                &token_index)) {
+			return 0;
+		}
+	}
+
+	while (token_index <= last_token_index &&
+	       token_is_start_replica_connection_option(parser, token_index)) {
+		seen_connection_option = 1;
+		if (!validate_start_replica_connection_option_syntax(parser,
+		                                                     token_index,
+		                                                     last_token_index,
+		                                                     &token_index,
+		                                                     &seen_user,
+		                                                     &seen_password,
+		                                                     &seen_default_auth,
+		                                                     &seen_plugin_dir)) {
+			return 0;
+		}
+	}
+
+	if (seen_password && !seen_user) {
+		return 0;
+	}
+	if (seen_connection_option && seen_sql_thread && !seen_io_thread) {
+		return 0;
+	}
+
+	if (token_index <= last_token_index &&
+	    validate_replication_channel_clause_syntax(parser,
+	                                               token_index,
+	                                               last_token_index,
+	                                               &token_index)) {
+		return token_index > last_token_index;
+	}
+
+	return token_index > last_token_index;
+}
+
+static int validate_start_replica_until_clause_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index,
+                                                      size_t *next_token_index)
+{
+	if (token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index, "UNTIL")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_text_equals(parser, token_index, "SQL_AFTER_MTS_GAPS")) {
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "SOURCE_LOG_FILE")) {
+		return validate_start_replica_log_position_until_clause_syntax(parser,
+		                                                               token_index,
+		                                                               last_token_index,
+		                                                               "SOURCE_LOG_FILE",
+		                                                               "SOURCE_LOG_POS",
+		                                                               next_token_index);
+	}
+	if (token_text_equals(parser, token_index, "MASTER_LOG_FILE")) {
+		return validate_start_replica_log_position_until_clause_syntax(parser,
+		                                                               token_index,
+		                                                               last_token_index,
+		                                                               "MASTER_LOG_FILE",
+		                                                               "MASTER_LOG_POS",
+		                                                               next_token_index);
+	}
+	if (token_text_equals(parser, token_index, "RELAY_LOG_FILE")) {
+		return validate_start_replica_log_position_until_clause_syntax(parser,
+		                                                               token_index,
+		                                                               last_token_index,
+		                                                               "RELAY_LOG_FILE",
+		                                                               "RELAY_LOG_POS",
+		                                                               next_token_index);
+	}
+	if (token_text_equals(parser, token_index, "SQL_BEFORE_GTIDS") ||
+	    token_text_equals(parser, token_index, "SQL_AFTER_GTIDS")) {
+		return validate_start_replica_gtid_until_clause_syntax(parser,
+		                                                       token_index,
+		                                                       last_token_index,
+		                                                       next_token_index);
+	}
+
+	return 0;
+}
+
+static int validate_start_replica_log_position_until_clause_syntax(const mylite_parser *parser,
+                                                                   size_t token_index,
+                                                                   size_t last_token_index,
+                                                                   const char *log_file_option,
+                                                                   const char *log_pos_option,
+                                                                   size_t *next_token_index)
+{
+	if (token_index + 6 > last_token_index ||
+	    !token_text_equals(parser, token_index, log_file_option) ||
+	    !token_text_equals(parser, token_index + 1, "=") ||
+	    parser->tokens[token_index + 2].kind != MYLITE_TOKEN_STRING ||
+	    parser->tokens[token_index + 3].parser_token != ',' ||
+	    !token_text_equals(parser, token_index + 4, log_pos_option) ||
+	    !token_text_equals(parser, token_index + 5, "=") ||
+	    parser->tokens[token_index + 6].kind != MYLITE_TOKEN_NUMBER) {
+		return 0;
+	}
+	*next_token_index = token_index + 7;
+	return 1;
+}
+
+static int validate_start_replica_gtid_until_clause_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           size_t *next_token_index)
+{
+	size_t value_token_index;
+
+	if (token_index + 2 > last_token_index ||
+	    !token_text_equals(parser, token_index + 1, "=")) {
+		return 0;
+	}
+
+	value_token_index = token_index + 2;
+	if (token_is_start_replica_tail_boundary(parser, value_token_index) ||
+	    parser->tokens[value_token_index].parser_token == ',') {
+		return 0;
+	}
+
+	token_index = value_token_index;
+	if (parser->tokens[token_index].kind == MYLITE_TOKEN_STRING) {
+		token_index++;
+	} else {
+		while (token_index <= last_token_index &&
+		       !token_is_start_replica_tail_boundary(parser, token_index)) {
+			if (!token_is_start_replica_gtid_set_token(parser, token_index)) {
+				return 0;
+			}
+			token_index++;
+		}
+	}
+	if (parser->tokens[token_index - 1].parser_token == ',') {
+		return 0;
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_start_replica_connection_option_syntax(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index,
+                                                           size_t *next_token_index,
+                                                           int *seen_user,
+                                                           int *seen_password,
+                                                           int *seen_default_auth,
+                                                           int *seen_plugin_dir)
+{
+	int *seen_option;
+
+	if (!token_is_start_replica_connection_option(parser, token_index) ||
+	    token_index + 2 > last_token_index ||
+	    !token_text_equals(parser, token_index + 1, "=") ||
+	    parser->tokens[token_index + 2].kind != MYLITE_TOKEN_STRING) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "USER")) {
+		seen_option = seen_user;
+		if (token_text_equals(parser, token_index + 2, "''")) {
+			return 0;
+		}
+	} else if (token_text_equals(parser, token_index, "PASSWORD")) {
+		seen_option = seen_password;
+	} else if (token_text_equals(parser, token_index, "DEFAULT_AUTH")) {
+		seen_option = seen_default_auth;
+	} else {
+		seen_option = seen_plugin_dir;
+	}
+
+	if (*seen_option) {
+		return 0;
+	}
+	*seen_option = 1;
+	*next_token_index = token_index + 3;
+	return 1;
+}
+
+static int token_is_start_replica_tail_boundary(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return token_is_start_replica_connection_option(parser, token_index) ||
+	       token_text_equals(parser, token_index, "FOR");
+}
+
+static int token_is_start_replica_gtid_set_token(const mylite_parser *parser, size_t token_index)
+{
+	const mylite_token *token;
+	size_t offset;
+
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+
+	token = &parser->tokens[token_index];
+	for (offset = token->start_offset; offset < token->end_offset; offset++) {
+		char ch = parser->lexer.input[offset];
+
+		if ((ch >= '0' && ch <= '9') ||
+		    (ch >= 'a' && ch <= 'f') ||
+		    (ch >= 'A' && ch <= 'F') ||
+		    ch == '-' ||
+		    ch == ':' ||
+		    ch == ',') {
+			continue;
+		}
+		return 0;
+	}
+	return token->start_offset < token->end_offset;
+}
+
+static int token_is_start_replica_connection_option(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (token_text_equals(parser, token_index, "USER") ||
+	        token_text_equals(parser, token_index, "PASSWORD") ||
+	        token_text_equals(parser, token_index, "DEFAULT_AUTH") ||
+	        token_text_equals(parser, token_index, "PLUGIN_DIR"));
+}
+
 static int validate_stop_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
 {
 	size_t token_index = find_statement_kind_token(parser, statement);
@@ -2969,20 +3268,51 @@ static int validate_stop_replica_statement_syntax(const mylite_parser *parser,
 	int seen_io_thread = 0;
 	int seen_sql_thread = 0;
 
+	if (!validate_replication_thread_type_list_syntax(parser,
+	                                                  token_index,
+	                                                  last_token_index,
+	                                                  &token_index,
+	                                                  &seen_io_thread,
+	                                                  &seen_sql_thread)) {
+		return 0;
+	}
+
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	return validate_replication_channel_clause_syntax(parser,
+	                                                  token_index,
+	                                                  last_token_index,
+	                                                  &token_index) &&
+	       token_index > last_token_index;
+}
+
+static int validate_replication_thread_type_list_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index,
+                                                        size_t *next_token_index,
+                                                        int *seen_io_thread,
+                                                        int *seen_sql_thread)
+{
+	*seen_io_thread = 0;
+	*seen_sql_thread = 0;
+
 	while (token_index <= last_token_index && token_is_replication_thread_type(parser, token_index)) {
 		if (token_text_equals(parser, token_index, "IO_THREAD")) {
-			if (seen_io_thread) {
+			if (*seen_io_thread) {
 				return 0;
 			}
-			seen_io_thread = 1;
+			*seen_io_thread = 1;
 		} else {
-			if (seen_sql_thread) {
+			if (*seen_sql_thread) {
 				return 0;
 			}
-			seen_sql_thread = 1;
+			*seen_sql_thread = 1;
 		}
 		token_index++;
 		if (token_index > last_token_index ||
+		    token_text_equals(parser, token_index, "UNTIL") ||
+		    token_is_start_replica_connection_option(parser, token_index) ||
 		    token_text_equals(parser, token_index, "FOR")) {
 			break;
 		}
@@ -2995,14 +3325,8 @@ static int validate_stop_replica_statement_syntax(const mylite_parser *parser,
 		}
 	}
 
-	if (token_index > last_token_index) {
-		return 1;
-	}
-	return validate_replication_channel_clause_syntax(parser,
-	                                                  token_index,
-	                                                  last_token_index,
-	                                                  &token_index) &&
-	       token_index > last_token_index;
+	*next_token_index = token_index;
+	return 1;
 }
 
 static int validate_replication_channel_clause_syntax(const mylite_parser *parser,

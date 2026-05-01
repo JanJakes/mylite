@@ -457,9 +457,11 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   validates optional numeric file-index numbers, and accepts comma-separated
   reset options.
   Replication metadata records explicit `FOR CHANNEL` names and default-channel
-  operations; `STOP REPLICA` validates optional thread-type lists and channel
-  clause shape, but does not classify thread lists, source options, filters, or
-  replica runtime state.
+  operations; `START REPLICA` validates optional thread-type lists, `UNTIL`
+  shapes, connection options, and final channel clauses, and `STOP REPLICA`
+  validates optional thread-type lists and channel clause shape, but neither
+  form classifies thread lists, source options, filters, or replica runtime
+  state.
   Group Replication metadata records the subsystem object kind and validates
   bare `STOP GROUP_REPLICATION`, but does not model user credentials,
   distributed recovery, group membership, or timeout behavior.

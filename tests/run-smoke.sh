@@ -1253,6 +1253,65 @@ case "$replication_channel_output" in
 		;;
 esac
 
+start_replica_output=$("$parser" "START REPLICA; START SLAVE SQL_THREAD UNTIL SQL_AFTER_MTS_GAPS; START REPLICA IO_THREAD, SQL_THREAD UNTIL SOURCE_LOG_FILE='bin.000001', SOURCE_LOG_POS=4 USER='u' PASSWORD='p' DEFAULT_AUTH='mysql_native_password' PLUGIN_DIR='/tmp' FOR CHANNEL 'ch'; START REPLICA UNTIL SQL_AFTER_GTIDS = 3E11FA47-71CA-11E1-9E33-C80AA9429562:11-56")
+case "$start_replica_output" in
+	*"start"*/replication_channel*"start"*/replication_channel*"start"*/replication_channel:"'ch'"*"start"*/replication_channel*) ;;
+	*)
+		echo "unexpected START REPLICA output: $start_replica_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'START'; then
+	echo "expected missing START operation to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'START REPLICA IO_THREAD,'; then
+	echo "expected trailing START REPLICA thread comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'START REPLICA IO_THREAD IO_THREAD'; then
+	echo "expected missing START REPLICA thread comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'START REPLICA UNTIL'; then
+	echo "expected missing START REPLICA UNTIL option to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "START REPLICA UNTIL SOURCE_LOG_FILE='bin.000001'"; then
+	echo "expected incomplete START REPLICA log-position UNTIL to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "START REPLICA UNTIL SOURCE_LOG_FILE='bin.000001', SOURCE_LOG_POS='4'"; then
+	echo "expected string START REPLICA log position to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "START REPLICA SQL_THREAD USER='u'"; then
+	echo "expected START REPLICA SQL_THREAD connection options to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "START REPLICA PASSWORD='p'"; then
+	echo "expected START REPLICA password without user to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'START REPLICA FOR CHANNEL'; then
+	echo "expected missing START REPLICA channel name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "START REPLICA FOR CHANNEL 'ch' USER='u'"; then
+	echo "expected trailing START REPLICA tokens after channel to fail" >&2
+	exit 1
+fi
+
 xa_output=$("$parser" "XA START 'x'; XA BEGIN X'6162', 0x62, 7 JOIN; XA START b'1010' RESUME; XA END 'x' SUSPEND FOR MIGRATE; XA PREPARE 'x'; XA COMMIT 'x' ONE PHASE; XA ROLLBACK 'x'; XA RECOVER; XA RECOVER CONVERT XID")
 case "$xa_output" in
 	*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"X'6162'"*"xa"*/xa_transaction:"b'1010'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"/xa_transaction,xa"*/xa_transaction*) ;;

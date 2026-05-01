@@ -542,7 +542,9 @@ Server lifecycle statements expose the instance target:
 ok statements=1 kinds=restart[1:1,0:7]/instance
 ```
 
-Replication-control statements expose explicit and default channel targets:
+Replication-control statements expose explicit and default channel targets.
+`START REPLICA` validates thread-type lists, supported `UNTIL` forms,
+connection options, and final channel clauses:
 
 ```text
 ok statements=1 kinds=start[1:5,0:30]/replication_channel:'ch'

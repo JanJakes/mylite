@@ -87,7 +87,7 @@ token sink:
   comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `DROP` forms,
   `ALTER` subactions, charset/order changes, partition definition,
   maintenance/exchange, reorganize forms, and numeric coalesce counts,
-  tablespace/storage/union changes,
+  tablespace/storage/union changes, secondary-engine load/unload actions,
   table option changes with numeric/boolean/default value domains,
   `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;

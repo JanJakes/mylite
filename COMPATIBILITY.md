@@ -235,12 +235,12 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser recognizes comma-separated variable assignment lists with optional per-assignment scopes and nested value expressions. |
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser recognizes explicit charset names, `DEFAULT`, and comma-following variable assignments. |
 | `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser recognizes explicit charset names, `DEFAULT`, optional `COLLATE`, and comma-following variable assignments. |
-| `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. |  |
+| `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. | Parser recognizes table references, key lists, and key-cache names using the shared identifier grammar. |
 | `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. | Parser recognizes binary, engine, error, general, relay, and slow log forms, including channel-qualified relay logs. |
 | `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. |  |
 | `LOAD INDEX INTO CACHE` | ❌ | low | MyISAM index preload syntax. |  |
 | `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. |  |
-| `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. |  |
+| `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. | Parser recognizes one- and two-part persisted variable names using the shared identifier grammar. |
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. |  |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. |  |
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. | Parser recognizes table/column forms and EXPLAIN-synonym variants. |

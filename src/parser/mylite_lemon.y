@@ -2012,13 +2012,9 @@ cache_key_list ::= LP cache_key_names RP.
 cache_key_names ::= cache_key_name.
 cache_key_names ::= cache_key_names import_comma cache_key_name.
 
-cache_key_name ::= ATOM.
-cache_key_name ::= LABEL.
-cache_key_name ::= DEFAULT.
+cache_key_name ::= cache_name_part.
 
-cache_keycache ::= ATOM.
-cache_keycache ::= LABEL.
-cache_keycache ::= DEFAULT.
+cache_keycache ::= cache_name_part.
 
 kill_statement ::= KILL kill_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
@@ -2061,9 +2057,7 @@ reset_exists ::= EXISTS.
 reset_persist_target ::= reset_persist_name.
 reset_persist_target ::= reset_persist_name DOT reset_persist_name.
 
-reset_persist_name ::= ATOM.
-reset_persist_name ::= LABEL.
-reset_persist_name ::= DEFAULT.
+reset_persist_name ::= cache_name_part.
 
 reset_replica_tail ::= .
 reset_replica_tail ::= ALL.

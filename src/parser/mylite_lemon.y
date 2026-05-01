@@ -495,20 +495,43 @@ create_procedure_tail_start ::= NOT.
 create_procedure_tail_start ::= QUOTED_ID.
 create_procedure_tail_start ::= READS.
 
-routine_signature ::= LP routine_signature_tokens RP.
+routine_signature ::= LP RP.
+routine_signature ::= LP routine_parameters RP.
 
-routine_signature_tokens ::= .
-routine_signature_tokens ::= routine_signature_tokens routine_signature_token.
+routine_parameters ::= routine_parameter.
+routine_parameters ::= routine_parameters COMMA routine_parameter.
 
-routine_signature_token ::= ATOM.
-routine_signature_token ::= LABEL.
-routine_signature_token ::= keyword.
-routine_signature_token ::= COMMA.
-routine_signature_token ::= LP routine_signature_tokens RP.
-routine_signature_token ::= LB.
-routine_signature_token ::= RB.
-routine_signature_token ::= LC.
-routine_signature_token ::= RC.
+routine_parameter ::= routine_parameter_name routine_parameter_tokens.
+routine_parameter ::= IN routine_parameter_name routine_parameter_tokens.
+
+routine_parameter_name ::= create_table_element_name.
+
+routine_parameter_tokens ::= routine_parameter_token.
+routine_parameter_tokens ::= routine_parameter_tokens routine_parameter_token.
+
+routine_parameter_token ::= ATOM.
+routine_parameter_token ::= LABEL.
+routine_parameter_token ::= keyword.
+routine_parameter_token ::= DOT.
+routine_parameter_token ::= LP routine_parameter_nested_tokens RP.
+routine_parameter_token ::= LB.
+routine_parameter_token ::= RB.
+routine_parameter_token ::= LC.
+routine_parameter_token ::= RC.
+
+routine_parameter_nested_tokens ::= .
+routine_parameter_nested_tokens ::= routine_parameter_nested_tokens routine_parameter_nested_token.
+
+routine_parameter_nested_token ::= ATOM.
+routine_parameter_nested_token ::= LABEL.
+routine_parameter_nested_token ::= keyword.
+routine_parameter_nested_token ::= COMMA.
+routine_parameter_nested_token ::= DOT.
+routine_parameter_nested_token ::= LP routine_parameter_nested_tokens RP.
+routine_parameter_nested_token ::= LB.
+routine_parameter_nested_token ::= RB.
+routine_parameter_nested_token ::= LC.
+routine_parameter_nested_token ::= RC.
 
 create_if_not_exists_tail ::= .
 create_if_not_exists_tail ::= IF create_not reset_exists.

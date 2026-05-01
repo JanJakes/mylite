@@ -23,6 +23,8 @@ token sink:
   structurally.
 - Account-reference forms that permit `CURRENT_USER` or `CURRENT_USER()` now
   have explicit grammar productions.
+- Stored procedure/function signatures require empty or comma-separated
+  parameter lists while preserving nested type bodies.
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
   clauses, TLS/resource/password/lock options, comments, attributes, and
   default-role clauses rather than generic token tails, including MFA,

@@ -78,11 +78,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |
 | `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. | Parser recognizes charset, collation, and encryption option clauses. |
 | `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. | Parser recognizes schedule, completion, enable/disable, comment, and required `DO` clauses. |
-| `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. |  |
+| `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. | Parser recognizes empty and comma-separated parameter signatures with nested type bodies. |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
 | `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. | Parser recognizes non-empty functional/key-part lists plus index options for parser plugins, comments, visibility, engine attributes, `KEY_BLOCK_SIZE`, `USING`, `ALGORITHM`, and `LOCK`. |
 | `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, NDB size/comment options, `WAIT`, and required `ENGINE`. |
-| `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. |  |
+| `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. | Parser recognizes empty and comma-separated parameter signatures with nested type bodies. |
 | `CREATE SERVER` | ❌ | low | Foreign server metadata syntax. | Parser recognizes `FOREIGN DATA WRAPPER` with documented `OPTIONS` names and value requirements. |
 | `CREATE SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system catalog DDL. | Parser recognizes bare, `IF NOT EXISTS`, `OR REPLACE`, and documented SRS attribute syntax. |
 | `CREATE TABLE` | ❌ | top | Column definitions, constraints, indexes, table options, generated columns, and partitions; see section 3.1. | Parser requires non-empty comma-separated table-definition elements and preserves nested column/constraint definition bodies. |

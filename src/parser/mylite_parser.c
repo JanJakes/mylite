@@ -57,6 +57,9 @@ static int kill_at_sign_target_token(int token_id);
 static int kill_target_allows_call(int token_id);
 static int kill_target_token(int token_id);
 static int create_table_query_body_start(int token_id);
+static int create_table_column_name_needs_type_check(int token_id,
+                                                     MyliteToken token);
+static int create_table_column_type_start(int token_id, MyliteToken token);
 static int foreign_key_match_option(int token_id, MyliteToken token);
 static int foreign_key_reference_action_token(int token_id);
 static int validate_parenthesized_identifier_list(MyliteParseContext *ctx,
@@ -2465,6 +2468,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
   int check_pending = 0;
   int check_table_level = 0;
   int check_tail_state = CREATE_TABLE_CHECK_NONE;
+  int column_needs_type = 0;
   int element_start = 0;
   int constraint_prefix = 0;
 
@@ -2505,6 +2509,15 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       }
       state = CREATE_TABLE_IN_DEFINITION;
       element_start = 1;
+    }
+
+    if (column_needs_type) {
+      if (!create_table_column_type_start(token_id, token)) {
+        mylite_parser_reject(ctx, token, "invalid CREATE TABLE column type");
+        return;
+      }
+      column_needs_type = 0;
+      continue;
     }
 
     if (check_pending) {
@@ -2726,6 +2739,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       check_pending = 0;
       check_table_level = 0;
       check_tail_state = CREATE_TABLE_CHECK_NONE;
+      column_needs_type = 0;
       continue;
     }
 
@@ -2798,6 +2812,14 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       continue;
     }
 
+    if (element_start) {
+      column_needs_type =
+          create_table_column_name_needs_type_check(token_id, token);
+      element_start = 0;
+      pending_token = token;
+      continue;
+    }
+
     element_start = 0;
   }
 
@@ -2811,6 +2833,9 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
   } else if (check_tail_state == CREATE_TABLE_CHECK_AFTER_NOT) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE TABLE CHECK constraint");
+  } else if (column_needs_type) {
+    mylite_parser_reject(ctx, pending_token,
+                         "invalid CREATE TABLE column type");
   } else if (index_candidate) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE TABLE index key part");
@@ -3954,6 +3979,74 @@ static int kill_target_token(int token_id) {
 static int create_table_query_body_start(int token_id) {
   return token_id == ML_AS || token_id == ML_LIKE || token_id == ML_SELECT ||
          token_id == ML_TABLE || token_id == ML_VALUES || token_id == ML_WITH;
+}
+
+static int create_table_column_name_needs_type_check(int token_id,
+                                                     MyliteToken token) {
+  size_t i;
+
+  if (token_id == ML_BOOLEAN_NUMBER || token_id == ML_FACTOR_NUMBER ||
+      token_id == ML_NUMBER_LITERAL) {
+    return 0;
+  }
+
+  for (i = 0; i < token.length; i++) {
+    if (token.start[i] == '$') {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+static int create_table_column_type_start(int token_id, MyliteToken token) {
+  return token_id == ML_BINARY || token_id == ML_CHARACTER ||
+         token_id == ML_DECIMAL || token_id == ML_INT ||
+         token_id == ML_INTEGER || token_id == ML_JSON || token_id == ML_REAL ||
+         token_id == ML_SET || token_ascii_equal(token, "bigint") ||
+         token_ascii_equal(token, "bit") || token_ascii_equal(token, "blob") ||
+         token_ascii_equal(token, "bool") ||
+         token_ascii_equal(token, "boolean") ||
+         token_ascii_equal(token, "char") || token_ascii_equal(token, "date") ||
+         token_ascii_equal(token, "datetime") ||
+         token_ascii_equal(token, "dec") || token_ascii_equal(token, "double") ||
+         token_ascii_equal(token, "enum") || token_ascii_equal(token, "fixed") ||
+         token_ascii_equal(token, "float") ||
+         token_ascii_equal(token, "float4") ||
+         token_ascii_equal(token, "float8") ||
+         token_ascii_equal(token, "geometry") ||
+         token_ascii_equal(token, "geometrycollection") ||
+         token_ascii_equal(token, "geomcollection") ||
+         token_ascii_equal(token, "int1") || token_ascii_equal(token, "int2") ||
+         token_ascii_equal(token, "int3") || token_ascii_equal(token, "int4") ||
+         token_ascii_equal(token, "int8") ||
+         token_ascii_equal(token, "linestring") ||
+         token_ascii_equal(token, "long") ||
+         token_ascii_equal(token, "longblob") ||
+         token_ascii_equal(token, "longtext") ||
+         token_ascii_equal(token, "mediumblob") ||
+         token_ascii_equal(token, "mediumint") ||
+         token_ascii_equal(token, "mediumtext") ||
+         token_ascii_equal(token, "middleint") ||
+         token_ascii_equal(token, "multilinestring") ||
+         token_ascii_equal(token, "multipoint") ||
+         token_ascii_equal(token, "multipolygon") ||
+         token_ascii_equal(token, "national") ||
+         token_ascii_equal(token, "nchar") ||
+         token_ascii_equal(token, "numeric") ||
+         token_ascii_equal(token, "nvarchar") ||
+         token_ascii_equal(token, "point") ||
+         token_ascii_equal(token, "polygon") ||
+         token_ascii_equal(token, "serial") ||
+         token_ascii_equal(token, "smallint") ||
+         token_ascii_equal(token, "text") || token_ascii_equal(token, "time") ||
+         token_ascii_equal(token, "timestamp") ||
+         token_ascii_equal(token, "tinyblob") ||
+         token_ascii_equal(token, "tinyint") ||
+         token_ascii_equal(token, "tinytext") ||
+         token_ascii_equal(token, "varbinary") ||
+         token_ascii_equal(token, "varchar") ||
+         token_ascii_equal(token, "year");
 }
 
 static int foreign_key_match_option(int token_id, MyliteToken token) {

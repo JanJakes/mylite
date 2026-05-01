@@ -194,8 +194,8 @@ token sink:
 - `GET DIAGNOSTICS` recognizes optional `CURRENT`/`STACKED` diagnostics-area
   selectors; assignment targets use local/user-variable grammar and condition
   numbers may come from user variables.
-- `SIGNAL` and `RESIGNAL` recognize five-character SQLSTATE literals and
-  condition item assignments with numeric `MYSQL_ERRNO` values.
+- `SIGNAL` and `RESIGNAL` recognize five-character `SQLSTATE [VALUE]` literals
+  and condition item assignments with numeric `MYSQL_ERRNO` values.
 - `SET NAMES` and `SET CHARACTER SET` recognize charset/collation names using
   the shared identifier grammar, `BINARY`, `DEFAULT`, optional collation, and
   comma-following variable assignments.

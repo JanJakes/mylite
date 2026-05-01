@@ -3401,7 +3401,10 @@ signal_statement ::= SIGNAL signal_condition_value signal_set_tail. {
 }
 
 signal_condition_value ::= signal_named_condition.
-signal_condition_value ::= SQLSTATE SQLSTATE_VALUE.
+signal_condition_value ::= SQLSTATE signal_sqlstate_value_tail SQLSTATE_VALUE.
+
+signal_sqlstate_value_tail ::= .
+signal_sqlstate_value_tail ::= VALUE.
 
 signal_named_condition ::= cache_name_part.
 

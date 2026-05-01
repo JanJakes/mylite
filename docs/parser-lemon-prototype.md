@@ -29,6 +29,8 @@ token sink:
   attributes, VCPU ranges, force modifiers, and thread-id assignment lists.
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
+- `SHOW PARSE_TREE` recognizes SELECT and WITH SELECT inputs as a
+  debug/development SHOW form.
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form.
 - `EXPLAIN ... FOR SCHEMA|DATABASE name` schema specifiers are recognized.
 - `DESCRIBE` and `DESC` reuse the EXPLAIN syntax variants for execution-plan

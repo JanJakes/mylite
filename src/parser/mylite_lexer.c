@@ -724,6 +724,7 @@ static int keyword_token(const MyliteToken *token) {
       {"ORGANIZATION", ML_ORGANIZATION},
       {"PACK_KEYS", ML_PACK_KEYS},
       {"PAGE", ML_PAGE},
+      {"PARSE_TREE", ML_PARSE_TREE},
       {"PASSWORD", ML_PASSWORD},
       {"PARTITION", ML_PARTITION},
       {"PHASE", ML_PHASE},

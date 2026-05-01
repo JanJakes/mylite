@@ -53,6 +53,9 @@ static int select_charset_name_token(int token_id, MyliteToken token);
 static int select_limit_option_token(int token_id);
 static int select_string_literal_token(int token_id);
 static int do_clause_boundary(int token_id);
+static int kill_at_sign_target_token(int token_id);
+static int kill_target_allows_call(int token_id);
+static int kill_target_token(int token_id);
 static int dml_assignment_boundary(int mode, int token_id);
 static int dml_assignment_operator(int token_id);
 static int dml_assignment_target_token(int token_id);
@@ -2244,6 +2247,7 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
     if (!saw_statement) {
       if (token.offset == start.offset) {
         saw_statement = 1;
+        continue;
       } else {
         continue;
       }
@@ -2297,6 +2301,108 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
   if (need_expression) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete DO expression list");
+  }
+}
+
+void mylite_parser_validate_kill_statement(MyliteParseContext *ctx,
+                                            MyliteToken start) {
+  enum {
+    KILL_AFTER_KILL,
+    KILL_AFTER_MODE,
+    KILL_AFTER_AT_SIGN,
+    KILL_AFTER_TARGET,
+    KILL_IN_CALL
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int depth = 0;
+  int state = KILL_AFTER_KILL;
+  int target_allows_call = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+        continue;
+      } else {
+        continue;
+      }
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+        if (depth == 0 && state == KILL_IN_CALL) {
+          state = KILL_AFTER_TARGET;
+        }
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      if (state == KILL_AFTER_KILL || state == KILL_AFTER_MODE ||
+          state == KILL_AFTER_AT_SIGN) {
+        mylite_parser_reject(ctx, pending_token, "incomplete KILL target");
+      }
+      break;
+    }
+
+    if (state == KILL_AFTER_KILL &&
+        (token_id == ML_CONNECTION || token_id == ML_QUERY)) {
+      state = KILL_AFTER_MODE;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == KILL_AFTER_KILL || state == KILL_AFTER_MODE) {
+      if (token_id == ML_AT_SIGN) {
+        state = KILL_AFTER_AT_SIGN;
+        target_allows_call = 0;
+        pending_token = token;
+        continue;
+      }
+      if (!kill_target_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token, "incomplete KILL target");
+        return;
+      }
+      state = KILL_AFTER_TARGET;
+      target_allows_call = kill_target_allows_call(token_id);
+      continue;
+    }
+
+    if (state == KILL_AFTER_AT_SIGN) {
+      if (!kill_at_sign_target_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token, "incomplete KILL target");
+        return;
+      }
+      state = KILL_AFTER_TARGET;
+      continue;
+    }
+
+    if (state == KILL_AFTER_TARGET && token_id == ML_LP &&
+        target_allows_call) {
+      state = KILL_IN_CALL;
+      depth = 1;
+      target_allows_call = 0;
+      pending_token = token;
+      continue;
+    }
+
+    mylite_parser_reject(ctx, token, "malformed KILL target");
+    return;
+  }
+
+  if (state == KILL_AFTER_KILL || state == KILL_AFTER_MODE ||
+      state == KILL_AFTER_AT_SIGN) {
+    mylite_parser_reject(ctx, pending_token, "incomplete KILL target");
+  } else if (state == KILL_IN_CALL) {
+    mylite_parser_reject(ctx, pending_token, "incomplete KILL target");
   }
 }
 
@@ -2519,6 +2625,23 @@ static int do_clause_boundary(int token_id) {
   return token_id == ML_FROM || token_id == ML_GROUP || token_id == ML_HAVING ||
          token_id == ML_INTO || token_id == ML_LIMIT || token_id == ML_ORDER ||
          token_id == ML_WHERE;
+}
+
+static int kill_at_sign_target_token(int token_id) {
+  return token_id == ML_ATOM || token_id == ML_DOUBLE_QUOTED_STRING ||
+         token_id == ML_QUOTED_ID || token_id == ML_STRING_LITERAL;
+}
+
+static int kill_target_allows_call(int token_id) {
+  return token_id != ML_AT_EMPTY && token_id != ML_AT_HOST &&
+         token_id != ML_BOOLEAN_NUMBER && token_id != ML_FACTOR_NUMBER &&
+         token_id != ML_NUMBER_LITERAL;
+}
+
+static int kill_target_token(int token_id) {
+  return token_id == ML_AT_HOST || token_id == ML_BOOLEAN_NUMBER ||
+         token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
+         dml_row_alias_token(token_id);
 }
 
 static int dml_assignment_boundary(int mode, int token_id) {

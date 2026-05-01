@@ -2363,8 +2363,11 @@ cache_key_name ::= cache_name_part.
 
 cache_keycache ::= cache_name_part.
 
-kill_statement ::= KILL kill_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+kill_statement ::= KILL(A) kill_tail. {
+  mylite_parser_validate_kill_statement(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
+  }
 }
 
 kill_tail ::= kill_expression.

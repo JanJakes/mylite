@@ -191,7 +191,8 @@ token sink:
   requires a string-literal log name. Removed `PURGE MASTER LOGS` syntax is
   permissive-corpus-only.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes, expression-style
-  targets including function-call tails, and exact user-variable targets.
+  targets including function-call tails, and exact user-variable targets, while
+  rejecting extra top-level tokens after the target.
 - `LOCK TABLES` recognizes table lists, aliases, and MySQL 8.4 `READ [LOCAL]`
   and `WRITE` lock types using the shared identifier grammar for alias names.
   Removed `LOW_PRIORITY WRITE` syntax is permissive-corpus-only.

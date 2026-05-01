@@ -160,7 +160,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/local/next-transaction scope. | Parser recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and READ ONLY/READ WRITE access modes. |
 | `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. |  |
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. |  |
-| `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. |  |
+| `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. | Parser recognizes table lists, lock types, and aliases using the shared identifier grammar. |
 | `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. |  |
 | `XA START` | ❌ | low | XA transaction branch start. |  |
 | `XA END` | ❌ | low | XA transaction branch end. |  |

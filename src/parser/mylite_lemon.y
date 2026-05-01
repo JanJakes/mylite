@@ -1799,8 +1799,7 @@ lock_table_spec ::= cache_table_ref lock_type.
 lock_table_alias ::= handler_as lock_alias.
 lock_table_alias ::= lock_alias.
 
-lock_alias ::= ATOM.
-lock_alias ::= LABEL.
+lock_alias ::= cache_name_part.
 
 lock_type ::= READ.
 lock_type ::= READ LOCAL.

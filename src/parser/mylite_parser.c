@@ -57,6 +57,10 @@ static int kill_at_sign_target_token(int token_id);
 static int kill_target_allows_call(int token_id);
 static int kill_target_token(int token_id);
 static int create_table_query_body_start(int token_id);
+static int validate_create_table_identifier_list(MyliteParseContext *ctx,
+                                                 MyliteLexer *lexer,
+                                                 MyliteToken start,
+                                                 const char *message);
 static int validate_create_table_index_key_list(MyliteParseContext *ctx,
                                                 MyliteLexer *lexer,
                                                 MyliteToken start);
@@ -2424,6 +2428,14 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
     CREATE_TABLE_BODY_START,
     CREATE_TABLE_IN_DEFINITION
   };
+  enum {
+    CREATE_TABLE_FK_NONE,
+    CREATE_TABLE_FK_AFTER_FOREIGN,
+    CREATE_TABLE_FK_BEFORE_CHILD_LIST,
+    CREATE_TABLE_FK_FIND_REFERENCES,
+    CREATE_TABLE_FK_FIND_PARENT_LIST,
+    CREATE_TABLE_FK_AFTER_PARENT_LIST
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token = start;
@@ -2432,6 +2444,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
   int state = CREATE_TABLE_FIND_BODY;
   int depth = 0;
   int index_candidate = 0;
+  int foreign_state = CREATE_TABLE_FK_NONE;
   int element_start = 0;
   int constraint_prefix = 0;
 
@@ -2472,6 +2485,70 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       }
       state = CREATE_TABLE_IN_DEFINITION;
       element_start = 1;
+    }
+
+    if (foreign_state != CREATE_TABLE_FK_NONE) {
+      if (token_id == ML_COMMA || token_id == ML_RP) {
+        if (foreign_state != CREATE_TABLE_FK_AFTER_PARENT_LIST) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete CREATE TABLE foreign key");
+          return;
+        }
+        if (token_id == ML_RP) {
+          return;
+        }
+        foreign_state = CREATE_TABLE_FK_NONE;
+        element_start = 1;
+        constraint_prefix = 0;
+        continue;
+      }
+
+      if (foreign_state == CREATE_TABLE_FK_AFTER_FOREIGN) {
+        if (token_id != ML_KEY) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete CREATE TABLE foreign key");
+          return;
+        }
+        foreign_state = CREATE_TABLE_FK_BEFORE_CHILD_LIST;
+        pending_token = token;
+        continue;
+      }
+
+      if (foreign_state == CREATE_TABLE_FK_BEFORE_CHILD_LIST) {
+        if (token_id == ML_LP) {
+          if (!validate_create_table_identifier_list(
+                  ctx, &lexer, token,
+                  "incomplete CREATE TABLE foreign key column list")) {
+            return;
+          }
+          foreign_state = CREATE_TABLE_FK_FIND_REFERENCES;
+          pending_token = token;
+          continue;
+        }
+        continue;
+      }
+
+      if (foreign_state == CREATE_TABLE_FK_FIND_REFERENCES) {
+        if (token_ascii_equal(token, "references")) {
+          foreign_state = CREATE_TABLE_FK_FIND_PARENT_LIST;
+          pending_token = token;
+        }
+        continue;
+      }
+
+      if (foreign_state == CREATE_TABLE_FK_FIND_PARENT_LIST) {
+        if (token_id == ML_LP) {
+          if (!validate_create_table_identifier_list(
+                  ctx, &lexer, token,
+                  "incomplete CREATE TABLE foreign key reference list")) {
+            return;
+          }
+          foreign_state = CREATE_TABLE_FK_AFTER_PARENT_LIST;
+        }
+        continue;
+      }
+
+      continue;
     }
 
     if (token_id == ML_RP) {
@@ -2525,7 +2602,13 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
         pending_token = token;
         continue;
       }
-      if (token_id == ML_CHECK || token_id == ML_FOREIGN) {
+      if (token_id == ML_FOREIGN) {
+        foreign_state = CREATE_TABLE_FK_AFTER_FOREIGN;
+        constraint_prefix = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_CHECK) {
         constraint_prefix = 0;
         continue;
       }
@@ -2544,10 +2627,21 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       continue;
     }
 
+    if (element_start && token_id == ML_FOREIGN) {
+      foreign_state = CREATE_TABLE_FK_AFTER_FOREIGN;
+      element_start = 0;
+      pending_token = token;
+      continue;
+    }
+
     element_start = 0;
   }
 
-  if (index_candidate) {
+  if (foreign_state != CREATE_TABLE_FK_NONE &&
+      foreign_state != CREATE_TABLE_FK_AFTER_PARENT_LIST) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete CREATE TABLE foreign key");
+  } else if (index_candidate) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE TABLE index key part");
   }
@@ -3436,6 +3530,51 @@ static int kill_target_token(int token_id) {
 static int create_table_query_body_start(int token_id) {
   return token_id == ML_AS || token_id == ML_LIKE || token_id == ML_SELECT ||
          token_id == ML_TABLE || token_id == ML_VALUES || token_id == ML_WITH;
+}
+
+static int validate_create_table_identifier_list(MyliteParseContext *ctx,
+                                                 MyliteLexer *lexer,
+                                                 MyliteToken start,
+                                                 const char *message) {
+  enum {
+    CREATE_TABLE_IDENTIFIER_NEED_NAME,
+    CREATE_TABLE_IDENTIFIER_AFTER_NAME
+  };
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int state = CREATE_TABLE_IDENTIFIER_NEED_NAME;
+
+  while ((token_id = mylite_lexer_next(lexer, &token)) > 0) {
+    if (token_id == ML_RP) {
+      if (state != CREATE_TABLE_IDENTIFIER_AFTER_NAME) {
+        mylite_parser_reject(ctx, pending_token, message);
+        return 0;
+      }
+      return 1;
+    }
+
+    if (token_id == ML_COMMA) {
+      if (state != CREATE_TABLE_IDENTIFIER_AFTER_NAME) {
+        mylite_parser_reject(ctx, pending_token, message);
+        return 0;
+      }
+      state = CREATE_TABLE_IDENTIFIER_NEED_NAME;
+      pending_token = token;
+      continue;
+    }
+
+    if (state != CREATE_TABLE_IDENTIFIER_NEED_NAME ||
+        !dml_row_alias_token(token_id)) {
+      mylite_parser_reject(ctx, token, message);
+      return 0;
+    }
+
+    state = CREATE_TABLE_IDENTIFIER_AFTER_NAME;
+  }
+
+  mylite_parser_reject(ctx, pending_token, message);
+  return 0;
 }
 
 static int validate_create_table_index_key_list(MyliteParseContext *ctx,

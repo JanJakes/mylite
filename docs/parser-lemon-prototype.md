@@ -105,9 +105,10 @@ token sink:
 - `CREATE TABLE` table-definition bodies require non-empty comma-separated
   elements while preserving nested token bodies for column and constraint
   definitions, and validate table-level index key-part prefix lengths plus
-  `ASC`/`DESC` tails; trailing table options must start with known MySQL
-  table-option keywords, including `AUTOEXTEND_SIZE` and `START TRANSACTION`,
-  and no-definition and post-definition CTAS forms are recognized explicitly,
+  `ASC`/`DESC` tails plus table-level foreign-key child/reference column-list
+  envelopes; trailing table options must start with known MySQL table-option
+  keywords, including `AUTOEXTEND_SIZE` and `START TRANSACTION`, and
+  no-definition and post-definition CTAS forms are recognized explicitly,
   including `IGNORE`/`REPLACE` duplicate-handling modifiers.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   string-literal file names, documented NDB logfile options with numeric

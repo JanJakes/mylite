@@ -77,6 +77,7 @@ typedef enum CreateTableOptionValueKind {
 typedef struct MyliteExpressionFrame {
   int active;
   int allow_empty;
+  int validate_adjacent;
   int started;
   int previous_top_token_id;
   int previous_was_operator;
@@ -147,6 +148,9 @@ static int query_expression_group_allows_empty(int previous_top_token_id,
                                                MyliteToken previous_top_token,
                                                int previous_was_operator,
                                                int token_id);
+static int query_expression_group_validates_adjacent(int allow_empty,
+                                                     int token_id);
+static int query_expression_group_disables_adjacent(int token_id);
 static int select_window_name_token(int token_id, MyliteToken token);
 static int select_lock_table_ref_start(int token_id, MyliteToken token);
 static int select_lock_table_ref_part(int token_id);
@@ -6647,6 +6651,8 @@ static int query_expression_stack_open_from_previous(
   frame->allow_empty = query_expression_group_allows_empty(
       previous_top_token_id, previous_top_token, previous_was_operator,
       token_id);
+  frame->validate_adjacent =
+      query_expression_group_validates_adjacent(frame->allow_empty, token_id);
   frame->started = 0;
   frame->previous_top_token_id = 0;
   frame->previous_top_token = token;
@@ -6671,8 +6677,21 @@ static int query_expression_stack_token(
     int token_id, MyliteToken token, const char *message) {
   MyliteExpressionFrame *frame = &stack->frames[depth];
 
-  (void) ctx;
-  (void) message;
+  if (query_expression_group_disables_adjacent(token_id)) {
+    frame->validate_adjacent = 0;
+  }
+  if (frame->validate_adjacent &&
+      do_expression_value_start(token_id, token) &&
+      !do_expression_operator(token_id, token) &&
+      !frame->previous_was_operator &&
+      do_expression_value_terminal(frame->previous_top_token_id,
+                                   frame->previous_top_token) &&
+      !do_expression_allows_adjacent(frame->previous_top_token_id,
+                                     frame->previous_top_token, token_id,
+                                     token)) {
+    mylite_parser_reject(ctx, token, message);
+    return 0;
+  }
 
   frame->started = 1;
   frame->previous_top_token_id = token_id;
@@ -6739,6 +6758,16 @@ static int query_expression_group_allows_empty(int previous_top_token_id,
 
   return !do_expression_value_terminal(previous_top_token_id,
                                        previous_top_token);
+}
+
+static int query_expression_group_validates_adjacent(int allow_empty,
+                                                     int token_id) {
+  return token_id == ML_LP && !allow_empty;
+}
+
+static int query_expression_group_disables_adjacent(int token_id) {
+  return token_id == ML_SELECT || token_id == ML_TABLE ||
+         token_id == ML_VALUES || token_id == ML_WITH;
 }
 
 static int select_window_name_token(int token_id, MyliteToken token) {

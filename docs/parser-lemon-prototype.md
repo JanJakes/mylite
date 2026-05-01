@@ -44,22 +44,22 @@ token sink:
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
   write payloads, and validate `SET` assignment lists including repeated-`SET`
   continuations, malformed top-level assignment value adjacent operands and
-  dangling operators, dangling operators inside nested assignment value groups,
-  explicit `VALUE(S)` row-list tails, `ROW(...)` constructors, `INSERT`
-  `VALUE(S)`/`SET` row aliases, parenthesized query payload `ORDER BY` and
-  `LIMIT` suffixes, malformed `SELECT` operands after set operators, and `ON
-  DUPLICATE KEY UPDATE` assignment tails including malformed post-value
-  continuations and stray top-level `SELECT`/`FROM` suffixes after assignment
-  values.
+  dangling operators, adjacent operands and dangling operators inside plain
+  parenthesized assignment value groups, explicit `VALUE(S)` row-list tails,
+  `ROW(...)` constructors, `INSERT` `VALUE(S)`/`SET` row aliases,
+  parenthesized query payload `ORDER BY` and `LIMIT` suffixes, malformed
+  `SELECT` operands after set operators, and `ON DUPLICATE KEY UPDATE`
+  assignment tails including malformed post-value continuations and stray
+  top-level `SELECT`/`FROM` suffixes after assignment values.
 - Single-table `UPDATE` validates `SET` assignment lists, malformed top-level
-  assignment value adjacent operands and dangling operators, dangling operators
-  inside nested assignment/`WHERE`/`ORDER BY` expression groups, plus `WHERE`,
-  `ORDER BY`, and `LIMIT` tails.
+  assignment value adjacent operands and dangling operators, adjacent operands
+  and dangling operators inside plain parenthesized assignment/`WHERE`/`ORDER
+  BY` expression groups, plus `WHERE`, `ORDER BY`, and `LIMIT` tails.
 - Single-table `DELETE` recognizes table aliases before optional partition
   lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails, rejecting incomplete
   DML clause tails, invalid top-level `ORDER BY` direction sequences, malformed
   `WHERE`/`ORDER BY` adjacent operands and dangling operators including inside
-  nested expression groups, and out-of-order top-level DML clauses.
+  plain parenthesized expression groups, and out-of-order top-level DML clauses.
 - `VALUES` recognizes comma-separated row contents while preserving nested
   expression bodies, set operators, `ORDER BY`, and `LIMIT` tails, and malformed
   `SELECT` operands after set operators are rejected.

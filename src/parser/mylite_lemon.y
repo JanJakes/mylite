@@ -3483,8 +3483,7 @@ iterate_statement ::= ITERATE stored_program_label_ref. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-stored_program_label_ref ::= ATOM.
-stored_program_label_ref ::= LABEL.
+stored_program_label_ref ::= cache_name_part.
 
 help_statement ::= HELP help_topic. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);

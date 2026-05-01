@@ -115,10 +115,12 @@ token sink:
   type-family start plus common attribute starts and selected closed attribute
   values, and column-level `REFERENCES` clauses validate the referenced
   column-list envelope plus referential-action tails. Trailing table options
-  must start with known MySQL table-option keywords, including
-  `AUTOEXTEND_SIZE` and `START TRANSACTION`, and
-  no-definition and post-definition CTAS forms are recognized explicitly,
-  including `IGNORE`/`REPLACE` duplicate-handling modifiers.
+  must start with known MySQL table-option keywords and validate selected value
+  domains, including numeric options, string-literal options, closed
+  `INSERT_METHOD`, closed `ROW_FORMAT`, storage values, `UNION` lists, and
+  `START TRANSACTION`. No-definition and post-definition CTAS forms are
+  recognized explicitly, including `IGNORE`/`REPLACE` duplicate-handling
+  modifiers.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   string-literal file names, documented NDB logfile options with numeric
   size/nodegroup values, `WAIT`, and optional `ENGINE`/`STORAGE ENGINE`

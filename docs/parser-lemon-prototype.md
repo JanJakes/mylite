@@ -188,6 +188,9 @@ token sink:
   assignment forms, including replacement and secondary-password clauses.
 - `SET TRANSACTION` recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and
   read access modes without permissive tails.
+- `COMMIT` and `ROLLBACK` recognize `WORK`, `AND [NO] CHAIN`, and
+  `[NO] RELEASE` tails while rejecting MySQL's invalid `AND CHAIN RELEASE`
+  combination.
 - `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, and `RELEASE SAVEPOINT` recognize
   savepoint names using the shared identifier grammar.
 - Stored-program label and cursor references use the shared identifier grammar.

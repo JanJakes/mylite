@@ -93,6 +93,18 @@ static int validate_purge_statement_syntax(const mylite_parser *parser, const my
 static int validate_nonempty_expression_tail_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
+static int validate_set_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_set_names_statement_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index);
+static int validate_set_character_set_statement_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index);
+static int validate_set_assignment_tail_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index);
+static int token_can_be_character_set_value(const mylite_parser *parser, size_t token_index);
+static int token_can_be_collation_value(const mylite_parser *parser, size_t token_index);
 static int validate_reset_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_reset_persist_statement_syntax(const mylite_parser *parser,
                                                    size_t token_index,
@@ -1332,6 +1344,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_SET:
+			if (!validate_set_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid SET statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_RESET:
 			if (!validate_reset_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid RESET statement");
@@ -2283,6 +2301,133 @@ static int validate_nonempty_expression_tail_syntax(const mylite_parser *parser,
 		return 0;
 	}
 	return 1;
+}
+
+static int validate_set_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "NAMES")) {
+		return validate_set_names_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+	if (parser->tokens[token_index].parser_token == CHARACTER_T &&
+	    token_index + 1 <= last_token_index &&
+	    parser->tokens[token_index + 1].parser_token == SET_T) {
+		return validate_set_character_set_statement_syntax(parser, token_index + 2, last_token_index);
+	}
+	if (parser->tokens[token_index].parser_token == CHARSET_T) {
+		return validate_set_character_set_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+
+	return 1;
+}
+
+static int validate_set_names_statement_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index)
+{
+	int uses_default_character_set;
+
+	if (token_index > last_token_index || !token_can_be_character_set_value(parser, token_index)) {
+		return 0;
+	}
+
+	uses_default_character_set = parser->tokens[token_index].parser_token == DEFAULT_T;
+	token_index++;
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (parser->tokens[token_index].parser_token == ',') {
+		return validate_set_assignment_tail_syntax(parser, token_index + 1, last_token_index);
+	}
+	if (uses_default_character_set ||
+	    token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index, "COLLATE") ||
+	    !token_can_be_collation_value(parser, token_index + 1)) {
+		return 0;
+	}
+	token_index += 2;
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	return parser->tokens[token_index].parser_token == ',' &&
+	       validate_set_assignment_tail_syntax(parser, token_index + 1, last_token_index);
+}
+
+static int validate_set_character_set_statement_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index)
+{
+	if (token_index > last_token_index || !token_can_be_character_set_value(parser, token_index)) {
+		return 0;
+	}
+	token_index++;
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	return parser->tokens[token_index].parser_token == ',' &&
+	       validate_set_assignment_tail_syntax(parser, token_index + 1, last_token_index);
+}
+
+static int validate_set_assignment_tail_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index)
+{
+	int expecting_assignment = 1;
+
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (matching_token > token_index + 1) {
+			expecting_assignment = 0;
+			token_index = matching_token;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == ',') {
+			if (expecting_assignment) {
+				return 0;
+			}
+			expecting_assignment = 1;
+			token_index++;
+			continue;
+		}
+		expecting_assignment = 0;
+		token_index++;
+	}
+	return !expecting_assignment;
+}
+
+static int token_can_be_character_set_value(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (parser->tokens[token_index].parser_token == DEFAULT_T ||
+	        token_can_be_collation_value(parser, token_index));
+}
+
+static int token_can_be_collation_value(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return parser->tokens[token_index].kind == MYLITE_TOKEN_IDENTIFIER ||
+	       parser->tokens[token_index].kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
+	       parser->tokens[token_index].kind == MYLITE_TOKEN_STRING ||
+	       token_text_equals(parser, token_index, "BINARY");
 }
 
 static int validate_reset_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

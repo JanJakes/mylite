@@ -230,7 +230,9 @@ ok statements=1 kinds=set[1:5,0:18]/system_variable:flush
 ok statements=1 kinds=get[1:5,0:27]/user_variable:@n
 ```
 
-Connection character-set SET forms expose the requested character set:
+Connection character-set SET forms expose the requested character set and
+validate shorthand statement shape, including following comma-separated `SET`
+assignments:
 
 ```text
 ok statements=1 kinds=set[1:5,0:44]/character_set:utf8mb4

@@ -1643,14 +1643,54 @@ case "$set_account_output" in
 		;;
 esac
 
-set_charset_output=$("$parser" "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci; SET NAMES DEFAULT; SET CHARACTER SET 'latin1'; SET CHARSET DEFAULT; SET CHARACTERISTICS AS TRANSACTION READ WRITE")
+set_charset_output=$("$parser" "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci; SET NAMES DEFAULT; SET CHARACTER SET 'latin1'; SET CHARSET DEFAULT; SET NAMES 'latin1', @dummy = 'B'; SET CHARSET DEFAULT, @dummy = 'A'; SET CHARACTERISTICS AS TRANSACTION READ WRITE")
 case "$set_charset_output" in
-	*"set"*/character_set:utf8mb4*"set"*/character_set:DEFAULT*"set"*/character_set:"'latin1'"*"set"*/character_set:DEFAULT*"set[20:25"*) ;;
+	*"set"*/character_set:utf8mb4*"set"*/character_set:DEFAULT*"set"*/character_set:"'latin1'"*"set"*/character_set:DEFAULT*"set"*/character_set:"'latin1'"*"set"*/character_set:DEFAULT*"set[36:41"*) ;;
 	*)
 		echo "unexpected SET character set output: $set_charset_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'SET NAMES'; then
+	echo "expected missing SET NAMES character set to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET NAMES utf8mb4 COLLATE'; then
+	echo "expected missing SET NAMES collation to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET NAMES DEFAULT COLLATE utf8mb4_0900_ai_ci'; then
+	echo "expected SET NAMES DEFAULT COLLATE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci EXTRA'; then
+	echo "expected trailing SET NAMES tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET NAMES utf8mb4,'; then
+	echo "expected trailing SET NAMES assignment comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET CHARACTER SET'; then
+	echo "expected missing SET CHARACTER SET value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci'; then
+	echo "expected SET CHARACTER SET collation clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET CHARSET utf8mb4 @x = 1'; then
+	echo "expected SET CHARSET trailing tokens without comma to fail" >&2
+	exit 1
+fi
 
 resource_group_output=$("$parser" 'CREATE RESOURCE GROUP rg TYPE = USER; ALTER RESOURCE GROUP rg ENABLE; DROP RESOURCE GROUP rg; SET RESOURCE GROUP rg')
 case "$resource_group_output" in

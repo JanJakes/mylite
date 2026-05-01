@@ -318,7 +318,9 @@ variable-name forms. Structured system-variable targets include the predefined
 `default` instance used by key-cache variables. System-variable assignment
 targets may use keyword-shaped names when followed by an assignment operator.
 Connection character-set `SET NAMES` and `SET CHARACTER SET` forms record the
-target character set. Savepoint names are recorded for `SAVEPOINT`,
+target character set and validate the shorthand and optional `COLLATE` clause
+shape, including following comma-separated `SET` assignments. Savepoint names
+are recorded for `SAVEPOINT`,
 `RELEASE SAVEPOINT`, and `ROLLBACK [WORK] TO [SAVEPOINT]`; those forms reject
 missing names, non-identifier targets, and trailing tokens.
 Statements that begin with parenthesized query expressions keep spans anchored

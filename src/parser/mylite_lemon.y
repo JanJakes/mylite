@@ -3211,13 +3211,31 @@ set_comma_assignment_tail ::= import_comma set_assignment_list.
 set_charset_value ::= DEFAULT.
 set_charset_value ::= set_charset_name.
 
-set_charset_name ::= ATOM.
-set_charset_name ::= BINARY.
-set_charset_name ::= LABEL.
+set_charset_name ::= set_charset_name_part.
 
-set_collation_value ::= ATOM.
-set_collation_value ::= BINARY.
-set_collation_value ::= LABEL.
+set_collation_value ::= set_charset_name_part.
+
+set_charset_name_part ::= ATOM.
+set_charset_name_part ::= ACCOUNT.
+set_charset_name_part ::= CASCADE.
+set_charset_name_part ::= COMPONENT.
+set_charset_name_part ::= COUNT.
+set_charset_name_part ::= DATABASE.
+set_charset_name_part ::= LABEL.
+set_charset_name_part ::= ENGINE.
+set_charset_name_part ::= EVENTS.
+set_charset_name_part ::= FIRST.
+set_charset_name_part ::= FULL.
+set_charset_name_part ::= GRANTS.
+set_charset_name_part ::= PLUGIN.
+set_charset_name_part ::= PROCESSLIST.
+set_charset_name_part ::= RESTRICT.
+set_charset_name_part ::= TABLES.
+set_charset_name_part ::= TABLESPACE.
+set_charset_name_part ::= TRIGGERS.
+set_charset_name_part ::= USER.
+set_charset_name_part ::= VARIABLES.
+set_charset_name_part ::= BINARY.
 
 set_resource_group_tail ::= .
 set_resource_group_tail ::= FOR set_resource_group_thread_list.

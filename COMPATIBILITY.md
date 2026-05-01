@@ -233,8 +233,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. |  |
 | `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser recognizes local clone and remote `CLONE INSTANCE` syntax, including optional data directory and SSL clauses. |
 | `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser recognizes comma-separated variable assignment lists with optional per-assignment scopes and nested value expressions. |
-| `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser recognizes explicit charset names, `DEFAULT`, and comma-following variable assignments. |
-| `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser recognizes explicit charset names, `DEFAULT`, optional `COLLATE`, and comma-following variable assignments. |
+| `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser recognizes charset names using the shared identifier grammar, `BINARY`, `DEFAULT`, and comma-following variable assignments. |
+| `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser recognizes charset/collation names using the shared identifier grammar, `BINARY`, `DEFAULT`, optional `COLLATE`, and comma-following variable assignments. |
 | `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. | Parser recognizes table references, key lists, and key-cache names using the shared identifier grammar. |
 | `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. | Parser recognizes binary, engine, error, general, relay, and slow log forms, including channel-qualified relay logs. |
 | `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. |  |

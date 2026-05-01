@@ -97,8 +97,9 @@ token sink:
 - Prepared-statement names use the shared identifier grammar.
 - `CACHE INDEX` and `RESET PERSIST` use the shared identifier grammar for
   key-cache and persisted-variable names.
-- `SET NAMES` and `SET CHARACTER SET` recognize their charset/default forms,
-  optional collation, and comma-following variable assignments.
+- `SET NAMES` and `SET CHARACTER SET` recognize charset/collation names using
+  the shared identifier grammar, `BINARY`, `DEFAULT`, optional collation, and
+  comma-following variable assignments.
 - `SET` variable assignments recognize comma-separated assignment lists with
   optional per-assignment scopes and nested value expressions.
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form.

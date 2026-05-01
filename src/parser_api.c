@@ -75,6 +75,22 @@ static int validate_purge_statement_syntax(const mylite_parser *parser, const my
 static int validate_nonempty_expression_tail_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
+static int validate_reset_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_reset_persist_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int validate_reset_option_syntax(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index,
+                                        size_t *next_token_index);
+static int validate_reset_binary_logs_option_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    size_t *next_token_index);
+static int validate_reset_replica_option_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index,
+                                                size_t *next_token_index);
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1139,6 +1155,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_RESET:
+			if (!validate_reset_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid RESET statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_SAVEPOINT:
 			if (!validate_savepoint_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid SAVEPOINT statement");
@@ -1882,6 +1904,148 @@ static int validate_nonempty_expression_tail_syntax(const mylite_parser *parser,
 	    parser->tokens[last_token_index].parser_token == ',') {
 		return 0;
 	}
+	return 1;
+}
+
+static int validate_reset_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "PERSIST")) {
+		return validate_reset_persist_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_reset_option_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+static int validate_reset_persist_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	size_t last_name_token;
+
+	if (token_index > last_token_index) {
+		return 1;
+	}
+
+	if (parser->tokens[token_index].parser_token == IF_T) {
+		if (token_index + 2 > last_token_index ||
+		    parser->tokens[token_index + 1].parser_token != EXISTS_T) {
+			return 0;
+		}
+		token_index += 2;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	if (!token_can_start_set_system_variable_name(parser, token_index, last_token_index)) {
+		return 0;
+	}
+	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+	return last_name_token == last_token_index;
+}
+
+static int validate_reset_option_syntax(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index,
+                                        size_t *next_token_index)
+{
+	if (token_text_equals(parser, token_index, "BINARY")) {
+		return validate_reset_binary_logs_option_syntax(parser,
+		                                                token_index,
+		                                                last_token_index,
+		                                                next_token_index);
+	}
+	if (token_text_equals(parser, token_index, "MASTER")) {
+		*next_token_index = token_index + 1;
+		if (*next_token_index <= last_token_index && parser->tokens[*next_token_index].parser_token == TO_T) {
+			if (*next_token_index + 1 > last_token_index ||
+			    parser->tokens[*next_token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+				return 0;
+			}
+			*next_token_index += 2;
+		}
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "REPLICA") ||
+	    token_text_equals(parser, token_index, "SLAVE")) {
+		return validate_reset_replica_option_syntax(parser,
+		                                            token_index,
+		                                            last_token_index,
+		                                            next_token_index);
+	}
+	return 0;
+}
+
+static int validate_reset_binary_logs_option_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    size_t *next_token_index)
+{
+	if (token_index + 3 > last_token_index ||
+	    !token_text_equals(parser, token_index + 1, "LOGS") ||
+	    parser->tokens[token_index + 2].parser_token != AND_T ||
+	    !token_text_equals(parser, token_index + 3, "GTIDS")) {
+		return 0;
+	}
+
+	*next_token_index = token_index + 4;
+	if (*next_token_index <= last_token_index && parser->tokens[*next_token_index].parser_token == TO_T) {
+		if (*next_token_index + 1 > last_token_index ||
+		    parser->tokens[*next_token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		*next_token_index += 2;
+	}
+	return 1;
+}
+
+static int validate_reset_replica_option_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index,
+                                                size_t *next_token_index)
+{
+	token_index++;
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == ALL_T) {
+		token_index++;
+	}
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "FOR")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "CHANNEL") ||
+		    parser->tokens[token_index + 2].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		token_index += 3;
+	}
+	*next_token_index = token_index;
 	return 1;
 }
 

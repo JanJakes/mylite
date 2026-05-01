@@ -495,17 +495,18 @@ Other documented FLUSH options expose their global targets:
 ok statements=3 kinds=flush[1:3,0:16]/error_log,flush[5:6,18:29]/host_cache,flush[8:9,31:51]/user_resource
 ```
 
-RESET PERSIST exposes explicit persisted system-variable targets and full
-persisted-variable reset operations:
+RESET PERSIST validates bare full-reset operations, explicit persisted
+system-variable targets, and `IF EXISTS` only when a variable name follows:
 
 ```text
 ok statements=1 kinds=reset[1:3,0:29]/system_variable:max_connections
 ok statements=1 kinds=reset[1:2,0:13]/system_variable
 ```
 
-RESET BINARY LOGS AND GTIDS exposes the binary-log collection. The legacy
-`RESET MASTER` spelling is also classified as binary-log metadata so runtime
-diagnostics can route the unsupported form deliberately:
+RESET accepts comma-separated reset options. RESET BINARY LOGS AND GTIDS
+validates optional numeric file indexes and exposes the binary-log collection.
+The legacy `RESET MASTER` spelling is also classified as binary-log metadata so
+runtime diagnostics can route the unsupported form deliberately:
 
 ```text
 ok statements=1 kinds=reset[1:5,0:27]/binary_log

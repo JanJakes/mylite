@@ -999,7 +999,7 @@ case "$maintenance_output" in
 		;;
 esac
 
-reset_output=$("$parser" 'RESET PERSIST max_connections; RESET PERSIST IF EXISTS autocommit; RESET PERSIST; RESET PERSIST IF EXISTS; RESET BINARY LOGS AND GTIDS; RESET BINARY LOGS AND GTIDS TO 100; RESET MASTER; RESET MASTER TO 100')
+reset_output=$("$parser" 'RESET PERSIST max_connections; RESET PERSIST IF EXISTS autocommit; RESET PERSIST; RESET BINARY LOGS AND GTIDS; RESET BINARY LOGS AND GTIDS TO 100; RESET MASTER; RESET MASTER TO 100; RESET REPLICA, BINARY LOGS AND GTIDS TO 101')
 case "$reset_output" in
 	*"/system_variable:IF"*)
 		echo "unexpected RESET PERSIST IF target output: $reset_output" >&2
@@ -1007,12 +1007,82 @@ case "$reset_output" in
 		;;
 esac
 case "$reset_output" in
-	*"reset"*/system_variable:max_connections*"reset"*/system_variable:autocommit*"reset[11:12"*/system_variable*"reset[14:17"*",reset[19:23"*/binary_log*"reset"*/binary_log*"reset"*/binary_log*"reset"*/binary_log*) ;;
+	*"reset"*/system_variable:max_connections*"reset"*/system_variable:autocommit*"reset[11:12"*/system_variable*"reset"*/binary_log*"reset"*/binary_log*"reset"*/binary_log*"reset"*/binary_log*"reset"*/replication_channel*) ;;
 	*)
 		echo "unexpected RESET output: $reset_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'RESET'; then
+	echo "expected missing RESET body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESET PERSIST IF EXISTS'; then
+	echo "expected missing RESET PERSIST IF EXISTS variable to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESET PERSIST @@global.autocommit'; then
+	echo "expected scoped RESET PERSIST variable to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESET PERSIST max_connections extra'; then
+	echo "expected trailing RESET PERSIST tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESET BINARY LOGS'; then
+	echo "expected incomplete RESET BINARY LOGS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESET BINARY LOGS AND GTIDS TO'; then
+	echo "expected missing RESET BINARY LOGS index to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "RESET BINARY LOGS AND GTIDS TO '100'"; then
+	echo "expected string RESET BINARY LOGS index to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESET BINARY LOGS AND GTIDS TO 100 extra'; then
+	echo "expected trailing RESET BINARY LOGS tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESET REPLICA FOR CHANNEL ch'; then
+	echo "expected unquoted RESET REPLICA channel to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESET REPLICA FOR CHANNEL'; then
+	echo "expected missing RESET REPLICA channel to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESET REPLICA ALL ALL'; then
+	echo "expected duplicate RESET REPLICA ALL to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESET REPLICA,'; then
+	echo "expected trailing RESET option comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RESET MASTER TO'; then
+	echo "expected missing RESET MASTER index to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "RESET MASTER TO '100'"; then
+	echo "expected string RESET MASTER index to fail" >&2
+	exit 1
+fi
 
 replication_channel_output=$("$parser" "START REPLICA FOR CHANNEL 'ch'; STOP REPLICA SQL_THREAD FOR CHANNEL 'ch'; RESET REPLICA ALL FOR CHANNEL 'ch'; CHANGE REPLICATION SOURCE TO SOURCE_HOST='h' FOR CHANNEL 'ch'; CHANGE REPLICATION FILTER REPLICATE_DO_DB=(db) FOR CHANNEL 'ch'; START REPLICA; STOP REPLICA; RESET REPLICA; CHANGE REPLICATION SOURCE TO SOURCE_HOST='h'; CHANGE MASTER TO MASTER_HOST='h'; START GROUP_REPLICATION; STOP GROUP_REPLICATION")
 case "$replication_channel_output" in

@@ -1706,6 +1706,11 @@ if "$parser" --quiet 'ALTER DATABASE'; then
 	exit 1
 fi
 
+if "$parser" --quiet 'ALTER FOO'; then
+	echo "expected unknown ALTER object type to fail" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'ALTER DATABASE db'; then
 	echo "expected ALTER DATABASE without options to fail" >&2
 	exit 1

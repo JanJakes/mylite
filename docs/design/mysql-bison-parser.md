@@ -363,6 +363,9 @@ including character-set, collation, encryption, and `READ ONLY` options.
 `CREATE` rejects unknown object families once documented table, view, routine,
 event, trigger, account, index, schema, tablespace, server, resource-group, and
 spatial-reference-system forms have been considered.
+`ALTER` likewise rejects unknown object families after the supported view,
+event, account, schema, routine, table, instance, logfile-group, tablespace,
+server, and resource-group forms have been considered.
 `DROP DATABASE` and `DROP SCHEMA` validate optional `IF EXISTS` with a single
 unqualified schema target.
 Unambiguous `CREATE FUNCTION` loadable-function forms validate documented

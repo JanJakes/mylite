@@ -5961,7 +5961,7 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 	if (token_is_resource_group_sequence(parser, token_index, last_token_index)) {
 		return validate_alter_resource_group_statement_syntax(parser, token_index, last_token_index);
 	}
-	return 1;
+	return 0;
 }
 
 static int validate_alter_database_statement_syntax(const mylite_parser *parser,

@@ -2584,18 +2584,44 @@ case_statement ::= CASE statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-declare_statement ::= DECLARE declare_name required_statement_tail. {
+declare_statement ::= DECLARE declare_identifier_list declare_type_start statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-declare_statement ::= DECLARE declare_handler_action declare_handler_keyword required_statement_tail. {
+declare_statement ::= DECLARE declare_name CONDITION FOR declare_condition_value. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
+declare_statement ::= DECLARE declare_name CURSOR FOR declare_cursor_query_start statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+declare_statement ::= DECLARE declare_handler_action declare_handler_keyword FOR declare_handler_conditions declare_handler_statement_start statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+
+declare_identifier_list ::= declare_name.
+declare_identifier_list ::= declare_identifier_list COMMA declare_name.
 
 declare_name ::= ATOM.
 declare_name ::= LABEL.
 
+declare_type_start ::= ATOM.
+declare_type_start ::= BINARY.
+declare_type_start ::= CHARACTER.
+declare_type_start ::= CHARSET.
+declare_type_start ::= DATA.
+declare_type_start ::= DEFAULT.
+declare_type_start ::= LABEL.
+
+declare_condition_value ::= ATOM.
+declare_condition_value ::= LABEL.
+declare_condition_value ::= SQLSTATE ATOM.
+
+declare_cursor_query_start ::= LP.
+declare_cursor_query_start ::= SELECT.
+declare_cursor_query_start ::= TABLE.
+declare_cursor_query_start ::= VALUES.
+declare_cursor_query_start ::= WITH.
+
 declare_handler_action ::= CONTINUE.
-declare_name ::= CURSOR.
 declare_handler_action ::= EXIT.
 declare_handler_action ::= UNDO.
 
@@ -2603,6 +2629,33 @@ declare_handler_keyword ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "HANDLER");
 }
 declare_handler_keyword ::= HANDLER.
+
+declare_handler_conditions ::= declare_handler_condition.
+declare_handler_conditions ::= declare_handler_conditions COMMA declare_handler_condition.
+
+declare_handler_condition ::= declare_condition_value.
+declare_handler_condition ::= declare_not declare_found.
+
+declare_not ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "NOT");
+}
+
+declare_found ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "FOUND");
+}
+
+declare_handler_statement_start ::= BEGIN.
+declare_handler_statement_start ::= CALL.
+declare_handler_statement_start ::= DELETE.
+declare_handler_statement_start ::= DO.
+declare_handler_statement_start ::= GET.
+declare_handler_statement_start ::= INSERT.
+declare_handler_statement_start ::= REPLACE.
+declare_handler_statement_start ::= RESIGNAL.
+declare_handler_statement_start ::= SELECT.
+declare_handler_statement_start ::= SET.
+declare_handler_statement_start ::= SIGNAL.
+declare_handler_statement_start ::= UPDATE.
 
 end_statement ::= END end_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

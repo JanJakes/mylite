@@ -225,7 +225,7 @@
 #define ML_FETCH                          225
 #define ML_ELSE                           226
 #define ML_DECLARE                        227
-#define ML_CONTINUE                       228
-#define ML_CURSOR                         229
+#define ML_CURSOR                         228
+#define ML_CONTINUE                       229
 #define ML_EXIT                           230
 #define ML_HAVING                         231

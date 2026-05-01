@@ -2554,9 +2554,48 @@ resignal_tail ::= .
 resignal_tail ::= SET signal_information_items.
 resignal_tail ::= signal_condition_value signal_set_tail.
 
-while_statement ::= WHILE expression_start required_statement_tail. {
+while_statement ::= WHILE expression_start while_condition_tail DO statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
+
+while_condition_tail ::= .
+while_condition_tail ::= while_condition_tail while_condition_token.
+
+while_condition_nested ::= .
+while_condition_nested ::= while_condition_nested while_condition_nested_token.
+
+while_condition_token ::= ATOM.
+while_condition_token ::= LABEL.
+while_condition_token ::= while_condition_keyword.
+while_condition_token ::= COMMA.
+while_condition_token ::= LP while_condition_nested RP.
+while_condition_token ::= LB.
+while_condition_token ::= RB.
+while_condition_token ::= LC.
+while_condition_token ::= RC.
+
+while_condition_nested_token ::= ATOM.
+while_condition_nested_token ::= LABEL.
+while_condition_nested_token ::= keyword.
+while_condition_nested_token ::= COMMA.
+while_condition_nested_token ::= LP while_condition_nested RP.
+while_condition_nested_token ::= LB.
+while_condition_nested_token ::= RB.
+while_condition_nested_token ::= LC.
+while_condition_nested_token ::= RC.
+
+while_condition_keyword ::= ALL.
+while_condition_keyword ::= AND.
+while_condition_keyword ::= BINARY.
+while_condition_keyword ::= CASE.
+while_condition_keyword ::= DEFAULT.
+while_condition_keyword ::= IN.
+while_condition_keyword ::= LIKE.
+while_condition_keyword ::= NO.
+while_condition_keyword ::= ON.
+while_condition_keyword ::= OR.
+while_condition_keyword ::= SELECT.
+while_condition_keyword ::= VALUES.
 
 until_statement ::= UNTIL expression_start statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

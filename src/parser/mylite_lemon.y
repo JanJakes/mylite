@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AS COLLATE DATAFILE DISABLE ENABLE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE FORCE FOREIGN GROUP INACTIVE INNODB KEYRING OPTIONS PARTITION REDO_LOG REFERENCE RELOAD ROTATE SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE VALUE VCPU WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER AS BEFORE COLLATE DATAFILE DISABLE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN GROUP INACTIVE INNODB INVOKER KEYRING OPTIONS PARTITION PRECEDES REDO_LOG REFERENCE RELOAD RETURNS ROTATE SCHEDULE SONAME SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE VALUE VCPU WRAPPER DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -236,17 +236,13 @@ create_database_option_start ::= ENCRYPTION.
 
 create_udf_tail ::= create_returns create_udf_return_type create_soname ATOM.
 
-create_returns ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "RETURNS");
-}
+create_returns ::= RETURNS.
 
 create_udf_return_type ::= ATOM(A). {
   mylite_parser_require_udf_return_type(ctx, A);
 }
 
-create_soname ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "SONAME");
-}
+create_soname ::= SONAME.
 
 create_prefixed_view_tail ::= create_view_prefix VIEW cache_table_ref view_column_tail view_body.
 
@@ -275,9 +271,7 @@ create_view_sql_security_tail ::= create_view_sql_security.
 create_view_sql_security ::= SQL SECURITY create_view_security_kind.
 
 create_view_security_kind ::= DEFINER.
-create_view_security_kind ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "INVOKER");
-}
+create_view_security_kind ::= INVOKER.
 
 view_body ::= view_as SELECT select_tail.
 view_body ::= view_as TABLE table_statement_target table_query_tail.
@@ -305,9 +299,7 @@ create_definer_object_tail ::= PROCEDURE create_if_not_exists_tail cache_table_r
 
 create_event_body ::= ON create_schedule event_schedule_start create_event_before_do create_event_do event_statement_start statement_tail.
 
-create_schedule ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "SCHEDULE");
-}
+create_schedule ::= SCHEDULE.
 
 event_schedule_start ::= ATOM(A). {
   mylite_parser_require_event_schedule_start(ctx, A);
@@ -327,24 +319,20 @@ create_event_before_do_token ::= LP create_event_before_do_nested RP.
 
 create_trigger_body ::= create_trigger_time create_trigger_event ON cache_table_ref FOR create_each ROW create_trigger_statement_tail.
 
-create_trigger_time ::= ATOM(A). {
-  mylite_parser_require_token_text_any(ctx, A, "BEFORE", "AFTER");
-}
+create_trigger_time ::= BEFORE.
+create_trigger_time ::= AFTER.
 
 create_trigger_event ::= INSERT.
 create_trigger_event ::= UPDATE.
 create_trigger_event ::= DELETE.
 
-create_each ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "EACH");
-}
+create_each ::= EACH.
 
 create_trigger_statement_tail ::= create_trigger_statement_start statement_tail.
 create_trigger_statement_tail ::= create_trigger_order create_trigger_statement_start statement_tail.
 
-create_trigger_order ::= ATOM(A) cache_name_part. {
-  mylite_parser_require_token_text_any(ctx, A, "FOLLOWS", "PRECEDES");
-}
+create_trigger_order ::= FOLLOWS cache_name_part.
+create_trigger_order ::= PRECEDES cache_name_part.
 
 create_trigger_statement_start ::= BEGIN.
 create_trigger_statement_start ::= DELETE.
@@ -1110,9 +1098,7 @@ component_file_list ::= component_file_list import_comma component_file.
 
 component_file ::= ATOM.
 
-plugin_soname ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "SONAME");
-}
+plugin_soname ::= SONAME.
 
 plugin_name ::= ATOM.
 plugin_name ::= LABEL.

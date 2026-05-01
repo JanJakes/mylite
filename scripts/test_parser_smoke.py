@@ -56,6 +56,7 @@ def main() -> int:
         ("create event e2 on schedule at current_timestamp on completion not preserve do begin end;", 0, {"statements": "1", "ddl": "1"}),
         ("create trigger if not exists db1.tr1 before insert on t for each row set @a = 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create trigger tr_order before insert on t for each row follows tr0 begin end;", 0, {"statements": "1", "ddl": "1"}),
+        ("create trigger tr_after after update on t for each row precedes tr0 set @a = 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create function if not exists db1.f1() returns int return 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create function f2() returns int deterministic reads sql data return 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create function udf1 returns integer soname 'x.so';", 0, {"statements": "1", "ddl": "1"}),

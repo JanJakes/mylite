@@ -94,8 +94,8 @@ token sink:
 - Stored-program label and cursor references use the shared identifier grammar.
 - `DECLARE`, `FETCH ... INTO`, and named signal conditions use the shared
   identifier grammar for local names.
-- Prepared-statement names and `EXECUTE ... USING` user-variable lists use the
-  shared identifier grammar.
+- Prepared-statement names, `PREPARE ... FROM` user-variable sources, and
+  `EXECUTE ... USING` user-variable lists use the shared identifier grammar.
 - `CACHE INDEX` and `RESET PERSIST` use the shared identifier grammar for
   key-cache and persisted-variable names.
 - `GET DIAGNOSTICS` assignment targets use local/user-variable grammar and

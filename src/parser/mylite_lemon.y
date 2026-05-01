@@ -3029,6 +3029,7 @@ prepare_statement ::= PREPARE prepared_statement_name FROM prepare_source. {
 }
 
 prepare_source ::= ATOM.
+prepare_source ::= user_variable_name.
 
 execute_statement ::= EXECUTE prepared_statement_name execute_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);

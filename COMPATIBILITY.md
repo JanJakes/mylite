@@ -91,7 +91,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE TABLE ... SELECT` | ❌ | high | CTAS type inference, default handling, indexes, and atomicity. |  |
 | `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. | Parser recognizes string-literal data files, numeric autoextend/file-block sizes, `'Y'`/`'N'` encryption, NDB logfile/size/nodegroup/comment options, engine, and string-literal engine attributes. |
 | `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax present in the MySQL 8.4 parser source. |  |
-| `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. |  |
+| `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. | Parser recognizes trigger timing, event, target table, optional ordering, definer forms, and stored-program statement starts for single-statement trigger bodies. |
 | `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. | Parser recognizes algorithm, definer, SQL security, column lists, view body starts, and non-SELECT `WITH [CASCADED|LOCAL] CHECK OPTION` tails. |
 | `DROP DATABASE` / `DROP SCHEMA` | ❌ | high | Schema removal, metadata cleanup, warnings, and embedded single-file constraints. |  |
 | `DROP EVENT` | ❌ | medium | Event metadata deletion. |  |

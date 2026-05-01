@@ -510,11 +510,30 @@ create_trigger_order ::= FOLLOWS cache_name_part.
 create_trigger_order ::= PRECEDES cache_name_part.
 
 create_trigger_statement_start ::= BEGIN.
+create_trigger_statement_start ::= CALL.
+create_trigger_statement_start ::= CASE.
+create_trigger_statement_start ::= CLOSE.
 create_trigger_statement_start ::= DELETE.
+create_trigger_statement_start ::= DO.
+create_trigger_statement_start ::= FETCH.
+create_trigger_statement_start ::= GET.
+create_trigger_statement_start ::= IF.
 create_trigger_statement_start ::= INSERT.
+create_trigger_statement_start ::= ITERATE.
 create_trigger_statement_start ::= LABEL.
+create_trigger_statement_start ::= LEAVE.
+create_trigger_statement_start ::= LOOP.
+create_trigger_statement_start ::= OPEN.
+create_trigger_statement_start ::= REPEAT.
+create_trigger_statement_start ::= REPLACE.
+create_trigger_statement_start ::= RESIGNAL.
+create_trigger_statement_start ::= RELEASE.
+create_trigger_statement_start ::= ROLLBACK.
 create_trigger_statement_start ::= SELECT.
+create_trigger_statement_start ::= SET.
+create_trigger_statement_start ::= SIGNAL.
 create_trigger_statement_start ::= UPDATE.
+create_trigger_statement_start ::= WHILE.
 
 create_function_tail ::= create_udf_tail.
 create_function_tail ::= function_signature create_returns create_function_return_tail create_function_body_start statement_tail.
@@ -1617,7 +1636,6 @@ alter_tablespace_datafile_option ::= WAIT.
 alter_tablespace_datafile_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
 
 alter_undo_tablespace_action ::= SET alter_undo_tablespace_state drop_tablespace_engine_tail.
-create_trigger_statement_start ::= SET.
 
 alter_undo_tablespace_state ::= ACTIVE.
 alter_undo_tablespace_state ::= INACTIVE.
@@ -1654,7 +1672,6 @@ alter_instance_reload_rollback_tail(A) ::= . {
 alter_instance_reload_rollback_tail(A) ::= NO ROLLBACK ON ERROR. {
   A = 1;
 }
-create_trigger_statement_start ::= ROLLBACK.
 
 rename_statement ::= RENAME rename_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
@@ -1899,7 +1916,6 @@ savepoint_name ::= cache_name_part.
 release_statement ::= RELEASE SAVEPOINT savepoint_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
-create_trigger_statement_start ::= RELEASE.
 
 lock_statement ::= LOCK lock_tail(A). {
   mylite_parser_record_statement(ctx, A);
@@ -2812,7 +2828,6 @@ handler_limit_value ::= NUMBER_LITERAL.
 call_statement ::= CALL call_name call_arguments. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-create_trigger_statement_start ::= CALL.
 
 call_name ::= call_identifier.
 call_name ::= call_identifier DOT call_identifier.

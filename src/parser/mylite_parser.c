@@ -29,6 +29,8 @@ static int select_set_option(int token_id);
 static int select_set_operand_start(int token_id);
 static int select_lock_table_ref_start(int token_id, MyliteToken token);
 static int select_lock_table_ref_part(int token_id);
+static int select_into_file_target(int token_id);
+static int select_string_literal_token(int token_id);
 static int token_ascii_equal(MyliteToken token, const char *expected);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
@@ -315,6 +317,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     SELECT_LOCK_AFTER_SKIP,
     SELECT_LOCK_COMPLETE
   };
+  enum {
+    SELECT_INTO_NONE,
+    SELECT_INTO_AFTER_INTO,
+    SELECT_INTO_AFTER_FILE_TARGET
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token;
@@ -326,6 +333,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int need_set_operand = 0;
   int lock_state = SELECT_LOCK_NONE;
   int saw_lock_tail = 0;
+  int into_state = SELECT_INTO_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -421,7 +429,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       }
       if (token_id == ML_INTO) {
         lock_state = SELECT_LOCK_NONE;
-        need_operand = 1;
+        into_state = SELECT_INTO_AFTER_INTO;
         pending_token = token;
         continue;
       }
@@ -471,7 +479,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       }
       if (token_id == ML_INTO) {
         lock_state = SELECT_LOCK_NONE;
-        need_operand = 1;
+        into_state = SELECT_INTO_AFTER_INTO;
         pending_token = token;
         continue;
       }
@@ -510,13 +518,37 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       }
       if (token_id == ML_INTO) {
         lock_state = SELECT_LOCK_NONE;
-        need_operand = 1;
+        into_state = SELECT_INTO_AFTER_INTO;
         pending_token = token;
         continue;
       }
       mylite_parser_reject(ctx, pending_token,
                            "malformed SELECT lock clause");
       return;
+    }
+
+    if (into_state == SELECT_INTO_AFTER_INTO) {
+      if (select_into_file_target(token_id)) {
+        into_state = SELECT_INTO_AFTER_FILE_TARGET;
+        pending_token = token;
+        continue;
+      }
+      if (select_operand_boundary(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO clause");
+        return;
+      }
+      into_state = SELECT_INTO_NONE;
+      continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_FILE_TARGET) {
+      if (!select_string_literal_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO file target");
+        return;
+      }
+      into_state = SELECT_INTO_NONE;
+      continue;
     }
 
     if (need_by) {
@@ -576,6 +608,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       pending_token = token;
       continue;
     }
+    if (token_id == ML_INTO) {
+      into_state = SELECT_INTO_AFTER_INTO;
+      pending_token = token;
+      continue;
+    }
 
     if (select_clause_requires_by(token_id)) {
       need_by = 1;
@@ -604,6 +641,12 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       lock_state == SELECT_LOCK_AFTER_SKIP) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT lock clause");
+  } else if (into_state == SELECT_INTO_AFTER_INTO) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT INTO clause");
+  } else if (into_state == SELECT_INTO_AFTER_FILE_TARGET) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT INTO file target");
   } else if (need_set_operand) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT set operation");
@@ -684,7 +727,7 @@ static int select_clause_requires_by(int token_id) {
 }
 
 static int select_clause_requires_operand(int token_id) {
-  return token_id == ML_FROM || token_id == ML_HAVING || token_id == ML_INTO ||
+  return token_id == ML_FROM || token_id == ML_HAVING ||
          token_id == ML_JOIN || token_id == ML_LIMIT || token_id == ML_ON ||
          token_id == ML_PROCEDURE || token_id == ML_USING ||
          token_id == ML_WHERE;
@@ -724,6 +767,14 @@ static int select_lock_table_ref_start(int token_id, MyliteToken token) {
 static int select_lock_table_ref_part(int token_id) {
   return token_id == ML_ATOM || token_id == ML_QUOTED_ID ||
          token_id == ML_STAR;
+}
+
+static int select_into_file_target(int token_id) {
+  return token_id == ML_DUMPFILE || token_id == ML_OUTFILE;
+}
+
+static int select_string_literal_token(int token_id) {
+  return token_id == ML_DOUBLE_QUOTED_STRING || token_id == ML_STRING_LITERAL;
 }
 
 static void result_init(MyliteParseResult *result) {

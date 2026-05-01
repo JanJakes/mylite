@@ -137,10 +137,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. |  |
-| `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser rejects missing operands for major top-level clause starts such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `INTO`, top-level `JOIN`/`ON`/`USING` clauses, trailing top-level comma separators, incomplete `UNION`/`INTERSECT`/`EXCEPT` set operations, malformed `LOCK IN SHARE MODE` tails, and malformed `FOR UPDATE`/`FOR SHARE` locking tails while preserving index-hint `FOR` forms; full expression/query grammar remains incomplete. |
+| `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser rejects missing operands for major top-level clause starts such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `INTO`, top-level `JOIN`/`ON`/`USING` clauses, trailing top-level comma separators, incomplete `UNION`/`INTERSECT`/`EXCEPT` set operations, malformed `LOCK IN SHARE MODE` tails, malformed `FOR UPDATE`/`FOR SHARE` locking tails while preserving index-hint `FOR` forms, and `INTO OUTFILE`/`INTO DUMPFILE` without file names; full expression/query grammar remains incomplete. |
 | `SELECT ... INTO var_list` | ❌ | high | User/local variable assignment semantics. |  |
-| `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. |  |
-| `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. |  |
+| `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. | Parser requires the file-name string; export execution is not implemented. |
+| `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. | Parser requires the file-name string; export execution is not implemented. |
 | `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. | Parser recognizes table references, set operators, `ORDER BY`, numeric or identifier `LIMIT` forms, `INTO` variable lists, and `INTO OUTFILE`/`INTO DUMPFILE` targets. |
 | `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. |  |
 | `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. |  |

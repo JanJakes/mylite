@@ -55,6 +55,8 @@ token sink:
 - Top-level `SELECT` validates `FOR UPDATE`/`FOR SHARE` locking tails including
   optional `OF` table lists, `NOWAIT`, and `SKIP LOCKED`, while preserving
   index-hint `FOR JOIN`/`FOR ORDER BY`/`FOR GROUP BY`.
+- Top-level `SELECT` requires `INTO OUTFILE` and `INTO DUMPFILE` to include
+  the mandatory file-name string.
 - Top-level `SELECT` also rejects incomplete `UNION`/`INTERSECT`/`EXCEPT`
   set operations.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,

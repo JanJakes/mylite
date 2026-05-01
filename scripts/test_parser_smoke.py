@@ -914,6 +914,8 @@ def main() -> int:
         ("show create user user();", 1, {}),
         ("show warnings garbage;", 1, {}),
         ("show errors limit;", 1, {}),
+        ("show warnings limit many;", 1, {}),
+        ("show profile limit many;", 1, {}),
         ("show plugins extra;", 1, {}),
         ("show parse_tree;", 1, {}),
         ("show parse_tree delete from t;", 1, {}),

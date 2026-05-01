@@ -117,8 +117,10 @@ token sink:
 - `SHOW ENGINE ... STATUS|LOGS|MUTEX` recognizes engine names using the shared
   identifier grammar.
 - `SHOW BINLOG EVENTS` and `SHOW RELAYLOG EVENTS` recognize optional log names,
-  numeric `FROM` positions, and `LIMIT` tails.
-- `SHOW PROFILE` recognizes profile type lists and numeric `FOR QUERY` ids.
+  numeric `FROM` positions, and numeric `LIMIT` tails.
+- `SHOW PROFILE` recognizes profile type lists, numeric `FOR QUERY` ids, and
+  numeric `LIMIT` tails.
+- `SHOW WARNINGS` and `SHOW ERRORS` recognize numeric `LIMIT` tails.
 - `SET ROLE` and `SET DEFAULT ROLE` recognize MySQL role specifiers and account
   lists rather than permissive token tails.
 - `SET PASSWORD` recognizes MySQL 8.4 literal and random password assignment

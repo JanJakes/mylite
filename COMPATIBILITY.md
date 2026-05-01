@@ -254,7 +254,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | --- | --- | --- | --- | --- |
 | `SHOW BINARY LOG STATUS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes the MySQL 8.4 syntax. |
 | `SHOW BINARY LOGS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW BINLOG EVENTS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes optional log-file names, numeric `FROM` positions, and `LIMIT` tails. |
+| `SHOW BINLOG EVENTS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes optional log-file names, numeric `FROM` positions, and numeric `LIMIT` tails. |
 | `SHOW CHARACTER SET` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW COLLATION` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW COLUMNS` / `SHOW FIELDS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
@@ -274,7 +274,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SHOW ENGINE MUTEX` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes engine names using the shared identifier grammar. |
 | `SHOW ENGINE STATUS` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes engine names using the shared identifier grammar. |
 | `SHOW ENGINES` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW ERRORS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
+| `SHOW ERRORS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes numeric `LIMIT` tails. |
 | `SHOW EVENTS` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW FUNCTION CODE` | ❌ | low | Debug-build-only stored-function instruction listing, privileges, result-set shape, and MySQL-compatible diagnostics when unavailable. | Conditional surface; available only for debug-capable builds. |
 | `SHOW FUNCTION STATUS` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
@@ -288,9 +288,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SHOW PROCEDURE CODE` | ❌ | low | Debug-build-only stored-procedure instruction listing, privileges, result-set shape, and MySQL-compatible diagnostics when unavailable. | Conditional surface; available only for debug-capable builds. |
 | `SHOW PROCEDURE STATUS` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW PROCESSLIST` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW PROFILE` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes profile type lists and numeric `FOR QUERY` ids. |
+| `SHOW PROFILE` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes profile type lists, numeric `FOR QUERY` ids, and numeric `LIMIT` tails. |
 | `SHOW PROFILES` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW RELAYLOG EVENTS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes optional log-file names, numeric `FROM` positions, and `LIMIT` tails. |
+| `SHOW RELAYLOG EVENTS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes optional log-file names, numeric `FROM` positions, and numeric `LIMIT` tails. |
 | `SHOW REPLICA STATUS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW REPLICAS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW STATUS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
@@ -298,7 +298,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SHOW TABLES` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW TRIGGERS` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW VARIABLES` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW WARNINGS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
+| `SHOW WARNINGS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes numeric `LIMIT` tails. |
 
 ## 2. Query Expressions and SELECT Semantics
 

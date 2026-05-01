@@ -2494,9 +2494,13 @@ show_diagnostics_kind ::= ERRORS.
 show_diagnostics_kind ::= WARNINGS.
 
 show_limit_tail ::= .
-show_limit_tail ::= LIMIT ATOM.
-show_limit_tail ::= LIMIT ATOM import_comma ATOM.
-show_limit_tail ::= LIMIT ATOM OFFSET ATOM.
+show_limit_tail ::= LIMIT show_limit_value.
+show_limit_tail ::= LIMIT show_limit_value import_comma show_limit_value.
+show_limit_tail ::= LIMIT show_limit_value OFFSET show_limit_value.
+
+show_limit_value ::= BOOLEAN_NUMBER.
+show_limit_value ::= FACTOR_NUMBER.
+show_limit_value ::= NUMBER_LITERAL.
 
 show_simple_kind ::= ENGINES.
 show_simple_kind ::= PLUGINS.

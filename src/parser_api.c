@@ -586,6 +586,7 @@ static int validate_select_limit_expression_syntax(const mylite_parser *parser,
                                                    size_t last_token_index,
                                                    size_t *next_token_index);
 static int token_starts_select_projection_boundary(const mylite_parser *parser, size_t token_index);
+static int token_is_select_projection_from_modifier(const mylite_parser *parser, size_t token_index);
 static int token_starts_select_tail_boundary(const mylite_parser *parser, size_t token_index);
 static int validate_select_into_clauses_syntax(const mylite_parser *parser,
                                                size_t token_index,
@@ -8543,6 +8544,29 @@ static int validate_select_tail_syntax(const mylite_parser *parser,
                                        size_t token_index,
                                        size_t last_token_index)
 {
+	enum {
+		SELECT_TAIL_PROJECTION,
+		SELECT_TAIL_FROM,
+		SELECT_TAIL_WHERE,
+		SELECT_TAIL_GROUP,
+		SELECT_TAIL_HAVING,
+		SELECT_TAIL_WINDOW,
+		SELECT_TAIL_PROCEDURE,
+		SELECT_TAIL_ORDER,
+		SELECT_TAIL_LIMIT,
+		SELECT_TAIL_LOCKING
+	};
+	int stage = SELECT_TAIL_PROJECTION;
+	int seen_from = 0;
+	int seen_where = 0;
+	int seen_group = 0;
+	int seen_having = 0;
+	int seen_window = 0;
+	int seen_procedure = 0;
+	int seen_order = 0;
+	int seen_limit = 0;
+	int seen_into = 0;
+
 	while (token_index <= last_token_index && token_index < parser->token_count) {
 		if (parser->tokens[token_index].parser_token == ')') {
 			return 1;
@@ -8553,12 +8577,21 @@ static int validate_select_tail_syntax(const mylite_parser *parser,
 			       !token_starts_select_projection_boundary(parser, token_index + 1);
 		}
 		if (parser->tokens[token_index].parser_token == FROM_T) {
+			if (seen_from || stage > SELECT_TAIL_PROJECTION) {
+				return 0;
+			}
+			seen_from = 1;
+			stage = SELECT_TAIL_FROM;
 			if (!validate_select_from_clause_syntax(parser, token_index + 1, last_token_index, &token_index)) {
 				return 0;
 			}
 			continue;
 		}
 		if (parser->tokens[token_index].parser_token == INTO_T) {
+			if (seen_into) {
+				return 0;
+			}
+			seen_into = 1;
 			if (!validate_select_into_target_syntax(parser,
 			                                        token_index,
 			                                        last_token_index,
@@ -8567,8 +8600,35 @@ static int validate_select_tail_syntax(const mylite_parser *parser,
 			}
 			continue;
 		}
+		if (parser->tokens[token_index].parser_token == WHERE_T) {
+			if (seen_where || stage > SELECT_TAIL_FROM) {
+				return 0;
+			}
+			seen_where = 1;
+			stage = SELECT_TAIL_WHERE;
+			if (!validate_select_nonempty_tail_clause_syntax(parser,
+			                                                 token_index + 1,
+			                                                 last_token_index,
+			                                                 &token_index)) {
+				return 0;
+			}
+			continue;
+		}
 		if (parser->tokens[token_index].parser_token == GROUP_T ||
 		    parser->tokens[token_index].parser_token == ORDER_T) {
+			if (parser->tokens[token_index].parser_token == GROUP_T) {
+				if (seen_group || stage > SELECT_TAIL_WHERE) {
+					return 0;
+				}
+				seen_group = 1;
+				stage = SELECT_TAIL_GROUP;
+			} else {
+				if (seen_order || stage > SELECT_TAIL_PROCEDURE) {
+					return 0;
+				}
+				seen_order = 1;
+				stage = SELECT_TAIL_ORDER;
+			}
 			if (!validate_select_order_or_group_clause_syntax(parser,
 			                                                  token_index,
 			                                                  last_token_index,
@@ -8577,7 +8637,54 @@ static int validate_select_tail_syntax(const mylite_parser *parser,
 			}
 			continue;
 		}
+		if (token_text_equals(parser, token_index, "HAVING")) {
+			if (seen_having || stage > SELECT_TAIL_GROUP) {
+				return 0;
+			}
+			seen_having = 1;
+			stage = SELECT_TAIL_HAVING;
+			if (!validate_select_nonempty_tail_clause_syntax(parser,
+			                                                 token_index + 1,
+			                                                 last_token_index,
+			                                                 &token_index)) {
+				return 0;
+			}
+			continue;
+		}
+		if (token_text_equals(parser, token_index, "WINDOW")) {
+			if (seen_window || stage > SELECT_TAIL_HAVING) {
+				return 0;
+			}
+			seen_window = 1;
+			stage = SELECT_TAIL_WINDOW;
+			if (!validate_select_nonempty_tail_clause_syntax(parser,
+			                                                 token_index + 1,
+			                                                 last_token_index,
+			                                                 &token_index)) {
+				return 0;
+			}
+			continue;
+		}
+		if (token_text_equals(parser, token_index, "PROCEDURE")) {
+			if (seen_procedure || stage > SELECT_TAIL_WINDOW) {
+				return 0;
+			}
+			seen_procedure = 1;
+			stage = SELECT_TAIL_PROCEDURE;
+			if (!validate_select_nonempty_tail_clause_syntax(parser,
+			                                                 token_index + 1,
+			                                                 last_token_index,
+			                                                 &token_index)) {
+				return 0;
+			}
+			continue;
+		}
 		if (token_text_equals(parser, token_index, "LIMIT")) {
+			if (seen_limit || stage > SELECT_TAIL_ORDER) {
+				return 0;
+			}
+			seen_limit = 1;
+			stage = SELECT_TAIL_LIMIT;
 			if (!validate_select_limit_clause_syntax(parser,
 			                                         token_index,
 			                                         last_token_index,
@@ -8586,12 +8693,9 @@ static int validate_select_tail_syntax(const mylite_parser *parser,
 			}
 			continue;
 		}
-		if (parser->tokens[token_index].parser_token == WHERE_T ||
-		    token_text_equals(parser, token_index, "HAVING") ||
-		    token_text_equals(parser, token_index, "WINDOW") ||
-		    token_text_equals(parser, token_index, "PROCEDURE") ||
-		    token_text_equals(parser, token_index, "FOR") ||
+		if (token_text_equals(parser, token_index, "FOR") ||
 		    token_text_equals(parser, token_index, "LOCK")) {
+			stage = SELECT_TAIL_LOCKING;
 			if (!validate_select_nonempty_tail_clause_syntax(parser,
 			                                                 token_index + 1,
 			                                                 last_token_index,
@@ -8742,6 +8846,9 @@ static int validate_select_limit_expression_syntax(const mylite_parser *parser,
 
 static int token_starts_select_projection_boundary(const mylite_parser *parser, size_t token_index)
 {
+	if (token_is_select_projection_from_modifier(parser, token_index)) {
+		return 0;
+	}
 	return token_index < parser->token_count &&
 	       (parser->tokens[token_index].parser_token == ')' ||
 	        parser->tokens[token_index].parser_token == FROM_T ||
@@ -8758,6 +8865,16 @@ static int token_starts_select_projection_boundary(const mylite_parser *parser, 
 	        token_starts_table_set_operator_tail(parser, token_index));
 }
 
+static int token_is_select_projection_from_modifier(const mylite_parser *parser, size_t token_index)
+{
+	return token_index > 0 &&
+	       token_index + 1 < parser->token_count &&
+	       parser->tokens[token_index].parser_token == FROM_T &&
+	       parser->tokens[token_index - 1].parser_token == ')' &&
+	       (token_text_equals(parser, token_index + 1, "FIRST") ||
+	        token_text_equals(parser, token_index + 1, "LAST"));
+}
+
 static int token_starts_select_tail_boundary(const mylite_parser *parser, size_t token_index)
 {
 	if (token_index < parser->token_count &&
@@ -8765,6 +8882,15 @@ static int token_starts_select_tail_boundary(const mylite_parser *parser, size_t
 	    (parser->tokens[token_index].parser_token == GROUP_T ||
 	     parser->tokens[token_index].parser_token == ORDER_T) &&
 	    token_text_equals(parser, token_index - 1, "FOR")) {
+		return 0;
+	}
+	if (token_index < parser->token_count &&
+	    token_index > 0 &&
+	    token_text_equals(parser, token_index, "FOR") &&
+	    (parser->tokens[token_index - 1].parser_token == INDEX_T ||
+	     parser->tokens[token_index - 1].parser_token == KEY_T ||
+	     token_text_equals(parser, token_index - 1, "INDEXES") ||
+	     token_text_equals(parser, token_index - 1, "KEYS"))) {
 		return 0;
 	}
 	return token_starts_select_projection_boundary(parser, token_index);

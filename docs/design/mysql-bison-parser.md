@@ -294,9 +294,11 @@ nested, and set-operation RHS `SELECT` terms. It also validates that major
 clause shells such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`,
 `LIMIT`, window/procedure tails, and locking tails have a following body.
 `LIMIT` accepts single-expression, comma, and `OFFSET` forms while rejecting
-dangling separators. Full table-reference, expression, and query-expression
-analysis remains a later phase. `FOR GROUP BY` and `FOR ORDER BY` inside index
-hints are not treated as SELECT clause boundaries.
+dangling separators. Major clause order and duplicate clauses are rejected.
+Full table-reference, expression, and query-expression analysis remains a later
+phase. `FOR GROUP BY` and `FOR ORDER BY` inside index hints are not treated as
+SELECT clause boundaries, and window-function modifiers such as `FROM FIRST`
+remain part of the projection.
 `SELECT ... INTO` validation and target classification check the single
 top-level `INTO` rule, variable target-list separators, parenthesized
 query-expression boundaries, OUTFILE character-set and field/line options, and

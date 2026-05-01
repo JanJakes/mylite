@@ -1830,6 +1830,11 @@ if ! "$parser" --quiet "SELECT a LIMIT 5, 10"; then
 	exit 1
 fi
 
+if ! "$parser" --quiet "SELECT id, NTH_VALUE(id, 1) FROM FIRST OVER () FROM t1"; then
+	echo "expected SELECT window function FROM FIRST modifier to parse" >&2
+	exit 1
+fi
+
 if ! "$parser" --quiet "SELECT 0 FROM t1 FORCE INDEX FOR GROUP BY(a) WHERE a = 0 OR b = 0 AND c = 0"; then
 	echo "expected SELECT index hint FOR GROUP BY to parse" >&2
 	exit 1
@@ -1931,6 +1936,26 @@ fi
 
 if "$parser" --quiet 'SELECT a LIMIT , 1'; then
 	echo "expected SELECT LIMIT leading comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a WHERE 1 FROM t'; then
+	echo "expected SELECT FROM after WHERE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a ORDER BY a WHERE a'; then
+	echo "expected SELECT WHERE after ORDER BY to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a LIMIT 1 ORDER BY a'; then
+	echo "expected SELECT ORDER BY after LIMIT to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a FROM t FROM u'; then
+	echo "expected duplicate SELECT FROM to fail" >&2
 	exit 1
 fi
 

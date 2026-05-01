@@ -262,7 +262,9 @@ later grammar responsibility. `USE` has targeted syntax validation for the
 single identifier-like schema-name form MySQL accepts, rejecting missing names,
 quoted strings, variables, qualified names, and trailing tokens.
 Prepared-statement names are recorded in
-`PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`. Persisted
+`PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`; those forms
+validate handle names, `PREPARE ... FROM` sources, and `EXECUTE ... USING`
+user-variable binding lists. Persisted
 system-variable targets are recorded for `RESET PERSIST`. Local clone
 directories and remote donor endpoints are recorded for `CLONE`. Replication
 channel targets are recorded for explicit and default-channel `START`, `STOP`,

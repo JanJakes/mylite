@@ -39,6 +39,10 @@ static int validate_rollback_savepoint_clause(const mylite_parser *parser,
 static int validate_transaction_completion_clause(const mylite_parser *parser,
                                                   size_t token_index,
                                                   size_t last_token_index);
+static int validate_prepare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_execute_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_deallocate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_drop_prepare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_kill_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static void classify_statement_metadata(mylite_parser *parser);
 static void classify_grouped_query_statement_kinds(mylite_parser *parser);
@@ -1046,6 +1050,30 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_PREPARE:
+			if (!validate_prepare_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid PREPARE statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_EXECUTE:
+			if (!validate_execute_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid EXECUTE statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_DEALLOCATE:
+			if (!validate_deallocate_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid DEALLOCATE statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_DROP:
+			if (!validate_drop_prepare_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid DROP PREPARE statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_RESTART:
 			if (!validate_single_token_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid RESTART statement");
@@ -1237,6 +1265,96 @@ static int validate_transaction_completion_clause(const mylite_parser *parser,
 	}
 
 	return 0;
+}
+
+static int validate_prepare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	last_token_index = statement->last_token - 1;
+	return token_index + 3 == last_token_index &&
+	       token_can_continue_object_name(&parser->tokens[token_index + 1]) &&
+	       parser->tokens[token_index + 2].parser_token == FROM_T &&
+	       (parser->tokens[token_index + 3].kind == MYLITE_TOKEN_STRING ||
+	        parser->tokens[token_index + 3].kind == MYLITE_TOKEN_USER_VARIABLE);
+}
+
+static int validate_execute_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index ||
+	    !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index++;
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (token_index >= parser->token_count || parser->tokens[token_index].parser_token != USING_T) {
+		return 0;
+	}
+
+	token_index++;
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].kind != MYLITE_TOKEN_USER_VARIABLE) {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (token_index >= parser->token_count || parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+	}
+	return 0;
+}
+
+static int validate_deallocate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	last_token_index = statement->last_token - 1;
+	return token_index + 2 == last_token_index &&
+	       parser->tokens[token_index + 1].parser_token == PREPARE_T &&
+	       token_can_continue_object_name(&parser->tokens[token_index + 2]);
+}
+
+static int validate_drop_prepare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	last_token_index = statement->last_token - 1;
+	if (token_index + 1 > last_token_index ||
+	    parser->tokens[token_index + 1].parser_token != PREPARE_T) {
+		return 1;
+	}
+	return token_index + 2 == last_token_index &&
+	       token_can_continue_object_name(&parser->tokens[token_index + 2]);
 }
 
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

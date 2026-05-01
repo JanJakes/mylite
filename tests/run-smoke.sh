@@ -736,14 +736,49 @@ case "$stop_output" in
 		;;
 esac
 
-prepared_output=$("$parser" 'PREPARE stmt FROM @sql; EXECUTE stmt USING @a; DEALLOCATE PREPARE stmt; DROP PREPARE stmt')
+prepared_output=$("$parser" "PREPARE stmt FROM @sql; PREPARE \`select\` FROM 'SELECT 1'; EXECUTE stmt USING @a, @b; EXECUTE \`select\`; DEALLOCATE PREPARE stmt; DEALLOCATE PREPARE \`select\`; DROP PREPARE stmt")
 case "$prepared_output" in
-	*"prepare"*/prepared_statement:stmt*"execute"*/prepared_statement:stmt*"deallocate"*/prepared_statement:stmt*"drop"*/prepared_statement:stmt*) ;;
+	*"prepare"*/prepared_statement:stmt*"prepare"*/prepared_statement:'`select`'*"execute"*/prepared_statement:stmt*"execute"*/prepared_statement:'`select`'*"deallocate"*/prepared_statement:stmt*"deallocate"*/prepared_statement:'`select`'*"drop"*/prepared_statement:stmt*) ;;
 	*)
 		echo "unexpected prepared statement output: $prepared_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet "PREPARE stmt FROM 1"; then
+	echo "expected invalid PREPARE source to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "PREPARE stmt FROM 'SELECT 1' extra"; then
+	echo "expected trailing PREPARE tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "EXECUTE stmt USING @a, 1"; then
+	echo "expected invalid EXECUTE binding to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "EXECUTE stmt extra"; then
+	echo "expected trailing EXECUTE tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "DEALLOCATE stmt"; then
+	echo "expected DEALLOCATE without PREPARE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "DEALLOCATE PREPARE stmt extra"; then
+	echo "expected trailing DEALLOCATE PREPARE tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "DROP PREPARE stmt extra"; then
+	echo "expected trailing DROP PREPARE tokens to fail" >&2
+	exit 1
+fi
 
 principal_output=$("$parser" "GRANT SELECT ON db.t TO 'u'@'h'; GRANT r TO u; REVOKE SELECT ON db.t FROM 'u'@'%'; REVOKE r FROM u")
 case "$principal_output" in

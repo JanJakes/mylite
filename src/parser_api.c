@@ -2277,10 +2277,19 @@ static int classify_reset_statement_object(const mylite_parser *parser,
 	}
 
 	token_index++;
-	if (token_index + 2 <= last_token_index &&
-	    parser->tokens[token_index].parser_token == IF_T &&
-	    parser->tokens[token_index + 1].parser_token == EXISTS_T) {
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_SYSTEM_VARIABLE);
+	}
+
+	if (parser->tokens[token_index].parser_token == IF_T) {
+		if (token_index + 2 > last_token_index ||
+		    parser->tokens[token_index + 1].parser_token != EXISTS_T) {
+			return 0;
+		}
 		token_index += 2;
+		if (token_index > last_token_index || token_index >= parser->token_count) {
+			return 0;
+		}
 	}
 
 	name_token_index = token_index;

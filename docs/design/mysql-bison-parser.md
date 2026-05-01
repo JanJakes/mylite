@@ -383,8 +383,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   only the first option target.
   Table-maintenance metadata records only the first concrete table target and
   leaves malformed or name-less forms objectless.
-  `RESET PERSIST` metadata records the first variable name only and leaves
-  full persisted-variable reset forms objectless.
+  `RESET PERSIST` metadata records the first variable name when present and
+  records full persisted-variable reset forms as unnamed system-variable
+  collection targets.
   `RESET BINARY LOGS AND GTIDS` metadata records the binary-log collection and
   does not classify the optional file-index number.
   Replication metadata records explicit `FOR CHANNEL` names and default-channel

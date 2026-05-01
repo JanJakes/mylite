@@ -241,7 +241,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. | Parser records numeric processlist id targets; connection/query termination behavior and privilege diagnostics are not implemented. |
 | `LOAD INDEX INTO CACHE` | ❌ | low | MyISAM index preload syntax. | Parser records the first table target; index preload behavior is not implemented. |
 | `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. | Parser records reset targets for binary logs, legacy binary-log reset spellings, replica channels, and persisted variables; runtime reset behavior is not implemented. |
-| `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. | Parser records explicit persisted-variable names and leaves full-reset forms objectless; persisted variable storage is not implemented. |
+| `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. | Parser records explicit persisted-variable names and full-reset system-variable collection targets; persisted variable storage is not implemented. |
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. | Parser records the instance target; embedded-compatible restart behavior and diagnostics are not implemented. |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. | Parser records the instance target; embedded-compatible shutdown behavior and diagnostics are not implemented. |
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. | Parser records direct table targets and explainable query targets; result-set shape and query-plan semantics are not implemented. |

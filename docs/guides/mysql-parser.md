@@ -374,10 +374,12 @@ Other documented FLUSH options expose their global targets:
 ok statements=3 kinds=flush[1:3,0:16]/error_log,flush[5:6,18:29]/host_cache,flush[8:9,31:51]/user_resource
 ```
 
-RESET PERSIST exposes explicit persisted system-variable targets:
+RESET PERSIST exposes explicit persisted system-variable targets and full
+persisted-variable reset operations:
 
 ```text
 ok statements=1 kinds=reset[1:3,0:29]/system_variable:max_connections
+ok statements=1 kinds=reset[1:2,0:13]/system_variable
 ```
 
 RESET BINARY LOGS AND GTIDS exposes the binary-log collection. The legacy

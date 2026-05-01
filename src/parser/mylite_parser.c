@@ -24,6 +24,7 @@ static void format_near_token(MyliteParseContext *ctx, int token_id,
 static int select_clause_requires_by(int token_id);
 static int select_clause_requires_operand(int token_id);
 static int select_operand_boundary(int token_id);
+static int select_modifier_flag(int token_id);
 static int select_set_operator(int token_id);
 static int select_set_option(int token_id);
 static int select_set_operand_start(int token_id);
@@ -309,6 +310,10 @@ void mylite_parser_record_empty_statement(MyliteParseContext *ctx) {
 
 void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   enum {
+    SELECT_MODIFIER_ALL = 1 << 0,
+    SELECT_MODIFIER_DISTINCT = 1 << 1
+  };
+  enum {
     SELECT_LOCK_NONE,
     SELECT_LOCK_AFTER_LOCK,
     SELECT_LOCK_AFTER_LOCK_IN,
@@ -361,6 +366,8 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int token_id;
   int depth = 0;
   int saw_select = 0;
+  int select_prefix = 1;
+  int select_modifiers = 0;
   int need_by = 0;
   int need_operand = 0;
   int need_set_operand = 0;
@@ -393,6 +400,25 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         depth--;
       }
       continue;
+    }
+
+    if (select_prefix) {
+      int modifier_flag = select_modifier_flag(token_id);
+      if (modifier_flag) {
+        if ((select_modifiers & SELECT_MODIFIER_ALL) &&
+            (modifier_flag & SELECT_MODIFIER_DISTINCT)) {
+          mylite_parser_reject(ctx, token, "invalid SELECT modifiers");
+          return;
+        }
+        if ((select_modifiers & SELECT_MODIFIER_DISTINCT) &&
+            (modifier_flag & SELECT_MODIFIER_ALL)) {
+          mylite_parser_reject(ctx, token, "invalid SELECT modifiers");
+          return;
+        }
+        select_modifiers |= modifier_flag;
+        continue;
+      }
+      select_prefix = 0;
     }
 
     if (lock_state == SELECT_LOCK_AFTER_LOCK) {
@@ -1086,6 +1112,23 @@ static int select_operand_boundary(int token_id) {
          select_set_operator(token_id) ||
          select_clause_requires_by(token_id) ||
          select_clause_requires_operand(token_id);
+}
+
+static int select_modifier_flag(int token_id) {
+  if (token_id == ML_ALL) {
+    return 1 << 0;
+  }
+  if (token_id == ML_DISTINCT || token_id == ML_DISTINCTROW) {
+    return 1 << 1;
+  }
+  if (token_id == ML_HIGH_PRIORITY || token_id == ML_SQL_BIG_RESULT ||
+      token_id == ML_SQL_BUFFER_RESULT ||
+      token_id == ML_SQL_CALC_FOUND_ROWS || token_id == ML_SQL_NO_CACHE ||
+      token_id == ML_SQL_SMALL_RESULT || token_id == ML_STRAIGHT_JOIN) {
+    return 1 << 2;
+  }
+
+  return 0;
 }
 
 static int select_set_operator(int token_id) {

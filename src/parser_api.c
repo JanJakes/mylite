@@ -51,6 +51,12 @@ static int token_starts_create_index_statement(const mylite_parser *parser,
                                                size_t last_token_index);
 static int token_is_create_index_modifier(const mylite_parser *parser, size_t token_index);
 static int token_is_index_type_value(const mylite_parser *parser, size_t token_index);
+static int validate_create_view_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
+static int token_starts_view_statement(const mylite_parser *parser,
+                                       size_t token_index,
+                                       size_t last_token_index);
 static int validate_create_database_statement_syntax(const mylite_parser *parser,
                                                      size_t token_index,
                                                      size_t last_token_index);
@@ -196,6 +202,26 @@ static int token_is_create_user_auth_hash(const mylite_parser *parser, size_t to
 static int token_can_be_create_user_auth_plugin(const mylite_parser *parser, size_t token_index);
 static int token_is_create_user_resource_option(const mylite_parser *parser, size_t token_index);
 static int validate_alter_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_view_statement_syntax(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index);
+static int validate_view_algorithm_clause_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 size_t *next_token_index);
+static int validate_view_definer_clause_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index,
+                                               size_t *next_token_index);
+static int validate_view_sql_security_clause_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    size_t *next_token_index);
+static size_t find_view_check_option_clause_token(const mylite_parser *parser,
+                                                  size_t first_query_token,
+                                                  size_t last_token_index);
+static int token_is_view_algorithm_value(const mylite_parser *parser, size_t token_index);
+static int token_can_start_view_query(const mylite_parser *parser, size_t token_index);
 static int validate_alter_database_statement_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
@@ -1933,6 +1959,9 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (token_starts_create_index_statement(parser, token_index, last_token_index)) {
 		return validate_create_index_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (token_starts_view_statement(parser, token_index, last_token_index)) {
+		return validate_create_view_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (parser->tokens[token_index].parser_token == DATABASE_T ||
 	    parser->tokens[token_index].parser_token == SCHEMA_T) {
 		return validate_create_database_statement_syntax(parser, token_index, last_token_index);
@@ -1956,6 +1985,9 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 		return validate_create_spatial_reference_system_statement_syntax(parser,
 		                                                                 token_index,
 		                                                                 last_token_index);
+	}
+	if (token_text_equals(parser, token_index, "OR")) {
+		return 0;
 	}
 	if (token_text_equals(parser, token_index, "SERVER")) {
 		return validate_create_server_statement_syntax(parser, token_index, last_token_index);
@@ -2287,6 +2319,257 @@ static int token_is_index_type_value(const mylite_parser *parser, size_t token_i
 	return token_text_equals(parser, token_index, "BTREE") ||
 	       token_text_equals(parser, token_index, "HASH") ||
 	       token_text_equals(parser, token_index, "RTREE");
+}
+
+static int validate_create_view_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	if (token_text_equals(parser, token_index, "OR")) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "REPLACE")) {
+			return 0;
+		}
+		token_index += 2;
+	}
+
+	return validate_view_statement_syntax(parser, token_index, last_token_index);
+}
+
+static int token_starts_view_statement(const mylite_parser *parser,
+                                       size_t token_index,
+                                       size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "OR")) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "REPLACE")) {
+			return 0;
+		}
+		token_index += 2;
+	}
+	if (token_index > last_token_index ||
+	    (parser->tokens[token_index].parser_token != VIEW_T &&
+	     !token_text_equals(parser, token_index, "ALGORITHM") &&
+	     !token_text_equals(parser, token_index, "DEFINER") &&
+	     !token_text_equals(parser, token_index, "SQL"))) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == VIEW_T) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token == DATABASE_T ||
+		    parser->tokens[token_index].parser_token == EVENT_T ||
+		    parser->tokens[token_index].parser_token == FUNCTION_T ||
+		    parser->tokens[token_index].parser_token == INDEX_T ||
+		    parser->tokens[token_index].parser_token == PROCEDURE_T ||
+		    parser->tokens[token_index].parser_token == ROLE_T ||
+		    parser->tokens[token_index].parser_token == SCHEMA_T ||
+		    parser->tokens[token_index].parser_token == TABLE_T ||
+		    parser->tokens[token_index].parser_token == TRIGGER_T ||
+		    token_text_equals(parser, token_index, "SERVER") ||
+		    token_text_equals(parser, token_index, "TABLESPACE")) {
+			return 0;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+	return 0;
+}
+
+static int validate_view_statement_syntax(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index)
+{
+	int saw_algorithm = 0;
+	int saw_definer = 0;
+	int saw_sql_security = 0;
+	size_t query_start_token;
+	size_t check_option_token;
+	size_t query_last_token;
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == VIEW_T) {
+			break;
+		}
+		if (token_text_equals(parser, token_index, "ALGORITHM")) {
+			if (saw_algorithm ||
+			    !validate_view_algorithm_clause_syntax(parser, token_index, last_token_index, &token_index)) {
+				return 0;
+			}
+			saw_algorithm = 1;
+			continue;
+		}
+		if (token_text_equals(parser, token_index, "DEFINER")) {
+			if (saw_definer ||
+			    !validate_view_definer_clause_syntax(parser, token_index, last_token_index, &token_index)) {
+				return 0;
+			}
+			saw_definer = 1;
+			continue;
+		}
+		if (token_text_equals(parser, token_index, "SQL")) {
+			if (saw_sql_security ||
+			    !validate_view_sql_security_clause_syntax(parser, token_index, last_token_index, &token_index)) {
+				return 0;
+			}
+			saw_sql_security = 1;
+			continue;
+		}
+		return 0;
+	}
+
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token != VIEW_T ||
+	    token_index + 1 > last_token_index ||
+	    !token_can_continue_object_name(&parser->tokens[token_index + 1])) {
+		return 0;
+	}
+
+	token_index = last_qualified_name_token(parser, token_index + 1, last_token_index) + 1;
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == '(') {
+		if (!validate_name_list_group_syntax(parser, token_index, 0, 0)) {
+			return 0;
+		}
+		token_index = parser->tokens[token_index].matching_token;
+	}
+
+	if (token_index > last_token_index || parser->tokens[token_index].parser_token != AS_T) {
+		return 0;
+	}
+
+	query_start_token = token_index + 1;
+	if (query_start_token > last_token_index || !token_can_start_view_query(parser, query_start_token)) {
+		return 0;
+	}
+
+	check_option_token = find_view_check_option_clause_token(parser, query_start_token, last_token_index);
+	if (check_option_token < parser->token_count) {
+		query_last_token = check_option_token - 1;
+	} else {
+		if (last_token_index >= query_start_token + 2 &&
+		    token_text_equals(parser, last_token_index, "OPTION") &&
+		    token_text_equals(parser, last_token_index - 1, "CHECK")) {
+			return 0;
+		}
+		query_last_token = last_token_index;
+	}
+
+	return query_start_token <= query_last_token;
+}
+
+static int validate_view_algorithm_clause_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 size_t *next_token_index)
+{
+	if (!token_text_equals(parser, token_index, "ALGORITHM")) {
+		return 0;
+	}
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+		token_index++;
+	}
+	if (token_index > last_token_index || !token_is_view_algorithm_value(parser, token_index)) {
+		return 0;
+	}
+
+	*next_token_index = token_index + 1;
+	return 1;
+}
+
+static int validate_view_definer_clause_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index,
+                                               size_t *next_token_index)
+{
+	if (!token_text_equals(parser, token_index, "DEFINER") ||
+	    token_index + 2 > last_token_index ||
+	    !token_text_equals(parser, token_index + 1, "=")) {
+		return 0;
+	}
+
+	return validate_principal_name_syntax(parser,
+	                                      token_index + 2,
+	                                      last_token_index,
+	                                      1,
+	                                      next_token_index);
+}
+
+static int validate_view_sql_security_clause_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    size_t *next_token_index)
+{
+	if (token_index + 2 > last_token_index ||
+	    !token_text_equals(parser, token_index, "SQL") ||
+	    !token_text_equals(parser, token_index + 1, "SECURITY") ||
+	    (!token_text_equals(parser, token_index + 2, "DEFINER") &&
+	     !token_text_equals(parser, token_index + 2, "INVOKER"))) {
+		return 0;
+	}
+
+	*next_token_index = token_index + 3;
+	return 1;
+}
+
+static size_t find_view_check_option_clause_token(const mylite_parser *parser,
+                                                  size_t first_query_token,
+                                                  size_t last_token_index)
+{
+	size_t check_token_index;
+	size_t with_token_index;
+
+	if (last_token_index < first_query_token + 2 ||
+	    !token_text_equals(parser, last_token_index, "OPTION")) {
+		return parser->token_count;
+	}
+
+	check_token_index = last_token_index - 1;
+	if (!token_text_equals(parser, check_token_index, "CHECK")) {
+		return parser->token_count;
+	}
+
+	with_token_index = check_token_index - 1;
+	if (token_text_equals(parser, with_token_index, "CASCADED") ||
+	    token_text_equals(parser, with_token_index, "LOCAL")) {
+		if (with_token_index == 0) {
+			return parser->token_count;
+		}
+		with_token_index--;
+	}
+	if (with_token_index < first_query_token ||
+	    !token_text_equals(parser, with_token_index, "WITH")) {
+		return parser->token_count;
+	}
+
+	return with_token_index;
+}
+
+static int token_is_view_algorithm_value(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "UNDEFINED") ||
+	       token_text_equals(parser, token_index, "MERGE") ||
+	       token_text_equals(parser, token_index, "TEMPTABLE");
+}
+
+static int token_can_start_view_query(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (parser->tokens[token_index].parser_token == SELECT_T ||
+	        parser->tokens[token_index].parser_token == WITH_T ||
+	        parser->tokens[token_index].parser_token == TABLE_T ||
+	        parser->tokens[token_index].parser_token == VALUES_T ||
+	        parser->tokens[token_index].parser_token == '(');
 }
 
 static int validate_create_database_statement_syntax(const mylite_parser *parser,
@@ -3785,6 +4068,9 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 		return 0;
 	}
 
+	if (token_starts_view_statement(parser, token_index, last_token_index)) {
+		return validate_view_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (parser->tokens[token_index].parser_token == USER_T) {
 		return validate_alter_user_statement_syntax(parser, token_index, last_token_index);
 	}

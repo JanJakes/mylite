@@ -335,6 +335,65 @@ case "$object_output" in
 		;;
 esac
 
+view_output=$("$parser" "CREATE OR REPLACE ALGORITHM=MERGE DEFINER = user@localhost SQL SECURITY INVOKER VIEW db.v (a,b) AS SELECT 1,2 WITH CASCADED CHECK OPTION; ALTER DEFINER = CURRENT_USER() SQL SECURITY DEFINER ALGORITHM=TEMPTABLE VIEW v AS TABLE t WITH LOCAL CHECK OPTION; CREATE VIEW v2 AS (SELECT 1 ORDER BY 1) UNION (SELECT 2) WITH CHECK OPTION")
+case "$view_output" in
+	*"create"*/view:db.v*"alter"*/view:v*"create"*/view:v2*) ;;
+	*)
+		echo "unexpected view DDL output: $view_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'CREATE VIEW'; then
+	echo "expected CREATE VIEW without a name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE VIEW v SELECT 1'; then
+	echo "expected CREATE VIEW without AS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE VIEW v AS'; then
+	echo "expected CREATE VIEW without query to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE VIEW v () AS SELECT 1'; then
+	echo "expected CREATE VIEW empty column list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE VIEW v AS SELECT 1 WITH BAD CHECK OPTION'; then
+	echo "expected CREATE VIEW malformed CHECK OPTION to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE ALGORITHM=FAST VIEW v AS SELECT 1'; then
+	echo "expected CREATE VIEW invalid ALGORITHM to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE DEFINER user@localhost VIEW v AS SELECT 1'; then
+	echo "expected CREATE VIEW DEFINER without equals to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER VIEW v SELECT 1'; then
+	echo "expected ALTER VIEW without AS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER SQL SECURITY CURRENT_USER VIEW v AS SELECT 1'; then
+	echo "expected ALTER VIEW invalid SQL SECURITY value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE OR VIEW v AS SELECT 1'; then
+	echo "expected CREATE OR VIEW to fail" >&2
+	exit 1
+fi
+
 create_index_output=$("$parser" "CREATE INDEX i ON t (c); CREATE UNIQUE INDEX i2 USING BTREE ON db.t (c(10) DESC, (lower(name)) ASC) KEY_BLOCK_SIZE=8 WITH PARSER parser_name COMMENT 'c' VISIBLE ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE='{}' ALGORITHM=INPLACE LOCK=NONE; CREATE FULLTEXT INDEX ft ON t (body) WITH PARSER ngram; CREATE SPATIAL INDEX sp ON t (g) USING HASH; CREATE INDEX legacy TYPE BTREE ON t (c) TYPE RTREE")
 case "$create_index_output" in
 	*"create"*/index:i*"create"*/index:i2*"create"*/index:ft*"create"*/index:sp*"create"*/index:legacy*) ;;

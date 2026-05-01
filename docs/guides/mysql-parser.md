@@ -76,6 +76,9 @@ characteristics without changing parameters or bodies.
 documented option clauses, and corpus-observed legacy `TYPE` / `RTREE` index
 type spellings while table-level index definitions stay with `CREATE TABLE`
 grammar work.
+`CREATE VIEW` and `ALTER VIEW` validate view header clauses, optional
+column-list groups, required `AS` query bodies, and trailing check-option
+clauses while leaving view dependency analysis to later phases.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
 optional `IF EXISTS` with an identifier-like target.
 `CREATE SERVER` validates `FOREIGN DATA WRAPPER` and documented server

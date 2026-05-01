@@ -723,6 +723,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_INDEX_TYPE:
         case MYLITE_SQL_AST_INDEX_OPTION_LIST:
         case MYLITE_SQL_AST_INDEX_OPTION:
+        case MYLITE_SQL_AST_SECONDARY_INDEX:
+        case MYLITE_SQL_AST_UNIQUE_INDEX:
             break;
         }
     }
@@ -791,6 +793,8 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_INDEX_TYPE:
     case MYLITE_SQL_AST_INDEX_OPTION_LIST:
     case MYLITE_SQL_AST_INDEX_OPTION:
+    case MYLITE_SQL_AST_SECONDARY_INDEX:
+    case MYLITE_SQL_AST_UNIQUE_INDEX:
         return MYLITE_UNSUPPORTED;
     }
 
@@ -847,6 +851,8 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_INDEX_TYPE:
     case MYLITE_SQL_AST_INDEX_OPTION_LIST:
     case MYLITE_SQL_AST_INDEX_OPTION:
+    case MYLITE_SQL_AST_SECONDARY_INDEX:
+    case MYLITE_SQL_AST_UNIQUE_INDEX:
         return MYLITE_UNSUPPORTED;
     }
 

@@ -27,8 +27,9 @@ enforcement, executable table DDL, implicit primary-key `NOT NULL` metadata,
 `SHOW CREATE TABLE`, warnings, duplicate-key diagnostics, and information-schema
 primary-key/index metadata are deferred.
 
-Unique and secondary indexes are intentionally out of scope for this task,
-except where the grammar must distinguish them from primary-key syntax.
+Unique and secondary indexes are covered by the later
+`CREATE TABLE` unique and secondary indexes task, except where this grammar must
+distinguish them from primary-key syntax.
 
 ## Sources
 
@@ -71,7 +72,7 @@ Runtime probes against MySQL 8.4.9 show these representative behaviors:
 | `a INT NULL AUTO_INCREMENT PRIMARY KEY` | parses but errors during DDL validation |
 | duplicate `AUTO_INCREMENT` columns | parse but error during DDL validation |
 | duplicate primary-key declarations | parse but error during DDL validation |
-| `a INT UNIQUE KEY` | accepted as a unique secondary index and left for the secondary-index task |
+| `a INT UNIQUE KEY` | accepted as a unique secondary index by the secondary-index task |
 
 For this parse-only task, MyLite accepts the syntax-shape-compatible primary-key
 and `AUTO_INCREMENT` declarations and defers type-sensitive and table-sensitive
@@ -307,8 +308,8 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `PRIMARY KEY (a) ENGINE_ATTRIBUTE '{}'` | parse OK; validation deferred |
 | `PRIMARY KEY (a) SECONDARY_ENGINE_ATTRIBUTE=''` | parse OK; validation deferred |
 | nonreserved option words used as column names | parse OK |
-| `a INT UNIQUE KEY` | parse error until secondary indexes land |
-| table-level `KEY (a)` or `INDEX (a)` | parse error until secondary indexes land |
+| `a INT UNIQUE KEY` | parse OK in the secondary-index task |
+| table-level `KEY (a)` or `INDEX (a)` | parse OK in the secondary-index task |
 | `PRIMARY KEY ()` | parse error |
 | `PRIMARY KEY (a,)` | parse error |
 | `PRIMARY KEY ((a + 1))` | parse error until functional key parts land |
@@ -345,7 +346,6 @@ user-object side effects.
 - Primary-key index-option semantics, warnings, visibility diagnostics,
   `KEY_BLOCK_SIZE` effects, engine-attribute JSON validation, unsupported-engine
   diagnostics, and option normalization are deferred.
-- Unique indexes, nonunique secondary indexes, full-text indexes, spatial
-  indexes, functional key parts, `WITH PARSER`, foreign keys, checks, generated
-  columns, generated invisible primary keys, and table options are deferred to
-  later roadmap tasks.
+- Full-text indexes, spatial indexes, functional key parts, `WITH PARSER`,
+  foreign keys, checks, generated columns, generated invisible primary keys, and
+  table options are deferred to later roadmap tasks.

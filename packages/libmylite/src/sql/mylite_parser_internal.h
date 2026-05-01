@@ -54,6 +54,11 @@ struct mylite_sql_parser_index_string_option_tokens {
     struct mylite_sql_token string;
 };
 
+struct mylite_sql_parser_column_unique_key_attribute_tokens {
+    struct mylite_sql_token unique_token;
+    struct mylite_sql_token key_token;
+};
+
 void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
                                       struct mylite_sql_ast_node *root);
 void mylite_sql_parser_state_syntax_error(struct mylite_sql_parser_state *state, int parser_token,
@@ -109,6 +114,15 @@ mylite_sql_parser_append_column_definition(struct mylite_sql_parser_state *state
                                            struct mylite_sql_ast_node *list,
                                            struct mylite_sql_ast_node *column);
 struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_constraint(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *constraint_name, struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *index_type, struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_ast_node *options);
+struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *index_name, struct mylite_sql_ast_node *index_type,
+    struct mylite_sql_ast_node *key_parts, struct mylite_sql_ast_node *options);
+struct mylite_sql_ast_node *mylite_sql_parser_make_unique_index(
     struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
     struct mylite_sql_ast_node *constraint_name, struct mylite_sql_ast_node *index_name,
     struct mylite_sql_ast_node *index_type, struct mylite_sql_ast_node *key_parts,
@@ -263,6 +277,9 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_column_primary_key_attribute(struct mylite_sql_parser_state *state,
                                                     struct mylite_sql_token start_token,
                                                     struct mylite_sql_token key_token);
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_unique_key_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_column_unique_key_attribute_tokens tokens);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_current_timestamp(struct mylite_sql_parser_state *state,
                                          struct mylite_sql_token current_timestamp_token,

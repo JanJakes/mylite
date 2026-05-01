@@ -529,6 +529,77 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_constraint(
     return constraint;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *index_name, struct mylite_sql_ast_node *index_type,
+    struct mylite_sql_ast_node *key_parts, struct mylite_sql_ast_node *options)
+{
+    struct mylite_sql_source_span span = span_from_token(&start_token);
+    struct mylite_sql_ast_node *index = NULL;
+
+    if (index_name != NULL) {
+        span = span_join(span, index_name->span);
+    }
+    if (index_type != NULL) {
+        span = span_join(span, index_type->span);
+    }
+    if (key_parts != NULL) {
+        span = span_join(span, key_parts->span);
+    }
+    if (options != NULL && options->span.text != NULL) {
+        span = span_join(span, options->span);
+    }
+
+    index = make_node(state, MYLITE_SQL_AST_SECONDARY_INDEX, span);
+    if (index == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(index, index_name);
+    mylite_sql_ast_node_append_child(index, index_type);
+    mylite_sql_ast_node_append_child(index, key_parts);
+    mylite_sql_ast_node_append_child(index, options);
+    return index;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_unique_index(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *constraint_name, struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *index_type, struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_ast_node *options)
+{
+    struct mylite_sql_source_span span = span_from_token(&start_token);
+    struct mylite_sql_ast_node *index = NULL;
+
+    if (constraint_name != NULL) {
+        span = span_join(span, constraint_name->span);
+    }
+    if (index_name != NULL) {
+        span = span_join(span, index_name->span);
+    }
+    if (index_type != NULL) {
+        span = span_join(span, index_type->span);
+    }
+    if (key_parts != NULL) {
+        span = span_join(span, key_parts->span);
+    }
+    if (options != NULL && options->span.text != NULL) {
+        span = span_join(span, options->span);
+    }
+
+    index = make_node(state, MYLITE_SQL_AST_UNIQUE_INDEX, span);
+    if (index == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(index, constraint_name);
+    mylite_sql_ast_node_append_child(index, index_name);
+    mylite_sql_ast_node_append_child(index, index_type);
+    mylite_sql_ast_node_append_child(index, key_parts);
+    mylite_sql_ast_node_append_child(index, options);
+    return index;
+}
+
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_key_part_list(struct mylite_sql_parser_state *state,
                                      struct mylite_sql_ast_node *key_part)
@@ -1338,6 +1409,26 @@ mylite_sql_parser_make_column_primary_key_attribute(struct mylite_sql_parser_sta
     return attribute;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_unique_key_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_column_unique_key_attribute_tokens tokens)
+{
+    struct mylite_sql_source_span span = span_from_token(&tokens.unique_token);
+    struct mylite_sql_ast_node *attribute = NULL;
+
+    if (tokens.key_token.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.key_token));
+    }
+
+    attribute = make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE, span);
+    if (attribute == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_column_attribute(attribute, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_UNIQUE_KEY);
+    return attribute;
+}
+
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_current_timestamp(struct mylite_sql_parser_state *state,
                                          struct mylite_sql_token current_timestamp_token,
@@ -1958,6 +2049,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"INT4", MYLITE_SQL_PARSE_INT4},
         {"INT8", MYLITE_SQL_PARSE_INT8},
         {"INTEGER", MYLITE_SQL_PARSE_INTEGERKW},
+        {"INDEX", MYLITE_SQL_PARSE_INDEX},
         {"INVISIBLE", MYLITE_SQL_PARSE_INVISIBLE},
         {"KEY", MYLITE_SQL_PARSE_KEY},
         {"KEY_BLOCK_SIZE", MYLITE_SQL_PARSE_KEY_BLOCK_SIZE},
@@ -1999,6 +2091,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"TINYINT", MYLITE_SQL_PARSE_TINYINT},
         {"TINYTEXT", MYLITE_SQL_PARSE_TINYTEXT},
         {"TRUE", MYLITE_SQL_PARSE_TRUE},
+        {"UNIQUE", MYLITE_SQL_PARSE_UNIQUE},
         {"UNSIGNED", MYLITE_SQL_PARSE_UNSIGNED},
         {"UPDATE", MYLITE_SQL_PARSE_UPDATE},
         {"USE", MYLITE_SQL_PARSE_USE},

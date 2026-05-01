@@ -391,6 +391,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "index_option_list";
     case MYLITE_SQL_AST_INDEX_OPTION:
         return "index_option";
+    case MYLITE_SQL_AST_SECONDARY_INDEX:
+        return "secondary_index";
+    case MYLITE_SQL_AST_UNIQUE_INDEX:
+        return "unique_index";
     }
 
     return "unknown";
@@ -506,6 +510,8 @@ mylite_sql_ast_column_attribute_name(enum mylite_sql_ast_column_attribute column
         return "auto_increment";
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY:
         return "primary_key";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_UNIQUE_KEY:
+        return "unique_key";
     }
 
     return "unknown";

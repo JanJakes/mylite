@@ -47,6 +47,8 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_INDEX_TYPE = 36,
     MYLITE_SQL_AST_INDEX_OPTION_LIST = 37,
     MYLITE_SQL_AST_INDEX_OPTION = 38,
+    MYLITE_SQL_AST_SECONDARY_INDEX = 39,
+    MYLITE_SQL_AST_UNIQUE_INDEX = 40,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -125,6 +127,7 @@ enum mylite_sql_ast_column_attribute {
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_STORAGE = 9,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT = 10,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY = 11,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_UNIQUE_KEY = 12,
 };
 
 enum mylite_sql_ast_column_format {

@@ -27,8 +27,8 @@ level application surfaces.
        `ON UPDATE`, comments, visibility, and storage/format options.
 9. [x] Primary keys and `AUTO_INCREMENT`: inline and table constraints,
        allocation, explicit values, metadata, and error cases.
-10. [ ] Unique and secondary indexes in `CREATE TABLE`: key parts, prefix
-       lengths, index types, visibility, comments, and metadata.
+10. [x] Unique and secondary indexes in `CREATE TABLE`: parse-only key parts,
+       prefix lengths, index types, visibility, and comments.
 11. [ ] `CREATE TABLE` base execution: column definitions, constraints, table
        options, schema qualification, `IF NOT EXISTS`, warnings, and atomicity.
 12. [ ] `DROP TABLE`: multi-table drops, `IF EXISTS`, temporary table handling,

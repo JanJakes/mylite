@@ -822,6 +822,28 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
         expect_no_information_schema_column_table_name_row(database, "primary_key_auto_increment");
     failures += expect_no_information_schema_statistics_table_name_row(
         database, "primary_key_auto_increment");
+    failures += prepare_sql(database,
+                            "CREATE TABLE app.`unique_secondary_indexes` ("
+                            "a INT UNIQUE, b VARCHAR(64) UNIQUE KEY, c INT KEY, "
+                            "btree INT, hash INT, "
+                            "KEY (a), INDEX (hash), "
+                            "INDEX idx_b USING BTREE (b(5) DESC, a ASC) "
+                            "COMMENT 'secondary' VISIBLE KEY_BLOCK_SIZE = 8, "
+                            "KEY USING HASH (btree) USING HASH USING BTREE INVISIBLE "
+                            "ENGINE_ATTRIBUTE '{}' SECONDARY_ENGINE_ATTRIBUTE = '{}', "
+                            "UNIQUE (a), UNIQUE KEY uk_b (b), "
+                            "UNIQUE KEY USING BTREE (hash), "
+                            "UNIQUE INDEX ux_c USING BTREE (c), "
+                            "UNIQUE KEY uq_hash (a) USING HASH USING BTREE, "
+                            "CONSTRAINT uq_d UNIQUE KEY unique_d (btree DESC), "
+                            "CONSTRAINT UNIQUE uq_a (a))",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "parse-only unique/secondary CREATE TABLE");
+    failures += expect_no_information_schema_table_name_row(database, "unique_secondary_indexes");
+    failures +=
+        expect_no_information_schema_column_table_name_row(database, "unique_secondary_indexes");
+    failures += expect_no_information_schema_statistics_table_name_row(database,
+                                                                       "unique_secondary_indexes");
     failures += prepare_sql(database, "CREATE TABLE invalid_width (a INT(256));",
                             MYLITE_PARSE_ERROR, &stmt);
     if (stmt != NULL) {
@@ -978,12 +1000,64 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
         mylite_finalize(stmt);
         stmt = NULL;
     }
-    failures += prepare_sql(database, "CREATE TABLE invalid_unique_inline (a INT UNIQUE KEY);",
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_unique_inline_index "
+                            "(a INT UNIQUE INDEX);",
                             MYLITE_PARSE_ERROR, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "invalid inline unique CREATE TABLE");
-    failures += prepare_sql(database, "CREATE TABLE invalid_table_key (a INT, KEY (a));",
+    failures += expect_no_stmt_handle(&stmt, "invalid inline unique index CREATE TABLE");
+    failures += prepare_sql(database, "CREATE TABLE invalid_secondary_empty (a INT, KEY ());",
                             MYLITE_PARSE_ERROR, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "invalid table key CREATE TABLE");
+    failures += expect_no_stmt_handle(&stmt, "invalid empty secondary key CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_secondary_trailing "
+                            "(a INT, KEY (a,));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid trailing secondary key CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_secondary_missing_parts "
+                            "(a INT, KEY idx);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid missing secondary key parts CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_unique_missing_parts "
+                            "(a INT, UNIQUE KEY idx);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid missing unique key parts CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_secondary_comment "
+                            "(a INT, KEY idx (a) COMMENT = 'x');",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid secondary comment CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_unique_overflow_prefix "
+                            "(a VARCHAR(10), UNIQUE KEY uq "
+                            "(a(18446744073709551616)));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid unique prefix CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_fulltext_key "
+                            "(a TEXT, FULLTEXT KEY idx (a));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid fulltext key CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_spatial_key "
+                            "(a INT, SPATIAL KEY idx (a));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid spatial key CREATE TABLE");
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_functional_key_part "
+                            "(a INT, KEY idx ((a + 1)));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid functional key-part CREATE TABLE");
+    failures += prepare_sql(database, "CREATE TABLE invalid_unique_identifier (unique INT);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid unique identifier CREATE TABLE");
+    failures += prepare_sql(database, "CREATE TABLE invalid_index_identifier (index INT);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid index identifier CREATE TABLE");
+    failures += prepare_sql(database, "CREATE TABLE invalid_key_identifier (key INT);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "invalid key identifier CREATE TABLE");
     failures += prepare_sql(database, "CREATE TABLE invalid_primary_empty (a INT, PRIMARY KEY ());",
                             MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "invalid empty primary key CREATE TABLE");

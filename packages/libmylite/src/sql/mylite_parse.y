@@ -2,6 +2,7 @@
 %token_prefix MYLITE_SQL_PARSE_
 %token_type { struct mylite_sql_token }
 %default_type { struct mylite_sql_ast_node * }
+%type opt_column_unique_key { struct mylite_sql_token }
 %extra_argument { struct mylite_sql_parser_state *state }
 
 %include {
@@ -28,6 +29,7 @@
 %left PLUS MINUS.
 %left STAR SLASH.
 %right UPLUS UMINUS.
+%right KEY.
 %fallback IDENTIFIER AUTO_INCREMENT BOOL BOOLEAN BTREE CHARSET COLUMN_FORMAT COMMENT DATE DATETIME
     DISK DYNAMIC ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR
     NVARCHAR ONLY SECONDARY_ENGINE_ATTRIBUTE SIGNED STORAGE TEXT TIME TIMESTAMP VISIBLE YEAR.
@@ -164,6 +166,12 @@ table_element(A) ::= column_definition(B). {
     A = B;
 }
 table_element(A) ::= table_primary_key_constraint(B). {
+    A = B;
+}
+table_element(A) ::= table_secondary_index(B). {
+    A = B;
+}
+table_element(A) ::= table_unique_index(B). {
     A = B;
 }
 
@@ -698,12 +706,40 @@ column_attribute(A) ::= PRIMARY(P) KEY(K). {
 column_attribute(A) ::= KEY(T). {
     A = mylite_sql_parser_make_column_primary_key_attribute(state, T, T);
 }
+column_attribute(A) ::= UNIQUE(U) opt_column_unique_key(K). {
+    A = mylite_sql_parser_make_column_unique_key_attribute(
+        state, (struct mylite_sql_parser_column_unique_key_attribute_tokens){
+            .unique_token = U,
+            .key_token = K,
+        });
+}
+
+opt_column_unique_key(A) ::= . [KEY] {
+    A = (struct mylite_sql_token){0};
+}
+opt_column_unique_key(A) ::= KEY(T). {
+    A = T;
+}
 
 table_primary_key_constraint(A) ::= PRIMARY(P) KEY opt_primary_key_name(B) opt_index_type(C) LPAREN key_part_list(D) RPAREN index_option_list(E). {
     A = mylite_sql_parser_make_primary_key_constraint(state, P, NULL, B, C, D, E);
 }
 table_primary_key_constraint(A) ::= CONSTRAINT(C) opt_constraint_name(B) PRIMARY KEY opt_primary_key_name(D) opt_index_type(E) LPAREN key_part_list(F) RPAREN index_option_list(G). {
     A = mylite_sql_parser_make_primary_key_constraint(state, C, B, D, E, F, G);
+}
+
+table_secondary_index(A) ::= KEY(T) opt_index_name(B) opt_index_type(C) LPAREN key_part_list(D) RPAREN index_option_list(E). {
+    A = mylite_sql_parser_make_secondary_index(state, T, B, C, D, E);
+}
+table_secondary_index(A) ::= INDEX(T) opt_index_name(B) opt_index_type(C) LPAREN key_part_list(D) RPAREN index_option_list(E). {
+    A = mylite_sql_parser_make_secondary_index(state, T, B, C, D, E);
+}
+
+table_unique_index(A) ::= UNIQUE(T) opt_unique_index_keyword opt_index_name(B) opt_index_type(C) LPAREN key_part_list(D) RPAREN index_option_list(E). {
+    A = mylite_sql_parser_make_unique_index(state, T, NULL, B, C, D, E);
+}
+table_unique_index(A) ::= CONSTRAINT(C) opt_constraint_name(B) UNIQUE opt_unique_index_keyword opt_index_name(D) opt_index_type(E) LPAREN key_part_list(F) RPAREN index_option_list(G). {
+    A = mylite_sql_parser_make_unique_index(state, C, B, D, E, F, G);
 }
 
 opt_constraint_name(A) ::= . {
@@ -719,6 +755,17 @@ opt_primary_key_name(A) ::= . {
 opt_primary_key_name(A) ::= identifier(B). {
     A = B;
 }
+
+opt_index_name(A) ::= . {
+    A = NULL;
+}
+opt_index_name(A) ::= identifier(B). {
+    A = B;
+}
+
+opt_unique_index_keyword ::= .
+opt_unique_index_keyword ::= KEY.
+opt_unique_index_keyword ::= INDEX.
 
 key_part_list(A) ::= key_part(B). {
     A = mylite_sql_parser_make_key_part_list(state, B);

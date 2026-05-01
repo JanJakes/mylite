@@ -14,6 +14,7 @@ static int test_create_table_numeric_columns(void);
 static int test_create_table_temporal_columns(void);
 static int test_create_table_column_attributes(void);
 static int test_create_table_primary_keys_auto_increment(void);
+static int test_create_table_unique_secondary_indexes(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -71,6 +72,7 @@ int main(void)
     failures += test_create_table_temporal_columns();
     failures += test_create_table_column_attributes();
     failures += test_create_table_primary_keys_auto_increment();
+    failures += test_create_table_unique_secondary_indexes();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -1571,18 +1573,6 @@ static int test_create_table_primary_keys_auto_increment(void)
                           MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("CREATE TABLE bad_unique_inline (a INT UNIQUE KEY);",
-                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql("CREATE TABLE bad_table_key (a INT, KEY (a));",
-                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql("CREATE TABLE bad_table_index (a INT, INDEX (a));",
-                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parse_sql("CREATE TABLE bad_primary_identifier (primary INT);",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -1678,6 +1668,259 @@ static int test_create_table_primary_keys_auto_increment(void)
 
     failures += parse_sql("CREATE TABLE bad_primary_secondary_engine_attribute_number "
                           "(a INT, PRIMARY KEY (a) SECONDARY_ENGINE_ATTRIBUTE = 123);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_unique_secondary_indexes(void)
+{
+    enum {
+        expected_element_count = 19,
+        unique_column = 0,
+        unique_key_column = 1,
+        primary_key_shorthand_column = 2,
+        unnamed_secondary_index = 8,
+        unnamed_index_keyword = 9,
+        named_secondary_index = 10,
+        typed_secondary_index = 11,
+        unnamed_unique_index = 12,
+        named_unique_key = 13,
+        typed_unique_key = 14,
+        typed_unique_index = 15,
+        repeated_using_unique_key = 16,
+        named_unique_constraint = 17,
+        unnamed_unique_constraint = 18,
+        typed_secondary_option_count = 5,
+        prefix_length = 5,
+        key_block_size = 8,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *elements = NULL;
+    const struct mylite_sql_ast_node *attributes = NULL;
+    const struct mylite_sql_ast_node *index = NULL;
+    const struct mylite_sql_ast_node *key_parts = NULL;
+    const struct mylite_sql_ast_node *key_part = NULL;
+    const struct mylite_sql_ast_node *options = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE TABLE app.indexes_valid ("
+                          "a INT UNIQUE, b VARCHAR(20) UNIQUE KEY, c INT KEY, "
+                          "btree INT, hash INT, key_block_size INT, "
+                          "engine_attribute INT, secondary_engine_attribute INT, "
+                          "KEY (a), "
+                          "INDEX (hash), "
+                          "INDEX idx_b USING BTREE (b(5) DESC, a ASC) COMMENT 'hello' "
+                          "VISIBLE KEY_BLOCK_SIZE = 8, "
+                          "KEY USING HASH (btree) USING HASH USING BTREE INVISIBLE "
+                          "ENGINE_ATTRIBUTE '{}' SECONDARY_ENGINE_ATTRIBUTE = '{}', "
+                          "UNIQUE (a), UNIQUE KEY uk_b (b), "
+                          "UNIQUE KEY USING BTREE (hash), "
+                          "UNIQUE INDEX ux_c USING BTREE (c), "
+                          "UNIQUE KEY uq_hash (a) USING HASH USING BTREE, "
+                          "CONSTRAINT uq_d UNIQUE KEY unique_d (btree DESC), "
+                          "CONSTRAINT UNIQUE uq_a (a));",
+                          MYLITE_SQL_PARSE_OK, &result);
+    elements = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(elements, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "index element list");
+    failures += expect_child_count(elements, expected_element_count, "index element count");
+
+    attributes = child_at(child_at(elements, unique_column), 2U);
+    failures += expect_column_attribute(child_at(attributes, 0U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_UNIQUE_KEY,
+                                        "inline unique attribute");
+    failures += expect_span_text(child_at(attributes, 0U), "UNIQUE", "inline unique span");
+
+    attributes = child_at(child_at(elements, unique_key_column), 2U);
+    failures += expect_column_attribute(child_at(attributes, 0U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_UNIQUE_KEY,
+                                        "inline unique key attribute");
+    failures += expect_span_text(child_at(attributes, 0U), "UNIQUE KEY", "inline unique key span");
+
+    attributes = child_at(child_at(elements, primary_key_shorthand_column), 2U);
+    failures += expect_column_attribute(child_at(attributes, 0U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY,
+                                        "inline key remains primary shorthand");
+
+    index = child_at(elements, unnamed_secondary_index);
+    failures += expect_node(index, MYLITE_SQL_AST_SECONDARY_INDEX, "unnamed secondary index");
+    key_parts = child_at(index, 0U);
+    failures += expect_node(key_parts, MYLITE_SQL_AST_KEY_PART_LIST, "unnamed secondary parts");
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "a", "unnamed secondary key part");
+    failures += expect_node(child_at(index, 1U), MYLITE_SQL_AST_INDEX_OPTION_LIST,
+                            "unnamed secondary options");
+
+    index = child_at(elements, unnamed_index_keyword);
+    failures += expect_node(index, MYLITE_SQL_AST_SECONDARY_INDEX, "unnamed INDEX secondary");
+    key_parts = child_at(index, 0U);
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "hash", "unnamed INDEX key part");
+
+    index = child_at(elements, named_secondary_index);
+    failures += expect_node(index, MYLITE_SQL_AST_SECONDARY_INDEX, "named secondary index");
+    failures += expect_span_text(child_at(index, 0U), "idx_b", "secondary index name");
+    failures += expect_index_algorithm(child_at(index, 1U), MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
+                                       "secondary pre-list index type");
+    key_parts = child_at(index, 2U);
+    failures += expect_child_count(key_parts, 2U, "secondary key part count");
+    key_part = child_at(key_parts, 0U);
+    failures += expect_span_text(child_at(key_part, 0U), "b", "secondary prefix key part");
+    if (child_at(key_part, 1U) != NULL &&
+        (!child_at(key_part, 1U)->has_column_length ||
+         child_at(key_part, 1U)->column_length != prefix_length)) {
+        fprintf(stderr, "secondary prefix key part did not record length 5\n");
+        failures = 1;
+    }
+    failures += expect_key_part_order(key_part, MYLITE_SQL_AST_KEY_PART_ORDER_DESC,
+                                      "secondary prefix desc order");
+    key_part = child_at(key_parts, 1U);
+    failures +=
+        expect_key_part_order(key_part, MYLITE_SQL_AST_KEY_PART_ORDER_ASC, "secondary asc order");
+    options = child_at(index, 3U);
+    failures += expect_child_count(options, 3U, "secondary option count");
+    failures += expect_index_option(child_at(options, 0U), MYLITE_SQL_AST_INDEX_OPTION_COMMENT,
+                                    "secondary comment option");
+    failures += expect_index_option(child_at(options, 1U), MYLITE_SQL_AST_INDEX_OPTION_VISIBLE,
+                                    "secondary visible option");
+    failures +=
+        expect_index_option(child_at(options, 2U), MYLITE_SQL_AST_INDEX_OPTION_KEY_BLOCK_SIZE,
+                            "secondary key block option");
+    if (child_at(child_at(options, 2U), 0U) != NULL &&
+        child_at(child_at(options, 2U), 0U)->column_length != key_block_size) {
+        fprintf(stderr, "secondary key block size was not recorded as 8\n");
+        failures = 1;
+    }
+
+    index = child_at(elements, typed_secondary_index);
+    failures += expect_node(index, MYLITE_SQL_AST_SECONDARY_INDEX, "typed secondary index");
+    failures += expect_index_algorithm(child_at(index, 0U), MYLITE_SQL_AST_INDEX_ALGORITHM_HASH,
+                                       "secondary hash pre-list index type");
+    key_parts = child_at(index, 1U);
+    failures += expect_span_text(child_at(child_at(key_parts, 0U), 0U), "btree",
+                                 "fallback keyword key part");
+    options = child_at(index, 2U);
+    failures +=
+        expect_child_count(options, typed_secondary_option_count, "typed secondary option count");
+    failures += expect_index_option(child_at(options, 0U), MYLITE_SQL_AST_INDEX_OPTION_USING,
+                                    "secondary post-list hash using option");
+    failures += expect_index_option(child_at(options, 1U), MYLITE_SQL_AST_INDEX_OPTION_USING,
+                                    "secondary post-list btree using option");
+    failures += expect_index_option(child_at(options, 2U), MYLITE_SQL_AST_INDEX_OPTION_INVISIBLE,
+                                    "secondary invisible option");
+    failures +=
+        expect_index_option(child_at(options, 3U), MYLITE_SQL_AST_INDEX_OPTION_ENGINE_ATTRIBUTE,
+                            "secondary engine attribute option");
+    failures += expect_index_option(child_at(options, 4U),
+                                    MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE,
+                                    "secondary secondary-engine attribute option");
+
+    index = child_at(elements, unnamed_unique_index);
+    failures += expect_node(index, MYLITE_SQL_AST_UNIQUE_INDEX, "unnamed unique index");
+    failures +=
+        expect_node(child_at(index, 0U), MYLITE_SQL_AST_KEY_PART_LIST, "unnamed unique parts");
+
+    index = child_at(elements, named_unique_key);
+    failures += expect_node(index, MYLITE_SQL_AST_UNIQUE_INDEX, "named unique key");
+    failures += expect_span_text(child_at(index, 0U), "uk_b", "unique key name");
+    failures +=
+        expect_node(child_at(index, 1U), MYLITE_SQL_AST_KEY_PART_LIST, "named unique key parts");
+
+    index = child_at(elements, typed_unique_key);
+    failures += expect_node(index, MYLITE_SQL_AST_UNIQUE_INDEX, "typed unique key");
+    failures += expect_index_algorithm(child_at(index, 0U), MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
+                                       "unique key pre-list type");
+    key_parts = child_at(index, 1U);
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "hash", "typed unique key part");
+
+    index = child_at(elements, typed_unique_index);
+    failures += expect_node(index, MYLITE_SQL_AST_UNIQUE_INDEX, "typed unique index");
+    failures += expect_span_text(child_at(index, 0U), "ux_c", "unique index name");
+    failures += expect_index_algorithm(child_at(index, 1U), MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
+                                       "unique index pre-list type");
+
+    index = child_at(elements, repeated_using_unique_key);
+    failures += expect_span_text(child_at(index, 0U), "uq_hash", "repeated using unique name");
+    options = child_at(index, 2U);
+    failures += expect_child_count(options, 2U, "repeated using unique options");
+    failures += expect_index_option(child_at(options, 0U), MYLITE_SQL_AST_INDEX_OPTION_USING,
+                                    "unique post-list hash using option");
+    failures += expect_index_option(child_at(options, 1U), MYLITE_SQL_AST_INDEX_OPTION_USING,
+                                    "unique post-list btree using option");
+
+    index = child_at(elements, named_unique_constraint);
+    failures += expect_node(index, MYLITE_SQL_AST_UNIQUE_INDEX, "named unique constraint");
+    failures += expect_span_text(child_at(index, 0U), "uq_d", "unique constraint name");
+    failures += expect_span_text(child_at(index, 1U), "unique_d", "unique constraint index name");
+    key_parts = child_at(index, 2U);
+    failures += expect_key_part_order(child_at(key_parts, 0U), MYLITE_SQL_AST_KEY_PART_ORDER_DESC,
+                                      "unique constraint desc order");
+
+    index = child_at(elements, unnamed_unique_constraint);
+    failures += expect_node(index, MYLITE_SQL_AST_UNIQUE_INDEX, "constraint unique without symbol");
+    failures += expect_span_text(child_at(index, 0U), "uq_a", "constraint unique index name");
+    failures +=
+        expect_node(child_at(index, 1U), MYLITE_SQL_AST_KEY_PART_LIST, "constraint unique parts");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE index_keyword_names (unique INT);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_inline_unique_index (a INT UNIQUE INDEX);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_secondary_empty (a INT, KEY ());",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_secondary_trailing (a INT, KEY (a,));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_secondary_missing_parts (a INT, KEY idx);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_unique_missing_parts (a INT, UNIQUE KEY idx);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_secondary_functional "
+                          "(a INT, KEY idx ((a + 1)));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_secondary_fulltext "
+                          "(a TEXT, FULLTEXT KEY idx (a));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_secondary_spatial "
+                          "(a INT, SPATIAL KEY idx (a));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_secondary_comment_equal "
+                          "(a INT, KEY idx (a) COMMENT = 'x');",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_secondary_key_block_string "
+                          "(a INT, KEY idx (a) KEY_BLOCK_SIZE '8');",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_unique_overflow_prefix "
+                          "(a VARCHAR(10), UNIQUE KEY uq (a(18446744073709551616)));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_unique_engine_attribute_number "
+                          "(a INT, UNIQUE KEY uq (a) ENGINE_ATTRIBUTE 123);",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

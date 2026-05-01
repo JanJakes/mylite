@@ -5,7 +5,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CASCADED CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENFORCED ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NONE NOT NUMBER ONE ONLY OPTIONS ORGANIZATION OWNER PACK_KEYS PAGE PARSE_TREE PARTITION PARTITIONING PHASE PORT PRECEDES PRESERVE PRIMARY RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE USE_FRM VALIDATION VALUE VCPU WAIT WITHOUT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CASCADED CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENFORCED ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NONE NOT NULL NUMBER OFF ONE ONLY OPTIONS ORGANIZATION OWNER PACK_KEYS PAGE PARSE_TREE PARTITION PARTITIONING PHASE PORT PRECEDES PRESERVE PRIMARY RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STREAM STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE USE_FRM VALIDATION VALUE VCPU WAIT WITHOUT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
 %fallback ATOM BOOLEAN_NUMBER ENCRYPTION_VALUE FACTOR_NUMBER NUMBER_LITERAL SQLSTATE_VALUE STRING_LITERAL.
 %fallback ATOM ENCLOSED ESCAPED LINES OPTIONALLY ROWS STARTING TERMINATED.
 %fallback ATOM COPY EXCLUSIVE INPLACE INSTANT SHARED.
@@ -2246,29 +2246,33 @@ change_replication_filter_token ::= LP change_replication_filter_contents RP.
 change_source_options ::= change_source_option.
 change_source_options ::= change_source_options import_comma change_source_option.
 
-change_source_option ::= change_shared_text_option_name diagnostics_equals change_option_value.
+change_source_option ::= change_shared_string_option_name diagnostics_equals change_option_string_value.
+change_source_option ::= ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS diagnostics_equals change_assign_gtids_value.
+change_source_option ::= IGNORE_SERVER_IDS diagnostics_equals change_ignore_server_ids_value.
+change_source_option ::= PRIVILEGE_CHECKS_USER diagnostics_equals change_privilege_checks_user_value.
+change_source_option ::= REQUIRE_TABLE_PRIMARY_KEY_CHECK diagnostics_equals change_primary_key_check_value.
 change_source_option ::= change_shared_number_option_name diagnostics_equals change_option_number_value.
 change_source_option ::= change_shared_boolean_option_name diagnostics_equals change_option_boolean_value.
-change_source_option ::= change_source_text_option_name diagnostics_equals change_option_value.
+change_source_option ::= change_source_string_option_name diagnostics_equals change_option_string_value.
 change_source_option ::= change_source_number_option_name diagnostics_equals change_option_number_value.
 change_source_option ::= change_source_boolean_option_name diagnostics_equals change_option_boolean_value.
 
-change_source_text_option_name ::= SOURCE_BIND.
-change_source_text_option_name ::= SOURCE_HOST.
-change_source_text_option_name ::= SOURCE_USER.
-change_source_text_option_name ::= SOURCE_PASSWORD.
-change_source_text_option_name ::= SOURCE_LOG_FILE.
-change_source_text_option_name ::= SOURCE_COMPRESSION_ALGORITHMS.
-change_source_text_option_name ::= SOURCE_SSL_CA.
-change_source_text_option_name ::= SOURCE_SSL_CAPATH.
-change_source_text_option_name ::= SOURCE_SSL_CERT.
-change_source_text_option_name ::= SOURCE_SSL_CRL.
-change_source_text_option_name ::= SOURCE_SSL_CRLPATH.
-change_source_text_option_name ::= SOURCE_SSL_KEY.
-change_source_text_option_name ::= SOURCE_SSL_CIPHER.
-change_source_text_option_name ::= SOURCE_TLS_VERSION.
-change_source_text_option_name ::= SOURCE_TLS_CIPHERSUITES.
-change_source_text_option_name ::= SOURCE_PUBLIC_KEY_PATH.
+change_source_string_option_name ::= SOURCE_BIND.
+change_source_string_option_name ::= SOURCE_HOST.
+change_source_string_option_name ::= SOURCE_USER.
+change_source_string_option_name ::= SOURCE_PASSWORD.
+change_source_string_option_name ::= SOURCE_LOG_FILE.
+change_source_string_option_name ::= SOURCE_COMPRESSION_ALGORITHMS.
+change_source_string_option_name ::= SOURCE_SSL_CA.
+change_source_string_option_name ::= SOURCE_SSL_CAPATH.
+change_source_string_option_name ::= SOURCE_SSL_CERT.
+change_source_string_option_name ::= SOURCE_SSL_CRL.
+change_source_string_option_name ::= SOURCE_SSL_CRLPATH.
+change_source_string_option_name ::= SOURCE_SSL_KEY.
+change_source_string_option_name ::= SOURCE_SSL_CIPHER.
+change_source_string_option_name ::= SOURCE_TLS_VERSION.
+change_source_string_option_name ::= SOURCE_TLS_CIPHERSUITES.
+change_source_string_option_name ::= SOURCE_PUBLIC_KEY_PATH.
 
 change_source_number_option_name ::= SOURCE_PORT.
 change_source_number_option_name ::= SOURCE_LOG_POS.
@@ -2286,29 +2290,33 @@ change_source_boolean_option_name ::= GET_SOURCE_PUBLIC_KEY.
 change_master_options ::= change_master_option.
 change_master_options ::= change_master_options import_comma change_master_option.
 
-change_master_option ::= change_shared_text_option_name diagnostics_equals change_option_value.
+change_master_option ::= change_shared_string_option_name diagnostics_equals change_option_string_value.
+change_master_option ::= ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS diagnostics_equals change_assign_gtids_value.
+change_master_option ::= IGNORE_SERVER_IDS diagnostics_equals change_ignore_server_ids_value.
+change_master_option ::= PRIVILEGE_CHECKS_USER diagnostics_equals change_privilege_checks_user_value.
+change_master_option ::= REQUIRE_TABLE_PRIMARY_KEY_CHECK diagnostics_equals change_primary_key_check_value.
 change_master_option ::= change_shared_number_option_name diagnostics_equals change_option_number_value.
 change_master_option ::= change_shared_boolean_option_name diagnostics_equals change_option_boolean_value.
-change_master_option ::= change_master_text_option_name diagnostics_equals change_option_value.
+change_master_option ::= change_master_string_option_name diagnostics_equals change_option_string_value.
 change_master_option ::= change_master_number_option_name diagnostics_equals change_option_number_value.
 change_master_option ::= change_master_boolean_option_name diagnostics_equals change_option_boolean_value.
 
-change_master_text_option_name ::= MASTER_BIND.
-change_master_text_option_name ::= MASTER_HOST.
-change_master_text_option_name ::= MASTER_USER.
-change_master_text_option_name ::= MASTER_PASSWORD.
-change_master_text_option_name ::= MASTER_LOG_FILE.
-change_master_text_option_name ::= MASTER_COMPRESSION_ALGORITHMS.
-change_master_text_option_name ::= MASTER_SSL_CA.
-change_master_text_option_name ::= MASTER_SSL_CAPATH.
-change_master_text_option_name ::= MASTER_SSL_CERT.
-change_master_text_option_name ::= MASTER_SSL_CRL.
-change_master_text_option_name ::= MASTER_SSL_CRLPATH.
-change_master_text_option_name ::= MASTER_SSL_KEY.
-change_master_text_option_name ::= MASTER_SSL_CIPHER.
-change_master_text_option_name ::= MASTER_TLS_VERSION.
-change_master_text_option_name ::= MASTER_TLS_CIPHERSUITES.
-change_master_text_option_name ::= MASTER_PUBLIC_KEY_PATH.
+change_master_string_option_name ::= MASTER_BIND.
+change_master_string_option_name ::= MASTER_HOST.
+change_master_string_option_name ::= MASTER_USER.
+change_master_string_option_name ::= MASTER_PASSWORD.
+change_master_string_option_name ::= MASTER_LOG_FILE.
+change_master_string_option_name ::= MASTER_COMPRESSION_ALGORITHMS.
+change_master_string_option_name ::= MASTER_SSL_CA.
+change_master_string_option_name ::= MASTER_SSL_CAPATH.
+change_master_string_option_name ::= MASTER_SSL_CERT.
+change_master_string_option_name ::= MASTER_SSL_CRL.
+change_master_string_option_name ::= MASTER_SSL_CRLPATH.
+change_master_string_option_name ::= MASTER_SSL_KEY.
+change_master_string_option_name ::= MASTER_SSL_CIPHER.
+change_master_string_option_name ::= MASTER_TLS_VERSION.
+change_master_string_option_name ::= MASTER_TLS_CIPHERSUITES.
+change_master_string_option_name ::= MASTER_PUBLIC_KEY_PATH.
 
 change_master_number_option_name ::= MASTER_PORT.
 change_master_number_option_name ::= MASTER_LOG_POS.
@@ -2323,12 +2331,8 @@ change_master_boolean_option_name ::= MASTER_SSL.
 change_master_boolean_option_name ::= MASTER_SSL_VERIFY_SERVER_CERT.
 change_master_boolean_option_name ::= GET_MASTER_PUBLIC_KEY.
 
-change_shared_text_option_name ::= ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS.
-change_shared_text_option_name ::= IGNORE_SERVER_IDS.
-change_shared_text_option_name ::= NETWORK_NAMESPACE.
-change_shared_text_option_name ::= PRIVILEGE_CHECKS_USER.
-change_shared_text_option_name ::= RELAY_LOG_FILE.
-change_shared_text_option_name ::= REQUIRE_TABLE_PRIMARY_KEY_CHECK.
+change_shared_string_option_name ::= NETWORK_NAMESPACE.
+change_shared_string_option_name ::= RELAY_LOG_FILE.
 
 change_shared_number_option_name ::= RELAY_LOG_POS.
 
@@ -2342,36 +2346,27 @@ change_option_number_value ::= NUMBER_LITERAL.
 
 change_option_boolean_value ::= BOOLEAN_NUMBER.
 
-change_option_value ::= change_option_value_token.
-change_option_value ::= change_option_value change_option_value_token.
+change_option_string_value ::= string_literal.
+change_option_string_value ::= NULL.
 
-change_option_value_token ::= ATOM.
-change_option_value_token ::= LABEL.
-change_option_value_token ::= LOCAL.
-change_option_value_token ::= ON.
-change_option_value_token ::= DOT.
-change_option_value_token ::= AT_SIGN.
-change_option_value_token ::= AT_EMPTY.
-change_option_value_token ::= AT_HOST.
-change_option_value_token ::= LP change_option_value_contents RP.
-change_option_value_token ::= LB.
-change_option_value_token ::= RB.
-change_option_value_token ::= LC.
-change_option_value_token ::= RC.
+change_assign_gtids_value ::= LOCAL.
+change_assign_gtids_value ::= OFF.
+change_assign_gtids_value ::= string_literal.
 
-change_option_value_contents ::= .
-change_option_value_contents ::= change_option_value_contents change_option_value_content.
+change_ignore_server_ids_value ::= LP change_ignore_server_ids RP.
 
-change_option_value_content ::= ATOM.
-change_option_value_content ::= LABEL.
-change_option_value_content ::= keyword.
-change_option_value_content ::= DOT.
-change_option_value_content ::= COMMA.
-change_option_value_content ::= LP change_option_value_contents RP.
-change_option_value_content ::= LB.
-change_option_value_content ::= RB.
-change_option_value_content ::= LC.
-change_option_value_content ::= RC.
+change_ignore_server_ids ::= .
+change_ignore_server_ids ::= change_ignore_server_id_list.
+
+change_ignore_server_id_list ::= change_option_number_value.
+change_ignore_server_id_list ::= change_ignore_server_id_list import_comma change_option_number_value.
+
+change_privilege_checks_user_value ::= NULL.
+change_privilege_checks_user_value ::= drop_account_name.
+
+change_primary_key_check_value ::= STREAM.
+change_primary_key_check_value ::= ON.
+change_primary_key_check_value ::= OFF.
 
 change_for_channel_tail ::= .
 change_for_channel_tail ::= FOR reset_channel change_channel_name.
@@ -4252,6 +4247,7 @@ keyword ::= SHARED.
 keyword ::= STATUS.
 keyword ::= STOP.
 keyword ::= STORAGE.
+keyword ::= STREAM.
 keyword ::= TRIGGERS.
 keyword ::= USER_RESOURCES.
 keyword ::= VARIABLES.
@@ -4274,7 +4270,9 @@ keyword ::= IO_THREAD.
 keyword ::= LOW_PRIORITY.
 keyword ::= NAMES.
 keyword ::= NO.
+keyword ::= NULL.
 keyword ::= OFFSET.
+keyword ::= OFF.
 keyword ::= ON.
 keyword ::= ORDER.
 keyword ::= OUT.
@@ -4541,6 +4539,7 @@ keyword_not_select_clause ::= SESSION.
 keyword_not_select_clause ::= SHARED.
 keyword_not_select_clause ::= STATUS.
 keyword_not_select_clause ::= STORAGE.
+keyword_not_select_clause ::= STREAM.
 keyword_not_select_clause ::= TRIGGERS.
 keyword_not_select_clause ::= USER_RESOURCES.
 keyword_not_select_clause ::= VARIABLES.
@@ -4563,7 +4562,9 @@ keyword_not_select_clause ::= IO_THREAD.
 keyword_not_select_clause ::= LOW_PRIORITY.
 keyword_not_select_clause ::= NAMES.
 keyword_not_select_clause ::= NO.
+keyword_not_select_clause ::= NULL.
 keyword_not_select_clause ::= OFFSET.
+keyword_not_select_clause ::= OFF.
 keyword_not_select_clause ::= ON.
 keyword_not_select_clause ::= ORDER.
 keyword_not_select_clause ::= OUT.

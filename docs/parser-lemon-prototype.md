@@ -40,9 +40,10 @@ token sink:
 - `DO` recognizes comma-separated expression lists while rejecting dangling
   separators and top-level query-clause tails.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
-  write payloads, and validate `SET` assignment lists, explicit `VALUE(S)`
-  row-list tails, `ROW(...)` constructors, `INSERT` `VALUE(S)`/`SET` row
-  aliases, and `ON DUPLICATE KEY UPDATE` assignment tails.
+  write payloads, and validate `SET` assignment lists including repeated-`SET`
+  continuations, explicit `VALUE(S)` row-list tails, `ROW(...)` constructors,
+  `INSERT` `VALUE(S)`/`SET` row aliases, and `ON DUPLICATE KEY UPDATE`
+  assignment tails.
 - Single-table `DELETE` recognizes table aliases before optional partition
   lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails, rejecting incomplete
   DML clause tails, invalid top-level `ORDER BY` direction sequences, and

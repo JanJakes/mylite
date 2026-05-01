@@ -1874,7 +1874,8 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         continue;
       } else if (assignment_state == DML_ASSIGN_VALUE) {
         if (dml_clause_operand_boundary(token_id) ||
-            token_id == ML_COMMA || token_id == ML_SEMI) {
+            token_id == ML_COMMA || token_id == ML_SEMI ||
+            token_id == ML_SET) {
           mylite_parser_reject(ctx, pending_token,
                                "incomplete DML assignment");
           return;

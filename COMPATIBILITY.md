@@ -195,9 +195,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `LOOP` | ❌ | medium | Stored-program LOOP semantics. | Parser recognizes the statement head, matches `LOOP ... END LOOP`, preserves optional end labels in the span, and keeps semicolon-delimited bodies in one statement span; loop execution is not implemented. |
 | `REPEAT` | ❌ | medium | Stored-program REPEAT UNTIL semantics. | Parser recognizes the statement head, matches `REPEAT ... END REPEAT`, preserves optional end labels in the span, and keeps semicolon-delimited bodies in one statement span; loop execution and condition evaluation are not implemented. |
 | `WHILE` | ❌ | medium | Stored-program WHILE semantics. | Parser recognizes the statement head, matches `WHILE ... END WHILE`, preserves optional end labels in the span, and keeps semicolon-delimited bodies in one statement span; loop execution and condition evaluation are not implemented. |
-| `ITERATE` | ❌ | medium | Loop iteration transfer. | Parser records the target label; binding and transfer semantics are not implemented. |
-| `LEAVE` | ❌ | medium | Block/loop exit transfer. | Parser records the target label; binding and transfer semantics are not implemented. |
-| `RETURN` | ❌ | medium | Stored-function return semantics. | Parser recognizes the statement head; expression validation and function return semantics are not implemented. |
+| `ITERATE` | ❌ | medium | Loop iteration transfer. | Parser records and validates a single target label; binding and transfer semantics are not implemented. |
+| `LEAVE` | ❌ | medium | Block/loop exit transfer. | Parser records and validates a single target label; binding and transfer semantics are not implemented. |
+| `RETURN` | ❌ | medium | Stored-function return semantics. | Parser validates a nonempty expression tail; expression evaluation and function return semantics are not implemented. |
 | `OPEN` cursor | ❌ | medium | Cursor open lifecycle. | Parser records and validates the cursor handle; lifecycle semantics are not implemented. |
 | `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. | Parser records the cursor handle, validates optional `NEXT FROM` / `FROM` forms, and validates nonempty comma-separated fetch target lists; fetch target assignment and NOT FOUND behavior are not implemented. |
 | `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. | Parser records and validates the cursor handle; lifecycle semantics are not implemented. |

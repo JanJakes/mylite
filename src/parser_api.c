@@ -499,6 +499,12 @@ static int validate_resource_group_thread_priority_clause_syntax(const mylite_pa
                                                                  size_t token_index,
                                                                  size_t last_token_index,
                                                                  size_t *next_token_index);
+static int validate_label_transfer_statement_syntax(const mylite_parser *parser,
+                                                    const mylite_statement *statement);
+static int validate_label_transfer_tail_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index);
+static int validate_return_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_truncate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_rename_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -2410,6 +2416,19 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_ROLLBACK:
 			if (!validate_rollback_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid ROLLBACK statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_LEAVE:
+		case MYLITE_STATEMENT_ITERATE:
+			if (!validate_label_transfer_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid LEAVE or ITERATE statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_RETURN:
+			if (!validate_return_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid RETURN statement");
 				return;
 			}
 			break;
@@ -7490,6 +7509,62 @@ static int validate_resource_group_thread_priority_clause_syntax(const mylite_pa
 
 	*next_token_index = token_index + 1;
 	return 1;
+}
+
+static int validate_label_transfer_statement_syntax(const mylite_parser *parser,
+                                                    const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index ||
+	    (!token_can_start_label_name(&parser->tokens[token_index]) &&
+	     parser->tokens[token_index].kind != MYLITE_TOKEN_KEYWORD)) {
+		return 0;
+	}
+	return validate_label_transfer_tail_syntax(parser, token_index + 1, last_token_index);
+}
+
+static int validate_label_transfer_tail_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (parser->tokens[token_index].parser_token == END_T) {
+		return token_index + 1 == last_token_index &&
+		       (parser->tokens[token_index + 1].parser_token == LOOP_T ||
+		        parser->tokens[token_index + 1].parser_token == WHILE_T ||
+		        parser->tokens[token_index + 1].parser_token == IF_T ||
+		        parser->tokens[token_index + 1].parser_token == CASE_T);
+	}
+	if (token_text_equals(parser, token_index, "UNTIL")) {
+		return token_index + 2 <= last_token_index &&
+		       parser->tokens[last_token_index - 1].parser_token == END_T &&
+		       parser->tokens[last_token_index].parser_token == REPEAT_T;
+	}
+	return 0;
+}
+
+static int validate_return_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	return validate_nonempty_expression_tail_syntax(parser, token_index, last_token_index);
 }
 
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
@@ -14792,6 +14867,9 @@ static size_t find_statement_kind_token(const mylite_parser *parser, const mylit
 	case MYLITE_STATEMENT_REPLACE: desired_token = REPLACE_T; break;
 	case MYLITE_STATEMENT_UPDATE: desired_token = UPDATE_T; break;
 	case MYLITE_STATEMENT_DELETE: desired_token = DELETE_T; break;
+	case MYLITE_STATEMENT_LEAVE: desired_token = LEAVE_T; break;
+	case MYLITE_STATEMENT_ITERATE: desired_token = ITERATE_T; break;
+	case MYLITE_STATEMENT_RETURN: desired_token = RETURN_T; break;
 	default:
 		return statement->first_token - 1;
 	}

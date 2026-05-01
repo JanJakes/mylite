@@ -416,6 +416,36 @@ case "$stored_head_output" in
 		;;
 esac
 
+if "$parser" --quiet 'LEAVE'; then
+	echo "expected LEAVE without label to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LEAVE done extra'; then
+	echo "expected LEAVE with trailing tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ITERATE'; then
+	echo "expected ITERATE without label to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ITERATE done extra'; then
+	echo "expected ITERATE with trailing tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RETURN'; then
+	echo "expected RETURN without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RETURN 1,'; then
+	echo "expected RETURN trailing expression comma to fail" >&2
+	exit 1
+fi
+
 compound_span_output=$("$parser" 'IF x THEN SELECT 1; END IF; CASE x WHEN 1 THEN SELECT 1; END CASE; LOOP LEAVE done; END LOOP done; REPEAT SELECT 1; UNTIL x END REPEAT rpt; WHILE x DO SELECT 1; END WHILE wh')
 case "$compound_span_output" in
 	*"kinds=if[1:7"*"case[9:17"*"loop[19:24"*"repeat[26:33"*"while[35:42"*) ;;
@@ -745,9 +775,9 @@ if "$parser" --quiet 'RESIGNAL SQLSTATE "45000" MESSAGE_TEXT = "x"'; then
 	exit 1
 fi
 
-label_target_keyword_output=$("$parser" "LEAVE open; ITERATE engine; LEAVE no; ITERATE read; LEAVE \`read\`; LEAVE 'done'")
+label_target_keyword_output=$("$parser" "LEAVE open; ITERATE engine; LEAVE no; ITERATE read; LEAVE \`read\`")
 case "$label_target_keyword_output" in
-	*"/label:no"*|*"/label:read"*|*"/label:'done'"*)
+	*"/label:no"*|*"/label:read"*)
 		echo "unexpected restricted label target output: $label_target_keyword_output" >&2
 		exit 1
 		;;
@@ -766,6 +796,11 @@ case "$labeled_statement_output" in
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet "LEAVE 'done'"; then
+	echo "expected LEAVE string label to fail" >&2
+	exit 1
+fi
 
 label_keyword_output=$("$parser" 'open: LOOP LEAVE open; END LOOP open; engine: LOOP LEAVE engine; END LOOP engine; value: LOOP LEAVE value; END LOOP value; quick: LOOP LEAVE quick; END LOOP quick; no: LOOP LEAVE no; END LOOP no; read: LOOP LEAVE read; END LOOP read; `read`: LOOP LEAVE `read`; END LOOP `read`')
 case "$label_keyword_output" in

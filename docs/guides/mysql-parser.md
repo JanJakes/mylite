@@ -901,13 +901,14 @@ ok statements=1 kinds=open[1:2,0:6]/cursor:c
 ok statements=1 kinds=fetch[1:6,0:24]/cursor:c
 ```
 
-`LEAVE` and `ITERATE` expose their target label:
+`LEAVE` and `ITERATE` validate and expose their single target label:
 
 ```text
 ok statements=1 kinds=leave[1:2,0:10]/label:done
 ```
 
 Label targets use the same keyword rules as label declarations.
+`RETURN` validates a nonempty expression tail.
 
 Leading labels on `BEGIN`, `LOOP`, `REPEAT`, and `WHILE` are reported too:
 

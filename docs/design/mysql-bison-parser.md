@@ -513,7 +513,9 @@ expressions without exposing a table, schema, or administrative target, and
 they validate top-level expression-list separator shape.
 Stored-program statement heads such as `DECLARE`, cursor operations, `IF`,
 `CASE`, loop forms, `LEAVE`, `ITERATE`, and `RETURN` have explicit statement
-kinds. Compound-control tokens are structurally matched for `BEGIN ... END`,
+kinds. `LEAVE` and `ITERATE` validate single label targets, and `RETURN`
+validates a nonempty expression tail. Compound-control tokens are structurally
+matched for `BEGIN ... END`,
 `IF ... END IF`, `CASE ... END CASE`, `LOOP ... END LOOP`,
 `REPEAT ... END REPEAT`, and `WHILE ... END WHILE` without misclassifying
 `BEGIN WORK`, `IF(...)` expressions, or `IF [NOT] EXISTS` clauses as compound

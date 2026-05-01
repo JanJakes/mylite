@@ -2936,11 +2936,17 @@ describe_statement ::= DESCRIBE describe_tail. {
 describe_statement ::= DESC describe_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
 }
-describe_statement ::= DESCRIBE describe_explain_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+describe_statement ::= DESCRIBE(A) describe_explain_tail. {
+  mylite_parser_validate_explain_statement(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+  }
 }
-describe_statement ::= DESC describe_explain_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+describe_statement ::= DESC(A) describe_explain_tail. {
+  mylite_parser_validate_explain_statement(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+  }
 }
 
 describe_tail ::= describe_table_ref.
@@ -2972,8 +2978,11 @@ describe_explain_query_start ::= TABLE.
 describe_explain_query_start ::= UPDATE.
 describe_explain_query_start ::= WITH.
 
-explain_statement ::= EXPLAIN explain_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+explain_statement ::= EXPLAIN(A) explain_tail. {
+  mylite_parser_validate_explain_statement(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+  }
 }
 
 explain_tail ::= describe_tail.

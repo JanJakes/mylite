@@ -294,8 +294,8 @@ token sink:
   table lists, and `IGNORE LEAVES`.
 - `IMPORT TABLE` recognizes comma-separated string-literal file lists.
 - `EXPLAIN` and `DESCRIBE` recognize table-description forms, explainable
-  statement starts including `TABLE` with non-empty tails, and numeric
-  `FOR CONNECTION` ids with optional `FORMAT` clauses.
+  statement starts including `TABLE` with validated query/DML tails, and
+  numeric `FOR CONNECTION` ids with optional `FORMAT` clauses.
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
 - `CHANGE REPLICATION SOURCE TO` recognizes documented MySQL 8.4 source option
@@ -385,7 +385,8 @@ token sink:
   statements while preserving table and column description forms with shared
   identifier handling.
 - `EXPLAIN ANALYZE` has explicit statement-start handling and rejects
-  unsupported non-`TREE` format names and empty explainable statements.
+  unsupported non-`TREE` format names, empty explainable statements, and
+  malformed query/DML bodies.
 - `ALTER TABLESPACE` recognizes `ADD DATAFILE` and `DROP DATAFILE` actions.
 - `SHOW CREATE DATABASE` and `SHOW CREATE SCHEMA` recognize optional
   `IF NOT EXISTS`.

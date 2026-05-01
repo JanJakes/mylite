@@ -231,6 +231,15 @@ case "$object_output" in
 	;;
 esac
 
+qualified_keyword_output=$("$parser" 'CREATE TABLE db.select (id int); ALTER TABLE db.key ADD c INT; DROP TABLE db.group; SHOW CREATE PROCEDURE db.order')
+case "$qualified_keyword_output" in
+	*"create"*/table:db.select*"alter"*/table:db.key*"drop"*/table:db.group*"show"*/procedure:db.order*) ;;
+	*)
+		echo "unexpected qualified keyword output: $qualified_keyword_output" >&2
+		exit 1
+		;;
+esac
+
 database_option_output=$("$parser" 'ALTER DATABASE CHARACTER SET utf8mb4; ALTER SCHEMA DEFAULT COLLATE utf8mb4_bin; ALTER DATABASE READ ONLY = DEFAULT; ALTER DATABASE db READ ONLY = 1')
 case "$database_option_output" in
 	*"/database:CHARACTER"*|*"/schema:utf8mb4_bin"*|*"/database:READ"*)

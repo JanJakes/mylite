@@ -58,6 +58,12 @@ Direct and parenthesized `TABLE` statements preserve their table target:
 ok statements=1 kinds=table[1:6,0:16]/table:`db`.`t`
 ```
 
+Qualified names preserve reserved words after the qualifier dot:
+
+```text
+ok statements=1 kinds=create[1:9,0:31]/table:db.select
+```
+
 Direct utility targets are reported for statements such as `USE`, `TABLE`,
 `TRUNCATE`, `HANDLER`, `IMPORT TABLE`, `CALL`, direct `DESCRIBE` / `EXPLAIN`
 table forms, `EXPLAIN ... FOR CONNECTION`, `LOAD ... INTO TABLE`, `CACHE INDEX`,

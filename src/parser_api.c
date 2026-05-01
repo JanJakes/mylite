@@ -367,6 +367,7 @@ static size_t last_qualified_name_token(const mylite_parser *parser,
                                         size_t last_token_index);
 static int token_can_start_object_name(const mylite_token *token);
 static int token_can_continue_object_name(const mylite_token *token);
+static int token_can_continue_qualified_object_name(const mylite_token *token);
 static int token_can_be_unquoted_object_name_keyword(int token);
 static mylite_statement_object_kind variable_object_kind_from_token(const mylite_token *token);
 static int token_can_start_local_variable_name(const mylite_token *token);
@@ -3914,7 +3915,7 @@ static size_t last_qualified_name_token(const mylite_parser *parser,
 
 	while (token_index + 2 <= last_token_index &&
 	       parser->tokens[token_index + 1].parser_token == '.' &&
-	       token_can_continue_object_name(&parser->tokens[token_index + 2])) {
+	       token_can_continue_qualified_object_name(&parser->tokens[token_index + 2])) {
 		token_index += 2;
 	}
 	return token_index;
@@ -3934,6 +3935,12 @@ static int token_can_continue_object_name(const mylite_token *token)
 	return token->kind == MYLITE_TOKEN_IDENTIFIER ||
 	       token->kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
 	       token_can_be_unquoted_object_name_keyword(token->parser_token);
+}
+
+static int token_can_continue_qualified_object_name(const mylite_token *token)
+{
+	return token_can_continue_object_name(token) ||
+	       token->kind == MYLITE_TOKEN_KEYWORD;
 }
 
 static int token_can_be_unquoted_object_name_keyword(int token)

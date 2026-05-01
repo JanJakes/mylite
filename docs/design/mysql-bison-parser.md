@@ -179,8 +179,10 @@ object kind for DDL/admin statements and DML table operations, an optional first
 target-name span, and source spans for each parsed statement. Spans include
 token ordinals, byte offsets into the original SQL buffer, and line/column
 endpoints for diagnostics and future AST nodes. Object-name spans preserve
-exact source text, including backtick quoting and schema qualification. Balanced
-structural tokens also carry bidirectional match references for `(...)`,
+exact source text, including backtick quoting and schema qualification. Reserved
+words are preserved after a qualifier dot, matching MySQL's identifier rule for
+qualified names. Balanced structural tokens also carry bidirectional match
+references for `(...)`,
 `[...]`, `{...}`, `BEGIN ... END`, and `CASE ... END`. The lexer classifies
 statement-leading words, major clause words, common DDL/admin/transaction/load
 words, boolean/null operators, and join/set operators as keywords so the future

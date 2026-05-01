@@ -14,9 +14,9 @@ construction or execution semantics.
   Lemon parser generator and parser template.
 - `src/parser/lexer.c` provides a MySQL lexer that emits the generated TiDB token
   IDs and handles MySQL context-sensitive lexical forms.
-- `src/parser/parser.c` drives the Lemon parser and keeps temporary
-  syntax-only recognizers for conflict-heavy corpus forms that should eventually
-  move into grammar or AST-aware handling.
+- `src/parser/parser.c` drives the Lemon parser, owns the optional generic AST
+  arena, and keeps temporary recognizers for conflict-heavy corpus forms that
+  should eventually move into grammar or typed AST handling.
 - `src/tools/mylite_parse.c` exposes the parser as `mylite-parse` for corpus and
   smoke testing.
 
@@ -67,9 +67,12 @@ The corpus source used for this prototype is:
 
 ## Current Limits
 
-- The parser validates syntax only.
-- It does not build a stable MyLite AST.
+- The parser can validate syntax only or build a generated generic parse tree.
+- It does not build the final typed MyLite AST.
 - It does not verify MySQL 8.4.9 semantic behavior.
 - Some MySQL-only syntax is accepted through overlay rules or temporary
   recognizers while the port is still a prototype.
 - The WordPress corpus is broad but is not a full MySQL grammar proof.
+
+AST construction details and benchmarks live in
+[ast-construction.md](ast-construction.md).

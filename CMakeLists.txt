@@ -75,6 +75,9 @@ endif()
 add_executable(mylite-parse src/tools/mylite_parse.c)
 target_link_libraries(mylite-parse PRIVATE mylite_parser)
 
+add_executable(mylite-parser-bench src/tools/mylite_parser_bench.c)
+target_link_libraries(mylite-parser-bench PRIVATE mylite_parser)
+
 if(BUILD_TESTING)
   add_executable(mylite_parser_smoke_test tests/parser_smoke_test.c)
   target_link_libraries(mylite_parser_smoke_test PRIVATE mylite_parser)

@@ -136,6 +136,8 @@ printf 'SELECT 1\n' | build/mylite-parse
 
 Parser design and corpus verification notes live in
 [docs/parser/lemon-tidb-port.md](docs/parser/lemon-tidb-port.md).
+Generic AST construction notes and benchmark results live in
+[docs/parser/ast-construction.md](docs/parser/ast-construction.md).
 
 ## References
 

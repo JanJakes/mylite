@@ -12,6 +12,7 @@ static int test_create_table_integer_boolean_columns(void);
 static int test_create_table_string_binary_columns(void);
 static int test_create_table_numeric_columns(void);
 static int test_create_table_temporal_columns(void);
+static int test_create_table_column_attributes(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -38,6 +39,15 @@ static int expect_schema_option(const struct mylite_sql_ast_node *node,
                                 enum mylite_sql_ast_schema_option expected, const char *context);
 static int expect_column_type(const struct mylite_sql_ast_node *node,
                               enum mylite_sql_ast_column_type expected, const char *context);
+static int expect_column_attribute(const struct mylite_sql_ast_node *node,
+                                   enum mylite_sql_ast_column_attribute expected,
+                                   const char *context);
+static int expect_column_format(const struct mylite_sql_ast_node *node,
+                                enum mylite_sql_ast_column_format expected, const char *context);
+static int expect_column_storage(const struct mylite_sql_ast_node *node,
+                                 enum mylite_sql_ast_column_storage expected, const char *context);
+static int expect_current_timestamp(const struct mylite_sql_ast_node *node, bool has_precision,
+                                    uint64_t precision, const char *context);
 
 int main(void)
 {
@@ -51,6 +61,7 @@ int main(void)
     failures += test_create_table_string_binary_columns();
     failures += test_create_table_numeric_columns();
     failures += test_create_table_temporal_columns();
+    failures += test_create_table_column_attributes();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -408,8 +419,8 @@ static int test_create_table_integer_boolean_columns(void)
         parse_sql("CREATE TABLE bad_int9_alias (a INT9);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("CREATE TABLE unsupported_attributes (a INT NOT NULL);",
-                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("CREATE TABLE supported_attributes (a INT NOT NULL);",
+                          MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -1037,6 +1048,341 @@ static int test_create_table_temporal_columns(void)
     return failures;
 }
 
+static int test_create_table_column_attributes(void)
+{
+    enum {
+        expected_column_count = 24,
+        timestamp_precision = 6,
+        null_column = 0,
+        not_null_column = 1,
+        default_int_column = 2,
+        default_negative_column = 3,
+        default_positive_column = 4,
+        default_hex_column = 5,
+        default_bit_column = 6,
+        default_empty_string_column = 7,
+        default_expression_column = 8,
+        default_nested_expression_column = 9,
+        default_current_timestamp_column = 10,
+        default_current_timestamp_parens_column = 11,
+        timestamp_update_column = 12,
+        parenthesized_current_timestamp_column = 13,
+        comment_column = 14,
+        visible_column = 15,
+        invisible_column = 16,
+        column_format_default_column = 17,
+        column_format_fixed_column = 18,
+        column_format_dynamic_column = 19,
+        storage_default_column = 20,
+        storage_disk_column = 21,
+        storage_memory_column = 22,
+        repeated_attribute_column = 23,
+        repeated_attribute_count = 6,
+        repeated_invisible_attribute = 5,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *attributes = NULL;
+    const struct mylite_sql_ast_node *attribute = NULL;
+    const struct mylite_sql_ast_node *value = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE TABLE app.attr_valid ("
+                          "a INT NULL, b INT NOT NULL, c INT DEFAULT 7, "
+                          "d INT DEFAULT -1, e INT DEFAULT +2, "
+                          "f INT DEFAULT 0x10, g INT DEFAULT b'101', "
+                          "h VARCHAR(20) DEFAULT '', i INT DEFAULT (1 + 2), "
+                          "j INT DEFAULT ((1 + 2) * 3), "
+                          "k TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                          "l TIMESTAMP DEFAULT CURRENT_TIMESTAMP(), "
+                          "m TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6) "
+                          "ON UPDATE CURRENT_TIMESTAMP(6), "
+                          "n TIMESTAMP DEFAULT (CURRENT_TIMESTAMP), "
+                          "o INT COMMENT 'hello', p INT VISIBLE, q INT INVISIBLE, "
+                          "r INT COLUMN_FORMAT DEFAULT, s INT COLUMN_FORMAT FIXED, "
+                          "t INT COLUMN_FORMAT DYNAMIC, u INT STORAGE DEFAULT, "
+                          "v INT STORAGE DISK, w INT STORAGE MEMORY, "
+                          "x INT NULL NOT NULL DEFAULT 1 DEFAULT 2 VISIBLE INVISIBLE);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    columns = child_at(child_at(result.root, 0U), 1U);
+    failures +=
+        expect_node(columns, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "attribute column list");
+    failures += expect_child_count(columns, expected_column_count, "attribute columns");
+
+    attributes = child_at(child_at(columns, null_column), 2U);
+    failures += expect_node(attributes, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST, "null attributes");
+    failures += expect_child_count(attributes, 1U, "null attribute count");
+    failures += expect_column_attribute(child_at(attributes, 0U),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NULL, "null attribute");
+
+    attributes = child_at(child_at(columns, not_null_column), 2U);
+    failures += expect_column_attribute(
+        child_at(attributes, 0U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NOT_NULL, "not null attribute");
+
+    attributes = child_at(child_at(columns, default_int_column), 2U);
+    attribute = child_at(attributes, 0U);
+    failures += expect_column_attribute(attribute, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_DEFAULT,
+                                        "integer default attribute");
+    failures += expect_literal(child_at(attribute, 0U), MYLITE_SQL_AST_LITERAL_INTEGER,
+                               "integer default literal");
+
+    attributes = child_at(child_at(columns, default_negative_column), 2U);
+    value = child_at(child_at(attributes, 0U), 0U);
+    failures += expect_node(value, MYLITE_SQL_AST_UNARY_EXPRESSION, "negative default");
+    failures += expect_operator(value, MYLITE_SQL_AST_OPERATOR_NEGATIVE, "negative default");
+
+    attributes = child_at(child_at(columns, default_positive_column), 2U);
+    value = child_at(child_at(attributes, 0U), 0U);
+    failures += expect_node(value, MYLITE_SQL_AST_UNARY_EXPRESSION, "positive default");
+    failures += expect_operator(value, MYLITE_SQL_AST_OPERATOR_POSITIVE, "positive default");
+
+    attributes = child_at(child_at(columns, default_hex_column), 2U);
+    failures += expect_literal(child_at(child_at(attributes, 0U), 0U), MYLITE_SQL_AST_LITERAL_HEX,
+                               "hex default literal");
+
+    attributes = child_at(child_at(columns, default_bit_column), 2U);
+    failures += expect_literal(child_at(child_at(attributes, 0U), 0U), MYLITE_SQL_AST_LITERAL_BIT,
+                               "bit default literal");
+
+    attributes = child_at(child_at(columns, default_empty_string_column), 2U);
+    failures += expect_literal(child_at(child_at(attributes, 0U), 0U),
+                               MYLITE_SQL_AST_LITERAL_STRING, "empty string default literal");
+
+    attributes = child_at(child_at(columns, default_expression_column), 2U);
+    value = child_at(child_at(attributes, 0U), 0U);
+    failures +=
+        expect_node(value, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "expression default wrapper");
+    failures +=
+        expect_operator(child_at(value, 0U), MYLITE_SQL_AST_OPERATOR_ADD, "expression default add");
+
+    attributes = child_at(child_at(columns, default_nested_expression_column), 2U);
+    value = child_at(child_at(attributes, 0U), 0U);
+    failures += expect_node(value, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+                            "nested expression default wrapper");
+    failures += expect_operator(child_at(value, 0U), MYLITE_SQL_AST_OPERATOR_MULTIPLY,
+                                "nested expression default multiply");
+
+    attributes = child_at(child_at(columns, default_current_timestamp_column), 2U);
+    failures += expect_current_timestamp(child_at(child_at(attributes, 0U), 0U), false, 0U,
+                                         "bare current timestamp default");
+
+    attributes = child_at(child_at(columns, default_current_timestamp_parens_column), 2U);
+    failures += expect_current_timestamp(child_at(child_at(attributes, 0U), 0U), false, 0U,
+                                         "empty-parens current timestamp default");
+
+    attributes = child_at(child_at(columns, timestamp_update_column), 2U);
+    failures += expect_child_count(attributes, 2U, "timestamp update attribute count");
+    failures += expect_current_timestamp(child_at(child_at(attributes, 0U), 0U), true,
+                                         timestamp_precision, "fsp current timestamp default");
+    failures += expect_column_attribute(
+        child_at(attributes, 1U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_ON_UPDATE, "on update attribute");
+    failures += expect_current_timestamp(child_at(child_at(attributes, 1U), 0U), true,
+                                         timestamp_precision, "fsp current timestamp update");
+
+    attributes = child_at(child_at(columns, parenthesized_current_timestamp_column), 2U);
+    value = child_at(child_at(attributes, 0U), 0U);
+    failures += expect_node(value, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+                            "parenthesized current timestamp wrapper");
+    failures +=
+        expect_current_timestamp(child_at(value, 0U), false, 0U, "parenthesized current timestamp");
+
+    attributes = child_at(child_at(columns, comment_column), 2U);
+    failures += expect_column_attribute(
+        child_at(attributes, 0U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COMMENT, "comment attribute");
+    failures += expect_literal(child_at(child_at(attributes, 0U), 0U),
+                               MYLITE_SQL_AST_LITERAL_STRING, "comment literal");
+
+    attributes = child_at(child_at(columns, visible_column), 2U);
+    failures += expect_column_attribute(
+        child_at(attributes, 0U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_VISIBLE, "visible attribute");
+
+    attributes = child_at(child_at(columns, invisible_column), 2U);
+    failures += expect_column_attribute(
+        child_at(attributes, 0U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_INVISIBLE, "invisible attribute");
+
+    attributes = child_at(child_at(columns, column_format_default_column), 2U);
+    failures += expect_column_format(child_at(attributes, 0U), MYLITE_SQL_AST_COLUMN_FORMAT_DEFAULT,
+                                     "column format default");
+
+    attributes = child_at(child_at(columns, column_format_fixed_column), 2U);
+    failures += expect_column_format(child_at(attributes, 0U), MYLITE_SQL_AST_COLUMN_FORMAT_FIXED,
+                                     "column format fixed");
+
+    attributes = child_at(child_at(columns, column_format_dynamic_column), 2U);
+    failures += expect_column_format(child_at(attributes, 0U), MYLITE_SQL_AST_COLUMN_FORMAT_DYNAMIC,
+                                     "column format dynamic");
+
+    attributes = child_at(child_at(columns, storage_default_column), 2U);
+    failures += expect_column_storage(child_at(attributes, 0U),
+                                      MYLITE_SQL_AST_COLUMN_STORAGE_DEFAULT, "storage default");
+
+    attributes = child_at(child_at(columns, storage_disk_column), 2U);
+    failures += expect_column_storage(child_at(attributes, 0U), MYLITE_SQL_AST_COLUMN_STORAGE_DISK,
+                                      "storage disk");
+
+    attributes = child_at(child_at(columns, storage_memory_column), 2U);
+    failures += expect_column_storage(child_at(attributes, 0U),
+                                      MYLITE_SQL_AST_COLUMN_STORAGE_MEMORY, "storage memory");
+
+    attributes = child_at(child_at(columns, repeated_attribute_column), 2U);
+    failures +=
+        expect_child_count(attributes, repeated_attribute_count, "repeated attribute count");
+    failures += expect_column_attribute(
+        child_at(attributes, 0U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NULL, "repeated null attribute");
+    failures +=
+        expect_column_attribute(child_at(attributes, 1U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NOT_NULL,
+                                "repeated not null attribute");
+    failures +=
+        expect_column_attribute(child_at(attributes, 2U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_DEFAULT,
+                                "repeated first default");
+    failures +=
+        expect_column_attribute(child_at(attributes, 3U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_DEFAULT,
+                                "repeated second default");
+    failures +=
+        expect_column_attribute(child_at(attributes, 4U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_VISIBLE,
+                                "repeated visible attribute");
+    failures += expect_column_attribute(child_at(attributes, repeated_invisible_attribute),
+                                        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_INVISIBLE,
+                                        "repeated invisible attribute");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE attr_keyword_names ("
+                          "comment INT, visible INT, invisible INT, storage INT, "
+                          "column_format INT, disk INT, memory INT, dynamic INT, fixed INT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE timestamp_zero_fsp "
+                          "(a TIMESTAMP DEFAULT CURRENT_TIMESTAMP(0) "
+                          "ON UPDATE CURRENT_TIMESTAMP(0));",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_default_identifier (default INT);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_current_timestamp_identifier "
+                          "(current_timestamp INT);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_comment_literal (a INT COMMENT 123);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_comment_equal (a INT COMMENT = 'x');",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_column_format (a INT COLUMN_FORMAT COMPRESSED);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_column_format_equal (a INT COLUMN_FORMAT = FIXED);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_storage (a INT STORAGE FLASH);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_storage_equal (a INT STORAGE = DISK);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_default_equal (a INT DEFAULT = 1);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_on_update_missing_value (a TIMESTAMP ON UPDATE);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_on_missing_update (a TIMESTAMP ON CURRENT_TIMESTAMP);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_on_update_literal (a TIMESTAMP ON UPDATE 1);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_current_timestamp_default_fsp "
+                          "(a TIMESTAMP DEFAULT CURRENT_TIMESTAMP(7));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_current_timestamp_update_fsp "
+                          "(a TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(7));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_current_timestamp_negative "
+                          "(a TIMESTAMP DEFAULT CURRENT_TIMESTAMP(-1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_current_timestamp_string "
+                          "(a TIMESTAMP DEFAULT CURRENT_TIMESTAMP('1'));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_current_timestamp_scale "
+                          "(a TIMESTAMP DEFAULT CURRENT_TIMESTAMP(1,2));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_current_timestamp_overflow "
+                          "(a TIMESTAMP DEFAULT "
+                          "CURRENT_TIMESTAMP(18446744073709551616));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_default_unparenthesized_expression "
+                          "(a INT DEFAULT 1 + 2);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_default_signed_string "
+                          "(a VARCHAR(20) DEFAULT +'abc');",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_default_signed_hex "
+                          "(a INT DEFAULT +0x10);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_default_signed_null "
+                          "(a INT DEFAULT -NULL);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_default_signed_boolean "
+                          "(a INT DEFAULT +TRUE);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_default_function (a VARCHAR(20) DEFAULT UPPER('x'));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_default_parenthesized_function "
+                          "(a VARCHAR(20) DEFAULT (UPPER('x')));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_auto_increment (a INT AUTO_INCREMENT);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_inline_primary_key (a INT PRIMARY KEY);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_select_expression_list(void)
 {
     enum { expected_select_item_count = 5 };
@@ -1434,6 +1780,73 @@ static int expect_column_type(const struct mylite_sql_ast_node *node,
         fprintf(stderr, "%s: expected column type %s, got %s\n", context,
                 mylite_sql_ast_column_type_name(expected),
                 mylite_sql_ast_column_type_name(node->column_type));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_column_attribute(const struct mylite_sql_ast_node *node,
+                                   enum mylite_sql_ast_column_attribute expected,
+                                   const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_COLUMN_ATTRIBUTE, context);
+
+    if (node != NULL && node->column_attribute != expected) {
+        fprintf(stderr, "%s: expected column attribute %s, got %s\n", context,
+                mylite_sql_ast_column_attribute_name(expected),
+                mylite_sql_ast_column_attribute_name(node->column_attribute));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_column_format(const struct mylite_sql_ast_node *node,
+                                enum mylite_sql_ast_column_format expected, const char *context)
+{
+    int failures =
+        expect_column_attribute(node, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COLUMN_FORMAT, context);
+
+    if (node != NULL && node->column_format != expected) {
+        fprintf(stderr, "%s: expected column format %s, got %s\n", context,
+                mylite_sql_ast_column_format_name(expected),
+                mylite_sql_ast_column_format_name(node->column_format));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_column_storage(const struct mylite_sql_ast_node *node,
+                                 enum mylite_sql_ast_column_storage expected, const char *context)
+{
+    int failures = expect_column_attribute(node, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_STORAGE, context);
+
+    if (node != NULL && node->column_storage != expected) {
+        fprintf(stderr, "%s: expected column storage %s, got %s\n", context,
+                mylite_sql_ast_column_storage_name(expected),
+                mylite_sql_ast_column_storage_name(node->column_storage));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_current_timestamp(const struct mylite_sql_ast_node *node, bool has_precision,
+                                    uint64_t precision, const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_CURRENT_TIMESTAMP, context);
+
+    if (node != NULL && node->has_column_precision != has_precision) {
+        fprintf(stderr, "%s: expected current timestamp precision flag %d, got %d\n", context,
+                (int)has_precision, (int)node->has_column_precision);
+        failures = 1;
+    }
+
+    if (node != NULL && has_precision && node->column_precision != precision) {
+        fprintf(stderr, "%s: expected current timestamp precision %llu, got %llu\n", context,
+                (unsigned long long)precision, (unsigned long long)node->column_precision);
         failures = 1;
     }
 

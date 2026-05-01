@@ -38,6 +38,9 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_COLUMN_DEFINITION = 27,
     MYLITE_SQL_AST_COLUMN_TYPE = 28,
     MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST = 29,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST = 30,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE = 31,
+    MYLITE_SQL_AST_CURRENT_TIMESTAMP = 32,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -103,6 +106,33 @@ enum mylite_sql_ast_column_type {
     MYLITE_SQL_AST_COLUMN_TYPE_YEAR = 27,
 };
 
+enum mylite_sql_ast_column_attribute {
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NONE = 0,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NULL = 1,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NOT_NULL = 2,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_DEFAULT = 3,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_ON_UPDATE = 4,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COMMENT = 5,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_VISIBLE = 6,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_INVISIBLE = 7,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COLUMN_FORMAT = 8,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_STORAGE = 9,
+};
+
+enum mylite_sql_ast_column_format {
+    MYLITE_SQL_AST_COLUMN_FORMAT_NONE = 0,
+    MYLITE_SQL_AST_COLUMN_FORMAT_DEFAULT = 1,
+    MYLITE_SQL_AST_COLUMN_FORMAT_FIXED = 2,
+    MYLITE_SQL_AST_COLUMN_FORMAT_DYNAMIC = 3,
+};
+
+enum mylite_sql_ast_column_storage {
+    MYLITE_SQL_AST_COLUMN_STORAGE_NONE = 0,
+    MYLITE_SQL_AST_COLUMN_STORAGE_DEFAULT = 1,
+    MYLITE_SQL_AST_COLUMN_STORAGE_DISK = 2,
+    MYLITE_SQL_AST_COLUMN_STORAGE_MEMORY = 3,
+};
+
 struct mylite_sql_ast_node {
     struct mylite_sql_ast_node *first_child;
     struct mylite_sql_ast_node *last_child;
@@ -119,6 +149,9 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_operator operator_kind;
     enum mylite_sql_ast_schema_option schema_option;
     enum mylite_sql_ast_column_type column_type;
+    enum mylite_sql_ast_column_attribute column_attribute;
+    enum mylite_sql_ast_column_format column_format;
+    enum mylite_sql_ast_column_storage column_storage;
     unsigned int column_display_width;
     bool column_type_unsigned;
     bool column_type_signed;
@@ -172,6 +205,12 @@ void mylite_sql_ast_node_set_column_binary_attribute(struct mylite_sql_ast_node 
 void mylite_sql_ast_node_set_column_byte_attribute(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_column_zerofill_attribute(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_column_national_attribute(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_column_attribute(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_column_attribute column_attribute);
+void mylite_sql_ast_node_set_column_format(struct mylite_sql_ast_node *node,
+                                           enum mylite_sql_ast_column_format column_format);
+void mylite_sql_ast_node_set_column_storage(struct mylite_sql_ast_node *node,
+                                            enum mylite_sql_ast_column_storage column_storage);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 
@@ -180,5 +219,9 @@ const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind ki
 const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_kind);
 const char *mylite_sql_ast_schema_option_name(enum mylite_sql_ast_schema_option schema_option);
 const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type column_type);
+const char *
+mylite_sql_ast_column_attribute_name(enum mylite_sql_ast_column_attribute column_attribute);
+const char *mylite_sql_ast_column_format_name(enum mylite_sql_ast_column_format column_format);
+const char *mylite_sql_ast_column_storage_name(enum mylite_sql_ast_column_storage column_storage);
 
 #endif

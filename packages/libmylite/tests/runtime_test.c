@@ -30,6 +30,7 @@ enum {
     tables_rows_column = 7,
     tables_collation_column = 17,
     tables_comment_column = 20,
+    columns_table_name_column = 2,
     information_schema_table_version = 10,
 };
 
@@ -60,6 +61,8 @@ static int expect_information_schema_tables_views(mylite_db *database);
 static int expect_no_information_schema_table_schema_row(mylite_db *database,
                                                          const char *schema_name);
 static int expect_no_information_schema_table_name_row(mylite_db *database, const char *table_name);
+static int expect_no_information_schema_column_table_name_row(mylite_db *database,
+                                                              const char *table_name);
 static int expect_empty_information_schema_table(mylite_db *database, const char *sql,
                                                  const char *const *columns, int column_count);
 static int expect_show_database_rows(mylite_db *database, const char *required,
@@ -770,6 +773,31 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
         stmt = NULL;
     }
     failures += expect_no_information_schema_table_name_row(database, "temporal_types");
+    failures += prepare_sql(database,
+                            "CREATE TABLE app.`column_attributes` ("
+                            "visible_col INT, a INT NULL, b INT NOT NULL, "
+                            "c INT DEFAULT 7, d INT DEFAULT -1, e INT DEFAULT +2, "
+                            "f INT DEFAULT 0x10, g INT DEFAULT b'101', "
+                            "h VARCHAR(20) DEFAULT '', i INT DEFAULT (1 + 2), "
+                            "j TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                            "k TIMESTAMP DEFAULT CURRENT_TIMESTAMP(), "
+                            "l TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6) "
+                            "ON UPDATE CURRENT_TIMESTAMP(6), "
+                            "m TIMESTAMP DEFAULT (CURRENT_TIMESTAMP), "
+                            "n INT COMMENT 'hello', o INT VISIBLE, p INT INVISIBLE, "
+                            "q INT COLUMN_FORMAT DEFAULT STORAGE DEFAULT, "
+                            "r INT COLUMN_FORMAT FIXED STORAGE DISK, "
+                            "s INT COLUMN_FORMAT DYNAMIC STORAGE MEMORY, "
+                            "t INT NULL NOT NULL DEFAULT 1 DEFAULT 2 VISIBLE INVISIBLE)",
+                            MYLITE_UNSUPPORTED, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "parse-only column-attribute CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += expect_no_information_schema_table_name_row(database, "column_attributes");
+    failures += expect_no_information_schema_column_table_name_row(database, "column_attributes");
     failures += prepare_sql(database, "CREATE TABLE invalid_width (a INT(256));",
                             MYLITE_PARSE_ERROR, &stmt);
     if (stmt != NULL) {
@@ -786,10 +814,40 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
         mylite_finalize(stmt);
         stmt = NULL;
     }
-    failures += prepare_sql(database, "CREATE TABLE unsupported_attribute (a INT NOT NULL);",
+    failures += prepare_sql(database, "CREATE TABLE invalid_attribute_comment (a INT COMMENT 123);",
                             MYLITE_PARSE_ERROR, &stmt);
     if (stmt != NULL) {
-        fprintf(stderr, "unsupported-attribute CREATE TABLE returned a statement handle\n");
+        fprintf(stderr, "invalid comment-attribute CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_attribute_default "
+                            "(a INT DEFAULT 1 + 2);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid default-attribute CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_current_timestamp_fsp "
+                            "(a TIMESTAMP DEFAULT CURRENT_TIMESTAMP(7));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid current-timestamp CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_column_storage "
+                            "(a INT STORAGE FLASH);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid storage-attribute CREATE TABLE returned a statement handle\n");
         failures = 1;
         mylite_finalize(stmt);
         stmt = NULL;
@@ -1127,6 +1185,34 @@ static int expect_no_information_schema_table_name_row(mylite_db *database, cons
         }
         if (strcmp(mylite_column_text(stmt, tables_name_column), table_name) == 0) {
             fprintf(stderr, "tables unexpectedly returned row for table '%s'\n", table_name);
+            failures = 1;
+            break;
+        }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_no_information_schema_column_table_name_row(mylite_db *database,
+                                                              const char *table_name)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLUMNS", MYLITE_OK, &stmt);
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "columns row");
+        if (failures != 0) {
+            break;
+        }
+        if (strcmp(mylite_column_text(stmt, columns_table_name_column), table_name) == 0) {
+            fprintf(stderr, "columns unexpectedly returned row for table '%s'\n", table_name);
             failures = 1;
             break;
         }

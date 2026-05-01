@@ -233,6 +233,36 @@ void mylite_sql_ast_node_set_column_national_attribute(struct mylite_sql_ast_nod
     node->column_national_attribute = true;
 }
 
+void mylite_sql_ast_node_set_column_attribute(struct mylite_sql_ast_node *node,
+                                              enum mylite_sql_ast_column_attribute column_attribute)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->column_attribute = column_attribute;
+}
+
+void mylite_sql_ast_node_set_column_format(struct mylite_sql_ast_node *node,
+                                           enum mylite_sql_ast_column_format column_format)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->column_format = column_format;
+}
+
+void mylite_sql_ast_node_set_column_storage(struct mylite_sql_ast_node *node,
+                                            enum mylite_sql_ast_column_storage column_storage)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->column_storage = column_storage;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -313,6 +343,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "column_type";
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
         return "column_type_attribute_list";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
+        return "column_attribute_list";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
+        return "column_attribute";
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
+        return "current_timestamp";
     }
 
     return "unknown";
@@ -395,6 +431,67 @@ const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type colu
         return "timestamp";
     case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
         return "year";
+    }
+
+    return "unknown";
+}
+
+const char *
+mylite_sql_ast_column_attribute_name(enum mylite_sql_ast_column_attribute column_attribute)
+{
+    switch (column_attribute) {
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NONE:
+        return "none";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NULL:
+        return "null";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NOT_NULL:
+        return "not_null";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_DEFAULT:
+        return "default";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_ON_UPDATE:
+        return "on_update";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COMMENT:
+        return "comment";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_VISIBLE:
+        return "visible";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_INVISIBLE:
+        return "invisible";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COLUMN_FORMAT:
+        return "column_format";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_STORAGE:
+        return "storage";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_column_format_name(enum mylite_sql_ast_column_format column_format)
+{
+    switch (column_format) {
+    case MYLITE_SQL_AST_COLUMN_FORMAT_NONE:
+        return "none";
+    case MYLITE_SQL_AST_COLUMN_FORMAT_DEFAULT:
+        return "default";
+    case MYLITE_SQL_AST_COLUMN_FORMAT_FIXED:
+        return "fixed";
+    case MYLITE_SQL_AST_COLUMN_FORMAT_DYNAMIC:
+        return "dynamic";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_column_storage_name(enum mylite_sql_ast_column_storage column_storage)
+{
+    switch (column_storage) {
+    case MYLITE_SQL_AST_COLUMN_STORAGE_NONE:
+        return "none";
+    case MYLITE_SQL_AST_COLUMN_STORAGE_DEFAULT:
+        return "default";
+    case MYLITE_SQL_AST_COLUMN_STORAGE_DISK:
+        return "disk";
+    case MYLITE_SQL_AST_COLUMN_STORAGE_MEMORY:
+        return "memory";
     }
 
     return "unknown";

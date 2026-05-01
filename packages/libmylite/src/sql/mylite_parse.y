@@ -28,8 +28,9 @@
 %left PLUS MINUS.
 %left STAR SLASH.
 %right UPLUS UMINUS.
-%fallback IDENTIFIER BOOL BOOLEAN CHARSET DATE DATETIME ENCRYPTION FIXED NCHAR NVARCHAR ONLY SIGNED
-    TEXT TIME TIMESTAMP YEAR.
+%fallback IDENTIFIER BOOL BOOLEAN CHARSET COLUMN_FORMAT COMMENT DATE DATETIME DISK DYNAMIC
+    ENCRYPTION FIXED INVISIBLE MEMORY NCHAR NVARCHAR ONLY SIGNED STORAGE TEXT TIME TIMESTAMP
+    VISIBLE YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -159,8 +160,8 @@ column_definition_list(A) ::= column_definition_list(B) COMMA column_definition(
     A = mylite_sql_parser_append_column_definition(state, B, C);
 }
 
-column_definition(A) ::= identifier(B) column_type(C). {
-    A = mylite_sql_parser_make_column_definition(state, B, C);
+column_definition(A) ::= identifier(B) column_type(C) column_attribute_list(D). {
+    A = mylite_sql_parser_make_column_definition(state, B, C, D);
 }
 
 column_type(A) ::= integer_column_type(B). {
@@ -626,6 +627,90 @@ character_type_attribute(A) ::= BINARY(T). {
         state, mylite_sql_parser_make_column_type_attribute_list(state), T);
 }
 
+column_attribute_list(A) ::= . {
+    A = mylite_sql_parser_make_column_attribute_list(state);
+}
+column_attribute_list(A) ::= column_attribute_list(B) column_attribute(C). {
+    A = mylite_sql_parser_append_column_attribute(state, B, C);
+}
+
+column_attribute(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_column_null_attribute(state, T);
+}
+column_attribute(A) ::= NOT(N) NULL(T). {
+    A = mylite_sql_parser_make_column_not_null_attribute(state, N, T);
+}
+column_attribute(A) ::= DEFAULT(T) column_default_value(B). {
+    A = mylite_sql_parser_make_column_default_attribute(state, T, B);
+}
+column_attribute(A) ::= ON(O) UPDATE(U) current_timestamp_value(B). {
+    A = mylite_sql_parser_make_column_on_update_attribute(state, O, U, B);
+}
+column_attribute(A) ::= COMMENT(T) STRING(S). {
+    A = mylite_sql_parser_make_column_comment_attribute(
+        state, T, mylite_sql_parser_make_literal(state, S, MYLITE_SQL_AST_LITERAL_STRING));
+}
+column_attribute(A) ::= VISIBLE(T). {
+    A = mylite_sql_parser_make_column_visibility_attribute(
+        state, T, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_VISIBLE);
+}
+column_attribute(A) ::= INVISIBLE(T). {
+    A = mylite_sql_parser_make_column_visibility_attribute(
+        state, T, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_INVISIBLE);
+}
+column_attribute(A) ::= COLUMN_FORMAT(C) DEFAULT(T). {
+    A = mylite_sql_parser_make_column_format_attribute(
+        state, C, T, MYLITE_SQL_AST_COLUMN_FORMAT_DEFAULT);
+}
+column_attribute(A) ::= COLUMN_FORMAT(C) FIXED(T). {
+    A = mylite_sql_parser_make_column_format_attribute(
+        state, C, T, MYLITE_SQL_AST_COLUMN_FORMAT_FIXED);
+}
+column_attribute(A) ::= COLUMN_FORMAT(C) DYNAMIC(T). {
+    A = mylite_sql_parser_make_column_format_attribute(
+        state, C, T, MYLITE_SQL_AST_COLUMN_FORMAT_DYNAMIC);
+}
+column_attribute(A) ::= STORAGE(S) DEFAULT(T). {
+    A = mylite_sql_parser_make_column_storage_attribute(
+        state, S, T, MYLITE_SQL_AST_COLUMN_STORAGE_DEFAULT);
+}
+column_attribute(A) ::= STORAGE(S) DISK(T). {
+    A = mylite_sql_parser_make_column_storage_attribute(
+        state, S, T, MYLITE_SQL_AST_COLUMN_STORAGE_DISK);
+}
+column_attribute(A) ::= STORAGE(S) MEMORY(T). {
+    A = mylite_sql_parser_make_column_storage_attribute(
+        state, S, T, MYLITE_SQL_AST_COLUMN_STORAGE_MEMORY);
+}
+
+column_default_value(A) ::= literal(B). {
+    A = B;
+}
+column_default_value(A) ::= PLUS(T) numeric_literal(B). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE, B);
+}
+column_default_value(A) ::= MINUS(T) numeric_literal(B). [UMINUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE, B);
+}
+column_default_value(A) ::= current_timestamp_value(B). {
+    A = B;
+}
+column_default_value(A) ::= LPAREN(L) expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+current_timestamp_value(A) ::= CURRENT_TIMESTAMP(T). {
+    A = mylite_sql_parser_make_current_timestamp(state, T, NULL);
+}
+current_timestamp_value(A) ::= CURRENT_TIMESTAMP(T) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_current_timestamp_empty_parens(state, T, L, R);
+}
+current_timestamp_value(A) ::= CURRENT_TIMESTAMP(T) column_precision(B). {
+    A = mylite_sql_parser_make_current_timestamp(state, T, B);
+}
+
 opt_column_length(A) ::= . {
     A = NULL;
 }
@@ -798,6 +883,9 @@ expression(A) ::= literal(B). {
 expression(A) ::= qualified_identifier(B). {
     A = B;
 }
+expression(A) ::= current_timestamp_value(B). {
+    A = B;
+}
 expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
@@ -855,6 +943,16 @@ literal(A) ::= FALSE(T). {
 }
 literal(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+
+numeric_literal(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+numeric_literal(A) ::= DECIMAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
+}
+numeric_literal(A) ::= FLOAT(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
 }
 
 qualified_identifier(A) ::= identifier(B). {

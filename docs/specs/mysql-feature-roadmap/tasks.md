@@ -23,7 +23,7 @@ level application surfaces.
        `FLOAT`, `DOUBLE`, aliases, precision/scale, and metadata.
 7. [x] Temporal column types: `DATE`, `TIME`, `DATETIME`, `TIMESTAMP`, `YEAR`,
        fractional seconds, zero values, and metadata.
-8. [ ] Column attributes: `NULL`, `NOT NULL`, `DEFAULT`, expression defaults,
+8. [x] Column attributes: `NULL`, `NOT NULL`, `DEFAULT`, expression defaults,
        `ON UPDATE`, comments, visibility, and storage/format options.
 9. [ ] Primary keys and `AUTO_INCREMENT`: inline and table constraints,
        allocation, explicit values, metadata, and error cases.

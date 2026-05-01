@@ -362,10 +362,16 @@ RESET PERSIST exposes explicit persisted system-variable targets:
 ok statements=1 kinds=reset[1:3,0:29]/system_variable:max_connections
 ```
 
-RESET BINARY LOGS AND GTIDS exposes the binary-log collection:
+RESET BINARY LOGS AND GTIDS exposes the binary-log collection. The legacy
+`RESET MASTER` spelling is also classified as binary-log metadata so runtime
+diagnostics can route the unsupported form deliberately:
 
 ```text
 ok statements=1 kinds=reset[1:5,0:27]/binary_log
+```
+
+```text
+ok statements=1 kinds=reset[1:2,0:12]/binary_log
 ```
 
 CLONE exposes local directory and remote donor targets:

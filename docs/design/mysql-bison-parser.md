@@ -235,8 +235,8 @@ connection targets in `KILL`, binary log event
 payloads in `BINLOG`, binary log targets in `SHOW BINARY LOGS`,
 `SHOW BINARY LOG STATUS`, `SHOW MASTER STATUS`, `SHOW BINLOG EVENTS`,
 `PURGE BINARY LOGS TO ...`, `PURGE BINARY LOGS BEFORE ...`, and
-`RESET BINARY LOGS AND GTIDS`, relay log targets in
-`SHOW RELAYLOG EVENTS IN ...`, replication channel targets in channel-only
+`RESET BINARY LOGS AND GTIDS`, including legacy `RESET MASTER` routing, relay
+log targets in `SHOW RELAYLOG EVENTS IN ...`, replication channel targets in channel-only
 `SHOW RELAYLOG EVENTS`, `SHOW REPLICAS`, `SHOW REPLICA STATUS`, and
 `FLUSH RELAY LOGS`, documented global log/cache/privilege/status/user-resource
 targets in `FLUSH`, table targets in `FLUSH TABLES`, and
@@ -359,8 +359,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   only; plugin availability, privilege checks, copy behavior, SSL requirements,
   and restart side effects remain runtime work.
   Binary log metadata records explicit log-file targets or binary-log collection
-  targets for `BEFORE` purge forms, but does not classify position or time
-  expressions. `BINLOG` metadata records only the first string event payload.
+  targets for `BEFORE` purge and reset forms, including legacy `RESET MASTER`,
+  but does not classify position or time expressions. `BINLOG` metadata records
+  only the first string event payload.
   `SHOW RELAYLOG EVENTS` metadata records the explicit relay log name when
   present, bare relay-log targets, or an explicit channel name when no log file
   is named.

@@ -551,9 +551,9 @@ case "$maintenance_output" in
 		;;
 esac
 
-reset_output=$("$parser" 'RESET PERSIST max_connections; RESET PERSIST IF EXISTS autocommit; RESET PERSIST; RESET BINARY LOGS AND GTIDS; RESET BINARY LOGS AND GTIDS TO 100')
+reset_output=$("$parser" 'RESET PERSIST max_connections; RESET PERSIST IF EXISTS autocommit; RESET PERSIST; RESET BINARY LOGS AND GTIDS; RESET BINARY LOGS AND GTIDS TO 100; RESET MASTER; RESET MASTER TO 100')
 case "$reset_output" in
-	*"reset"*/system_variable:max_connections*"reset"*/system_variable:autocommit*"reset[11:12"*"reset"*/binary_log*"reset"*/binary_log*) ;;
+	*"reset"*/system_variable:max_connections*"reset"*/system_variable:autocommit*"reset[11:12"*"reset"*/binary_log*"reset"*/binary_log*"reset"*/binary_log*"reset"*/binary_log*) ;;
 	*)
 		echo "unexpected RESET output: $reset_output" >&2
 		exit 1

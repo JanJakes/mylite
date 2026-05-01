@@ -2263,6 +2263,10 @@ static int classify_reset_statement_object(const mylite_parser *parser,
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_BINARY_LOG);
 	}
 
+	if (token_text_equals(parser, token_index, "MASTER")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_BINARY_LOG);
+	}
+
 	if (!token_text_equals(parser, token_index, "PERSIST")) {
 		return classify_replication_channel_statement_object(parser, statement, token_index, last_token_index);
 	}

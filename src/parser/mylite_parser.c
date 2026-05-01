@@ -162,30 +162,6 @@ void mylite_parser_record_empty_statement(MyliteParseContext *ctx) {
   ctx->result->statement_kind_counts[MYLITE_STATEMENT_EMPTY]++;
 }
 
-void mylite_parser_require_token_text(MyliteParseContext *ctx,
-                                      MyliteToken token,
-                                      const char *text) {
-  if (ctx->failed || token_ascii_equals(&token, text)) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
-void mylite_parser_require_token_text_any(MyliteParseContext *ctx,
-                                          MyliteToken token,
-                                          const char *first,
-                                          const char *second) {
-  if (ctx->failed || token_ascii_equals(&token, first) ||
-      token_ascii_equals(&token, second)) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
 void mylite_parser_require_event_statement_atom(MyliteParseContext *ctx,
                                                 MyliteToken token) {
   static const char *const starters[] = {

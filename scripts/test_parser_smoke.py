@@ -767,6 +767,7 @@ def main() -> int:
         ("set names utf8mb4 collate utf8mb4_bin;", 0, {"statements": "1", "utility": "1"}),
         ("set global max_connections = 100;", 0, {"statements": "1", "utility": "1"}),
         ("set persist_only event_scheduler = disabled;", 0, {"statements": "1", "utility": "1"}),
+        ("set @a := 1;", 0, {"statements": "1", "utility": "1"}),
         ("set password for current_user() = 'secret';", 0, {"statements": "1", "utility": "1"}),
         ("set role r1;", 0, {"statements": "1", "utility": "1"}),
         ("set sql_buffer_result = on;", 0, {"statements": "1", "utility": "1"}),

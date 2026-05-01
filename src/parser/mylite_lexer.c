@@ -95,9 +95,11 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
       lexer_advance(lexer);
       if (lexer_peek(lexer, 0) == '=') {
         lexer_advance(lexer);
+        token->length = lexer->offset - token->offset;
+        return ML_ASSIGN;
       }
       token->length = lexer->offset - token->offset;
-      return ML_ATOM;
+      return ML_COLON;
     case '.':
       lexer_advance(lexer);
       token->length = 1;
@@ -412,8 +414,18 @@ static int lexer_identifier(MyliteLexer *lexer, MyliteToken *token) {
 }
 
 static int lexer_operator(MyliteLexer *lexer, MyliteToken *token) {
+  unsigned char c = lexer_peek(lexer, 0);
+
   lexer_advance(lexer);
   token->length = lexer->offset - token->offset;
+
+  if (c == '=') {
+    return ML_EQUALS;
+  }
+  if (c == '*') {
+    return ML_STAR;
+  }
+
   return ML_ATOM;
 }
 

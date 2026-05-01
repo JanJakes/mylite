@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER ASC AS AT BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN CODE COLLATE COLUMN_NAME COMMENT COMPLETION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTEXT CONVERT CPU CURSOR_NAME DATAFILE DECIMAL DEFINITION DESCRIPTION DIRECTORY DISABLE DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INT INTEGER INVOKER IO IPC JOIN JSON KEYRING LEAVES MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MUTEX MYSQL_ERRNO NAME NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PAGE PARTITION PHASE PRECEDES PRESERVE REAL REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD RESUME RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT SCHEDULE SCHEMA_NAME SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS AT BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN CODE COLLATE COLUMN_NAME COMMENT COMPLETION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTEXT CONVERT CPU CURSOR_NAME DATAFILE DECIMAL DEFINITION DESCRIPTION DIRECTORY DISABLE DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INT INTEGER INVOKER IO IPC JOIN JSON KEYRING LEAVES MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MUTEX MYSQL_ERRNO NAME NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PAGE PARTITION PHASE PRECEDES PRESERVE REAL REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD RESUME RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT SCHEDULE SCHEMA_NAME SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT EQUALS STAR AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -870,9 +870,7 @@ start_group_replication_option ::= USER start_option_equals ATOM.
 start_group_replication_option ::= PASSWORD start_option_equals ATOM.
 start_group_replication_option ::= DEFAULT_AUTH start_option_equals ATOM.
 
-start_option_equals ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "=");
-}
+start_option_equals ::= EQUALS.
 
 stop_statement ::= STOP stop_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
@@ -1415,9 +1413,7 @@ show_profile_type ::= SWAPS.
 show_profile_for_tail ::= .
 show_profile_for_tail ::= FOR QUERY ATOM.
 
-show_count_star ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "*");
-}
+show_count_star ::= STAR.
 
 show_count_kind ::= ERRORS.
 show_count_kind ::= WARNINGS.
@@ -1555,9 +1551,7 @@ handler_read_direction ::= NEXT.
 handler_read_direction ::= PREV.
 handler_read_direction ::= LAST.
 
-handler_read_operator ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "=");
-}
+handler_read_operator ::= EQUALS.
 
 handler_read_tuple ::= LP values_row_contents RP.
 
@@ -1626,9 +1620,7 @@ clone_at ::= AT_SIGN.
 clone_host ::= ATOM.
 clone_host ::= LABEL.
 
-clone_colon ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, ":");
-}
+clone_colon ::= COLON.
 
 clone_identified ::= IDENTIFIED.
 
@@ -2069,9 +2061,7 @@ diagnostics_target ::= LABEL.
 diagnostics_condition_value ::= ATOM.
 diagnostics_condition_value ::= LABEL.
 
-diagnostics_equals ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "=");
-}
+diagnostics_equals ::= EQUALS.
 
 diagnostics_statement_item_name ::= NUMBER.
 diagnostics_statement_item_name ::= ROW_COUNT.
@@ -2242,9 +2232,8 @@ set_assignment_scope ::= SESSION.
 
 set_assignment ::= set_variable_name set_assignment_operator set_value_start statement_tail.
 
-set_assignment_operator ::= ATOM(A). {
-  mylite_parser_require_token_text_any(ctx, A, "=", ":=");
-}
+set_assignment_operator ::= EQUALS.
+set_assignment_operator ::= ASSIGN.
 
 set_value_start ::= expression_start.
 set_value_start ::= ALL.

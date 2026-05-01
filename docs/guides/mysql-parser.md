@@ -169,6 +169,10 @@ ok statements=1 kinds=set[1:4,0:31]/system_variable:@@session.sql_mode
 ```
 
 ```text
+ok statements=1 kinds=set[1:9,0:49]/system_variable:keycache1.key_buffer_size
+```
+
+```text
 ok statements=1 kinds=set[1:4,0:18]/system_variable:autocommit
 ```
 

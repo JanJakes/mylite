@@ -2754,16 +2754,30 @@ static size_t find_set_system_variable_name_token(const mylite_parser *parser,
 	     token_text_equals(parser, token_index, "SESSION") ||
 	     token_text_equals(parser, token_index, "LOCAL") ||
 	     token_text_equals(parser, token_index, "PERSIST") ||
-	     token_text_equals(parser, token_index, "PERSIST_ONLY")) &&
-	    token_index + 2 <= last_token_index &&
-	    token_can_start_local_variable_name(&parser->tokens[token_index + 1]) &&
-	    token_is_assignment_operator(parser, token_index + 2)) {
-		return token_index + 1;
+	     token_text_equals(parser, token_index, "PERSIST_ONLY"))) {
+		size_t name_token_index = token_index + 1;
+		size_t last_name_token;
+
+		if (name_token_index > last_token_index ||
+		    name_token_index >= parser->token_count ||
+		    !token_can_start_local_variable_name(&parser->tokens[name_token_index])) {
+			return parser->token_count;
+		}
+
+		last_name_token = last_qualified_name_token(parser, name_token_index, last_token_index);
+		if (last_name_token + 1 <= last_token_index &&
+		    token_is_assignment_operator(parser, last_name_token + 1)) {
+			return name_token_index;
+		}
+		return parser->token_count;
 	}
 
-	if (token_can_start_local_variable_name(&parser->tokens[token_index]) &&
-	    token_index + 1 <= last_token_index &&
-	    token_is_assignment_operator(parser, token_index + 1)) {
+	if (token_can_start_local_variable_name(&parser->tokens[token_index])) {
+		size_t last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+		if (last_name_token + 1 > last_token_index ||
+		    !token_is_assignment_operator(parser, last_name_token + 1)) {
+			return parser->token_count;
+		}
 		return token_index;
 	}
 

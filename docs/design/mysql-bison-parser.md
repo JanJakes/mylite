@@ -211,8 +211,9 @@ before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 `UPDATE` table-reference scanning skips derived-table subqueries and descends
 into parenthesized joined table references before the `SET` clause.
 `SELECT ... INTO` and `TABLE ... INTO` assignment targets are recorded for user
-variables and local variables, while `INTO OUTFILE` and `INTO DUMPFILE` record
-the explicit export file target.
+variables and local variables. `SET` system-variable targets preserve qualified
+structured names such as `keycache1.key_buffer_size`. `INTO OUTFILE` and
+`INTO DUMPFILE` record the explicit export file target.
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table

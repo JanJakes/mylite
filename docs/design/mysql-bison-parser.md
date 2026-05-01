@@ -330,7 +330,9 @@ preserve the named table target.
 Plain `SELECT` and `WITH` query statements are recorded as query targets unless
 they expose a more specific `INTO` target.
 Standalone `VALUES` statements are recorded as query targets because MySQL
-treats them as DML statements that return row sets.
+treats them as DML statements that return row sets; parser validation checks
+`ROW(...)` constructor-list shape plus optional `ORDER BY`, `LIMIT`, and
+set-operation tails.
 `DO` statements are recorded as query targets too because they execute
 expressions without exposing a table, schema, or administrative target, and
 they validate top-level expression-list separator shape.

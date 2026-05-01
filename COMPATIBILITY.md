@@ -146,7 +146,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. | Parser records direct and parenthesized `TABLE` query-expression table targets plus the first `INTO` export-file or variable target; result rows, ordering, limit, field/line options, export behavior, and assignment semantics are not implemented. |
 | `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. |  |
 | `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. |  |
-| `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. | Parser records standalone `VALUES` statements as query targets; row construction, ordering, limit, result metadata, and execution semantics are not implemented. |
+| `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. | Parser records standalone `VALUES` statements as query targets and validates `ROW(...)` constructor list, optional `ORDER BY`, optional `LIMIT`, and set-operation tail shape; result metadata and execution semantics are not implemented. |
 
 ### 1.3 Transactional, Locking, Replication, Prepared, and Compound Statements
 

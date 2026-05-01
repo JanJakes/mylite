@@ -50,14 +50,49 @@ case "$grouped_query_output" in
 		;;
 esac
 
-values_query_output=$("$parser" 'VALUES ROW(1), ROW(2); ((VALUES ROW(3))) ORDER BY 1; EXPLAIN VALUES ROW(1)')
+values_query_output=$("$parser" 'VALUES ROW(1), ROW(2); VALUES ROW(1), ROW(2) ORDER BY column_0 DESC LIMIT 1; ((VALUES ROW(3))) ORDER BY 1; EXPLAIN VALUES ROW(1)')
 case "$values_query_output" in
-	*"kinds=values[1:10,0:21]/query,values[12:23,23:51]/query,explain[25:30,53:74]"*) ;;
+	*"values"*/query*"values"*/query*"values"*/query*"explain"*) ;;
 	*)
 		echo "unexpected values query output: $values_query_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'VALUES'; then
+	echo "expected missing VALUES row constructor to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES (1)'; then
+	echo "expected VALUES without ROW constructor to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW()'; then
+	echo "expected empty VALUES ROW constructor to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW(1),'; then
+	echo "expected trailing VALUES row comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW(1) ROW(2)'; then
+	echo "expected missing VALUES row comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW(1) ORDER'; then
+	echo "expected incomplete VALUES ORDER BY to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW(1) LIMIT'; then
+	echo "expected missing VALUES LIMIT count to fail" >&2
+	exit 1
+fi
 
 do_query_output=$("$parser" 'DO 1 + 1; DO SLEEP(1); DO 1, SLEEP(0), @a := 2; DO (SELECT @x:=b FROM t1 WHERE a=5); DO ST_AsText(@p) AS p')
 case "$do_query_output" in

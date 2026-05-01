@@ -66,7 +66,8 @@ specific `INTO` target is present:
 ok statements=1 kinds=select[1:2,0:8]/query
 ```
 
-Standalone `VALUES` statements expose the query object kind:
+Standalone `VALUES` statements expose the query object kind and validate row
+constructor-list, ordering, and limit shape:
 
 ```text
 ok statements=1 kinds=values[1:10,0:21]/query

@@ -77,6 +77,7 @@ typedef enum CreateTableOptionValueKind {
 typedef struct MyliteExpressionFrame {
   int active;
   int allow_empty;
+  int allow_comma;
   int validate_adjacent;
   int started;
   int previous_top_token_id;
@@ -147,8 +148,8 @@ static int query_expression_depth_token(
     MyliteExpressionStack *stack, const char *message);
 static int query_expression_stack_active(MyliteExpressionStack *stack,
                                          int depth);
-static int query_expression_stack_scalar_group(MyliteExpressionStack *stack,
-                                               int depth);
+static int query_expression_stack_rejects_comma(MyliteExpressionStack *stack,
+                                                int depth);
 static int query_expression_stack_open_from_previous(
     MyliteParseContext *ctx, MyliteExpressionStack *stack, int depth,
     int previous_top_token_id, MyliteToken previous_top_token,
@@ -270,10 +271,6 @@ static int validate_parenthesized_identifier_list(MyliteParseContext *ctx,
                                                   MyliteLexer *lexer,
                                                   MyliteToken start,
                                                   const char *message);
-static int validate_parenthesized_nonempty_body(MyliteParseContext *ctx,
-                                                MyliteLexer *lexer,
-                                                MyliteToken start,
-                                                const char *message);
 static int validate_parenthesized_expression_body(MyliteParseContext *ctx,
                                                   MyliteLexer *lexer,
                                                   MyliteToken start,
@@ -5699,7 +5696,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
                              "incomplete CREATE TABLE CHECK constraint");
         return;
       }
-      if (!validate_parenthesized_nonempty_body(
+      if (!validate_parenthesized_expression_body(
               ctx, &lexer, token,
               "incomplete CREATE TABLE CHECK constraint")) {
         return;
@@ -6627,7 +6624,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
                              "incomplete ALTER TABLE CHECK constraint");
         return;
       }
-      if (!validate_parenthesized_nonempty_body(
+      if (!validate_parenthesized_expression_body(
               ctx, &lexer, token,
               "incomplete ALTER TABLE CHECK constraint")) {
         return;
@@ -9779,10 +9776,10 @@ static int query_expression_stack_active(MyliteExpressionStack *stack,
          stack->frames[depth].active;
 }
 
-static int query_expression_stack_scalar_group(MyliteExpressionStack *stack,
-                                               int depth) {
+static int query_expression_stack_rejects_comma(MyliteExpressionStack *stack,
+                                                int depth) {
   return query_expression_stack_active(stack, depth) &&
-         !stack->frames[depth].allow_empty;
+         !stack->frames[depth].allow_comma;
 }
 
 static int query_expression_stack_open_from_previous(
@@ -9804,6 +9801,8 @@ static int query_expression_stack_open_from_previous(
   frame->allow_empty = query_expression_group_allows_empty(
       previous_top_token_id, previous_top_token, previous_was_operator,
       token_id);
+  frame->allow_comma =
+      frame->allow_empty || previous_top_token_id == ML_IN;
   frame->validate_adjacent =
       query_expression_group_validates_adjacent(frame->allow_empty, token_id);
   frame->started = 0;
@@ -9837,6 +9836,7 @@ static void query_expression_stack_open_list(MyliteExpressionStack *stack,
   frame = &stack->frames[depth];
   frame->active = 1;
   frame->allow_empty = allow_empty;
+  frame->allow_comma = allow_empty;
   frame->validate_adjacent = 1;
   frame->started = 0;
   frame->previous_top_token_id = 0;
@@ -11601,37 +11601,6 @@ static int validate_parenthesized_identifier_list(MyliteParseContext *ctx,
   return 0;
 }
 
-static int validate_parenthesized_nonempty_body(MyliteParseContext *ctx,
-                                                MyliteLexer *lexer,
-                                                MyliteToken start,
-                                                const char *message) {
-  MyliteToken token;
-  MyliteToken pending_token = start;
-  int token_id;
-  int depth = 1;
-  int saw_token = 0;
-
-  while ((token_id = mylite_lexer_next(lexer, &token)) > 0) {
-    if (depth == 1 && token_id == ML_RP) {
-      if (!saw_token) {
-        mylite_parser_reject(ctx, pending_token, message);
-        return 0;
-      }
-      return 1;
-    }
-
-    saw_token = 1;
-    if (token_opens_nested_expression(token_id)) {
-      depth++;
-    } else if (token_closes_nested_expression(token_id)) {
-      depth--;
-    }
-  }
-
-  mylite_parser_reject(ctx, pending_token, message);
-  return 0;
-}
-
 static int validate_parenthesized_expression_body(MyliteParseContext *ctx,
                                                   MyliteLexer *lexer,
                                                   MyliteToken start,
@@ -11646,7 +11615,7 @@ static int validate_parenthesized_expression_body(MyliteParseContext *ctx,
 
   while ((token_id = mylite_lexer_next(lexer, &token)) > 0) {
     if (token_id == ML_COMMA &&
-        query_expression_stack_scalar_group(&expression_stack, depth)) {
+        query_expression_stack_rejects_comma(&expression_stack, depth)) {
       mylite_parser_reject(ctx, token, message);
       return 0;
     }

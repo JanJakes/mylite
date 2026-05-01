@@ -186,8 +186,8 @@ token sink:
   definitions, and validate table-level index key-part prefix lengths plus
   `ASC`/`DESC` tails and closed `USING`/`TYPE` values plus table-level
   foreign-key child/reference column-list envelopes and referential-action
-  tails. Column and table `CHECK` constraints
-  require non-empty parenthesized expression bodies, and `CHECK` constraints
+  tails. Column and table `CHECK` constraints validate parenthesized expression
+  bodies for dangling operators and scalar comma lists, and `CHECK` constraints
   validate `ENFORCED`/`NOT ENFORCED` tails while allowing later column
   attributes where MySQL permits them. Column definitions require a known MySQL
   type-family start plus common attribute starts and selected closed attribute

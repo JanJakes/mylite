@@ -5,7 +5,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CASCADED CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISCARD DUMPFILE DUPLICATE EACH ENABLE ENCRYPTION ENFORCED ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INTERSECT INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MANUAL MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NONE NOT NULL NUMBER OFF ONE ONLY OPTIONS ORGANIZATION OUTFILE OWNER PACK_KEYS PAGE PARSE_TREE PARTITION PARTITIONING PARTITIONS PHASE PORT PRECEDES PRESERVE PRIMARY RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SECONDARY_LOAD SECONDARY_UNLOAD SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STREAM STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE USE_FRM VALIDATION VALUE VCPU WAIT WITHOUT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS BULK CASCADED CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISCARD DUMPFILE DUPLICATE EACH ENABLE ENCRYPTION ENFORCED ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INTERSECT INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MANUAL MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NONE NOT NULL NUMBER OFF ONE ONLY OPTIONS ORGANIZATION OUTFILE OWNER PACK_KEYS PAGE PARALLEL PARSE_TREE PARTITION PARTITIONING PARTITIONS PHASE PORT PRECEDES PRESERVE PRIMARY RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT S3 SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SECONDARY_LOAD SECONDARY_UNLOAD SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STREAM STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE URL USE_FRM VALIDATION VALUE VCPU WAIT WITHOUT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
 %fallback ATOM BOOLEAN_NUMBER ENCRYPTION_VALUE FACTOR_NUMBER NUMBER_LITERAL SQLSTATE_VALUE STRING_LITERAL.
 %fallback ATOM GE GT LE LT.
 %fallback ATOM STACKED.
@@ -1760,32 +1760,48 @@ load_tail ::= DATA load_file_tail.
 load_tail ::= XML load_xml_tail.
 load_tail ::= INDEX INTO CACHE load_index_table_list.
 
-load_file_tail ::= load_file_priority_tail load_file_local_tail load_infile load_file_name load_duplicate_tail INTO TABLE cache_table_ref load_data_options.
-load_xml_tail ::= load_file_priority_tail load_file_local_tail load_infile load_file_name load_duplicate_tail INTO TABLE cache_table_ref load_xml_options.
+load_file_tail ::= load_file_priority_tail load_file_from_tail load_file_local_tail load_source_type load_file_name load_source_count_tail load_source_order_tail load_duplicate_tail INTO TABLE cache_table_ref load_data_options.
+load_xml_tail ::= load_file_priority_tail load_file_from_tail load_file_local_tail load_source_type load_file_name load_source_count_tail load_source_order_tail load_duplicate_tail INTO TABLE cache_table_ref load_xml_options.
 
 load_file_priority_tail ::= .
 load_file_priority_tail ::= LOW_PRIORITY.
 load_file_priority_tail ::= CONCURRENT.
 
+load_file_from_tail ::= .
+load_file_from_tail ::= FROM.
+
 load_file_local_tail ::= .
 load_file_local_tail ::= LOCAL.
 
-load_infile ::= INFILE.
+load_source_type ::= INFILE.
+load_source_type ::= URL.
+load_source_type ::= S3.
 
 load_file_name ::= string_literal.
+
+load_source_count_tail ::= .
+load_source_count_tail ::= COUNT load_ignore_count.
+
+load_source_order_tail ::= .
+load_source_order_tail ::= IN PRIMARY KEY ORDER.
 
 load_duplicate_tail ::= .
 load_duplicate_tail ::= IGNORE.
 load_duplicate_tail ::= REPLACE.
 
-load_data_options ::= load_partition_tail load_character_set_tail load_fields_tail load_lines_tail load_ignore_tail load_column_list_tail load_set_tail.
-load_xml_options ::= load_character_set_tail load_xml_rows_tail load_ignore_tail load_column_list_tail load_set_tail.
+load_data_options ::= load_partition_tail load_character_set_tail load_compression_tail load_fields_tail load_lines_tail load_ignore_tail load_column_list_tail load_post_options_tail.
+load_data_options ::= load_partition_tail load_character_set_tail load_compression_tail load_fields_tail load_lines_tail load_ignore_tail load_column_list_tail SET update_assignment_start.
+load_xml_options ::= load_character_set_tail load_compression_tail load_xml_rows_tail load_ignore_tail load_column_list_tail load_post_options_tail.
+load_xml_options ::= load_character_set_tail load_compression_tail load_xml_rows_tail load_ignore_tail load_column_list_tail SET update_assignment_start.
 
 load_partition_tail ::= .
 load_partition_tail ::= load_partition LP load_partition_names RP.
 
 load_character_set_tail ::= .
 load_character_set_tail ::= CHARACTER SET set_charset_name.
+
+load_compression_tail ::= .
+load_compression_tail ::= COMPRESSION diagnostics_equals string_literal.
 
 load_fields_tail ::= .
 load_fields_tail ::= load_fields_kind load_field_options.
@@ -1833,8 +1849,16 @@ load_column_list ::= load_column_list import_comma load_column_ref.
 load_column_ref ::= cache_name_part.
 load_column_ref ::= user_variable_name.
 
-load_set_tail ::= .
-load_set_tail ::= SET update_assignment_start.
+load_post_options_tail ::= load_parallel_tail load_memory_tail load_algorithm_tail.
+
+load_parallel_tail ::= .
+load_parallel_tail ::= PARALLEL diagnostics_equals load_ignore_count.
+
+load_memory_tail ::= .
+load_memory_tail ::= MEMORY diagnostics_equals tablespace_number_value.
+
+load_algorithm_tail ::= .
+load_algorithm_tail ::= ALGORITHM diagnostics_equals BULK.
 
 load_index_table_list ::= load_index_table_spec.
 load_index_table_list ::= load_index_table_list import_comma load_index_table_spec.
@@ -4426,6 +4450,7 @@ keyword ::= COLUMN.
 keyword ::= COLUMNS.
 keyword ::= COPY.
 keyword ::= COUNT.
+keyword ::= BULK.
 keyword ::= DATABASES.
 keyword ::= DEFAULT_AUTH.
 keyword ::= ENGINE.
@@ -4512,6 +4537,7 @@ keyword ::= NEXT.
 keyword ::= PREV.
 keyword ::= RECURSIVE.
 keyword ::= ROW.
+keyword ::= S3.
 keyword ::= SQLSTATE.
 keyword ::= SQL_THREAD.
 keyword ::= DISTINCT.
@@ -4557,6 +4583,7 @@ keyword ::= OLD.
 keyword ::= OPTION.
 keyword ::= OPTIONAL.
 keyword ::= OPTIONALLY.
+keyword ::= PARALLEL.
 keyword ::= PARSER.
 keyword ::= PASSWORD_LOCK_TIME.
 keyword ::= PROXY.
@@ -4576,6 +4603,7 @@ keyword ::= PARTITIONS.
 keyword ::= VALIDATION.
 keyword ::= VISIBLE.
 keyword ::= WITHOUT.
+keyword ::= URL.
 keyword ::= X509.
 
 keyword_not_select_clause ::= SELECT.
@@ -4726,6 +4754,7 @@ keyword_not_select_clause ::= COLUMN.
 keyword_not_select_clause ::= COLUMNS.
 keyword_not_select_clause ::= COPY.
 keyword_not_select_clause ::= COUNT.
+keyword_not_select_clause ::= BULK.
 keyword_not_select_clause ::= DATABASES.
 keyword_not_select_clause ::= DEFAULT_AUTH.
 keyword_not_select_clause ::= ENGINE.
@@ -4811,6 +4840,7 @@ keyword_not_select_clause ::= NEXT.
 keyword_not_select_clause ::= PREV.
 keyword_not_select_clause ::= RECURSIVE.
 keyword_not_select_clause ::= ROW.
+keyword_not_select_clause ::= S3.
 keyword_not_select_clause ::= SQLSTATE.
 keyword_not_select_clause ::= SQL_THREAD.
 keyword_not_select_clause ::= DISTINCT.
@@ -4856,6 +4886,7 @@ keyword_not_select_clause ::= OLD.
 keyword_not_select_clause ::= OPTION.
 keyword_not_select_clause ::= OPTIONAL.
 keyword_not_select_clause ::= OPTIONALLY.
+keyword_not_select_clause ::= PARALLEL.
 keyword_not_select_clause ::= PARSER.
 keyword_not_select_clause ::= PASSWORD_LOCK_TIME.
 keyword_not_select_clause ::= PROXY.
@@ -4875,4 +4906,5 @@ keyword_not_select_clause ::= PARTITIONS.
 keyword_not_select_clause ::= VALIDATION.
 keyword_not_select_clause ::= VISIBLE.
 keyword_not_select_clause ::= WITHOUT.
+keyword_not_select_clause ::= URL.
 keyword_not_select_clause ::= X509.

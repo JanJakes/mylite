@@ -149,9 +149,11 @@ token sink:
 - `LOCK INSTANCE FOR BACKUP`, `UNLOCK INSTANCE`, and `UNLOCK TABLES` have
   closed statement shapes.
 - `LOAD DATA` and `LOAD XML` recognize file modifiers, duplicate handling,
-  string-literal file names, partition or row-matching clauses, character sets,
-  field/line options, numeric ignored-row counts, column/user-variable lists,
-  and `SET` tails.
+  optional `FROM`, `INFILE`/`URL`/`S3` sources, string-literal file names,
+  source counts and primary-key-order hints, partition or row-matching clauses,
+  character sets, compression, field/line options, numeric ignored-row counts,
+  column/user-variable lists, `SET` tails, and bulk-load parallel, memory, and
+  algorithm options where they are unambiguous with `SET` assignment tails.
   `LOAD DATA` partition names use the shared identifier grammar.
 - `LOAD INDEX INTO CACHE` recognizes per-table partition lists, `ALL`,
   key/index lists, and `IGNORE LEAVES`.

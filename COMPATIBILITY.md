@@ -171,12 +171,12 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. | Parser requires a string-literal payload. |
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser recognizes `TO` string-literal log names and `BEFORE` expression tails. |
 | `PURGE MASTER LOGS` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than purging binary logs. | Replacement statement is `PURGE BINARY LOGS`; removed syntax is accepted only in permissive corpus mode. |
-| `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser recognizes optional numeric `TO` index values. |
+| `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser recognizes optional numeric `TO` index values and comma-separated combinations with `RESET REPLICA` options. |
 | `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |
 | `CHANGE MASTER TO` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than changing replication source settings. | Replacement statement is `CHANGE REPLICATION SOURCE TO`; removed syntax is accepted only in permissive corpus mode. |
 | `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. | Parser recognizes MySQL 8.4 filter names, parenthesized rule lists, empty rule lists, rewrite-db pairs, and optional channel clauses. |
 | `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. | Parser recognizes documented MySQL 8.4 source option names, numeric values, boolean values, string-or-`NULL` values, `IGNORE_SERVER_IDS` lists, privilege-check users, fixed primary-key-check enums, GTID assignment values, and channel names. |
-| `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. | Parser recognizes `ALL` and channel names using the shared identifier grammar. |
+| `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. | Parser recognizes `ALL`, channel names using the shared identifier grammar, and comma-separated combinations with `RESET BINARY LOGS AND GTIDS` options. |
 | `RESET SLAVE` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than resetting replica metadata. | Replacement statement is `RESET REPLICA`; removed syntax is accepted only in permissive corpus mode. |
 | `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. | Parser recognizes thread, until, connection, and channel clauses with string-literal log/GTID/user option values, numeric log positions, and channel names using the shared identifier grammar. |
 | `START SLAVE` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than starting replica threads. | Replacement statement is `START REPLICA`; removed syntax is accepted only in permissive corpus mode. |
@@ -244,7 +244,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, table forms, simple option lists, binary/engine/error/general/relay/slow log forms, and channel-qualified relay logs. |
 | `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. | Parser recognizes CONNECTION/QUERY modes and literal, shared-identifier local-variable, and user-variable targets. |
 | `LOAD INDEX INTO CACHE` | ❌ | low | MyISAM index preload syntax. | Parser recognizes per-table partition lists including `ALL`, key/index lists, and `IGNORE LEAVES`. |
-| `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. | Parser recognizes MySQL 8.4 reset forms and keeps removed `RESET MASTER` syntax permissive-corpus-only. |
+| `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. | Parser recognizes comma-separated MySQL 8.4 reset options, separate `RESET PERSIST` forms, and keeps removed `RESET MASTER`/`RESET SLAVE` syntax permissive-corpus-only. |
 | `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. | Parser recognizes one- and two-part persisted variable names using the shared identifier grammar. |
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. | Parser recognizes the standalone statement. |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. | Parser recognizes the standalone statement. |

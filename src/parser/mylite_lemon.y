@@ -2243,13 +2243,18 @@ reset_statement ::= RESET reset_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-reset_tail ::= BINARY LOGS AND reset_gtids reset_binary_logs_tail.
-reset_tail ::= MASTER(A). {
+reset_tail ::= reset_options.
+reset_tail ::= PERSIST reset_persist_tail.
+
+reset_options ::= reset_option.
+reset_options ::= reset_options import_comma reset_option.
+
+reset_option ::= BINARY LOGS AND reset_gtids reset_binary_logs_tail.
+reset_option ::= MASTER(A). {
   mylite_parser_require_permissive(ctx, A);
 }
-reset_tail ::= PERSIST reset_persist_tail.
-reset_tail ::= REPLICA reset_replica_tail.
-reset_tail ::= SLAVE(A) reset_replica_tail. {
+reset_option ::= REPLICA reset_replica_tail.
+reset_option ::= SLAVE(A) reset_replica_tail. {
   mylite_parser_require_permissive(ctx, A);
 }
 

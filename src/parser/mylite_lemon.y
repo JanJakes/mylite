@@ -3104,8 +3104,7 @@ signal_statement ::= SIGNAL signal_condition_value signal_set_tail. {
 signal_condition_value ::= signal_named_condition.
 signal_condition_value ::= SQLSTATE ATOM.
 
-signal_named_condition ::= ATOM.
-signal_named_condition ::= LABEL.
+signal_named_condition ::= cache_name_part.
 
 signal_set_tail ::= .
 signal_set_tail ::= SET signal_information_items.
@@ -3626,8 +3625,7 @@ fetch_statement ::= FETCH stored_program_label_ref INTO fetch_target_list. {
 fetch_target_list ::= fetch_target.
 fetch_target_list ::= fetch_target_list import_comma fetch_target.
 
-fetch_target ::= ATOM.
-fetch_target ::= LABEL.
+fetch_target ::= cache_name_part.
 
 close_statement ::= CLOSE stored_program_label_ref. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
@@ -3665,8 +3663,7 @@ declare_statement ::= DECLARE declare_handler_action declare_handler_keyword FOR
 declare_identifier_list ::= declare_name.
 declare_identifier_list ::= declare_identifier_list COMMA declare_name.
 
-declare_name ::= ATOM.
-declare_name ::= LABEL.
+declare_name ::= cache_name_part.
 
 declare_type_start ::= ATOM.
 declare_type_start ::= BINARY.

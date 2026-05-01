@@ -231,7 +231,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. |  |
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. |  |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. |  |
-| `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. |  |
+| `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser recognizes local clone and remote `CLONE INSTANCE` syntax, including optional data directory and SSL clauses. |
 | `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. |  |
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. |  |
 | `SET NAMES` | ❌ | top | Connection character set and collation semantics. |  |
@@ -252,7 +252,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | SHOW statement | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `SHOW BINARY LOG STATUS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
+| `SHOW BINARY LOG STATUS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes the MySQL 8.4 syntax. |
 | `SHOW BINARY LOGS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW BINLOG EVENTS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW CHARACTER SET` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |

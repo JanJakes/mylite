@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURSOR_NAME DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXCHANGE EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES MAX_ROWS MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PACK_KEYS PAGE PARTITION PHASE PRECEDES PRESERVE READS REAL REBUILD REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE RESUME RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURSOR_NAME DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXCHANGE EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PACK_KEYS PAGE PARTITION PHASE PRECEDES PRESERVE READS REAL REBUILD REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REQUIRE RESUME RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -1355,6 +1355,7 @@ show_tail ::= COUNT LP show_count_star RP show_count_kind.
 show_tail ::= CREATE show_create_tail.
 show_tail ::= show_diagnostics_kind show_limit_tail.
 show_tail ::= show_simple_kind.
+show_tail ::= BINARY LOG STATUS.
 show_tail ::= MASTER STATUS.
 show_tail ::= SLAVE show_slave_tail.
 show_tail ::= GRANTS show_grants_tail.
@@ -1658,24 +1659,35 @@ clone_statement ::= CLONE clone_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-clone_tail ::= INSTANCE FROM clone_instance_source clone_identified BY clone_password.
-clone_tail ::= LOCAL DATA clone_directory diagnostics_equals clone_directory_path.
+clone_tail ::= INSTANCE FROM clone_instance_source clone_identified BY clone_password clone_remote_tail.
+clone_tail ::= LOCAL DATA clone_directory clone_directory_equals_tail clone_directory_path.
 
-clone_instance_source ::= clone_user clone_at clone_host clone_colon ATOM.
+clone_instance_source ::= clone_account_name clone_colon ATOM.
 
-clone_user ::= ATOM.
-clone_user ::= LABEL.
+clone_account_name ::= drop_account_principal clone_account_host.
 
-clone_at ::= AT_SIGN.
-
-clone_host ::= ATOM.
-clone_host ::= LABEL.
+clone_account_host ::= AT_HOST drop_host_dot_tail.
+clone_account_host ::= AT_SIGN drop_host_name.
 
 clone_colon ::= COLON.
 
 clone_identified ::= IDENTIFIED.
 
 clone_password ::= ATOM.
+
+clone_remote_tail ::= clone_data_directory_tail clone_require_ssl_tail.
+
+clone_data_directory_tail ::= .
+clone_data_directory_tail ::= DATA clone_directory clone_directory_equals_tail clone_directory_path.
+
+clone_directory_equals_tail ::= .
+clone_directory_equals_tail ::= diagnostics_equals.
+
+clone_require_ssl_tail ::= .
+clone_require_ssl_tail ::= REQUIRE clone_ssl.
+
+clone_ssl ::= SSL.
+clone_ssl ::= NO SSL.
 
 clone_directory ::= DIRECTORY.
 
@@ -2810,6 +2822,7 @@ keyword ::= CHECK.
 keyword ::= CHECKSUM.
 keyword ::= OPTIMIZE.
 keyword ::= REPAIR.
+keyword ::= REQUIRE.
 keyword ::= INSTALL.
 keyword ::= INDEX.
 keyword ::= INSTANCE.
@@ -2844,6 +2857,7 @@ keyword ::= LEAVE.
 keyword ::= ITERATE.
 keyword ::= LIKE.
 keyword ::= LIMIT.
+keyword ::= LOG.
 keyword ::= FROM.
 keyword ::= USER.
 keyword ::= VIEW.
@@ -2953,6 +2967,7 @@ keyword ::= SQL_BIG_RESULT.
 keyword ::= SQL_BUFFER_RESULT.
 keyword ::= SQL_CALC_FOUND_ROWS.
 keyword ::= SQL_SMALL_RESULT.
+keyword ::= SSL.
 keyword ::= STRAIGHT_JOIN.
 keyword ::= TO.
 keyword ::= WORK.
@@ -3030,6 +3045,7 @@ keyword_not_select_clause ::= CHECK.
 keyword_not_select_clause ::= CHECKSUM.
 keyword_not_select_clause ::= OPTIMIZE.
 keyword_not_select_clause ::= REPAIR.
+keyword_not_select_clause ::= REQUIRE.
 keyword_not_select_clause ::= INSTALL.
 keyword_not_select_clause ::= INDEX.
 keyword_not_select_clause ::= INSTANCE.
@@ -3064,6 +3080,7 @@ keyword_not_select_clause ::= LEAVE.
 keyword_not_select_clause ::= ITERATE.
 keyword_not_select_clause ::= LIKE.
 keyword_not_select_clause ::= LIMIT.
+keyword_not_select_clause ::= LOG.
 keyword_not_select_clause ::= USER.
 keyword_not_select_clause ::= VIEW.
 keyword_not_select_clause ::= ELSE.
@@ -3170,6 +3187,7 @@ keyword_not_select_clause ::= SQL_BIG_RESULT.
 keyword_not_select_clause ::= SQL_BUFFER_RESULT.
 keyword_not_select_clause ::= SQL_CALC_FOUND_ROWS.
 keyword_not_select_clause ::= SQL_SMALL_RESULT.
+keyword_not_select_clause ::= SSL.
 keyword_not_select_clause ::= STRAIGHT_JOIN.
 keyword_not_select_clause ::= TO.
 keyword_not_select_clause ::= WORK.

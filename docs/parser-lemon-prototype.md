@@ -18,6 +18,9 @@ token sink:
   diagnostics items, replication options, profile types, UDF return types, and
   other statement modifiers are represented directly in Lemon rather than
   validated by C string checks.
+- MySQL 8.4 administration forms such as `SHOW BINARY LOG STATUS` and
+  `CLONE INSTANCE ... [DATA DIRECTORY ...] [REQUIRE [NO] SSL]` are recognized
+  structurally.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,

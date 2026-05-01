@@ -61,6 +61,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/alter-procedure.html`
 - MySQL 8.4 loadable-function DDL:
   `https://dev.mysql.com/doc/refman/8.4/en/create-function-loadable.html`
+- MySQL 8.4 standalone index DDL:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-index.html`
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
@@ -304,6 +306,10 @@ Unambiguous `CREATE FUNCTION` loadable-function forms validate documented
 `RETURNS` and `SONAME` clauses without tightening stored-function bodies yet.
 `ALTER FUNCTION` and `ALTER PROCEDURE` validate documented routine
 characteristics without changing parameters or bodies.
+`CREATE INDEX` validates standalone index modifiers, key-part-list shape,
+documented option clauses, and corpus-observed legacy `TYPE` / `RTREE` index
+type spellings while table-level index definitions stay with `CREATE TABLE`
+grammar work.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
 optional `IF EXISTS` with an identifier-like target; the trigger and routine
 forms accept schema-qualified targets used by the corpus.

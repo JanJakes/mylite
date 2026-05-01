@@ -72,6 +72,10 @@ Unambiguous `CREATE FUNCTION` loadable-function forms validate documented
 `RETURNS` and `SONAME` clauses without tightening stored-function bodies yet.
 `ALTER FUNCTION` and `ALTER PROCEDURE` validate documented routine
 characteristics without changing parameters or bodies.
+`CREATE INDEX` validates standalone index modifiers, key-part-list shape,
+documented option clauses, and corpus-observed legacy `TYPE` / `RTREE` index
+type spellings while table-level index definitions stay with `CREATE TABLE`
+grammar work.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
 optional `IF EXISTS` with an identifier-like target.
 `CREATE SERVER` validates `FOREIGN DATA WRAPPER` and documented server

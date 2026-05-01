@@ -335,6 +335,70 @@ case "$object_output" in
 		;;
 esac
 
+create_index_output=$("$parser" "CREATE INDEX i ON t (c); CREATE UNIQUE INDEX i2 USING BTREE ON db.t (c(10) DESC, (lower(name)) ASC) KEY_BLOCK_SIZE=8 WITH PARSER parser_name COMMENT 'c' VISIBLE ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE='{}' ALGORITHM=INPLACE LOCK=NONE; CREATE FULLTEXT INDEX ft ON t (body) WITH PARSER ngram; CREATE SPATIAL INDEX sp ON t (g) USING HASH; CREATE INDEX legacy TYPE BTREE ON t (c) TYPE RTREE")
+case "$create_index_output" in
+	*"create"*/index:i*"create"*/index:i2*"create"*/index:ft*"create"*/index:sp*"create"*/index:legacy*) ;;
+	*)
+		echo "unexpected CREATE INDEX output: $create_index_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'CREATE INDEX'; then
+	echo "expected CREATE INDEX without a name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE INDEX i t (c)'; then
+	echo "expected CREATE INDEX without ON to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE INDEX i ON t'; then
+	echo "expected CREATE INDEX without key part list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE INDEX i ON t ()'; then
+	echo "expected CREATE INDEX empty key part list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE INDEX i ON t (c,)'; then
+	echo "expected CREATE INDEX trailing key part comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE INDEX i ON t (c) KEY_BLOCK_SIZE'; then
+	echo "expected CREATE INDEX KEY_BLOCK_SIZE without value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE INDEX i ON t (c) WITH PARSER'; then
+	echo "expected CREATE INDEX WITH PARSER without name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE INDEX i ON t (c) COMMENT c'; then
+	echo "expected CREATE INDEX COMMENT without string to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE INDEX i ON t (c) ALGORITHM=BAD'; then
+	echo "expected CREATE INDEX invalid ALGORITHM value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE INDEX i ON t (c) LOCK=BAD'; then
+	echo "expected CREATE INDEX invalid LOCK value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE INDEX i ON t (c) ENGINE_ATTRIBUTE=1'; then
+	echo "expected CREATE INDEX numeric ENGINE_ATTRIBUTE to fail" >&2
+	exit 1
+fi
+
 drop_index_output=$("$parser" 'DROP INDEX i ON t; DROP INDEX `PRIMARY` ON `db`.`t` ALGORITHM=INPLACE LOCK=NONE; DROP INDEX i2 ON t LOCK SHARED ALGORITHM COPY')
 case "$drop_index_output" in
 	*"drop"*/index:i*"drop"*/index:'`PRIMARY`'*"drop"*/index:i2*) ;;

@@ -42,7 +42,7 @@ token sink:
 - `CALL` recognizes one- and two-part routine names plus comma-separated
   argument lists with nested expression bodies, while rejecting malformed
   argument adjacent operands, dangling operators, and invalid plain
-  parenthesized groups.
+  parenthesized groups at top level and in stored-program body sinks.
 - `DO` recognizes comma-separated expression lists while rejecting dangling
   separators, dangling operators, malformed nested expression groups, adjacent
   top-level operands, and top-level query-clause tails.

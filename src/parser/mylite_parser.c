@@ -272,6 +272,8 @@ static void validate_compound_statement_body_from(MyliteParseContext *ctx,
                                                   MyliteToken start);
 static void validate_return_statement_from(MyliteParseContext *ctx,
                                            MyliteToken start);
+static void validate_call_statement_from(MyliteParseContext *ctx,
+                                         MyliteToken start);
 static void validate_flow_control_statement_from(MyliteParseContext *ctx,
                                                  int token_id,
                                                  MyliteToken token);
@@ -7426,6 +7428,10 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
     validate_flow_control_statement_from(ctx, token_id, token);
     return;
   }
+  if (token_id == ML_CALL) {
+    validate_call_statement_from(ctx, token);
+    return;
+  }
   if (token_id == ML_DO) {
     mylite_parser_validate_do_statement(ctx, token);
     return;
@@ -7483,6 +7489,10 @@ static void validate_routine_statement_body_from(MyliteParseContext *ctx,
   }
   if (token_id == ML_DECLARE) {
     mylite_parser_validate_declare_statement(ctx, token);
+    return;
+  }
+  if (token_id == ML_CALL) {
+    validate_call_statement_from(ctx, token);
     return;
   }
   if (routine_compound_statement_start_token(token_id) ||
@@ -7654,6 +7664,40 @@ static void validate_return_statement_from(MyliteParseContext *ctx,
   }
 
   mylite_parser_reject(ctx, start, "incomplete RETURN expression");
+}
+
+static void validate_call_statement_from(MyliteParseContext *ctx,
+                                         MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  int token_id;
+  int saw_statement = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (token_is_statement_terminator(token_id, token)) {
+      return;
+    }
+
+    if (token_id == ML_LP) {
+      MyliteToken lp_token = token;
+
+      token_id = mylite_lexer_next(&lexer, &token);
+      if (token_id == ML_RP) {
+        return;
+      }
+      mylite_parser_validate_parenthesized_expression_list_from(
+          ctx, lp_token, "malformed CALL argument list");
+      return;
+    }
+  }
 }
 
 static void validate_flow_control_statement_from(MyliteParseContext *ctx,
@@ -10116,8 +10160,8 @@ static int event_schedule_option_start(MyliteToken token) {
 
 static int routine_body_statement_start_token(int token_id) {
   return token_id == ML_BEGIN || token_id == ML_CASE ||
-         token_id == ML_DECLARE || token_id == ML_DO || token_id == ML_IF ||
-         token_id == ML_LOOP || token_id == ML_REPEAT ||
+         token_id == ML_CALL || token_id == ML_DECLARE || token_id == ML_DO ||
+         token_id == ML_IF || token_id == ML_LOOP || token_id == ML_REPEAT ||
          token_id == ML_RETURN || token_id == ML_SET || token_id == ML_UNTIL ||
          token_id == ML_WHEN || token_id == ML_WHILE;
 }

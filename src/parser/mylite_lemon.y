@@ -6,7 +6,7 @@
 %token_type {MyliteToken}
 %default_type {MyliteToken}
 %fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENFORCED ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NONE NOT NUMBER ONE ONLY OPTIONS ORGANIZATION OWNER PACK_KEYS PAGE PARSE_TREE PARTITION PARTITIONING PHASE PORT PRECEDES PRESERVE PRIMARY RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE USE_FRM VALIDATION VALUE VCPU WAIT WITHOUT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
-%fallback ATOM BOOLEAN_NUMBER ENCRYPTION_VALUE FACTOR_NUMBER.
+%fallback ATOM BOOLEAN_NUMBER ENCRYPTION_VALUE FACTOR_NUMBER NUMBER_LITERAL.
 %fallback ATOM ENCLOSED ESCAPED LINES OPTIONALLY ROWS STARTING TERMINATED.
 %fallback ATOM COPY EXCLUSIVE INPLACE INSTANT SHARED.
 %fallback ATOM INVISIBLE PARSER VISIBLE.
@@ -1286,7 +1286,10 @@ alter_table_exchange_validation_tail ::= .
 alter_table_exchange_validation_tail ::= WITH VALIDATION.
 alter_table_exchange_validation_tail ::= WITHOUT VALIDATION.
 
-alter_table_table_option ::= alter_table_numeric_table_option drop_index_option_equals_tail ATOM.
+alter_table_table_option ::= alter_table_number_table_option drop_index_option_equals_tail alter_table_number_value.
+alter_table_table_option ::= alter_table_boolean_table_option drop_index_option_equals_tail BOOLEAN_NUMBER.
+alter_table_table_option ::= alter_table_default_boolean_table_option drop_index_option_equals_tail alter_table_default_boolean_value.
+alter_table_table_option ::= STATS_SAMPLE_PAGES drop_index_option_equals_tail alter_table_default_number_value.
 alter_table_table_option ::= COMMENT drop_index_option_equals_tail ATOM.
 alter_table_table_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 alter_table_table_option ::= ENGINE drop_index_option_equals_tail alter_table_table_option_value.
@@ -1294,17 +1297,28 @@ alter_table_table_option ::= INSERT_METHOD drop_index_option_equals_tail alter_t
 alter_table_table_option ::= ROW_FORMAT drop_index_option_equals_tail alter_table_table_option_value.
 alter_table_table_option ::= SECONDARY_ENGINE drop_index_option_equals_tail alter_table_table_option_value.
 
-alter_table_numeric_table_option ::= AUTO_INCREMENT.
-alter_table_numeric_table_option ::= AVG_ROW_LENGTH.
-alter_table_numeric_table_option ::= CHECKSUM.
-alter_table_numeric_table_option ::= DELAY_KEY_WRITE.
-alter_table_numeric_table_option ::= KEY_BLOCK_SIZE.
-alter_table_numeric_table_option ::= MAX_ROWS.
-alter_table_numeric_table_option ::= MIN_ROWS.
-alter_table_numeric_table_option ::= PACK_KEYS.
-alter_table_numeric_table_option ::= STATS_AUTO_RECALC.
-alter_table_numeric_table_option ::= STATS_PERSISTENT.
-alter_table_numeric_table_option ::= STATS_SAMPLE_PAGES.
+alter_table_number_table_option ::= AUTO_INCREMENT.
+alter_table_number_table_option ::= AVG_ROW_LENGTH.
+alter_table_number_table_option ::= KEY_BLOCK_SIZE.
+alter_table_number_table_option ::= MAX_ROWS.
+alter_table_number_table_option ::= MIN_ROWS.
+
+alter_table_boolean_table_option ::= CHECKSUM.
+alter_table_boolean_table_option ::= DELAY_KEY_WRITE.
+
+alter_table_default_boolean_table_option ::= PACK_KEYS.
+alter_table_default_boolean_table_option ::= STATS_AUTO_RECALC.
+alter_table_default_boolean_table_option ::= STATS_PERSISTENT.
+
+alter_table_number_value ::= BOOLEAN_NUMBER.
+alter_table_number_value ::= FACTOR_NUMBER.
+alter_table_number_value ::= NUMBER_LITERAL.
+
+alter_table_default_number_value ::= alter_table_number_value.
+alter_table_default_number_value ::= DEFAULT.
+
+alter_table_default_boolean_value ::= BOOLEAN_NUMBER.
+alter_table_default_boolean_value ::= DEFAULT.
 
 alter_table_table_option_value ::= cache_name_part.
 alter_table_table_option_value ::= NO.

@@ -66,8 +66,8 @@ token sink:
   comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `DROP` forms,
   `ALTER` subactions, charset/order changes, partition definition,
   maintenance/exchange, and reorganize forms, tablespace/storage/union changes,
-  table option
-  changes, `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
+  table option changes with numeric/boolean/default value domains,
+  `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize schema names, charset,
   collation, `'Y'`/`'N'` encryption, and alter-only `READ ONLY` option clauses
   with MySQL's `DEFAULT`/`0`/`1` value grammar.

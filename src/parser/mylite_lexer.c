@@ -407,7 +407,7 @@ static int lexer_number(MyliteLexer *lexer, MyliteToken *token) {
     return ML_FACTOR_NUMBER;
   }
 
-  return ML_ATOM;
+  return ML_NUMBER_LITERAL;
 }
 
 static int lexer_identifier(MyliteLexer *lexer, MyliteToken *token) {

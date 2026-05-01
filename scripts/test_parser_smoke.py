@@ -138,6 +138,8 @@ def main() -> int:
         ("select 1 as +;", 1, {}),
         ("select 1 as, 2;", 1, {}),
         ("select 1 as a b;", 1, {}),
+        ("select * as a;", 1, {}),
+        ("select * a;", 1, {}),
         ("select 1 into @;", 1, {}),
         ("select 1 into @a, @;", 1, {}),
         ("select 1 into @a @b;", 1, {}),

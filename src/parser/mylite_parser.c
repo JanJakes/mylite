@@ -8319,6 +8319,11 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
       return;
     }
 
+    if (previous_top_token_id == ML_STAR && !previous_was_operator) {
+      mylite_parser_reject(ctx, token, "malformed SELECT expression clause");
+      return;
+    }
+
     if (token_id == ML_AS) {
       if (!expression_started || previous_was_operator) {
         mylite_parser_reject(ctx, previous_top_token,

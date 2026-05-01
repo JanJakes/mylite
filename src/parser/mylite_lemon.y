@@ -167,8 +167,8 @@ create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_r
 create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref create_index_tail.
 create_tail ::= LOGFILE create_logfile_group cache_name_part create_logfile_group_tail.
 create_tail ::= RESOURCE create_resource_group cache_name_part create_resource_group_tail.
-create_tail ::= SPATIAL create_reference create_system create_if_not_exists_tail cache_name_part create_srs_attributes.
-create_tail ::= OR REPLACE SPATIAL create_reference create_system cache_name_part create_srs_attributes.
+create_tail ::= SPATIAL create_reference create_system create_if_not_exists_tail srs_id create_srs_attributes.
+create_tail ::= OR REPLACE SPATIAL create_reference create_system srs_id create_srs_attributes.
 create_tail ::= SERVER cache_name_part create_server_tail.
 create_tail ::= TABLESPACE cache_name_part create_tablespace_tail.
 create_tail ::= UNDO TABLESPACE cache_name_part create_undo_tablespace_tail.
@@ -893,6 +893,10 @@ create_reference ::= REFERENCE.
 
 create_system ::= SYSTEM.
 
+srs_id ::= BOOLEAN_NUMBER.
+srs_id ::= FACTOR_NUMBER.
+srs_id ::= NUMBER_LITERAL.
+
 create_srs_attributes ::= create_srs_attribute.
 create_srs_attributes ::= create_srs_attributes create_srs_attribute.
 
@@ -914,7 +918,7 @@ drop_tail ::= ROLE drop_if_exists_tail drop_account_list drop_account_trailing_t
 drop_tail ::= drop_table_prefix drop_if_exists_tail drop_name_list drop_restrict_tail.
 drop_tail ::= LOGFILE drop_logfile_group cache_name_part drop_tablespace_engine_tail.
 drop_tail ::= RESOURCE drop_resource_group cache_name_part drop_resource_force_tail.
-drop_tail ::= SPATIAL drop_reference drop_system drop_if_exists_tail cache_name_part.
+drop_tail ::= SPATIAL drop_reference drop_system drop_if_exists_tail srs_id.
 drop_tail ::= UNDO TABLESPACE cache_name_part drop_tablespace_engine_tail.
 drop_tail ::= PREPARE prepared_statement_name.
 drop_tail ::= INDEX drop_index_name ON cache_table_ref drop_index_options_tail.

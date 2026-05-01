@@ -34,6 +34,7 @@ static unsigned int parse_display_width(const struct mylite_sql_ast_node *displa
 static bool parse_column_length(const struct mylite_sql_ast_node *length, uint64_t *out_length);
 static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type column_type);
 static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column_type column_type);
+static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type column_type);
 static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_token_was_dot,
                             struct mylite_sql_parser_token_map *out_map);
 static void record_parse_error(struct mylite_sql_parse_result *result,
@@ -596,6 +597,72 @@ mylite_sql_parser_set_column_length(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *
+mylite_sql_parser_make_column_precision(struct mylite_sql_parser_state *state,
+                                        struct mylite_sql_parser_precision_tokens tokens)
+{
+    struct mylite_sql_ast_node *precision =
+        mylite_sql_parser_make_literal(state, tokens.precision, MYLITE_SQL_AST_LITERAL_INTEGER);
+    if (precision == NULL) {
+        return NULL;
+    }
+
+    {
+        uint64_t value = 0ULL;
+        if (!parse_column_length(precision, &value)) {
+            mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_INTEGER, tokens.precision);
+            return NULL;
+        }
+        mylite_sql_ast_node_set_column_precision(precision, value);
+    }
+    mylite_sql_ast_node_set_span(precision, span_join(span_from_token(&tokens.left_paren),
+                                                      span_from_token(&tokens.right_paren)));
+    return precision;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_precision_scale(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_precision_scale_tokens tokens)
+{
+    struct mylite_sql_ast_node *precision_scale =
+        mylite_sql_parser_make_column_precision(state, (struct mylite_sql_parser_precision_tokens){
+                                                           .left_paren = tokens.left_paren,
+                                                           .precision = tokens.precision,
+                                                           .right_paren = tokens.right_paren,
+                                                       });
+    if (precision_scale == NULL) {
+        return NULL;
+    }
+
+    {
+        struct mylite_sql_ast_node *scale =
+            mylite_sql_parser_make_literal(state, tokens.scale, MYLITE_SQL_AST_LITERAL_INTEGER);
+        uint64_t value = 0ULL;
+        if (scale == NULL || !parse_column_length(scale, &value)) {
+            mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_INTEGER, tokens.scale);
+            return NULL;
+        }
+        mylite_sql_ast_node_set_column_scale(precision_scale, value);
+    }
+    return precision_scale;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_precision_scale(struct mylite_sql_parser_state *state,
+                                             struct mylite_sql_ast_node *column_type,
+                                             struct mylite_sql_ast_node *precision_scale)
+{
+    if (!is_parse_ok(state) || column_type == NULL || precision_scale == NULL) {
+        return column_type;
+    }
+
+    mylite_sql_ast_node_set_column_precision(column_type, precision_scale->column_precision);
+    if (precision_scale->has_column_scale) {
+        mylite_sql_ast_node_set_column_scale(column_type, precision_scale->column_scale);
+    }
+    mylite_sql_ast_node_set_span(column_type, span_join(column_type->span, precision_scale->span));
+    return column_type;
+}
+
+struct mylite_sql_ast_node *
 mylite_sql_parser_set_column_type_signed(struct mylite_sql_parser_state *state,
                                          struct mylite_sql_ast_node *column_type,
                                          struct mylite_sql_token signed_token)
@@ -691,6 +758,21 @@ mylite_sql_parser_set_column_type_byte_attribute(struct mylite_sql_parser_state 
 }
 
 struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_zerofill_attribute(struct mylite_sql_parser_state *state,
+                                                     struct mylite_sql_ast_node *attributes,
+                                                     struct mylite_sql_token zerofill_token)
+{
+    if (!is_parse_ok(state) || attributes == NULL) {
+        return attributes;
+    }
+
+    mylite_sql_ast_node_set_column_zerofill_attribute(attributes);
+    mylite_sql_ast_node_set_span(attributes,
+                                 span_join(attributes->span, span_from_token(&zerofill_token)));
+    return attributes;
+}
+
+struct mylite_sql_ast_node *
 mylite_sql_parser_apply_column_type_attributes(struct mylite_sql_parser_state *state,
                                                struct mylite_sql_ast_node *column_type,
                                                struct mylite_sql_ast_node *attributes)
@@ -699,6 +781,12 @@ mylite_sql_parser_apply_column_type_attributes(struct mylite_sql_parser_state *s
         return column_type;
     }
 
+    if (attributes->column_type_signed) {
+        mylite_sql_ast_node_set_column_type_signed(column_type);
+    }
+    if (attributes->column_type_unsigned) {
+        mylite_sql_ast_node_set_column_type_unsigned(column_type);
+    }
     if (attributes->has_column_character_set) {
         mylite_sql_ast_node_set_column_character_set(column_type, attributes->column_character_set);
     }
@@ -710,6 +798,9 @@ mylite_sql_parser_apply_column_type_attributes(struct mylite_sql_parser_state *s
     }
     if (attributes->column_byte_attribute) {
         mylite_sql_ast_node_set_column_byte_attribute(column_type);
+    }
+    if (attributes->column_zerofill_attribute) {
+        mylite_sql_ast_node_set_column_zerofill_attribute(column_type);
     }
     if (attributes->span.text != NULL) {
         mylite_sql_ast_node_set_span(column_type, span_join(column_type->span, attributes->span));
@@ -742,14 +833,21 @@ mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
     enum mylite_column_type_status status = MYLITE_COLUMN_TYPE_OK;
 
     if (!is_parse_ok(state) || column_type == NULL ||
-        !column_type_uses_string_binary_descriptor(column_type->column_type)) {
+        (!column_type_uses_string_binary_descriptor(column_type->column_type) &&
+         !column_type_uses_numeric_descriptor(column_type->column_type))) {
         return column_type;
     }
 
     type_name = column_type_descriptor_name(column_type->column_type);
     attributes = (struct mylite_column_type_attributes){
+        .has_signed = column_type->column_type_signed,
+        .has_unsigned = column_type->column_type_unsigned,
         .has_length = column_type->has_column_length,
         .length = column_type->column_length,
+        .has_precision = column_type->has_column_precision,
+        .precision = column_type->column_precision,
+        .has_scale = column_type->has_column_scale,
+        .scale = column_type->column_scale,
         .has_character_set = column_type->has_column_character_set,
         .character_set = column_type->column_character_set.text,
         .character_set_length = column_type->column_character_set.length,
@@ -758,11 +856,17 @@ mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
         .collation_length = column_type->column_collation.length,
         .has_binary_attribute = column_type->column_binary_attribute,
         .has_byte_attribute = column_type->column_byte_attribute,
+        .has_zerofill_attribute = column_type->column_zerofill_attribute,
         .is_national = column_type->column_national_attribute,
     };
 
-    status = mylite_column_type_describe_string_binary(type_name, strlen(type_name), attributes,
-                                                       &descriptor);
+    if (column_type_uses_numeric_descriptor(column_type->column_type)) {
+        status = mylite_column_type_describe_numeric(type_name, strlen(type_name), attributes,
+                                                     &descriptor);
+    } else {
+        status = mylite_column_type_describe_string_binary(type_name, strlen(type_name), attributes,
+                                                           &descriptor);
+    }
     if (status != MYLITE_COLUMN_TYPE_OK) {
         mylite_sql_parser_state_parse_failed(state);
     }
@@ -1183,6 +1287,12 @@ static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type c
         return "MEDIUMBLOB";
     case MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB:
         return "LONGBLOB";
+    case MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL:
+        return "DECIMAL";
+    case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
+        return "FLOAT";
+    case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
+        return "DOUBLE";
     case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
     case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
     case MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT:
@@ -1200,6 +1310,12 @@ static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column
 {
     return (column_type >= MYLITE_SQL_AST_COLUMN_TYPE_CHAR &&
             column_type <= MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB) != 0;
+}
+
+static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type column_type)
+{
+    return (column_type >= MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL &&
+            column_type <= MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE) != 0;
 }
 
 static void record_parse_error(struct mylite_sql_parse_result *result,
@@ -1260,12 +1376,19 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"CREATE", MYLITE_SQL_PARSE_CREATE},
         {"DATABASE", MYLITE_SQL_PARSE_DATABASE},
         {"DATABASES", MYLITE_SQL_PARSE_DATABASES},
+        {"DEC", MYLITE_SQL_PARSE_DEC},
+        {"DECIMAL", MYLITE_SQL_PARSE_DECIMALKW},
         {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
+        {"DOUBLE", MYLITE_SQL_PARSE_DOUBLE},
         {"DROP", MYLITE_SQL_PARSE_DROP},
         {"DUAL", MYLITE_SQL_PARSE_DUAL},
         {"ENCRYPTION", MYLITE_SQL_PARSE_ENCRYPTION},
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
         {"FALSE", MYLITE_SQL_PARSE_FALSE},
+        {"FIXED", MYLITE_SQL_PARSE_FIXED},
+        {"FLOAT", MYLITE_SQL_PARSE_FLOATKW},
+        {"FLOAT4", MYLITE_SQL_PARSE_FLOAT4},
+        {"FLOAT8", MYLITE_SQL_PARSE_FLOAT8},
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"IF", MYLITE_SQL_PARSE_IF},
         {"INT", MYLITE_SQL_PARSE_INT},
@@ -1288,8 +1411,11 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"NOT", MYLITE_SQL_PARSE_NOT},
         {"NULL", MYLITE_SQL_PARSE_NULL},
         {"NVARCHAR", MYLITE_SQL_PARSE_NVARCHAR},
+        {"NUMERIC", MYLITE_SQL_PARSE_NUMERIC},
         {"ONLY", MYLITE_SQL_PARSE_ONLY},
+        {"PRECISION", MYLITE_SQL_PARSE_PRECISION},
         {"READ", MYLITE_SQL_PARSE_READ},
+        {"REAL", MYLITE_SQL_PARSE_REAL},
         {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
         {"SCHEMAS", MYLITE_SQL_PARSE_SCHEMAS},
         {"SELECT", MYLITE_SQL_PARSE_SELECT},
@@ -1308,6 +1434,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"VARBINARY", MYLITE_SQL_PARSE_VARBINARY},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
         {"VARYING", MYLITE_SQL_PARSE_VARYING},
+        {"ZEROFILL", MYLITE_SQL_PARSE_ZEROFILL},
     };
 
     for (size_t index = 0U; index < sizeof(keywords) / sizeof(keywords[0]); ++index) {

@@ -27,6 +27,20 @@ static const unsigned long long medium_overflow_length = 16777216ULL;
 static const unsigned long long char_binary_overflow_length = 256ULL;
 static const unsigned long long varchar_utf8mb4_overflow_length = 16384ULL;
 static const unsigned long long blob_text_overflow_length = 4294967296ULL;
+static const unsigned int decimal_default_precision = 10U;
+static const unsigned int decimal_max_precision = 65U;
+static const unsigned int decimal_max_scale = 30U;
+static const unsigned long long decimal_ten_precision = 10ULL;
+static const unsigned long long decimal_excess_scale = 11ULL;
+static const unsigned int float_default_precision = 12U;
+static const unsigned int double_default_precision = 22U;
+static const unsigned long long float_precision_single_max = 24ULL;
+static const unsigned long long float_precision_double_min = 25ULL;
+static const unsigned long long float_precision_out_of_range = 54ULL;
+static const unsigned int approximate_display_width_max = 255U;
+static const unsigned int approximate_display_width_out_of_range = 256U;
+static const unsigned long long numeric_alias_precision = 8ULL;
+static const unsigned long long fixed_alias_precision = 7ULL;
 
 static int test_integer_type_metadata(void);
 static int test_integer_aliases(void);
@@ -34,6 +48,8 @@ static int test_display_width_metadata(void);
 static int test_string_binary_type_metadata(void);
 static int test_string_binary_aliases_and_charsets(void);
 static int test_text_blob_length_mapping(void);
+static int test_numeric_type_metadata(void);
+static int test_numeric_aliases_and_attributes(void);
 static int test_rejected_type_descriptors(void);
 static struct mylite_column_type_attributes no_column_type_attributes(void);
 static struct mylite_column_type_attributes length_attribute(unsigned long long length);
@@ -46,6 +62,10 @@ static int describe_string_binary_type(const char *type_name,
                                        struct mylite_column_type_attributes attributes,
                                        enum mylite_column_type_status expected_status,
                                        struct mylite_column_type_descriptor *out_descriptor);
+static int describe_numeric_type(const char *type_name,
+                                 struct mylite_column_type_attributes attributes,
+                                 enum mylite_column_type_status expected_status,
+                                 struct mylite_column_type_descriptor *out_descriptor);
 static int expect_string(const char *actual, const char *expected, const char *context);
 static int expect_uint(unsigned int actual, unsigned int expected, const char *context);
 static int expect_uint64(unsigned long long actual, unsigned long long expected,
@@ -62,6 +82,8 @@ int main(void)
     failures += test_string_binary_type_metadata();
     failures += test_string_binary_aliases_and_charsets();
     failures += test_text_blob_length_mapping();
+    failures += test_numeric_type_metadata();
+    failures += test_numeric_aliases_and_attributes();
     failures += test_rejected_type_descriptors();
 
     return failures == 0 ? 0 : 1;
@@ -418,6 +440,248 @@ static int test_text_blob_length_mapping(void)
     return failures;
 }
 
+static int test_numeric_type_metadata(void)
+{
+    struct mylite_column_type_descriptor descriptor;
+    int failures = 0;
+
+    failures += describe_numeric_type("DECIMAL", no_column_type_attributes(), MYLITE_COLUMN_TYPE_OK,
+                                      &descriptor);
+    failures += expect_string(descriptor.data_type, "decimal", "decimal data type");
+    failures += expect_string(descriptor.column_type, "decimal(10,0)", "decimal column type");
+    failures +=
+        expect_uint(descriptor.numeric_precision, decimal_default_precision, "decimal precision");
+    failures += expect_bool(descriptor.has_numeric_scale, true, "decimal scale flag");
+    failures += expect_uint(descriptor.numeric_scale, 0U, "decimal scale");
+    failures += expect_bool(descriptor.is_exact_numeric, true, "decimal exact flag");
+
+    failures += describe_numeric_type("DECIMAL",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = decimal_ten_precision,
+                                      },
+                                      MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "decimal(10,0)", "decimal(10) type");
+
+    failures += describe_numeric_type("DECIMAL",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = decimal_ten_precision,
+                                          .has_scale = true,
+                                          .scale = 2ULL,
+                                      },
+                                      MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "decimal(10,2)", "decimal(10,2) type");
+    failures += expect_uint(descriptor.numeric_scale, 2U, "decimal(10,2) scale");
+
+    failures += describe_numeric_type("DECIMAL",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = 0ULL,
+                                          .has_scale = true,
+                                          .scale = 0ULL,
+                                      },
+                                      MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "decimal(10,0)", "decimal(0,0) type");
+
+    failures += describe_numeric_type("DECIMAL",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = decimal_max_precision,
+                                          .has_scale = true,
+                                          .scale = decimal_max_scale,
+                                      },
+                                      MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "decimal(65,30)", "decimal max type");
+
+    failures += describe_numeric_type("FLOAT", no_column_type_attributes(), MYLITE_COLUMN_TYPE_OK,
+                                      &descriptor);
+    failures += expect_string(descriptor.data_type, "float", "float data type");
+    failures += expect_string(descriptor.column_type, "float", "float column type");
+    failures +=
+        expect_uint(descriptor.numeric_precision, float_default_precision, "float precision");
+    failures += expect_bool(descriptor.has_numeric_scale, false, "float null scale flag");
+    failures += expect_bool(descriptor.is_approximate_numeric, true, "float approximate flag");
+
+    failures += describe_numeric_type("FLOAT",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = float_precision_single_max,
+                                      },
+                                      MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "float", "float(24) data type");
+
+    failures += describe_numeric_type("FLOAT",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = float_precision_double_min,
+                                      },
+                                      MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "double", "float(25) data type");
+    failures += expect_string(descriptor.column_type, "double", "float(25) column type");
+
+    failures += describe_numeric_type("FLOAT",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = float_precision_double_min,
+                                          .has_scale = true,
+                                          .scale = 2ULL,
+                                      },
+                                      MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "float", "float(25,2) data type");
+    failures += expect_string(descriptor.column_type, "float(25,2)", "float(25,2) type");
+    failures += expect_uint(descriptor.numeric_precision, (unsigned int)float_precision_double_min,
+                            "float(25,2) precision");
+    failures += expect_uint(descriptor.numeric_scale, 2U, "float(25,2) scale");
+
+    failures += describe_numeric_type("DOUBLE", no_column_type_attributes(), MYLITE_COLUMN_TYPE_OK,
+                                      &descriptor);
+    failures += expect_string(descriptor.data_type, "double", "double data type");
+    failures += expect_string(descriptor.column_type, "double", "double column type");
+    failures +=
+        expect_uint(descriptor.numeric_precision, double_default_precision, "double precision");
+    failures += expect_bool(descriptor.has_numeric_scale, false, "double null scale flag");
+
+    failures += describe_numeric_type("DOUBLE",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = decimal_ten_precision,
+                                          .has_scale = true,
+                                          .scale = 2ULL,
+                                      },
+                                      MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "double(10,2)", "double(10,2) type");
+
+    return failures;
+}
+
+static int test_numeric_aliases_and_attributes(void)
+{
+    struct mylite_column_type_descriptor descriptor;
+    struct mylite_column_type_attributes attributes;
+    int failures = 0;
+
+    failures += describe_numeric_type("DEC", no_column_type_attributes(), MYLITE_COLUMN_TYPE_OK,
+                                      &descriptor);
+    failures += expect_string(descriptor.data_type, "decimal", "dec alias data type");
+    failures += expect_bool(descriptor.is_alias, true, "dec alias flag");
+
+    attributes = no_column_type_attributes();
+    attributes.has_precision = true;
+    attributes.precision = numeric_alias_precision;
+    attributes.has_scale = true;
+    attributes.scale = 3ULL;
+    failures += describe_numeric_type("NUMERIC", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "decimal(8,3)", "numeric alias type");
+
+    attributes.precision = fixed_alias_precision;
+    attributes.scale = 2ULL;
+    failures += describe_numeric_type("FIXED", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "decimal(7,2)", "fixed alias type");
+
+    failures += describe_numeric_type("DOUBLE PRECISION", no_column_type_attributes(),
+                                      MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "double", "double precision alias");
+
+    attributes = no_column_type_attributes();
+    attributes.has_precision = true;
+    attributes.precision = decimal_ten_precision;
+    attributes.has_scale = true;
+    attributes.scale = 2ULL;
+    failures +=
+        describe_numeric_type("DOUBLE PRECISION", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures +=
+        expect_string(descriptor.column_type, "double(10,2)", "double precision scaled alias");
+
+    failures += describe_numeric_type("REAL", no_column_type_attributes(), MYLITE_COLUMN_TYPE_OK,
+                                      &descriptor);
+    failures += expect_string(descriptor.data_type, "double", "real default data type");
+
+    failures += describe_numeric_type("REAL", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "double(10,2)", "real scaled alias");
+
+    failures += describe_numeric_type("FLOAT4", no_column_type_attributes(), MYLITE_COLUMN_TYPE_OK,
+                                      &descriptor);
+    failures += expect_string(descriptor.data_type, "float", "float4 alias data type");
+
+    attributes = no_column_type_attributes();
+    attributes.has_precision = true;
+    attributes.precision = decimal_ten_precision;
+    failures += describe_numeric_type("FLOAT4", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "float", "float4 selector float");
+
+    attributes.precision = float_precision_double_min;
+    failures += describe_numeric_type("FLOAT4", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "double", "float4 selector double");
+
+    attributes.has_scale = true;
+    attributes.scale = 2ULL;
+    failures += describe_numeric_type("FLOAT4", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "float(25,2)", "float4 scaled alias");
+
+    failures += describe_numeric_type("FLOAT8", no_column_type_attributes(), MYLITE_COLUMN_TYPE_OK,
+                                      &descriptor);
+    failures += expect_string(descriptor.data_type, "double", "float8 alias data type");
+
+    attributes = no_column_type_attributes();
+    attributes.has_precision = true;
+    attributes.precision = decimal_ten_precision;
+    attributes.has_scale = true;
+    attributes.scale = 2ULL;
+    failures += describe_numeric_type("FLOAT8", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "double(10,2)", "float8 scaled alias");
+
+    attributes = no_column_type_attributes();
+    attributes.has_precision = true;
+    attributes.precision = decimal_ten_precision;
+    attributes.has_scale = true;
+    attributes.scale = 2ULL;
+    attributes.has_unsigned = true;
+    failures += describe_numeric_type("DECIMAL", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures +=
+        expect_string(descriptor.column_type, "decimal(10,2) unsigned", "decimal unsigned type");
+
+    attributes.has_signed = true;
+    failures += describe_numeric_type("DECIMAL", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_bool(descriptor.is_unsigned, true, "decimal mixed signedness unsigned");
+
+    attributes = no_column_type_attributes();
+    attributes.has_zerofill_attribute = true;
+    failures += describe_numeric_type("FLOAT", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures +=
+        expect_string(descriptor.column_type, "float unsigned zerofill", "float zerofill type");
+    failures += expect_bool(descriptor.is_unsigned, true, "float zerofill unsigned");
+    failures += expect_bool(descriptor.is_zerofill, true, "float zerofill flag");
+
+    attributes.has_signed = true;
+    failures += describe_numeric_type("DOUBLE", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "double unsigned zerofill",
+                              "double zerofill signed type");
+
+    attributes = no_column_type_attributes();
+    attributes.has_precision = true;
+    attributes.precision = float_precision_double_min;
+    attributes.has_unsigned = true;
+    failures += describe_numeric_type("FLOAT", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "double unsigned", "float(25) unsigned");
+
+    attributes.has_scale = true;
+    attributes.scale = 2ULL;
+    failures += describe_numeric_type("FLOAT", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures +=
+        expect_string(descriptor.column_type, "float(25,2) unsigned", "float(25,2) unsigned");
+
+    attributes = no_column_type_attributes();
+    attributes.has_precision = true;
+    attributes.precision = approximate_display_width_max;
+    attributes.has_scale = true;
+    attributes.scale = decimal_max_scale;
+    failures += describe_numeric_type("DOUBLE", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "double(255,30)", "double max display");
+
+    return failures;
+}
+
 static int test_rejected_type_descriptors(void)
 {
     struct mylite_column_type_descriptor descriptor;
@@ -479,6 +743,96 @@ static int test_rejected_type_descriptors(void)
                                             MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
     failures += describe_string_binary_type("BLOB", character_set_attribute("utf8mb4"),
                                             MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+    failures += describe_numeric_type("DECIMAL",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = decimal_max_precision + 1U,
+                                      },
+                                      MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE, &descriptor);
+    failures += describe_numeric_type("DECIMAL",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = decimal_max_precision,
+                                          .has_scale = true,
+                                          .scale = decimal_max_scale + 1U,
+                                      },
+                                      MYLITE_COLUMN_TYPE_SCALE_OUT_OF_RANGE, &descriptor);
+    failures += describe_numeric_type("DECIMAL",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = decimal_ten_precision,
+                                          .has_scale = true,
+                                          .scale = decimal_excess_scale,
+                                      },
+                                      MYLITE_COLUMN_TYPE_SCALE_EXCEEDS_PRECISION, &descriptor);
+    failures += describe_numeric_type("DECIMAL",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = 0ULL,
+                                          .has_scale = true,
+                                          .scale = 1ULL,
+                                      },
+                                      MYLITE_COLUMN_TYPE_SCALE_EXCEEDS_PRECISION, &descriptor);
+    failures += describe_numeric_type("FLOAT",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = float_precision_out_of_range,
+                                      },
+                                      MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+    failures += describe_numeric_type("FLOAT",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = 0ULL,
+                                          .has_scale = true,
+                                          .scale = 0ULL,
+                                      },
+                                      MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE, &descriptor);
+    failures += describe_numeric_type("FLOAT",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = 0ULL,
+                                          .has_scale = true,
+                                          .scale = 1ULL,
+                                      },
+                                      MYLITE_COLUMN_TYPE_SCALE_EXCEEDS_PRECISION, &descriptor);
+    failures += describe_numeric_type("FLOAT",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = approximate_display_width_out_of_range,
+                                          .has_scale = true,
+                                          .scale = decimal_max_scale,
+                                      },
+                                      MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE, &descriptor);
+    failures += describe_numeric_type("DOUBLE",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = decimal_ten_precision,
+                                      },
+                                      MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+    failures += describe_numeric_type("DOUBLE",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = decimal_ten_precision,
+                                          .has_scale = true,
+                                          .scale = decimal_max_scale + 1U,
+                                      },
+                                      MYLITE_COLUMN_TYPE_SCALE_OUT_OF_RANGE, &descriptor);
+    failures += describe_numeric_type("DOUBLE",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = 0ULL,
+                                          .has_scale = true,
+                                          .scale = 0ULL,
+                                      },
+                                      MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE, &descriptor);
+    failures += describe_numeric_type("DOUBLE",
+                                      (struct mylite_column_type_attributes){
+                                          .has_precision = true,
+                                          .precision = 0ULL,
+                                          .has_scale = true,
+                                          .scale = 1ULL,
+                                      },
+                                      MYLITE_COLUMN_TYPE_SCALE_EXCEEDS_PRECISION, &descriptor);
 
     {
         struct mylite_column_type_attributes mismatch = character_set_attribute("utf8mb4");
@@ -550,6 +904,23 @@ static int describe_string_binary_type(const char *type_name,
                                        struct mylite_column_type_descriptor *out_descriptor)
 {
     enum mylite_column_type_status actual = mylite_column_type_describe_string_binary(
+        type_name, strlen(type_name), attributes, out_descriptor);
+
+    if (actual != expected_status) {
+        fprintf(stderr, "%s: expected %s, got %s\n", type_name,
+                mylite_column_type_status_name(expected_status),
+                mylite_column_type_status_name(actual));
+        return 1;
+    }
+    return 0;
+}
+
+static int describe_numeric_type(const char *type_name,
+                                 struct mylite_column_type_attributes attributes,
+                                 enum mylite_column_type_status expected_status,
+                                 struct mylite_column_type_descriptor *out_descriptor)
+{
+    enum mylite_column_type_status actual = mylite_column_type_describe_numeric(
         type_name, strlen(type_name), attributes, out_descriptor);
 
     if (actual != expected_status) {

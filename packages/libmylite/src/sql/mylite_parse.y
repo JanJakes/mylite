@@ -28,7 +28,7 @@
 %left PLUS MINUS.
 %left STAR SLASH.
 %right UPLUS UMINUS.
-%fallback IDENTIFIER BOOL BOOLEAN CHARSET ENCRYPTION NCHAR NVARCHAR ONLY SIGNED TEXT.
+%fallback IDENTIFIER BOOL BOOLEAN CHARSET ENCRYPTION FIXED NCHAR NVARCHAR ONLY SIGNED TEXT.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -178,6 +178,15 @@ column_type(A) ::= binary_column_type(B). {
     A = B;
 }
 column_type(A) ::= blob_column_type(B). {
+    A = B;
+}
+column_type(A) ::= exact_numeric_column_type(B). {
+    A = B;
+}
+column_type(A) ::= float_column_type(B). {
+    A = B;
+}
+column_type(A) ::= double_column_type(B). {
     A = B;
 }
 
@@ -420,6 +429,128 @@ blob_column_type(A) ::= LONG(T) VARBINARY. {
         state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB));
 }
 
+exact_numeric_column_type(A) ::= exact_numeric_type_name(B) opt_numeric_precision_scale(C) numeric_type_attribute_list(D). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state, mylite_sql_parser_validate_column_type(
+                   state, mylite_sql_parser_set_column_precision_scale(state, B, C)),
+        D);
+}
+
+exact_numeric_type_name(A) ::= DECIMALKW(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL);
+}
+exact_numeric_type_name(A) ::= DEC(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL);
+}
+exact_numeric_type_name(A) ::= NUMERIC(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL);
+}
+exact_numeric_type_name(A) ::= FIXED(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL);
+}
+
+float_column_type(A) ::= FLOATKW(T) opt_float_precision_scale(B) numeric_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_validate_column_type(
+            state, mylite_sql_parser_set_column_precision_scale(
+                       state,
+                       mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_FLOAT),
+                       B)),
+        C);
+}
+float_column_type(A) ::= FLOAT4(T) opt_float_precision_scale(B) numeric_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_validate_column_type(
+            state, mylite_sql_parser_set_column_precision_scale(
+                       state,
+                       mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_FLOAT),
+                       B)),
+        C);
+}
+
+double_column_type(A) ::= DOUBLE(T) opt_precision_keyword opt_double_precision_scale(B) numeric_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_validate_column_type(
+            state, mylite_sql_parser_set_column_precision_scale(
+                       state,
+                       mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE),
+                       B)),
+        C);
+}
+double_column_type(A) ::= REAL(T) opt_double_precision_scale(B) numeric_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_validate_column_type(
+            state, mylite_sql_parser_set_column_precision_scale(
+                       state,
+                       mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE),
+                       B)),
+        C);
+}
+double_column_type(A) ::= FLOAT8(T) opt_double_precision_scale(B) numeric_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_validate_column_type(
+            state, mylite_sql_parser_set_column_precision_scale(
+                       state,
+                       mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE),
+                       B)),
+        C);
+}
+
+opt_precision_keyword ::= .
+opt_precision_keyword ::= PRECISION.
+
+opt_numeric_precision_scale(A) ::= . {
+    A = NULL;
+}
+opt_numeric_precision_scale(A) ::= column_precision(B). {
+    A = B;
+}
+opt_numeric_precision_scale(A) ::= column_precision_scale(B). {
+    A = B;
+}
+
+opt_float_precision_scale(A) ::= . {
+    A = NULL;
+}
+opt_float_precision_scale(A) ::= column_precision(B). {
+    A = B;
+}
+opt_float_precision_scale(A) ::= column_precision_scale(B). {
+    A = B;
+}
+
+opt_double_precision_scale(A) ::= . {
+    A = NULL;
+}
+opt_double_precision_scale(A) ::= column_precision_scale(B). {
+    A = B;
+}
+
+numeric_type_attribute_list(A) ::= . {
+    A = mylite_sql_parser_make_column_type_attribute_list(state);
+}
+numeric_type_attribute_list(A) ::= numeric_type_attribute_list(B) numeric_type_attribute(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(state, B, C);
+}
+
+numeric_type_attribute(A) ::= SIGNED(T). {
+    A = mylite_sql_parser_set_column_type_signed(
+        state, mylite_sql_parser_make_column_type_attribute_list(state), T);
+}
+numeric_type_attribute(A) ::= UNSIGNED(T). {
+    A = mylite_sql_parser_set_column_type_unsigned(
+        state, mylite_sql_parser_make_column_type_attribute_list(state), T);
+}
+numeric_type_attribute(A) ::= ZEROFILL(T). {
+    A = mylite_sql_parser_set_column_type_zerofill_attribute(
+        state, mylite_sql_parser_make_column_type_attribute_list(state), T);
+}
+
 character_type_attribute_list(A) ::= . {
     A = mylite_sql_parser_make_column_type_attribute_list(state);
 }
@@ -455,6 +586,24 @@ column_length(A) ::= LPAREN(L) INTEGER(T) RPAREN(R). {
         state, (struct mylite_sql_parser_column_length_tokens){
             .left_paren = L,
             .integer = T,
+            .right_paren = R,
+        });
+}
+
+column_precision(A) ::= LPAREN(L) INTEGER(T) RPAREN(R). {
+    A = mylite_sql_parser_make_column_precision(
+        state, (struct mylite_sql_parser_precision_tokens){
+            .left_paren = L,
+            .precision = T,
+            .right_paren = R,
+        });
+}
+column_precision_scale(A) ::= LPAREN(L) INTEGER(P) COMMA INTEGER(S) RPAREN(R). {
+    A = mylite_sql_parser_make_column_precision_scale(
+        state, (struct mylite_sql_parser_precision_scale_tokens){
+            .left_paren = L,
+            .precision = P,
+            .scale = S,
             .right_paren = R,
         });
 }

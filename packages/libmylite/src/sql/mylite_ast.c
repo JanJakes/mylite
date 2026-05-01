@@ -155,6 +155,26 @@ void mylite_sql_ast_node_set_column_length(struct mylite_sql_ast_node *node, uin
     node->column_length = length;
 }
 
+void mylite_sql_ast_node_set_column_precision(struct mylite_sql_ast_node *node, uint64_t precision)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->has_column_precision = true;
+    node->column_precision = precision;
+}
+
+void mylite_sql_ast_node_set_column_scale(struct mylite_sql_ast_node *node, uint64_t scale)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->has_column_scale = true;
+    node->column_scale = scale;
+}
+
 void mylite_sql_ast_node_set_column_character_set(struct mylite_sql_ast_node *node,
                                                   struct mylite_sql_source_span span)
 {
@@ -193,6 +213,15 @@ void mylite_sql_ast_node_set_column_byte_attribute(struct mylite_sql_ast_node *n
     }
 
     node->column_byte_attribute = true;
+}
+
+void mylite_sql_ast_node_set_column_zerofill_attribute(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->column_zerofill_attribute = true;
 }
 
 void mylite_sql_ast_node_set_column_national_attribute(struct mylite_sql_ast_node *node)
@@ -350,6 +379,12 @@ const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type colu
         return "mediumblob";
     case MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB:
         return "longblob";
+    case MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL:
+        return "decimal";
+    case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
+        return "float";
+    case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
+        return "double";
     }
 
     return "unknown";

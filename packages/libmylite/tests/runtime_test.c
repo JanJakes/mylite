@@ -739,6 +739,23 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
         stmt = NULL;
     }
     failures += expect_no_information_schema_table_name_row(database, "string_binary_types");
+    failures += prepare_sql(database,
+                            "CREATE TABLE app.`numeric_types` ("
+                            "a DECIMAL, b DECIMAL(10,2), c DEC, d NUMERIC(8,3), "
+                            "e FIXED(7,2), f FLOAT, g FLOAT(25), h FLOAT(25,2), "
+                            "i DOUBLE, j DOUBLE PRECISION, k REAL, l FLOAT4, m FLOAT8, "
+                            "n DECIMAL(10,2) UNSIGNED, o DECIMAL ZEROFILL SIGNED, "
+                            "p FLOAT ZEROFILL SIGNED, q DOUBLE UNSIGNED ZEROFILL SIGNED, "
+                            "r FLOAT4(10), s FLOAT4(25), t FLOAT4(10,2), "
+                            "u FLOAT8(10,2), v DOUBLE PRECISION(10,2), w REAL(10,2))",
+                            MYLITE_UNSUPPORTED, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "parse-only numeric CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += expect_no_information_schema_table_name_row(database, "numeric_types");
     failures += prepare_sql(database, "CREATE TABLE invalid_width (a INT(256));",
                             MYLITE_PARSE_ERROR, &stmt);
     if (stmt != NULL) {
@@ -777,6 +794,56 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
                             MYLITE_PARSE_ERROR, &stmt);
     if (stmt != NULL) {
         fprintf(stderr, "invalid BLOB charset CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database, "CREATE TABLE invalid_decimal (a DECIMAL(66));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid DECIMAL CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database, "CREATE TABLE invalid_decimal_zero_scale (a DECIMAL(0,1));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid DECIMAL(0,1) CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database, "CREATE TABLE invalid_float_zero_display (a FLOAT(0,0));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid FLOAT(0,0) CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database, "CREATE TABLE invalid_double (a DOUBLE(10));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid DOUBLE CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database, "CREATE TABLE invalid_double_zero_display (a DOUBLE(0,0));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid DOUBLE(0,0) CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_numeric_overflow "
+                            "(a FLOAT(18446744073709551616));",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "overflow numeric CREATE TABLE returned a statement handle\n");
         failures = 1;
         mylite_finalize(stmt);
         stmt = NULL;

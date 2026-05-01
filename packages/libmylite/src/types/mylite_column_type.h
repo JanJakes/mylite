@@ -14,6 +14,9 @@ enum mylite_column_type_status {
     MYLITE_COLUMN_TYPE_UNKNOWN_CHARACTER_SET = 5,
     MYLITE_COLUMN_TYPE_UNKNOWN_COLLATION = 6,
     MYLITE_COLUMN_TYPE_COLLATION_CHARACTER_SET_MISMATCH = 7,
+    MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE = 8,
+    MYLITE_COLUMN_TYPE_SCALE_OUT_OF_RANGE = 9,
+    MYLITE_COLUMN_TYPE_SCALE_EXCEEDS_PRECISION = 10,
 };
 
 enum mylite_column_integer_type {
@@ -45,37 +48,54 @@ enum mylite_column_string_binary_type {
     MYLITE_COLUMN_STRING_BINARY_LONGBLOB = 12,
 };
 
+enum mylite_column_numeric_type {
+    MYLITE_COLUMN_NUMERIC_NONE = 0,
+    MYLITE_COLUMN_NUMERIC_DECIMAL = 1,
+    MYLITE_COLUMN_NUMERIC_FLOAT = 2,
+    MYLITE_COLUMN_NUMERIC_DOUBLE = 3,
+};
+
 struct mylite_column_type_attributes {
-    bool has_display_width;
+    uint64_t length;
+    uint64_t precision;
+    uint64_t scale;
+    const char *character_set;
+    size_t character_set_length;
+    const char *collation;
+    size_t collation_length;
     unsigned int display_width;
+    bool has_display_width;
     bool has_signed;
     bool has_unsigned;
     bool has_length;
-    uint64_t length;
+    bool has_precision;
+    bool has_scale;
     bool has_character_set;
-    const char *character_set;
-    size_t character_set_length;
     bool has_collation;
-    const char *collation;
-    size_t collation_length;
     bool has_binary_attribute;
     bool has_byte_attribute;
+    bool has_zerofill_attribute;
     bool is_national;
 };
 
 struct mylite_column_type_descriptor {
     enum mylite_column_integer_type integer_type;
     enum mylite_column_string_binary_type string_binary_type;
+    enum mylite_column_numeric_type numeric_type;
     bool is_unsigned;
     bool is_boolean_alias;
     bool is_binary_string;
     bool is_character_string;
+    bool is_exact_numeric;
+    bool is_approximate_numeric;
     bool is_deprecated_binary_attribute;
     bool is_alias;
+    bool is_zerofill;
     bool has_display_width;
     unsigned int display_width;
     unsigned int storage_bytes;
     unsigned int numeric_precision;
+    bool has_numeric_scale;
     unsigned int numeric_scale;
     uint64_t character_maximum_length;
     uint64_t character_octet_length;
@@ -101,6 +121,11 @@ enum mylite_column_type_status
 mylite_column_type_describe_string_binary(const char *type_name, size_t type_name_length,
                                           struct mylite_column_type_attributes attributes,
                                           struct mylite_column_type_descriptor *out_descriptor);
+
+enum mylite_column_type_status
+mylite_column_type_describe_numeric(const char *type_name, size_t type_name_length,
+                                    struct mylite_column_type_attributes attributes,
+                                    struct mylite_column_type_descriptor *out_descriptor);
 
 const char *mylite_column_type_status_name(enum mylite_column_type_status status);
 

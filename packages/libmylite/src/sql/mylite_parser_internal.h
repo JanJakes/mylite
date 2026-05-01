@@ -25,6 +25,19 @@ struct mylite_sql_parser_column_length_tokens {
     struct mylite_sql_token right_paren;
 };
 
+struct mylite_sql_parser_precision_tokens {
+    struct mylite_sql_token left_paren;
+    struct mylite_sql_token precision;
+    struct mylite_sql_token right_paren;
+};
+
+struct mylite_sql_parser_precision_scale_tokens {
+    struct mylite_sql_token left_paren;
+    struct mylite_sql_token precision;
+    struct mylite_sql_token scale;
+    struct mylite_sql_token right_paren;
+};
+
 void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
                                       struct mylite_sql_ast_node *root);
 void mylite_sql_parser_state_syntax_error(struct mylite_sql_parser_state *state, int parser_token,
@@ -102,6 +115,15 @@ mylite_sql_parser_set_column_length(struct mylite_sql_parser_state *state,
                                     struct mylite_sql_ast_node *column_type,
                                     struct mylite_sql_ast_node *length);
 struct mylite_sql_ast_node *
+mylite_sql_parser_make_column_precision(struct mylite_sql_parser_state *state,
+                                        struct mylite_sql_parser_precision_tokens tokens);
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_precision_scale(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_precision_scale_tokens tokens);
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_precision_scale(struct mylite_sql_parser_state *state,
+                                             struct mylite_sql_ast_node *column_type,
+                                             struct mylite_sql_ast_node *precision_scale);
+struct mylite_sql_ast_node *
 mylite_sql_parser_set_column_type_signed(struct mylite_sql_parser_state *state,
                                          struct mylite_sql_ast_node *column_type,
                                          struct mylite_sql_token signed_token);
@@ -127,6 +149,10 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_set_column_type_byte_attribute(struct mylite_sql_parser_state *state,
                                                  struct mylite_sql_ast_node *attributes,
                                                  struct mylite_sql_token byte_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_zerofill_attribute(struct mylite_sql_parser_state *state,
+                                                     struct mylite_sql_ast_node *attributes,
+                                                     struct mylite_sql_token zerofill_token);
 struct mylite_sql_ast_node *
 mylite_sql_parser_apply_column_type_attributes(struct mylite_sql_parser_state *state,
                                                struct mylite_sql_ast_node *column_type,

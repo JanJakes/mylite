@@ -10,6 +10,7 @@ static int test_schema_lifecycle_statements(void);
 static int test_connection_charset_statements(void);
 static int test_create_table_integer_boolean_columns(void);
 static int test_create_table_string_binary_columns(void);
+static int test_create_table_numeric_columns(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -47,6 +48,7 @@ int main(void)
     failures += test_connection_charset_statements();
     failures += test_create_table_integer_boolean_columns();
     failures += test_create_table_string_binary_columns();
+    failures += test_create_table_numeric_columns();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -632,6 +634,209 @@ static int test_create_table_string_binary_columns(void)
 
     failures += parse_sql("CREATE TABLE bad_binary_collation (a CHAR CHARACTER SET utf8mb4 "
                           "COLLATE binary);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_numeric_columns(void)
+{
+    enum {
+        expected_column_count = 30,
+        decimal_precision = 10,
+        decimal_scale = 2,
+        float_double_cutover_precision = 25,
+        numeric_column = 3,
+        fixed_column = 4,
+        float_column = 5,
+        float_selector_column = 6,
+        float_scaled_column = 7,
+        double_column = 8,
+        double_precision_column = 9,
+        real_column = 10,
+        float4_column = 11,
+        float8_column = 12,
+        decimal_unsigned_column = 13,
+        decimal_zerofill_column = 14,
+        float_zerofill_column = 15,
+        double_mixed_column = 16,
+        float25_unsigned_column = 17,
+        float25_scaled_unsigned_column = 18,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE TABLE app.numeric_types ("
+                          "a DECIMAL, b DECIMAL(10), c DECIMAL(10,2), "
+                          "d NUMERIC(8,3), e FIXED(7,2), "
+                          "f FLOAT, g FLOAT(25), h FLOAT(25,2), "
+                          "i DOUBLE, j DOUBLE PRECISION, k REAL, l FLOAT4, m FLOAT8, "
+                          "n DECIMAL(10,2) UNSIGNED, o DECIMAL ZEROFILL SIGNED, "
+                          "p FLOAT ZEROFILL SIGNED, q DOUBLE UNSIGNED ZEROFILL SIGNED, "
+                          "r FLOAT(25) UNSIGNED, s FLOAT(25,2) UNSIGNED, "
+                          "t DEC, u DECIMAL(0), v DECIMAL(0,0), "
+                          "w FLOAT(255,30), x DOUBLE(255,30), "
+                          "y FLOAT4(10), z FLOAT4(25), aa FLOAT4(10,2), "
+                          "ab FLOAT8(10,2), ac DOUBLE PRECISION(10,2), ad REAL(10,2));",
+                          MYLITE_SQL_PARSE_OK, &result);
+    columns = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(columns, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "numeric column list");
+    failures += expect_child_count(columns, expected_column_count, "numeric columns");
+
+    column_type = child_at(child_at(columns, 2U), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL,
+                                   "decimal scaled column");
+    if (column_type != NULL &&
+        (!column_type->has_column_precision || column_type->column_precision != decimal_precision ||
+         !column_type->has_column_scale || column_type->column_scale != decimal_scale)) {
+        fprintf(stderr, "decimal precision/scale was not recorded as 10,2\n");
+        failures = 1;
+    }
+    failures += expect_span_text(column_type, "DECIMAL(10,2)", "decimal span");
+
+    failures += expect_column_type(child_at(child_at(columns, numeric_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL, "numeric alias");
+    failures += expect_column_type(child_at(child_at(columns, fixed_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL, "fixed alias");
+    failures += expect_column_type(child_at(child_at(columns, float_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_FLOAT, "float column");
+    failures += expect_column_type(child_at(child_at(columns, float_selector_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_FLOAT, "float selector column");
+    failures += expect_column_type(child_at(child_at(columns, float_scaled_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_FLOAT, "float scaled column");
+    failures += expect_column_type(child_at(child_at(columns, double_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE, "double column");
+    failures += expect_column_type(child_at(child_at(columns, double_precision_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE, "double precision column");
+    failures += expect_column_type(child_at(child_at(columns, real_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE, "real column");
+    failures += expect_column_type(child_at(child_at(columns, float4_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_FLOAT, "float4 alias");
+    failures += expect_column_type(child_at(child_at(columns, float8_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE, "float8 alias");
+
+    column_type = child_at(child_at(columns, decimal_unsigned_column), 1U);
+    if (column_type != NULL && !column_type->column_type_unsigned) {
+        fprintf(stderr, "decimal unsigned flag was not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, decimal_zerofill_column), 1U);
+    if (column_type != NULL &&
+        (!column_type->column_zerofill_attribute || !column_type->column_type_signed)) {
+        fprintf(stderr, "decimal zerofill/signed flags were not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, float_zerofill_column), 1U);
+    if (column_type != NULL &&
+        (!column_type->column_zerofill_attribute || !column_type->column_type_signed)) {
+        fprintf(stderr, "float zerofill/signed flags were not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, double_mixed_column), 1U);
+    if (column_type != NULL &&
+        (!column_type->column_type_unsigned || !column_type->column_zerofill_attribute ||
+         !column_type->column_type_signed)) {
+        fprintf(stderr, "double mixed attribute flags were not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, float25_unsigned_column), 1U);
+    if (column_type != NULL && (!column_type->has_column_precision ||
+                                column_type->column_precision != float_double_cutover_precision ||
+                                !column_type->column_type_unsigned)) {
+        fprintf(stderr, "float(25) unsigned metadata was not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, float25_scaled_unsigned_column), 1U);
+    if (column_type != NULL &&
+        (!column_type->has_column_precision ||
+         column_type->column_precision != float_double_cutover_precision ||
+         !column_type->has_column_scale || column_type->column_scale != decimal_scale ||
+         !column_type->column_type_unsigned)) {
+        fprintf(stderr, "float(25,2) unsigned metadata was not recorded\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_decimal_precision (a DECIMAL(66));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_decimal_scale (a DECIMAL(65,31));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_decimal_scale_gt_precision (a DECIMAL(10,11));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_decimal_negative (a DECIMAL(-1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_decimal_missing_scale (a DECIMAL(10,));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_decimal_missing_precision (a DECIMAL(,2));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_decimal_precision_overflow "
+                          "(a DECIMAL(18446744073709551616));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_decimal_zero_scale (a DECIMAL(0,1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_float_precision (a FLOAT(54));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_float_zero_display (a FLOAT(0,0));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_float_zero_scale (a FLOAT(0,1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_float_display (a FLOAT(256,30));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_float_scale (a FLOAT(10,31));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_double_precision_only (a DOUBLE(10));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_double_zero_display (a DOUBLE(0,0));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_double_zero_scale (a DOUBLE(0,1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_double_precision_only_zerofill "
+                          "(a DOUBLE(10) ZEROFILL);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_double_overflow "
+                          "(a DOUBLE(18446744073709551616,1));",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

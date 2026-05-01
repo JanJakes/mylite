@@ -19,7 +19,7 @@ level application surfaces.
        `BOOL`/`BOOLEAN`, and integer aliases.
 5. [x] String and binary column types: `CHAR`, `VARCHAR`, `TEXT` family,
        `BINARY`, `VARBINARY`, `BLOB` family, length limits, and metadata.
-6. [ ] Exact and approximate numeric column types: `DECIMAL`, `NUMERIC`,
+6. [x] Exact and approximate numeric column types: `DECIMAL`, `NUMERIC`,
        `FLOAT`, `DOUBLE`, aliases, precision/scale, and metadata.
 7. [ ] Temporal column types: `DATE`, `TIME`, `DATETIME`, `TIMESTAMP`, `YEAR`,
        fractional seconds, zero values, and metadata.

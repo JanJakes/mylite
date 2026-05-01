@@ -93,31 +93,39 @@ enum mylite_sql_ast_column_type {
     MYLITE_SQL_AST_COLUMN_TYPE_BLOB = 17,
     MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB = 18,
     MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB = 19,
+    MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL = 20,
+    MYLITE_SQL_AST_COLUMN_TYPE_FLOAT = 21,
+    MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE = 22,
 };
 
 struct mylite_sql_ast_node {
+    struct mylite_sql_ast_node *first_child;
+    struct mylite_sql_ast_node *last_child;
+    struct mylite_sql_ast_node *next_sibling;
+    struct mylite_sql_ast_node *next_allocated;
+    uint64_t column_length;
+    uint64_t column_precision;
+    uint64_t column_scale;
+    struct mylite_sql_source_span span;
+    struct mylite_sql_source_span column_character_set;
+    struct mylite_sql_source_span column_collation;
     enum mylite_sql_ast_node_kind kind;
     enum mylite_sql_ast_literal_kind literal_kind;
     enum mylite_sql_ast_operator operator_kind;
     enum mylite_sql_ast_schema_option schema_option;
     enum mylite_sql_ast_column_type column_type;
-    struct mylite_sql_source_span span;
-    struct mylite_sql_ast_node *first_child;
-    struct mylite_sql_ast_node *last_child;
-    struct mylite_sql_ast_node *next_sibling;
-    struct mylite_sql_ast_node *next_allocated;
+    unsigned int column_display_width;
     bool column_type_unsigned;
     bool column_type_signed;
     bool has_column_display_width;
-    unsigned int column_display_width;
     bool has_column_length;
-    uint64_t column_length;
+    bool has_column_precision;
+    bool has_column_scale;
     bool has_column_character_set;
-    struct mylite_sql_source_span column_character_set;
     bool has_column_collation;
-    struct mylite_sql_source_span column_collation;
     bool column_binary_attribute;
     bool column_byte_attribute;
+    bool column_zerofill_attribute;
     bool column_national_attribute;
 };
 
@@ -149,12 +157,15 @@ void mylite_sql_ast_node_set_column_type_unsigned(struct mylite_sql_ast_node *no
 void mylite_sql_ast_node_set_column_display_width(struct mylite_sql_ast_node *node,
                                                   unsigned int display_width);
 void mylite_sql_ast_node_set_column_length(struct mylite_sql_ast_node *node, uint64_t length);
+void mylite_sql_ast_node_set_column_precision(struct mylite_sql_ast_node *node, uint64_t precision);
+void mylite_sql_ast_node_set_column_scale(struct mylite_sql_ast_node *node, uint64_t scale);
 void mylite_sql_ast_node_set_column_character_set(struct mylite_sql_ast_node *node,
                                                   struct mylite_sql_source_span span);
 void mylite_sql_ast_node_set_column_collation(struct mylite_sql_ast_node *node,
                                               struct mylite_sql_source_span span);
 void mylite_sql_ast_node_set_column_binary_attribute(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_column_byte_attribute(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_column_zerofill_attribute(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_column_national_attribute(struct mylite_sql_ast_node *node);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);

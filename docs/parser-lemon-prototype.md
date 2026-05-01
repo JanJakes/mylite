@@ -196,9 +196,12 @@ token sink:
 - `CREATE EVENT` recognizes event schedules with `AT` timestamps and `EVERY`
   intervals, validates interval units plus `STARTS`/`ENDS` schedule tails, and
   recognizes scheduler status tails including `DISABLE ON REPLICA` and
-  deprecated `DISABLE ON SLAVE` immediately after the schedule.
+  deprecated `DISABLE ON SLAVE` immediately after the schedule. Recognized
+  single-statement event bodies are routed through the existing statement
+  validators.
 - `CREATE TRIGGER` recognizes timing, event, target table, optional ordering,
-  and stored-program statement starts for single-statement trigger bodies.
+  and stored-program statement starts for single-statement trigger bodies, and
+  recognized body starts reuse existing statement validators.
 - `ALTER INSTANCE` recognizes redo-log enable/disable, InnoDB/binlog master-key
   rotation, TLS reload with channel/no-rollback options, and keyring reload.
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,

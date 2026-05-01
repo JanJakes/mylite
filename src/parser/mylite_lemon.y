@@ -218,7 +218,9 @@ create_tail ::= create_definer_clause create_definer_object_tail.
 create_tail ::= EVENT(A) create_if_not_exists_tail cache_table_ref create_event_body. {
   mylite_parser_validate_event_statement(ctx, A);
 }
-create_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref create_trigger_body.
+create_tail ::= TRIGGER(A) create_if_not_exists_tail cache_table_ref create_trigger_body. {
+  mylite_parser_validate_trigger_statement(ctx, A);
+}
 create_tail ::= FUNCTION create_if_not_exists_tail cache_table_ref create_function_tail.
 create_tail ::= PROCEDURE create_if_not_exists_tail cache_table_ref create_procedure_tail.
 
@@ -553,7 +555,9 @@ create_definer_account ::= current_user_ref.
 create_definer_object_tail ::= EVENT(A) create_if_not_exists_tail cache_table_ref create_event_body. {
   mylite_parser_validate_event_statement(ctx, A);
 }
-create_definer_object_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref create_trigger_body.
+create_definer_object_tail ::= TRIGGER(A) create_if_not_exists_tail cache_table_ref create_trigger_body. {
+  mylite_parser_validate_trigger_statement(ctx, A);
+}
 create_definer_object_tail ::= FUNCTION create_if_not_exists_tail cache_table_ref create_function_tail.
 create_definer_object_tail ::= PROCEDURE create_if_not_exists_tail cache_table_ref create_procedure_tail.
 

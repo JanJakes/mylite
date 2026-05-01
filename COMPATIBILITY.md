@@ -160,7 +160,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/local/next-transaction scope. | Parser recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and READ ONLY/READ WRITE access modes. |
 | `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. | Parser recognizes the backup-lock statement shape. |
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. | Parser recognizes the instance unlock statement shape. |
-| `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. | Parser recognizes table lists, lock types, and aliases using the shared identifier grammar. |
+| `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, aliases, and implicit commit behavior. | Parser recognizes table lists, MySQL 8.4 lock types, and aliases using the shared identifier grammar; removed `LOW_PRIORITY WRITE` syntax is accepted only in permissive corpus mode. |
 | `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. | Parser recognizes `UNLOCK TABLE` and `UNLOCK TABLES` without table tails. |
 | `XA START` | ❌ | low | XA transaction branch start. | Parser recognizes one-, two-, and three-part string or hex XIDs with numeric `formatID` values. |
 | `XA END` | ❌ | low | XA transaction branch end. | Parser recognizes one-, two-, and three-part string or hex XIDs plus `SUSPEND [FOR MIGRATE]`. |

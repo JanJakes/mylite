@@ -122,8 +122,9 @@ token sink:
   requires a string-literal log name.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes and literal,
   shared-identifier local-variable, or user-variable targets.
-- `LOCK TABLES` recognizes table lists, aliases, and MySQL lock types using the
-  shared identifier grammar for alias names.
+- `LOCK TABLES` recognizes table lists, aliases, and MySQL 8.4 `READ [LOCAL]`
+  and `WRITE` lock types using the shared identifier grammar for alias names.
+  Removed `LOW_PRIORITY WRITE` syntax is permissive-corpus-only.
 - `LOCK INSTANCE FOR BACKUP`, `UNLOCK INSTANCE`, and `UNLOCK TABLES` have
   closed statement shapes.
 - `LOAD DATA` and `LOAD XML` recognize file modifiers, duplicate handling,

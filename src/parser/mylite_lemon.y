@@ -1925,7 +1925,9 @@ lock_alias ::= cache_name_part.
 lock_type ::= READ.
 lock_type ::= READ LOCAL.
 lock_type ::= WRITE.
-lock_type ::= LOW_PRIORITY WRITE.
+lock_type ::= LOW_PRIORITY(A) WRITE. {
+  mylite_parser_require_permissive(ctx, A);
+}
 
 unlock_statement ::= UNLOCK unlock_tail(A). {
   mylite_parser_record_statement(ctx, A);

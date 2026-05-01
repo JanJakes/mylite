@@ -28,6 +28,9 @@ EXPECTED_FRAGMENT_FAILURES = [
     29029,
     # Bare ALTER TABLE negative-test fragments.
     31132,
+    # Removed LOCK TABLES LOW_PRIORITY WRITE syntax; permissive corpus mode
+    # keeps accepting the legacy test row.
+    34746,
     41408,
     # Bare ALTER TABLE REORGANIZE PARTITION negative-test fragment.
     43296,

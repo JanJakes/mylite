@@ -62,8 +62,12 @@ ok statements=1 kinds=drop[1:3,0:14]/table:t1
 `DROP TABLE` and `DROP VIEW` validate optional `IF EXISTS`, comma-separated
 name lists, and `RESTRICT` / `CASCADE` tails. `DROP TABLE` also accepts
 `TEMPORARY` and corpus-observed `TABLES` forms.
-`DROP DATABASE` and `DROP SCHEMA` validate optional `IF EXISTS` with a single
-unqualified schema target.
+`CREATE DATABASE` and `CREATE SCHEMA` validate optional `IF NOT EXISTS` plus
+character-set, collation, and encryption options. `ALTER DATABASE` and
+`ALTER SCHEMA` validate explicit or nameless option forms, including
+character-set, collation, encryption, and `READ ONLY`. `DROP DATABASE` and
+`DROP SCHEMA` validate optional `IF EXISTS` with a single unqualified schema
+target.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
 optional `IF EXISTS` with an identifier-like target.
 `CREATE SERVER` validates `FOREIGN DATA WRAPPER` and documented server
@@ -194,7 +198,7 @@ ok statements=1 kinds=create[1:7,0:50]/undo_tablespace:uts
 ```
 
 Nameless default-database option forms keep the database object kind without
-inventing a target name:
+inventing a target name, and database option lists are syntax-validated:
 
 ```text
 ok statements=1 kinds=alter[1:5,0:36]/database

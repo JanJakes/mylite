@@ -31,6 +31,24 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 static int validate_create_role_statement_syntax(const mylite_parser *parser,
                                                  size_t token_index,
                                                  size_t last_token_index);
+static int validate_create_database_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index);
+static int validate_database_option_list_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index,
+                                                int allow_read_only);
+static int validate_database_option_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index,
+                                           size_t *next_token_index,
+                                           int allow_read_only);
+static int token_starts_database_option(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index,
+                                        int allow_read_only);
+static int token_is_database_option_value(const mylite_parser *parser, size_t token_index);
+static int token_is_read_only_value(const mylite_parser *parser, size_t token_index);
 static int validate_create_resource_group_statement_syntax(const mylite_parser *parser,
                                                            size_t token_index,
                                                            size_t last_token_index);
@@ -158,6 +176,9 @@ static int token_is_create_user_auth_hash(const mylite_parser *parser, size_t to
 static int token_can_be_create_user_auth_plugin(const mylite_parser *parser, size_t token_index);
 static int token_is_create_user_resource_option(const mylite_parser *parser, size_t token_index);
 static int validate_alter_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_alter_database_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
 static int validate_alter_resource_group_statement_syntax(const mylite_parser *parser,
                                                           size_t token_index,
                                                           size_t last_token_index);
@@ -1875,6 +1896,10 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (parser->tokens[token_index].parser_token == ROLE_T) {
 		return validate_create_role_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (parser->tokens[token_index].parser_token == DATABASE_T ||
+	    parser->tokens[token_index].parser_token == SCHEMA_T) {
+		return validate_create_database_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (token_is_resource_group_sequence(parser, token_index, last_token_index)) {
 		return validate_create_resource_group_statement_syntax(parser, token_index, last_token_index);
 	}
@@ -1927,6 +1952,171 @@ static int validate_create_role_statement_syntax(const mylite_parser *parser,
 	                                           token_index,
 	                                           last_token_index,
 	                                           0);
+}
+
+static int validate_create_database_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index)
+{
+	if (token_index > last_token_index ||
+	    (parser->tokens[token_index].parser_token != DATABASE_T &&
+	     parser->tokens[token_index].parser_token != SCHEMA_T)) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index + 2 <= last_token_index &&
+	    token_text_equals(parser, token_index, "IF") &&
+	    token_text_equals(parser, token_index + 1, "NOT") &&
+	    token_text_equals(parser, token_index + 2, "EXISTS")) {
+		token_index += 3;
+	}
+	if (token_index > last_token_index ||
+	    !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index++;
+
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	return validate_database_option_list_syntax(parser, token_index, last_token_index, 0);
+}
+
+static int validate_database_option_list_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index,
+                                                int allow_read_only)
+{
+	int saw_option = 0;
+
+	while (token_index <= last_token_index) {
+		if (!validate_database_option_syntax(parser,
+		                                     token_index,
+		                                     last_token_index,
+		                                     &token_index,
+		                                     allow_read_only)) {
+			return 0;
+		}
+		saw_option = 1;
+	}
+	return saw_option;
+}
+
+static int validate_database_option_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index,
+                                           size_t *next_token_index,
+                                           int allow_read_only)
+{
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == DEFAULT_T) {
+		token_index++;
+	}
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == CHARACTER_T ||
+	    token_text_equals(parser, token_index, "CHARSET")) {
+		if (parser->tokens[token_index].parser_token == CHARACTER_T) {
+			if (token_index + 1 > last_token_index ||
+			    parser->tokens[token_index + 1].parser_token != SET_T) {
+				return 0;
+			}
+			token_index += 2;
+		} else {
+			token_index++;
+		}
+		if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+			token_index++;
+		}
+		if (token_index > last_token_index || !token_is_database_option_value(parser, token_index)) {
+			return 0;
+		}
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	if (token_text_equals(parser, token_index, "COLLATE")) {
+		token_index++;
+		if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+			token_index++;
+		}
+		if (token_index > last_token_index || !token_is_database_option_value(parser, token_index)) {
+			return 0;
+		}
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	if (token_text_equals(parser, token_index, "ENCRYPTION")) {
+		token_index++;
+		if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+			token_index++;
+		}
+		if (token_index > last_token_index ||
+		    parser->tokens[token_index].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	if (allow_read_only &&
+	    parser->tokens[token_index].parser_token == READ_T &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index + 1, "ONLY")) {
+		token_index += 2;
+		if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+			token_index++;
+		}
+		if (token_index > last_token_index || !token_is_read_only_value(parser, token_index)) {
+			return 0;
+		}
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	return 0;
+}
+
+static int token_starts_database_option(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index,
+                                        int allow_read_only)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == DEFAULT_T) {
+		token_index++;
+		if (token_index > last_token_index || token_index >= parser->token_count) {
+			return 0;
+		}
+	}
+	return parser->tokens[token_index].parser_token == CHARACTER_T ||
+	       token_text_equals(parser, token_index, "CHARSET") ||
+	       token_text_equals(parser, token_index, "COLLATE") ||
+	       token_text_equals(parser, token_index, "ENCRYPTION") ||
+	       (allow_read_only &&
+	        parser->tokens[token_index].parser_token == READ_T &&
+	        token_index + 1 <= last_token_index &&
+	        token_text_equals(parser, token_index + 1, "ONLY"));
+}
+
+static int token_is_database_option_value(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (token_can_continue_object_name(&parser->tokens[token_index]) ||
+	        parser->tokens[token_index].kind == MYLITE_TOKEN_STRING);
+}
+
+static int token_is_read_only_value(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (parser->tokens[token_index].parser_token == DEFAULT_T ||
+	        token_text_equals(parser, token_index, "0") ||
+	        token_text_equals(parser, token_index, "1"));
 }
 
 static int validate_create_resource_group_statement_syntax(const mylite_parser *parser,
@@ -3263,6 +3453,10 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 	if (parser->tokens[token_index].parser_token == USER_T) {
 		return validate_alter_user_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (parser->tokens[token_index].parser_token == DATABASE_T ||
+	    parser->tokens[token_index].parser_token == SCHEMA_T) {
+		return validate_alter_database_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (token_is_logfile_group_sequence(parser, token_index, last_token_index)) {
 		return validate_alter_logfile_group_statement_syntax(parser, token_index, last_token_index);
 	}
@@ -3279,6 +3473,33 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 		return validate_alter_resource_group_statement_syntax(parser, token_index, last_token_index);
 	}
 	return 1;
+}
+
+static int validate_alter_database_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	if (token_index > last_token_index ||
+	    (parser->tokens[token_index].parser_token != DATABASE_T &&
+	     parser->tokens[token_index].parser_token != SCHEMA_T)) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (!token_starts_database_option(parser, token_index, last_token_index, 1)) {
+		if (!token_can_continue_object_name(&parser->tokens[token_index])) {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	return validate_database_option_list_syntax(parser, token_index, last_token_index, 1);
 }
 
 static int validate_alter_logfile_group_statement_syntax(const mylite_parser *parser,
@@ -11186,28 +11407,7 @@ static int token_starts_alter_database_option(const mylite_parser *parser,
                                               size_t token_index,
                                               size_t last_token_index)
 {
-	if (token_index > last_token_index || token_index >= parser->token_count) {
-		return 0;
-	}
-
-	if (parser->tokens[token_index].parser_token == DEFAULT_T) {
-		token_index++;
-		if (token_index > last_token_index || token_index >= parser->token_count) {
-			return 0;
-		}
-	}
-
-	if (parser->tokens[token_index].parser_token == CHARACTER_T &&
-	    token_index + 1 <= last_token_index &&
-	    parser->tokens[token_index + 1].parser_token == SET_T) {
-		return 1;
-	}
-
-	return token_text_equals(parser, token_index, "COLLATE") ||
-	       token_text_equals(parser, token_index, "ENCRYPTION") ||
-	       (parser->tokens[token_index].parser_token == READ_T &&
-	        token_index + 1 <= last_token_index &&
-	        token_text_equals(parser, token_index + 1, "ONLY"));
+	return token_starts_database_option(parser, token_index, last_token_index, 1);
 }
 
 static void set_statement_object_name_from_first_token(const mylite_parser *parser,

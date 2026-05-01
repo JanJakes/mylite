@@ -66,7 +66,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. | Parser records explicit database/schema targets and nameless default-database option forms without inventing an option-value target; runtime database metadata changes are not implemented. |
+| `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. | Parser records explicit database/schema targets and nameless default-database option forms without inventing an option-value target, and validates character set, collation, encryption, and `READ ONLY` option shapes; runtime database metadata changes, range/value checks, read-only enforcement, warnings, and diagnostics are not implemented. |
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. |  |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. |  |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |
@@ -77,7 +77,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser records and validates the tablespace target with datafile add/drop, rename, autoextend, encryption, storage-engine, and engine-attribute clause shapes; storage-engine behavior, range checks, engine validation, state changes, and diagnostics are not implemented. |
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. | Parser records and validates the undo tablespace target with required `SET ACTIVE` / `SET INACTIVE` and optional storage-engine / engine-attribute tails; storage-engine behavior, state changes, and diagnostics are not implemented. |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. | Parser records the view target while skipping optional definer account clauses; view replacement semantics are not implemented. |
-| `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. |  |
+| `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. | Parser records and validates database/schema targets with optional `IF NOT EXISTS` plus character set, collation, and encryption option shapes; metadata creation, default-schema effects, charset/collation catalog checks, warnings, and embedded file constraints are not implemented. |
 | `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. | Parser records the event target while skipping optional definer account clauses; scheduler metadata and execution are not implemented. |
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. | Parser records the function target while skipping optional definer account clauses; stored-function semantics are not implemented. |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |

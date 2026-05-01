@@ -150,6 +150,10 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 MyISAM key cache statements:
   `https://dev.mysql.com/doc/refman/8.4/en/cache-index.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/load-index.html`
+- MySQL 8.4 database DDL:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-database.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/alter-database.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/drop-database.html`
 - MySQL 8.4 resource group statements:
   `https://dev.mysql.com/doc/refman/8.4/en/create-resource-group.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/alter-resource-group.html`,
@@ -285,6 +289,10 @@ corpus-observed `RENAME TABLES` spelling remains accepted for parser coverage.
 `DROP TABLE` and `DROP VIEW` validate optional `IF EXISTS`, comma-separated
 name lists, and `RESTRICT` / `CASCADE` tails; `DROP TABLE` also accepts
 `TEMPORARY` and corpus-observed `TABLES` forms.
+`CREATE DATABASE` and `CREATE SCHEMA` validate optional `IF NOT EXISTS` and
+documented character-set, collation, and encryption options. `ALTER DATABASE`
+and `ALTER SCHEMA` validate explicit or nameless default-database option forms,
+including character-set, collation, encryption, and `READ ONLY` options.
 `DROP DATABASE` and `DROP SCHEMA` validate optional `IF EXISTS` with a single
 unqualified schema target.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
@@ -336,8 +344,8 @@ Local `CLONE` directory targets and remote `CLONE INSTANCE` donor endpoints
 are recorded as direct targets.
 `STOP` has an explicit statement kind for replication-control statements.
 Nameless `ALTER DATABASE` / `ALTER SCHEMA` option forms are recorded with the
-database or schema object kind and no invented target name, matching MySQL's
-default-database syntax.
+database or schema object kind and no invented target name, and their option
+lists are syntax-validated, matching MySQL's default-database syntax.
 Stored-object `DEFINER = user` clauses are skipped during object scanning so
 routine, event, trigger, and view targets are not confused with definer account
 tokens.

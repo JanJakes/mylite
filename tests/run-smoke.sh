@@ -573,6 +573,96 @@ case "$database_option_output" in
 		;;
 esac
 
+if ! "$parser" --quiet 'CREATE DATABASE db'; then
+	echo "expected CREATE DATABASE minimal form to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE SCHEMA IF NOT EXISTS s DEFAULT CHARACTER SET = utf8mb4 COLLATE utf8mb4_bin ENCRYPTION = 'N'"; then
+	echo "expected CREATE SCHEMA options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'CREATE DATABASE db DEFAULT CHARSET utf8mb4'; then
+	echo "expected CREATE DATABASE CHARSET alias to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER DATABASE testdb CHARACTER SET 'latin1'"; then
+	echo "expected ALTER DATABASE string charset name to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER DATABASE db DEFAULT CHARACTER SET=utf8mb4 DEFAULT COLLATE=utf8mb4_bin DEFAULT ENCRYPTION='Y' READ ONLY=0"; then
+	echo "expected ALTER DATABASE full options to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'ALTER SCHEMA db CHARSET utf8mb4 READ ONLY 1'; then
+	echo "expected ALTER SCHEMA CHARSET and READ ONLY to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet 'ALTER DATABASE CHARSET utf8mb4'; then
+	echo "expected nameless ALTER DATABASE CHARSET to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE DATABASE'; then
+	echo "expected CREATE DATABASE without name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE DATABASE IF EXISTS db'; then
+	echo "expected CREATE DATABASE IF EXISTS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE DATABASE db READ ONLY=1'; then
+	echo "expected CREATE DATABASE READ ONLY to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE DATABASE db CHARACTER SET'; then
+	echo "expected CREATE DATABASE incomplete CHARACTER SET to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER DATABASE'; then
+	echo "expected ALTER DATABASE without name or options to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER DATABASE db'; then
+	echo "expected ALTER DATABASE without options to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER DATABASE db CHARACTER'; then
+	echo "expected ALTER DATABASE incomplete CHARACTER SET to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER DATABASE db READ ONLY'; then
+	echo "expected ALTER DATABASE READ ONLY without value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER DATABASE db READ ONLY=2'; then
+	echo "expected ALTER DATABASE invalid READ ONLY value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER DATABASE db DEFAULT'; then
+	echo "expected ALTER DATABASE dangling DEFAULT to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER DATABASE db ENCRYPTION = utf8mb4'; then
+	echo "expected ALTER DATABASE nonstring ENCRYPTION to fail" >&2
+	exit 1
+fi
+
 definer_object_output=$("$parser" 'CREATE DEFINER = user@localhost PROCEDURE p() SELECT 1; CREATE DEFINER = event@localhost VIEW v AS SELECT 1; CREATE DEFINER = trigger@localhost EVENT e ON SCHEDULE EVERY 1 DAY DO SELECT 1; ALTER DEFINER = user@localhost VIEW v AS SELECT 1')
 case "$definer_object_output" in
 	*"/user:"*)

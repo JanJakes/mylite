@@ -46,6 +46,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 INSERT and REPLACE statements:
   `https://dev.mysql.com/doc/refman/8.4/en/insert.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/replace.html`
+- MySQL 8.4 UPDATE statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/update.html`
 - MySQL 8.4 LOAD DATA and LOAD XML statements:
   `https://dev.mysql.com/doc/refman/8.4/en/load-data.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/load-xml.html`
@@ -224,8 +226,8 @@ statement-leading keywords, and stored program `END IF` / `END LOOP` style
 compound endings.
 MySQL prefixed literals such as `_utf8mb4'text'`, `N'text'`, `X'ff'`, and
 `B'1010'` are emitted as single literal tokens with source spans covering the
-prefix and quoted body. Operators are split before an adjacent signed numeric
-literal, so forms such as `@v=-1`, `a<=-1`, and `c<=>-1` keep the assignment or
+prefix and quoted body. Operators are split before adjacent unary signs, so
+forms such as `@v=-1`, `a<=-1`, `c<=>-1`, and `SET a=-a` keep the assignment or
 comparison operator distinct from the unary sign. Digit-leading words that are
 not valid numeric literals remain identifiers, matching MySQL object names such
 as `15298_1`.
@@ -266,7 +268,10 @@ optional `INTO`, partition lists, optional column lists, `VALUES` / `VALUE`,
 assignment-list shape where MySQL allows it. Expression and source-query
 semantics remain later analyzer work.
 `UPDATE` table-reference scanning skips derived-table subqueries and descends
-into parenthesized joined table references before the `SET` clause.
+into parenthesized joined table references before the `SET` clause. `UPDATE`
+validation checks optional modifiers, a nonempty table-reference span, required
+assignment-list shape, and optional `WHERE`, `ORDER BY`, and `LIMIT` tails while
+leaving expression, join, ordering, and affected-row semantics to later phases.
 `SELECT ... INTO` and `TABLE ... INTO` assignment targets are recorded for user
 variables and local variables. `SET` system-variable targets preserve qualified
 structured names such as `keycache1.key_buffer_size`. `INTO OUTFILE` and

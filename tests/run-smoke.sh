@@ -76,6 +76,65 @@ if "$parser" --quiet 'REPLACE INTO t1 VALUES (1) ON DUPLICATE KEY UPDATE a=1'; t
 	exit 1
 fi
 
+update_output=$("$parser" "UPDATE LOW_PRIORITY IGNORE t1 SET a=1, b=DEFAULT WHERE id=1 ORDER BY a LIMIT 1; UPDATE t1 JOIN t2 USING(id) SET t1.a=t2.a; WITH c AS (SELECT 1) UPDATE t SET a=1")
+case "$update_output" in
+	*"update[1:21"*/table:t1*"update[23:38"*/table:t1*"update[40:52"*/table:t*) ;;
+	*)
+		echo "unexpected UPDATE output: $update_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'UPDATE'; then
+	echo "expected UPDATE without table target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UPDATE t1'; then
+	echo "expected UPDATE without SET clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UPDATE SET a=1'; then
+	echo "expected UPDATE without table reference to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UPDATE t1 SET'; then
+	echo "expected UPDATE without assignment list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UPDATE t1 SET a'; then
+	echo "expected UPDATE assignment without operator to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UPDATE t1 SET a='; then
+	echo "expected UPDATE assignment without value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UPDATE t1 SET a=1 WHERE'; then
+	echo "expected UPDATE WHERE without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UPDATE t1 SET a=1 ORDER BY'; then
+	echo "expected UPDATE ORDER BY without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UPDATE t1 SET a=1 LIMIT'; then
+	echo "expected UPDATE LIMIT without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UPDATE t1, SET a=1'; then
+	echo "expected trailing UPDATE table-reference comma to fail" >&2
+	exit 1
+fi
+
 version_comment_output=$("$parser" "SELECT /*! STRAIGHT_JOIN */ 1; /*!80409 SET @ok=1 */; /*!080409 SET @six=1 */; /*!80410 SET @future=1 */; /*!99999 SET @far=1 */; /*!123 SET @short=1 */; SELECT 2")
 case "$version_comment_output" in
 	*"@future"*|*"@far"*|*"@short"*)
@@ -4028,6 +4087,21 @@ case "$operator_sign_output" in
 	*"set"*/user_variable:@iv*"set"*/user_variable:@plus*"token 3 operator"*"token 4 punctuation"*"token 9 operator"*"token 10 punctuation"*"token 15 operator"*"token 16 punctuation"*"token 20 operator"*"token 21 punctuation"*"token 25 operator"*"token 26 punctuation"*) ;;
 	*)
 		echo "unexpected signed-number token output: $operator_sign_output" >&2
+		exit 1
+		;;
+esac
+
+unary_identifier_output=$("$parser" --tokens 'UPDATE t SET a=-a, b=+b WHERE c<=-d')
+case "$unary_identifier_output" in
+	*"=-"*|*"=+"*|*"<=-"*)
+		echo "unexpected unary-identifier operator token output: $unary_identifier_output" >&2
+		exit 1
+		;;
+esac
+case "$unary_identifier_output" in
+	*"update"*/table:t*"token 5 operator"*"token 6 punctuation"*"token 10 operator"*"token 11 punctuation"*"token 15 operator"*"token 16 punctuation"*) ;;
+	*)
+		echo "unexpected unary-identifier token output: $unary_identifier_output" >&2
 		exit 1
 		;;
 esac

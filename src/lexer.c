@@ -198,7 +198,7 @@ static int read_number(mylite_parser *parser);
 static int read_word_tail(mylite_lexer *lexer);
 static int read_variable(mylite_parser *parser);
 static int read_operator_or_punctuation(mylite_parser *parser);
-static int sign_starts_number(const mylite_lexer *lexer);
+static int sign_starts_unary_operand(const mylite_lexer *lexer);
 static int lookup_keyword(const char *start, size_t length);
 static int previous_token_allows_keyword_identifier(const mylite_parser *parser);
 static int is_word_start(unsigned char ch);
@@ -714,7 +714,7 @@ static int read_operator_or_punctuation(mylite_parser *parser)
 		       current_char(lexer) != '[' && current_char(lexer) != ']' &&
 		       current_char(lexer) != '{' && current_char(lexer) != '}' &&
 		       current_char(lexer) != ',' && current_char(lexer) != ';') {
-			if (lexer->offset > start_offset && sign_starts_number(lexer)) {
+			if (lexer->offset > start_offset && sign_starts_unary_operand(lexer)) {
 				break;
 			}
 			advance_byte(lexer);
@@ -726,15 +726,22 @@ static int read_operator_or_punctuation(mylite_parser *parser)
 	return IDENT;
 }
 
-static int sign_starts_number(const mylite_lexer *lexer)
+static int sign_starts_unary_operand(const mylite_lexer *lexer)
 {
 	unsigned char ch = current_char(lexer);
+	unsigned char next = peek_char(lexer, 1);
 
 	if (ch != '+' && ch != '-') {
 		return 0;
 	}
-	return isdigit(peek_char(lexer, 1)) ||
-	       (peek_char(lexer, 1) == '.' && isdigit(peek_char(lexer, 2)));
+	return isdigit(next) ||
+	       is_word_start(next) ||
+	       next == '@' ||
+	       next == '`' ||
+	       next == '\'' ||
+	       next == '"' ||
+	       next == '?' ||
+	       (next == '.' && isdigit(peek_char(lexer, 2)));
 }
 
 static int lookup_keyword(const char *start, size_t length)

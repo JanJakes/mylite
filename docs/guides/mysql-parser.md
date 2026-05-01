@@ -37,6 +37,8 @@ ok statements=1 kinds=update[1:13,0:38]/table:wt
 column lists, `VALUES` / `VALUE`, `SET`, and query-backed source forms.
 `INSERT` also validates row aliases and `ON DUPLICATE KEY UPDATE` assignment
 tails while leaving expression semantics and row changes to later phases.
+`UPDATE` validates optional modifiers, the table-reference span before `SET`,
+assignment-list shape, and optional `WHERE`, `ORDER BY`, and `LIMIT` tails.
 
 Derived-table-leading `UPDATE` references skip the derived alias and report the
 first concrete table before `SET`:

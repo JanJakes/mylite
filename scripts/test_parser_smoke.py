@@ -358,6 +358,8 @@ def main() -> int:
         ("drop user;", 1, {}),
         ("drop role current_user();", 1, {}),
         ("drop user u1 u2;", 1, {}),
+        ("drop user u \"x\";", 1, {}),
+        ("drop role r \"x\";", 1, {}),
         ("drop role if exists;", 1, {}),
         ("drop temporary;", 1, {}),
         ("drop resource;", 1, {}),

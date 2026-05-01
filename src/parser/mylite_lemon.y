@@ -1069,7 +1069,9 @@ drop_account_name ::= drop_account_principal.
 drop_account_name ::= drop_account_principal drop_account_host.
 
 drop_account_trailing_tail ::= .
-drop_account_trailing_tail ::= DOUBLE_QUOTED_STRING.
+drop_account_trailing_tail ::= DOUBLE_QUOTED_STRING(A). {
+  mylite_parser_require_permissive(ctx, A);
+}
 
 drop_account_principal ::= drop_account_ident.
 

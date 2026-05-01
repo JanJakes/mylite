@@ -20,6 +20,8 @@ def main() -> int:
         ("select account from account.account where account = 'account';", 0, {"statements": "1", "select": "1"}),
         ("select distinct a from t;", 0, {"statements": "1", "select": "1"}),
         ("select distinct * from t;", 0, {"statements": "1", "select": "1"}),
+        ("select sql_no_cache * from t;", 0, {"statements": "1", "select": "1"}),
+        ("select sql_no_cache sql_big_result * from t;", 0, {"statements": "1", "select": "1"}),
         ("select 1 from t where a = 1 group by a having count(*) > 0 order by a limit 1;", 0, {"statements": "1", "select": "1"}),
         ("select 1 from t limit 1 offset 2;", 0, {"statements": "1", "select": "1"}),
         ("select 1 from t limit 1, 2 for update;", 0, {"statements": "1", "select": "1"}),

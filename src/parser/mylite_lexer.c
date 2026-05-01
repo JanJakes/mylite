@@ -971,6 +971,7 @@ static int keyword_token(const MyliteToken *token) {
       {"SQL_BIG_RESULT", ML_SQL_BIG_RESULT},
       {"SQL_BUFFER_RESULT", ML_SQL_BUFFER_RESULT},
       {"SQL_CALC_FOUND_ROWS", ML_SQL_CALC_FOUND_ROWS},
+      {"SQL_NO_CACHE", ML_SQL_NO_CACHE},
       {"SQL_SMALL_RESULT", ML_SQL_SMALL_RESULT},
       {"SSL", ML_SSL},
       {"SQLSTATE", ML_SQLSTATE},

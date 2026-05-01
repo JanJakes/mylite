@@ -346,7 +346,7 @@ Shared parser-level `SHOW ... LIKE` filters require string-literal patterns.
 | Optimizer hints | ❌ | medium | Comment-hint grammar and ignored/accepted hint diagnostics. |  |
 | `PARTITION` selection | ❌ | low | Explicit partition selection syntax and errors. |  |
 | Locking clauses | ❌ | high | FOR UPDATE, FOR SHARE, OF table list, NOWAIT, and SKIP LOCKED. | Parser recognizes and validates top-level SELECT locking-clause tails; execution semantics are not implemented. |
-| SELECT modifiers | ❌ | top | ALL, HIGH_PRIORITY, SQL_SMALL_RESULT, SQL_BIG_RESULT, SQL_BUFFER_RESULT, SQL_CALC_FOUND_ROWS, and STRAIGHT_JOIN. |  |
+| SELECT modifiers | ❌ | top | ALL, HIGH_PRIORITY, SQL_SMALL_RESULT, SQL_BIG_RESULT, SQL_BUFFER_RESULT, SQL_CALC_FOUND_ROWS, SQL_NO_CACHE, and STRAIGHT_JOIN. | Parser recognizes `SQL_NO_CACHE`; modifier execution and deprecation warnings are not implemented. |
 | Expression metadata | ❌ | top | Column type, length, decimals, flags, charset, collation, nullability, and origin metadata. |  |
 
 ## 3. DDL Detail Surface

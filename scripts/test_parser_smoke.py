@@ -671,6 +671,8 @@ def main() -> int:
         ("start replica io_thread garbage;", 1, {}),
         ("start replica until source_log_file = 'bin.000001';", 1, {}),
         ("start replica until source_log_file = 'bin.000001', relay_log_pos = 4;", 1, {}),
+        ("start replica until source_log_file = 'bin.000001', source_log_pos = fast;", 1, {}),
+        ("start replica until relay_log_file = 'relay.000001', relay_log_pos = fast;", 1, {}),
         ("start group_replication user = 'u' password = 'p';", 1, {}),
         ("stop replica garbage;", 1, {}),
         ("stop group_replication garbage;", 1, {}),

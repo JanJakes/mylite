@@ -90,6 +90,8 @@ token sink:
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, numeric VCPU ranges, numeric thread priorities, force modifiers,
   and numeric thread-id assignment lists.
+- `START REPLICA` and legacy `START SLAVE` recognize thread, `UNTIL`,
+  connection, and channel clauses with numeric log-position values.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes and literal,
   shared-identifier local-variable, or user-variable targets.
 - `LOCK TABLES` recognizes table lists, aliases, and MySQL lock types using the

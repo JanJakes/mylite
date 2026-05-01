@@ -175,7 +175,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. | Parser recognizes MySQL 8.4 filter names, parenthesized rule lists, empty rule lists, rewrite-db pairs, and optional channel clauses. |
 | `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. | Parser recognizes documented MySQL 8.4 source option names, legacy `CHANGE MASTER TO` option names, option values, and channel names. |
 | `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. | Parser recognizes `ALL` and channel names using the shared identifier grammar. |
-| `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. | Parser recognizes thread, until, connection, and channel clauses with channel names using the shared identifier grammar. |
+| `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. | Parser recognizes thread, until, connection, and channel clauses with numeric log positions and channel names using the shared identifier grammar. |
 | `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. | Parser recognizes thread and channel clauses with channel names using the shared identifier grammar. |
 | `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. |  |
 | `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. |  |

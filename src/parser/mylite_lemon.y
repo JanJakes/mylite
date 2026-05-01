@@ -1728,9 +1728,13 @@ start_until_tail ::= UNTIL start_until_spec.
 
 start_until_spec ::= SQL_BEFORE_GTIDS start_option_equals ATOM.
 start_until_spec ::= SQL_AFTER_GTIDS start_option_equals ATOM.
-start_until_spec ::= SOURCE_LOG_FILE start_option_equals ATOM import_comma SOURCE_LOG_POS start_option_equals ATOM.
-start_until_spec ::= RELAY_LOG_FILE start_option_equals ATOM import_comma RELAY_LOG_POS start_option_equals ATOM.
+start_until_spec ::= SOURCE_LOG_FILE start_option_equals ATOM import_comma SOURCE_LOG_POS start_option_equals start_log_position_value.
+start_until_spec ::= RELAY_LOG_FILE start_option_equals ATOM import_comma RELAY_LOG_POS start_option_equals start_log_position_value.
 start_until_spec ::= SQL_AFTER_MTS_GAPS.
+
+start_log_position_value ::= BOOLEAN_NUMBER.
+start_log_position_value ::= FACTOR_NUMBER.
+start_log_position_value ::= NUMBER_LITERAL.
 
 start_connection_tail ::= start_user_option start_password_option start_default_auth_option start_plugin_dir_option.
 

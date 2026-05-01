@@ -17,6 +17,21 @@ python3 tests/check_keywords.py
 "$parser" --quiet "WITH c AS (SELECT 1) UPDATE t SET a=1"
 "$parser" --quiet "COMMIT"
 
+version_comment_output=$("$parser" "SELECT /*! STRAIGHT_JOIN */ 1; /*!80409 SET @ok=1 */; /*!080409 SET @six=1 */; /*!80410 SET @future=1 */; /*!99999 SET @far=1 */; /*!123 SET @short=1 */; SELECT 2")
+case "$version_comment_output" in
+	*"@future"*|*"@far"*|*"@short"*)
+		echo "unexpected gated executable comment output: $version_comment_output" >&2
+		exit 1
+		;;
+esac
+case "$version_comment_output" in
+	*"select[1:3"*"/user_variable:@ok"*"/user_variable:@six"*"select[18:19"*) ;;
+	*)
+		echo "unexpected executable comment output: $version_comment_output" >&2
+		exit 1
+		;;
+esac
+
 span_output=$("$parser" "SELECT 1; COMMIT")
 case "$span_output" in
 	*"select[1:2,0:8],commit[4:4,10:16]"*) ;;

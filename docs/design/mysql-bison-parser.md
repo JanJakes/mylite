@@ -441,7 +441,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   declarations. It does not yet validate end labels, duplicate labels, the
   16-character label limit, or label binding.
 - Skips ordinary comments. MySQL executable `/*! ... */` comments are tokenized
-  as SQL because they can carry required syntax.
+  as SQL when ungated, or when their five- or six-digit version gate is less
+  than or equal to the MySQL 8.4.9 target version.
 - Treats quoted user-variable names such as `@'my-var'`, `@"my-var"`, and
   `` @`my-var` `` as single user-variable tokens.
 - Accepts unknown statement starts as `unknown`; later grammar work should

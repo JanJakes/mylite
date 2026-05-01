@@ -11,6 +11,10 @@ typedef struct keyword {
 	int token;
 } keyword;
 
+enum {
+	MYLITE_MYSQL_VERSION_ID = 80409
+};
+
 static const keyword keywords[] = {
 	{ "ALL", ALL_T },
 	{ "ALTER", ALTER_T },
@@ -176,7 +180,12 @@ static void lexer_set_error(mylite_parser *parser, const char *message);
 static int next_token(mylite_parser *parser);
 static int finish_token(mylite_lexer *lexer, int token);
 static int skip_space_and_comments(mylite_parser *parser);
-static void enter_executable_comment(mylite_lexer *lexer);
+static int enter_executable_comment(mylite_parser *parser);
+static int read_executable_comment_version(const mylite_lexer *lexer,
+                                           size_t offset,
+                                           size_t *version_digits,
+                                           unsigned long *version);
+static int comment_version_terminator_at(const mylite_lexer *lexer, size_t offset);
 static int skip_block_comment(mylite_parser *parser);
 static int skip_line_comment(mylite_parser *parser);
 static int is_prefixed_literal_start(const mylite_lexer *lexer);
@@ -338,7 +347,9 @@ static int skip_space_and_comments(mylite_parser *parser)
 		}
 		if (current_char(lexer) == '/' && peek_char(lexer, 1) == '*') {
 			if (peek_char(lexer, 2) == '!') {
-				enter_executable_comment(lexer);
+				if (!enter_executable_comment(parser)) {
+					return 0;
+				}
 				advanced = 1;
 				continue;
 			}
@@ -351,15 +362,76 @@ static int skip_space_and_comments(mylite_parser *parser)
 	return lexer->error[0] == '\0';
 }
 
-static void enter_executable_comment(mylite_lexer *lexer)
+static int enter_executable_comment(mylite_parser *parser)
 {
+	mylite_lexer *lexer = &parser->lexer;
+	size_t version_digits = 0;
+	unsigned long version = 0;
+	int version_state = read_executable_comment_version(lexer, lexer->offset + 3, &version_digits, &version);
+	size_t i;
+
+	if (version_state < 0 ||
+	    (version_state > 0 && version > MYLITE_MYSQL_VERSION_ID)) {
+		return skip_block_comment(parser);
+	}
+
 	advance_byte(lexer);
 	advance_byte(lexer);
 	advance_byte(lexer);
-	while (isdigit(current_char(lexer))) {
+	for (i = 0; i < version_digits; i++) {
 		advance_byte(lexer);
 	}
 	lexer->executable_comment = 1;
+	return 1;
+}
+
+static int read_executable_comment_version(const mylite_lexer *lexer,
+                                           size_t offset,
+                                           size_t *version_digits,
+                                           unsigned long *version)
+{
+	size_t digit_count = 0;
+	size_t digits_to_read;
+	size_t i;
+
+	*version_digits = 0;
+	*version = 0;
+
+	if (offset >= lexer->length ||
+	    !isdigit((unsigned char)lexer->input[offset])) {
+		return 0;
+	}
+
+	while (offset + digit_count < lexer->length &&
+	       isdigit((unsigned char)lexer->input[offset + digit_count])) {
+		digit_count++;
+	}
+	if (digit_count < 5) {
+		return -1;
+	}
+
+	digits_to_read = 5;
+	if (digit_count >= 6 &&
+	    comment_version_terminator_at(lexer, offset + 6)) {
+		digits_to_read = 6;
+	}
+
+	for (i = 0; i < digits_to_read; i++) {
+		*version = (*version * 10) + (unsigned long)(lexer->input[offset + i] - '0');
+	}
+	*version_digits = digits_to_read;
+	return 1;
+}
+
+static int comment_version_terminator_at(const mylite_lexer *lexer, size_t offset)
+{
+	if (offset >= lexer->length) {
+		return 1;
+	}
+	return isspace((unsigned char)lexer->input[offset]) ||
+	       (lexer->input[offset] == '*' &&
+	        offset + 1 < lexer->length &&
+	        lexer->input[offset + 1] == '/');
 }
 
 static int skip_block_comment(mylite_parser *parser)

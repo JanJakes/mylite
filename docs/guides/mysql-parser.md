@@ -33,6 +33,13 @@ For DML, the reported table is the first syntactic target table, including
 ok statements=1 kinds=update[1:13,0:38]/table:wt
 ```
 
+Executable MySQL comments are tokenized only when ungated or compatible with
+the MySQL 8.4.9 target version:
+
+```text
+ok statements=1 kinds=set[1:4,9:18]/user_variable:@ok
+```
+
 Table-maintenance statements also report the first concrete table target:
 
 ```text

@@ -189,7 +189,9 @@ token sink:
 - `DECLARE`, `FETCH [[NEXT] FROM] ... INTO`, and named signal conditions use
   the shared identifier grammar for local names, with numeric MySQL error codes
   and five-character `SQLSTATE [VALUE]` literals for condition declarations and
-  handler conditions.
+  handler conditions. Handler bodies recognize compound blocks and stored
+  program starts for flow-control, cursor, DML, diagnostics, and return
+  statements.
 - Prepared-statement names and `EXECUTE ... USING` user-variable lists use the
   shared identifier grammar; `PREPARE ... FROM` accepts string-literal and
   user-variable sources.

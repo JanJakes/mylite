@@ -4114,16 +4114,28 @@ declare_found ::= FOUND.
 
 declare_handler_statement_start ::= BEGIN.
 declare_handler_statement_start ::= CALL.
+declare_handler_statement_start ::= CASE.
+declare_handler_statement_start ::= CLOSE.
 declare_handler_statement_start ::= DELETE.
 declare_handler_statement_start ::= DO.
+declare_handler_statement_start ::= FETCH.
 declare_handler_statement_start ::= GET.
+declare_handler_statement_start ::= IF.
 declare_handler_statement_start ::= INSERT.
+declare_handler_statement_start ::= ITERATE.
+declare_handler_statement_start ::= LABEL.
+declare_handler_statement_start ::= LEAVE.
+declare_handler_statement_start ::= LOOP.
+declare_handler_statement_start ::= OPEN.
+declare_handler_statement_start ::= REPEAT.
 declare_handler_statement_start ::= REPLACE.
 declare_handler_statement_start ::= RESIGNAL.
+declare_handler_statement_start ::= RETURN.
 declare_handler_statement_start ::= SELECT.
 declare_handler_statement_start ::= SET.
 declare_handler_statement_start ::= SIGNAL.
 declare_handler_statement_start ::= UPDATE.
+declare_handler_statement_start ::= WHILE.
 
 end_statement ::= END end_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

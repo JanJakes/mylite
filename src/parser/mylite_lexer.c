@@ -624,6 +624,7 @@ static int keyword_token(const MyliteToken *token) {
       {"ENCLOSED", ML_ENCLOSED},
       {"ENGINES", ML_ENGINES},
       {"ENCRYPTION", ML_ENCRYPTION},
+      {"ENFORCED", ML_ENFORCED},
       {"ESCAPED", ML_ESCAPED},
       {"ERROR", ML_ERROR},
       {"ERRORS", ML_ERRORS},

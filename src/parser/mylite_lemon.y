@@ -4025,8 +4025,16 @@ set_assignment_scope ::= SESSION.
 set_assignment_list ::= set_assignment.
 set_assignment_list ::= set_assignment_list import_comma set_assignment.
 
-set_assignment ::= set_variable_name set_assignment_operator set_assignment_value.
-set_assignment ::= set_assignment_scope set_variable_name set_assignment_operator set_assignment_value.
+set_assignment ::= set_variable_name set_assignment_operator set_assignment_value(A). {
+  if (!ctx->permissive) {
+    mylite_parser_validate_expression_from(ctx, A, "malformed SET assignment");
+  }
+}
+set_assignment ::= set_assignment_scope set_variable_name set_assignment_operator set_assignment_value(A). {
+  if (!ctx->permissive) {
+    mylite_parser_validate_expression_from(ctx, A, "malformed SET assignment");
+  }
+}
 
 set_assignment_value ::= values_row_value_tokens.
 

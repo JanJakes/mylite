@@ -156,6 +156,8 @@ static int query_expression_group_validates_adjacent(int allow_empty,
 static int query_expression_group_disables_adjacent(int token_id);
 static int query_expression_malformed_operator_sequence(
     int previous_top_token_id, MyliteToken previous_top_token, int token_id);
+static int expression_start_follows_double_at_assignment(
+    MyliteParseContext *ctx, MyliteToken start);
 static int select_window_name_token(int token_id, MyliteToken token);
 static int select_lock_table_ref_start(int token_id, MyliteToken token);
 static int select_lock_table_ref_part(int token_id);
@@ -4172,6 +4174,94 @@ void mylite_parser_validate_parenthesized_expression_list_from(
   if (saw_list && depth > 0) {
     mylite_parser_reject(ctx, pending_token, message);
   }
+}
+
+void mylite_parser_validate_expression_from(MyliteParseContext *ctx,
+                                            MyliteToken start,
+                                            const char *message) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken previous_top_token = start;
+  int token_id;
+  int saw_expression = 0;
+  int depth = 0;
+  int previous_top_token_id = 0;
+  int previous_was_operator = 1;
+  MyliteExpressionStack expression_stack = {0};
+
+  if (expression_start_follows_double_at_assignment(ctx, start)) {
+    return;
+  }
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_expression) {
+      if (token.offset == start.offset) {
+        saw_expression = 1;
+      } else {
+        continue;
+      }
+    }
+
+    if (depth > 0) {
+      if (!query_expression_depth_token(ctx, token_id, token, &depth,
+                                        &expression_stack, message)) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id) && depth == 0) {
+        previous_top_token_id = token_id;
+        previous_top_token = token;
+        previous_was_operator = 0;
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI || token_id == ML_COMMA) {
+      break;
+    }
+
+    if (!query_expression_token(ctx, token_id, token, &depth,
+                                &previous_top_token_id, &previous_top_token,
+                                &previous_was_operator, &expression_stack,
+                                message)) {
+      return;
+    }
+  }
+
+  if (saw_expression &&
+      (previous_top_token_id == 0 || previous_was_operator)) {
+    mylite_parser_reject(ctx, previous_top_token, message);
+  }
+}
+
+static int expression_start_follows_double_at_assignment(
+    MyliteParseContext *ctx, MyliteToken start) {
+  size_t i = start.offset;
+  int saw_assignment_operator = 0;
+
+  while (i > 0) {
+    unsigned char c = (unsigned char) ctx->sql[i - 1];
+    i--;
+
+    if (!saw_assignment_operator) {
+      if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f') {
+        continue;
+      }
+      if (c == '=') {
+        saw_assignment_operator = 1;
+      }
+      continue;
+    }
+
+    if (c == ',' || c == ';') {
+      return 0;
+    }
+    if (c == '@' && i > 0 && ctx->sql[i - 1] == '@') {
+      return 1;
+    }
+  }
+
+  return 0;
 }
 
 void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,

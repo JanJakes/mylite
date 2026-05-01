@@ -496,6 +496,45 @@ if "$parser" --quiet 'DROP TRIGGER IF EXISTS'; then
 	exit 1
 fi
 
+alter_routine_output=$("$parser" "ALTER FUNCTION db.f COMMENT 'c' LANGUAGE SQL READS SQL DATA SQL SECURITY INVOKER; ALTER PROCEDURE p CONTAINS SQL NO SQL MODIFIES SQL DATA SQL SECURITY DEFINER COMMENT 'p'")
+case "$alter_routine_output" in
+	*"alter"*/function:db.f*"alter"*/procedure:p*) ;;
+	*)
+		echo "unexpected ALTER routine output: $alter_routine_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'ALTER FUNCTION'; then
+	echo "expected ALTER FUNCTION without a name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER FUNCTION f COMMENT'; then
+	echo "expected ALTER FUNCTION COMMENT without string to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER FUNCTION f LANGUAGE C'; then
+	echo "expected ALTER FUNCTION LANGUAGE other than SQL to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER PROCEDURE p READS DATA'; then
+	echo "expected ALTER PROCEDURE READS without SQL DATA to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER PROCEDURE p SQL SECURITY CURRENT_USER'; then
+	echo "expected ALTER PROCEDURE SQL SECURITY unsupported value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER FUNCTION f DETERMINISTIC'; then
+	echo "expected ALTER FUNCTION DETERMINISTIC to fail" >&2
+	exit 1
+fi
+
 rename_table_output=$("$parser" 'RENAME TABLE old TO new; RENAME TABLE db.old TO other.new, a TO b; RENAME TABLES t2 TO t0, t4 TO t2')
 case "$rename_table_output" in
 	*"rename"*/table:old*"rename"*/table:db.old*"rename"*/table:t2*) ;;

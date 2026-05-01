@@ -56,6 +56,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/create-user.html`
 - MySQL 8.4 ALTER USER statement:
   `https://dev.mysql.com/doc/refman/8.4/en/alter-user.html`
+- MySQL 8.4 routine alteration statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/alter-function.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/alter-procedure.html`
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
@@ -295,6 +298,8 @@ and `ALTER SCHEMA` validate explicit or nameless default-database option forms,
 including character-set, collation, encryption, and `READ ONLY` options.
 `DROP DATABASE` and `DROP SCHEMA` validate optional `IF EXISTS` with a single
 unqualified schema target.
+`ALTER FUNCTION` and `ALTER PROCEDURE` validate documented routine
+characteristics without changing parameters or bodies.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
 optional `IF EXISTS` with an identifier-like target; the trigger and routine
 forms accept schema-qualified targets used by the corpus.

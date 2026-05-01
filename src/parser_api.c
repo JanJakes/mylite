@@ -179,6 +179,13 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 static int validate_alter_database_statement_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
+static int validate_alter_routine_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int validate_alter_routine_characteristic_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index,
+                                                        size_t *next_token_index);
 static int validate_alter_instance_statement_syntax(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
@@ -3461,6 +3468,10 @@ static int validate_alter_statement_syntax(const mylite_parser *parser, const my
 	    parser->tokens[token_index].parser_token == SCHEMA_T) {
 		return validate_alter_database_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (parser->tokens[token_index].parser_token == FUNCTION_T ||
+	    parser->tokens[token_index].parser_token == PROCEDURE_T) {
+		return validate_alter_routine_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (token_text_equals(parser, token_index, "INSTANCE")) {
 		return validate_alter_instance_statement_syntax(parser, token_index, last_token_index);
 	}
@@ -3507,6 +3518,92 @@ static int validate_alter_database_statement_syntax(const mylite_parser *parser,
 	}
 
 	return validate_database_option_list_syntax(parser, token_index, last_token_index, 1);
+}
+
+static int validate_alter_routine_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	size_t last_name_token;
+
+	if (token_index > last_token_index ||
+	    (parser->tokens[token_index].parser_token != FUNCTION_T &&
+	     parser->tokens[token_index].parser_token != PROCEDURE_T)) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index || !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+	token_index = last_name_token + 1;
+
+	while (token_index <= last_token_index) {
+		if (!validate_alter_routine_characteristic_syntax(parser,
+		                                                  token_index,
+		                                                  last_token_index,
+		                                                  &token_index)) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+static int validate_alter_routine_characteristic_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index,
+                                                        size_t *next_token_index)
+{
+	if (token_text_equals(parser, token_index, "COMMENT")) {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "LANGUAGE")) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "SQL")) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "CONTAINS") ||
+	    parser->tokens[token_index].parser_token == NO_T) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "SQL")) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "READS") ||
+	    token_text_equals(parser, token_index, "MODIFIES")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "SQL") ||
+		    !token_text_equals(parser, token_index + 2, "DATA")) {
+			return 0;
+		}
+		*next_token_index = token_index + 3;
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "SQL")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "SECURITY") ||
+		    (!token_text_equals(parser, token_index + 2, "DEFINER") &&
+		     !token_text_equals(parser, token_index + 2, "INVOKER"))) {
+			return 0;
+		}
+		*next_token_index = token_index + 3;
+		return 1;
+	}
+
+	return 0;
 }
 
 static int validate_alter_instance_statement_syntax(const mylite_parser *parser,

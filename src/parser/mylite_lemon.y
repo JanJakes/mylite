@@ -932,6 +932,7 @@ alter_routine_characteristic ::= SQL SECURITY create_view_security_kind.
 routine_comment_value ::= ATOM.
 
 alter_table_tail ::= FORCE alter_table_force_option_tail.
+alter_table_tail ::= alter_table_keys_action alter_table_force_option_tail.
 alter_table_tail ::= alter_table_tablespace_transfer_kind TABLESPACE.
 alter_table_tail ::= alter_table_tablespace_transfer_kind PARTITION load_partition_names TABLESPACE.
 alter_table_tail ::= alter_table_action_start create_options_tail.
@@ -950,9 +951,7 @@ alter_table_action_start ::= COALESCE.
 alter_table_action_start ::= COMMENT.
 alter_table_action_start ::= CONVERT.
 alter_table_action_start ::= DEFAULT.
-alter_table_action_start ::= DISABLE.
 alter_table_action_start ::= DROP.
-alter_table_action_start ::= ENABLE.
 alter_table_action_start ::= ENCRYPTION.
 alter_table_action_start ::= ENGINE.
 alter_table_action_start ::= EXCHANGE.
@@ -989,6 +988,9 @@ alter_table_force_options ::= alter_table_force_options COMMA alter_table_force_
 
 alter_table_force_option ::= ALGORITHM drop_index_option_equals_tail drop_index_algorithm.
 alter_table_force_option ::= LOCK drop_index_option_equals_tail drop_index_lock.
+
+alter_table_keys_action ::= ENABLE KEYS.
+alter_table_keys_action ::= DISABLE KEYS.
 
 alter_prefixed_view_tail ::= alter_view_prefix VIEW cache_table_ref view_column_tail view_body.
 

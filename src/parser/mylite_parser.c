@@ -39,6 +39,8 @@ static int select_outfile_line_option_start(int token_id);
 static int select_index_hint_name_token(int token_id);
 static int select_index_hint_type(int token_id);
 static int select_partition_name_token(int token_id);
+static int select_tablesample_boundary(int token_id, MyliteToken token);
+static int select_tablesample_percentage_token(int token_id);
 static int select_charset_name_token(int token_id, MyliteToken token);
 static int select_limit_option_token(int token_id);
 static int select_string_literal_token(int token_id);
@@ -392,6 +394,14 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     SELECT_PARTITION_AFTER_NAME,
     SELECT_PARTITION_AFTER_COMMA
   };
+  enum {
+    SELECT_TABLESAMPLE_NONE,
+    SELECT_TABLESAMPLE_AFTER_TABLESAMPLE,
+    SELECT_TABLESAMPLE_AFTER_METHOD,
+    SELECT_TABLESAMPLE_AFTER_LP,
+    SELECT_TABLESAMPLE_AFTER_PERCENTAGE,
+    SELECT_TABLESAMPLE_COMPLETE
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token;
@@ -418,6 +428,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int index_hint_allow_empty = 0;
   int from_clause = 0;
   int partition_state = SELECT_PARTITION_NONE;
+  int tablesample_state = SELECT_TABLESAMPLE_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -624,6 +635,53 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       }
       partition_state = SELECT_PARTITION_AFTER_NAME;
       continue;
+    }
+
+    if (tablesample_state == SELECT_TABLESAMPLE_AFTER_TABLESAMPLE) {
+      if (!token_ascii_equal(token, "bernoulli") &&
+          token_id != ML_SYSTEM) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT TABLESAMPLE clause");
+        return;
+      }
+      tablesample_state = SELECT_TABLESAMPLE_AFTER_METHOD;
+      continue;
+    }
+    if (tablesample_state == SELECT_TABLESAMPLE_AFTER_METHOD) {
+      if (token_id != ML_LP) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT TABLESAMPLE clause");
+        return;
+      }
+      tablesample_state = SELECT_TABLESAMPLE_AFTER_LP;
+      pending_token = token;
+      continue;
+    }
+    if (tablesample_state == SELECT_TABLESAMPLE_AFTER_LP) {
+      if (!select_tablesample_percentage_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT TABLESAMPLE clause");
+        return;
+      }
+      tablesample_state = SELECT_TABLESAMPLE_AFTER_PERCENTAGE;
+      continue;
+    }
+    if (tablesample_state == SELECT_TABLESAMPLE_AFTER_PERCENTAGE) {
+      if (token_id != ML_RP) {
+        mylite_parser_reject(ctx, pending_token,
+                             "malformed SELECT TABLESAMPLE clause");
+        return;
+      }
+      tablesample_state = SELECT_TABLESAMPLE_COMPLETE;
+      continue;
+    }
+    if (tablesample_state == SELECT_TABLESAMPLE_COMPLETE) {
+      if (!select_tablesample_boundary(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "malformed SELECT TABLESAMPLE clause");
+        return;
+      }
+      tablesample_state = SELECT_TABLESAMPLE_NONE;
     }
 
     if (lock_state == SELECT_LOCK_AFTER_LOCK) {
@@ -1154,6 +1212,12 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
 
+    if (from_clause && token_ascii_equal(token, "tablesample")) {
+      tablesample_state = SELECT_TABLESAMPLE_AFTER_TABLESAMPLE;
+      pending_token = token;
+      continue;
+    }
+
     if (group_clause && token_id == ML_WITH) {
       rollup_state = SELECT_ROLLUP_AFTER_WITH;
       pending_token = token;
@@ -1297,6 +1361,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
              partition_state == SELECT_PARTITION_AFTER_COMMA) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT partition clause");
+  } else if (tablesample_state == SELECT_TABLESAMPLE_AFTER_TABLESAMPLE ||
+             tablesample_state == SELECT_TABLESAMPLE_AFTER_METHOD ||
+             tablesample_state == SELECT_TABLESAMPLE_AFTER_LP) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT TABLESAMPLE clause");
   } else if (need_set_operand) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT set operation");
@@ -1486,6 +1555,23 @@ static int select_index_hint_type(int token_id) {
 static int select_partition_name_token(int token_id) {
   return token_id != ML_COMMA && token_id != ML_LP && token_id != ML_RP &&
          token_id != ML_SEMI;
+}
+
+static int select_tablesample_boundary(int token_id, MyliteToken token) {
+  return token_id == ML_COMMA || token_id == ML_FOR || token_id == ML_HAVING ||
+         token_id == ML_INTO || token_id == ML_JOIN || token_id == ML_LIMIT ||
+         token_id == ML_LOCK || token_id == ML_ORDER || token_id == ML_WHERE ||
+         token_id == ML_STRAIGHT_JOIN || select_set_operator(token_id) ||
+         token_ascii_equal(token, "cross") || token_ascii_equal(token, "inner") ||
+         token_ascii_equal(token, "left") || token_ascii_equal(token, "natural") ||
+         token_ascii_equal(token, "qualify") || token_ascii_equal(token, "right") ||
+         token_ascii_equal(token, "window");
+}
+
+static int select_tablesample_percentage_token(int token_id) {
+  return token_id == ML_AT_HOST || token_id == ML_ATOM ||
+         token_id == ML_BOOLEAN_NUMBER || token_id == ML_FACTOR_NUMBER ||
+         token_id == ML_NUMBER_LITERAL || token_id == ML_QUOTED_ID;
 }
 
 static int select_charset_name_token(int token_id, MyliteToken token) {

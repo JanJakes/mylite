@@ -66,6 +66,8 @@ token sink:
 - Top-level `SELECT` validates `USE`/`FORCE`/`IGNORE INDEX|KEY` hint tails,
   including scoped `FOR JOIN`/`FOR ORDER BY`/`FOR GROUP BY` forms.
 - Top-level `SELECT` validates table `PARTITION (...)` selection lists.
+- Top-level `SELECT` validates table `TABLESAMPLE SYSTEM|BERNOULLI (...)`
+  suffixes.
 - Top-level `SELECT` requires `INTO OUTFILE` and `INTO DUMPFILE` to include
   the mandatory file-name string.
 - Top-level `SELECT ... INTO OUTFILE` validates the basic `CHARACTER SET`,

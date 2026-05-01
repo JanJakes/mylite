@@ -1,9 +1,12 @@
 {
   "name": "SQLite",
   "version": "3.53.0",
-  "version_number": 3530000,
+  "version_number": 3053000,
+  "archive_number": 3530000,
   "source_archive": "https://www.sqlite.org/2026/sqlite-src-3530000.zip",
   "source_archive_sha3_256": "4ffbd00ba8db1e1172dbc69a5203a2c185556a32543e58585ba3713abf676fe5",
+  "amalgamation_archive": "https://www.sqlite.org/2026/sqlite-amalgamation-3530000.zip",
+  "amalgamation_archive_sha3_256": "c2325c53b3b41761469f91cfb078e96882ac5d85bac10c11b0bd8f253b031e5b",
   "vendored_files": [
     {
       "source": "LICENSE.md",
@@ -16,6 +19,18 @@
     {
       "source": "tool/lempar.c",
       "destination": "third_party/sqlite/lemon/lempar.c"
+    },
+    {
+      "source": "sqlite3.c",
+      "destination": "third_party/sqlite/upstream/sqlite3.c"
+    },
+    {
+      "source": "sqlite3.h",
+      "destination": "third_party/sqlite/upstream/sqlite3.h"
+    },
+    {
+      "source": "sqlite3ext.h",
+      "destination": "third_party/sqlite/upstream/sqlite3ext.h"
     }
   ]
 }

@@ -21,6 +21,11 @@ EXPECTED_FRAGMENT_FAILURES = [
     7189,
     7190,
     19528,
+    # ANALYZE TABLE histogram negative-test cases with multiple table names;
+    # permissive corpus mode accepts them, but strict mode follows MySQL 8.4's
+    # single-table histogram grammar.
+    29001,
+    29029,
     # Bare ALTER TABLE negative-test fragments.
     31132,
     41408,

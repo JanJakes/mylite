@@ -104,7 +104,9 @@ token sink:
   component file lists and optional scoped `SET` assignments for installs.
 - `ANALYZE TABLE` recognizes table lists and histogram update/drop clauses using
   the shared identifier grammar for table and column names, with numeric
-  histogram bucket counts and string-literal histogram data.
+  histogram bucket counts, MySQL 8.4 automatic/manual histogram update modes,
+  single-table histogram clauses, and single-column string-literal histogram
+  data.
 - `CHECK TABLE`, `CHECKSUM TABLE`, `OPTIMIZE TABLE`, and `REPAIR TABLE`
   recognize table lists and their documented parser-level option keywords.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource

@@ -1847,8 +1847,7 @@ analyze_buckets_marker ::= BUCKETS.
 table_admin_column_list ::= table_admin_column.
 table_admin_column_list ::= table_admin_column_list import_comma table_admin_column.
 
-table_admin_column ::= ATOM.
-table_admin_column ::= LABEL.
+table_admin_column ::= cache_name_part.
 
 check_table_tail ::= table_admin_table_keyword table_admin_table_list check_table_options.
 

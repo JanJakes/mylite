@@ -222,7 +222,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. | Parser recognizes VCPU ranges, thread priority, enable, and `DISABLE [FORCE]` clauses. |
 | `DROP RESOURCE GROUP` | ❌ | low | Resource group deletion syntax. | Parser recognizes the optional `FORCE` modifier. |
 | `SET RESOURCE GROUP` | ❌ | low | Thread assignment to resource groups. | Parser recognizes optional `FOR` thread-id lists. |
-| `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. |  |
+| `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. | Parser recognizes table lists and histogram update/drop clauses using the shared identifier grammar for tables and columns. |
 | `CHECK TABLE` | ❌ | high | Table consistency checks and result-set metadata. |  |
 | `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. |  |
 | `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. |  |

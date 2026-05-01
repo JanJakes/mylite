@@ -671,6 +671,7 @@ def main() -> int:
         ("analyze table t;", 0, {"statements": "1", "admin": "1"}),
         ("analyze tables t;", 0, {"statements": "1", "admin": "1"}),
         ("analyze table t1, t2 update histogram on a with 2 buckets;", 0, {"statements": "1", "admin": "1"}),
+        ("analyze table t update histogram on account, first with 2 buckets;", 0, {"statements": "1", "admin": "1"}),
         ("analyze table t drop histogram on a, b;", 0, {"statements": "1", "admin": "1"}),
         ("analyze table t update histogram on a using data '{\"buckets\": []}';", 0, {"statements": "1", "admin": "1"}),
         ("check tables t;", 0, {"statements": "1", "admin": "1"}),

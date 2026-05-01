@@ -78,6 +78,8 @@ token sink:
   references using the shared identifier grammar.
 - `INSTALL PLUGIN` and `UNINSTALL PLUGIN` recognize plugin names using the
   shared identifier grammar.
+- `ANALYZE TABLE` recognizes table lists and histogram update/drop clauses using
+  the shared identifier grammar for table and column names.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, VCPU ranges, force modifiers, and thread-id assignment lists.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes and literal,

@@ -3939,9 +3939,13 @@ open_statement ::= OPEN stored_program_label_ref. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-fetch_statement ::= FETCH stored_program_label_ref INTO fetch_target_list. {
+fetch_statement ::= FETCH fetch_cursor_ref INTO fetch_target_list. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
+
+fetch_cursor_ref ::= stored_program_label_ref.
+fetch_cursor_ref ::= FROM stored_program_label_ref.
+fetch_cursor_ref ::= NEXT FROM stored_program_label_ref.
 
 fetch_target_list ::= fetch_target.
 fetch_target_list ::= fetch_target_list import_comma fetch_target.

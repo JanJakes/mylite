@@ -202,7 +202,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `LEAVE` | ❌ | medium | Block/loop exit transfer. |  |
 | `RETURN` | ❌ | medium | Stored-function return semantics. |  |
 | `OPEN` cursor | ❌ | medium | Cursor open lifecycle. |  |
-| `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. |  |
+| `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. | Parser recognizes `FETCH cursor INTO ...`, `FETCH FROM cursor INTO ...`, and `FETCH NEXT FROM cursor INTO ...` forms. |
 | `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. |  |
 | `GET DIAGNOSTICS` | ❌ | medium | Current and stacked diagnostics retrieval. | Parser recognizes optional `CURRENT`/`STACKED` diagnostics-area selectors, diagnostics item lists, local/user-variable assignment targets, and variable condition numbers. |
 | `SIGNAL` | ❌ | medium | User-raised SQLSTATE and condition item semantics. | Parser recognizes five-character `SQLSTATE [VALUE]` literals and condition item assignments with numeric `MYSQL_ERRNO` values. |

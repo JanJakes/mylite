@@ -181,9 +181,9 @@ token sink:
 - `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, and `RELEASE SAVEPOINT` recognize
   savepoint names using the shared identifier grammar.
 - Stored-program label and cursor references use the shared identifier grammar.
-- `DECLARE`, `FETCH ... INTO`, and named signal conditions use the shared
-  identifier grammar for local names, with numeric MySQL error codes and
-  five-character `SQLSTATE [VALUE]` literals for condition declarations and
+- `DECLARE`, `FETCH [[NEXT] FROM] ... INTO`, and named signal conditions use
+  the shared identifier grammar for local names, with numeric MySQL error codes
+  and five-character `SQLSTATE [VALUE]` literals for condition declarations and
   handler conditions.
 - Prepared-statement names and `EXECUTE ... USING` user-variable lists use the
   shared identifier grammar; `PREPARE ... FROM` accepts string-literal and

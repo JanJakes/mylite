@@ -1481,6 +1481,8 @@ def main() -> int:
         ("open cur1 extra;", 1, {}),
         ("open select;", 1, {}),
         ("fetch cur1 into a;", 0, {"statements": "1", "stored_program": "1"}),
+        ("fetch from cur1 into a;", 0, {"statements": "1", "stored_program": "1"}),
+        ("fetch next from cur1 into a, b;", 0, {"statements": "1", "stored_program": "1"}),
         ("fetch cur1 into a, b;", 0, {"statements": "1", "stored_program": "1"}),
         ("fetch cur1 into first, account;", 0, {"statements": "1", "stored_program": "1"}),
         ("fetch cur1;", 1, {}),

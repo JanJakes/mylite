@@ -448,17 +448,19 @@ create_user_auth_tail ::= create_user_auth_option.
 alter_user_list ::= alter_user_spec.
 alter_user_list ::= alter_user_list import_comma alter_user_spec.
 
-alter_user_spec ::= alter_user_account alter_user_account_option_tail.
-
-alter_user_account ::= drop_account_name.
-alter_user_account ::= current_user_ref.
-alter_user_account ::= USER LP RP.
+alter_user_spec ::= drop_account_name alter_user_account_option_tail.
+alter_user_spec ::= current_user_ref alter_user_account_option_tail.
 
 alter_user_account_option_tail ::= .
 alter_user_account_option_tail ::= user_auth_option alter_user_auth_tail.
 alter_user_account_option_tail ::= DISCARD OLD PASSWORD.
 alter_user_account_option_tail ::= alter_user_factor_option.
 alter_user_account_option_tail ::= account_registration_option.
+
+alter_user_func_option_tail ::= .
+alter_user_func_option_tail ::= account_password_auth_option alter_user_auth_tail.
+alter_user_func_option_tail ::= DISCARD OLD PASSWORD.
+alter_user_func_option_tail ::= account_registration_option.
 
 alter_user_auth_tail ::= .
 alter_user_auth_tail ::= REPLACE user_auth_value alter_user_retain_tail.
@@ -801,6 +803,7 @@ alter_tail ::= SERVER cache_name_part create_server_options.
 alter_tail ::= TABLESPACE cache_name_part alter_tablespace_action.
 alter_tail ::= UNDO TABLESPACE cache_name_part alter_undo_tablespace_action.
 alter_tail ::= USER drop_if_exists_tail alter_user_list account_management_options account_management_permissive_tail.
+alter_tail ::= USER drop_if_exists_tail USER LP RP alter_user_func_option_tail.
 alter_tail ::= EVENT cache_table_ref alter_event_action.
 alter_tail ::= alter_routine_kind cache_table_ref create_options_tail.
 alter_tail ::= alter_database_kind cache_name_part alter_database_tail.

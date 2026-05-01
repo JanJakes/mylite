@@ -128,6 +128,7 @@ def main() -> int:
         ("create table t_query (select 1) union (select 2);", 0, {"statements": "1", "ddl": "1"}),
         ("create table t_opts auto_increment=10 max_rows=100 select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create table t_opts2 autoextend_size=64M storage memory as select 1;", 0, {"statements": "1", "ddl": "1"}),
+        ("create table t_opts3 start transaction select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create table t_part (a int) engine=innodb partition by hash(a) partitions 4;", 0, {"statements": "1", "ddl": "1"}),
         ("create table t10 as ((values row(1) order by column_0 limit 1) order by column_0 limit 1);", 0, {"statements": "1", "ddl": "1"}),
         ("create temporary table if not exists t2 select * from t1;", 0, {"statements": "1", "ddl": "1"}),

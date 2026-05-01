@@ -263,7 +263,6 @@ create_table_tail ::= create_table_tail_option_start required_statement_tail.
 create_table_post_definition_tail ::= .
 create_table_post_definition_tail ::= create_table_tail_option_start required_statement_tail.
 create_table_post_definition_tail ::= create_table_ctas_tail.
-create_table_post_definition_tail ::= START TRANSACTION.
 
 create_table_ctas_tail ::= create_table_ctas_modifier_tail create_table_ctas_body.
 
@@ -375,6 +374,7 @@ create_table_tail_option_start ::= PARTITION.
 create_table_tail_option_start ::= ROW_FORMAT.
 create_table_tail_option_start ::= SECONDARY_ENGINE.
 create_table_tail_option_start ::= SECONDARY_ENGINE_ATTRIBUTE.
+create_table_tail_option_start ::= START.
 create_table_tail_option_start ::= STATS_AUTO_RECALC.
 create_table_tail_option_start ::= STATS_PERSISTENT.
 create_table_tail_option_start ::= STATS_SAMPLE_PAGES.

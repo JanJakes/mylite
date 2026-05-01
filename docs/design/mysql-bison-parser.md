@@ -34,6 +34,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/select-into.html`
 - MySQL 8.4 SET variable assignment statement:
   `https://dev.mysql.com/doc/refman/8.4/en/set-variable.html`
+- MySQL 8.4 structured system variables:
+  `https://dev.mysql.com/doc/refman/8.4/en/structured-system-variables.html`
 - MySQL 8.4 connection character-set SET statements:
   `https://dev.mysql.com/doc/refman/8.4/en/set-character-set.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/set-names.html`
@@ -297,7 +299,8 @@ active-role targets, plus `SET PASSWORD FOR` and bare current-user
 and variable-assignment `SET` metadata is recorded for explicit user-variable
 and system-variable targets, including direct unadorned `SET name = ...`
 targets at the statement boundary. User-variable targets include MySQL's quoted
-variable-name forms.
+variable-name forms. Structured system-variable targets include the predefined
+`default` instance used by key-cache variables.
 Connection character-set `SET NAMES` and `SET CHARACTER SET` forms record the
 target character set. Savepoint names are recorded for `SAVEPOINT`,
 `RELEASE SAVEPOINT`, and `ROLLBACK [WORK] TO [SAVEPOINT]`.

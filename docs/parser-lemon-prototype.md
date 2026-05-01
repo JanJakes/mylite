@@ -310,10 +310,10 @@ token sink:
 - `LOAD DATA` and `LOAD XML` recognize file modifiers, duplicate handling,
   optional `FROM`, `INFILE`/`URL`/`S3` sources, string-literal file names,
   source counts and primary-key-order hints, partition or row-matching clauses,
-  character sets, compression, field/line options, numeric ignored-row counts,
-  column/user-variable lists, validated comma-separated `SET` assignment tails,
-  and bulk-load parallel, memory, and algorithm options where they are
-  unambiguous with `SET` assignment tails.
+  character sets, compression, field/line options with non-empty option bodies,
+  numeric ignored-row counts, column/user-variable lists, validated
+  comma-separated `SET` assignment tails, and bulk-load parallel, memory, and
+  algorithm options where they are unambiguous with `SET` assignment tails.
   `LOAD DATA` partition names use the shared identifier grammar.
 - `LOAD INDEX INTO CACHE` recognizes MySQL's single-table partition form,
   `ALL`, optional empty or named key/index lists, comma-separated non-partition

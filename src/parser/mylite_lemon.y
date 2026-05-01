@@ -1909,8 +1909,8 @@ load_duplicate_tail ::= REPLACE.
 
 load_data_options ::= load_partition_tail load_character_set_tail load_compression_tail load_fields_tail load_lines_tail load_ignore_tail load_column_list_tail load_post_options_tail.
 load_data_options ::= load_partition_tail load_character_set_tail load_compression_tail load_fields_tail load_lines_tail load_ignore_tail load_column_list_tail SET load_assignment_list.
-load_xml_options ::= load_character_set_tail load_compression_tail load_xml_rows_tail load_ignore_tail load_column_list_tail load_post_options_tail.
-load_xml_options ::= load_character_set_tail load_compression_tail load_xml_rows_tail load_ignore_tail load_column_list_tail SET load_assignment_list.
+load_xml_options ::= load_character_set_tail load_compression_tail load_xml_rows_tail load_fields_tail load_lines_tail load_ignore_tail load_column_list_tail load_post_options_tail.
+load_xml_options ::= load_character_set_tail load_compression_tail load_xml_rows_tail load_fields_tail load_lines_tail load_ignore_tail load_column_list_tail SET load_assignment_list.
 
 load_assignment_list ::= load_assignment.
 load_assignment_list ::= load_assignment_list import_comma load_assignment.
@@ -1930,13 +1930,13 @@ load_compression_tail ::= .
 load_compression_tail ::= COMPRESSION diagnostics_equals string_literal.
 
 load_fields_tail ::= .
-load_fields_tail ::= load_fields_kind load_field_options.
+load_fields_tail ::= load_fields_kind load_field_options_nonempty.
 
 load_fields_kind ::= FIELDS.
 load_fields_kind ::= COLUMNS.
 
-load_field_options ::= .
-load_field_options ::= load_field_options load_field_option.
+load_field_options_nonempty ::= load_field_option.
+load_field_options_nonempty ::= load_field_options_nonempty load_field_option.
 
 load_field_option ::= TERMINATED BY load_file_name.
 load_field_option ::= OPTIONALLY ENCLOSED BY load_file_name.
@@ -1944,10 +1944,10 @@ load_field_option ::= ENCLOSED BY load_file_name.
 load_field_option ::= ESCAPED BY load_file_name.
 
 load_lines_tail ::= .
-load_lines_tail ::= LINES load_line_options.
+load_lines_tail ::= LINES load_line_options_nonempty.
 
-load_line_options ::= .
-load_line_options ::= load_line_options load_line_option.
+load_line_options_nonempty ::= load_line_option.
+load_line_options_nonempty ::= load_line_options_nonempty load_line_option.
 
 load_line_option ::= STARTING BY load_file_name.
 load_line_option ::= TERMINATED BY load_file_name.

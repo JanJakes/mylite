@@ -632,6 +632,10 @@ static int validate_values_limit_tail_syntax(const mylite_parser *parser,
                                              size_t token_index,
                                              size_t last_token_index,
                                              size_t *next_token_index);
+static int validate_values_limit_expression_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   size_t *next_token_index);
 static size_t find_values_statement_token(const mylite_parser *parser, const mylite_statement *statement);
 static int values_statement_is_explained_query(const mylite_parser *parser,
                                                const mylite_statement *statement,
@@ -9398,12 +9402,17 @@ static int validate_values_limit_tail_syntax(const mylite_parser *parser,
                                              size_t *next_token_index)
 {
 	if (token_index + 1 > last_token_index ||
-	    !token_text_equals(parser, token_index, "LIMIT") ||
-	    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+	    !token_text_equals(parser, token_index, "LIMIT")) {
 		return 0;
 	}
 
-	token_index += 2;
+	token_index++;
+	if (!validate_values_limit_expression_syntax(parser,
+	                                            token_index,
+	                                            last_token_index,
+	                                            &token_index)) {
+		return 0;
+	}
 	if (token_index > last_token_index ||
 	    parser->tokens[token_index].parser_token == ')' ||
 	    token_is_values_tail_boundary(parser, token_index)) {
@@ -9411,22 +9420,56 @@ static int validate_values_limit_tail_syntax(const mylite_parser *parser,
 		return 1;
 	}
 	if (token_text_equals(parser, token_index, "OFFSET")) {
-		if (token_index + 1 > last_token_index ||
-		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
-			return 0;
-		}
-		*next_token_index = token_index + 2;
-		return 1;
+		token_index++;
+		return validate_values_limit_expression_syntax(parser,
+		                                               token_index,
+		                                               last_token_index,
+		                                               next_token_index);
 	}
 	if (parser->tokens[token_index].parser_token == ',') {
-		if (token_index + 1 > last_token_index ||
-		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
-			return 0;
-		}
-		*next_token_index = token_index + 2;
-		return 1;
+		token_index++;
+		return validate_values_limit_expression_syntax(parser,
+		                                               token_index,
+		                                               last_token_index,
+		                                               next_token_index);
 	}
 	return 0;
+}
+
+static int validate_values_limit_expression_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   size_t *next_token_index)
+{
+	size_t first_token_index = token_index;
+
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    parser->tokens[token_index].parser_token == ')' ||
+	    parser->tokens[token_index].parser_token == ',' ||
+	    token_text_equals(parser, token_index, "OFFSET") ||
+	    token_is_values_tail_boundary(parser, token_index)) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == ')' ||
+		    parser->tokens[token_index].parser_token == ',' ||
+		    token_text_equals(parser, token_index, "OFFSET") ||
+		    token_is_values_tail_boundary(parser, token_index)) {
+			break;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+
+	*next_token_index = token_index;
+	return token_index > first_token_index;
 }
 
 static size_t find_values_statement_token(const mylite_parser *parser, const mylite_statement *statement)

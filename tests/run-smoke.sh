@@ -249,6 +249,11 @@ if ! "$parser" --quiet '(VALUES ROW(1), ROW(2), ROW(3)) LIMIT 1 OFFSET 1'; then
 	exit 1
 fi
 
+if ! "$parser" --quiet 'VALUES ROW(1) LIMIT ? OFFSET ?'; then
+	echo "expected VALUES LIMIT parameter markers to parse" >&2
+	exit 1
+fi
+
 if ! "$parser" --quiet 'VALUES ROW(1) UNION ALL SELECT 2'; then
 	echo "expected VALUES set-operation SELECT RHS to parse" >&2
 	exit 1
@@ -301,6 +306,16 @@ fi
 
 if "$parser" --quiet 'VALUES ROW(1) LIMIT'; then
 	echo "expected missing VALUES LIMIT count to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW(1) LIMIT OFFSET ?'; then
+	echo "expected VALUES LIMIT missing count before OFFSET to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW(1) LIMIT ? OFFSET'; then
+	echo "expected VALUES LIMIT OFFSET without expression to fail" >&2
 	exit 1
 fi
 

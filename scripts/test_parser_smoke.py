@@ -920,6 +920,7 @@ def main() -> int:
         ("show profile garbage;", 1, {}),
         ("show profile cpu garbage;", 1, {}),
         ("show profile block;", 1, {}),
+        ("show profile for query abc;", 1, {}),
         ("show extended;", 1, {}),
         ("show full;", 1, {}),
         ("show full processlist garbage;", 1, {}),

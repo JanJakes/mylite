@@ -112,6 +112,7 @@ token sink:
   debug/development SHOW form.
 - `SHOW ENGINE ... STATUS|LOGS|MUTEX` recognizes engine names using the shared
   identifier grammar.
+- `SHOW PROFILE` recognizes profile type lists and numeric `FOR QUERY` ids.
 - `SET ROLE` and `SET DEFAULT ROLE` recognize MySQL role specifiers and account
   lists rather than permissive token tails.
 - `SET PASSWORD` recognizes MySQL 8.4 literal and random password assignment

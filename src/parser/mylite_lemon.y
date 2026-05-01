@@ -2398,7 +2398,11 @@ show_profile_type ::= SOURCE.
 show_profile_type ::= SWAPS.
 
 show_profile_for_tail ::= .
-show_profile_for_tail ::= FOR QUERY ATOM.
+show_profile_for_tail ::= FOR QUERY show_profile_query_id.
+
+show_profile_query_id ::= BOOLEAN_NUMBER.
+show_profile_query_id ::= FACTOR_NUMBER.
+show_profile_query_id ::= NUMBER_LITERAL.
 
 show_parse_tree_query ::= SELECT select_tail.
 show_parse_tree_query ::= WITH with_recursive_tail with_cte_list with_query_body.

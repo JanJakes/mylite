@@ -522,7 +522,8 @@ ok statements=1 kinds=reset[1:5,0:27]/binary_log
 ok statements=1 kinds=reset[1:2,0:12]/binary_log
 ```
 
-CLONE exposes local directory and remote donor targets:
+CLONE validates local and remote clone clause shape, then exposes local
+directory and remote donor targets:
 
 ```text
 ok statements=2 kinds=clone[1:6,0:41]/directory:'/tmp/clone',clone[8:17,43:95]/server:user@host:3306

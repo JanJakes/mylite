@@ -1256,14 +1256,74 @@ case "$help_output" in
 		;;
 esac
 
-clone_output=$("$parser" "CLONE LOCAL DATA DIRECTORY = '/tmp/clone'; CLONE LOCAL DATA DIRECTORY '/tmp/clone2'; CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY 'p'; CLONE INSTANCE FROM 'u'@'h':3306 IDENTIFIED BY 'p' DATA DIRECTORY = '/tmp/clone' REQUIRE NO SSL")
+clone_output=$("$parser" "CLONE LOCAL DATA DIRECTORY = '/tmp/clone'; CLONE LOCAL DATA DIRECTORY '/tmp/clone2'; CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY 'p'; CLONE INSTANCE FROM 'u'@'h':3306 IDENTIFIED BY 'p' DATA DIRECTORY = '/tmp/clone' REQUIRE NO SSL; CLONE INSTANCE FROM 'u' @ 'h' : 3306 IDENTIFIED BY 'p' REQUIRE SSL")
 case "$clone_output" in
-	*"clone"*/directory:"'/tmp/clone'"*"clone"*/directory:"'/tmp/clone2'"*"clone"*/server:user@host:3306*"clone"*/server:"'u'@'h':3306"*) ;;
+	*"clone"*/directory:"'/tmp/clone'"*"clone"*/directory:"'/tmp/clone2'"*"clone"*/server:user@host:3306*"clone"*/server:"'u'@'h':3306"*"clone"*/server:"'u' @ 'h' : 3306"*) ;;
 	*)
 		echo "unexpected CLONE output: $clone_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'CLONE'; then
+	echo "expected missing CLONE action to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CLONE LOCAL'; then
+	echo "expected incomplete CLONE LOCAL to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CLONE LOCAL DATA DIRECTORY'; then
+	echo "expected missing CLONE LOCAL directory to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CLONE LOCAL DATA DIRECTORY '/tmp/clone' EXTRA"; then
+	echo "expected extra CLONE LOCAL tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CLONE INSTANCE FROM user@host IDENTIFIED BY 'p'"; then
+	echo "expected CLONE remote endpoint without port to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CLONE INSTANCE FROM user@:3306 IDENTIFIED BY '\''p'\'''; then
+	echo "expected CLONE remote endpoint without host to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CLONE INSTANCE FROM user@host:3306'; then
+	echo "expected CLONE remote without IDENTIFIED clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CLONE INSTANCE FROM user@host:3306 IDENTIFIED '\''p'\'''; then
+	echo "expected malformed CLONE IDENTIFIED clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY password'; then
+	echo "expected unquoted CLONE password to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CLONE INSTANCE FROM user@host:3306 REQUIRE SSL IDENTIFIED BY '\''p'\'''; then
+	echo "expected out-of-order CLONE REQUIRE clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY '\''p'\'' DATA DIRECTORY ='; then
+	echo "expected missing CLONE DATA DIRECTORY value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY '\''p'\'' REQUIRE NO'; then
+	echo "expected incomplete CLONE REQUIRE NO SSL clause to fail" >&2
+	exit 1
+fi
 
 stop_output=$("$parser" 'STOP REPLICA; STOP GROUP_REPLICATION; STOP SLAVE SQL_THREAD; CREATE TABLE stop (id int)')
 case "$stop_output" in

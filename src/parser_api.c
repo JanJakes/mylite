@@ -153,6 +153,23 @@ static int validate_execute_statement_syntax(const mylite_parser *parser, const 
 static int validate_deallocate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_drop_prepare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_kill_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_clone_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_clone_local_statement_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index);
+static int validate_clone_remote_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
+static int validate_clone_endpoint_syntax(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index,
+                                          size_t *next_token_index);
+static int validate_clone_data_directory_clause_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index);
+static int token_can_be_clone_account_name(const mylite_parser *parser, size_t token_index);
+static int token_can_be_clone_host_name(const mylite_parser *parser, size_t token_index);
 static void classify_statement_metadata(mylite_parser *parser);
 static void classify_grouped_query_statement_kinds(mylite_parser *parser);
 static mylite_statement_kind classify_grouped_query_statement_kind(const mylite_parser *parser,
@@ -1168,6 +1185,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_KILL:
 			if (!validate_kill_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid KILL statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_CLONE:
+			if (!validate_clone_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid CLONE statement");
 				return;
 			}
 			break;
@@ -2907,6 +2930,163 @@ static int validate_kill_statement_syntax(const mylite_parser *parser, const myl
 
 	return token_can_start_processlist_expression(parser, token_index, last_token_index) &&
 	       processlist_expression_is_single_target(parser, token_index, last_token_index);
+}
+
+static int validate_clone_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == LOCAL_T) {
+		return validate_clone_local_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+
+	if (token_text_equals(parser, token_index, "INSTANCE")) {
+		return validate_clone_remote_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+
+	return 0;
+}
+
+static int validate_clone_local_statement_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index)
+{
+	size_t next_token_index;
+
+	return validate_clone_data_directory_clause_syntax(parser,
+	                                                   token_index,
+	                                                   last_token_index,
+	                                                   &next_token_index) &&
+	       next_token_index > last_token_index;
+}
+
+static int validate_clone_remote_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token != FROM_T ||
+	    !validate_clone_endpoint_syntax(parser, token_index + 1, last_token_index, &next_token_index)) {
+		return 0;
+	}
+
+	if (next_token_index + 2 > last_token_index ||
+	    !token_text_equals(parser, next_token_index, "IDENTIFIED") ||
+	    parser->tokens[next_token_index + 1].parser_token != BY_T ||
+	    parser->tokens[next_token_index + 2].kind != MYLITE_TOKEN_STRING) {
+		return 0;
+	}
+	next_token_index += 3;
+
+	if (next_token_index <= last_token_index &&
+	    parser->tokens[next_token_index].parser_token == DATA_T) {
+		if (!validate_clone_data_directory_clause_syntax(parser,
+		                                                 next_token_index,
+		                                                 last_token_index,
+		                                                 &next_token_index)) {
+			return 0;
+		}
+	}
+
+	if (next_token_index <= last_token_index && token_text_equals(parser, next_token_index, "REQUIRE")) {
+		next_token_index++;
+		if (next_token_index <= last_token_index && parser->tokens[next_token_index].parser_token == NO_T) {
+			next_token_index++;
+		}
+		if (next_token_index > last_token_index ||
+		    !token_text_equals(parser, next_token_index, "SSL")) {
+			return 0;
+		}
+		next_token_index++;
+	}
+
+	return next_token_index > last_token_index;
+}
+
+static int validate_clone_endpoint_syntax(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index,
+                                          size_t *next_token_index)
+{
+	if (token_index + 3 > last_token_index ||
+	    !token_can_be_clone_account_name(parser, token_index) ||
+	    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_USER_VARIABLE) {
+		return 0;
+	}
+	token_index += 2;
+
+	if (token_text_equals(parser, token_index - 1, "@")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_can_be_clone_host_name(parser, token_index)) {
+			return 0;
+		}
+		token_index++;
+	}
+
+	if (!token_text_equals(parser, token_index, ":") ||
+	    token_index + 1 > last_token_index ||
+	    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+		return 0;
+	}
+
+	*next_token_index = token_index + 2;
+	return 1;
+}
+
+static int validate_clone_data_directory_clause_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index,
+                                                       size_t *next_token_index)
+{
+	if (token_index + 2 > last_token_index ||
+	    parser->tokens[token_index].parser_token != DATA_T ||
+	    !token_text_equals(parser, token_index + 1, "DIRECTORY")) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+		token_index++;
+	}
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].kind != MYLITE_TOKEN_STRING) {
+		return 0;
+	}
+
+	*next_token_index = token_index + 1;
+	return 1;
+}
+
+static int token_can_be_clone_account_name(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return token_can_continue_object_name(&parser->tokens[token_index]) ||
+	       parser->tokens[token_index].kind == MYLITE_TOKEN_STRING;
+}
+
+static int token_can_be_clone_host_name(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return token_can_continue_object_name(&parser->tokens[token_index]) ||
+	       parser->tokens[token_index].kind == MYLITE_TOKEN_STRING ||
+	       parser->tokens[token_index].kind == MYLITE_TOKEN_NUMBER;
 }
 
 static void classify_statement_metadata(mylite_parser *parser)

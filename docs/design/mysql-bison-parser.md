@@ -421,8 +421,10 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   validation for missing targets and comma-separated target lists. `BINLOG`
   validates and records the single string event payload only.
   `CLONE` metadata records local clone directories or remote donor endpoints
-  only; plugin availability, privilege checks, copy behavior, SSL requirements,
-  and restart side effects remain runtime work.
+  and validates local directory, remote endpoint, password, optional
+  data-directory, and optional SSL-requirement clause shape; plugin
+  availability, privilege checks, copy behavior, SSL enforcement, and restart
+  side effects remain runtime work.
   Binary log metadata records explicit log-file targets or binary-log collection
   targets for `BEFORE` purge and reset forms, including legacy
   `SHOW MASTER LOGS` and `RESET MASTER`, but does not classify position or time

@@ -27,6 +27,8 @@ token sink:
   have explicit grammar productions.
 - Stored procedure/function signatures require empty or comma-separated
   parameter lists while preserving nested type bodies.
+- `CALL` recognizes bare procedure calls and comma-separated argument lists
+  with nested expression bodies.
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
   clauses, TLS/resource/password/lock options, comments, attributes, and
   default-role clauses rather than generic token tails, including MFA,

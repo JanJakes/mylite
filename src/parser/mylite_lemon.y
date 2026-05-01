@@ -2547,25 +2547,42 @@ call_target ::= LABEL.
 
 call_arguments ::= .
 call_arguments ::= LP RP.
-call_arguments ::= LP call_argument_contents RP.
-call_arguments ::= LP(A) call_argument_contents. {
+call_arguments ::= LP call_argument_list RP.
+call_arguments ::= LP(A) call_argument_list. {
   mylite_parser_require_permissive(ctx, A);
 }
 
-call_argument_contents ::= call_argument_token.
-call_argument_contents ::= call_argument_contents call_argument_token.
+call_argument_list ::= call_argument.
+call_argument_list ::= call_argument_list COMMA call_argument.
+
+call_argument ::= call_argument_tokens.
+
+call_argument_tokens ::= call_argument_token.
+call_argument_tokens ::= call_argument_tokens call_argument_token.
 
 call_argument_token ::= ATOM.
 call_argument_token ::= LABEL.
 call_argument_token ::= keyword.
 call_argument_token ::= DOT.
-call_argument_token ::= COMMA.
-call_argument_token ::= LP RP.
-call_argument_token ::= LP call_argument_contents RP.
+call_argument_token ::= LP call_argument_nested_tokens RP.
 call_argument_token ::= LB.
 call_argument_token ::= RB.
 call_argument_token ::= LC.
 call_argument_token ::= RC.
+
+call_argument_nested_tokens ::= .
+call_argument_nested_tokens ::= call_argument_nested_tokens call_argument_nested_token.
+
+call_argument_nested_token ::= ATOM.
+call_argument_nested_token ::= LABEL.
+call_argument_nested_token ::= keyword.
+call_argument_nested_token ::= COMMA.
+call_argument_nested_token ::= DOT.
+call_argument_nested_token ::= LP call_argument_nested_tokens RP.
+call_argument_nested_token ::= LB.
+call_argument_nested_token ::= RB.
+call_argument_nested_token ::= LC.
+call_argument_nested_token ::= RC.
 
 binlog_statement ::= BINLOG binlog_payload. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);

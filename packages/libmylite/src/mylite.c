@@ -2,6 +2,7 @@
 
 #include "mylite_parser.h"
 #include "mylite_sqlite_translator.h"
+#include "mylite_vfs.h"
 #include "sqlite3.h"
 
 #include <stdlib.h>
@@ -17,6 +18,8 @@ struct mylite_stmt {
     sqlite3_stmt *sqlite_stmt;
 };
 
+static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
+                                mylite_db **out_db);
 static int prepare_sqlite_statement(mylite_db *database, const char *sqlite_sql,
                                     mylite_stmt **out_stmt);
 static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status status);
@@ -49,31 +52,32 @@ const char *mylite_status_name(int status)
     }
 }
 
-int mylite_open_memory(mylite_db **out_db)
+int mylite_open(const char *filename, mylite_db **out_db)
 {
-    mylite_db *database = NULL;
     int rc = SQLITE_OK;
 
-    if (out_db == NULL) {
+    if (filename == NULL || out_db == NULL) {
         return MYLITE_MISUSE;
     }
 
     *out_db = NULL;
-    database = calloc(1U, sizeof(*database));
-    if (database == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_open_v2(":memory:", &database->sqlite,
-                         SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MEMORY, NULL);
+    rc = mylite_vfs_register();
     if (rc != SQLITE_OK) {
-        sqlite3_close(database->sqlite);
-        free(database);
         return MYLITE_SQLITE_ERROR;
     }
 
-    *out_db = database;
-    return MYLITE_OK;
+    return open_sqlite_database(filename, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+                                mylite_vfs_name(), out_db);
+}
+
+int mylite_open_memory(mylite_db **out_db)
+{
+    if (out_db == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    return open_sqlite_database(
+        ":memory:", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MEMORY, NULL, out_db);
 }
 
 void mylite_close(mylite_db *database)
@@ -195,6 +199,28 @@ int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
     }
 
     return (int64_t)sqlite3_column_int64(stmt->sqlite_stmt, column);
+}
+
+static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
+                                mylite_db **out_db)
+{
+    mylite_db *database = calloc(1U, sizeof(*database));
+    int rc = SQLITE_OK;
+
+    *out_db = NULL;
+    if (database == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_open_v2(filename, &database->sqlite, flags, vfs_name);
+    if (rc != SQLITE_OK) {
+        sqlite3_close(database->sqlite);
+        free(database);
+        return MYLITE_SQLITE_ERROR;
+    }
+
+    *out_db = database;
+    return MYLITE_OK;
 }
 
 static int prepare_sqlite_statement(mylite_db *database, const char *sqlite_sql,

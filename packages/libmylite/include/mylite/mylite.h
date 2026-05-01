@@ -43,6 +43,7 @@ enum mylite_status {
 MYLITE_API const char *mylite_version(void);
 MYLITE_API const char *mylite_status_name(int status);
 
+MYLITE_API int mylite_open(const char *filename, mylite_db **out_db);
 MYLITE_API int mylite_open_memory(mylite_db **out_db);
 MYLITE_API void mylite_close(mylite_db *database);
 MYLITE_API const char *mylite_error_message(const mylite_db *database);

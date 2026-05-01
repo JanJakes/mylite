@@ -42,6 +42,8 @@ add_library(mylite STATIC
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c
   src/sql/mylite_sqlite_translator.c
+  src/storage/mylite_file_format.c
+  src/storage/mylite_vfs.c
   src/version.c
 )
 add_library(MyLite::mylite ALIAS mylite)
@@ -54,6 +56,7 @@ target_include_directories(mylite
   PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/sql"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/storage"
     "${MYLITE_SQL_PARSE_DIR}"
 )
 target_link_libraries(mylite PRIVATE MyLite::sqlite)
@@ -81,7 +84,13 @@ if(BUILD_TESTING)
   add_executable(mylite_runtime_test
     tests/runtime_test.c
   )
-  target_link_libraries(mylite_runtime_test PRIVATE MyLite::mylite)
+  target_link_libraries(mylite_runtime_test PRIVATE MyLite::mylite MyLite::sqlite)
+  target_include_directories(mylite_runtime_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/storage"
+  )
+  target_compile_definitions(mylite_runtime_test PRIVATE
+    MYLITE_RUNTIME_TEST_FILE_PATH="${CMAKE_CURRENT_BINARY_DIR}/mylite-runtime-test.mylite"
+  )
   mylite_configure_c_target(mylite_runtime_test)
 
   add_executable(mylite_version_test

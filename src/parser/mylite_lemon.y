@@ -3995,7 +3995,7 @@ declare_type_start ::= DEFAULT.
 declare_type_start ::= LABEL.
 
 declare_condition_value ::= declare_condition_number_value.
-declare_condition_value ::= SQLSTATE SQLSTATE_VALUE.
+declare_condition_value ::= SQLSTATE signal_sqlstate_value_tail SQLSTATE_VALUE.
 
 declare_condition_number_value ::= BOOLEAN_NUMBER.
 declare_condition_number_value ::= FACTOR_NUMBER.

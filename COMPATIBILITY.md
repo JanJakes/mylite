@@ -190,9 +190,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `BEGIN ... END` | ❌ | medium | Compound statement block scope for stored programs and events. |  |
 | Statement labels | ❌ | medium | Label declaration, LEAVE/ITERATE binding, and duplicate-label diagnostics. |  |
 | `DECLARE` local variables | ❌ | medium | Stored-program local variable declarations, defaults, and scope. |  |
-| `DECLARE ... CONDITION` | ❌ | medium | Named condition declarations. | Parser recognizes named conditions with numeric MySQL error codes or five-character SQLSTATE literals. |
+| `DECLARE ... CONDITION` | ❌ | medium | Named condition declarations. | Parser recognizes named conditions with numeric MySQL error codes or five-character `SQLSTATE [VALUE]` literals. |
 | `DECLARE ... CURSOR` | ❌ | medium | Cursor declaration over SELECT statements. |  |
-| `DECLARE ... HANDLER` | ❌ | medium | CONTINUE/EXIT handler declarations for SQLSTATE, errors, warnings, and NOT FOUND. |  |
+| `DECLARE ... HANDLER` | ❌ | medium | CONTINUE/EXIT handler declarations for SQLSTATE, errors, warnings, and NOT FOUND. | Parser recognizes numeric MySQL error codes, named conditions, `SQLSTATE [VALUE]` literals, `SQLWARNING`, `NOT FOUND`, and `SQLEXCEPTION`. |
 | `CASE` statement | ❌ | medium | Stored-program CASE statement semantics. |  |
 | `IF` statement | ❌ | medium | Stored-program IF/ELSEIF/ELSE semantics. |  |
 | `LOOP` | ❌ | medium | Stored-program LOOP semantics. |  |

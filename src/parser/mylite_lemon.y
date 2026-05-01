@@ -2323,17 +2323,25 @@ case_statement ::= CASE statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-declare_statement ::= DECLARE declare_first_token required_statement_tail. {
+declare_statement ::= DECLARE declare_name required_statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
+}
+declare_statement ::= DECLARE declare_handler_action declare_handler_keyword required_statement_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-declare_first_token ::= ATOM.
-declare_first_token ::= CONDITION.
-declare_first_token ::= CONTINUE.
-declare_first_token ::= CURSOR.
-declare_first_token ::= EXIT.
-declare_first_token ::= LABEL.
-declare_first_token ::= UNDO.
+declare_name ::= ATOM.
+declare_name ::= LABEL.
+
+declare_handler_action ::= CONTINUE.
+declare_name ::= CURSOR.
+declare_handler_action ::= EXIT.
+declare_handler_action ::= UNDO.
+
+declare_handler_keyword ::= ATOM(A). {
+  mylite_parser_require_token_text(ctx, A, "HANDLER");
+}
+declare_handler_keyword ::= HANDLER.
 
 end_statement ::= END end_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

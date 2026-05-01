@@ -56,6 +56,10 @@ static int do_clause_boundary(int token_id);
 static int kill_at_sign_target_token(int token_id);
 static int kill_target_allows_call(int token_id);
 static int kill_target_token(int token_id);
+static int create_table_query_body_start(int token_id);
+static int validate_create_table_index_key_list(MyliteParseContext *ctx,
+                                                MyliteLexer *lexer,
+                                                MyliteToken start);
 static int create_index_prefix_length_token(int token_id);
 static int alter_table_add_index_marker(int token_id);
 static int alter_table_add_non_index_marker(int token_id);
@@ -2312,7 +2316,7 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
 }
 
 void mylite_parser_validate_kill_statement(MyliteParseContext *ctx,
-                                            MyliteToken start) {
+                                           MyliteToken start) {
   enum {
     KILL_AFTER_KILL,
     KILL_AFTER_MODE,
@@ -2410,6 +2414,142 @@ void mylite_parser_validate_kill_statement(MyliteParseContext *ctx,
     mylite_parser_reject(ctx, pending_token, "incomplete KILL target");
   } else if (state == KILL_IN_CALL) {
     mylite_parser_reject(ctx, pending_token, "incomplete KILL target");
+  }
+}
+
+void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
+                                                    MyliteToken start) {
+  enum {
+    CREATE_TABLE_FIND_BODY,
+    CREATE_TABLE_BODY_START,
+    CREATE_TABLE_IN_DEFINITION
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int state = CREATE_TABLE_FIND_BODY;
+  int depth = 0;
+  int index_candidate = 0;
+  int element_start = 0;
+  int constraint_prefix = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (state == CREATE_TABLE_FIND_BODY) {
+      if (token_id == ML_LP) {
+        state = CREATE_TABLE_BODY_START;
+        depth = 1;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_SEMI || create_table_query_body_start(token_id)) {
+        break;
+      }
+      continue;
+    }
+
+    if (depth > 1) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (state == CREATE_TABLE_BODY_START) {
+      if (create_table_query_body_start(token_id) || token_id == ML_LP) {
+        return;
+      }
+      state = CREATE_TABLE_IN_DEFINITION;
+      element_start = 1;
+    }
+
+    if (token_id == ML_RP) {
+      if (index_candidate) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete CREATE TABLE index key part");
+      }
+      return;
+    }
+
+    if (token_id == ML_COMMA) {
+      if (index_candidate) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete CREATE TABLE index key part");
+        return;
+      }
+      element_start = 1;
+      constraint_prefix = 0;
+      continue;
+    }
+
+    if (token_id == ML_LP) {
+      if (index_candidate) {
+        if (!validate_create_table_index_key_list(ctx, &lexer, token)) {
+          return;
+        }
+        index_candidate = 0;
+        constraint_prefix = 0;
+        element_start = 0;
+      } else {
+        depth = 2;
+      }
+      continue;
+    }
+
+    if (!element_start && constraint_prefix == 0 && !index_candidate) {
+      continue;
+    }
+
+    if (element_start && token_id == ML_CONSTRAINT) {
+      constraint_prefix = 1;
+      element_start = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (constraint_prefix > 0) {
+      if (alter_table_add_index_marker(token_id)) {
+        index_candidate = 1;
+        constraint_prefix = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_CHECK || token_id == ML_FOREIGN) {
+        constraint_prefix = 0;
+        continue;
+      }
+      if (constraint_prefix == 1) {
+        constraint_prefix = 2;
+        continue;
+      }
+      constraint_prefix = 0;
+      continue;
+    }
+
+    if (element_start && alter_table_add_index_marker(token_id)) {
+      index_candidate = 1;
+      element_start = 0;
+      pending_token = token;
+      continue;
+    }
+
+    element_start = 0;
+  }
+
+  if (index_candidate) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete CREATE TABLE index key part");
   }
 }
 
@@ -3291,6 +3431,146 @@ static int kill_target_token(int token_id) {
   return token_id == ML_AT_HOST || token_id == ML_BOOLEAN_NUMBER ||
          token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
          dml_row_alias_token(token_id);
+}
+
+static int create_table_query_body_start(int token_id) {
+  return token_id == ML_AS || token_id == ML_LIKE || token_id == ML_SELECT ||
+         token_id == ML_TABLE || token_id == ML_VALUES || token_id == ML_WITH;
+}
+
+static int validate_create_table_index_key_list(MyliteParseContext *ctx,
+                                                MyliteLexer *lexer,
+                                                MyliteToken start) {
+  enum {
+    CREATE_TABLE_KEY_NEED_PART,
+    CREATE_TABLE_KEY_AFTER_NAME,
+    CREATE_TABLE_KEY_AFTER_DOT,
+    CREATE_TABLE_KEY_PREFIX_VALUE,
+    CREATE_TABLE_KEY_PREFIX_AFTER_VALUE,
+    CREATE_TABLE_KEY_AFTER_PART,
+    CREATE_TABLE_KEY_AFTER_DIRECTION,
+    CREATE_TABLE_KEY_IN_FUNCTION
+  };
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int depth = 1;
+  int key_state = CREATE_TABLE_KEY_NEED_PART;
+
+  while ((token_id = mylite_lexer_next(lexer, &token)) > 0) {
+    if (depth > 1) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+        if (depth == 1 && key_state == CREATE_TABLE_KEY_IN_FUNCTION) {
+          key_state = CREATE_TABLE_KEY_AFTER_PART;
+        }
+      }
+      continue;
+    }
+
+    if (key_state == CREATE_TABLE_KEY_PREFIX_VALUE) {
+      if (!create_index_prefix_length_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete CREATE TABLE index key part");
+        return 0;
+      }
+      key_state = CREATE_TABLE_KEY_PREFIX_AFTER_VALUE;
+      continue;
+    }
+
+    if (key_state == CREATE_TABLE_KEY_PREFIX_AFTER_VALUE) {
+      if (token_id != ML_RP) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete CREATE TABLE index key part");
+        return 0;
+      }
+      key_state = CREATE_TABLE_KEY_AFTER_PART;
+      continue;
+    }
+
+    if (token_id == ML_LP) {
+      if (key_state == CREATE_TABLE_KEY_NEED_PART) {
+        key_state = CREATE_TABLE_KEY_IN_FUNCTION;
+        depth = 2;
+        pending_token = token;
+        continue;
+      }
+      if (key_state == CREATE_TABLE_KEY_AFTER_NAME) {
+        key_state = CREATE_TABLE_KEY_PREFIX_VALUE;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed CREATE TABLE index key part");
+      return 0;
+    }
+
+    if (token_id == ML_RP) {
+      if (key_state == CREATE_TABLE_KEY_NEED_PART ||
+          key_state == CREATE_TABLE_KEY_AFTER_DOT ||
+          key_state == CREATE_TABLE_KEY_IN_FUNCTION) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete CREATE TABLE index key part");
+        return 0;
+      }
+      return 1;
+    }
+
+    if (token_id == ML_COMMA) {
+      if (key_state != CREATE_TABLE_KEY_AFTER_NAME &&
+          key_state != CREATE_TABLE_KEY_AFTER_PART &&
+          key_state != CREATE_TABLE_KEY_AFTER_DIRECTION) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete CREATE TABLE index key part");
+        return 0;
+      }
+      key_state = CREATE_TABLE_KEY_NEED_PART;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_ASC || token_id == ML_DESC) {
+      if (key_state != CREATE_TABLE_KEY_AFTER_NAME &&
+          key_state != CREATE_TABLE_KEY_AFTER_PART) {
+        mylite_parser_reject(ctx, token,
+                             "malformed CREATE TABLE index key part");
+        return 0;
+      }
+      key_state = CREATE_TABLE_KEY_AFTER_DIRECTION;
+      continue;
+    }
+
+    if (token_id == ML_DOT) {
+      if (key_state != CREATE_TABLE_KEY_AFTER_NAME) {
+        mylite_parser_reject(ctx, token,
+                             "malformed CREATE TABLE index key part");
+        return 0;
+      }
+      key_state = CREATE_TABLE_KEY_AFTER_DOT;
+      pending_token = token;
+      continue;
+    }
+
+    if (key_state == CREATE_TABLE_KEY_NEED_PART ||
+        key_state == CREATE_TABLE_KEY_AFTER_DOT) {
+      if (!dml_row_alias_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete CREATE TABLE index key part");
+        return 0;
+      }
+      key_state = CREATE_TABLE_KEY_AFTER_NAME;
+      continue;
+    }
+
+    mylite_parser_reject(ctx, token, "malformed CREATE TABLE index key part");
+    return 0;
+  }
+
+  mylite_parser_reject(ctx, pending_token,
+                       "incomplete CREATE TABLE index key part");
+  return 0;
 }
 
 static int create_index_prefix_length_token(int token_id) {

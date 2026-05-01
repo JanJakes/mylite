@@ -187,7 +187,12 @@ create_statement ::= CREATE create_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-create_tail ::= create_table_prefix create_if_not_exists_tail cache_table_ref create_table_tail.
+create_tail ::= TABLE(A) create_if_not_exists_tail cache_table_ref create_table_tail. {
+  mylite_parser_validate_create_table_statement(ctx, A);
+}
+create_tail ::= TEMPORARY TABLE(A) create_if_not_exists_tail cache_table_ref create_table_tail. {
+  mylite_parser_validate_create_table_statement(ctx, A);
+}
 create_tail ::= AGGREGATE FUNCTION cache_table_ref create_udf_tail.
 create_tail ::= INDEX(A) create_index_name create_index_using_tail ON cache_table_ref create_index_tail. {
   mylite_parser_validate_create_index_statement(ctx, A);
@@ -264,9 +269,6 @@ create_index_option ::= drop_index_option.
 index_number_value ::= BOOLEAN_NUMBER.
 index_number_value ::= FACTOR_NUMBER.
 index_number_value ::= NUMBER_LITERAL.
-
-create_table_prefix ::= TABLE.
-create_table_prefix ::= TEMPORARY TABLE.
 
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.

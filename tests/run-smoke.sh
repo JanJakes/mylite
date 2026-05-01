@@ -245,15 +245,9 @@ case "$dml_object_output" in
 		;;
 esac
 
-variable_assignment_output=$("$parser" "SELECT a INTO @x FROM t; SELECT a INTO local_var FROM t; SELECT a FROM t INTO @x; SELECT a INTO OUTFILE '/tmp/x' FROM t; SELECT a INTO DUMPFILE '/tmp/y' FROM t; SET @x = 1; SET @'my-var' = 1; SET @\"my-var\" := 2; SET @\`my-var\` = 3; SET @@session.sql_mode = 'ANSI'; SET SESSION sql_mode = 'ANSI'; SET sql_log_bin = 0; SET x = 1; GET DIAGNOSTICS @n = NUMBER; GET CURRENT DIAGNOSTICS CONDITION 1 @state = RETURNED_SQLSTATE")
+variable_assignment_output=$("$parser" "SELECT a INTO @x FROM t; SELECT a INTO local_var FROM t; SELECT a FROM t INTO @x; SELECT a INTO OUTFILE '/tmp/x' FROM t; SELECT a INTO DUMPFILE '/tmp/y' FROM t; SET @x = 1; SET @'my-var' = 1; SET @\"my-var\" := 2; SET @\`my-var\` = 3; SET @@session.sql_mode = 'ANSI'; SET SESSION sql_mode = 'ANSI'; SET sql_log_bin = 0; SET autocommit = 1; SET x = 1; GET DIAGNOSTICS @n = NUMBER; GET CURRENT DIAGNOSTICS CONDITION 1 @state = RETURNED_SQLSTATE")
 case "$variable_assignment_output" in
-	*"/system_variable:x"*|*"/local_variable:x"*)
-		echo "unexpected unadorned SET variable output: $variable_assignment_output" >&2
-		exit 1
-		;;
-esac
-case "$variable_assignment_output" in
-	*"select"*/user_variable:@x*"select"*/local_variable:local_var*"select"*/user_variable:@x*"select"*/outfile:"'/tmp/x'"*"select"*/dumpfile:"'/tmp/y'"*"set"*/user_variable:@x*"set"*/user_variable:@*my-var*"set"*/user_variable:@\"my-var\"*"set"*/user_variable:@\`my-var\`*"set"*/system_variable:@@session.sql_mode*"set"*/system_variable:sql_mode*"set"*/system_variable:sql_log_bin*"get"*/user_variable:@n*"get"*/diagnostics_condition:1*) ;;
+	*"select"*/user_variable:@x*"select"*/local_variable:local_var*"select"*/user_variable:@x*"select"*/outfile:"'/tmp/x'"*"select"*/dumpfile:"'/tmp/y'"*"set"*/user_variable:@x*"set"*/user_variable:@*my-var*"set"*/user_variable:@\"my-var\"*"set"*/user_variable:@\`my-var\`*"set"*/system_variable:@@session.sql_mode*"set"*/system_variable:sql_mode*"set"*/system_variable:sql_log_bin*"set"*/system_variable:autocommit*"set"*/system_variable:x*"get"*/user_variable:@n*"get"*/diagnostics_condition:1*) ;;
 	*)
 		echo "unexpected variable assignment output: $variable_assignment_output" >&2
 		exit 1
@@ -656,7 +650,7 @@ esac
 
 set_account_output=$("$parser" "SET ROLE r; SET ROLE ALL; SET ROLE NONE; SET ROLE ALL EXCEPT 'r'@'h'; SET ROLE DEFAULT; SET DEFAULT ROLE r TO 'u'@'h'; SET DEFAULT ROLE ALL TO 'u'@'h'; SET PASSWORD FOR 'u'@'h' = 'x'; SET PASSWORD = 'x'; SET PASSWORD TO RANDOM; SET autocommit=1")
 case "$set_account_output" in
-	*"set"*/role:r*"set[5:7"*/role*"set[9:11"*/role*"set"*/role:"'r'@'h'"*"set[20:22"*/role*"set"*/role:r*"set"*/user:"'u'@'h'"*"set"*/user:"'u'@'h'"*"set[48:51"*/user*"set[53:56"*/user*"set[58:61"*) ;;
+	*"set"*/role:r*"set[5:7"*/role*"set[9:11"*/role*"set"*/role:"'r'@'h'"*"set[20:22"*/role*"set"*/role:r*"set"*/user:"'u'@'h'"*"set"*/user:"'u'@'h'"*"set[48:51"*/user*"set[53:56"*/user*"set[58:61"*/system_variable:autocommit*) ;;
 	*)
 		echo "unexpected SET account output: $set_account_output" >&2
 		exit 1

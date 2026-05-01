@@ -277,10 +277,9 @@ preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
 active-role targets, plus `SET PASSWORD FOR` and bare current-user
 `SET PASSWORD` account targets,
 and variable-assignment `SET` metadata is recorded for explicit user-variable
-and system-variable targets. Unadorned `SET name = ...` assignments remain
-objectless until semantic context can distinguish local variables from system
-variables, except for the documented `SET sql_log_bin = ...` system-variable
-form. User-variable targets include MySQL's quoted variable-name forms.
+and system-variable targets, including direct unadorned `SET name = ...`
+targets at the statement boundary. User-variable targets include MySQL's quoted
+variable-name forms.
 Connection character-set `SET NAMES` and `SET CHARACTER SET` forms record the
 target character set. Savepoint names are recorded for `SAVEPOINT`,
 `RELEASE SAVEPOINT`, and `ROLLBACK [WORK] TO [SAVEPOINT]`.
@@ -326,8 +325,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   every affected table in multi-table statements.
 - Assignment metadata records only the first direct assignment target. It does
   not expand multi-target `SELECT ... INTO`, `TABLE ... INTO`, `SET`, or
-  `GET DIAGNOSTICS` assignment lists, and it does not classify ambiguous
-  unadorned `SET name` assignments without semantic scope information.
+  `GET DIAGNOSTICS` assignment lists. Direct unadorned `SET name = ...`
+  assignments are reported as system-variable targets at the statement boundary;
+  local-variable disambiguation remains semantic-analysis work.
 - Character-set `SET` metadata records only the requested character set. It
   does not validate charset availability, collation compatibility, or the
   session variables affected by the statement.

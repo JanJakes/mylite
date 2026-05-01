@@ -136,6 +136,10 @@ ok statements=1 kinds=set[1:4,0:31]/system_variable:@@session.sql_mode
 ```
 
 ```text
+ok statements=1 kinds=set[1:4,0:18]/system_variable:autocommit
+```
+
+```text
 ok statements=1 kinds=set[1:4,0:17]/user_variable:@'my-var'
 ```
 

@@ -456,7 +456,7 @@ view_body ::= view_as SELECT select_tail.
 view_body ::= view_as TABLE table_statement_target view_table_tail.
 view_body ::= view_as VALUES values_row_list view_values_tail.
 view_body ::= view_as WITH with_recursive_tail with_cte_list with_query_body.
-view_body ::= view_as query_parenthesized_body.
+view_body ::= view_as LP dml_write_query_start dml_write_parenthesized_query_tail RP view_parenthesized_tail.
 
 view_as ::= AS.
 
@@ -468,6 +468,12 @@ view_table_tail ::= view_check_option.
 view_values_tail ::= .
 view_values_tail ::= values_query_tail_nonempty.
 view_values_tail ::= view_check_option.
+
+view_parenthesized_tail ::= .
+view_parenthesized_tail ::= UNION dml_write_union_tail.
+view_parenthesized_tail ::= ORDER BY expression_start statement_tail.
+view_parenthesized_tail ::= LIMIT ATOM statement_tail.
+view_parenthesized_tail ::= view_check_option.
 
 view_check_option ::= WITH view_check_scope_tail CHECK OPTION.
 

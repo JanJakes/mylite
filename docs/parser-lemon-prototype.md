@@ -35,8 +35,8 @@ token sink:
   column lists, view body starts, and explicit check-option tails for
   non-plain-`SELECT` body forms, including parenthesized query expressions and
   `VALUES` set operands, while validating parenthesized query `ORDER BY` and
-  `LIMIT` suffixes and malformed `SELECT` operands after set operators before
-  `WITH CHECK OPTION`.
+  `LIMIT` suffixes, malformed `SELECT` operands after set operators before
+  `WITH CHECK OPTION`, and `VALUES ROW(...)` row-expression tails.
 - `CALL` recognizes one- and two-part routine names plus comma-separated
   argument lists with nested expression bodies.
 - `DO` recognizes comma-separated expression lists while rejecting dangling
@@ -67,8 +67,10 @@ token sink:
   groups, and out-of-order top-level DML clauses.
 - `VALUES` recognizes comma-separated row contents while preserving nested
   expression bodies, rejects adjacent operands and dangling operators in row
-  expression lists, preserves set operators, `ORDER BY`, and `LIMIT` tails, and
-  malformed `SELECT` operands after set operators are rejected.
+  expression lists, applies the same checks in CTAS, view, and DML
+  set-operation `VALUES` bodies, preserves set operators, `ORDER BY`, and
+  `LIMIT` tails, and malformed `SELECT` operands after set operators are
+  rejected.
 - `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`
   forms, `INTO` variable lists, and file output targets, and malformed `SELECT`
   operands after set operators are rejected.

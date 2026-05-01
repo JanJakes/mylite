@@ -283,8 +283,12 @@ create_table_tail ::= SELECT select_tail.
 create_table_tail ::= AS SELECT select_tail.
 create_table_tail ::= TABLE table_statement_target table_query_tail.
 create_table_tail ::= AS TABLE table_statement_target table_query_tail.
-create_table_tail ::= VALUES values_row_list values_query_tail.
-create_table_tail ::= AS VALUES values_row_list values_query_tail.
+create_table_tail ::= VALUES(A) values_row_list values_query_tail. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+}
+create_table_tail ::= AS VALUES(A) values_row_list values_query_tail. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+}
 create_table_tail ::= WITH with_recursive_tail with_cte_list with_query_body.
 create_table_tail ::= AS WITH with_recursive_tail with_cte_list with_query_body.
 create_table_tail ::= query_parenthesized_body.
@@ -309,8 +313,12 @@ create_table_ctas_body ::= SELECT select_tail.
 create_table_ctas_body ::= AS SELECT select_tail.
 create_table_ctas_body ::= TABLE table_statement_target table_query_tail.
 create_table_ctas_body ::= AS TABLE table_statement_target table_query_tail.
-create_table_ctas_body ::= VALUES values_row_list values_query_tail.
-create_table_ctas_body ::= AS VALUES values_row_list values_query_tail.
+create_table_ctas_body ::= VALUES(A) values_row_list values_query_tail. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+}
+create_table_ctas_body ::= AS VALUES(A) values_row_list values_query_tail. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+}
 create_table_ctas_body ::= WITH with_recursive_tail with_cte_list with_query_body.
 create_table_ctas_body ::= AS WITH with_recursive_tail with_cte_list with_query_body.
 create_table_ctas_body ::= query_parenthesized_body.
@@ -486,7 +494,9 @@ create_view_security_kind ::= INVOKER.
 
 view_body ::= view_as SELECT select_tail.
 view_body ::= view_as TABLE table_statement_target view_table_tail.
-view_body ::= view_as VALUES values_row_list view_values_tail.
+view_body ::= view_as VALUES(A) values_row_list view_values_tail. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+}
 view_body ::= view_as WITH with_recursive_tail with_cte_list with_query_body.
 view_body ::= view_as LP dml_write_query_start dml_write_parenthesized_query_tail RP view_parenthesized_tail.
 
@@ -506,8 +516,12 @@ view_values_tail ::= ORDER BY values_order_list values_limit_optional_tail view_
 view_values_tail ::= values_limit_tail view_check_option.
 view_values_tail ::= view_check_option.
 
-view_values_check_union_tail ::= VALUES values_row_list.
-view_values_check_union_tail ::= values_union_option VALUES values_row_list.
+view_values_check_union_tail ::= VALUES(A) values_row_list. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+}
+view_values_check_union_tail ::= values_union_option VALUES(A) values_row_list. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+}
 view_values_check_union_tail ::= TABLE table_statement_target.
 view_values_check_union_tail ::= values_union_option TABLE table_statement_target.
 view_values_check_union_tail ::= LP dml_write_query_start dml_write_parenthesized_query_tail RP.
@@ -3321,8 +3335,12 @@ dml_write_union_tail ::= SELECT select_tail.
 dml_write_union_tail ::= values_union_option SELECT select_tail.
 dml_write_union_tail ::= TABLE table_statement_target table_query_tail.
 dml_write_union_tail ::= values_union_option TABLE table_statement_target table_query_tail.
-dml_write_union_tail ::= VALUES values_row_list values_query_tail.
-dml_write_union_tail ::= values_union_option VALUES values_row_list values_query_tail.
+dml_write_union_tail ::= VALUES(A) values_row_list values_query_tail. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+}
+dml_write_union_tail ::= values_union_option VALUES(A) values_row_list values_query_tail. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+}
 dml_write_union_tail ::= WITH with_recursive_tail with_cte_list with_query_body.
 dml_write_union_tail ::= values_union_option WITH with_recursive_tail with_cte_list with_query_body.
 dml_write_union_tail ::= query_parenthesized_body.
@@ -3646,8 +3664,12 @@ values_union_tail ::= SELECT select_tail.
 values_union_tail ::= values_union_option SELECT select_tail.
 values_union_tail ::= TABLE table_statement_target table_query_tail.
 values_union_tail ::= values_union_option TABLE table_statement_target table_query_tail.
-values_union_tail ::= VALUES values_row_list values_query_tail.
-values_union_tail ::= values_union_option VALUES values_row_list values_query_tail.
+values_union_tail ::= VALUES(A) values_row_list values_query_tail. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+}
+values_union_tail ::= values_union_option VALUES(A) values_row_list values_query_tail. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+}
 values_union_tail ::= WITH with_recursive_tail with_cte_list with_query_body.
 values_union_tail ::= values_union_option WITH with_recursive_tail with_cte_list with_query_body.
 values_union_tail ::= query_parenthesized_body.

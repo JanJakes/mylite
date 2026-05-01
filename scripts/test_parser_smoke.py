@@ -742,6 +742,7 @@ def main() -> int:
         ("get diagnostics @n = number;", 0, {"statements": "1", "stored_program": "1"}),
         ("get diagnostics @n = number, @r = row_count;", 0, {"statements": "1", "stored_program": "1"}),
         ("get diagnostics condition 1 @errno = mysql_errno, @msg = message_text;", 0, {"statements": "1", "stored_program": "1"}),
+        ("get diagnostics condition 1 @state = returned_sqlstate;", 0, {"statements": "1", "stored_program": "1"}),
         ("get diagnostics @n number;", 1, {}),
         ("get diagnostics condition 1;", 1, {}),
         ("get diagnostics condition 1 @msg = bogus;", 1, {}),

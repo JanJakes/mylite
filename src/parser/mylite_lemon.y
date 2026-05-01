@@ -2655,12 +2655,13 @@ explain_statement ::= EXPLAIN explain_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
 }
 
-explain_tail ::= explain_query_start statement_tail.
-explain_tail ::= explain_schema_spec explain_query_start statement_tail.
-explain_tail ::= explain_format_clause explain_query_start statement_tail.
-explain_tail ::= explain_format_clause explain_schema_spec explain_query_start statement_tail.
-explain_tail ::= explain_format_json_clause explain_into_tail explain_query_start statement_tail.
-explain_tail ::= explain_format_json_clause explain_into_tail explain_schema_spec explain_query_start statement_tail.
+explain_tail ::= describe_tail.
+explain_tail ::= explain_query_start required_statement_tail.
+explain_tail ::= explain_schema_spec explain_query_start required_statement_tail.
+explain_tail ::= explain_format_clause explain_query_start required_statement_tail.
+explain_tail ::= explain_format_clause explain_schema_spec explain_query_start required_statement_tail.
+explain_tail ::= explain_format_json_clause explain_into_tail explain_query_start required_statement_tail.
+explain_tail ::= explain_format_json_clause explain_into_tail explain_schema_spec explain_query_start required_statement_tail.
 explain_tail ::= explain_analyze_tail.
 explain_tail ::= FOR CONNECTION explain_connection_id.
 
@@ -2679,7 +2680,7 @@ explain_connection_id ::= BOOLEAN_NUMBER.
 explain_connection_id ::= FACTOR_NUMBER.
 explain_connection_id ::= NUMBER_LITERAL.
 
-explain_analyze_tail ::= ANALYZE explain_analyze_format_tail explain_schema_tail explain_analyze_query_start statement_tail.
+explain_analyze_tail ::= ANALYZE explain_analyze_format_tail explain_schema_tail explain_analyze_query_start required_statement_tail.
 
 explain_analyze_format_tail ::= .
 explain_analyze_format_tail ::= FORMAT diagnostics_equals TREE.
@@ -2706,8 +2707,6 @@ explain_query_start ::= REPLACE.
 explain_query_start ::= SELECT.
 explain_query_start ::= UPDATE.
 explain_query_start ::= WITH.
-explain_query_start ::= ATOM.
-explain_query_start ::= LABEL.
 
 use_statement ::= USE use_target. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);

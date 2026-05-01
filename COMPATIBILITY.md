@@ -152,7 +152,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `START TRANSACTION` | ❌ | top | Transaction start modifiers including READ WRITE, READ ONLY, and WITH CONSISTENT SNAPSHOT. | Parser records the transaction object kind for transaction-start forms; modifiers remain body tokens. |
+| `START TRANSACTION` | ❌ | top | Transaction start modifiers including READ WRITE, READ ONLY, and WITH CONSISTENT SNAPSHOT. | Parser records the transaction object kind and validates comma-separated `WITH CONSISTENT SNAPSHOT`, `READ WRITE`, and `READ ONLY` modifier shape; transaction state is not implemented. |
 | `BEGIN` / `BEGIN WORK` | ❌ | top | Transaction begin statement distinct from compound BEGIN ... END. | Parser records bare `BEGIN` and `BEGIN WORK` as transaction objects while leaving matched compound blocks objectless. |
 | `COMMIT` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. | Parser records the transaction object kind and validates MySQL completion-clause ordering; commit behavior is not implemented. |
 | `ROLLBACK` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. | Parser records bare transaction rollback separately from `ROLLBACK [WORK] TO [SAVEPOINT]` savepoint targets and validates MySQL completion-clause ordering; rollback behavior is not implemented. |

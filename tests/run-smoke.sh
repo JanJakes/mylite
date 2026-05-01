@@ -1644,9 +1644,9 @@ if "$parser" --quiet 'ROLLBACK TO SAVEPOINT s extra'; then
 	exit 1
 fi
 
-transaction_output=$("$parser" "BEGIN; BEGIN WORK; BEGIN NOT ATOMIC SELECT 1 END; START TRANSACTION; START TRANSACTION READ WRITE; START REPLICA FOR CHANNEL 'ch'; COMMIT; COMMIT AND CHAIN; ROLLBACK; ROLLBACK AND NO CHAIN; ROLLBACK TO SAVEPOINT s; SET TRANSACTION ISOLATION LEVEL READ COMMITTED; SET SESSION TRANSACTION READ ONLY; SET GLOBAL TRANSACTION READ WRITE; SET LOCAL TRANSACTION READ ONLY; SET SESSION sql_mode = 'ANSI'")
+transaction_output=$("$parser" "BEGIN; BEGIN WORK; BEGIN NOT ATOMIC SELECT 1 END; START TRANSACTION; START TRANSACTION READ WRITE; START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY; START REPLICA FOR CHANNEL 'ch'; COMMIT; COMMIT AND CHAIN; ROLLBACK; ROLLBACK AND NO CHAIN; ROLLBACK TO SAVEPOINT s; SET TRANSACTION ISOLATION LEVEL READ COMMITTED; SET SESSION TRANSACTION READ ONLY; SET GLOBAL TRANSACTION READ WRITE; SET LOCAL TRANSACTION READ ONLY; SET SESSION sql_mode = 'ANSI'")
 case "$transaction_output" in
-	*"begin"*/transaction*"begin"*/transaction*"begin[6:11"*"start"*/transaction*"start"*/transaction*"start"*/replication_channel:"'ch'"*"commit"*/transaction*"commit"*/transaction*"rollback"*/transaction*"rollback"*/transaction*"rollback"*/savepoint:s*"set"*/transaction*"set"*/transaction*"set"*/transaction*"set"*/transaction*"set"*/system_variable:sql_mode*) ;;
+	*"begin"*/transaction*"begin"*/transaction*"begin[6:11"*"start"*/transaction*"start"*/transaction*"start"*/transaction*"start"*/replication_channel:"'ch'"*"commit"*/transaction*"commit"*/transaction*"rollback"*/transaction*"rollback"*/transaction*"rollback"*/savepoint:s*"set"*/transaction*"set"*/transaction*"set"*/transaction*"set"*/transaction*"set"*/system_variable:sql_mode*) ;;
 	*)
 		echo "unexpected transaction output: $transaction_output" >&2
 		exit 1
@@ -1657,6 +1657,26 @@ esac
 
 if "$parser" --quiet 'COMMIT foo'; then
 	echo "expected invalid COMMIT body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'START TRANSACTION READ'; then
+	echo "expected incomplete START TRANSACTION READ modifier to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'START TRANSACTION READ ONLY, READ WRITE'; then
+	echo "expected conflicting START TRANSACTION read modes to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'START TRANSACTION WITH CONSISTENT SNAPSHOT,'; then
+	echo "expected trailing START TRANSACTION modifier comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'START TRANSACTION READ ONLY WITH CONSISTENT SNAPSHOT'; then
+	echo "expected missing START TRANSACTION modifier comma to fail" >&2
 	exit 1
 fi
 

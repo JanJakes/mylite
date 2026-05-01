@@ -280,7 +280,8 @@ transaction object kind for `BEGIN`, `BEGIN WORK`, `START TRANSACTION`,
 `COMMIT`, bare `ROLLBACK`, and `SET [GLOBAL | LOCAL | SESSION] TRANSACTION`, while
 leaving compound `BEGIN ... END` blocks objectless. `COMMIT` and non-savepoint
 `ROLLBACK` validate MySQL completion-clause ordering for `AND [NO] CHAIN` and
-`[NO] RELEASE`. Quoted `HELP` search
+`[NO] RELEASE`, and `START TRANSACTION` validates comma-separated transaction
+characteristics. Quoted `HELP` search
 topics are recorded as help-topic targets. Component and plugin targets are
 recorded for `INSTALL` and `UNINSTALL` administrative statements, with
 component URI string lists, optional `INSTALL COMPONENT ... SET` assignments,

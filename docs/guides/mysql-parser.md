@@ -558,7 +558,8 @@ Group Replication start and stop statements expose the group-replication target:
 ok statements=2 kinds=start[1:2,0:23]/group_replication,stop[4:5,25:47]/group_replication
 ```
 
-Transaction-control statements expose the transaction object kind:
+Transaction-control statements validate supported transaction modifiers and
+expose the transaction object kind:
 
 ```text
 ok statements=1 kinds=start[1:4,0:28]/transaction

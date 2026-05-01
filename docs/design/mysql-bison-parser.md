@@ -274,6 +274,9 @@ name lists, and `RESTRICT` / `CASCADE` tails; `DROP TABLE` also accepts
 `TEMPORARY` and corpus-observed `TABLES` forms.
 `DROP DATABASE` and `DROP SCHEMA` validate optional `IF EXISTS` with a single
 unqualified schema target.
+`DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
+optional `IF EXISTS` with an identifier-like target; the trigger and routine
+forms accept schema-qualified targets used by the corpus.
 Prepared-statement names are recorded in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`; those forms
 validate handle names, `PREPARE ... FROM` sources, and `EXECUTE ... USING`

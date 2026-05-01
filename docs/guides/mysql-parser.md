@@ -64,6 +64,8 @@ name lists, and `RESTRICT` / `CASCADE` tails. `DROP TABLE` also accepts
 `TEMPORARY` and corpus-observed `TABLES` forms.
 `DROP DATABASE` and `DROP SCHEMA` validate optional `IF EXISTS` with a single
 unqualified schema target.
+`DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
+optional `IF EXISTS` with an identifier-like target.
 
 Standalone `DROP INDEX` records the index target and validates the required
 `ON` table clause plus optional `ALGORITHM` and `LOCK` clauses:

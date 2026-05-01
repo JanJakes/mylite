@@ -95,18 +95,18 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. | Parser records the trigger target while skipping optional definer account clauses; trigger execution is not implemented. |
 | `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. | Parser records the view target while skipping optional definer account clauses; view metadata and expansion are not implemented. |
 | `DROP DATABASE` / `DROP SCHEMA` | ❌ | high | Schema removal, metadata cleanup, warnings, and embedded single-file constraints. | Parser records the schema target and validates optional `IF EXISTS` with a single unqualified schema name; metadata cleanup, default-schema effects, warnings, and embedded file constraints are not implemented. |
-| `DROP EVENT` | ❌ | medium | Event metadata deletion. |  |
-| `DROP FUNCTION` (stored) | ❌ | medium | Stored-function deletion and routine metadata cleanup. |  |
-| `DROP FUNCTION` (loadable) | ❌ | low | Loadable-function deregistration syntax. |  |
+| `DROP EVENT` | ❌ | medium | Event metadata deletion. | Parser records and validates the event target with optional `IF EXISTS`; event metadata cleanup and diagnostics are not implemented. |
+| `DROP FUNCTION` (stored) | ❌ | medium | Stored-function deletion and routine metadata cleanup. | Parser records and validates the function target with optional `IF EXISTS`; routine metadata cleanup and diagnostics are not implemented. |
+| `DROP FUNCTION` (loadable) | ❌ | low | Loadable-function deregistration syntax. | Parser records and validates the function target using the same `DROP FUNCTION [IF EXISTS] name` statement shape; loadable-function deregistration and diagnostics are not implemented. |
 | `DROP INDEX` | ❌ | top | Standalone index removal semantics. | Parser records the index target and validates `DROP INDEX name ON table` with optional `ALGORITHM` and `LOCK` clauses; index metadata removal and constraint diagnostics are not implemented. |
 | `DROP LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
-| `DROP PROCEDURE` | ❌ | medium | Stored-procedure deletion and metadata cleanup. |  |
+| `DROP PROCEDURE` | ❌ | medium | Stored-procedure deletion and metadata cleanup. | Parser records and validates the procedure target with optional `IF EXISTS`; routine metadata cleanup and diagnostics are not implemented. |
 | `DROP SERVER` | ❌ | low | Foreign server metadata deletion. |  |
 | `DROP SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system deletion and dependency checks. |  |
 | `DROP TABLE` | ❌ | top | Multi-table drop, temporary tables, foreign-key checks, and warnings. | Parser records the first table target and validates optional `TEMPORARY`, optional `IF EXISTS`, table lists, corpus-observed `TABLES`, and `RESTRICT` / `CASCADE` tails; metadata removal, implicit commits, warnings, and foreign-key diagnostics are not implemented. |
 | `DROP TABLESPACE` | ❌ | low | Tablespace deletion syntax and diagnostics. |  |
 | `DROP UNDO TABLESPACE` | ❌ | low | Undo tablespace deletion syntax present in the MySQL 8.4 parser source. | Parser records the undo tablespace target; storage-engine behavior is not implemented. |
-| `DROP TRIGGER` | ❌ | high | Trigger deletion and metadata cleanup. |  |
+| `DROP TRIGGER` | ❌ | high | Trigger deletion and metadata cleanup. | Parser records and validates the trigger target with optional `IF EXISTS` and an optional schema qualifier; trigger metadata cleanup and diagnostics are not implemented. |
 | `DROP VIEW` | ❌ | high | Multi-view drop and warnings. | Parser records the first view target and validates optional `IF EXISTS`, view lists, and `RESTRICT` / `CASCADE` tails; metadata removal, warnings, and diagnostics are not implemented. |
 | `RENAME TABLE` | ❌ | top | Atomic multi-table rename semantics. | Parser records the first source table and validates single and multi-pair `RENAME TABLE old TO new` lists, including corpus-observed `RENAME TABLES`; atomic metadata updates, dependency handling, and diagnostics are not implemented. |
 | `TRUNCATE TABLE` | ❌ | top | DDL-like truncate, auto-increment reset, implicit commit, and foreign-key restrictions. | Parser records and validates a single table target across optional `TABLE` forms; truncate behavior, implicit commit, and diagnostics are not implemented. |

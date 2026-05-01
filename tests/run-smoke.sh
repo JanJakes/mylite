@@ -467,6 +467,35 @@ if "$parser" --quiet 'DROP SCHEMA db.name'; then
 	exit 1
 fi
 
+drop_stored_object_output=$("$parser" 'DROP EVENT IF EXISTS db.e; DROP PROCEDURE p; DROP FUNCTION IF EXISTS test.metaphon; DROP TRIGGER IF EXISTS test.tr')
+case "$drop_stored_object_output" in
+	*"drop"*/event:db.e*"drop"*/procedure:p*"drop"*/function:test.metaphon*"drop"*/trigger:test.tr*) ;;
+	*)
+		echo "unexpected stored-object DROP output: $drop_stored_object_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'DROP EVENT'; then
+	echo "expected missing DROP EVENT name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP PROCEDURE IF EXISTS'; then
+	echo "expected missing DROP PROCEDURE IF EXISTS name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP FUNCTION f extra'; then
+	echo "expected trailing DROP FUNCTION tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP TRIGGER IF EXISTS'; then
+	echo "expected missing DROP TRIGGER IF EXISTS name to fail" >&2
+	exit 1
+fi
+
 rename_table_output=$("$parser" 'RENAME TABLE old TO new; RENAME TABLE db.old TO other.new, a TO b; RENAME TABLES t2 TO t0, t4 TO t2')
 case "$rename_table_output" in
 	*"rename"*/table:old*"rename"*/table:db.old*"rename"*/table:t2*) ;;

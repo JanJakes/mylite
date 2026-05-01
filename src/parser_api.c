@@ -293,6 +293,9 @@ static int validate_drop_prepare_statement_syntax(const mylite_parser *parser, c
 static int validate_drop_database_statement_syntax(const mylite_parser *parser,
                                                    size_t token_index,
                                                    size_t last_token_index);
+static int validate_drop_stored_object_statement_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index);
 static int validate_drop_index_statement_syntax(const mylite_parser *parser,
                                                 size_t token_index,
                                                 size_t last_token_index);
@@ -309,6 +312,7 @@ static int validate_drop_object_name_list_syntax(const mylite_parser *parser,
                                                  size_t *next_token_index);
 static int token_is_drop_index_algorithm_value(const mylite_parser *parser, size_t token_index);
 static int token_is_drop_index_lock_value(const mylite_parser *parser, size_t token_index);
+static int token_is_drop_stored_object_token(int token);
 static int token_is_drop_table_token(const mylite_parser *parser, size_t token_index);
 static int token_is_drop_table_or_view_token(const mylite_parser *parser, size_t token_index);
 static int token_is_drop_table_tail_option(const mylite_parser *parser, size_t token_index);
@@ -4441,6 +4445,9 @@ static int validate_drop_statement_syntax(const mylite_parser *parser, const myl
 	    parser->tokens[token_index + 1].parser_token == SCHEMA_T) {
 		return validate_drop_database_statement_syntax(parser, token_index + 1, last_token_index);
 	}
+	if (token_is_drop_stored_object_token(parser->tokens[token_index + 1].parser_token)) {
+		return validate_drop_stored_object_statement_syntax(parser, token_index + 1, last_token_index);
+	}
 	if (parser->tokens[token_index + 1].parser_token == INDEX_T) {
 		return validate_drop_index_statement_syntax(parser, token_index + 1, last_token_index);
 	}
@@ -4494,6 +4501,32 @@ static int validate_drop_database_statement_syntax(const mylite_parser *parser,
 
 	return token_index == last_token_index &&
 	       token_can_continue_object_name(&parser->tokens[token_index]);
+}
+
+static int validate_drop_stored_object_statement_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index)
+{
+	size_t last_name_token;
+
+	if (token_index >= parser->token_count ||
+	    !token_is_drop_stored_object_token(parser->tokens[token_index].parser_token)) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "IF") &&
+	    token_text_equals(parser, token_index + 1, "EXISTS")) {
+		token_index += 2;
+	}
+	if (token_index > last_token_index ||
+	    !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+	return last_name_token == last_token_index;
 }
 
 static int validate_drop_index_statement_syntax(const mylite_parser *parser,
@@ -4636,6 +4669,14 @@ static int token_is_drop_index_lock_value(const mylite_parser *parser, size_t to
 	        token_text_equals(parser, token_index, "NONE") ||
 	        token_text_equals(parser, token_index, "SHARED") ||
 	        token_text_equals(parser, token_index, "EXCLUSIVE"));
+}
+
+static int token_is_drop_stored_object_token(int token)
+{
+	return token == EVENT_T ||
+	       token == FUNCTION_T ||
+	       token == PROCEDURE_T ||
+	       token == TRIGGER_T;
 }
 
 static int token_is_drop_table_token(const mylite_parser *parser, size_t token_index)

@@ -2601,6 +2601,7 @@ show_tail ::= TABLE STATUS show_database_tail show_filter_tail.
 show_tail ::= OPEN TABLES show_database_tail show_filter_tail.
 show_tail ::= EVENTS show_database_tail show_filter_tail.
 show_tail ::= TRIGGERS show_database_tail show_filter_tail.
+show_tail ::= FULL TRIGGERS show_database_tail show_filter_tail.
 show_tail ::= show_table_metadata_prefix show_column_kind show_table_source show_database_tail show_filter_tail.
 show_tail ::= show_table_metadata_prefix show_index_kind show_table_source show_database_tail show_filter_tail.
 show_tail ::= CHARACTER SET show_filter_tail.
@@ -2611,8 +2612,8 @@ show_tail ::= BINARY LOGS.
 show_tail ::= MASTER(A) LOGS. {
   mylite_parser_require_permissive(ctx, A);
 }
-show_tail ::= BINLOG EVENTS show_log_events_tail.
-show_tail ::= RELAYLOG EVENTS show_log_events_tail.
+show_tail ::= BINLOG EVENTS show_binlog_events_tail.
+show_tail ::= RELAYLOG EVENTS show_relaylog_events_tail.
 show_tail ::= show_routine_status_kind STATUS show_filter_tail.
 show_tail ::= show_routine_status_kind show_routine_code_marker cache_table_ref.
 show_tail ::= STORAGE ENGINES.
@@ -2663,12 +2664,15 @@ show_table_source ::= FROM cache_table_ref.
 show_table_source ::= IN cache_table_ref.
 
 show_engine_name ::= cache_name_part.
+show_engine_name ::= ALL.
 
 show_engine_kind ::= STATUS.
 show_engine_kind ::= LOGS.
 show_engine_kind ::= MUTEX.
 
-show_log_events_tail ::= show_log_file_tail show_log_from_tail show_limit_tail.
+show_binlog_events_tail ::= show_log_file_tail show_log_from_tail show_limit_tail.
+
+show_relaylog_events_tail ::= show_log_file_tail show_log_from_tail show_limit_tail show_channel_tail.
 
 show_log_file_tail ::= .
 show_log_file_tail ::= IN string_literal.

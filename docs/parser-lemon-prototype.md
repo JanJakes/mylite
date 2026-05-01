@@ -177,11 +177,12 @@ token sink:
 - `SHOW PARSE_TREE` recognizes SELECT and WITH SELECT inputs as a
   debug/development SHOW form.
 - `SHOW ENGINE ... STATUS|LOGS|MUTEX` recognizes engine names using the shared
-  identifier grammar.
+  identifier grammar plus MySQL's `ALL` engine selector.
 - Shared `SHOW ... LIKE` filters require string-literal patterns, while
   `SHOW ... WHERE` keeps using the general expression tail.
 - `SHOW BINLOG EVENTS` and `SHOW RELAYLOG EVENTS` recognize optional
-  string-literal log names, numeric `FROM` positions, and numeric `LIMIT` tails.
+  string-literal log names, numeric `FROM` positions, and numeric `LIMIT` tails;
+  relay-log events also recognize MySQL channel clauses.
 - `SHOW BINARY LOG STATUS` is the strict MySQL 8.4 binary-log status form;
   removed `SHOW MASTER STATUS` syntax is permissive-corpus-only.
 - `SHOW BINARY LOGS` is the strict MySQL 8.4 binary-log listing form; removed

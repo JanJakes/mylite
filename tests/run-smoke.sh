@@ -34,7 +34,7 @@ esac
 
 span_output=$("$parser" "SELECT 1; COMMIT")
 case "$span_output" in
-	*"select[1:2,0:8],commit[4:4,10:16]"*) ;;
+	*"select[1:2,0:8]/query,commit[4:4,10:16]"*) ;;
 	*)
 		echo "unexpected statement span output: $span_output" >&2
 		exit 1
@@ -43,7 +43,7 @@ esac
 
 grouped_query_output=$("$parser" '(SELECT 1) UNION SELECT 2; ((VALUES ROW(1),ROW(2))) ORDER BY 1; (TABLE t)')
 case "$grouped_query_output" in
-	*"kinds=select[1:7,0:25],values[9:25,27:62]/query,table[27:30,64:73]/table:t"*) ;;
+	*"kinds=select[1:7,0:25]/query,values[9:25,27:62]/query,table[27:30,64:73]/table:t"*) ;;
 	*)
 		echo "unexpected grouped query output: $grouped_query_output" >&2
 		exit 1

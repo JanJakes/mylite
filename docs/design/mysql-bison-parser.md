@@ -309,6 +309,8 @@ Statements that begin with parenthesized query expressions keep spans anchored
 to the opening parenthesis and are classified as `SELECT`, `VALUES`, or `TABLE`
 according to the innermost leading query token. Parenthesized `TABLE` forms
 preserve the named table target.
+Plain `SELECT` and `WITH` query statements are recorded as query targets unless
+they expose a more specific `INTO` target.
 Standalone `VALUES` statements are recorded as query targets because MySQL
 treats them as DML statements that return row sets.
 `DO` statements are recorded as query targets too because they execute

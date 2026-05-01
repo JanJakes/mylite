@@ -1597,10 +1597,10 @@ static int classify_select_statement_object(const mylite_parser *parser, mylite_
 	size_t name_token_index = find_select_into_target_token(parser, statement, &object_kind);
 
 	if (name_token_index >= parser->token_count) {
-		return 0;
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_QUERY);
 	}
 	if (object_kind == MYLITE_STATEMENT_OBJECT_NONE) {
-		return 0;
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_QUERY);
 	}
 	return set_statement_direct_object_name(parser, statement, object_kind, name_token_index, statement->last_token - 1);
 }

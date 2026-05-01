@@ -15,7 +15,7 @@ bin/mylite-parse "SELECT 1"
 The CLI reports statement kind plus token and byte spans:
 
 ```text
-ok statements=1 kinds=select[1:2,0:8]
+ok statements=1 kinds=select[1:2,0:8]/query
 ```
 
 DDL, table-maintenance, DML table statements, and direct utility targets include
@@ -55,6 +55,13 @@ ok statements=1 kinds=analyze[1:3,0:15]/table:t
 
 ```text
 ok statements=1 kinds=drop[1:3,0:14]/table:t1
+```
+
+`SELECT` and `WITH` query statements expose the query object kind unless a more
+specific `INTO` target is present:
+
+```text
+ok statements=1 kinds=select[1:2,0:8]/query
 ```
 
 Standalone `VALUES` statements expose the query object kind:

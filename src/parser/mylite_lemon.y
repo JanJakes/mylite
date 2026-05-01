@@ -943,6 +943,9 @@ alter_table_tail ::= alter_table_alter_action alter_table_alter_action_tail.
 alter_table_tail ::= alter_table_alter_set_default_action.
 alter_table_tail ::= alter_table_partition_action.
 alter_table_tail ::= alter_table_partition_definition_action.
+alter_table_tail ::= alter_table_add_action.
+alter_table_tail ::= alter_table_change_action.
+alter_table_tail ::= alter_table_modify_action.
 alter_table_tail ::= alter_table_table_option create_options_tail.
 alter_table_tail ::= alter_table_charset_action alter_table_charset_action_tail.
 alter_table_tail ::= alter_table_order_action.
@@ -950,11 +953,6 @@ alter_table_tail ::= alter_table_tablespace_action.
 alter_table_tail ::= alter_table_storage_action.
 alter_table_tail ::= alter_table_union_action.
 alter_table_tail ::= alter_table_reorganize_action.
-alter_table_tail ::= alter_table_action_start create_options_tail.
-
-alter_table_action_start ::= ADD.
-alter_table_action_start ::= CHANGE.
-alter_table_action_start ::= MODIFY.
 
 alter_table_tablespace_transfer_kind ::= DISCARD.
 alter_table_tablespace_transfer_kind ::= IMPORT.
@@ -979,6 +977,9 @@ alter_table_algorithm_lock_after_comma ::= alter_table_alter_action alter_table_
 alter_table_algorithm_lock_after_comma ::= alter_table_alter_set_default_action.
 alter_table_algorithm_lock_after_comma ::= alter_table_partition_action.
 alter_table_algorithm_lock_after_comma ::= alter_table_partition_definition_action.
+alter_table_algorithm_lock_after_comma ::= alter_table_add_action.
+alter_table_algorithm_lock_after_comma ::= alter_table_change_action.
+alter_table_algorithm_lock_after_comma ::= alter_table_modify_action.
 alter_table_algorithm_lock_after_comma ::= alter_table_table_option create_options_tail.
 alter_table_algorithm_lock_after_comma ::= alter_table_charset_action alter_table_charset_action_tail.
 alter_table_algorithm_lock_after_comma ::= alter_table_order_action.
@@ -987,7 +988,6 @@ alter_table_algorithm_lock_after_comma ::= alter_table_storage_action.
 alter_table_algorithm_lock_after_comma ::= alter_table_union_action.
 alter_table_algorithm_lock_after_comma ::= alter_table_reorganize_action.
 alter_table_algorithm_lock_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
-alter_table_algorithm_lock_after_comma ::= alter_table_action_start create_options_tail.
 
 alter_table_algorithm_lock_option ::= ALGORITHM drop_index_option_equals_tail alter_table_algorithm_value.
 alter_table_algorithm_lock_option ::= LOCK drop_index_option_equals_tail drop_index_lock.
@@ -1009,6 +1009,9 @@ alter_table_rename_after_comma ::= alter_table_alter_action alter_table_alter_ac
 alter_table_rename_after_comma ::= alter_table_alter_set_default_action.
 alter_table_rename_after_comma ::= alter_table_partition_action.
 alter_table_rename_after_comma ::= alter_table_partition_definition_action.
+alter_table_rename_after_comma ::= alter_table_add_action.
+alter_table_rename_after_comma ::= alter_table_change_action.
+alter_table_rename_after_comma ::= alter_table_modify_action.
 alter_table_rename_after_comma ::= alter_table_table_option create_options_tail.
 alter_table_rename_after_comma ::= alter_table_charset_action alter_table_charset_action_tail.
 alter_table_rename_after_comma ::= alter_table_order_action.
@@ -1017,7 +1020,6 @@ alter_table_rename_after_comma ::= alter_table_storage_action.
 alter_table_rename_after_comma ::= alter_table_union_action.
 alter_table_rename_after_comma ::= alter_table_reorganize_action.
 alter_table_rename_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
-alter_table_rename_after_comma ::= alter_table_action_start create_options_tail.
 
 alter_table_rename_action ::= RENAME alter_table_rename_table_connector cache_table_ref.
 alter_table_rename_action ::= RENAME COLUMN alter_table_rename_identifier TO alter_table_rename_identifier.
@@ -1044,6 +1046,9 @@ alter_table_drop_after_comma ::= alter_table_alter_action alter_table_alter_acti
 alter_table_drop_after_comma ::= alter_table_alter_set_default_action.
 alter_table_drop_after_comma ::= alter_table_partition_action.
 alter_table_drop_after_comma ::= alter_table_partition_definition_action.
+alter_table_drop_after_comma ::= alter_table_add_action.
+alter_table_drop_after_comma ::= alter_table_change_action.
+alter_table_drop_after_comma ::= alter_table_modify_action.
 alter_table_drop_after_comma ::= alter_table_table_option create_options_tail.
 alter_table_drop_after_comma ::= alter_table_charset_action alter_table_charset_action_tail.
 alter_table_drop_after_comma ::= alter_table_order_action.
@@ -1052,7 +1057,6 @@ alter_table_drop_after_comma ::= alter_table_storage_action.
 alter_table_drop_after_comma ::= alter_table_union_action.
 alter_table_drop_after_comma ::= alter_table_reorganize_action.
 alter_table_drop_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
-alter_table_drop_after_comma ::= alter_table_action_start create_options_tail.
 
 alter_table_drop_action ::= DROP alter_table_column_keyword_tail alter_table_drop_identifier.
 alter_table_drop_action ::= DROP PRIMARY KEY.
@@ -1083,6 +1087,9 @@ alter_table_alter_after_comma ::= alter_table_alter_action alter_table_alter_act
 alter_table_alter_after_comma ::= alter_table_alter_set_default_action.
 alter_table_alter_after_comma ::= alter_table_partition_action.
 alter_table_alter_after_comma ::= alter_table_partition_definition_action.
+alter_table_alter_after_comma ::= alter_table_add_action.
+alter_table_alter_after_comma ::= alter_table_change_action.
+alter_table_alter_after_comma ::= alter_table_modify_action.
 alter_table_alter_after_comma ::= alter_table_table_option create_options_tail.
 alter_table_alter_after_comma ::= alter_table_charset_action alter_table_charset_action_tail.
 alter_table_alter_after_comma ::= alter_table_order_action.
@@ -1091,7 +1098,6 @@ alter_table_alter_after_comma ::= alter_table_storage_action.
 alter_table_alter_after_comma ::= alter_table_union_action.
 alter_table_alter_after_comma ::= alter_table_reorganize_action.
 alter_table_alter_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
-alter_table_alter_after_comma ::= alter_table_action_start create_options_tail.
 
 alter_table_alter_set_default_action ::= ALTER alter_table_column_keyword_tail alter_table_drop_identifier SET DEFAULT required_statement_tail.
 
@@ -1115,6 +1121,32 @@ alter_table_partition_action ::= REMOVE PARTITIONING.
 alter_table_partition_action ::= EXCHANGE PARTITION load_partition_name WITH TABLE cache_table_ref alter_table_exchange_validation_tail.
 
 alter_table_partition_definition_action ::= PARTITION BY required_statement_tail.
+
+alter_table_add_action ::= ADD alter_table_add_start required_statement_tail.
+
+alter_table_add_start ::= alter_table_column_keyword_tail alter_table_column_definition_start.
+alter_table_add_start ::= alter_table_index_definition_start.
+alter_table_add_start ::= CONSTRAINT.
+alter_table_add_start ::= FOREIGN.
+alter_table_add_start ::= CHECK.
+alter_table_add_start ::= PARTITION.
+
+alter_table_column_definition_start ::= LP.
+alter_table_column_definition_start ::= alter_table_column_name.
+
+alter_table_index_definition_start ::= PRIMARY.
+alter_table_index_definition_start ::= UNIQUE.
+alter_table_index_definition_start ::= FULLTEXT.
+alter_table_index_definition_start ::= SPATIAL.
+alter_table_index_definition_start ::= INDEX.
+alter_table_index_definition_start ::= KEY.
+
+alter_table_change_action ::= CHANGE alter_table_column_keyword_tail alter_table_column_name alter_table_column_name required_statement_tail.
+
+alter_table_column_name ::= cache_name_part.
+alter_table_column_name ::= DATA.
+
+alter_table_modify_action ::= MODIFY alter_table_column_keyword_tail alter_table_column_name required_statement_tail.
 
 alter_table_partition_maintenance_kind ::= ANALYZE.
 alter_table_partition_maintenance_kind ::= CHECK.
@@ -1161,6 +1193,9 @@ alter_table_charset_after_comma ::= alter_table_alter_action alter_table_alter_a
 alter_table_charset_after_comma ::= alter_table_alter_set_default_action.
 alter_table_charset_after_comma ::= alter_table_partition_action.
 alter_table_charset_after_comma ::= alter_table_partition_definition_action.
+alter_table_charset_after_comma ::= alter_table_add_action.
+alter_table_charset_after_comma ::= alter_table_change_action.
+alter_table_charset_after_comma ::= alter_table_modify_action.
 alter_table_charset_after_comma ::= alter_table_table_option create_options_tail.
 alter_table_charset_after_comma ::= alter_table_charset_action alter_table_charset_action_tail.
 alter_table_charset_after_comma ::= alter_table_order_action.
@@ -1169,7 +1204,6 @@ alter_table_charset_after_comma ::= alter_table_storage_action.
 alter_table_charset_after_comma ::= alter_table_union_action.
 alter_table_charset_after_comma ::= alter_table_reorganize_action.
 alter_table_charset_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
-alter_table_charset_after_comma ::= alter_table_action_start create_options_tail.
 
 alter_table_charset_action ::= database_default_tail alter_table_character_set_kind drop_index_option_equals_tail alter_table_charset_name alter_table_collate_tail.
 alter_table_charset_action ::= CONVERT TO alter_table_character_set_kind drop_index_option_equals_tail alter_table_charset_name alter_table_collate_tail.

@@ -229,8 +229,8 @@ create_index_option ::= WITH PARSER cache_name_part.
 create_index_option ::= COMMENT string_literal.
 create_index_option ::= VISIBLE.
 create_index_option ::= INVISIBLE.
-create_index_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
-create_index_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
+create_index_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
+create_index_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
 create_index_option ::= drop_index_option.
 
 index_number_value ::= BOOLEAN_NUMBER.
@@ -882,7 +882,7 @@ create_tablespace_option ::= NODEGROUP drop_index_option_equals_tail tablespace_
 create_tablespace_option ::= WAIT.
 create_tablespace_option ::= COMMENT drop_index_option_equals_tail string_literal.
 create_tablespace_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
-create_tablespace_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
+create_tablespace_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
 
 create_undo_tablespace_tail ::= create_add create_datafile string_literal create_tablespace_post_datafile_options_tail.
 
@@ -893,7 +893,7 @@ create_tablespace_post_datafile_option ::= AUTOEXTEND_SIZE drop_index_option_equ
 create_tablespace_post_datafile_option ::= FILE_BLOCK_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_post_datafile_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 create_tablespace_post_datafile_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
-create_tablespace_post_datafile_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
+create_tablespace_post_datafile_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
 
 tablespace_number_value ::= BOOLEAN_NUMBER.
 tablespace_number_value ::= FACTOR_NUMBER.
@@ -1602,7 +1602,7 @@ alter_tablespace_action ::= DROP create_datafile string_literal alter_tablespace
 alter_tablespace_action ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
 alter_tablespace_action ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 alter_tablespace_action ::= ENGINE drop_index_option_equals_tail cache_name_part.
-alter_tablespace_action ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
+alter_tablespace_action ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
 
 alter_tablespace_datafile_options_tail ::= .
 alter_tablespace_datafile_options_tail ::= alter_tablespace_datafile_options_tail alter_tablespace_datafile_option.

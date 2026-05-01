@@ -58,7 +58,7 @@ token sink:
   `IGNORE UNKNOWN USER`.
 - `CREATE INDEX` recognizes non-empty functional/key-part lists and standalone
   index options including parser plugins, string-literal comments, visibility,
-  attributes, numeric `KEY_BLOCK_SIZE`, `ALGORITHM`, and `LOCK`.
+  string-literal attributes, numeric `KEY_BLOCK_SIZE`, `ALGORITHM`, and `LOCK`.
 - `CREATE TABLE` table-definition bodies require non-empty comma-separated
   elements while preserving nested token bodies for column and constraint
   definitions; trailing table options must start with known MySQL table-option
@@ -68,8 +68,8 @@ token sink:
   size/nodegroup values, and required `ENGINE` clauses.
 - `CREATE TABLESPACE`, `CREATE UNDO TABLESPACE`, `ALTER TABLESPACE`, and
   undo/drop tablespace tails recognize documented string-literal data files,
-  numeric size, `'Y'`/`'N'` encryption, optional-equals engine, and attribute
-  clauses.
+  numeric size, `'Y'`/`'N'` encryption, optional-equals engine, and
+  string-literal attribute clauses.
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
   `OPTIONS` names, string-valued options, and numeric ports.
 - `ALTER INSTANCE` recognizes redo-log enable/disable, InnoDB/binlog master-key

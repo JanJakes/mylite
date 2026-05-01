@@ -29,6 +29,8 @@ static void remove_statements_covered_by_previous(mylite_parser *parser, size_t 
 static void validate_statement_syntax(mylite_parser *parser);
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_truncate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_call_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_call_argument_list_syntax(const mylite_parser *parser, size_t open_token_index);
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1027,6 +1029,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_CALL:
+			if (!validate_call_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid CALL statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_KILL:
 			if (!validate_kill_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid KILL statement");
@@ -1139,6 +1147,74 @@ static int validate_truncate_statement_syntax(const mylite_parser *parser, const
 
 	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
 	return last_name_token == last_token_index;
+}
+
+static int validate_call_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+	size_t last_name_token;
+	size_t next_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+	next_token_index = last_name_token + 1;
+	if (next_token_index > last_token_index) {
+		return 1;
+	}
+	if (next_token_index < parser->token_count &&
+	    parser->tokens[next_token_index].parser_token == '(' &&
+	    parser->tokens[next_token_index].matching_token == statement->last_token) {
+		return validate_call_argument_list_syntax(parser, next_token_index);
+	}
+	return 0;
+}
+
+static int validate_call_argument_list_syntax(const mylite_parser *parser, size_t open_token_index)
+{
+	size_t close_token_index;
+	size_t token_index;
+	int expecting_argument = 1;
+
+	if (open_token_index >= parser->token_count ||
+	    parser->tokens[open_token_index].matching_token <= open_token_index + 1) {
+		return 0;
+	}
+
+	close_token_index = parser->tokens[open_token_index].matching_token - 1;
+	if (open_token_index + 1 == close_token_index) {
+		return 1;
+	}
+
+	for (token_index = open_token_index + 1; token_index < close_token_index; token_index++) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (matching_token > token_index + 1) {
+			expecting_argument = 0;
+			token_index = matching_token - 1;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == ',') {
+			if (expecting_argument) {
+				return 0;
+			}
+			expecting_argument = 1;
+			continue;
+		}
+		expecting_argument = 0;
+	}
+	return !expecting_argument;
 }
 
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

@@ -382,8 +382,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   `UNLOCK TABLES` metadata records the table object kind without a name because
   the statement releases the session's table locks rather than naming tables.
   `IMPORT TABLE` metadata records only the first string SDI file target.
-  `CALL` metadata records only the first procedure name and does not classify
-  parameters or OUT/INOUT binding semantics.
+  `CALL` metadata records the procedure name and validates optional
+  parenthesized argument-list shape, but does not classify parameters or
+  OUT/INOUT binding semantics.
   `SIGNAL` and `RESIGNAL` metadata records only the explicit SQLSTATE literal
   or named condition value. Bare `RESIGNAL` and `RESIGNAL SET ...` forms remain
   objectless, and signal information item assignments are not yet classified.

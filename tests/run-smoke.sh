@@ -429,14 +429,44 @@ case "$import_output" in
 		;;
 esac
 
-call_output=$("$parser" 'CALL p; CALL p(); CALL `db`.`p`(@a); CALL 15298_1(); CALL 1')
+call_output=$("$parser" 'CALL p; CALL p(); CALL `db`.`p`(@a, 1 + 2); CALL 15298_1(); CALL `select`()')
 case "$call_output" in
-	*"call"*/procedure:p*"call"*/procedure:p*"call"*/procedure:'`db`.`p`'*"call"*/procedure:15298_1*"call[22:23"*) ;;
+	*"call"*/procedure:p*"call"*/procedure:p*"call"*/procedure:'`db`.`p`'*"call"*/procedure:15298_1*"call"*/procedure:'`select`'*) ;;
 	*)
 		echo "unexpected CALL output: $call_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'CALL'; then
+	echo "expected missing CALL procedure to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CALL 1'; then
+	echo "expected numeric CALL procedure to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CALL @p'; then
+	echo "expected variable CALL procedure to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CALL p extra'; then
+	echo "expected trailing CALL tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CALL p() extra'; then
+	echo "expected trailing CALL group tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CALL p(@a, )'; then
+	echo "expected trailing CALL argument comma to fail" >&2
+	exit 1
+fi
 
 explain_sql='DESC `db`.`t`;
 DESCRIBE t c;

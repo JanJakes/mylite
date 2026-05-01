@@ -360,6 +360,9 @@ object families instead of falling back to permissive acceptance.
 documented character-set, collation, and encryption options. `ALTER DATABASE`
 and `ALTER SCHEMA` validate explicit or nameless default-database option forms,
 including character-set, collation, encryption, and `READ ONLY` options.
+`CREATE` rejects unknown object families once documented table, view, routine,
+event, trigger, account, index, schema, tablespace, server, resource-group, and
+spatial-reference-system forms have been considered.
 `DROP DATABASE` and `DROP SCHEMA` validate optional `IF EXISTS` with a single
 unqualified schema target.
 Unambiguous `CREATE FUNCTION` loadable-function forms validate documented

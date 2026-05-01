@@ -4937,6 +4937,11 @@ if "$parser" --quiet "CREATE"; then
 	exit 1
 fi
 
+if "$parser" --quiet "CREATE FOO"; then
+	echo "expected unknown CREATE object type to fail" >&2
+	exit 1
+fi
+
 if "$parser" --quiet "SET"; then
 	echo "expected bare SET to fail" >&2
 	exit 1

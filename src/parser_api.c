@@ -2737,7 +2737,7 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (parser->tokens[token_index].parser_token == USER_T) {
 		return validate_create_user_statement_syntax(parser, token_index, last_token_index);
 	}
-	return 1;
+	return 0;
 }
 
 static int validate_create_role_statement_syntax(const mylite_parser *parser,
@@ -3397,6 +3397,12 @@ static int token_starts_view_statement(const mylite_parser *parser,
 
 	while (token_index <= last_token_index && token_index < parser->token_count) {
 		size_t matching_token = parser->tokens[token_index].matching_token;
+		size_t definer_clause_last_token = last_definer_clause_token(parser, token_index, last_token_index);
+
+		if (definer_clause_last_token > token_index) {
+			token_index = definer_clause_last_token + 1;
+			continue;
+		}
 
 		if (parser->tokens[token_index].parser_token == VIEW_T) {
 			return 1;

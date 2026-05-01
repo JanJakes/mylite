@@ -77,7 +77,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. |  |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |
 | `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. | Parser recognizes charset, collation, and encryption option clauses. |
-| `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. |  |
+| `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. | Parser recognizes schedule, completion, enable/disable, comment, and required `DO` clauses. |
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. |  |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
 | `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. | Parser recognizes functional/key-part lists plus index options for parser plugins, comments, visibility, engine attributes, `KEY_BLOCK_SIZE`, `USING`, `ALGORITHM`, and `LOCK`. |

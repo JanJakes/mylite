@@ -35,8 +35,9 @@ token sink:
   `LOCK`.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize charset, collation,
   encryption, and alter-only `READ ONLY` option clauses.
-- `ALTER EVENT` recognizes ordered event metadata clauses for schedules,
-  completion policy, renames, enablement state, comments, and event bodies.
+- `CREATE EVENT` and `ALTER EVENT` recognize ordered event metadata clauses
+  for schedules, completion policy, enablement state, comments, and event
+  bodies; `ALTER EVENT` also recognizes renames.
 - `ALTER FUNCTION` and `ALTER PROCEDURE` recognize routine characteristics:
   comments, `LANGUAGE SQL`, SQL data access, and SQL security.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`

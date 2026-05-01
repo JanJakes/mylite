@@ -351,24 +351,10 @@ create_definer_object_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref
 create_definer_object_tail ::= FUNCTION create_if_not_exists_tail cache_table_ref create_function_tail.
 create_definer_object_tail ::= PROCEDURE create_if_not_exists_tail cache_table_ref create_procedure_tail.
 
-create_event_body ::= ON create_schedule event_schedule_start create_event_before_do create_event_do event_statement_start statement_tail.
-
-create_schedule ::= SCHEDULE.
+create_event_body ::= alter_event_schedule_clause alter_event_completion_tail alter_event_status_tail alter_event_comment_tail create_event_do event_statement_start statement_tail.
 
 event_schedule_start ::= AT.
 event_schedule_start ::= EVERY.
-
-create_event_before_do ::= .
-create_event_before_do ::= create_event_before_do create_event_before_do_token.
-
-create_event_before_do_nested ::= .
-create_event_before_do_nested ::= create_event_before_do_nested create_event_before_do_token.
-
-create_event_before_do_token ::= ATOM.
-create_event_before_do_token ::= LABEL.
-create_event_before_do_token ::= ON.
-create_event_before_do_token ::= COMMA.
-create_event_before_do_token ::= LP create_event_before_do_nested RP.
 
 create_trigger_body ::= create_trigger_time create_trigger_event ON cache_table_ref FOR create_each ROW create_trigger_statement_tail.
 

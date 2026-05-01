@@ -1553,9 +1553,14 @@ explain_statement ::= EXPLAIN explain_tail. {
 
 explain_tail ::= explain_query_start statement_tail.
 explain_tail ::= explain_format_clause explain_query_start statement_tail.
+explain_tail ::= explain_format_json_clause explain_into_tail explain_query_start statement_tail.
 explain_tail ::= FOR CONNECTION ATOM.
 
 explain_format_clause ::= FORMAT diagnostics_equals explain_format_name.
+
+explain_format_json_clause ::= FORMAT diagnostics_equals JSON.
+
+explain_into_tail ::= INTO set_variable_name.
 
 explain_format_name ::= JSON.
 explain_format_name ::= TRADITIONAL.

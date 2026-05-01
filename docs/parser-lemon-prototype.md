@@ -25,6 +25,7 @@ token sink:
   have explicit grammar productions.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`
   and `OR REPLACE` variants.
+- `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,

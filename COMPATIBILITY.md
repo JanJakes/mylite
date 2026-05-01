@@ -244,7 +244,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. |  |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. |  |
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. |  |
-| `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. |  |
+| `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. | Parser recognizes `FORMAT=JSON INTO @var`. |
 | `HELP` | ❌ | low | Server help lookup result-set semantics. |  |
 | `USE` | ❌ | top | Default schema selection in the embedded single-file model. |  |
 

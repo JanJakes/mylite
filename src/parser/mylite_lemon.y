@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM PARTITION VALUE DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM AS PARTITION VALUE DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -196,9 +196,15 @@ create_database_tail ::= create_database_option_start create_options_tail.
 create_table_tail ::= LP create_table_definition_tokens RP create_options_tail.
 create_table_tail ::= LIKE cache_table_ref.
 create_table_tail ::= SELECT select_tail.
+create_table_tail ::= AS SELECT select_tail.
 create_table_tail ::= TABLE table_statement_target table_query_tail.
+create_table_tail ::= AS TABLE table_statement_target table_query_tail.
 create_table_tail ::= VALUES values_row_list values_query_tail.
+create_table_tail ::= AS VALUES values_row_list values_query_tail.
 create_table_tail ::= WITH with_recursive_tail with_cte_list with_query_body.
+create_table_tail ::= AS WITH with_recursive_tail with_cte_list with_query_body.
+create_table_tail ::= AS query_parenthesized_body.
+create_table_tail ::= AS LP LP dml_write_query_start required_statement_tail.
 create_table_tail ::= create_table_query_start required_statement_tail.
 create_table_tail ::= ATOM(A) required_statement_tail. {
   mylite_parser_require_create_table_tail_atom(ctx, A);
@@ -282,9 +288,7 @@ view_body ::= view_as VALUES values_row_list values_query_tail.
 view_body ::= view_as WITH with_recursive_tail with_cte_list with_query_body.
 view_body ::= view_as query_parenthesized_body.
 
-view_as ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "AS");
-}
+view_as ::= AS.
 
 view_column_tail ::= .
 view_column_tail ::= LP view_column_list RP.
@@ -1651,9 +1655,7 @@ handler_operation ::= OPEN handler_as handler_alias.
 handler_operation ::= READ handler_read_tail.
 handler_operation ::= CLOSE.
 
-handler_as ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "AS");
-}
+handler_as ::= AS.
 
 handler_alias ::= ATOM.
 handler_alias ::= LABEL.
@@ -2048,9 +2050,7 @@ with_cte_column_tail ::= LP with_cte_column_list RP.
 with_cte_column_list ::= cache_name_part.
 with_cte_column_list ::= with_cte_column_list import_comma cache_name_part.
 
-with_cte_as ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "AS");
-}
+with_cte_as ::= AS.
 
 with_cte_body ::= with_cte_body_token.
 with_cte_body ::= with_cte_body with_cte_body_token.

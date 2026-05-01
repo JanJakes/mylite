@@ -407,7 +407,6 @@ void mylite_parser_require_alter_database_option_start(MyliteParseContext *ctx,
 void mylite_parser_require_create_table_tail_atom(MyliteParseContext *ctx,
                                                   MyliteToken token) {
   static const char *const starters[] = {
-      "AS",
       "AUTO_INCREMENT",
       "AVG_ROW_LENGTH",
       "CHARACTER",

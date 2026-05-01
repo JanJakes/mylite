@@ -487,6 +487,7 @@ static int keyword_token(const MyliteToken *token) {
       {"ALGORITHM", ML_ALGORITHM},
       {"ANALYZE", ML_ANALYZE},
       {"AND", ML_AND},
+      {"AS", ML_AS},
       {"BEGIN", ML_BEGIN},
       {"BINARY", ML_BINARY},
       {"BINLOG", ML_BINLOG},

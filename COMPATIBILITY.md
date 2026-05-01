@@ -162,11 +162,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. | Parser recognizes the instance unlock statement shape. |
 | `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. | Parser recognizes table lists, lock types, and aliases using the shared identifier grammar. |
 | `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. | Parser recognizes `UNLOCK TABLE` and `UNLOCK TABLES` without table tails. |
-| `XA START` | ❌ | low | XA transaction branch start. | Parser recognizes one-, two-, and three-part XIDs with numeric `formatID` values. |
-| `XA END` | ❌ | low | XA transaction branch end. |  |
-| `XA PREPARE` | ❌ | low | XA prepare phase. |  |
-| `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. | Parser recognizes one-, two-, and three-part XIDs with numeric `formatID` values. |
-| `XA ROLLBACK` | ❌ | low | XA rollback. | Parser recognizes one-, two-, and three-part XIDs with numeric `formatID` values. |
+| `XA START` | ❌ | low | XA transaction branch start. | Parser recognizes one-, two-, and three-part string or hex XIDs with numeric `formatID` values. |
+| `XA END` | ❌ | low | XA transaction branch end. | Parser recognizes one-, two-, and three-part string or hex XIDs plus `SUSPEND [FOR MIGRATE]`. |
+| `XA PREPARE` | ❌ | low | XA prepare phase. | Parser recognizes one-, two-, and three-part string or hex XIDs. |
+| `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. | Parser recognizes one-, two-, and three-part string or hex XIDs with numeric `formatID` values. |
+| `XA ROLLBACK` | ❌ | low | XA rollback. | Parser recognizes one-, two-, and three-part string or hex XIDs with numeric `formatID` values. |
 | `XA RECOVER` | ❌ | low | XA recovery result-set metadata. |  |
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. | Parser requires a string-literal payload. |
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser recognizes `TO` string-literal log names and `BEFORE` expression tails. |

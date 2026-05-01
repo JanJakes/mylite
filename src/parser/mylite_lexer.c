@@ -143,7 +143,7 @@ int mylite_lexer_next(MyliteLexer *lexer, MyliteToken *token) {
   }
 
   if (lexer_prefixed_string(lexer, token)) {
-    return ML_ATOM;
+    return ML_STRING_LITERAL;
   }
 
   if (is_identifier_start(c)) {

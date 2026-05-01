@@ -25888,20 +25888,23 @@ static YYACTIONTYPE yy_reduce(
 {  yy_destructor(yypParser,359,&yymsp[-2].minor);
 #line 3549 "src/parser/mylite_lemon.y"
 {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  mylite_parser_validate_select_statement(ctx);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  }
 }
-#line 25894 "src/parser/generated/mylite_lemon.c"
+#line 25897 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,725,&yymsp[-1].minor);
   yy_destructor(yypParser,726,&yymsp[0].minor);
 }
         break;
       case 126: /* prepare_statement ::= PREPARE prepared_statement_name FROM prepare_source */
 {  yy_destructor(yypParser,454,&yymsp[-3].minor);
-#line 3639 "src/parser/mylite_lemon.y"
+#line 3642 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
 }
-#line 25905 "src/parser/generated/mylite_lemon.c"
+#line 25908 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,920,&yymsp[-2].minor);
   yy_destructor(yypParser,475,&yymsp[-1].minor);
   yy_destructor(yypParser,1456,&yymsp[0].minor);
@@ -25909,22 +25912,22 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 127: /* execute_statement ::= EXECUTE prepared_statement_name execute_tail */
 {  yy_destructor(yypParser,548,&yymsp[-2].minor);
-#line 3646 "src/parser/mylite_lemon.y"
+#line 3649 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
 }
-#line 25917 "src/parser/generated/mylite_lemon.c"
+#line 25920 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,920,&yymsp[-1].minor);
   yy_destructor(yypParser,1457,&yymsp[0].minor);
 }
         break;
       case 128: /* get_statement ::= GET diagnostics_area_tail DIAGNOSTICS diagnostics_tail */
 {  yy_destructor(yypParser,403,&yymsp[-3].minor);
-#line 3663 "src/parser/mylite_lemon.y"
+#line 3666 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 25928 "src/parser/generated/mylite_lemon.c"
+#line 25931 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1462,&yymsp[-2].minor);
   yy_destructor(yypParser,366,&yymsp[-1].minor);
   yy_destructor(yypParser,1463,&yymsp[0].minor);
@@ -25932,237 +25935,237 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 129: /* signal_statement ::= SIGNAL signal_condition_value signal_set_tail */
 {  yy_destructor(yypParser,411,&yymsp[-2].minor);
-#line 3721 "src/parser/mylite_lemon.y"
+#line 3724 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 25940 "src/parser/generated/mylite_lemon.c"
+#line 25943 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1474,&yymsp[-1].minor);
   yy_destructor(yypParser,1475,&yymsp[0].minor);
 }
         break;
       case 130: /* begin_statement ::= BEGIN */
 {  yy_destructor(yypParser,310,&yymsp[0].minor);
-#line 3768 "src/parser/mylite_lemon.y"
-{
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
-}
-#line 25951 "src/parser/generated/mylite_lemon.c"
-}
-        break;
-      case 131: /* begin_statement ::= BEGIN WORK */
-{  yy_destructor(yypParser,310,&yymsp[-1].minor);
 #line 3771 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
-#line 25960 "src/parser/generated/mylite_lemon.c"
+#line 25954 "src/parser/generated/mylite_lemon.c"
+}
+        break;
+      case 131: /* begin_statement ::= BEGIN WORK */
+{  yy_destructor(yypParser,310,&yymsp[-1].minor);
+#line 3774 "src/parser/mylite_lemon.y"
+{
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+}
+#line 25963 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,551,&yymsp[0].minor);
 }
         break;
       case 132: /* commit_statement ::= COMMIT transaction_end_tail */
 {  yy_destructor(yypParser,517,&yymsp[-1].minor);
-#line 3775 "src/parser/mylite_lemon.y"
+#line 3778 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
-#line 25970 "src/parser/generated/mylite_lemon.c"
+#line 25973 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1483,&yymsp[0].minor);
 }
         break;
       case 133: /* rollback_statement ::= ROLLBACK transaction_end_tail */
 {  yy_destructor(yypParser,410,&yymsp[-1].minor);
-#line 3779 "src/parser/mylite_lemon.y"
+#line 3782 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
-#line 25980 "src/parser/generated/mylite_lemon.c"
+#line 25983 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1483,&yymsp[0].minor);
 }
         break;
       case 134: /* rollback_statement ::= ROLLBACK rollback_to_savepoint_tail */
 {  yy_destructor(yypParser,410,&yymsp[-1].minor);
-#line 3782 "src/parser/mylite_lemon.y"
+#line 3785 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
 }
-#line 25990 "src/parser/generated/mylite_lemon.c"
+#line 25993 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1484,&yymsp[0].minor);
 }
         break;
       case 135: /* set_statement ::= SET set_names_tail */
-#line 3810 "src/parser/mylite_lemon.y"
+#line 3813 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_set_statement(ctx, yymsp[-1].minor.yy0);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-#line 26000 "src/parser/generated/mylite_lemon.c"
+#line 26003 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1486,&yymsp[0].minor);
         break;
       case 136: /* set_statement ::= SET CHARACTER SET set_character_set_tail */
-#line 3814 "src/parser/mylite_lemon.y"
+#line 3817 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_set_statement(ctx, yymsp[-3].minor.yy0);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-#line 26009 "src/parser/generated/mylite_lemon.c"
+#line 26012 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,378,&yymsp[-2].minor);
   yy_destructor(yypParser,384,&yymsp[-1].minor);
   yy_destructor(yypParser,1487,&yymsp[0].minor);
         break;
       case 137: /* set_statement ::= SET CHARSET set_character_set_tail */
-#line 3818 "src/parser/mylite_lemon.y"
+#line 3821 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_set_statement(ctx, yymsp[-2].minor.yy0);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-#line 26020 "src/parser/generated/mylite_lemon.c"
+#line 26023 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,379,&yymsp[-1].minor);
   yy_destructor(yypParser,1487,&yymsp[0].minor);
         break;
       case 138: /* set_statement ::= SET PASSWORD set_password_tail */
-#line 3822 "src/parser/mylite_lemon.y"
+#line 3825 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_set_statement(ctx, yymsp[-2].minor.yy0);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-#line 26030 "src/parser/generated/mylite_lemon.c"
+#line 26033 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,371,&yymsp[-1].minor);
   yy_destructor(yypParser,1488,&yymsp[0].minor);
         break;
       case 139: /* set_statement ::= SET ROLE set_role_tail */
-#line 3826 "src/parser/mylite_lemon.y"
+#line 3829 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_set_statement(ctx, yymsp[-2].minor.yy0);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-#line 26040 "src/parser/generated/mylite_lemon.c"
+#line 26043 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,339,&yymsp[-1].minor);
   yy_destructor(yypParser,1489,&yymsp[0].minor);
         break;
       case 140: /* set_statement ::= SET DEFAULT ROLE set_default_role_tail */
-#line 3830 "src/parser/mylite_lemon.y"
+#line 3833 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_set_statement(ctx, yymsp[-3].minor.yy0);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-#line 26050 "src/parser/generated/mylite_lemon.c"
+#line 26053 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,380,&yymsp[-2].minor);
   yy_destructor(yypParser,339,&yymsp[-1].minor);
   yy_destructor(yypParser,1490,&yymsp[0].minor);
         break;
       case 141: /* set_statement ::= SET RESOURCE create_resource_group cache_name_part set_resource_group_tail */
-#line 3834 "src/parser/mylite_lemon.y"
+#line 3837 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_set_statement(ctx, yymsp[-4].minor.yy0);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-#line 26061 "src/parser/generated/mylite_lemon.c"
+#line 26064 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,332,&yymsp[-3].minor);
   yy_destructor(yypParser,683,&yymsp[-2].minor);
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,1491,&yymsp[0].minor);
         break;
       case 142: /* set_statement ::= SET TRANSACTION set_transaction_tail */
-#line 3838 "src/parser/mylite_lemon.y"
+#line 3841 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_set_statement(ctx, yymsp[-2].minor.yy0);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-#line 26073 "src/parser/generated/mylite_lemon.c"
+#line 26076 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,469,&yymsp[-1].minor);
   yy_destructor(yypParser,1492,&yymsp[0].minor);
         break;
       case 143: /* set_statement ::= SET set_assignment_list */
-#line 3842 "src/parser/mylite_lemon.y"
+#line 3845 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_set_statement(ctx, yymsp[-1].minor.yy0);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-#line 26083 "src/parser/generated/mylite_lemon.c"
+#line 26086 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1493,&yymsp[0].minor);
         break;
       case 144: /* set_statement ::= SET set_transaction_scope TRANSACTION set_transaction_tail */
-#line 3846 "src/parser/mylite_lemon.y"
+#line 3849 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_set_statement(ctx, yymsp[-3].minor.yy0);
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-#line 26092 "src/parser/generated/mylite_lemon.c"
+#line 26095 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1494,&yymsp[-2].minor);
   yy_destructor(yypParser,469,&yymsp[-1].minor);
   yy_destructor(yypParser,1492,&yymsp[0].minor);
         break;
       case 145: /* grant_statement ::= GRANT grant_subject_list grant_destination_tail */
 {  yy_destructor(yypParser,561,&yymsp[-2].minor);
-#line 3996 "src/parser/mylite_lemon.y"
+#line 3999 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
-#line 26103 "src/parser/generated/mylite_lemon.c"
+#line 26106 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1516,&yymsp[-1].minor);
   yy_destructor(yypParser,1517,&yymsp[0].minor);
 }
         break;
       case 146: /* revoke_statement ::= REVOKE revoke_tail */
 {  yy_destructor(yypParser,562,&yymsp[-1].minor);
-#line 4000 "src/parser/mylite_lemon.y"
+#line 4003 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
-#line 26114 "src/parser/generated/mylite_lemon.c"
+#line 26117 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1518,&yymsp[0].minor);
 }
         break;
       case 147: /* leave_statement ::= LEAVE stored_program_label_ref */
 {  yy_destructor(yypParser,406,&yymsp[-1].minor);
-#line 4139 "src/parser/mylite_lemon.y"
+#line 4142 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26124 "src/parser/generated/mylite_lemon.c"
+#line 26127 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1541,&yymsp[0].minor);
 }
         break;
       case 148: /* iterate_statement ::= ITERATE stored_program_label_ref */
 {  yy_destructor(yypParser,405,&yymsp[-1].minor);
-#line 4143 "src/parser/mylite_lemon.y"
+#line 4146 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26134 "src/parser/generated/mylite_lemon.c"
+#line 26137 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1541,&yymsp[0].minor);
 }
         break;
       case 149: /* help_statement ::= HELP help_topic */
 {  yy_destructor(yypParser,566,&yymsp[-1].minor);
-#line 4149 "src/parser/mylite_lemon.y"
+#line 4152 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-#line 26144 "src/parser/generated/mylite_lemon.c"
+#line 26147 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1542,&yymsp[0].minor);
 }
         break;
       case 150: /* do_statement ::= DO expression_start statement_tail */
-#line 4157 "src/parser/mylite_lemon.y"
+#line 4160 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_do_statement(ctx, yymsp[-2].minor.yy0);
   if (!ctx->failed) {
     mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
   }
 }
-#line 26156 "src/parser/generated/mylite_lemon.c"
+#line 26159 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,668,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
         break;
       case 151: /* if_statement ::= IF if_condition_start while_condition_tail THEN statement_tail */
 {  yy_destructor(yypParser,404,&yymsp[-4].minor);
-#line 4202 "src/parser/mylite_lemon.y"
+#line 4205 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26166 "src/parser/generated/mylite_lemon.c"
+#line 26169 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1544,&yymsp[-3].minor);
   yy_destructor(yypParser,1545,&yymsp[-2].minor);
   yy_destructor(yypParser,567,&yymsp[-1].minor);
@@ -26171,22 +26174,22 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 152: /* if_statement ::= IF LP statement_tail */
 {  yy_destructor(yypParser,404,&yymsp[-2].minor);
-#line 4205 "src/parser/mylite_lemon.y"
+#line 4208 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PERMISSIVE);
 }
-#line 26179 "src/parser/generated/mylite_lemon.c"
+#line 26182 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
         break;
       case 153: /* elseif_statement ::= ELSEIF expression_start while_condition_tail THEN statement_tail */
 {  yy_destructor(yypParser,568,&yymsp[-4].minor);
-#line 4215 "src/parser/mylite_lemon.y"
+#line 4218 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26190 "src/parser/generated/mylite_lemon.c"
+#line 26193 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,668,&yymsp[-3].minor);
   yy_destructor(yypParser,1545,&yymsp[-2].minor);
   yy_destructor(yypParser,567,&yymsp[-1].minor);
@@ -26195,32 +26198,32 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 154: /* return_statement ::= RETURN expression_start statement_tail */
 {  yy_destructor(yypParser,415,&yymsp[-2].minor);
-#line 4219 "src/parser/mylite_lemon.y"
+#line 4222 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26203 "src/parser/generated/mylite_lemon.c"
+#line 26206 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,668,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
         break;
       case 155: /* resignal_statement ::= RESIGNAL resignal_tail */
 {  yy_destructor(yypParser,408,&yymsp[-1].minor);
-#line 4223 "src/parser/mylite_lemon.y"
+#line 4226 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26214 "src/parser/generated/mylite_lemon.c"
+#line 26217 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1546,&yymsp[0].minor);
 }
         break;
       case 156: /* while_statement ::= WHILE expression_start while_condition_tail DO statement_tail */
 {  yy_destructor(yypParser,313,&yymsp[-4].minor);
-#line 4231 "src/parser/mylite_lemon.y"
+#line 4234 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26224 "src/parser/generated/mylite_lemon.c"
+#line 26227 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,668,&yymsp[-3].minor);
   yy_destructor(yypParser,1545,&yymsp[-2].minor);
   yy_destructor(yypParser,401,&yymsp[-1].minor);
@@ -26229,22 +26232,22 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 157: /* until_statement ::= UNTIL expression_start statement_tail */
 {  yy_destructor(yypParser,489,&yymsp[-2].minor);
-#line 4274 "src/parser/mylite_lemon.y"
+#line 4277 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26237 "src/parser/generated/mylite_lemon.c"
+#line 26240 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,668,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
         break;
       case 158: /* when_statement ::= WHEN expression_start while_condition_tail THEN statement_tail */
 {  yy_destructor(yypParser,569,&yymsp[-4].minor);
-#line 4278 "src/parser/mylite_lemon.y"
+#line 4281 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26248 "src/parser/generated/mylite_lemon.c"
+#line 26251 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,668,&yymsp[-3].minor);
   yy_destructor(yypParser,1545,&yymsp[-2].minor);
   yy_destructor(yypParser,567,&yymsp[-1].minor);
@@ -26253,21 +26256,21 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 159: /* open_statement ::= OPEN stored_program_label_ref */
 {  yy_destructor(yypParser,407,&yymsp[-1].minor);
-#line 4282 "src/parser/mylite_lemon.y"
+#line 4285 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26261 "src/parser/generated/mylite_lemon.c"
+#line 26264 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1541,&yymsp[0].minor);
 }
         break;
       case 160: /* fetch_statement ::= FETCH fetch_cursor_ref INTO fetch_target_list */
 {  yy_destructor(yypParser,402,&yymsp[-3].minor);
-#line 4286 "src/parser/mylite_lemon.y"
+#line 4289 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26271 "src/parser/generated/mylite_lemon.c"
+#line 26274 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1551,&yymsp[-2].minor);
   yy_destructor(yypParser,471,&yymsp[-1].minor);
   yy_destructor(yypParser,1552,&yymsp[0].minor);
@@ -26275,61 +26278,61 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 161: /* close_statement ::= CLOSE stored_program_label_ref */
 {  yy_destructor(yypParser,400,&yymsp[-1].minor);
-#line 4299 "src/parser/mylite_lemon.y"
+#line 4302 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26283 "src/parser/generated/mylite_lemon.c"
+#line 26286 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1541,&yymsp[0].minor);
 }
         break;
       case 162: /* else_statement ::= ELSE statement_tail */
 {  yy_destructor(yypParser,570,&yymsp[-1].minor);
-#line 4303 "src/parser/mylite_lemon.y"
+#line 4306 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26293 "src/parser/generated/mylite_lemon.c"
+#line 26296 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
         break;
       case 163: /* loop_statement ::= LOOP statement_tail */
 {  yy_destructor(yypParser,311,&yymsp[-1].minor);
-#line 4307 "src/parser/mylite_lemon.y"
+#line 4310 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26303 "src/parser/generated/mylite_lemon.c"
+#line 26306 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
         break;
       case 164: /* repeat_statement ::= REPEAT statement_tail */
 {  yy_destructor(yypParser,312,&yymsp[-1].minor);
-#line 4311 "src/parser/mylite_lemon.y"
+#line 4314 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26313 "src/parser/generated/mylite_lemon.c"
+#line 26316 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
         break;
       case 165: /* case_statement ::= CASE statement_tail */
 {  yy_destructor(yypParser,399,&yymsp[-1].minor);
-#line 4315 "src/parser/mylite_lemon.y"
+#line 4318 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26323 "src/parser/generated/mylite_lemon.c"
+#line 26326 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
         break;
       case 166: /* declare_statement ::= DECLARE declare_identifier_list declare_type_start statement_tail */
 {  yy_destructor(yypParser,571,&yymsp[-3].minor);
-#line 4319 "src/parser/mylite_lemon.y"
+#line 4322 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26333 "src/parser/generated/mylite_lemon.c"
+#line 26336 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1554,&yymsp[-2].minor);
   yy_destructor(yypParser,1555,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
@@ -26337,11 +26340,11 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 167: /* declare_statement ::= DECLARE declare_name CONDITION FOR declare_condition_value */
 {  yy_destructor(yypParser,571,&yymsp[-4].minor);
-#line 4322 "src/parser/mylite_lemon.y"
+#line 4325 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26345 "src/parser/generated/mylite_lemon.c"
+#line 26348 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1556,&yymsp[-3].minor);
   yy_destructor(yypParser,549,&yymsp[-2].minor);
   yy_destructor(yypParser,393,&yymsp[-1].minor);
@@ -26350,11 +26353,11 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 168: /* declare_statement ::= DECLARE declare_name CURSOR FOR declare_cursor_query_start statement_tail */
 {  yy_destructor(yypParser,571,&yymsp[-5].minor);
-#line 4325 "src/parser/mylite_lemon.y"
+#line 4328 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26358 "src/parser/generated/mylite_lemon.c"
+#line 26361 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1556,&yymsp[-4].minor);
   yy_destructor(yypParser,572,&yymsp[-3].minor);
   yy_destructor(yypParser,393,&yymsp[-2].minor);
@@ -26364,11 +26367,11 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 169: /* declare_statement ::= DECLARE declare_handler_action declare_handler_keyword FOR declare_handler_conditions declare_handler_statement_start statement_tail */
 {  yy_destructor(yypParser,571,&yymsp[-6].minor);
-#line 4328 "src/parser/mylite_lemon.y"
+#line 4331 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26372 "src/parser/generated/mylite_lemon.c"
+#line 26375 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1559,&yymsp[-5].minor);
   yy_destructor(yypParser,1560,&yymsp[-4].minor);
   yy_destructor(yypParser,393,&yymsp[-3].minor);
@@ -26379,23 +26382,23 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 170: /* end_statement ::= END end_tail */
 {  yy_destructor(yypParser,367,&yymsp[-1].minor);
-#line 4403 "src/parser/mylite_lemon.y"
+#line 4406 "src/parser/mylite_lemon.y"
 {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-#line 26387 "src/parser/generated/mylite_lemon.c"
+#line 26390 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1568,&yymsp[0].minor);
 }
         break;
       case 171: /* parenthesized_statement ::= LP statement_tail */
-#line 4418 "src/parser/mylite_lemon.y"
+#line 4421 "src/parser/mylite_lemon.y"
 {
   mylite_parser_validate_parenthesized_statement(ctx, yymsp[-1].minor.yy0);
   if (!ctx->failed) {
     mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
   }
 }
-#line 26399 "src/parser/generated/mylite_lemon.c"
+#line 26402 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,665,&yymsp[0].minor);
         break;
       case 172: /* permissive_start ::= ATOM */
@@ -26407,12 +26410,12 @@ static YYACTIONTYPE yy_reduce(
       case 178: /* permissive_start ::= RB */ yytestcase(yyruleno==178);
       case 179: /* permissive_start ::= LC */ yytestcase(yyruleno==179);
       case 180: /* permissive_start ::= RC */ yytestcase(yyruleno==180);
-#line 4425 "src/parser/mylite_lemon.y"
+#line 4428 "src/parser/mylite_lemon.y"
 {
   mylite_parser_require_permissive(ctx, yymsp[0].minor.yy0);
   yylhsminor.yy436 = MYLITE_STATEMENT_PERMISSIVE;
 }
-#line 26416 "src/parser/generated/mylite_lemon.c"
+#line 26419 "src/parser/generated/mylite_lemon.c"
   yymsp[0].minor.yy436 = yylhsminor.yy436;
         break;
       case 181: /* statement_chunks ::= statement_chunk */
@@ -26420,7 +26423,7 @@ static YYACTIONTYPE yy_reduce(
 #line 70 "src/parser/mylite_lemon.y"
 {
 }
-#line 26424 "src/parser/generated/mylite_lemon.c"
+#line 26427 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 182: /* statement_chunks ::= statement_chunks statement_chunk */
@@ -26428,7 +26431,7 @@ static YYACTIONTYPE yy_reduce(
 #line 71 "src/parser/mylite_lemon.y"
 {
 }
-#line 26432 "src/parser/generated/mylite_lemon.c"
+#line 26435 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,591,&yymsp[0].minor);
 }
         break;
@@ -26437,7 +26440,7 @@ static YYACTIONTYPE yy_reduce(
 #line 74 "src/parser/mylite_lemon.y"
 {
 }
-#line 26441 "src/parser/generated/mylite_lemon.c"
+#line 26444 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,308,&yymsp[0].minor);
 }
         break;
@@ -26446,7 +26449,7 @@ static YYACTIONTYPE yy_reduce(
 #line 76 "src/parser/mylite_lemon.y"
 {
 }
-#line 26450 "src/parser/generated/mylite_lemon.c"
+#line 26453 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 185: /* statement ::= create_statement */
@@ -26454,7 +26457,7 @@ static YYACTIONTYPE yy_reduce(
 #line 77 "src/parser/mylite_lemon.y"
 {
 }
-#line 26458 "src/parser/generated/mylite_lemon.c"
+#line 26461 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 186: /* statement ::= drop_statement */
@@ -26462,7 +26465,7 @@ static YYACTIONTYPE yy_reduce(
 #line 78 "src/parser/mylite_lemon.y"
 {
 }
-#line 26466 "src/parser/generated/mylite_lemon.c"
+#line 26469 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 187: /* statement ::= alter_statement */
@@ -26470,7 +26473,7 @@ static YYACTIONTYPE yy_reduce(
 #line 79 "src/parser/mylite_lemon.y"
 {
 }
-#line 26474 "src/parser/generated/mylite_lemon.c"
+#line 26477 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 188: /* statement ::= rename_statement */
@@ -26478,7 +26481,7 @@ static YYACTIONTYPE yy_reduce(
 #line 80 "src/parser/mylite_lemon.y"
 {
 }
-#line 26482 "src/parser/generated/mylite_lemon.c"
+#line 26485 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 189: /* statement ::= truncate_statement */
@@ -26486,7 +26489,7 @@ static YYACTIONTYPE yy_reduce(
 #line 81 "src/parser/mylite_lemon.y"
 {
 }
-#line 26490 "src/parser/generated/mylite_lemon.c"
+#line 26493 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 190: /* statement ::= load_statement */
@@ -26494,7 +26497,7 @@ static YYACTIONTYPE yy_reduce(
 #line 82 "src/parser/mylite_lemon.y"
 {
 }
-#line 26498 "src/parser/generated/mylite_lemon.c"
+#line 26501 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 191: /* statement ::= start_statement */
@@ -26502,7 +26505,7 @@ static YYACTIONTYPE yy_reduce(
 #line 83 "src/parser/mylite_lemon.y"
 {
 }
-#line 26506 "src/parser/generated/mylite_lemon.c"
+#line 26509 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 192: /* statement ::= stop_statement */
@@ -26510,7 +26513,7 @@ static YYACTIONTYPE yy_reduce(
 #line 84 "src/parser/mylite_lemon.y"
 {
 }
-#line 26514 "src/parser/generated/mylite_lemon.c"
+#line 26517 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 193: /* statement ::= savepoint_statement */
@@ -26518,7 +26521,7 @@ static YYACTIONTYPE yy_reduce(
 #line 85 "src/parser/mylite_lemon.y"
 {
 }
-#line 26522 "src/parser/generated/mylite_lemon.c"
+#line 26525 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 194: /* statement ::= release_statement */
@@ -26526,7 +26529,7 @@ static YYACTIONTYPE yy_reduce(
 #line 86 "src/parser/mylite_lemon.y"
 {
 }
-#line 26530 "src/parser/generated/mylite_lemon.c"
+#line 26533 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 195: /* statement ::= lock_statement */
@@ -26534,7 +26537,7 @@ static YYACTIONTYPE yy_reduce(
 #line 87 "src/parser/mylite_lemon.y"
 {
 }
-#line 26538 "src/parser/generated/mylite_lemon.c"
+#line 26541 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 196: /* statement ::= unlock_statement */
@@ -26542,7 +26545,7 @@ static YYACTIONTYPE yy_reduce(
 #line 88 "src/parser/mylite_lemon.y"
 {
 }
-#line 26546 "src/parser/generated/mylite_lemon.c"
+#line 26549 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 197: /* statement ::= table_admin_statement */
@@ -26550,7 +26553,7 @@ static YYACTIONTYPE yy_reduce(
 #line 89 "src/parser/mylite_lemon.y"
 {
 }
-#line 26554 "src/parser/generated/mylite_lemon.c"
+#line 26557 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 198: /* statement ::= plugin_admin_statement */
@@ -26558,7 +26561,7 @@ static YYACTIONTYPE yy_reduce(
 #line 90 "src/parser/mylite_lemon.y"
 {
 }
-#line 26562 "src/parser/generated/mylite_lemon.c"
+#line 26565 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 199: /* statement ::= import_statement */
@@ -26566,7 +26569,7 @@ static YYACTIONTYPE yy_reduce(
 #line 91 "src/parser/mylite_lemon.y"
 {
 }
-#line 26570 "src/parser/generated/mylite_lemon.c"
+#line 26573 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 200: /* statement ::= cache_statement */
@@ -26574,7 +26577,7 @@ static YYACTIONTYPE yy_reduce(
 #line 92 "src/parser/mylite_lemon.y"
 {
 }
-#line 26578 "src/parser/generated/mylite_lemon.c"
+#line 26581 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 201: /* statement ::= kill_statement */
@@ -26582,7 +26585,7 @@ static YYACTIONTYPE yy_reduce(
 #line 93 "src/parser/mylite_lemon.y"
 {
 }
-#line 26586 "src/parser/generated/mylite_lemon.c"
+#line 26589 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 202: /* statement ::= deallocate_statement */
@@ -26590,7 +26593,7 @@ static YYACTIONTYPE yy_reduce(
 #line 94 "src/parser/mylite_lemon.y"
 {
 }
-#line 26594 "src/parser/generated/mylite_lemon.c"
+#line 26597 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 203: /* statement ::= reset_statement */
@@ -26598,7 +26601,7 @@ static YYACTIONTYPE yy_reduce(
 #line 95 "src/parser/mylite_lemon.y"
 {
 }
-#line 26602 "src/parser/generated/mylite_lemon.c"
+#line 26605 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 204: /* statement ::= purge_statement */
@@ -26606,7 +26609,7 @@ static YYACTIONTYPE yy_reduce(
 #line 96 "src/parser/mylite_lemon.y"
 {
 }
-#line 26610 "src/parser/generated/mylite_lemon.c"
+#line 26613 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 205: /* statement ::= change_statement */
@@ -26614,7 +26617,7 @@ static YYACTIONTYPE yy_reduce(
 #line 97 "src/parser/mylite_lemon.y"
 {
 }
-#line 26618 "src/parser/generated/mylite_lemon.c"
+#line 26621 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 206: /* statement ::= xa_statement */
@@ -26622,7 +26625,7 @@ static YYACTIONTYPE yy_reduce(
 #line 98 "src/parser/mylite_lemon.y"
 {
 }
-#line 26626 "src/parser/generated/mylite_lemon.c"
+#line 26629 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 207: /* statement ::= show_statement */
@@ -26630,7 +26633,7 @@ static YYACTIONTYPE yy_reduce(
 #line 99 "src/parser/mylite_lemon.y"
 {
 }
-#line 26634 "src/parser/generated/mylite_lemon.c"
+#line 26637 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 208: /* statement ::= describe_statement */
@@ -26638,7 +26641,7 @@ static YYACTIONTYPE yy_reduce(
 #line 100 "src/parser/mylite_lemon.y"
 {
 }
-#line 26642 "src/parser/generated/mylite_lemon.c"
+#line 26645 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 209: /* statement ::= explain_statement */
@@ -26646,7 +26649,7 @@ static YYACTIONTYPE yy_reduce(
 #line 101 "src/parser/mylite_lemon.y"
 {
 }
-#line 26650 "src/parser/generated/mylite_lemon.c"
+#line 26653 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 210: /* statement ::= use_statement */
@@ -26654,7 +26657,7 @@ static YYACTIONTYPE yy_reduce(
 #line 102 "src/parser/mylite_lemon.y"
 {
 }
-#line 26658 "src/parser/generated/mylite_lemon.c"
+#line 26661 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 211: /* statement ::= handler_statement */
@@ -26662,7 +26665,7 @@ static YYACTIONTYPE yy_reduce(
 #line 103 "src/parser/mylite_lemon.y"
 {
 }
-#line 26666 "src/parser/generated/mylite_lemon.c"
+#line 26669 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 212: /* statement ::= call_statement */
@@ -26670,7 +26673,7 @@ static YYACTIONTYPE yy_reduce(
 #line 104 "src/parser/mylite_lemon.y"
 {
 }
-#line 26674 "src/parser/generated/mylite_lemon.c"
+#line 26677 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 213: /* statement ::= binlog_statement */
@@ -26678,7 +26681,7 @@ static YYACTIONTYPE yy_reduce(
 #line 105 "src/parser/mylite_lemon.y"
 {
 }
-#line 26682 "src/parser/generated/mylite_lemon.c"
+#line 26685 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 214: /* statement ::= clone_statement */
@@ -26686,7 +26689,7 @@ static YYACTIONTYPE yy_reduce(
 #line 106 "src/parser/mylite_lemon.y"
 {
 }
-#line 26690 "src/parser/generated/mylite_lemon.c"
+#line 26693 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 215: /* statement ::= flush_statement */
@@ -26694,7 +26697,7 @@ static YYACTIONTYPE yy_reduce(
 #line 107 "src/parser/mylite_lemon.y"
 {
 }
-#line 26698 "src/parser/generated/mylite_lemon.c"
+#line 26701 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 216: /* statement ::= restart_statement */
@@ -26702,7 +26705,7 @@ static YYACTIONTYPE yy_reduce(
 #line 108 "src/parser/mylite_lemon.y"
 {
 }
-#line 26706 "src/parser/generated/mylite_lemon.c"
+#line 26709 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 217: /* statement ::= shutdown_statement */
@@ -26710,7 +26713,7 @@ static YYACTIONTYPE yy_reduce(
 #line 109 "src/parser/mylite_lemon.y"
 {
 }
-#line 26714 "src/parser/generated/mylite_lemon.c"
+#line 26717 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 218: /* statement ::= insert_statement */
@@ -26718,7 +26721,7 @@ static YYACTIONTYPE yy_reduce(
 #line 110 "src/parser/mylite_lemon.y"
 {
 }
-#line 26722 "src/parser/generated/mylite_lemon.c"
+#line 26725 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 219: /* statement ::= replace_statement */
@@ -26726,7 +26729,7 @@ static YYACTIONTYPE yy_reduce(
 #line 111 "src/parser/mylite_lemon.y"
 {
 }
-#line 26730 "src/parser/generated/mylite_lemon.c"
+#line 26733 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 220: /* statement ::= update_statement */
@@ -26734,7 +26737,7 @@ static YYACTIONTYPE yy_reduce(
 #line 112 "src/parser/mylite_lemon.y"
 {
 }
-#line 26738 "src/parser/generated/mylite_lemon.c"
+#line 26741 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 221: /* statement ::= delete_statement */
@@ -26742,7 +26745,7 @@ static YYACTIONTYPE yy_reduce(
 #line 113 "src/parser/mylite_lemon.y"
 {
 }
-#line 26746 "src/parser/generated/mylite_lemon.c"
+#line 26749 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 222: /* statement ::= with_statement */
@@ -26750,7 +26753,7 @@ static YYACTIONTYPE yy_reduce(
 #line 114 "src/parser/mylite_lemon.y"
 {
 }
-#line 26754 "src/parser/generated/mylite_lemon.c"
+#line 26757 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 223: /* statement ::= table_statement */
@@ -26758,7 +26761,7 @@ static YYACTIONTYPE yy_reduce(
 #line 115 "src/parser/mylite_lemon.y"
 {
 }
-#line 26762 "src/parser/generated/mylite_lemon.c"
+#line 26765 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 224: /* statement ::= values_statement */
@@ -26766,7 +26769,7 @@ static YYACTIONTYPE yy_reduce(
 #line 116 "src/parser/mylite_lemon.y"
 {
 }
-#line 26770 "src/parser/generated/mylite_lemon.c"
+#line 26773 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 225: /* statement ::= prepare_statement */
@@ -26774,7 +26777,7 @@ static YYACTIONTYPE yy_reduce(
 #line 117 "src/parser/mylite_lemon.y"
 {
 }
-#line 26778 "src/parser/generated/mylite_lemon.c"
+#line 26781 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 226: /* statement ::= execute_statement */
@@ -26782,7 +26785,7 @@ static YYACTIONTYPE yy_reduce(
 #line 118 "src/parser/mylite_lemon.y"
 {
 }
-#line 26786 "src/parser/generated/mylite_lemon.c"
+#line 26789 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 227: /* statement ::= get_statement */
@@ -26790,7 +26793,7 @@ static YYACTIONTYPE yy_reduce(
 #line 119 "src/parser/mylite_lemon.y"
 {
 }
-#line 26794 "src/parser/generated/mylite_lemon.c"
+#line 26797 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 228: /* statement ::= signal_statement */
@@ -26798,7 +26801,7 @@ static YYACTIONTYPE yy_reduce(
 #line 120 "src/parser/mylite_lemon.y"
 {
 }
-#line 26802 "src/parser/generated/mylite_lemon.c"
+#line 26805 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 229: /* statement ::= begin_statement */
@@ -26806,7 +26809,7 @@ static YYACTIONTYPE yy_reduce(
 #line 121 "src/parser/mylite_lemon.y"
 {
 }
-#line 26810 "src/parser/generated/mylite_lemon.c"
+#line 26813 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 230: /* statement ::= commit_statement */
@@ -26814,7 +26817,7 @@ static YYACTIONTYPE yy_reduce(
 #line 122 "src/parser/mylite_lemon.y"
 {
 }
-#line 26818 "src/parser/generated/mylite_lemon.c"
+#line 26821 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 231: /* statement ::= rollback_statement */
@@ -26822,7 +26825,7 @@ static YYACTIONTYPE yy_reduce(
 #line 123 "src/parser/mylite_lemon.y"
 {
 }
-#line 26826 "src/parser/generated/mylite_lemon.c"
+#line 26829 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 232: /* statement ::= set_statement */
@@ -26830,7 +26833,7 @@ static YYACTIONTYPE yy_reduce(
 #line 124 "src/parser/mylite_lemon.y"
 {
 }
-#line 26834 "src/parser/generated/mylite_lemon.c"
+#line 26837 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 233: /* statement ::= grant_statement */
@@ -26838,7 +26841,7 @@ static YYACTIONTYPE yy_reduce(
 #line 125 "src/parser/mylite_lemon.y"
 {
 }
-#line 26842 "src/parser/generated/mylite_lemon.c"
+#line 26845 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 234: /* statement ::= revoke_statement */
@@ -26846,7 +26849,7 @@ static YYACTIONTYPE yy_reduce(
 #line 126 "src/parser/mylite_lemon.y"
 {
 }
-#line 26850 "src/parser/generated/mylite_lemon.c"
+#line 26853 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 235: /* statement ::= leave_statement */
@@ -26854,7 +26857,7 @@ static YYACTIONTYPE yy_reduce(
 #line 127 "src/parser/mylite_lemon.y"
 {
 }
-#line 26858 "src/parser/generated/mylite_lemon.c"
+#line 26861 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 236: /* statement ::= iterate_statement */
@@ -26862,7 +26865,7 @@ static YYACTIONTYPE yy_reduce(
 #line 128 "src/parser/mylite_lemon.y"
 {
 }
-#line 26866 "src/parser/generated/mylite_lemon.c"
+#line 26869 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 237: /* statement ::= help_statement */
@@ -26870,7 +26873,7 @@ static YYACTIONTYPE yy_reduce(
 #line 129 "src/parser/mylite_lemon.y"
 {
 }
-#line 26874 "src/parser/generated/mylite_lemon.c"
+#line 26877 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 238: /* statement ::= do_statement */
@@ -26878,7 +26881,7 @@ static YYACTIONTYPE yy_reduce(
 #line 130 "src/parser/mylite_lemon.y"
 {
 }
-#line 26882 "src/parser/generated/mylite_lemon.c"
+#line 26885 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 239: /* statement ::= if_statement */
@@ -26886,7 +26889,7 @@ static YYACTIONTYPE yy_reduce(
 #line 131 "src/parser/mylite_lemon.y"
 {
 }
-#line 26890 "src/parser/generated/mylite_lemon.c"
+#line 26893 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 240: /* statement ::= elseif_statement */
@@ -26894,7 +26897,7 @@ static YYACTIONTYPE yy_reduce(
 #line 132 "src/parser/mylite_lemon.y"
 {
 }
-#line 26898 "src/parser/generated/mylite_lemon.c"
+#line 26901 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 241: /* statement ::= return_statement */
@@ -26902,7 +26905,7 @@ static YYACTIONTYPE yy_reduce(
 #line 133 "src/parser/mylite_lemon.y"
 {
 }
-#line 26906 "src/parser/generated/mylite_lemon.c"
+#line 26909 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 242: /* statement ::= resignal_statement */
@@ -26910,7 +26913,7 @@ static YYACTIONTYPE yy_reduce(
 #line 134 "src/parser/mylite_lemon.y"
 {
 }
-#line 26914 "src/parser/generated/mylite_lemon.c"
+#line 26917 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 243: /* statement ::= while_statement */
@@ -26918,7 +26921,7 @@ static YYACTIONTYPE yy_reduce(
 #line 135 "src/parser/mylite_lemon.y"
 {
 }
-#line 26922 "src/parser/generated/mylite_lemon.c"
+#line 26925 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 244: /* statement ::= until_statement */
@@ -26926,7 +26929,7 @@ static YYACTIONTYPE yy_reduce(
 #line 136 "src/parser/mylite_lemon.y"
 {
 }
-#line 26930 "src/parser/generated/mylite_lemon.c"
+#line 26933 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 245: /* statement ::= when_statement */
@@ -26934,7 +26937,7 @@ static YYACTIONTYPE yy_reduce(
 #line 137 "src/parser/mylite_lemon.y"
 {
 }
-#line 26938 "src/parser/generated/mylite_lemon.c"
+#line 26941 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 246: /* statement ::= open_statement */
@@ -26942,7 +26945,7 @@ static YYACTIONTYPE yy_reduce(
 #line 138 "src/parser/mylite_lemon.y"
 {
 }
-#line 26946 "src/parser/generated/mylite_lemon.c"
+#line 26949 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 247: /* statement ::= fetch_statement */
@@ -26950,7 +26953,7 @@ static YYACTIONTYPE yy_reduce(
 #line 139 "src/parser/mylite_lemon.y"
 {
 }
-#line 26954 "src/parser/generated/mylite_lemon.c"
+#line 26957 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 248: /* statement ::= close_statement */
@@ -26958,7 +26961,7 @@ static YYACTIONTYPE yy_reduce(
 #line 140 "src/parser/mylite_lemon.y"
 {
 }
-#line 26962 "src/parser/generated/mylite_lemon.c"
+#line 26965 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 249: /* statement ::= else_statement */
@@ -26966,7 +26969,7 @@ static YYACTIONTYPE yy_reduce(
 #line 141 "src/parser/mylite_lemon.y"
 {
 }
-#line 26970 "src/parser/generated/mylite_lemon.c"
+#line 26973 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 250: /* statement ::= loop_statement */
@@ -26974,7 +26977,7 @@ static YYACTIONTYPE yy_reduce(
 #line 142 "src/parser/mylite_lemon.y"
 {
 }
-#line 26978 "src/parser/generated/mylite_lemon.c"
+#line 26981 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 251: /* statement ::= repeat_statement */
@@ -26982,7 +26985,7 @@ static YYACTIONTYPE yy_reduce(
 #line 143 "src/parser/mylite_lemon.y"
 {
 }
-#line 26986 "src/parser/generated/mylite_lemon.c"
+#line 26989 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 252: /* statement ::= case_statement */
@@ -26990,7 +26993,7 @@ static YYACTIONTYPE yy_reduce(
 #line 144 "src/parser/mylite_lemon.y"
 {
 }
-#line 26994 "src/parser/generated/mylite_lemon.c"
+#line 26997 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 253: /* statement ::= declare_statement */
@@ -26998,7 +27001,7 @@ static YYACTIONTYPE yy_reduce(
 #line 145 "src/parser/mylite_lemon.y"
 {
 }
-#line 27002 "src/parser/generated/mylite_lemon.c"
+#line 27005 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 254: /* statement ::= end_statement */
@@ -27006,7 +27009,7 @@ static YYACTIONTYPE yy_reduce(
 #line 146 "src/parser/mylite_lemon.y"
 {
 }
-#line 27010 "src/parser/generated/mylite_lemon.c"
+#line 27013 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 255: /* statement ::= parenthesized_statement */
@@ -27014,7 +27017,7 @@ static YYACTIONTYPE yy_reduce(
 #line 147 "src/parser/mylite_lemon.y"
 {
 }
-#line 27018 "src/parser/generated/mylite_lemon.c"
+#line 27021 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 256: /* select_tail ::= select_expression_start statement_tail */
@@ -27022,7 +27025,7 @@ static YYACTIONTYPE yy_reduce(
 #line 167 "src/parser/mylite_lemon.y"
 {
 }
-#line 27026 "src/parser/generated/mylite_lemon.c"
+#line 27029 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
         break;
@@ -27032,7 +27035,7 @@ static YYACTIONTYPE yy_reduce(
 #line 169 "src/parser/mylite_lemon.y"
 {
 }
-#line 27036 "src/parser/generated/mylite_lemon.c"
+#line 27039 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 258: /* select_expression_start ::= select_modifiers expression_start */
@@ -27040,7 +27043,7 @@ static YYACTIONTYPE yy_reduce(
 #line 170 "src/parser/mylite_lemon.y"
 {
 }
-#line 27044 "src/parser/generated/mylite_lemon.c"
+#line 27047 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,668,&yymsp[0].minor);
 }
         break;
@@ -27049,7 +27052,7 @@ static YYACTIONTYPE yy_reduce(
 #line 172 "src/parser/mylite_lemon.y"
 {
 }
-#line 27053 "src/parser/generated/mylite_lemon.c"
+#line 27056 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 260: /* select_modifiers ::= select_modifiers select_modifier */
@@ -27057,7 +27060,7 @@ static YYACTIONTYPE yy_reduce(
 #line 173 "src/parser/mylite_lemon.y"
 {
 }
-#line 27061 "src/parser/generated/mylite_lemon.c"
+#line 27064 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,670,&yymsp[0].minor);
 }
         break;
@@ -27081,7 +27084,7 @@ static YYACTIONTYPE yy_reduce(
 #line 175 "src/parser/mylite_lemon.y"
 {
 }
-#line 27085 "src/parser/generated/mylite_lemon.c"
+#line 27088 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 262: /* select_modifier ::= DISTINCT */
@@ -27092,7 +27095,7 @@ static YYACTIONTYPE yy_reduce(
 #line 176 "src/parser/mylite_lemon.y"
 {
 }
-#line 27096 "src/parser/generated/mylite_lemon.c"
+#line 27099 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 263: /* select_modifier ::= DISTINCTROW */
@@ -27102,7 +27105,7 @@ static YYACTIONTYPE yy_reduce(
 #line 177 "src/parser/mylite_lemon.y"
 {
 }
-#line 27106 "src/parser/generated/mylite_lemon.c"
+#line 27109 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 264: /* select_modifier ::= HIGH_PRIORITY */
@@ -27113,7 +27116,7 @@ static YYACTIONTYPE yy_reduce(
 #line 178 "src/parser/mylite_lemon.y"
 {
 }
-#line 27117 "src/parser/generated/mylite_lemon.c"
+#line 27120 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 265: /* select_modifier ::= SQL_BIG_RESULT */
@@ -27123,7 +27126,7 @@ static YYACTIONTYPE yy_reduce(
 #line 179 "src/parser/mylite_lemon.y"
 {
 }
-#line 27127 "src/parser/generated/mylite_lemon.c"
+#line 27130 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 266: /* select_modifier ::= SQL_BUFFER_RESULT */
@@ -27135,7 +27138,7 @@ static YYACTIONTYPE yy_reduce(
 #line 180 "src/parser/mylite_lemon.y"
 {
 }
-#line 27139 "src/parser/generated/mylite_lemon.c"
+#line 27142 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 267: /* select_modifier ::= SQL_CALC_FOUND_ROWS */
@@ -27145,7 +27148,7 @@ static YYACTIONTYPE yy_reduce(
 #line 181 "src/parser/mylite_lemon.y"
 {
 }
-#line 27149 "src/parser/generated/mylite_lemon.c"
+#line 27152 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 268: /* select_modifier ::= SQL_NO_CACHE */
@@ -27155,7 +27158,7 @@ static YYACTIONTYPE yy_reduce(
 #line 182 "src/parser/mylite_lemon.y"
 {
 }
-#line 27159 "src/parser/generated/mylite_lemon.c"
+#line 27162 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 269: /* select_modifier ::= SQL_SMALL_RESULT */
@@ -27165,7 +27168,7 @@ static YYACTIONTYPE yy_reduce(
 #line 183 "src/parser/mylite_lemon.y"
 {
 }
-#line 27169 "src/parser/generated/mylite_lemon.c"
+#line 27172 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 270: /* select_modifier ::= STRAIGHT_JOIN */
@@ -27176,7 +27179,7 @@ static YYACTIONTYPE yy_reduce(
 #line 184 "src/parser/mylite_lemon.y"
 {
 }
-#line 27180 "src/parser/generated/mylite_lemon.c"
+#line 27183 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 271: /* create_tail ::= AGGREGATE FUNCTION cache_table_ref create_udf_tail */
@@ -27184,7 +27187,7 @@ static YYACTIONTYPE yy_reduce(
 #line 196 "src/parser/mylite_lemon.y"
 {
 }
-#line 27188 "src/parser/generated/mylite_lemon.c"
+#line 27191 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,328,&yymsp[-2].minor);
   yy_destructor(yypParser,673,&yymsp[-1].minor);
   yy_destructor(yypParser,675,&yymsp[0].minor);
@@ -27195,7 +27198,7 @@ static YYACTIONTYPE yy_reduce(
 #line 203 "src/parser/mylite_lemon.y"
 {
 }
-#line 27199 "src/parser/generated/mylite_lemon.c"
+#line 27202 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,680,&yymsp[-2].minor);
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,682,&yymsp[0].minor);
@@ -27206,7 +27209,7 @@ static YYACTIONTYPE yy_reduce(
 #line 204 "src/parser/mylite_lemon.y"
 {
 }
-#line 27210 "src/parser/generated/mylite_lemon.c"
+#line 27213 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,683,&yymsp[-2].minor);
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,684,&yymsp[0].minor);
@@ -27217,7 +27220,7 @@ static YYACTIONTYPE yy_reduce(
 #line 205 "src/parser/mylite_lemon.y"
 {
 }
-#line 27221 "src/parser/generated/mylite_lemon.c"
+#line 27224 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,685,&yymsp[-4].minor);
   yy_destructor(yypParser,686,&yymsp[-3].minor);
   yy_destructor(yypParser,672,&yymsp[-2].minor);
@@ -27230,7 +27233,7 @@ static YYACTIONTYPE yy_reduce(
 #line 206 "src/parser/mylite_lemon.y"
 {
 }
-#line 27234 "src/parser/generated/mylite_lemon.c"
+#line 27237 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,335,&yymsp[-5].minor);
   yy_destructor(yypParser,333,&yymsp[-4].minor);
   yy_destructor(yypParser,685,&yymsp[-3].minor);
@@ -27244,7 +27247,7 @@ static YYACTIONTYPE yy_reduce(
 #line 207 "src/parser/mylite_lemon.y"
 {
 }
-#line 27248 "src/parser/generated/mylite_lemon.c"
+#line 27251 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,689,&yymsp[0].minor);
 }
@@ -27254,7 +27257,7 @@ static YYACTIONTYPE yy_reduce(
 #line 208 "src/parser/mylite_lemon.y"
 {
 }
-#line 27258 "src/parser/generated/mylite_lemon.c"
+#line 27261 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,690,&yymsp[0].minor);
 }
@@ -27264,7 +27267,7 @@ static YYACTIONTYPE yy_reduce(
 #line 209 "src/parser/mylite_lemon.y"
 {
 }
-#line 27268 "src/parser/generated/mylite_lemon.c"
+#line 27271 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,337,&yymsp[-2].minor);
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,691,&yymsp[0].minor);
@@ -27275,7 +27278,7 @@ static YYACTIONTYPE yy_reduce(
 #line 210 "src/parser/mylite_lemon.y"
 {
 }
-#line 27279 "src/parser/generated/mylite_lemon.c"
+#line 27282 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,672,&yymsp[-2].minor);
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,693,&yymsp[0].minor);
@@ -27286,7 +27289,7 @@ static YYACTIONTYPE yy_reduce(
 #line 211 "src/parser/mylite_lemon.y"
 {
 }
-#line 27290 "src/parser/generated/mylite_lemon.c"
+#line 27293 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,672,&yymsp[-1].minor);
   yy_destructor(yypParser,694,&yymsp[0].minor);
 }
@@ -27296,7 +27299,7 @@ static YYACTIONTYPE yy_reduce(
 #line 212 "src/parser/mylite_lemon.y"
 {
 }
-#line 27300 "src/parser/generated/mylite_lemon.c"
+#line 27303 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,672,&yymsp[-3].minor);
   yy_destructor(yypParser,695,&yymsp[-2].minor);
   yy_destructor(yypParser,696,&yymsp[-1].minor);
@@ -27308,7 +27311,7 @@ static YYACTIONTYPE yy_reduce(
 #line 216 "src/parser/mylite_lemon.y"
 {
 }
-#line 27312 "src/parser/generated/mylite_lemon.c"
+#line 27315 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 283: /* create_tail ::= create_definer_clause create_definer_object_tail */
@@ -27316,7 +27319,7 @@ static YYACTIONTYPE yy_reduce(
 #line 217 "src/parser/mylite_lemon.y"
 {
 }
-#line 27320 "src/parser/generated/mylite_lemon.c"
+#line 27323 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,702,&yymsp[0].minor);
 }
         break;
@@ -27326,7 +27329,7 @@ static YYACTIONTYPE yy_reduce(
 #line 221 "src/parser/mylite_lemon.y"
 {
 }
-#line 27330 "src/parser/generated/mylite_lemon.c"
+#line 27333 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,672,&yymsp[-2].minor);
   yy_destructor(yypParser,673,&yymsp[-1].minor);
   yy_destructor(yypParser,704,&yymsp[0].minor);
@@ -27338,7 +27341,7 @@ static YYACTIONTYPE yy_reduce(
 #line 222 "src/parser/mylite_lemon.y"
 {
 }
-#line 27342 "src/parser/generated/mylite_lemon.c"
+#line 27345 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,672,&yymsp[-2].minor);
   yy_destructor(yypParser,673,&yymsp[-1].minor);
   yy_destructor(yypParser,705,&yymsp[0].minor);
@@ -27350,7 +27353,7 @@ static YYACTIONTYPE yy_reduce(
 #line 223 "src/parser/mylite_lemon.y"
 {
 }
-#line 27354 "src/parser/generated/mylite_lemon.c"
+#line 27357 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,672,&yymsp[-2].minor);
   yy_destructor(yypParser,673,&yymsp[-1].minor);
   yy_destructor(yypParser,706,&yymsp[0].minor);
@@ -27365,7 +27368,7 @@ static YYACTIONTYPE yy_reduce(
 #line 225 "src/parser/mylite_lemon.y"
 {
 }
-#line 27369 "src/parser/generated/mylite_lemon.c"
+#line 27372 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 288: /* create_index_kind ::= FULLTEXT */
@@ -27377,7 +27380,7 @@ static YYACTIONTYPE yy_reduce(
 #line 226 "src/parser/mylite_lemon.y"
 {
 }
-#line 27381 "src/parser/generated/mylite_lemon.c"
+#line 27384 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 289: /* create_index_kind ::= SPATIAL */
@@ -27389,7 +27392,7 @@ static YYACTIONTYPE yy_reduce(
 #line 227 "src/parser/mylite_lemon.y"
 {
 }
-#line 27393 "src/parser/generated/mylite_lemon.c"
+#line 27396 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 290: /* create_index_name ::= cache_name_part */
@@ -27447,7 +27450,7 @@ static YYACTIONTYPE yy_reduce(
 #line 229 "src/parser/mylite_lemon.y"
 {
 }
-#line 27451 "src/parser/generated/mylite_lemon.c"
+#line 27454 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 292: /* create_index_using_tail ::= USING cache_name_part */
@@ -27456,7 +27459,7 @@ static YYACTIONTYPE yy_reduce(
 #line 232 "src/parser/mylite_lemon.y"
 {
 }
-#line 27460 "src/parser/generated/mylite_lemon.c"
+#line 27463 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
         break;
@@ -27466,7 +27469,7 @@ static YYACTIONTYPE yy_reduce(
 #line 233 "src/parser/mylite_lemon.y"
 {
 }
-#line 27470 "src/parser/generated/mylite_lemon.c"
+#line 27473 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
         break;
@@ -27476,7 +27479,7 @@ static YYACTIONTYPE yy_reduce(
 #line 235 "src/parser/mylite_lemon.y"
 {
 }
-#line 27480 "src/parser/generated/mylite_lemon.c"
+#line 27483 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 295: /* create_index_tail ::= LP create_index_key_parts RP create_index_options_tail */
@@ -27484,7 +27487,7 @@ static YYACTIONTYPE yy_reduce(
 #line 237 "src/parser/mylite_lemon.y"
 {
 }
-#line 27488 "src/parser/generated/mylite_lemon.c"
+#line 27491 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,708,&yymsp[-2].minor);
   yy_destructor(yypParser,349,&yymsp[-1].minor);
   yy_destructor(yypParser,709,&yymsp[0].minor);
@@ -27495,7 +27498,7 @@ static YYACTIONTYPE yy_reduce(
 #line 239 "src/parser/mylite_lemon.y"
 {
 }
-#line 27499 "src/parser/generated/mylite_lemon.c"
+#line 27502 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 297: /* create_index_key_parts ::= create_index_key_parts COMMA create_index_key_part */
@@ -27503,7 +27506,7 @@ static YYACTIONTYPE yy_reduce(
 #line 240 "src/parser/mylite_lemon.y"
 {
 }
-#line 27507 "src/parser/generated/mylite_lemon.c"
+#line 27510 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,710,&yymsp[0].minor);
 }
@@ -27513,7 +27516,7 @@ static YYACTIONTYPE yy_reduce(
 #line 242 "src/parser/mylite_lemon.y"
 {
 }
-#line 27517 "src/parser/generated/mylite_lemon.c"
+#line 27520 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 299: /* create_index_key_part_tokens ::= create_index_key_part_token */
@@ -27521,7 +27524,7 @@ static YYACTIONTYPE yy_reduce(
 #line 244 "src/parser/mylite_lemon.y"
 {
 }
-#line 27525 "src/parser/generated/mylite_lemon.c"
+#line 27528 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 300: /* create_index_key_part_tokens ::= create_index_key_part_tokens create_index_key_part_token */
@@ -27529,7 +27532,7 @@ static YYACTIONTYPE yy_reduce(
 #line 245 "src/parser/mylite_lemon.y"
 {
 }
-#line 27533 "src/parser/generated/mylite_lemon.c"
+#line 27536 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,712,&yymsp[0].minor);
 }
         break;
@@ -27572,7 +27575,7 @@ static YYACTIONTYPE yy_reduce(
 #line 247 "src/parser/mylite_lemon.y"
 {
 }
-#line 27576 "src/parser/generated/mylite_lemon.c"
+#line 27579 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 302: /* create_index_key_part_token ::= LABEL */
@@ -27618,7 +27621,7 @@ static YYACTIONTYPE yy_reduce(
 #line 248 "src/parser/mylite_lemon.y"
 {
 }
-#line 27622 "src/parser/generated/mylite_lemon.c"
+#line 27625 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 303: /* create_index_key_part_token ::= keyword */
@@ -27644,7 +27647,7 @@ static YYACTIONTYPE yy_reduce(
 #line 249 "src/parser/mylite_lemon.y"
 {
 }
-#line 27648 "src/parser/generated/mylite_lemon.c"
+#line 27651 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 304: /* create_index_key_part_token ::= DOT */
@@ -27668,7 +27671,7 @@ static YYACTIONTYPE yy_reduce(
 #line 250 "src/parser/mylite_lemon.y"
 {
 }
-#line 27672 "src/parser/generated/mylite_lemon.c"
+#line 27675 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 305: /* create_index_key_part_token ::= LP create_table_definition_tokens RP */
@@ -27679,7 +27682,7 @@ static YYACTIONTYPE yy_reduce(
 #line 251 "src/parser/mylite_lemon.y"
 {
 }
-#line 27683 "src/parser/generated/mylite_lemon.c"
+#line 27686 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,714,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -27707,7 +27710,7 @@ static YYACTIONTYPE yy_reduce(
 #line 252 "src/parser/mylite_lemon.y"
 {
 }
-#line 27711 "src/parser/generated/mylite_lemon.c"
+#line 27714 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 307: /* create_index_key_part_token ::= RB */
@@ -27731,7 +27734,7 @@ static YYACTIONTYPE yy_reduce(
 #line 253 "src/parser/mylite_lemon.y"
 {
 }
-#line 27735 "src/parser/generated/mylite_lemon.c"
+#line 27738 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 308: /* create_index_key_part_token ::= LC */
@@ -27757,7 +27760,7 @@ static YYACTIONTYPE yy_reduce(
 #line 254 "src/parser/mylite_lemon.y"
 {
 }
-#line 27761 "src/parser/generated/mylite_lemon.c"
+#line 27764 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 309: /* create_index_key_part_token ::= RC */
@@ -27781,7 +27784,7 @@ static YYACTIONTYPE yy_reduce(
 #line 255 "src/parser/mylite_lemon.y"
 {
 }
-#line 27785 "src/parser/generated/mylite_lemon.c"
+#line 27788 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 311: /* create_index_options_tail ::= create_index_options_tail create_index_option */
@@ -27789,7 +27792,7 @@ static YYACTIONTYPE yy_reduce(
 #line 258 "src/parser/mylite_lemon.y"
 {
 }
-#line 27793 "src/parser/generated/mylite_lemon.c"
+#line 27796 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,715,&yymsp[0].minor);
 }
         break;
@@ -27798,7 +27801,7 @@ static YYACTIONTYPE yy_reduce(
 #line 260 "src/parser/mylite_lemon.y"
 {
 }
-#line 27802 "src/parser/generated/mylite_lemon.c"
+#line 27805 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,717,&yymsp[0].minor);
 }
@@ -27808,7 +27811,7 @@ static YYACTIONTYPE yy_reduce(
 #line 263 "src/parser/mylite_lemon.y"
 {
 }
-#line 27812 "src/parser/generated/mylite_lemon.c"
+#line 27815 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,245,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
@@ -27819,7 +27822,7 @@ static YYACTIONTYPE yy_reduce(
 #line 264 "src/parser/mylite_lemon.y"
 {
 }
-#line 27823 "src/parser/generated/mylite_lemon.c"
+#line 27826 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -27831,7 +27834,7 @@ static YYACTIONTYPE yy_reduce(
 #line 265 "src/parser/mylite_lemon.y"
 {
 }
-#line 27835 "src/parser/generated/mylite_lemon.c"
+#line 27838 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 318: /* create_index_option ::= INVISIBLE */
@@ -27842,7 +27845,7 @@ static YYACTIONTYPE yy_reduce(
 #line 266 "src/parser/mylite_lemon.y"
 {
 }
-#line 27846 "src/parser/generated/mylite_lemon.c"
+#line 27849 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 319: /* create_index_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal */
@@ -27853,7 +27856,7 @@ static YYACTIONTYPE yy_reduce(
 #line 267 "src/parser/mylite_lemon.y"
 {
 }
-#line 27857 "src/parser/generated/mylite_lemon.c"
+#line 27860 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -27864,7 +27867,7 @@ static YYACTIONTYPE yy_reduce(
 #line 268 "src/parser/mylite_lemon.y"
 {
 }
-#line 27868 "src/parser/generated/mylite_lemon.c"
+#line 27871 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -27874,7 +27877,7 @@ static YYACTIONTYPE yy_reduce(
 #line 269 "src/parser/mylite_lemon.y"
 {
 }
-#line 27878 "src/parser/generated/mylite_lemon.c"
+#line 27881 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 322: /* index_number_value ::= BOOLEAN_NUMBER */
@@ -27908,7 +27911,7 @@ static YYACTIONTYPE yy_reduce(
 #line 271 "src/parser/mylite_lemon.y"
 {
 }
-#line 27912 "src/parser/generated/mylite_lemon.c"
+#line 27915 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 323: /* index_number_value ::= FACTOR_NUMBER */
@@ -27940,7 +27943,7 @@ static YYACTIONTYPE yy_reduce(
 #line 272 "src/parser/mylite_lemon.y"
 {
 }
-#line 27944 "src/parser/generated/mylite_lemon.c"
+#line 27947 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 324: /* index_number_value ::= NUMBER_LITERAL */
@@ -27971,7 +27974,7 @@ static YYACTIONTYPE yy_reduce(
 #line 273 "src/parser/mylite_lemon.y"
 {
 }
-#line 27975 "src/parser/generated/mylite_lemon.c"
+#line 27978 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 325: /* create_database_kind ::= DATABASE */
@@ -27990,7 +27993,7 @@ static YYACTIONTYPE yy_reduce(
 #line 275 "src/parser/mylite_lemon.y"
 {
 }
-#line 27994 "src/parser/generated/mylite_lemon.c"
+#line 27997 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 326: /* create_database_kind ::= SCHEMA */
@@ -28004,7 +28007,7 @@ static YYACTIONTYPE yy_reduce(
 #line 276 "src/parser/mylite_lemon.y"
 {
 }
-#line 28008 "src/parser/generated/mylite_lemon.c"
+#line 28011 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 327: /* create_database_tail ::= create_database_options_tail */
@@ -28012,7 +28015,7 @@ static YYACTIONTYPE yy_reduce(
 #line 278 "src/parser/mylite_lemon.y"
 {
 }
-#line 28016 "src/parser/generated/mylite_lemon.c"
+#line 28019 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 328: /* create_table_tail ::= LP create_table_elements RP create_table_post_definition_tail */
@@ -28020,7 +28023,7 @@ static YYACTIONTYPE yy_reduce(
 #line 280 "src/parser/mylite_lemon.y"
 {
 }
-#line 28024 "src/parser/generated/mylite_lemon.c"
+#line 28027 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,721,&yymsp[-2].minor);
   yy_destructor(yypParser,349,&yymsp[-1].minor);
   yy_destructor(yypParser,722,&yymsp[0].minor);
@@ -28031,7 +28034,7 @@ static YYACTIONTYPE yy_reduce(
 #line 281 "src/parser/mylite_lemon.y"
 {
 }
-#line 28035 "src/parser/generated/mylite_lemon.c"
+#line 28038 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
         break;
@@ -28047,7 +28050,7 @@ static YYACTIONTYPE yy_reduce(
 #line 282 "src/parser/mylite_lemon.y"
 {
 }
-#line 28051 "src/parser/generated/mylite_lemon.c"
+#line 28054 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,666,&yymsp[0].minor);
 }
         break;
@@ -28057,7 +28060,7 @@ static YYACTIONTYPE yy_reduce(
 #line 283 "src/parser/mylite_lemon.y"
 {
 }
-#line 28061 "src/parser/generated/mylite_lemon.c"
+#line 28064 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,314,&yymsp[-1].minor);
   yy_destructor(yypParser,666,&yymsp[0].minor);
 }
@@ -28073,7 +28076,7 @@ static YYACTIONTYPE yy_reduce(
 #line 284 "src/parser/mylite_lemon.y"
 {
 }
-#line 28077 "src/parser/generated/mylite_lemon.c"
+#line 28080 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,723,&yymsp[-1].minor);
   yy_destructor(yypParser,724,&yymsp[0].minor);
 }
@@ -28084,7 +28087,7 @@ static YYACTIONTYPE yy_reduce(
 #line 285 "src/parser/mylite_lemon.y"
 {
 }
-#line 28088 "src/parser/generated/mylite_lemon.c"
+#line 28091 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,325,&yymsp[-2].minor);
   yy_destructor(yypParser,723,&yymsp[-1].minor);
   yy_destructor(yypParser,724,&yymsp[0].minor);
@@ -28099,7 +28102,7 @@ static YYACTIONTYPE yy_reduce(
 #line 286 "src/parser/mylite_lemon.y"
 {
 }
-#line 28103 "src/parser/generated/mylite_lemon.c"
+#line 28106 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,725,&yymsp[-1].minor);
   yy_destructor(yypParser,726,&yymsp[0].minor);
 }
@@ -28110,7 +28113,7 @@ static YYACTIONTYPE yy_reduce(
 #line 287 "src/parser/mylite_lemon.y"
 {
 }
-#line 28114 "src/parser/generated/mylite_lemon.c"
+#line 28117 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,359,&yymsp[-2].minor);
   yy_destructor(yypParser,725,&yymsp[-1].minor);
   yy_destructor(yypParser,726,&yymsp[0].minor);
@@ -28127,7 +28130,7 @@ static YYACTIONTYPE yy_reduce(
 #line 288 "src/parser/mylite_lemon.y"
 {
 }
-#line 28131 "src/parser/generated/mylite_lemon.c"
+#line 28134 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,727,&yymsp[-2].minor);
   yy_destructor(yypParser,728,&yymsp[-1].minor);
   yy_destructor(yypParser,729,&yymsp[0].minor);
@@ -28139,7 +28142,7 @@ static YYACTIONTYPE yy_reduce(
 #line 289 "src/parser/mylite_lemon.y"
 {
 }
-#line 28143 "src/parser/generated/mylite_lemon.c"
+#line 28146 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,355,&yymsp[-3].minor);
   yy_destructor(yypParser,727,&yymsp[-2].minor);
   yy_destructor(yypParser,728,&yymsp[-1].minor);
@@ -28155,7 +28158,7 @@ static YYACTIONTYPE yy_reduce(
 #line 290 "src/parser/mylite_lemon.y"
 {
 }
-#line 28159 "src/parser/generated/mylite_lemon.c"
+#line 28162 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 339: /* create_table_tail ::= AS query_parenthesized_body */
@@ -28164,7 +28167,7 @@ static YYACTIONTYPE yy_reduce(
 #line 291 "src/parser/mylite_lemon.y"
 {
 }
-#line 28168 "src/parser/generated/mylite_lemon.c"
+#line 28171 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,730,&yymsp[0].minor);
 }
         break;
@@ -28173,7 +28176,7 @@ static YYACTIONTYPE yy_reduce(
 #line 292 "src/parser/mylite_lemon.y"
 {
 }
-#line 28177 "src/parser/generated/mylite_lemon.c"
+#line 28180 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-3].minor);
   yy_destructor(yypParser,348,&yymsp[-2].minor);
   yy_destructor(yypParser,731,&yymsp[-1].minor);
@@ -28185,7 +28188,7 @@ static YYACTIONTYPE yy_reduce(
 #line 293 "src/parser/mylite_lemon.y"
 {
 }
-#line 28189 "src/parser/generated/mylite_lemon.c"
+#line 28192 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,734,&yymsp[0].minor);
 }
         break;
@@ -28195,7 +28198,7 @@ static YYACTIONTYPE yy_reduce(
 #line 294 "src/parser/mylite_lemon.y"
 {
 }
-#line 28199 "src/parser/generated/mylite_lemon.c"
+#line 28202 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,732,&yymsp[0].minor);
 }
         break;
@@ -28204,7 +28207,7 @@ static YYACTIONTYPE yy_reduce(
 #line 298 "src/parser/mylite_lemon.y"
 {
 }
-#line 28208 "src/parser/generated/mylite_lemon.c"
+#line 28211 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 346: /* create_table_ctas_tail ::= create_table_ctas_modifier_tail create_table_ctas_body */
@@ -28212,7 +28215,7 @@ static YYACTIONTYPE yy_reduce(
 #line 300 "src/parser/mylite_lemon.y"
 {
 }
-#line 28216 "src/parser/generated/mylite_lemon.c"
+#line 28219 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,734,&yymsp[0].minor);
 }
         break;
@@ -28221,7 +28224,7 @@ static YYACTIONTYPE yy_reduce(
 #line 303 "src/parser/mylite_lemon.y"
 {
 }
-#line 28225 "src/parser/generated/mylite_lemon.c"
+#line 28228 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 349: /* create_table_ctas_modifier ::= IGNORE */
@@ -28236,7 +28239,7 @@ static YYACTIONTYPE yy_reduce(
 #line 305 "src/parser/mylite_lemon.y"
 {
 }
-#line 28240 "src/parser/generated/mylite_lemon.c"
+#line 28243 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 350: /* create_table_ctas_modifier ::= REPLACE */
@@ -28253,7 +28256,7 @@ static YYACTIONTYPE yy_reduce(
 #line 306 "src/parser/mylite_lemon.y"
 {
 }
-#line 28257 "src/parser/generated/mylite_lemon.c"
+#line 28260 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 361: /* create_table_elements ::= create_table_element */
@@ -28261,7 +28264,7 @@ static YYACTIONTYPE yy_reduce(
 #line 319 "src/parser/mylite_lemon.y"
 {
 }
-#line 28265 "src/parser/generated/mylite_lemon.c"
+#line 28268 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 362: /* create_table_elements ::= create_table_elements COMMA create_table_element */
@@ -28269,7 +28272,7 @@ static YYACTIONTYPE yy_reduce(
 #line 320 "src/parser/mylite_lemon.y"
 {
 }
-#line 28273 "src/parser/generated/mylite_lemon.c"
+#line 28276 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,738,&yymsp[0].minor);
 }
@@ -28279,7 +28282,7 @@ static YYACTIONTYPE yy_reduce(
 #line 322 "src/parser/mylite_lemon.y"
 {
 }
-#line 28283 "src/parser/generated/mylite_lemon.c"
+#line 28286 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,740,&yymsp[0].minor);
 }
         break;
@@ -28288,7 +28291,7 @@ static YYACTIONTYPE yy_reduce(
 #line 323 "src/parser/mylite_lemon.y"
 {
 }
-#line 28292 "src/parser/generated/mylite_lemon.c"
+#line 28295 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,740,&yymsp[0].minor);
 }
         break;
@@ -28297,7 +28300,7 @@ static YYACTIONTYPE yy_reduce(
 #line 324 "src/parser/mylite_lemon.y"
 {
 }
-#line 28301 "src/parser/generated/mylite_lemon.c"
+#line 28304 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,741,&yymsp[-1].minor);
   yy_destructor(yypParser,740,&yymsp[0].minor);
 }
@@ -28307,7 +28310,7 @@ static YYACTIONTYPE yy_reduce(
 #line 325 "src/parser/mylite_lemon.y"
 {
 }
-#line 28311 "src/parser/generated/mylite_lemon.c"
+#line 28314 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,739,&yymsp[-2].minor);
   yy_destructor(yypParser,741,&yymsp[-1].minor);
   yy_destructor(yypParser,740,&yymsp[0].minor);
@@ -28321,7 +28324,7 @@ static YYACTIONTYPE yy_reduce(
 #line 328 "src/parser/mylite_lemon.y"
 {
 }
-#line 28325 "src/parser/generated/mylite_lemon.c"
+#line 28328 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 369: /* create_table_element_name ::= CHECKSUM */
@@ -28334,7 +28337,7 @@ static YYACTIONTYPE yy_reduce(
 #line 329 "src/parser/mylite_lemon.y"
 {
 }
-#line 28338 "src/parser/generated/mylite_lemon.c"
+#line 28341 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 370: /* create_table_element_name ::= CONNECTION */
@@ -28349,7 +28352,7 @@ static YYACTIONTYPE yy_reduce(
 #line 330 "src/parser/mylite_lemon.y"
 {
 }
-#line 28353 "src/parser/generated/mylite_lemon.c"
+#line 28356 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 371: /* create_table_element_name ::= CURRENT */
@@ -28359,7 +28362,7 @@ static YYACTIONTYPE yy_reduce(
 #line 331 "src/parser/mylite_lemon.y"
 {
 }
-#line 28363 "src/parser/generated/mylite_lemon.c"
+#line 28366 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 372: /* create_table_element_name ::= DATA */
@@ -28377,7 +28380,7 @@ static YYACTIONTYPE yy_reduce(
 #line 332 "src/parser/mylite_lemon.y"
 {
 }
-#line 28381 "src/parser/generated/mylite_lemon.c"
+#line 28384 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 373: /* create_table_element_name ::= DEFINER */
@@ -28390,7 +28393,7 @@ static YYACTIONTYPE yy_reduce(
 #line 333 "src/parser/mylite_lemon.y"
 {
 }
-#line 28394 "src/parser/generated/mylite_lemon.c"
+#line 28397 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 374: /* create_table_element_name ::= DIAGNOSTICS */
@@ -28401,7 +28404,7 @@ static YYACTIONTYPE yy_reduce(
 #line 334 "src/parser/mylite_lemon.y"
 {
 }
-#line 28405 "src/parser/generated/mylite_lemon.c"
+#line 28408 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 375: /* create_table_element_name ::= END */
@@ -28412,7 +28415,7 @@ static YYACTIONTYPE yy_reduce(
 #line 335 "src/parser/mylite_lemon.y"
 {
 }
-#line 28416 "src/parser/generated/mylite_lemon.c"
+#line 28419 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 376: /* create_table_element_name ::= EVENT */
@@ -28424,7 +28427,7 @@ static YYACTIONTYPE yy_reduce(
 #line 336 "src/parser/mylite_lemon.y"
 {
 }
-#line 28428 "src/parser/generated/mylite_lemon.c"
+#line 28431 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 377: /* create_table_element_name ::= FORMAT */
@@ -28435,7 +28438,7 @@ static YYACTIONTYPE yy_reduce(
 #line 337 "src/parser/mylite_lemon.y"
 {
 }
-#line 28439 "src/parser/generated/mylite_lemon.c"
+#line 28442 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 378: /* create_table_element_name ::= LAST */
@@ -28448,7 +28451,7 @@ static YYACTIONTYPE yy_reduce(
 #line 338 "src/parser/mylite_lemon.y"
 {
 }
-#line 28452 "src/parser/generated/mylite_lemon.c"
+#line 28455 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 379: /* create_table_element_name ::= LIKE */
@@ -28459,7 +28462,7 @@ static YYACTIONTYPE yy_reduce(
 #line 339 "src/parser/mylite_lemon.y"
 {
 }
-#line 28463 "src/parser/generated/mylite_lemon.c"
+#line 28466 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 380: /* create_table_element_name ::= NUMBER */
@@ -28468,7 +28471,7 @@ static YYACTIONTYPE yy_reduce(
 #line 340 "src/parser/mylite_lemon.y"
 {
 }
-#line 28472 "src/parser/generated/mylite_lemon.c"
+#line 28475 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 381: /* create_table_element_name ::= OFFSET */
@@ -28478,7 +28481,7 @@ static YYACTIONTYPE yy_reduce(
 #line 341 "src/parser/mylite_lemon.y"
 {
 }
-#line 28482 "src/parser/generated/mylite_lemon.c"
+#line 28485 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 382: /* create_table_element_name ::= PASSWORD */
@@ -28490,7 +28493,7 @@ static YYACTIONTYPE yy_reduce(
 #line 342 "src/parser/mylite_lemon.y"
 {
 }
-#line 28494 "src/parser/generated/mylite_lemon.c"
+#line 28497 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 383: /* create_table_element_name ::= QUERY */
@@ -28503,7 +28506,7 @@ static YYACTIONTYPE yy_reduce(
 #line 343 "src/parser/mylite_lemon.y"
 {
 }
-#line 28507 "src/parser/generated/mylite_lemon.c"
+#line 28510 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 384: /* create_table_element_name ::= RETURNED_SQLSTATE */
@@ -28512,7 +28515,7 @@ static YYACTIONTYPE yy_reduce(
 #line 344 "src/parser/mylite_lemon.y"
 {
 }
-#line 28516 "src/parser/generated/mylite_lemon.c"
+#line 28519 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 385: /* create_table_element_name ::= START */
@@ -28524,7 +28527,7 @@ static YYACTIONTYPE yy_reduce(
 #line 345 "src/parser/mylite_lemon.y"
 {
 }
-#line 28528 "src/parser/generated/mylite_lemon.c"
+#line 28531 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 386: /* create_table_element_name ::= STATUS */
@@ -28540,7 +28543,7 @@ static YYACTIONTYPE yy_reduce(
 #line 346 "src/parser/mylite_lemon.y"
 {
 }
-#line 28544 "src/parser/generated/mylite_lemon.c"
+#line 28547 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 387: /* create_table_element_name ::= XML */
@@ -28552,7 +28555,7 @@ static YYACTIONTYPE yy_reduce(
 #line 347 "src/parser/mylite_lemon.y"
 {
 }
-#line 28556 "src/parser/generated/mylite_lemon.c"
+#line 28559 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 388: /* create_table_constraint_start ::= PRIMARY */
@@ -28563,7 +28566,7 @@ static YYACTIONTYPE yy_reduce(
 #line 349 "src/parser/mylite_lemon.y"
 {
 }
-#line 28567 "src/parser/generated/mylite_lemon.c"
+#line 28570 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 392: /* create_table_constraint_start ::= INDEX */
@@ -28581,7 +28584,7 @@ static YYACTIONTYPE yy_reduce(
 #line 353 "src/parser/mylite_lemon.y"
 {
 }
-#line 28585 "src/parser/generated/mylite_lemon.c"
+#line 28588 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 393: /* create_table_constraint_start ::= KEY */
@@ -28596,7 +28599,7 @@ static YYACTIONTYPE yy_reduce(
 #line 354 "src/parser/mylite_lemon.y"
 {
 }
-#line 28600 "src/parser/generated/mylite_lemon.c"
+#line 28603 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 394: /* create_table_constraint_start ::= FOREIGN */
@@ -28606,7 +28609,7 @@ static YYACTIONTYPE yy_reduce(
 #line 355 "src/parser/mylite_lemon.y"
 {
 }
-#line 28610 "src/parser/generated/mylite_lemon.c"
+#line 28613 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 395: /* create_table_constraint_start ::= CHECK */
@@ -28618,7 +28621,7 @@ static YYACTIONTYPE yy_reduce(
 #line 356 "src/parser/mylite_lemon.y"
 {
 }
-#line 28622 "src/parser/generated/mylite_lemon.c"
+#line 28625 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 396: /* create_table_element_tokens ::= create_table_element_token */
@@ -28626,7 +28629,7 @@ static YYACTIONTYPE yy_reduce(
 #line 358 "src/parser/mylite_lemon.y"
 {
 }
-#line 28630 "src/parser/generated/mylite_lemon.c"
+#line 28633 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 397: /* create_table_element_tokens ::= create_table_element_tokens create_table_element_token */
@@ -28634,7 +28637,7 @@ static YYACTIONTYPE yy_reduce(
 #line 359 "src/parser/mylite_lemon.y"
 {
 }
-#line 28638 "src/parser/generated/mylite_lemon.c"
+#line 28641 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,742,&yymsp[0].minor);
 }
         break;
@@ -28643,7 +28646,7 @@ static YYACTIONTYPE yy_reduce(
 #line 372 "src/parser/mylite_lemon.y"
 {
 }
-#line 28647 "src/parser/generated/mylite_lemon.c"
+#line 28650 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,743,&yymsp[0].minor);
 }
         break;
@@ -28668,7 +28671,7 @@ static YYACTIONTYPE yy_reduce(
 #line 378 "src/parser/mylite_lemon.y"
 {
 }
-#line 28672 "src/parser/generated/mylite_lemon.c"
+#line 28675 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 419: /* create_table_tail_option_start ::= AUTOEXTEND_SIZE */
@@ -28676,7 +28679,7 @@ static YYACTIONTYPE yy_reduce(
 #line 385 "src/parser/mylite_lemon.y"
 {
 }
-#line 28680 "src/parser/generated/mylite_lemon.c"
+#line 28683 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 420: /* create_table_tail_option_start ::= AUTO_INCREMENT */
@@ -28685,7 +28688,7 @@ static YYACTIONTYPE yy_reduce(
 #line 386 "src/parser/mylite_lemon.y"
 {
 }
-#line 28689 "src/parser/generated/mylite_lemon.c"
+#line 28692 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 421: /* create_table_tail_option_start ::= AVG_ROW_LENGTH */
@@ -28694,7 +28697,7 @@ static YYACTIONTYPE yy_reduce(
 #line 387 "src/parser/mylite_lemon.y"
 {
 }
-#line 28698 "src/parser/generated/mylite_lemon.c"
+#line 28701 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 422: /* create_table_tail_option_start ::= CHARACTER */
@@ -28706,7 +28709,7 @@ static YYACTIONTYPE yy_reduce(
 #line 388 "src/parser/mylite_lemon.y"
 {
 }
-#line 28710 "src/parser/generated/mylite_lemon.c"
+#line 28713 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 423: /* create_table_tail_option_start ::= CHARSET */
@@ -28720,7 +28723,7 @@ static YYACTIONTYPE yy_reduce(
 #line 389 "src/parser/mylite_lemon.y"
 {
 }
-#line 28724 "src/parser/generated/mylite_lemon.c"
+#line 28727 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 425: /* create_table_tail_option_start ::= COLLATE */
@@ -28728,7 +28731,7 @@ static YYACTIONTYPE yy_reduce(
 #line 391 "src/parser/mylite_lemon.y"
 {
 }
-#line 28732 "src/parser/generated/mylite_lemon.c"
+#line 28735 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 426: /* create_table_tail_option_start ::= COMMENT */
@@ -28738,7 +28741,7 @@ static YYACTIONTYPE yy_reduce(
 #line 392 "src/parser/mylite_lemon.y"
 {
 }
-#line 28742 "src/parser/generated/mylite_lemon.c"
+#line 28745 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 427: /* create_table_tail_option_start ::= COMPRESSION */
@@ -28746,7 +28749,7 @@ static YYACTIONTYPE yy_reduce(
 #line 393 "src/parser/mylite_lemon.y"
 {
 }
-#line 28750 "src/parser/generated/mylite_lemon.c"
+#line 28753 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 430: /* create_table_tail_option_start ::= DEFAULT */
@@ -28779,7 +28782,7 @@ static YYACTIONTYPE yy_reduce(
 #line 396 "src/parser/mylite_lemon.y"
 {
 }
-#line 28783 "src/parser/generated/mylite_lemon.c"
+#line 28786 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 431: /* create_table_tail_option_start ::= DELAY_KEY_WRITE */
@@ -28788,7 +28791,7 @@ static YYACTIONTYPE yy_reduce(
 #line 397 "src/parser/mylite_lemon.y"
 {
 }
-#line 28792 "src/parser/generated/mylite_lemon.c"
+#line 28795 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 432: /* create_table_tail_option_start ::= ENCRYPTION */
@@ -28796,7 +28799,7 @@ static YYACTIONTYPE yy_reduce(
 #line 398 "src/parser/mylite_lemon.y"
 {
 }
-#line 28800 "src/parser/generated/mylite_lemon.c"
+#line 28803 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 433: /* create_table_tail_option_start ::= ENGINE */
@@ -28809,7 +28812,7 @@ static YYACTIONTYPE yy_reduce(
 #line 399 "src/parser/mylite_lemon.y"
 {
 }
-#line 28813 "src/parser/generated/mylite_lemon.c"
+#line 28816 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 434: /* create_table_tail_option_start ::= ENGINE_ATTRIBUTE */
@@ -28817,7 +28820,7 @@ static YYACTIONTYPE yy_reduce(
 #line 400 "src/parser/mylite_lemon.y"
 {
 }
-#line 28821 "src/parser/generated/mylite_lemon.c"
+#line 28824 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 436: /* create_table_tail_option_start ::= INSERT_METHOD */
@@ -28825,7 +28828,7 @@ static YYACTIONTYPE yy_reduce(
 #line 402 "src/parser/mylite_lemon.y"
 {
 }
-#line 28829 "src/parser/generated/mylite_lemon.c"
+#line 28832 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 437: /* create_table_tail_option_start ::= KEY_BLOCK_SIZE */
@@ -28834,7 +28837,7 @@ static YYACTIONTYPE yy_reduce(
 #line 403 "src/parser/mylite_lemon.y"
 {
 }
-#line 28838 "src/parser/generated/mylite_lemon.c"
+#line 28841 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 438: /* create_table_tail_option_start ::= MAX_ROWS */
@@ -28843,7 +28846,7 @@ static YYACTIONTYPE yy_reduce(
 #line 404 "src/parser/mylite_lemon.y"
 {
 }
-#line 28847 "src/parser/generated/mylite_lemon.c"
+#line 28850 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 439: /* create_table_tail_option_start ::= MIN_ROWS */
@@ -28852,7 +28855,7 @@ static YYACTIONTYPE yy_reduce(
 #line 405 "src/parser/mylite_lemon.y"
 {
 }
-#line 28856 "src/parser/generated/mylite_lemon.c"
+#line 28859 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 440: /* create_table_tail_option_start ::= PACK_KEYS */
@@ -28861,7 +28864,7 @@ static YYACTIONTYPE yy_reduce(
 #line 406 "src/parser/mylite_lemon.y"
 {
 }
-#line 28865 "src/parser/generated/mylite_lemon.c"
+#line 28868 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 442: /* create_table_tail_option_start ::= PARTITION */
@@ -28870,7 +28873,7 @@ static YYACTIONTYPE yy_reduce(
 #line 408 "src/parser/mylite_lemon.y"
 {
 }
-#line 28874 "src/parser/generated/mylite_lemon.c"
+#line 28877 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 443: /* create_table_tail_option_start ::= ROW_FORMAT */
@@ -28878,7 +28881,7 @@ static YYACTIONTYPE yy_reduce(
 #line 409 "src/parser/mylite_lemon.y"
 {
 }
-#line 28882 "src/parser/generated/mylite_lemon.c"
+#line 28885 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 444: /* create_table_tail_option_start ::= SECONDARY_ENGINE */
@@ -28886,7 +28889,7 @@ static YYACTIONTYPE yy_reduce(
 #line 410 "src/parser/mylite_lemon.y"
 {
 }
-#line 28890 "src/parser/generated/mylite_lemon.c"
+#line 28893 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 445: /* create_table_tail_option_start ::= SECONDARY_ENGINE_ATTRIBUTE */
@@ -28894,7 +28897,7 @@ static YYACTIONTYPE yy_reduce(
 #line 411 "src/parser/mylite_lemon.y"
 {
 }
-#line 28898 "src/parser/generated/mylite_lemon.c"
+#line 28901 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 447: /* create_table_tail_option_start ::= STATS_AUTO_RECALC */
@@ -28903,7 +28906,7 @@ static YYACTIONTYPE yy_reduce(
 #line 413 "src/parser/mylite_lemon.y"
 {
 }
-#line 28907 "src/parser/generated/mylite_lemon.c"
+#line 28910 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 448: /* create_table_tail_option_start ::= STATS_PERSISTENT */
@@ -28912,7 +28915,7 @@ static YYACTIONTYPE yy_reduce(
 #line 414 "src/parser/mylite_lemon.y"
 {
 }
-#line 28916 "src/parser/generated/mylite_lemon.c"
+#line 28919 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 449: /* create_table_tail_option_start ::= STATS_SAMPLE_PAGES */
@@ -28920,7 +28923,7 @@ static YYACTIONTYPE yy_reduce(
 #line 415 "src/parser/mylite_lemon.y"
 {
 }
-#line 28924 "src/parser/generated/mylite_lemon.c"
+#line 28927 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 450: /* create_table_tail_option_start ::= STORAGE */
@@ -28930,7 +28933,7 @@ static YYACTIONTYPE yy_reduce(
 #line 416 "src/parser/mylite_lemon.y"
 {
 }
-#line 28934 "src/parser/generated/mylite_lemon.c"
+#line 28937 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 451: /* create_table_tail_option_start ::= TABLESPACE */
@@ -28944,7 +28947,7 @@ static YYACTIONTYPE yy_reduce(
 #line 417 "src/parser/mylite_lemon.y"
 {
 }
-#line 28948 "src/parser/generated/mylite_lemon.c"
+#line 28951 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 452: /* create_table_tail_option_start ::= UNION */
@@ -28955,7 +28958,7 @@ static YYACTIONTYPE yy_reduce(
 #line 418 "src/parser/mylite_lemon.y"
 {
 }
-#line 28959 "src/parser/generated/mylite_lemon.c"
+#line 28962 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 454: /* create_database_options_tail ::= create_database_options_tail create_database_option */
@@ -28963,7 +28966,7 @@ static YYACTIONTYPE yy_reduce(
 #line 421 "src/parser/mylite_lemon.y"
 {
 }
-#line 28967 "src/parser/generated/mylite_lemon.c"
+#line 28970 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,744,&yymsp[0].minor);
 }
         break;
@@ -28972,7 +28975,7 @@ static YYACTIONTYPE yy_reduce(
 #line 423 "src/parser/mylite_lemon.y"
 {
 }
-#line 28976 "src/parser/generated/mylite_lemon.c"
+#line 28979 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,746,&yymsp[0].minor);
 }
         break;
@@ -28981,7 +28984,7 @@ static YYACTIONTYPE yy_reduce(
 #line 424 "src/parser/mylite_lemon.y"
 {
 }
-#line 28985 "src/parser/generated/mylite_lemon.c"
+#line 28988 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,747,&yymsp[0].minor);
 }
         break;
@@ -28990,7 +28993,7 @@ static YYACTIONTYPE yy_reduce(
 #line 425 "src/parser/mylite_lemon.y"
 {
 }
-#line 28994 "src/parser/generated/mylite_lemon.c"
+#line 28997 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,748,&yymsp[0].minor);
 }
         break;
@@ -28999,7 +29002,7 @@ static YYACTIONTYPE yy_reduce(
 #line 430 "src/parser/mylite_lemon.y"
 {
 }
-#line 29003 "src/parser/generated/mylite_lemon.c"
+#line 29006 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,384,&yymsp[-2].minor);
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,749,&yymsp[0].minor);
@@ -29010,7 +29013,7 @@ static YYACTIONTYPE yy_reduce(
 #line 431 "src/parser/mylite_lemon.y"
 {
 }
-#line 29014 "src/parser/generated/mylite_lemon.c"
+#line 29017 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,749,&yymsp[0].minor);
 }
@@ -29020,7 +29023,7 @@ static YYACTIONTYPE yy_reduce(
 #line 433 "src/parser/mylite_lemon.y"
 {
 }
-#line 29024 "src/parser/generated/mylite_lemon.c"
+#line 29027 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,750,&yymsp[0].minor);
 }
@@ -29033,7 +29036,7 @@ static YYACTIONTYPE yy_reduce(
 #line 435 "src/parser/mylite_lemon.y"
 {
 }
-#line 29037 "src/parser/generated/mylite_lemon.c"
+#line 29040 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,751,&yymsp[0].minor);
 }
@@ -29044,7 +29047,7 @@ static YYACTIONTYPE yy_reduce(
 #line 437 "src/parser/mylite_lemon.y"
 {
 }
-#line 29048 "src/parser/generated/mylite_lemon.c"
+#line 29051 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 465: /* string_literal ::= STRING_LITERAL */
@@ -29052,7 +29055,7 @@ static YYACTIONTYPE yy_reduce(
 #line 439 "src/parser/mylite_lemon.y"
 {
 }
-#line 29056 "src/parser/generated/mylite_lemon.c"
+#line 29059 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 466: /* string_literal ::= SQLSTATE_VALUE */
@@ -29060,7 +29063,7 @@ static YYACTIONTYPE yy_reduce(
 #line 440 "src/parser/mylite_lemon.y"
 {
 }
-#line 29064 "src/parser/generated/mylite_lemon.c"
+#line 29067 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 468: /* string_literal ::= DOUBLE_QUOTED_STRING */
@@ -29068,7 +29071,7 @@ static YYACTIONTYPE yy_reduce(
 #line 442 "src/parser/mylite_lemon.y"
 {
 }
-#line 29072 "src/parser/generated/mylite_lemon.c"
+#line 29075 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 469: /* create_udf_tail ::= create_returns create_udf_return_type create_soname string_literal */
@@ -29076,7 +29079,7 @@ static YYACTIONTYPE yy_reduce(
 #line 444 "src/parser/mylite_lemon.y"
 {
 }
-#line 29080 "src/parser/generated/mylite_lemon.c"
+#line 29083 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,753,&yymsp[-2].minor);
   yy_destructor(yypParser,754,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
@@ -29087,7 +29090,7 @@ static YYACTIONTYPE yy_reduce(
 #line 446 "src/parser/mylite_lemon.y"
 {
 }
-#line 29091 "src/parser/generated/mylite_lemon.c"
+#line 29094 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 471: /* create_udf_return_type ::= DECIMAL */
@@ -29095,7 +29098,7 @@ static YYACTIONTYPE yy_reduce(
 #line 448 "src/parser/mylite_lemon.y"
 {
 }
-#line 29099 "src/parser/generated/mylite_lemon.c"
+#line 29102 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 472: /* create_udf_return_type ::= INT */
@@ -29103,7 +29106,7 @@ static YYACTIONTYPE yy_reduce(
 #line 449 "src/parser/mylite_lemon.y"
 {
 }
-#line 29107 "src/parser/generated/mylite_lemon.c"
+#line 29110 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 473: /* create_udf_return_type ::= INTEGER */
@@ -29111,7 +29114,7 @@ static YYACTIONTYPE yy_reduce(
 #line 450 "src/parser/mylite_lemon.y"
 {
 }
-#line 29115 "src/parser/generated/mylite_lemon.c"
+#line 29118 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 474: /* create_udf_return_type ::= REAL */
@@ -29119,7 +29122,7 @@ static YYACTIONTYPE yy_reduce(
 #line 451 "src/parser/mylite_lemon.y"
 {
 }
-#line 29123 "src/parser/generated/mylite_lemon.c"
+#line 29126 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 475: /* create_udf_return_type ::= STRING */
@@ -29127,7 +29130,7 @@ static YYACTIONTYPE yy_reduce(
 #line 452 "src/parser/mylite_lemon.y"
 {
 }
-#line 29131 "src/parser/generated/mylite_lemon.c"
+#line 29134 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 476: /* create_soname ::= SONAME */
@@ -29136,7 +29139,7 @@ static YYACTIONTYPE yy_reduce(
 #line 454 "src/parser/mylite_lemon.y"
 {
 }
-#line 29140 "src/parser/generated/mylite_lemon.c"
+#line 29143 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 477: /* create_view_prefix ::= OR REPLACE create_view_optional_options */
@@ -29144,7 +29147,7 @@ static YYACTIONTYPE yy_reduce(
 #line 460 "src/parser/mylite_lemon.y"
 {
 }
-#line 29148 "src/parser/generated/mylite_lemon.c"
+#line 29151 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,335,&yymsp[-1].minor);
   yy_destructor(yypParser,756,&yymsp[0].minor);
 }
@@ -29155,7 +29158,7 @@ static YYACTIONTYPE yy_reduce(
 #line 461 "src/parser/mylite_lemon.y"
 {
 }
-#line 29159 "src/parser/generated/mylite_lemon.c"
+#line 29162 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 481: /* create_view_options ::= create_view_algorithm create_view_definer_tail create_view_sql_security_tail */
@@ -29164,7 +29167,7 @@ static YYACTIONTYPE yy_reduce(
 #line 466 "src/parser/mylite_lemon.y"
 {
 }
-#line 29168 "src/parser/generated/mylite_lemon.c"
+#line 29171 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,759,&yymsp[-1].minor);
   yy_destructor(yypParser,760,&yymsp[0].minor);
 }
@@ -29175,7 +29178,7 @@ static YYACTIONTYPE yy_reduce(
 #line 467 "src/parser/mylite_lemon.y"
 {
 }
-#line 29179 "src/parser/generated/mylite_lemon.c"
+#line 29182 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,760,&yymsp[0].minor);
 }
         break;
@@ -29186,7 +29189,7 @@ static YYACTIONTYPE yy_reduce(
 #line 468 "src/parser/mylite_lemon.y"
 {
 }
-#line 29190 "src/parser/generated/mylite_lemon.c"
+#line 29193 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 484: /* create_view_algorithm ::= ALGORITHM diagnostics_equals create_view_algorithm_name */
@@ -29194,7 +29197,7 @@ static YYACTIONTYPE yy_reduce(
 #line 470 "src/parser/mylite_lemon.y"
 {
 }
-#line 29198 "src/parser/generated/mylite_lemon.c"
+#line 29201 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,763,&yymsp[0].minor);
 }
@@ -29204,7 +29207,7 @@ static YYACTIONTYPE yy_reduce(
 #line 472 "src/parser/mylite_lemon.y"
 {
 }
-#line 29208 "src/parser/generated/mylite_lemon.c"
+#line 29211 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 486: /* create_view_algorithm_name ::= TEMPTABLE */
@@ -29212,7 +29215,7 @@ static YYACTIONTYPE yy_reduce(
 #line 473 "src/parser/mylite_lemon.y"
 {
 }
-#line 29216 "src/parser/generated/mylite_lemon.c"
+#line 29219 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 487: /* create_view_algorithm_name ::= UNDEFINED */
@@ -29220,7 +29223,7 @@ static YYACTIONTYPE yy_reduce(
 #line 474 "src/parser/mylite_lemon.y"
 {
 }
-#line 29224 "src/parser/generated/mylite_lemon.c"
+#line 29227 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 489: /* create_view_definer_tail ::= create_definer_clause */
@@ -29228,7 +29231,7 @@ static YYACTIONTYPE yy_reduce(
 #line 477 "src/parser/mylite_lemon.y"
 {
 }
-#line 29232 "src/parser/generated/mylite_lemon.c"
+#line 29235 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 492: /* create_view_sql_security ::= SQL SECURITY create_view_security_kind */
@@ -29237,7 +29240,7 @@ static YYACTIONTYPE yy_reduce(
 #line 482 "src/parser/mylite_lemon.y"
 {
 }
-#line 29241 "src/parser/generated/mylite_lemon.c"
+#line 29244 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,387,&yymsp[-1].minor);
   yy_destructor(yypParser,764,&yymsp[0].minor);
 }
@@ -29247,7 +29250,7 @@ static YYACTIONTYPE yy_reduce(
 #line 485 "src/parser/mylite_lemon.y"
 {
 }
-#line 29251 "src/parser/generated/mylite_lemon.c"
+#line 29254 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 495: /* view_body ::= view_as SELECT select_tail */
@@ -29255,7 +29258,7 @@ static YYACTIONTYPE yy_reduce(
 #line 487 "src/parser/mylite_lemon.y"
 {
 }
-#line 29259 "src/parser/generated/mylite_lemon.c"
+#line 29262 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,314,&yymsp[-1].minor);
   yy_destructor(yypParser,666,&yymsp[0].minor);
 }
@@ -29265,7 +29268,7 @@ static YYACTIONTYPE yy_reduce(
 #line 488 "src/parser/mylite_lemon.y"
 {
 }
-#line 29269 "src/parser/generated/mylite_lemon.c"
+#line 29272 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,325,&yymsp[-2].minor);
   yy_destructor(yypParser,723,&yymsp[-1].minor);
   yy_destructor(yypParser,766,&yymsp[0].minor);
@@ -29276,7 +29279,7 @@ static YYACTIONTYPE yy_reduce(
 #line 489 "src/parser/mylite_lemon.y"
 {
 }
-#line 29280 "src/parser/generated/mylite_lemon.c"
+#line 29283 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,359,&yymsp[-2].minor);
   yy_destructor(yypParser,725,&yymsp[-1].minor);
   yy_destructor(yypParser,767,&yymsp[0].minor);
@@ -29287,7 +29290,7 @@ static YYACTIONTYPE yy_reduce(
 #line 490 "src/parser/mylite_lemon.y"
 {
 }
-#line 29291 "src/parser/generated/mylite_lemon.c"
+#line 29294 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,355,&yymsp[-3].minor);
   yy_destructor(yypParser,727,&yymsp[-2].minor);
   yy_destructor(yypParser,728,&yymsp[-1].minor);
@@ -29299,7 +29302,7 @@ static YYACTIONTYPE yy_reduce(
 #line 491 "src/parser/mylite_lemon.y"
 {
 }
-#line 29303 "src/parser/generated/mylite_lemon.c"
+#line 29306 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-4].minor);
   yy_destructor(yypParser,731,&yymsp[-3].minor);
   yy_destructor(yypParser,768,&yymsp[-2].minor);
@@ -29316,7 +29319,7 @@ static YYACTIONTYPE yy_reduce(
 #line 493 "src/parser/mylite_lemon.y"
 {
 }
-#line 29320 "src/parser/generated/mylite_lemon.c"
+#line 29323 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 502: /* view_table_tail ::= table_order_nonempty_tail table_limit_tail */
@@ -29324,7 +29327,7 @@ static YYACTIONTYPE yy_reduce(
 #line 496 "src/parser/mylite_lemon.y"
 {
 }
-#line 29328 "src/parser/generated/mylite_lemon.c"
+#line 29331 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,771,&yymsp[0].minor);
 }
         break;
@@ -29333,7 +29336,7 @@ static YYACTIONTYPE yy_reduce(
 #line 497 "src/parser/mylite_lemon.y"
 {
 }
-#line 29337 "src/parser/generated/mylite_lemon.c"
+#line 29340 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,771,&yymsp[-1].minor);
   yy_destructor(yypParser,772,&yymsp[0].minor);
 }
@@ -29344,7 +29347,7 @@ static YYACTIONTYPE yy_reduce(
 #line 498 "src/parser/mylite_lemon.y"
 {
 }
-#line 29348 "src/parser/generated/mylite_lemon.c"
+#line 29351 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 505: /* view_table_tail ::= table_limit_nonempty_tail view_check_option */
@@ -29352,7 +29355,7 @@ static YYACTIONTYPE yy_reduce(
 #line 499 "src/parser/mylite_lemon.y"
 {
 }
-#line 29356 "src/parser/generated/mylite_lemon.c"
+#line 29359 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,772,&yymsp[0].minor);
 }
         break;
@@ -29363,7 +29366,7 @@ static YYACTIONTYPE yy_reduce(
 #line 500 "src/parser/mylite_lemon.y"
 {
 }
-#line 29367 "src/parser/generated/mylite_lemon.c"
+#line 29370 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 508: /* view_values_tail ::= values_query_tail_nonempty */
@@ -29371,7 +29374,7 @@ static YYACTIONTYPE yy_reduce(
 #line 503 "src/parser/mylite_lemon.y"
 {
 }
-#line 29375 "src/parser/generated/mylite_lemon.c"
+#line 29378 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 509: /* view_values_tail ::= values_set_operator view_values_check_union_tail view_check_option */
@@ -29379,7 +29382,7 @@ static YYACTIONTYPE yy_reduce(
 #line 504 "src/parser/mylite_lemon.y"
 {
 }
-#line 29383 "src/parser/generated/mylite_lemon.c"
+#line 29386 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,776,&yymsp[-1].minor);
   yy_destructor(yypParser,772,&yymsp[0].minor);
 }
@@ -29389,7 +29392,7 @@ static YYACTIONTYPE yy_reduce(
 #line 505 "src/parser/mylite_lemon.y"
 {
 }
-#line 29393 "src/parser/generated/mylite_lemon.c"
+#line 29396 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,389,&yymsp[-3].minor);
   yy_destructor(yypParser,777,&yymsp[-2].minor);
   yy_destructor(yypParser,778,&yymsp[-1].minor);
@@ -29401,7 +29404,7 @@ static YYACTIONTYPE yy_reduce(
 #line 506 "src/parser/mylite_lemon.y"
 {
 }
-#line 29405 "src/parser/generated/mylite_lemon.c"
+#line 29408 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,772,&yymsp[0].minor);
 }
         break;
@@ -29410,7 +29413,7 @@ static YYACTIONTYPE yy_reduce(
 #line 509 "src/parser/mylite_lemon.y"
 {
 }
-#line 29414 "src/parser/generated/mylite_lemon.c"
+#line 29417 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,725,&yymsp[0].minor);
 }
         break;
@@ -29419,7 +29422,7 @@ static YYACTIONTYPE yy_reduce(
 #line 510 "src/parser/mylite_lemon.y"
 {
 }
-#line 29423 "src/parser/generated/mylite_lemon.c"
+#line 29426 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,359,&yymsp[-1].minor);
   yy_destructor(yypParser,725,&yymsp[0].minor);
 }
@@ -29429,7 +29432,7 @@ static YYACTIONTYPE yy_reduce(
 #line 511 "src/parser/mylite_lemon.y"
 {
 }
-#line 29433 "src/parser/generated/mylite_lemon.c"
+#line 29436 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,723,&yymsp[0].minor);
 }
         break;
@@ -29438,7 +29441,7 @@ static YYACTIONTYPE yy_reduce(
 #line 512 "src/parser/mylite_lemon.y"
 {
 }
-#line 29442 "src/parser/generated/mylite_lemon.c"
+#line 29445 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,325,&yymsp[-1].minor);
   yy_destructor(yypParser,723,&yymsp[0].minor);
 }
@@ -29448,7 +29451,7 @@ static YYACTIONTYPE yy_reduce(
 #line 513 "src/parser/mylite_lemon.y"
 {
 }
-#line 29452 "src/parser/generated/mylite_lemon.c"
+#line 29455 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,731,&yymsp[-2].minor);
   yy_destructor(yypParser,768,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
@@ -29459,7 +29462,7 @@ static YYACTIONTYPE yy_reduce(
 #line 514 "src/parser/mylite_lemon.y"
 {
 }
-#line 29463 "src/parser/generated/mylite_lemon.c"
+#line 29466 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-3].minor);
   yy_destructor(yypParser,731,&yymsp[-2].minor);
   yy_destructor(yypParser,768,&yymsp[-1].minor);
@@ -29473,7 +29476,7 @@ static YYACTIONTYPE yy_reduce(
 #line 517 "src/parser/mylite_lemon.y"
 {
 }
-#line 29477 "src/parser/generated/mylite_lemon.c"
+#line 29480 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,781,&yymsp[0].minor);
 }
         break;
@@ -29485,7 +29488,7 @@ static YYACTIONTYPE yy_reduce(
 #line 518 "src/parser/mylite_lemon.y"
 {
 }
-#line 29489 "src/parser/generated/mylite_lemon.c"
+#line 29492 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,389,&yymsp[-2].minor);
   yy_destructor(yypParser,668,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
@@ -29498,7 +29501,7 @@ static YYACTIONTYPE yy_reduce(
 #line 519 "src/parser/mylite_lemon.y"
 {
 }
-#line 29502 "src/parser/generated/mylite_lemon.c"
+#line 29505 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
@@ -29508,7 +29511,7 @@ static YYACTIONTYPE yy_reduce(
 #line 522 "src/parser/mylite_lemon.y"
 {
 }
-#line 29512 "src/parser/generated/mylite_lemon.c"
+#line 29515 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,782,&yymsp[-2].minor);
   yy_destructor(yypParser,377,&yymsp[-1].minor);
   yy_destructor(yypParser,391,&yymsp[0].minor);
@@ -29521,7 +29524,7 @@ static YYACTIONTYPE yy_reduce(
 #line 525 "src/parser/mylite_lemon.y"
 {
 }
-#line 29525 "src/parser/generated/mylite_lemon.c"
+#line 29528 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 527: /* view_check_scope_tail ::= LOCAL */
@@ -29539,7 +29542,7 @@ static YYACTIONTYPE yy_reduce(
 #line 526 "src/parser/mylite_lemon.y"
 {
 }
-#line 29543 "src/parser/generated/mylite_lemon.c"
+#line 29546 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 529: /* view_column_tail ::= LP view_column_list RP */
@@ -29547,7 +29550,7 @@ static YYACTIONTYPE yy_reduce(
 #line 529 "src/parser/mylite_lemon.y"
 {
 }
-#line 29551 "src/parser/generated/mylite_lemon.c"
+#line 29554 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,783,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -29557,7 +29560,7 @@ static YYACTIONTYPE yy_reduce(
 #line 532 "src/parser/mylite_lemon.y"
 {
 }
-#line 29561 "src/parser/generated/mylite_lemon.c"
+#line 29564 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
@@ -29567,7 +29570,7 @@ static YYACTIONTYPE yy_reduce(
 #line 534 "src/parser/mylite_lemon.y"
 {
 }
-#line 29571 "src/parser/generated/mylite_lemon.c"
+#line 29574 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,785,&yymsp[0].minor);
 }
@@ -29584,7 +29587,7 @@ static YYACTIONTYPE yy_reduce(
 #line 536 "src/parser/mylite_lemon.y"
 {
 }
-#line 29588 "src/parser/generated/mylite_lemon.c"
+#line 29591 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 534: /* create_definer_account ::= current_user_ref */
@@ -29597,7 +29600,7 @@ static YYACTIONTYPE yy_reduce(
 #line 537 "src/parser/mylite_lemon.y"
 {
 }
-#line 29601 "src/parser/generated/mylite_lemon.c"
+#line 29604 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 538: /* create_event_body ::= alter_event_schedule_clause alter_event_completion_tail alter_event_status_tail alter_event_comment_tail create_event_do event_statement_start statement_tail */
@@ -29605,7 +29608,7 @@ static YYACTIONTYPE yy_reduce(
 #line 546 "src/parser/mylite_lemon.y"
 {
 }
-#line 29609 "src/parser/generated/mylite_lemon.c"
+#line 29612 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,789,&yymsp[-5].minor);
   yy_destructor(yypParser,790,&yymsp[-4].minor);
   yy_destructor(yypParser,791,&yymsp[-3].minor);
@@ -29619,7 +29622,7 @@ static YYACTIONTYPE yy_reduce(
 #line 548 "src/parser/mylite_lemon.y"
 {
 }
-#line 29623 "src/parser/generated/mylite_lemon.c"
+#line 29626 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 540: /* event_schedule_start ::= EVERY */
@@ -29627,7 +29630,7 @@ static YYACTIONTYPE yy_reduce(
 #line 549 "src/parser/mylite_lemon.y"
 {
 }
-#line 29631 "src/parser/generated/mylite_lemon.c"
+#line 29634 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 541: /* create_trigger_body ::= create_trigger_time create_trigger_event ON cache_table_ref FOR create_each ROW create_trigger_statement_tail */
@@ -29635,7 +29638,7 @@ static YYACTIONTYPE yy_reduce(
 #line 551 "src/parser/mylite_lemon.y"
 {
 }
-#line 29639 "src/parser/generated/mylite_lemon.c"
+#line 29642 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,796,&yymsp[-6].minor);
   yy_destructor(yypParser,330,&yymsp[-5].minor);
   yy_destructor(yypParser,673,&yymsp[-4].minor);
@@ -29651,7 +29654,7 @@ static YYACTIONTYPE yy_reduce(
 #line 553 "src/parser/mylite_lemon.y"
 {
 }
-#line 29655 "src/parser/generated/mylite_lemon.c"
+#line 29658 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 543: /* create_trigger_time ::= AFTER */
@@ -29659,7 +29662,7 @@ static YYACTIONTYPE yy_reduce(
 #line 554 "src/parser/mylite_lemon.y"
 {
 }
-#line 29663 "src/parser/generated/mylite_lemon.c"
+#line 29666 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 544: /* create_trigger_event ::= INSERT */
@@ -29676,7 +29679,7 @@ static YYACTIONTYPE yy_reduce(
 #line 556 "src/parser/mylite_lemon.y"
 {
 }
-#line 29680 "src/parser/generated/mylite_lemon.c"
+#line 29683 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 545: /* create_trigger_event ::= UPDATE */
@@ -29692,7 +29695,7 @@ static YYACTIONTYPE yy_reduce(
 #line 557 "src/parser/mylite_lemon.y"
 {
 }
-#line 29696 "src/parser/generated/mylite_lemon.c"
+#line 29699 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 546: /* create_trigger_event ::= DELETE */
@@ -29708,7 +29711,7 @@ static YYACTIONTYPE yy_reduce(
 #line 558 "src/parser/mylite_lemon.y"
 {
 }
-#line 29712 "src/parser/generated/mylite_lemon.c"
+#line 29715 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 547: /* create_each ::= EACH */
@@ -29716,7 +29719,7 @@ static YYACTIONTYPE yy_reduce(
 #line 560 "src/parser/mylite_lemon.y"
 {
 }
-#line 29720 "src/parser/generated/mylite_lemon.c"
+#line 29723 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 548: /* create_trigger_statement_tail ::= create_trigger_statement_start statement_tail */
@@ -29724,7 +29727,7 @@ static YYACTIONTYPE yy_reduce(
 #line 562 "src/parser/mylite_lemon.y"
 {
 }
-#line 29728 "src/parser/generated/mylite_lemon.c"
+#line 29731 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
         break;
@@ -29733,7 +29736,7 @@ static YYACTIONTYPE yy_reduce(
 #line 563 "src/parser/mylite_lemon.y"
 {
 }
-#line 29737 "src/parser/generated/mylite_lemon.c"
+#line 29740 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,799,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
@@ -29743,7 +29746,7 @@ static YYACTIONTYPE yy_reduce(
 #line 565 "src/parser/mylite_lemon.y"
 {
 }
-#line 29747 "src/parser/generated/mylite_lemon.c"
+#line 29750 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
         break;
@@ -29752,7 +29755,7 @@ static YYACTIONTYPE yy_reduce(
 #line 566 "src/parser/mylite_lemon.y"
 {
 }
-#line 29756 "src/parser/generated/mylite_lemon.c"
+#line 29759 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
         break;
@@ -29765,7 +29768,7 @@ static YYACTIONTYPE yy_reduce(
 #line 568 "src/parser/mylite_lemon.y"
 {
 }
-#line 29769 "src/parser/generated/mylite_lemon.c"
+#line 29772 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 553: /* create_trigger_statement_start ::= CALL */
@@ -29776,7 +29779,7 @@ static YYACTIONTYPE yy_reduce(
 #line 569 "src/parser/mylite_lemon.y"
 {
 }
-#line 29780 "src/parser/generated/mylite_lemon.c"
+#line 29783 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 554: /* create_trigger_statement_start ::= CASE */
@@ -29790,7 +29793,7 @@ static YYACTIONTYPE yy_reduce(
 #line 570 "src/parser/mylite_lemon.y"
 {
 }
-#line 29794 "src/parser/generated/mylite_lemon.c"
+#line 29797 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 555: /* create_trigger_statement_start ::= CLOSE */
@@ -29802,7 +29805,7 @@ static YYACTIONTYPE yy_reduce(
 #line 571 "src/parser/mylite_lemon.y"
 {
 }
-#line 29806 "src/parser/generated/mylite_lemon.c"
+#line 29809 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 557: /* create_trigger_statement_start ::= DO */
@@ -29814,7 +29817,7 @@ static YYACTIONTYPE yy_reduce(
 #line 573 "src/parser/mylite_lemon.y"
 {
 }
-#line 29818 "src/parser/generated/mylite_lemon.c"
+#line 29821 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 558: /* create_trigger_statement_start ::= FETCH */
@@ -29825,7 +29828,7 @@ static YYACTIONTYPE yy_reduce(
 #line 574 "src/parser/mylite_lemon.y"
 {
 }
-#line 29829 "src/parser/generated/mylite_lemon.c"
+#line 29832 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 559: /* create_trigger_statement_start ::= GET */
@@ -29836,7 +29839,7 @@ static YYACTIONTYPE yy_reduce(
 #line 575 "src/parser/mylite_lemon.y"
 {
 }
-#line 29840 "src/parser/generated/mylite_lemon.c"
+#line 29843 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 560: /* create_trigger_statement_start ::= IF */
@@ -29849,7 +29852,7 @@ static YYACTIONTYPE yy_reduce(
 #line 576 "src/parser/mylite_lemon.y"
 {
 }
-#line 29853 "src/parser/generated/mylite_lemon.c"
+#line 29856 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 562: /* create_trigger_statement_start ::= ITERATE */
@@ -29860,7 +29863,7 @@ static YYACTIONTYPE yy_reduce(
 #line 578 "src/parser/mylite_lemon.y"
 {
 }
-#line 29864 "src/parser/generated/mylite_lemon.c"
+#line 29867 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 564: /* create_trigger_statement_start ::= LEAVE */
@@ -29871,7 +29874,7 @@ static YYACTIONTYPE yy_reduce(
 #line 580 "src/parser/mylite_lemon.y"
 {
 }
-#line 29875 "src/parser/generated/mylite_lemon.c"
+#line 29878 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 565: /* create_trigger_statement_start ::= LOOP */
@@ -29882,7 +29885,7 @@ static YYACTIONTYPE yy_reduce(
 #line 581 "src/parser/mylite_lemon.y"
 {
 }
-#line 29886 "src/parser/generated/mylite_lemon.c"
+#line 29889 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 566: /* create_trigger_statement_start ::= OPEN */
@@ -29894,7 +29897,7 @@ static YYACTIONTYPE yy_reduce(
 #line 582 "src/parser/mylite_lemon.y"
 {
 }
-#line 29898 "src/parser/generated/mylite_lemon.c"
+#line 29901 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 567: /* create_trigger_statement_start ::= REPEAT */
@@ -29906,7 +29909,7 @@ static YYACTIONTYPE yy_reduce(
 #line 583 "src/parser/mylite_lemon.y"
 {
 }
-#line 29910 "src/parser/generated/mylite_lemon.c"
+#line 29913 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 569: /* create_trigger_statement_start ::= RESIGNAL */
@@ -29917,7 +29920,7 @@ static YYACTIONTYPE yy_reduce(
 #line 585 "src/parser/mylite_lemon.y"
 {
 }
-#line 29921 "src/parser/generated/mylite_lemon.c"
+#line 29924 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 570: /* create_trigger_statement_start ::= RELEASE */
@@ -29928,7 +29931,7 @@ static YYACTIONTYPE yy_reduce(
 #line 586 "src/parser/mylite_lemon.y"
 {
 }
-#line 29932 "src/parser/generated/mylite_lemon.c"
+#line 29935 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 571: /* create_trigger_statement_start ::= ROLLBACK */
@@ -29938,7 +29941,7 @@ static YYACTIONTYPE yy_reduce(
 #line 587 "src/parser/mylite_lemon.y"
 {
 }
-#line 29942 "src/parser/generated/mylite_lemon.c"
+#line 29945 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 572: /* create_trigger_statement_start ::= SELECT */
@@ -29957,7 +29960,7 @@ static YYACTIONTYPE yy_reduce(
 #line 588 "src/parser/mylite_lemon.y"
 {
 }
-#line 29961 "src/parser/generated/mylite_lemon.c"
+#line 29964 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 573: /* create_trigger_statement_start ::= SET */
@@ -29969,7 +29972,7 @@ static YYACTIONTYPE yy_reduce(
 #line 589 "src/parser/mylite_lemon.y"
 {
 }
-#line 29973 "src/parser/generated/mylite_lemon.c"
+#line 29976 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 574: /* create_trigger_statement_start ::= SIGNAL */
@@ -29980,7 +29983,7 @@ static YYACTIONTYPE yy_reduce(
 #line 590 "src/parser/mylite_lemon.y"
 {
 }
-#line 29984 "src/parser/generated/mylite_lemon.c"
+#line 29987 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 576: /* create_trigger_statement_start ::= WHILE */
@@ -29991,7 +29994,7 @@ static YYACTIONTYPE yy_reduce(
 #line 592 "src/parser/mylite_lemon.y"
 {
 }
-#line 29995 "src/parser/generated/mylite_lemon.c"
+#line 29998 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 577: /* create_function_tail ::= create_udf_tail */
@@ -29999,7 +30002,7 @@ static YYACTIONTYPE yy_reduce(
 #line 594 "src/parser/mylite_lemon.y"
 {
 }
-#line 30003 "src/parser/generated/mylite_lemon.c"
+#line 30006 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 578: /* create_function_tail ::= function_signature create_returns create_function_return_tail create_function_body_start statement_tail */
@@ -30007,7 +30010,7 @@ static YYACTIONTYPE yy_reduce(
 #line 595 "src/parser/mylite_lemon.y"
 {
 }
-#line 30011 "src/parser/generated/mylite_lemon.c"
+#line 30014 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,752,&yymsp[-3].minor);
   yy_destructor(yypParser,802,&yymsp[-2].minor);
   yy_destructor(yypParser,803,&yymsp[-1].minor);
@@ -30019,7 +30022,7 @@ static YYACTIONTYPE yy_reduce(
 #line 597 "src/parser/mylite_lemon.y"
 {
 }
-#line 30023 "src/parser/generated/mylite_lemon.c"
+#line 30026 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 580: /* create_function_return_tail ::= create_function_return_tail create_function_return_token */
@@ -30027,7 +30030,7 @@ static YYACTIONTYPE yy_reduce(
 #line 598 "src/parser/mylite_lemon.y"
 {
 }
-#line 30031 "src/parser/generated/mylite_lemon.c"
+#line 30034 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,804,&yymsp[0].minor);
 }
         break;
@@ -30036,7 +30039,7 @@ static YYACTIONTYPE yy_reduce(
 #line 601 "src/parser/mylite_lemon.y"
 {
 }
-#line 30040 "src/parser/generated/mylite_lemon.c"
+#line 30043 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,804,&yymsp[0].minor);
 }
         break;
@@ -30052,7 +30055,7 @@ static YYACTIONTYPE yy_reduce(
 #line 605 "src/parser/mylite_lemon.y"
 {
 }
-#line 30056 "src/parser/generated/mylite_lemon.c"
+#line 30059 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 588: /* create_function_return_token ::= COLLATION */
@@ -30063,7 +30066,7 @@ static YYACTIONTYPE yy_reduce(
 #line 608 "src/parser/mylite_lemon.y"
 {
 }
-#line 30067 "src/parser/generated/mylite_lemon.c"
+#line 30070 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 594: /* create_function_return_token ::= NO */
@@ -30080,7 +30083,7 @@ static YYACTIONTYPE yy_reduce(
 #line 614 "src/parser/mylite_lemon.y"
 {
 }
-#line 30084 "src/parser/generated/mylite_lemon.c"
+#line 30087 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 595: /* create_function_return_token ::= READ */
@@ -30092,7 +30095,7 @@ static YYACTIONTYPE yy_reduce(
 #line 615 "src/parser/mylite_lemon.y"
 {
 }
-#line 30096 "src/parser/generated/mylite_lemon.c"
+#line 30099 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 596: /* create_function_return_token ::= SECURITY */
@@ -30102,7 +30105,7 @@ static YYACTIONTYPE yy_reduce(
 #line 616 "src/parser/mylite_lemon.y"
 {
 }
-#line 30106 "src/parser/generated/mylite_lemon.c"
+#line 30109 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 598: /* create_function_return_token ::= SQL */
@@ -30112,7 +30115,7 @@ static YYACTIONTYPE yy_reduce(
 #line 618 "src/parser/mylite_lemon.y"
 {
 }
-#line 30116 "src/parser/generated/mylite_lemon.c"
+#line 30119 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 599: /* create_function_return_token ::= USER */
@@ -30128,7 +30131,7 @@ static YYACTIONTYPE yy_reduce(
 #line 619 "src/parser/mylite_lemon.y"
 {
 }
-#line 30132 "src/parser/generated/mylite_lemon.c"
+#line 30135 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 600: /* create_function_return_token ::= LP create_function_return_nested RP */
@@ -30136,7 +30139,7 @@ static YYACTIONTYPE yy_reduce(
 #line 620 "src/parser/mylite_lemon.y"
 {
 }
-#line 30140 "src/parser/generated/mylite_lemon.c"
+#line 30143 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,805,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -30149,7 +30152,7 @@ static YYACTIONTYPE yy_reduce(
 #line 623 "src/parser/mylite_lemon.y"
 {
 }
-#line 30153 "src/parser/generated/mylite_lemon.c"
+#line 30156 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 603: /* create_procedure_tail ::= procedure_signature create_procedure_tail_start statement_tail */
@@ -30157,7 +30160,7 @@ static YYACTIONTYPE yy_reduce(
 #line 625 "src/parser/mylite_lemon.y"
 {
 }
-#line 30161 "src/parser/generated/mylite_lemon.c"
+#line 30164 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,807,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
@@ -30169,7 +30172,7 @@ static YYACTIONTYPE yy_reduce(
 #line 627 "src/parser/mylite_lemon.y"
 {
 }
-#line 30173 "src/parser/generated/mylite_lemon.c"
+#line 30176 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 607: /* create_procedure_tail_start ::= CONTAINS */
@@ -30177,7 +30180,7 @@ static YYACTIONTYPE yy_reduce(
 #line 630 "src/parser/mylite_lemon.y"
 {
 }
-#line 30181 "src/parser/generated/mylite_lemon.c"
+#line 30184 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 608: /* create_procedure_tail_start ::= DETERMINISTIC */
@@ -30186,7 +30189,7 @@ static YYACTIONTYPE yy_reduce(
 #line 631 "src/parser/mylite_lemon.y"
 {
 }
-#line 30190 "src/parser/generated/mylite_lemon.c"
+#line 30193 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 609: /* create_procedure_tail_start ::= LANGUAGE */
@@ -30195,7 +30198,7 @@ static YYACTIONTYPE yy_reduce(
 #line 632 "src/parser/mylite_lemon.y"
 {
 }
-#line 30199 "src/parser/generated/mylite_lemon.c"
+#line 30202 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 610: /* create_procedure_tail_start ::= MODIFIES */
@@ -30204,7 +30207,7 @@ static YYACTIONTYPE yy_reduce(
 #line 633 "src/parser/mylite_lemon.y"
 {
 }
-#line 30208 "src/parser/generated/mylite_lemon.c"
+#line 30211 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 611: /* create_procedure_tail_start ::= NOT */
@@ -30216,7 +30219,7 @@ static YYACTIONTYPE yy_reduce(
 #line 634 "src/parser/mylite_lemon.y"
 {
 }
-#line 30220 "src/parser/generated/mylite_lemon.c"
+#line 30223 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 612: /* create_procedure_tail_start ::= QUOTED_ID */
@@ -30225,7 +30228,7 @@ static YYACTIONTYPE yy_reduce(
 #line 635 "src/parser/mylite_lemon.y"
 {
 }
-#line 30229 "src/parser/generated/mylite_lemon.c"
+#line 30232 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 613: /* create_procedure_tail_start ::= READS */
@@ -30234,7 +30237,7 @@ static YYACTIONTYPE yy_reduce(
 #line 636 "src/parser/mylite_lemon.y"
 {
 }
-#line 30238 "src/parser/generated/mylite_lemon.c"
+#line 30241 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 614: /* function_signature ::= LP RP */
@@ -30246,7 +30249,7 @@ static YYACTIONTYPE yy_reduce(
 #line 638 "src/parser/mylite_lemon.y"
 {
 }
-#line 30250 "src/parser/generated/mylite_lemon.c"
+#line 30253 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
         break;
@@ -30255,7 +30258,7 @@ static YYACTIONTYPE yy_reduce(
 #line 639 "src/parser/mylite_lemon.y"
 {
 }
-#line 30259 "src/parser/generated/mylite_lemon.c"
+#line 30262 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,809,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -30265,7 +30268,7 @@ static YYACTIONTYPE yy_reduce(
 #line 641 "src/parser/mylite_lemon.y"
 {
 }
-#line 30269 "src/parser/generated/mylite_lemon.c"
+#line 30272 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 617: /* function_parameters ::= function_parameters COMMA function_parameter */
@@ -30273,7 +30276,7 @@ static YYACTIONTYPE yy_reduce(
 #line 642 "src/parser/mylite_lemon.y"
 {
 }
-#line 30277 "src/parser/generated/mylite_lemon.c"
+#line 30280 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,810,&yymsp[0].minor);
 }
@@ -30284,7 +30287,7 @@ static YYACTIONTYPE yy_reduce(
 #line 644 "src/parser/mylite_lemon.y"
 {
 }
-#line 30288 "src/parser/generated/mylite_lemon.c"
+#line 30291 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,812,&yymsp[0].minor);
 }
         break;
@@ -30293,7 +30296,7 @@ static YYACTIONTYPE yy_reduce(
 #line 647 "src/parser/mylite_lemon.y"
 {
 }
-#line 30297 "src/parser/generated/mylite_lemon.c"
+#line 30300 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,813,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -30303,7 +30306,7 @@ static YYACTIONTYPE yy_reduce(
 #line 649 "src/parser/mylite_lemon.y"
 {
 }
-#line 30307 "src/parser/generated/mylite_lemon.c"
+#line 30310 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 622: /* procedure_parameters ::= procedure_parameters COMMA procedure_parameter */
@@ -30311,7 +30314,7 @@ static YYACTIONTYPE yy_reduce(
 #line 650 "src/parser/mylite_lemon.y"
 {
 }
-#line 30315 "src/parser/generated/mylite_lemon.c"
+#line 30318 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,814,&yymsp[0].minor);
 }
@@ -30321,7 +30324,7 @@ static YYACTIONTYPE yy_reduce(
 #line 653 "src/parser/mylite_lemon.y"
 {
 }
-#line 30325 "src/parser/generated/mylite_lemon.c"
+#line 30328 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,811,&yymsp[-1].minor);
   yy_destructor(yypParser,812,&yymsp[0].minor);
 }
@@ -30331,7 +30334,7 @@ static YYACTIONTYPE yy_reduce(
 #line 654 "src/parser/mylite_lemon.y"
 {
 }
-#line 30335 "src/parser/generated/mylite_lemon.c"
+#line 30338 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,811,&yymsp[-1].minor);
   yy_destructor(yypParser,812,&yymsp[0].minor);
 }
@@ -30341,7 +30344,7 @@ static YYACTIONTYPE yy_reduce(
 #line 655 "src/parser/mylite_lemon.y"
 {
 }
-#line 30345 "src/parser/generated/mylite_lemon.c"
+#line 30348 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,811,&yymsp[-1].minor);
   yy_destructor(yypParser,812,&yymsp[0].minor);
 }
@@ -30351,7 +30354,7 @@ static YYACTIONTYPE yy_reduce(
 #line 657 "src/parser/mylite_lemon.y"
 {
 }
-#line 30355 "src/parser/generated/mylite_lemon.c"
+#line 30358 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 628: /* routine_parameter_tokens ::= routine_parameter_token */
@@ -30359,7 +30362,7 @@ static YYACTIONTYPE yy_reduce(
 #line 659 "src/parser/mylite_lemon.y"
 {
 }
-#line 30363 "src/parser/generated/mylite_lemon.c"
+#line 30366 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 629: /* routine_parameter_tokens ::= routine_parameter_tokens routine_parameter_token */
@@ -30367,7 +30370,7 @@ static YYACTIONTYPE yy_reduce(
 #line 660 "src/parser/mylite_lemon.y"
 {
 }
-#line 30371 "src/parser/generated/mylite_lemon.c"
+#line 30374 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,815,&yymsp[0].minor);
 }
         break;
@@ -30377,7 +30380,7 @@ static YYACTIONTYPE yy_reduce(
 #line 666 "src/parser/mylite_lemon.y"
 {
 }
-#line 30381 "src/parser/generated/mylite_lemon.c"
+#line 30384 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,816,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -30387,7 +30390,7 @@ static YYACTIONTYPE yy_reduce(
 #line 673 "src/parser/mylite_lemon.y"
 {
 }
-#line 30391 "src/parser/generated/mylite_lemon.c"
+#line 30394 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,817,&yymsp[0].minor);
 }
         break;
@@ -30396,7 +30399,7 @@ static YYACTIONTYPE yy_reduce(
 #line 687 "src/parser/mylite_lemon.y"
 {
 }
-#line 30400 "src/parser/generated/mylite_lemon.c"
+#line 30403 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,818,&yymsp[-1].minor);
   yy_destructor(yypParser,819,&yymsp[0].minor);
 }
@@ -30406,7 +30409,7 @@ static YYACTIONTYPE yy_reduce(
 #line 692 "src/parser/mylite_lemon.y"
 {
 }
-#line 30410 "src/parser/generated/mylite_lemon.c"
+#line 30413 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,821,&yymsp[0].minor);
 }
         break;
@@ -30415,7 +30418,7 @@ static YYACTIONTYPE yy_reduce(
 #line 694 "src/parser/mylite_lemon.y"
 {
 }
-#line 30419 "src/parser/generated/mylite_lemon.c"
+#line 30422 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 657: /* create_user_list ::= create_user_list import_comma create_user_spec */
@@ -30423,7 +30426,7 @@ static YYACTIONTYPE yy_reduce(
 #line 695 "src/parser/mylite_lemon.y"
 {
 }
-#line 30427 "src/parser/generated/mylite_lemon.c"
+#line 30430 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,822,&yymsp[0].minor);
 }
@@ -30433,7 +30436,7 @@ static YYACTIONTYPE yy_reduce(
 #line 697 "src/parser/mylite_lemon.y"
 {
 }
-#line 30437 "src/parser/generated/mylite_lemon.c"
+#line 30440 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,823,&yymsp[0].minor);
 }
         break;
@@ -30442,7 +30445,7 @@ static YYACTIONTYPE yy_reduce(
 #line 700 "src/parser/mylite_lemon.y"
 {
 }
-#line 30446 "src/parser/generated/mylite_lemon.c"
+#line 30449 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 661: /* alter_user_list ::= alter_user_spec */
@@ -30450,7 +30453,7 @@ static YYACTIONTYPE yy_reduce(
 #line 702 "src/parser/mylite_lemon.y"
 {
 }
-#line 30454 "src/parser/generated/mylite_lemon.c"
+#line 30457 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 662: /* alter_user_list ::= alter_user_list import_comma alter_user_spec */
@@ -30458,7 +30461,7 @@ static YYACTIONTYPE yy_reduce(
 #line 703 "src/parser/mylite_lemon.y"
 {
 }
-#line 30462 "src/parser/generated/mylite_lemon.c"
+#line 30465 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,826,&yymsp[0].minor);
 }
@@ -30468,7 +30471,7 @@ static YYACTIONTYPE yy_reduce(
 #line 705 "src/parser/mylite_lemon.y"
 {
 }
-#line 30472 "src/parser/generated/mylite_lemon.c"
+#line 30475 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,827,&yymsp[0].minor);
 }
         break;
@@ -30477,7 +30480,7 @@ static YYACTIONTYPE yy_reduce(
 #line 706 "src/parser/mylite_lemon.y"
 {
 }
-#line 30481 "src/parser/generated/mylite_lemon.c"
+#line 30484 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,827,&yymsp[0].minor);
 }
         break;
@@ -30486,7 +30489,7 @@ static YYACTIONTYPE yy_reduce(
 #line 709 "src/parser/mylite_lemon.y"
 {
 }
-#line 30490 "src/parser/generated/mylite_lemon.c"
+#line 30493 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,829,&yymsp[0].minor);
 }
         break;
@@ -30496,7 +30499,7 @@ static YYACTIONTYPE yy_reduce(
 #line 710 "src/parser/mylite_lemon.y"
 {
 }
-#line 30500 "src/parser/generated/mylite_lemon.c"
+#line 30503 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,419,&yymsp[-1].minor);
   yy_destructor(yypParser,371,&yymsp[0].minor);
 }
@@ -30506,7 +30509,7 @@ static YYACTIONTYPE yy_reduce(
 #line 711 "src/parser/mylite_lemon.y"
 {
 }
-#line 30510 "src/parser/generated/mylite_lemon.c"
+#line 30513 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 669: /* alter_user_account_option_tail ::= account_registration_option */
@@ -30515,7 +30518,7 @@ static YYACTIONTYPE yy_reduce(
 #line 712 "src/parser/mylite_lemon.y"
 {
 }
-#line 30519 "src/parser/generated/mylite_lemon.c"
+#line 30522 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 671: /* alter_user_func_option_tail ::= account_password_auth_option alter_user_auth_tail */
@@ -30523,7 +30526,7 @@ static YYACTIONTYPE yy_reduce(
 #line 715 "src/parser/mylite_lemon.y"
 {
 }
-#line 30527 "src/parser/generated/mylite_lemon.c"
+#line 30530 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,829,&yymsp[0].minor);
 }
         break;
@@ -30532,7 +30535,7 @@ static YYACTIONTYPE yy_reduce(
 #line 720 "src/parser/mylite_lemon.y"
 {
 }
-#line 30536 "src/parser/generated/mylite_lemon.c"
+#line 30539 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,834,&yymsp[-1].minor);
   yy_destructor(yypParser,835,&yymsp[0].minor);
 }
@@ -30544,7 +30547,7 @@ static YYACTIONTYPE yy_reduce(
 #line 721 "src/parser/mylite_lemon.y"
 {
 }
-#line 30548 "src/parser/generated/mylite_lemon.c"
+#line 30551 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,39,&yymsp[-1].minor);
   yy_destructor(yypParser,371,&yymsp[0].minor);
 }
@@ -30554,7 +30557,7 @@ static YYACTIONTYPE yy_reduce(
 #line 726 "src/parser/mylite_lemon.y"
 {
 }
-#line 30558 "src/parser/generated/mylite_lemon.c"
+#line 30561 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,836,&yymsp[0].minor);
 }
         break;
@@ -30563,7 +30566,7 @@ static YYACTIONTYPE yy_reduce(
 #line 727 "src/parser/mylite_lemon.y"
 {
 }
-#line 30567 "src/parser/generated/mylite_lemon.c"
+#line 30570 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,355,&yymsp[-2].minor);
   yy_destructor(yypParser,837,&yymsp[-1].minor);
   yy_destructor(yypParser,838,&yymsp[0].minor);
@@ -30574,7 +30577,7 @@ static YYACTIONTYPE yy_reduce(
 #line 730 "src/parser/mylite_lemon.y"
 {
 }
-#line 30578 "src/parser/generated/mylite_lemon.c"
+#line 30581 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,839,&yymsp[-1].minor);
   yy_destructor(yypParser,840,&yymsp[0].minor);
 }
@@ -30584,7 +30587,7 @@ static YYACTIONTYPE yy_reduce(
 #line 733 "src/parser/mylite_lemon.y"
 {
 }
-#line 30588 "src/parser/generated/mylite_lemon.c"
+#line 30591 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,839,&yymsp[0].minor);
 }
         break;
@@ -30593,7 +30596,7 @@ static YYACTIONTYPE yy_reduce(
 #line 735 "src/parser/mylite_lemon.y"
 {
 }
-#line 30597 "src/parser/generated/mylite_lemon.c"
+#line 30600 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 686: /* account_initial_auth_option ::= INITIAL AUTHENTICATION IDENTIFIED BY user_auth_value */
@@ -30601,7 +30604,7 @@ static YYACTIONTYPE yy_reduce(
 #line 737 "src/parser/mylite_lemon.y"
 {
 }
-#line 30605 "src/parser/generated/mylite_lemon.c"
+#line 30608 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,422,&yymsp[-3].minor);
   yy_destructor(yypParser,76,&yymsp[-2].minor);
   yy_destructor(yypParser,389,&yymsp[-1].minor);
@@ -30613,7 +30616,7 @@ static YYACTIONTYPE yy_reduce(
 #line 738 "src/parser/mylite_lemon.y"
 {
 }
-#line 30617 "src/parser/generated/mylite_lemon.c"
+#line 30620 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,422,&yymsp[-5].minor);
   yy_destructor(yypParser,76,&yymsp[-4].minor);
   yy_destructor(yypParser,355,&yymsp[-3].minor);
@@ -30628,7 +30631,7 @@ static YYACTIONTYPE yy_reduce(
 #line 740 "src/parser/mylite_lemon.y"
 {
 }
-#line 30632 "src/parser/generated/mylite_lemon.c"
+#line 30635 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 689: /* user_auth_option ::= IDENTIFIED WITH user_auth_plugin */
@@ -30637,7 +30640,7 @@ static YYACTIONTYPE yy_reduce(
 #line 741 "src/parser/mylite_lemon.y"
 {
 }
-#line 30641 "src/parser/generated/mylite_lemon.c"
+#line 30644 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,355,&yymsp[-1].minor);
   yy_destructor(yypParser,837,&yymsp[0].minor);
 }
@@ -30649,7 +30652,7 @@ static YYACTIONTYPE yy_reduce(
 #line 742 "src/parser/mylite_lemon.y"
 {
 }
-#line 30653 "src/parser/generated/mylite_lemon.c"
+#line 30656 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,355,&yymsp[-3].minor);
   yy_destructor(yypParser,837,&yymsp[-2].minor);
   yy_destructor(yypParser,389,&yymsp[-1].minor);
@@ -30662,7 +30665,7 @@ static YYACTIONTYPE yy_reduce(
 #line 743 "src/parser/mylite_lemon.y"
 {
 }
-#line 30666 "src/parser/generated/mylite_lemon.c"
+#line 30669 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,355,&yymsp[-3].minor);
   yy_destructor(yypParser,837,&yymsp[-2].minor);
   yy_destructor(yypParser,6,&yymsp[-1].minor);
@@ -30675,7 +30678,7 @@ static YYACTIONTYPE yy_reduce(
 #line 745 "src/parser/mylite_lemon.y"
 {
 }
-#line 30679 "src/parser/generated/mylite_lemon.c"
+#line 30682 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,389,&yymsp[-1].minor);
   yy_destructor(yypParser,841,&yymsp[0].minor);
 }
@@ -30685,7 +30688,7 @@ static YYACTIONTYPE yy_reduce(
 #line 747 "src/parser/mylite_lemon.y"
 {
 }
-#line 30689 "src/parser/generated/mylite_lemon.c"
+#line 30692 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,843,&yymsp[0].minor);
 }
         break;
@@ -30694,7 +30697,7 @@ static YYACTIONTYPE yy_reduce(
 #line 748 "src/parser/mylite_lemon.y"
 {
 }
-#line 30698 "src/parser/generated/mylite_lemon.c"
+#line 30701 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,845,&yymsp[0].minor);
 }
         break;
@@ -30703,7 +30706,7 @@ static YYACTIONTYPE yy_reduce(
 #line 749 "src/parser/mylite_lemon.y"
 {
 }
-#line 30707 "src/parser/generated/mylite_lemon.c"
+#line 30710 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,847,&yymsp[0].minor);
 }
         break;
@@ -30712,7 +30715,7 @@ static YYACTIONTYPE yy_reduce(
 #line 752 "src/parser/mylite_lemon.y"
 {
 }
-#line 30716 "src/parser/generated/mylite_lemon.c"
+#line 30719 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 699: /* alter_user_factor_modify_tail ::= alter_user_factor_modify_option */
@@ -30720,7 +30723,7 @@ static YYACTIONTYPE yy_reduce(
 #line 755 "src/parser/mylite_lemon.y"
 {
 }
-#line 30724 "src/parser/generated/mylite_lemon.c"
+#line 30727 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 701: /* alter_user_factor_drop_tail ::= alter_user_factor_drop_option */
@@ -30728,7 +30731,7 @@ static YYACTIONTYPE yy_reduce(
 #line 758 "src/parser/mylite_lemon.y"
 {
 }
-#line 30732 "src/parser/generated/mylite_lemon.c"
+#line 30735 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 702: /* alter_user_factor_add_option ::= ADD account_factor account_factor_auth_option */
@@ -30736,7 +30739,7 @@ static YYACTIONTYPE yy_reduce(
 #line 760 "src/parser/mylite_lemon.y"
 {
 }
-#line 30740 "src/parser/generated/mylite_lemon.c"
+#line 30743 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,848,&yymsp[-1].minor);
   yy_destructor(yypParser,849,&yymsp[0].minor);
 }
@@ -30746,7 +30749,7 @@ static YYACTIONTYPE yy_reduce(
 #line 761 "src/parser/mylite_lemon.y"
 {
 }
-#line 30750 "src/parser/generated/mylite_lemon.c"
+#line 30753 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,848,&yymsp[-1].minor);
   yy_destructor(yypParser,849,&yymsp[0].minor);
 }
@@ -30756,7 +30759,7 @@ static YYACTIONTYPE yy_reduce(
 #line 762 "src/parser/mylite_lemon.y"
 {
 }
-#line 30760 "src/parser/generated/mylite_lemon.c"
+#line 30763 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,848,&yymsp[0].minor);
 }
         break;
@@ -30765,7 +30768,7 @@ static YYACTIONTYPE yy_reduce(
 #line 768 "src/parser/mylite_lemon.y"
 {
 }
-#line 30769 "src/parser/generated/mylite_lemon.c"
+#line 30772 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,424,&yymsp[-1].minor);
   yy_destructor(yypParser,425,&yymsp[0].minor);
 }
@@ -30775,7 +30778,7 @@ static YYACTIONTYPE yy_reduce(
 #line 769 "src/parser/mylite_lemon.y"
 {
 }
-#line 30779 "src/parser/generated/mylite_lemon.c"
+#line 30782 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,426,&yymsp[-5].minor);
   yy_destructor(yypParser,425,&yymsp[-4].minor);
   yy_destructor(yypParser,384,&yymsp[-3].minor);
@@ -30789,7 +30792,7 @@ static YYACTIONTYPE yy_reduce(
 #line 770 "src/parser/mylite_lemon.y"
 {
 }
-#line 30793 "src/parser/generated/mylite_lemon.c"
+#line 30796 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,428,&yymsp[0].minor);
 }
         break;
@@ -30798,7 +30801,7 @@ static YYACTIONTYPE yy_reduce(
 #line 772 "src/parser/mylite_lemon.y"
 {
 }
-#line 30802 "src/parser/generated/mylite_lemon.c"
+#line 30805 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,429,&yymsp[0].minor);
 }
         break;
@@ -30807,7 +30810,7 @@ static YYACTIONTYPE yy_reduce(
 #line 774 "src/parser/mylite_lemon.y"
 {
 }
-#line 30811 "src/parser/generated/mylite_lemon.c"
+#line 30814 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 713: /* user_auth_value ::= RANDOM PASSWORD */
@@ -30815,7 +30818,7 @@ static YYACTIONTYPE yy_reduce(
 #line 775 "src/parser/mylite_lemon.y"
 {
 }
-#line 30819 "src/parser/generated/mylite_lemon.c"
+#line 30822 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,371,&yymsp[0].minor);
 }
         break;
@@ -30837,7 +30840,7 @@ static YYACTIONTYPE yy_reduce(
 #line 777 "src/parser/mylite_lemon.y"
 {
 }
-#line 30841 "src/parser/generated/mylite_lemon.c"
+#line 30844 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 715: /* user_auth_plugin ::= user_option_value */
@@ -30845,7 +30848,7 @@ static YYACTIONTYPE yy_reduce(
 #line 779 "src/parser/mylite_lemon.y"
 {
 }
-#line 30849 "src/parser/generated/mylite_lemon.c"
+#line 30852 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 716: /* account_management_options ::= account_default_role_tail account_require_tail account_resource_tail account_password_lock_options account_comment_attribute_tail */
@@ -30853,7 +30856,7 @@ static YYACTIONTYPE yy_reduce(
 #line 781 "src/parser/mylite_lemon.y"
 {
 }
-#line 30857 "src/parser/generated/mylite_lemon.c"
+#line 30860 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,852,&yymsp[-3].minor);
   yy_destructor(yypParser,853,&yymsp[-2].minor);
   yy_destructor(yypParser,854,&yymsp[-1].minor);
@@ -30865,7 +30868,7 @@ static YYACTIONTYPE yy_reduce(
 #line 789 "src/parser/mylite_lemon.y"
 {
 }
-#line 30869 "src/parser/generated/mylite_lemon.c"
+#line 30872 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,339,&yymsp[-1].minor);
   yy_destructor(yypParser,856,&yymsp[0].minor);
 }
@@ -30876,7 +30879,7 @@ static YYACTIONTYPE yy_reduce(
 #line 792 "src/parser/mylite_lemon.y"
 {
 }
-#line 30880 "src/parser/generated/mylite_lemon.c"
+#line 30883 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,857,&yymsp[0].minor);
 }
         break;
@@ -30885,7 +30888,7 @@ static YYACTIONTYPE yy_reduce(
 #line 795 "src/parser/mylite_lemon.y"
 {
 }
-#line 30889 "src/parser/generated/mylite_lemon.c"
+#line 30892 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,858,&yymsp[0].minor);
 }
         break;
@@ -30894,7 +30897,7 @@ static YYACTIONTYPE yy_reduce(
 #line 798 "src/parser/mylite_lemon.y"
 {
 }
-#line 30898 "src/parser/generated/mylite_lemon.c"
+#line 30901 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,859,&yymsp[0].minor);
 }
         break;
@@ -30903,7 +30906,7 @@ static YYACTIONTYPE yy_reduce(
 #line 800 "src/parser/mylite_lemon.y"
 {
 }
-#line 30907 "src/parser/generated/mylite_lemon.c"
+#line 30910 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 727: /* account_password_lock_option ::= account_lock_option */
@@ -30911,7 +30914,7 @@ static YYACTIONTYPE yy_reduce(
 #line 801 "src/parser/mylite_lemon.y"
 {
 }
-#line 30915 "src/parser/generated/mylite_lemon.c"
+#line 30918 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 730: /* account_comment_attribute_tail ::= ATTRIBUTE string_literal */
@@ -30919,7 +30922,7 @@ static YYACTIONTYPE yy_reduce(
 #line 805 "src/parser/mylite_lemon.y"
 {
 }
-#line 30923 "src/parser/generated/mylite_lemon.c"
+#line 30926 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -30933,7 +30936,7 @@ static YYACTIONTYPE yy_reduce(
 #line 807 "src/parser/mylite_lemon.y"
 {
 }
-#line 30937 "src/parser/generated/mylite_lemon.c"
+#line 30940 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 733: /* account_default_role_spec ::= drop_account_list */
@@ -30944,7 +30947,7 @@ static YYACTIONTYPE yy_reduce(
 #line 809 "src/parser/mylite_lemon.y"
 {
 }
-#line 30948 "src/parser/generated/mylite_lemon.c"
+#line 30951 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 735: /* account_tls_requirement ::= account_tls_option_list */
@@ -30952,7 +30955,7 @@ static YYACTIONTYPE yy_reduce(
 #line 812 "src/parser/mylite_lemon.y"
 {
 }
-#line 30956 "src/parser/generated/mylite_lemon.c"
+#line 30959 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 736: /* account_tls_option_list ::= account_tls_option */
@@ -30960,7 +30963,7 @@ static YYACTIONTYPE yy_reduce(
 #line 814 "src/parser/mylite_lemon.y"
 {
 }
-#line 30964 "src/parser/generated/mylite_lemon.c"
+#line 30967 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 737: /* account_tls_option_list ::= account_tls_option_list account_tls_and_tail account_tls_option */
@@ -30968,7 +30971,7 @@ static YYACTIONTYPE yy_reduce(
 #line 815 "src/parser/mylite_lemon.y"
 {
 }
-#line 30972 "src/parser/generated/mylite_lemon.c"
+#line 30975 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,864,&yymsp[-1].minor);
   yy_destructor(yypParser,863,&yymsp[0].minor);
 }
@@ -30982,7 +30985,7 @@ static YYACTIONTYPE yy_reduce(
 #line 818 "src/parser/mylite_lemon.y"
 {
 }
-#line 30986 "src/parser/generated/mylite_lemon.c"
+#line 30989 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 740: /* account_tls_option ::= SSL */
@@ -30993,7 +30996,7 @@ static YYACTIONTYPE yy_reduce(
 #line 820 "src/parser/mylite_lemon.y"
 {
 }
-#line 30997 "src/parser/generated/mylite_lemon.c"
+#line 31000 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 741: /* account_tls_option ::= X509 */
@@ -31003,7 +31006,7 @@ static YYACTIONTYPE yy_reduce(
 #line 821 "src/parser/mylite_lemon.y"
 {
 }
-#line 31007 "src/parser/generated/mylite_lemon.c"
+#line 31010 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 742: /* account_tls_option ::= CIPHER string_literal */
@@ -31011,7 +31014,7 @@ static YYACTIONTYPE yy_reduce(
 #line 822 "src/parser/mylite_lemon.y"
 {
 }
-#line 31015 "src/parser/generated/mylite_lemon.c"
+#line 31018 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31020,7 +31023,7 @@ static YYACTIONTYPE yy_reduce(
 #line 823 "src/parser/mylite_lemon.y"
 {
 }
-#line 31024 "src/parser/generated/mylite_lemon.c"
+#line 31027 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31029,7 +31032,7 @@ static YYACTIONTYPE yy_reduce(
 #line 824 "src/parser/mylite_lemon.y"
 {
 }
-#line 31033 "src/parser/generated/mylite_lemon.c"
+#line 31036 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31038,7 +31041,7 @@ static YYACTIONTYPE yy_reduce(
 #line 826 "src/parser/mylite_lemon.y"
 {
 }
-#line 31042 "src/parser/generated/mylite_lemon.c"
+#line 31045 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 746: /* account_resource_options ::= account_resource_options account_resource_option */
@@ -31046,7 +31049,7 @@ static YYACTIONTYPE yy_reduce(
 #line 827 "src/parser/mylite_lemon.y"
 {
 }
-#line 31050 "src/parser/generated/mylite_lemon.c"
+#line 31053 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,865,&yymsp[0].minor);
 }
         break;
@@ -31055,7 +31058,7 @@ static YYACTIONTYPE yy_reduce(
 #line 829 "src/parser/mylite_lemon.y"
 {
 }
-#line 31059 "src/parser/generated/mylite_lemon.c"
+#line 31062 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,866,&yymsp[0].minor);
 }
         break;
@@ -31064,7 +31067,7 @@ static YYACTIONTYPE yy_reduce(
 #line 830 "src/parser/mylite_lemon.y"
 {
 }
-#line 31068 "src/parser/generated/mylite_lemon.c"
+#line 31071 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,866,&yymsp[0].minor);
 }
         break;
@@ -31073,7 +31076,7 @@ static YYACTIONTYPE yy_reduce(
 #line 831 "src/parser/mylite_lemon.y"
 {
 }
-#line 31077 "src/parser/generated/mylite_lemon.c"
+#line 31080 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,866,&yymsp[0].minor);
 }
         break;
@@ -31082,7 +31085,7 @@ static YYACTIONTYPE yy_reduce(
 #line 832 "src/parser/mylite_lemon.y"
 {
 }
-#line 31086 "src/parser/generated/mylite_lemon.c"
+#line 31089 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,866,&yymsp[0].minor);
 }
         break;
@@ -31091,7 +31094,7 @@ static YYACTIONTYPE yy_reduce(
 #line 838 "src/parser/mylite_lemon.y"
 {
 }
-#line 31095 "src/parser/generated/mylite_lemon.c"
+#line 31098 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,439,&yymsp[0].minor);
 }
         break;
@@ -31100,7 +31103,7 @@ static YYACTIONTYPE yy_reduce(
 #line 839 "src/parser/mylite_lemon.y"
 {
 }
-#line 31104 "src/parser/generated/mylite_lemon.c"
+#line 31107 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,439,&yymsp[-1].minor);
   yy_destructor(yypParser,380,&yymsp[0].minor);
 }
@@ -31110,7 +31113,7 @@ static YYACTIONTYPE yy_reduce(
 #line 840 "src/parser/mylite_lemon.y"
 {
 }
-#line 31114 "src/parser/generated/mylite_lemon.c"
+#line 31117 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,439,&yymsp[-1].minor);
   yy_destructor(yypParser,440,&yymsp[0].minor);
 }
@@ -31120,7 +31123,7 @@ static YYACTIONTYPE yy_reduce(
 #line 841 "src/parser/mylite_lemon.y"
 {
 }
-#line 31124 "src/parser/generated/mylite_lemon.c"
+#line 31127 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,439,&yymsp[-3].minor);
   yy_destructor(yypParser,441,&yymsp[-2].minor);
   yy_destructor(yypParser,867,&yymsp[-1].minor);
@@ -31132,7 +31135,7 @@ static YYACTIONTYPE yy_reduce(
 #line 842 "src/parser/mylite_lemon.y"
 {
 }
-#line 31136 "src/parser/generated/mylite_lemon.c"
+#line 31139 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,443,&yymsp[-1].minor);
   yy_destructor(yypParser,868,&yymsp[0].minor);
 }
@@ -31142,7 +31145,7 @@ static YYACTIONTYPE yy_reduce(
 #line 843 "src/parser/mylite_lemon.y"
 {
 }
-#line 31146 "src/parser/generated/mylite_lemon.c"
+#line 31149 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,444,&yymsp[-2].minor);
   yy_destructor(yypParser,441,&yymsp[-1].minor);
   yy_destructor(yypParser,869,&yymsp[0].minor);
@@ -31153,7 +31156,7 @@ static YYACTIONTYPE yy_reduce(
 #line 844 "src/parser/mylite_lemon.y"
 {
 }
-#line 31157 "src/parser/generated/mylite_lemon.c"
+#line 31160 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,154,&yymsp[-2].minor);
   yy_destructor(yypParser,39,&yymsp[-1].minor);
   yy_destructor(yypParser,870,&yymsp[0].minor);
@@ -31164,7 +31167,7 @@ static YYACTIONTYPE yy_reduce(
 #line 845 "src/parser/mylite_lemon.y"
 {
 }
-#line 31168 "src/parser/generated/mylite_lemon.c"
+#line 31171 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,867,&yymsp[0].minor);
 }
         break;
@@ -31173,7 +31176,7 @@ static YYACTIONTYPE yy_reduce(
 #line 846 "src/parser/mylite_lemon.y"
 {
 }
-#line 31177 "src/parser/generated/mylite_lemon.c"
+#line 31180 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,871,&yymsp[0].minor);
 }
         break;
@@ -31183,7 +31186,7 @@ static YYACTIONTYPE yy_reduce(
 #line 849 "src/parser/mylite_lemon.y"
 {
 }
-#line 31187 "src/parser/generated/mylite_lemon.c"
+#line 31190 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 766: /* account_default_or_day_value ::= account_password_number_value DAY */
@@ -31191,7 +31194,7 @@ static YYACTIONTYPE yy_reduce(
 #line 852 "src/parser/mylite_lemon.y"
 {
 }
-#line 31195 "src/parser/generated/mylite_lemon.c"
+#line 31198 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,442,&yymsp[0].minor);
 }
         break;
@@ -31202,7 +31205,7 @@ static YYACTIONTYPE yy_reduce(
 #line 856 "src/parser/mylite_lemon.y"
 {
 }
-#line 31206 "src/parser/generated/mylite_lemon.c"
+#line 31209 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 771: /* account_password_lock_value ::= UNBOUNDED */
@@ -31212,7 +31215,7 @@ static YYACTIONTYPE yy_reduce(
 #line 859 "src/parser/mylite_lemon.y"
 {
 }
-#line 31216 "src/parser/generated/mylite_lemon.c"
+#line 31219 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 775: /* account_lock_option ::= ACCOUNT LOCK */
@@ -31220,7 +31223,7 @@ static YYACTIONTYPE yy_reduce(
 #line 865 "src/parser/mylite_lemon.y"
 {
 }
-#line 31224 "src/parser/generated/mylite_lemon.c"
+#line 31227 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,450,&yymsp[0].minor);
 }
         break;
@@ -31229,7 +31232,7 @@ static YYACTIONTYPE yy_reduce(
 #line 866 "src/parser/mylite_lemon.y"
 {
 }
-#line 31233 "src/parser/generated/mylite_lemon.c"
+#line 31236 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,451,&yymsp[0].minor);
 }
         break;
@@ -31241,7 +31244,7 @@ static YYACTIONTYPE yy_reduce(
 #line 874 "src/parser/mylite_lemon.y"
 {
 }
-#line 31245 "src/parser/generated/mylite_lemon.c"
+#line 31248 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 781: /* create_resource_group_tail ::= create_resource_type create_resource_group_options_tail */
@@ -31249,7 +31252,7 @@ static YYACTIONTYPE yy_reduce(
 #line 876 "src/parser/mylite_lemon.y"
 {
 }
-#line 31253 "src/parser/generated/mylite_lemon.c"
+#line 31256 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,873,&yymsp[0].minor);
 }
         break;
@@ -31258,7 +31261,7 @@ static YYACTIONTYPE yy_reduce(
 #line 878 "src/parser/mylite_lemon.y"
 {
 }
-#line 31262 "src/parser/generated/mylite_lemon.c"
+#line 31265 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,875,&yymsp[-1].minor);
   yy_destructor(yypParser,876,&yymsp[0].minor);
 }
@@ -31268,7 +31271,7 @@ static YYACTIONTYPE yy_reduce(
 #line 881 "src/parser/mylite_lemon.y"
 {
 }
-#line 31272 "src/parser/generated/mylite_lemon.c"
+#line 31275 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 785: /* resource_group_vcpu_clause ::= VCPU resource_group_optional_equals resource_group_vcpu_list */
@@ -31276,7 +31279,7 @@ static YYACTIONTYPE yy_reduce(
 #line 883 "src/parser/mylite_lemon.y"
 {
 }
-#line 31280 "src/parser/generated/mylite_lemon.c"
+#line 31283 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,878,&yymsp[-1].minor);
   yy_destructor(yypParser,879,&yymsp[0].minor);
 }
@@ -31286,7 +31289,7 @@ static YYACTIONTYPE yy_reduce(
 #line 885 "src/parser/mylite_lemon.y"
 {
 }
-#line 31290 "src/parser/generated/mylite_lemon.c"
+#line 31293 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 787: /* resource_group_vcpu_list ::= resource_group_vcpu_list import_comma resource_group_vcpu_spec */
@@ -31294,7 +31297,7 @@ static YYACTIONTYPE yy_reduce(
 #line 886 "src/parser/mylite_lemon.y"
 {
 }
-#line 31298 "src/parser/generated/mylite_lemon.c"
+#line 31301 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,880,&yymsp[0].minor);
 }
@@ -31306,7 +31309,7 @@ static YYACTIONTYPE yy_reduce(
 #line 888 "src/parser/mylite_lemon.y"
 {
 }
-#line 31310 "src/parser/generated/mylite_lemon.c"
+#line 31313 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 789: /* resource_group_vcpu_spec ::= resource_group_number_value MINUS resource_group_number_value */
@@ -31314,7 +31317,7 @@ static YYACTIONTYPE yy_reduce(
 #line 889 "src/parser/mylite_lemon.y"
 {
 }
-#line 31318 "src/parser/generated/mylite_lemon.c"
+#line 31321 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,215,&yymsp[-1].minor);
   yy_destructor(yypParser,881,&yymsp[0].minor);
 }
@@ -31324,7 +31327,7 @@ static YYACTIONTYPE yy_reduce(
 #line 892 "src/parser/mylite_lemon.y"
 {
 }
-#line 31328 "src/parser/generated/mylite_lemon.c"
+#line 31331 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 792: /* resource_group_thread_priority_clause ::= THREAD_PRIORITY resource_group_optional_equals resource_group_signed_atom */
@@ -31332,7 +31335,7 @@ static YYACTIONTYPE yy_reduce(
 #line 894 "src/parser/mylite_lemon.y"
 {
 }
-#line 31336 "src/parser/generated/mylite_lemon.c"
+#line 31339 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,878,&yymsp[-1].minor);
   yy_destructor(yypParser,883,&yymsp[0].minor);
 }
@@ -31344,7 +31347,7 @@ static YYACTIONTYPE yy_reduce(
 #line 897 "src/parser/mylite_lemon.y"
 {
 }
-#line 31348 "src/parser/generated/mylite_lemon.c"
+#line 31351 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 795: /* resource_group_state_tail ::= DISABLE */
@@ -31353,7 +31356,7 @@ static YYACTIONTYPE yy_reduce(
 #line 898 "src/parser/mylite_lemon.y"
 {
 }
-#line 31357 "src/parser/generated/mylite_lemon.c"
+#line 31360 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 797: /* resource_group_optional_equals ::= diagnostics_equals */
@@ -31363,7 +31366,7 @@ static YYACTIONTYPE yy_reduce(
 #line 901 "src/parser/mylite_lemon.y"
 {
 }
-#line 31367 "src/parser/generated/mylite_lemon.c"
+#line 31370 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 802: /* create_resource_type ::= create_type_marker diagnostics_equals create_resource_type_value */
@@ -31371,7 +31374,7 @@ static YYACTIONTYPE yy_reduce(
 #line 909 "src/parser/mylite_lemon.y"
 {
 }
-#line 31375 "src/parser/generated/mylite_lemon.c"
+#line 31378 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,885,&yymsp[0].minor);
 }
@@ -31383,7 +31386,7 @@ static YYACTIONTYPE yy_reduce(
 #line 914 "src/parser/mylite_lemon.y"
 {
 }
-#line 31387 "src/parser/generated/mylite_lemon.c"
+#line 31390 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 807: /* create_logfile_group_tail ::= create_add create_undofile string_literal create_logfile_group_options_tail */
@@ -31391,7 +31394,7 @@ static YYACTIONTYPE yy_reduce(
 #line 918 "src/parser/mylite_lemon.y"
 {
 }
-#line 31395 "src/parser/generated/mylite_lemon.c"
+#line 31398 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,887,&yymsp[-2].minor);
   yy_destructor(yypParser,718,&yymsp[-1].minor);
   yy_destructor(yypParser,888,&yymsp[0].minor);
@@ -31402,7 +31405,7 @@ static YYACTIONTYPE yy_reduce(
 #line 920 "src/parser/mylite_lemon.y"
 {
 }
-#line 31406 "src/parser/generated/mylite_lemon.c"
+#line 31409 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 809: /* create_datafile ::= DATAFILE */
@@ -31410,7 +31413,7 @@ static YYACTIONTYPE yy_reduce(
 #line 922 "src/parser/mylite_lemon.y"
 {
 }
-#line 31414 "src/parser/generated/mylite_lemon.c"
+#line 31417 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 810: /* create_undofile ::= UNDOFILE */
@@ -31418,7 +31421,7 @@ static YYACTIONTYPE yy_reduce(
 #line 924 "src/parser/mylite_lemon.y"
 {
 }
-#line 31422 "src/parser/generated/mylite_lemon.c"
+#line 31425 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 812: /* create_logfile_group_options_tail ::= create_logfile_group_options_tail create_logfile_group_option */
@@ -31426,7 +31429,7 @@ static YYACTIONTYPE yy_reduce(
 #line 927 "src/parser/mylite_lemon.y"
 {
 }
-#line 31430 "src/parser/generated/mylite_lemon.c"
+#line 31433 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,890,&yymsp[0].minor);
 }
         break;
@@ -31438,7 +31441,7 @@ static YYACTIONTYPE yy_reduce(
 #line 929 "src/parser/mylite_lemon.y"
 {
 }
-#line 31442 "src/parser/generated/mylite_lemon.c"
+#line 31445 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,891,&yymsp[0].minor);
 }
@@ -31448,7 +31451,7 @@ static YYACTIONTYPE yy_reduce(
 #line 930 "src/parser/mylite_lemon.y"
 {
 }
-#line 31452 "src/parser/generated/mylite_lemon.c"
+#line 31455 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,891,&yymsp[0].minor);
 }
@@ -31458,7 +31461,7 @@ static YYACTIONTYPE yy_reduce(
 #line 931 "src/parser/mylite_lemon.y"
 {
 }
-#line 31462 "src/parser/generated/mylite_lemon.c"
+#line 31465 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,891,&yymsp[0].minor);
 }
@@ -31469,7 +31472,7 @@ static YYACTIONTYPE yy_reduce(
 #line 932 "src/parser/mylite_lemon.y"
 {
 }
-#line 31473 "src/parser/generated/mylite_lemon.c"
+#line 31476 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,891,&yymsp[0].minor);
 }
@@ -31485,7 +31488,7 @@ static YYACTIONTYPE yy_reduce(
 #line 933 "src/parser/mylite_lemon.y"
 {
 }
-#line 31489 "src/parser/generated/mylite_lemon.c"
+#line 31492 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 818: /* create_logfile_group_option ::= WAIT */
@@ -31498,7 +31501,7 @@ static YYACTIONTYPE yy_reduce(
 #line 934 "src/parser/mylite_lemon.y"
 {
 }
-#line 31502 "src/parser/generated/mylite_lemon.c"
+#line 31505 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 819: /* create_logfile_group_option ::= COMMENT drop_index_option_equals_tail string_literal */
@@ -31508,7 +31511,7 @@ static YYACTIONTYPE yy_reduce(
 #line 935 "src/parser/mylite_lemon.y"
 {
 }
-#line 31512 "src/parser/generated/mylite_lemon.c"
+#line 31515 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -31518,7 +31521,7 @@ static YYACTIONTYPE yy_reduce(
 #line 937 "src/parser/mylite_lemon.y"
 {
 }
-#line 31522 "src/parser/generated/mylite_lemon.c"
+#line 31525 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,887,&yymsp[-2].minor);
   yy_destructor(yypParser,718,&yymsp[-1].minor);
   yy_destructor(yypParser,894,&yymsp[0].minor);
@@ -31529,7 +31532,7 @@ static YYACTIONTYPE yy_reduce(
 #line 940 "src/parser/mylite_lemon.y"
 {
 }
-#line 31533 "src/parser/generated/mylite_lemon.c"
+#line 31536 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,895,&yymsp[0].minor);
 }
         break;
@@ -31538,7 +31541,7 @@ static YYACTIONTYPE yy_reduce(
 #line 946 "src/parser/mylite_lemon.y"
 {
 }
-#line 31542 "src/parser/generated/mylite_lemon.c"
+#line 31545 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 828: /* create_tablespace_options_tail ::= create_tablespace_options_tail create_tablespace_option */
@@ -31546,7 +31549,7 @@ static YYACTIONTYPE yy_reduce(
 #line 949 "src/parser/mylite_lemon.y"
 {
 }
-#line 31550 "src/parser/generated/mylite_lemon.c"
+#line 31553 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,897,&yymsp[0].minor);
 }
         break;
@@ -31555,7 +31558,7 @@ static YYACTIONTYPE yy_reduce(
 #line 951 "src/parser/mylite_lemon.y"
 {
 }
-#line 31559 "src/parser/generated/mylite_lemon.c"
+#line 31562 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,889,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -31567,7 +31570,7 @@ static YYACTIONTYPE yy_reduce(
 #line 952 "src/parser/mylite_lemon.y"
 {
 }
-#line 31571 "src/parser/generated/mylite_lemon.c"
+#line 31574 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,891,&yymsp[0].minor);
 }
@@ -31577,7 +31580,7 @@ static YYACTIONTYPE yy_reduce(
 #line 953 "src/parser/mylite_lemon.y"
 {
 }
-#line 31581 "src/parser/generated/mylite_lemon.c"
+#line 31584 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,891,&yymsp[0].minor);
 }
@@ -31587,7 +31590,7 @@ static YYACTIONTYPE yy_reduce(
 #line 955 "src/parser/mylite_lemon.y"
 {
 }
-#line 31591 "src/parser/generated/mylite_lemon.c"
+#line 31594 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,331,&yymsp[-2].minor);
   yy_destructor(yypParser,680,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
@@ -31598,7 +31601,7 @@ static YYACTIONTYPE yy_reduce(
 #line 956 "src/parser/mylite_lemon.y"
 {
 }
-#line 31602 "src/parser/generated/mylite_lemon.c"
+#line 31605 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,891,&yymsp[0].minor);
 }
@@ -31608,7 +31611,7 @@ static YYACTIONTYPE yy_reduce(
 #line 958 "src/parser/mylite_lemon.y"
 {
 }
-#line 31612 "src/parser/generated/mylite_lemon.c"
+#line 31615 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,891,&yymsp[0].minor);
 }
@@ -31618,7 +31621,7 @@ static YYACTIONTYPE yy_reduce(
 #line 965 "src/parser/mylite_lemon.y"
 {
 }
-#line 31622 "src/parser/generated/mylite_lemon.c"
+#line 31625 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,889,&yymsp[-2].minor);
   yy_destructor(yypParser,718,&yymsp[-1].minor);
   yy_destructor(yypParser,898,&yymsp[0].minor);
@@ -31629,7 +31632,7 @@ static YYACTIONTYPE yy_reduce(
 #line 971 "src/parser/mylite_lemon.y"
 {
 }
-#line 31633 "src/parser/generated/mylite_lemon.c"
+#line 31636 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,364,&yymsp[-3].minor);
   yy_destructor(yypParser,900,&yymsp[-2].minor);
   yy_destructor(yypParser,681,&yymsp[-1].minor);
@@ -31641,7 +31644,7 @@ static YYACTIONTYPE yy_reduce(
 #line 975 "src/parser/mylite_lemon.y"
 {
 }
-#line 31645 "src/parser/generated/mylite_lemon.c"
+#line 31648 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 849: /* create_server_options ::= create_options_marker LP create_server_option_list RP */
@@ -31649,7 +31652,7 @@ static YYACTIONTYPE yy_reduce(
 #line 977 "src/parser/mylite_lemon.y"
 {
 }
-#line 31653 "src/parser/generated/mylite_lemon.c"
+#line 31656 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-2].minor);
   yy_destructor(yypParser,903,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
@@ -31660,7 +31663,7 @@ static YYACTIONTYPE yy_reduce(
 #line 979 "src/parser/mylite_lemon.y"
 {
 }
-#line 31664 "src/parser/generated/mylite_lemon.c"
+#line 31667 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 851: /* create_server_option_list ::= create_server_option */
@@ -31668,7 +31671,7 @@ static YYACTIONTYPE yy_reduce(
 #line 981 "src/parser/mylite_lemon.y"
 {
 }
-#line 31672 "src/parser/generated/mylite_lemon.c"
+#line 31675 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 852: /* create_server_option_list ::= create_server_option_list import_comma create_server_option */
@@ -31676,7 +31679,7 @@ static YYACTIONTYPE yy_reduce(
 #line 982 "src/parser/mylite_lemon.y"
 {
 }
-#line 31680 "src/parser/generated/mylite_lemon.c"
+#line 31683 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,904,&yymsp[0].minor);
 }
@@ -31686,7 +31689,7 @@ static YYACTIONTYPE yy_reduce(
 #line 984 "src/parser/mylite_lemon.y"
 {
 }
-#line 31690 "src/parser/generated/mylite_lemon.c"
+#line 31693 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31695,7 +31698,7 @@ static YYACTIONTYPE yy_reduce(
 #line 985 "src/parser/mylite_lemon.y"
 {
 }
-#line 31699 "src/parser/generated/mylite_lemon.c"
+#line 31702 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31704,7 +31707,7 @@ static YYACTIONTYPE yy_reduce(
 #line 986 "src/parser/mylite_lemon.y"
 {
 }
-#line 31708 "src/parser/generated/mylite_lemon.c"
+#line 31711 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31713,7 +31716,7 @@ static YYACTIONTYPE yy_reduce(
 #line 987 "src/parser/mylite_lemon.y"
 {
 }
-#line 31717 "src/parser/generated/mylite_lemon.c"
+#line 31720 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31722,7 +31725,7 @@ static YYACTIONTYPE yy_reduce(
 #line 988 "src/parser/mylite_lemon.y"
 {
 }
-#line 31726 "src/parser/generated/mylite_lemon.c"
+#line 31729 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31731,7 +31734,7 @@ static YYACTIONTYPE yy_reduce(
 #line 989 "src/parser/mylite_lemon.y"
 {
 }
-#line 31735 "src/parser/generated/mylite_lemon.c"
+#line 31738 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31740,7 +31743,7 @@ static YYACTIONTYPE yy_reduce(
 #line 990 "src/parser/mylite_lemon.y"
 {
 }
-#line 31744 "src/parser/generated/mylite_lemon.c"
+#line 31747 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,905,&yymsp[0].minor);
 }
         break;
@@ -31750,7 +31753,7 @@ static YYACTIONTYPE yy_reduce(
 #line 996 "src/parser/mylite_lemon.y"
 {
 }
-#line 31754 "src/parser/generated/mylite_lemon.c"
+#line 31757 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 868: /* create_srs_attributes ::= create_srs_attribute */
@@ -31758,7 +31761,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1004 "src/parser/mylite_lemon.y"
 {
 }
-#line 31762 "src/parser/generated/mylite_lemon.c"
+#line 31765 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 869: /* create_srs_attributes ::= create_srs_attributes create_srs_attribute */
@@ -31766,7 +31769,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1005 "src/parser/mylite_lemon.y"
 {
 }
-#line 31770 "src/parser/generated/mylite_lemon.c"
+#line 31773 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,906,&yymsp[0].minor);
 }
         break;
@@ -31775,7 +31778,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1007 "src/parser/mylite_lemon.y"
 {
 }
-#line 31779 "src/parser/generated/mylite_lemon.c"
+#line 31782 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31784,7 +31787,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1008 "src/parser/mylite_lemon.y"
 {
 }
-#line 31788 "src/parser/generated/mylite_lemon.c"
+#line 31791 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31793,7 +31796,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1009 "src/parser/mylite_lemon.y"
 {
 }
-#line 31797 "src/parser/generated/mylite_lemon.c"
+#line 31800 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -31802,7 +31805,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1010 "src/parser/mylite_lemon.y"
 {
 }
-#line 31806 "src/parser/generated/mylite_lemon.c"
+#line 31809 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[-3].minor);
   yy_destructor(yypParser,76,&yymsp[-2].minor);
   yy_destructor(yypParser,389,&yymsp[-1].minor);
@@ -31829,7 +31832,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1069 "src/parser/mylite_lemon.y"
 {
 }
-#line 31833 "src/parser/generated/mylite_lemon.c"
+#line 31836 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 878: /* drop_table_kind ::= TABLES */
@@ -31848,7 +31851,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1070 "src/parser/mylite_lemon.y"
 {
 }
-#line 31852 "src/parser/generated/mylite_lemon.c"
+#line 31855 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 879: /* drop_table_prefix ::= drop_table_kind */
@@ -31856,7 +31859,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1072 "src/parser/mylite_lemon.y"
 {
 }
-#line 31860 "src/parser/generated/mylite_lemon.c"
+#line 31863 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 880: /* drop_table_prefix ::= TEMPORARY drop_table_kind */
@@ -31864,7 +31867,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1073 "src/parser/mylite_lemon.y"
 {
 }
-#line 31868 "src/parser/generated/mylite_lemon.c"
+#line 31871 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,925,&yymsp[0].minor);
 }
         break;
@@ -31880,7 +31883,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1075 "src/parser/mylite_lemon.y"
 {
 }
-#line 31884 "src/parser/generated/mylite_lemon.c"
+#line 31887 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 882: /* drop_routine_kind ::= PROCEDURE */
@@ -31895,7 +31898,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1076 "src/parser/mylite_lemon.y"
 {
 }
-#line 31899 "src/parser/generated/mylite_lemon.c"
+#line 31902 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 884: /* drop_account_list ::= drop_account_list COMMA drop_account_name */
@@ -31903,7 +31906,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1079 "src/parser/mylite_lemon.y"
 {
 }
-#line 31907 "src/parser/generated/mylite_lemon.c"
+#line 31910 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,786,&yymsp[0].minor);
 }
@@ -31913,7 +31916,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1081 "src/parser/mylite_lemon.y"
 {
 }
-#line 31917 "src/parser/generated/mylite_lemon.c"
+#line 31920 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 886: /* drop_user_ref_list ::= drop_user_ref_list COMMA drop_user_ref */
@@ -31921,7 +31924,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1082 "src/parser/mylite_lemon.y"
 {
 }
-#line 31925 "src/parser/generated/mylite_lemon.c"
+#line 31928 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,926,&yymsp[0].minor);
 }
@@ -31931,7 +31934,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1087 "src/parser/mylite_lemon.y"
 {
 }
-#line 31935 "src/parser/generated/mylite_lemon.c"
+#line 31938 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 890: /* drop_account_name ::= drop_account_principal drop_account_host */
@@ -31939,7 +31942,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1088 "src/parser/mylite_lemon.y"
 {
 }
-#line 31943 "src/parser/generated/mylite_lemon.c"
+#line 31946 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,928,&yymsp[0].minor);
 }
         break;
@@ -31948,7 +31951,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1095 "src/parser/mylite_lemon.y"
 {
 }
-#line 31952 "src/parser/generated/mylite_lemon.c"
+#line 31955 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 893: /* drop_account_host ::= AT_HOST drop_host_dot_tail */
@@ -31957,7 +31960,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1097 "src/parser/mylite_lemon.y"
 {
 }
-#line 31961 "src/parser/generated/mylite_lemon.c"
+#line 31964 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,930,&yymsp[0].minor);
 }
         break;
@@ -31967,7 +31970,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1098 "src/parser/mylite_lemon.y"
 {
 }
-#line 31971 "src/parser/generated/mylite_lemon.c"
+#line 31974 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,931,&yymsp[0].minor);
 }
         break;
@@ -31976,7 +31979,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1099 "src/parser/mylite_lemon.y"
 {
 }
-#line 31980 "src/parser/generated/mylite_lemon.c"
+#line 31983 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 896: /* drop_host_name ::= drop_account_ident drop_host_dot_tail */
@@ -31984,7 +31987,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1101 "src/parser/mylite_lemon.y"
 {
 }
-#line 31988 "src/parser/generated/mylite_lemon.c"
+#line 31991 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,930,&yymsp[0].minor);
 }
         break;
@@ -31993,7 +31996,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1104 "src/parser/mylite_lemon.y"
 {
 }
-#line 31997 "src/parser/generated/mylite_lemon.c"
+#line 32000 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,929,&yymsp[0].minor);
 }
@@ -32006,7 +32009,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1106 "src/parser/mylite_lemon.y"
 {
 }
-#line 32010 "src/parser/generated/mylite_lemon.c"
+#line 32013 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 900: /* drop_account_ident ::= MASTER */
@@ -32016,7 +32019,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1107 "src/parser/mylite_lemon.y"
 {
 }
-#line 32020 "src/parser/generated/mylite_lemon.c"
+#line 32023 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 901: /* drop_account_ident ::= ROLE */
@@ -32027,7 +32030,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1108 "src/parser/mylite_lemon.y"
 {
 }
-#line 32031 "src/parser/generated/mylite_lemon.c"
+#line 32034 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 902: /* drop_name_list ::= cache_table_ref */
@@ -32045,7 +32048,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1110 "src/parser/mylite_lemon.y"
 {
 }
-#line 32049 "src/parser/generated/mylite_lemon.c"
+#line 32052 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 903: /* drop_name_list ::= drop_name_list COMMA cache_table_ref */
@@ -32053,7 +32056,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1111 "src/parser/mylite_lemon.y"
 {
 }
-#line 32057 "src/parser/generated/mylite_lemon.c"
+#line 32060 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
@@ -32068,7 +32071,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1114 "src/parser/mylite_lemon.y"
 {
 }
-#line 32072 "src/parser/generated/mylite_lemon.c"
+#line 32075 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 906: /* drop_restrict_tail ::= CASCADE */
@@ -32081,7 +32084,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1115 "src/parser/mylite_lemon.y"
 {
 }
-#line 32085 "src/parser/generated/mylite_lemon.c"
+#line 32088 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 910: /* drop_resource_force_tail ::= FORCE */
@@ -32091,7 +32094,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1122 "src/parser/mylite_lemon.y"
 {
 }
-#line 32095 "src/parser/generated/mylite_lemon.c"
+#line 32098 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 914: /* drop_tablespace_engine_tail ::= drop_tablespace_options */
@@ -32099,7 +32102,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1129 "src/parser/mylite_lemon.y"
 {
 }
-#line 32103 "src/parser/generated/mylite_lemon.c"
+#line 32106 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 915: /* drop_tablespace_options ::= drop_tablespace_option */
@@ -32107,7 +32110,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1131 "src/parser/mylite_lemon.y"
 {
 }
-#line 32111 "src/parser/generated/mylite_lemon.c"
+#line 32114 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 916: /* drop_tablespace_options ::= drop_tablespace_options drop_tablespace_option */
@@ -32115,7 +32118,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1132 "src/parser/mylite_lemon.y"
 {
 }
-#line 32119 "src/parser/generated/mylite_lemon.c"
+#line 32122 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,934,&yymsp[0].minor);
 }
         break;
@@ -32124,7 +32127,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1133 "src/parser/mylite_lemon.y"
 {
 }
-#line 32128 "src/parser/generated/mylite_lemon.c"
+#line 32131 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,934,&yymsp[0].minor);
 }
@@ -32136,7 +32139,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1137 "src/parser/mylite_lemon.y"
 {
 }
-#line 32140 "src/parser/generated/mylite_lemon.c"
+#line 32143 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 922: /* undo_tablespace_options_tail ::= undo_tablespace_options */
@@ -32144,7 +32147,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1140 "src/parser/mylite_lemon.y"
 {
 }
-#line 32148 "src/parser/generated/mylite_lemon.c"
+#line 32151 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 923: /* undo_tablespace_options ::= undo_tablespace_option */
@@ -32152,7 +32155,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1142 "src/parser/mylite_lemon.y"
 {
 }
-#line 32156 "src/parser/generated/mylite_lemon.c"
+#line 32159 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 924: /* undo_tablespace_options ::= undo_tablespace_options undo_tablespace_option */
@@ -32160,7 +32163,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1143 "src/parser/mylite_lemon.y"
 {
 }
-#line 32164 "src/parser/generated/mylite_lemon.c"
+#line 32167 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,936,&yymsp[0].minor);
 }
         break;
@@ -32169,7 +32172,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1144 "src/parser/mylite_lemon.y"
 {
 }
-#line 32173 "src/parser/generated/mylite_lemon.c"
+#line 32176 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,936,&yymsp[0].minor);
 }
@@ -32179,7 +32182,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1148 "src/parser/mylite_lemon.y"
 {
 }
-#line 32183 "src/parser/generated/mylite_lemon.c"
+#line 32186 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
@@ -32189,7 +32192,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1149 "src/parser/mylite_lemon.y"
 {
 }
-#line 32193 "src/parser/generated/mylite_lemon.c"
+#line 32196 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,381,&yymsp[-2].minor);
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
@@ -32200,7 +32203,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1154 "src/parser/mylite_lemon.y"
 {
 }
-#line 32204 "src/parser/generated/mylite_lemon.c"
+#line 32207 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,719,&yymsp[0].minor);
 }
         break;
@@ -32209,7 +32212,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1156 "src/parser/mylite_lemon.y"
 {
 }
-#line 32213 "src/parser/generated/mylite_lemon.c"
+#line 32216 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,937,&yymsp[0].minor);
 }
@@ -32221,7 +32224,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1157 "src/parser/mylite_lemon.y"
 {
 }
-#line 32225 "src/parser/generated/mylite_lemon.c"
+#line 32228 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,938,&yymsp[0].minor);
 }
@@ -32234,7 +32237,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1163 "src/parser/mylite_lemon.y"
 {
 }
-#line 32238 "src/parser/generated/mylite_lemon.c"
+#line 32241 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 938: /* drop_index_algorithm ::= COPY */
@@ -32245,7 +32248,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1164 "src/parser/mylite_lemon.y"
 {
 }
-#line 32249 "src/parser/generated/mylite_lemon.c"
+#line 32252 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 941: /* drop_index_lock ::= SHARED */
@@ -32255,7 +32258,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1168 "src/parser/mylite_lemon.y"
 {
 }
-#line 32259 "src/parser/generated/mylite_lemon.c"
+#line 32262 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 942: /* drop_index_lock ::= EXCLUSIVE */
@@ -32265,7 +32268,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1169 "src/parser/mylite_lemon.y"
 {
 }
-#line 32269 "src/parser/generated/mylite_lemon.c"
+#line 32272 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 946: /* drop_if_exists_tail ::= IF reset_exists */
@@ -32273,7 +32276,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1175 "src/parser/mylite_lemon.y"
 {
 }
-#line 32277 "src/parser/generated/mylite_lemon.c"
+#line 32280 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,819,&yymsp[0].minor);
 }
         break;
@@ -32282,7 +32285,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1187 "src/parser/mylite_lemon.y"
 {
 }
-#line 32286 "src/parser/generated/mylite_lemon.c"
+#line 32289 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,673,&yymsp[-1].minor);
   yy_destructor(yypParser,940,&yymsp[0].minor);
 }
@@ -32292,7 +32295,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1188 "src/parser/mylite_lemon.y"
 {
 }
-#line 32296 "src/parser/generated/mylite_lemon.c"
+#line 32299 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,680,&yymsp[-2].minor);
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,893,&yymsp[0].minor);
@@ -32303,7 +32306,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1189 "src/parser/mylite_lemon.y"
 {
 }
-#line 32307 "src/parser/generated/mylite_lemon.c"
+#line 32310 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,683,&yymsp[-2].minor);
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,941,&yymsp[0].minor);
@@ -32314,7 +32317,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1190 "src/parser/mylite_lemon.y"
 {
 }
-#line 32318 "src/parser/generated/mylite_lemon.c"
+#line 32321 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,901,&yymsp[0].minor);
 }
@@ -32324,7 +32327,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1191 "src/parser/mylite_lemon.y"
 {
 }
-#line 32328 "src/parser/generated/mylite_lemon.c"
+#line 32331 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,942,&yymsp[0].minor);
 }
@@ -32334,7 +32337,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1192 "src/parser/mylite_lemon.y"
 {
 }
-#line 32338 "src/parser/generated/mylite_lemon.c"
+#line 32341 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,337,&yymsp[-2].minor);
   yy_destructor(yypParser,681,&yymsp[-1].minor);
   yy_destructor(yypParser,943,&yymsp[0].minor);
@@ -32345,7 +32348,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1193 "src/parser/mylite_lemon.y"
 {
 }
-#line 32349 "src/parser/generated/mylite_lemon.c"
+#line 32352 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,908,&yymsp[-3].minor);
   yy_destructor(yypParser,825,&yymsp[-2].minor);
   yy_destructor(yypParser,696,&yymsp[-1].minor);
@@ -32357,7 +32360,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1194 "src/parser/mylite_lemon.y"
 {
 }
-#line 32361 "src/parser/generated/mylite_lemon.c"
+#line 32364 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,908,&yymsp[-4].minor);
   yy_destructor(yypParser,340,&yymsp[-3].minor);
   yy_destructor(yypParser,348,&yymsp[-2].minor);
@@ -32370,7 +32373,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1198 "src/parser/mylite_lemon.y"
 {
 }
-#line 32374 "src/parser/generated/mylite_lemon.c"
+#line 32377 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,673,&yymsp[-1].minor);
   yy_destructor(yypParser,946,&yymsp[0].minor);
 }
@@ -32380,7 +32383,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1199 "src/parser/mylite_lemon.y"
 {
 }
-#line 32384 "src/parser/generated/mylite_lemon.c"
+#line 32387 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,948,&yymsp[0].minor);
 }
         break;
@@ -32389,7 +32392,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1200 "src/parser/mylite_lemon.y"
 {
 }
-#line 32393 "src/parser/generated/mylite_lemon.c"
+#line 32396 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,949,&yymsp[-1].minor);
   yy_destructor(yypParser,948,&yymsp[0].minor);
 }
@@ -32399,7 +32402,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1204 "src/parser/mylite_lemon.y"
 {
 }
-#line 32403 "src/parser/generated/mylite_lemon.c"
+#line 32406 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 959: /* alter_tail ::= create_definer_clause alter_definer_object_tail */
@@ -32407,7 +32410,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1205 "src/parser/mylite_lemon.y"
 {
 }
-#line 32411 "src/parser/generated/mylite_lemon.c"
+#line 32414 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,951,&yymsp[0].minor);
 }
         break;
@@ -32416,7 +32419,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1206 "src/parser/mylite_lemon.y"
 {
 }
-#line 32420 "src/parser/generated/mylite_lemon.c"
+#line 32423 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,952,&yymsp[0].minor);
 }
         break;
@@ -32425,7 +32428,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1213 "src/parser/mylite_lemon.y"
 {
 }
-#line 32429 "src/parser/generated/mylite_lemon.c"
+#line 32432 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 965: /* alter_database_options ::= alter_database_options alter_database_option */
@@ -32433,7 +32436,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1214 "src/parser/mylite_lemon.y"
 {
 }
-#line 32437 "src/parser/generated/mylite_lemon.c"
+#line 32440 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,953,&yymsp[0].minor);
 }
         break;
@@ -32442,7 +32445,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1216 "src/parser/mylite_lemon.y"
 {
 }
-#line 32446 "src/parser/generated/mylite_lemon.c"
+#line 32449 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 967: /* alter_database_option ::= READ ONLY drop_index_option_equals_tail alter_database_read_value */
@@ -32450,7 +32453,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1217 "src/parser/mylite_lemon.y"
 {
 }
-#line 32454 "src/parser/generated/mylite_lemon.c"
+#line 32457 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,118,&yymsp[-2].minor);
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,954,&yymsp[0].minor);
@@ -32461,7 +32464,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1226 "src/parser/mylite_lemon.y"
 {
 }
-#line 32465 "src/parser/generated/mylite_lemon.c"
+#line 32468 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,955,&yymsp[0].minor);
 }
         break;
@@ -32471,7 +32474,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1228 "src/parser/mylite_lemon.y"
 {
 }
-#line 32475 "src/parser/generated/mylite_lemon.c"
+#line 32478 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,956,&yymsp[0].minor);
 }
         break;
@@ -32480,7 +32483,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1229 "src/parser/mylite_lemon.y"
 {
 }
-#line 32484 "src/parser/generated/mylite_lemon.c"
+#line 32487 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,386,&yymsp[0].minor);
 }
         break;
@@ -32489,7 +32492,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1230 "src/parser/mylite_lemon.y"
 {
 }
-#line 32493 "src/parser/generated/mylite_lemon.c"
+#line 32496 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,386,&yymsp[0].minor);
 }
         break;
@@ -32498,7 +32501,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1231 "src/parser/mylite_lemon.y"
 {
 }
-#line 32502 "src/parser/generated/mylite_lemon.c"
+#line 32505 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,386,&yymsp[0].minor);
 }
         break;
@@ -32507,7 +32510,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1232 "src/parser/mylite_lemon.y"
 {
 }
-#line 32511 "src/parser/generated/mylite_lemon.c"
+#line 32514 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,386,&yymsp[-1].minor);
   yy_destructor(yypParser,364,&yymsp[0].minor);
 }
@@ -32517,7 +32520,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1233 "src/parser/mylite_lemon.y"
 {
 }
-#line 32521 "src/parser/generated/mylite_lemon.c"
+#line 32524 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,386,&yymsp[-1].minor);
   yy_destructor(yypParser,364,&yymsp[0].minor);
 }
@@ -32527,7 +32530,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1238 "src/parser/mylite_lemon.y"
 {
 }
-#line 32531 "src/parser/generated/mylite_lemon.c"
+#line 32534 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,957,&yymsp[0].minor);
 }
         break;
@@ -32541,7 +32544,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1239 "src/parser/mylite_lemon.y"
 {
 }
-#line 32545 "src/parser/generated/mylite_lemon.c"
+#line 32548 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,957,&yymsp[0].minor);
 }
         break;
@@ -32550,7 +32553,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1240 "src/parser/mylite_lemon.y"
 {
 }
-#line 32554 "src/parser/generated/mylite_lemon.c"
+#line 32557 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,337,&yymsp[0].minor);
 }
         break;
@@ -32559,7 +32562,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1241 "src/parser/mylite_lemon.y"
 {
 }
-#line 32563 "src/parser/generated/mylite_lemon.c"
+#line 32566 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-2].minor);
   yy_destructor(yypParser,960,&yymsp[-1].minor);
   yy_destructor(yypParser,337,&yymsp[0].minor);
@@ -32575,7 +32578,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1242 "src/parser/mylite_lemon.y"
 {
 }
-#line 32579 "src/parser/generated/mylite_lemon.c"
+#line 32582 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,962,&yymsp[0].minor);
 }
         break;
@@ -32589,7 +32592,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1243 "src/parser/mylite_lemon.y"
 {
 }
-#line 32593 "src/parser/generated/mylite_lemon.c"
+#line 32596 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,964,&yymsp[0].minor);
 }
         break;
@@ -32603,7 +32606,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1244 "src/parser/mylite_lemon.y"
 {
 }
-#line 32607 "src/parser/generated/mylite_lemon.c"
+#line 32610 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,966,&yymsp[0].minor);
 }
         break;
@@ -32617,7 +32620,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1245 "src/parser/mylite_lemon.y"
 {
 }
-#line 32621 "src/parser/generated/mylite_lemon.c"
+#line 32624 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 990: /* alter_table_tail ::= alter_table_alter_action alter_table_alter_action_tail */
@@ -32630,7 +32633,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1246 "src/parser/mylite_lemon.y"
 {
 }
-#line 32634 "src/parser/generated/mylite_lemon.c"
+#line 32637 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,969,&yymsp[0].minor);
 }
         break;
@@ -32644,7 +32647,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1247 "src/parser/mylite_lemon.y"
 {
 }
-#line 32648 "src/parser/generated/mylite_lemon.c"
+#line 32651 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 992: /* alter_table_tail ::= alter_table_partition_action */
@@ -32657,7 +32660,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1248 "src/parser/mylite_lemon.y"
 {
 }
-#line 32661 "src/parser/generated/mylite_lemon.c"
+#line 32664 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 993: /* alter_table_tail ::= alter_table_partition_definition_action */
@@ -32670,7 +32673,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1249 "src/parser/mylite_lemon.y"
 {
 }
-#line 32674 "src/parser/generated/mylite_lemon.c"
+#line 32677 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 994: /* alter_table_tail ::= alter_table_add_partition_action */
@@ -32679,7 +32682,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1250 "src/parser/mylite_lemon.y"
 {
 }
-#line 32683 "src/parser/generated/mylite_lemon.c"
+#line 32686 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 995: /* alter_table_tail ::= alter_table_add_action */
@@ -32692,7 +32695,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1251 "src/parser/mylite_lemon.y"
 {
 }
-#line 32696 "src/parser/generated/mylite_lemon.c"
+#line 32699 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 996: /* alter_table_tail ::= alter_table_change_action */
@@ -32705,7 +32708,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1252 "src/parser/mylite_lemon.y"
 {
 }
-#line 32709 "src/parser/generated/mylite_lemon.c"
+#line 32712 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 997: /* alter_table_tail ::= alter_table_modify_action */
@@ -32718,7 +32721,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1253 "src/parser/mylite_lemon.y"
 {
 }
-#line 32722 "src/parser/generated/mylite_lemon.c"
+#line 32725 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 998: /* alter_table_tail ::= alter_table_table_option create_options_tail */
@@ -32731,7 +32734,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1254 "src/parser/mylite_lemon.y"
 {
 }
-#line 32735 "src/parser/generated/mylite_lemon.c"
+#line 32738 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,820,&yymsp[0].minor);
 }
         break;
@@ -32745,7 +32748,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1255 "src/parser/mylite_lemon.y"
 {
 }
-#line 32749 "src/parser/generated/mylite_lemon.c"
+#line 32752 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,979,&yymsp[0].minor);
 }
         break;
@@ -32759,7 +32762,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1256 "src/parser/mylite_lemon.y"
 {
 }
-#line 32763 "src/parser/generated/mylite_lemon.c"
+#line 32766 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1001: /* alter_table_tail ::= alter_table_tablespace_action */
@@ -32772,7 +32775,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1257 "src/parser/mylite_lemon.y"
 {
 }
-#line 32776 "src/parser/generated/mylite_lemon.c"
+#line 32779 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1002: /* alter_table_tail ::= alter_table_storage_action */
@@ -32785,7 +32788,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1258 "src/parser/mylite_lemon.y"
 {
 }
-#line 32789 "src/parser/generated/mylite_lemon.c"
+#line 32792 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1003: /* alter_table_tail ::= alter_table_union_action */
@@ -32798,7 +32801,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1259 "src/parser/mylite_lemon.y"
 {
 }
-#line 32802 "src/parser/generated/mylite_lemon.c"
+#line 32805 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1004: /* alter_table_tail ::= alter_table_reorganize_action */
@@ -32811,7 +32814,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1260 "src/parser/mylite_lemon.y"
 {
 }
-#line 32815 "src/parser/generated/mylite_lemon.c"
+#line 32818 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1005: /* alter_table_tail ::= alter_table_secondary_action */
@@ -32820,7 +32823,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1261 "src/parser/mylite_lemon.y"
 {
 }
-#line 32824 "src/parser/generated/mylite_lemon.c"
+#line 32827 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1006: /* alter_table_tablespace_transfer_kind ::= DISCARD */
@@ -32830,7 +32833,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1263 "src/parser/mylite_lemon.y"
 {
 }
-#line 32834 "src/parser/generated/mylite_lemon.c"
+#line 32837 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1007: /* alter_table_tablespace_transfer_kind ::= IMPORT */
@@ -32840,7 +32843,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1264 "src/parser/mylite_lemon.y"
 {
 }
-#line 32844 "src/parser/generated/mylite_lemon.c"
+#line 32847 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1009: /* alter_table_force_option_tail ::= COMMA alter_table_force_options */
@@ -32848,7 +32851,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1267 "src/parser/mylite_lemon.y"
 {
 }
-#line 32852 "src/parser/generated/mylite_lemon.c"
+#line 32855 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,986,&yymsp[0].minor);
 }
         break;
@@ -32857,7 +32860,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1269 "src/parser/mylite_lemon.y"
 {
 }
-#line 32861 "src/parser/generated/mylite_lemon.c"
+#line 32864 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1011: /* alter_table_force_options ::= alter_table_force_options COMMA alter_table_force_option */
@@ -32865,7 +32868,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1270 "src/parser/mylite_lemon.y"
 {
 }
-#line 32869 "src/parser/generated/mylite_lemon.c"
+#line 32872 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,987,&yymsp[0].minor);
 }
@@ -32876,7 +32879,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1272 "src/parser/mylite_lemon.y"
 {
 }
-#line 32880 "src/parser/generated/mylite_lemon.c"
+#line 32883 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,988,&yymsp[0].minor);
 }
@@ -32887,7 +32890,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1276 "src/parser/mylite_lemon.y"
 {
 }
-#line 32891 "src/parser/generated/mylite_lemon.c"
+#line 32894 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,989,&yymsp[0].minor);
 }
         break;
@@ -32898,7 +32901,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1304 "src/parser/mylite_lemon.y"
 {
 }
-#line 32902 "src/parser/generated/mylite_lemon.c"
+#line 32905 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1044: /* alter_table_rename_action_tail ::= COMMA alter_table_rename_after_comma */
@@ -32906,7 +32909,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1309 "src/parser/mylite_lemon.y"
 {
 }
-#line 32910 "src/parser/generated/mylite_lemon.c"
+#line 32913 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,990,&yymsp[0].minor);
 }
         break;
@@ -32917,7 +32920,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1310 "src/parser/mylite_lemon.y"
 {
 }
-#line 32921 "src/parser/generated/mylite_lemon.c"
+#line 32924 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1065: /* alter_table_rename_action ::= RENAME alter_table_rename_table_connector cache_table_ref */
@@ -32925,7 +32928,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1332 "src/parser/mylite_lemon.y"
 {
 }
-#line 32929 "src/parser/generated/mylite_lemon.c"
+#line 32932 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,992,&yymsp[-1].minor);
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
@@ -32935,7 +32938,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1333 "src/parser/mylite_lemon.y"
 {
 }
-#line 32939 "src/parser/generated/mylite_lemon.c"
+#line 32942 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,25,&yymsp[-3].minor);
   yy_destructor(yypParser,993,&yymsp[-2].minor);
   yy_destructor(yypParser,463,&yymsp[-1].minor);
@@ -32947,7 +32950,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1334 "src/parser/mylite_lemon.y"
 {
 }
-#line 32951 "src/parser/generated/mylite_lemon.c"
+#line 32954 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,994,&yymsp[-3].minor);
   yy_destructor(yypParser,993,&yymsp[-2].minor);
   yy_destructor(yypParser,463,&yymsp[-1].minor);
@@ -32961,7 +32964,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1337 "src/parser/mylite_lemon.y"
 {
 }
-#line 32965 "src/parser/generated/mylite_lemon.c"
+#line 32968 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1075: /* alter_table_drop_action_tail ::= COMMA alter_table_drop_after_comma */
@@ -32969,7 +32972,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1346 "src/parser/mylite_lemon.y"
 {
 }
-#line 32973 "src/parser/generated/mylite_lemon.c"
+#line 32976 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,995,&yymsp[0].minor);
 }
         break;
@@ -32978,7 +32981,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1369 "src/parser/mylite_lemon.y"
 {
 }
-#line 32982 "src/parser/generated/mylite_lemon.c"
+#line 32985 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,996,&yymsp[-2].minor);
   yy_destructor(yypParser,997,&yymsp[-1].minor);
   yy_destructor(yypParser,998,&yymsp[0].minor);
@@ -32989,7 +32992,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1370 "src/parser/mylite_lemon.y"
 {
 }
-#line 32993 "src/parser/generated/mylite_lemon.c"
+#line 32996 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,134,&yymsp[-1].minor);
   yy_destructor(yypParser,376,&yymsp[0].minor);
 }
@@ -32999,7 +33002,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1371 "src/parser/mylite_lemon.y"
 {
 }
-#line 33003 "src/parser/generated/mylite_lemon.c"
+#line 33006 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,999,&yymsp[-1].minor);
   yy_destructor(yypParser,997,&yymsp[0].minor);
 }
@@ -33009,7 +33012,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1372 "src/parser/mylite_lemon.y"
 {
 }
-#line 33013 "src/parser/generated/mylite_lemon.c"
+#line 33016 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,69,&yymsp[-2].minor);
   yy_destructor(yypParser,376,&yymsp[-1].minor);
   yy_destructor(yypParser,997,&yymsp[0].minor);
@@ -33020,7 +33023,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1373 "src/parser/mylite_lemon.y"
 {
 }
-#line 33024 "src/parser/generated/mylite_lemon.c"
+#line 33027 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,377,&yymsp[-1].minor);
   yy_destructor(yypParser,997,&yymsp[0].minor);
 }
@@ -33030,7 +33033,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1374 "src/parser/mylite_lemon.y"
 {
 }
-#line 33034 "src/parser/generated/mylite_lemon.c"
+#line 33037 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,31,&yymsp[-1].minor);
   yy_destructor(yypParser,997,&yymsp[0].minor);
 }
@@ -33040,7 +33043,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1380 "src/parser/mylite_lemon.y"
 {
 }
-#line 33044 "src/parser/generated/mylite_lemon.c"
+#line 33047 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-1].minor);
   yy_destructor(yypParser,1000,&yymsp[0].minor);
 }
@@ -33052,7 +33055,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1383 "src/parser/mylite_lemon.y"
 {
 }
-#line 33056 "src/parser/generated/mylite_lemon.c"
+#line 33059 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1112: /* alter_table_alter_action_tail ::= COMMA alter_table_alter_after_comma */
@@ -33060,7 +33063,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1391 "src/parser/mylite_lemon.y"
 {
 }
-#line 33064 "src/parser/generated/mylite_lemon.c"
+#line 33067 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1001,&yymsp[0].minor);
 }
         break;
@@ -33069,7 +33072,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1414 "src/parser/mylite_lemon.y"
 {
 }
-#line 33073 "src/parser/generated/mylite_lemon.c"
+#line 33076 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,996,&yymsp[-4].minor);
   yy_destructor(yypParser,997,&yymsp[-3].minor);
   yy_destructor(yypParser,384,&yymsp[-2].minor);
@@ -33082,7 +33085,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1416 "src/parser/mylite_lemon.y"
 {
 }
-#line 33086 "src/parser/generated/mylite_lemon.c"
+#line 33089 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,996,&yymsp[-3].minor);
   yy_destructor(yypParser,997,&yymsp[-2].minor);
   yy_destructor(yypParser,423,&yymsp[-1].minor);
@@ -33094,7 +33097,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1417 "src/parser/mylite_lemon.y"
 {
 }
-#line 33098 "src/parser/generated/mylite_lemon.c"
+#line 33101 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,996,&yymsp[-3].minor);
   yy_destructor(yypParser,997,&yymsp[-2].minor);
   yy_destructor(yypParser,384,&yymsp[-1].minor);
@@ -33106,7 +33109,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1418 "src/parser/mylite_lemon.y"
 {
 }
-#line 33110 "src/parser/generated/mylite_lemon.c"
+#line 33113 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,329,&yymsp[-2].minor);
   yy_destructor(yypParser,997,&yymsp[-1].minor);
   yy_destructor(yypParser,1002,&yymsp[0].minor);
@@ -33117,7 +33120,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1419 "src/parser/mylite_lemon.y"
 {
 }
-#line 33121 "src/parser/generated/mylite_lemon.c"
+#line 33124 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1003,&yymsp[-2].minor);
   yy_destructor(yypParser,997,&yymsp[-1].minor);
   yy_destructor(yypParser,1004,&yymsp[0].minor);
@@ -33131,7 +33134,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1422 "src/parser/mylite_lemon.y"
 {
 }
-#line 33135 "src/parser/generated/mylite_lemon.c"
+#line 33138 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1140: /* alter_table_enforcement ::= ENFORCED */
@@ -33141,7 +33144,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1424 "src/parser/mylite_lemon.y"
 {
 }
-#line 33145 "src/parser/generated/mylite_lemon.c"
+#line 33148 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1141: /* alter_table_enforcement ::= NOT ENFORCED */
@@ -33149,7 +33152,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1425 "src/parser/mylite_lemon.y"
 {
 }
-#line 33153 "src/parser/generated/mylite_lemon.c"
+#line 33156 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,55,&yymsp[0].minor);
 }
         break;
@@ -33158,7 +33161,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1430 "src/parser/mylite_lemon.y"
 {
 }
-#line 33162 "src/parser/generated/mylite_lemon.c"
+#line 33165 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-2].minor);
   yy_destructor(yypParser,1006,&yymsp[-1].minor);
   yy_destructor(yypParser,960,&yymsp[0].minor);
@@ -33169,7 +33172,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1431 "src/parser/mylite_lemon.y"
 {
 }
-#line 33173 "src/parser/generated/mylite_lemon.c"
+#line 33176 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-2].minor);
   yy_destructor(yypParser,960,&yymsp[-1].minor);
   yy_destructor(yypParser,1007,&yymsp[0].minor);
@@ -33180,7 +33183,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1432 "src/parser/mylite_lemon.y"
 {
 }
-#line 33184 "src/parser/generated/mylite_lemon.c"
+#line 33187 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-3].minor);
   yy_destructor(yypParser,1006,&yymsp[-2].minor);
   yy_destructor(yypParser,960,&yymsp[-1].minor);
@@ -33192,7 +33195,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1433 "src/parser/mylite_lemon.y"
 {
 }
-#line 33196 "src/parser/generated/mylite_lemon.c"
+#line 33199 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-2].minor);
   yy_destructor(yypParser,1006,&yymsp[-1].minor);
   yy_destructor(yypParser,1009,&yymsp[0].minor);
@@ -33203,7 +33206,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1434 "src/parser/mylite_lemon.y"
 {
 }
-#line 33207 "src/parser/generated/mylite_lemon.c"
+#line 33210 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-1].minor);
   yy_destructor(yypParser,960,&yymsp[0].minor);
 }
@@ -33214,7 +33217,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1435 "src/parser/mylite_lemon.y"
 {
 }
-#line 33218 "src/parser/generated/mylite_lemon.c"
+#line 33221 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,128,&yymsp[0].minor);
 }
         break;
@@ -33223,7 +33226,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1436 "src/parser/mylite_lemon.y"
 {
 }
-#line 33227 "src/parser/generated/mylite_lemon.c"
+#line 33230 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-5].minor);
   yy_destructor(yypParser,1010,&yymsp[-4].minor);
   yy_destructor(yypParser,355,&yymsp[-3].minor);
@@ -33238,7 +33241,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1442 "src/parser/mylite_lemon.y"
 {
 }
-#line 33242 "src/parser/generated/mylite_lemon.c"
+#line 33245 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,389,&yymsp[-1].minor);
   yy_destructor(yypParser,732,&yymsp[0].minor);
 }
@@ -33248,7 +33251,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1447 "src/parser/mylite_lemon.y"
 {
 }
-#line 33252 "src/parser/generated/mylite_lemon.c"
+#line 33255 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-3].minor);
   yy_destructor(yypParser,714,&yymsp[-2].minor);
   yy_destructor(yypParser,349,&yymsp[-1].minor);
@@ -33260,7 +33263,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1448 "src/parser/mylite_lemon.y"
 {
 }
-#line 33264 "src/parser/generated/mylite_lemon.c"
+#line 33267 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,25,&yymsp[-4].minor);
   yy_destructor(yypParser,348,&yymsp[-3].minor);
   yy_destructor(yypParser,714,&yymsp[-2].minor);
@@ -33273,7 +33276,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1449 "src/parser/mylite_lemon.y"
 {
 }
-#line 33277 "src/parser/generated/mylite_lemon.c"
+#line 33280 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1013,&yymsp[-2].minor);
   yy_destructor(yypParser,1014,&yymsp[-1].minor);
   yy_destructor(yypParser,1012,&yymsp[0].minor);
@@ -33284,7 +33287,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1451 "src/parser/mylite_lemon.y"
 {
 }
-#line 33288 "src/parser/generated/mylite_lemon.c"
+#line 33291 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1015,&yymsp[0].minor);
 }
         break;
@@ -33293,7 +33296,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1452 "src/parser/mylite_lemon.y"
 {
 }
-#line 33297 "src/parser/generated/mylite_lemon.c"
+#line 33300 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1165: /* alter_table_add_partition_action ::= ADD PARTITION table_admin_optional_binlog alter_table_add_partition_tail */
@@ -33301,7 +33304,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1457 "src/parser/mylite_lemon.y"
 {
 }
-#line 33305 "src/parser/generated/mylite_lemon.c"
+#line 33308 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-2].minor);
   yy_destructor(yypParser,1006,&yymsp[-1].minor);
   yy_destructor(yypParser,1017,&yymsp[0].minor);
@@ -33312,7 +33315,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1460 "src/parser/mylite_lemon.y"
 {
 }
-#line 33316 "src/parser/generated/mylite_lemon.c"
+#line 33319 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1018,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -33322,7 +33325,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1461 "src/parser/mylite_lemon.y"
 {
 }
-#line 33326 "src/parser/generated/mylite_lemon.c"
+#line 33329 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1009,&yymsp[0].minor);
 }
         break;
@@ -33331,7 +33334,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1463 "src/parser/mylite_lemon.y"
 {
 }
-#line 33335 "src/parser/generated/mylite_lemon.c"
+#line 33338 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1176: /* alter_table_change_action ::= CHANGE alter_table_column_keyword_tail alter_table_column_name alter_table_column_name alter_table_definition_tokens alter_table_definition_action_tail */
@@ -33339,7 +33342,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1472 "src/parser/mylite_lemon.y"
 {
 }
-#line 33343 "src/parser/generated/mylite_lemon.c"
+#line 33346 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,996,&yymsp[-4].minor);
   yy_destructor(yypParser,1019,&yymsp[-3].minor);
   yy_destructor(yypParser,1019,&yymsp[-2].minor);
@@ -33352,7 +33355,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1477 "src/parser/mylite_lemon.y"
 {
 }
-#line 33356 "src/parser/generated/mylite_lemon.c"
+#line 33359 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,996,&yymsp[-3].minor);
   yy_destructor(yypParser,1019,&yymsp[-2].minor);
   yy_destructor(yypParser,1014,&yymsp[-1].minor);
@@ -33364,7 +33367,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1482 "src/parser/mylite_lemon.y"
 {
 }
-#line 33368 "src/parser/generated/mylite_lemon.c"
+#line 33371 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1183: /* alter_table_definition_tokens ::= alter_table_definition_tokens alter_table_definition_token */
@@ -33372,7 +33375,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1483 "src/parser/mylite_lemon.y"
 {
 }
-#line 33376 "src/parser/generated/mylite_lemon.c"
+#line 33379 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1020,&yymsp[0].minor);
 }
         break;
@@ -33383,7 +33386,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1495 "src/parser/mylite_lemon.y"
 {
 }
-#line 33387 "src/parser/generated/mylite_lemon.c"
+#line 33390 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1194: /* alter_table_partition_binlog_maintenance_kind ::= OPTIMIZE */
@@ -33393,7 +33396,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1496 "src/parser/mylite_lemon.y"
 {
 }
-#line 33397 "src/parser/generated/mylite_lemon.c"
+#line 33400 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1195: /* alter_table_partition_binlog_maintenance_kind ::= REBUILD */
@@ -33401,7 +33404,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1497 "src/parser/mylite_lemon.y"
 {
 }
-#line 33405 "src/parser/generated/mylite_lemon.c"
+#line 33408 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1197: /* alter_table_exchange_validation_tail ::= WITH VALIDATION */
@@ -33409,7 +33412,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1500 "src/parser/mylite_lemon.y"
 {
 }
-#line 33413 "src/parser/generated/mylite_lemon.c"
+#line 33416 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,203,&yymsp[0].minor);
 }
         break;
@@ -33418,7 +33421,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1501 "src/parser/mylite_lemon.y"
 {
 }
-#line 33422 "src/parser/generated/mylite_lemon.c"
+#line 33425 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,203,&yymsp[0].minor);
 }
         break;
@@ -33427,7 +33430,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1503 "src/parser/mylite_lemon.y"
 {
 }
-#line 33431 "src/parser/generated/mylite_lemon.c"
+#line 33434 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,1022,&yymsp[0].minor);
 }
@@ -33437,7 +33440,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1505 "src/parser/mylite_lemon.y"
 {
 }
-#line 33441 "src/parser/generated/mylite_lemon.c"
+#line 33444 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,1022,&yymsp[0].minor);
 }
@@ -33447,7 +33450,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1506 "src/parser/mylite_lemon.y"
 {
 }
-#line 33451 "src/parser/generated/mylite_lemon.c"
+#line 33454 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,1025,&yymsp[0].minor);
 }
@@ -33457,7 +33460,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1507 "src/parser/mylite_lemon.y"
 {
 }
-#line 33461 "src/parser/generated/mylite_lemon.c"
+#line 33464 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,1026,&yymsp[0].minor);
 }
@@ -33467,7 +33470,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1509 "src/parser/mylite_lemon.y"
 {
 }
-#line 33471 "src/parser/generated/mylite_lemon.c"
+#line 33474 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -33477,7 +33480,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1510 "src/parser/mylite_lemon.y"
 {
 }
-#line 33481 "src/parser/generated/mylite_lemon.c"
+#line 33484 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -33487,7 +33490,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1511 "src/parser/mylite_lemon.y"
 {
 }
-#line 33491 "src/parser/generated/mylite_lemon.c"
+#line 33494 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,48,&yymsp[-2].minor);
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
@@ -33498,7 +33501,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1514 "src/parser/mylite_lemon.y"
 {
 }
-#line 33502 "src/parser/generated/mylite_lemon.c"
+#line 33505 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,48,&yymsp[-2].minor);
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
@@ -33509,7 +33512,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1515 "src/parser/mylite_lemon.y"
 {
 }
-#line 33513 "src/parser/generated/mylite_lemon.c"
+#line 33516 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,1027,&yymsp[0].minor);
 }
@@ -33519,7 +33522,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1516 "src/parser/mylite_lemon.y"
 {
 }
-#line 33523 "src/parser/generated/mylite_lemon.c"
+#line 33526 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,1028,&yymsp[0].minor);
 }
@@ -33529,7 +33532,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1517 "src/parser/mylite_lemon.y"
 {
 }
-#line 33533 "src/parser/generated/mylite_lemon.c"
+#line 33536 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -33539,7 +33542,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1518 "src/parser/mylite_lemon.y"
 {
 }
-#line 33543 "src/parser/generated/mylite_lemon.c"
+#line 33546 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,1029,&yymsp[0].minor);
 }
@@ -33549,7 +33552,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1519 "src/parser/mylite_lemon.y"
 {
 }
-#line 33553 "src/parser/generated/mylite_lemon.c"
+#line 33556 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-1].minor);
   yy_destructor(yypParser,1027,&yymsp[0].minor);
 }
@@ -33559,7 +33562,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1521 "src/parser/mylite_lemon.y"
 {
 }
-#line 33563 "src/parser/generated/mylite_lemon.c"
+#line 33566 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,469,&yymsp[0].minor);
 }
         break;
@@ -33568,7 +33571,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1540 "src/parser/mylite_lemon.y"
 {
 }
-#line 33572 "src/parser/generated/mylite_lemon.c"
+#line 33575 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1238: /* alter_table_insert_method_value ::= FIRST */
@@ -33583,7 +33586,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1550 "src/parser/mylite_lemon.y"
 {
 }
-#line 33587 "src/parser/generated/mylite_lemon.c"
+#line 33590 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1241: /* alter_table_storage_value ::= MEMORY */
@@ -33592,7 +33595,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1558 "src/parser/mylite_lemon.y"
 {
 }
-#line 33596 "src/parser/generated/mylite_lemon.c"
+#line 33599 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1243: /* alter_table_charset_action_tail ::= COMMA alter_table_charset_after_comma */
@@ -33600,7 +33603,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1564 "src/parser/mylite_lemon.y"
 {
 }
-#line 33604 "src/parser/generated/mylite_lemon.c"
+#line 33607 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1031,&yymsp[0].minor);
 }
         break;
@@ -33609,7 +33612,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1586 "src/parser/mylite_lemon.y"
 {
 }
-#line 33613 "src/parser/generated/mylite_lemon.c"
+#line 33616 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1032,&yymsp[-3].minor);
   yy_destructor(yypParser,716,&yymsp[-2].minor);
   yy_destructor(yypParser,1033,&yymsp[-1].minor);
@@ -33621,7 +33624,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1587 "src/parser/mylite_lemon.y"
 {
 }
-#line 33625 "src/parser/generated/mylite_lemon.c"
+#line 33628 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,463,&yymsp[-4].minor);
   yy_destructor(yypParser,1032,&yymsp[-3].minor);
   yy_destructor(yypParser,716,&yymsp[-2].minor);
@@ -33634,7 +33637,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1589 "src/parser/mylite_lemon.y"
 {
 }
-#line 33638 "src/parser/generated/mylite_lemon.c"
+#line 33641 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,384,&yymsp[0].minor);
 }
         break;
@@ -33644,7 +33647,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1592 "src/parser/mylite_lemon.y"
 {
 }
-#line 33648 "src/parser/generated/mylite_lemon.c"
+#line 33651 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1270: /* alter_table_collate_tail ::= database_collate_option */
@@ -33652,7 +33655,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1596 "src/parser/mylite_lemon.y"
 {
 }
-#line 33656 "src/parser/generated/mylite_lemon.c"
+#line 33659 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1271: /* alter_table_order_action ::= ORDER BY required_statement_tail */
@@ -33660,7 +33663,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1598 "src/parser/mylite_lemon.y"
 {
 }
-#line 33664 "src/parser/generated/mylite_lemon.c"
+#line 33667 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,389,&yymsp[-1].minor);
   yy_destructor(yypParser,732,&yymsp[0].minor);
 }
@@ -33670,7 +33673,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1600 "src/parser/mylite_lemon.y"
 {
 }
-#line 33674 "src/parser/generated/mylite_lemon.c"
+#line 33677 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,997,&yymsp[-1].minor);
   yy_destructor(yypParser,820,&yymsp[0].minor);
 }
@@ -33680,7 +33683,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1602 "src/parser/mylite_lemon.y"
 {
 }
-#line 33684 "src/parser/generated/mylite_lemon.c"
+#line 33687 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1030,&yymsp[-1].minor);
   yy_destructor(yypParser,820,&yymsp[0].minor);
 }
@@ -33690,7 +33693,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1604 "src/parser/mylite_lemon.y"
 {
 }
-#line 33694 "src/parser/generated/mylite_lemon.c"
+#line 33697 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,716,&yymsp[-3].minor);
   yy_destructor(yypParser,348,&yymsp[-2].minor);
   yy_destructor(yypParser,1035,&yymsp[-1].minor);
@@ -33702,7 +33705,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1607 "src/parser/mylite_lemon.y"
 {
 }
-#line 33706 "src/parser/generated/mylite_lemon.c"
+#line 33709 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1278: /* alter_table_union_tables ::= alter_table_union_tables COMMA cache_table_ref */
@@ -33710,7 +33713,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1610 "src/parser/mylite_lemon.y"
 {
 }
-#line 33714 "src/parser/generated/mylite_lemon.c"
+#line 33717 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
@@ -33720,7 +33723,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1612 "src/parser/mylite_lemon.y"
 {
 }
-#line 33724 "src/parser/generated/mylite_lemon.c"
+#line 33727 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-2].minor);
   yy_destructor(yypParser,1006,&yymsp[-1].minor);
   yy_destructor(yypParser,1037,&yymsp[0].minor);
@@ -33731,7 +33734,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1615 "src/parser/mylite_lemon.y"
 {
 }
-#line 33735 "src/parser/generated/mylite_lemon.c"
+#line 33738 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,471,&yymsp[-3].minor);
   yy_destructor(yypParser,348,&yymsp[-2].minor);
   yy_destructor(yypParser,1018,&yymsp[-1].minor);
@@ -33743,7 +33746,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1617 "src/parser/mylite_lemon.y"
 {
 }
-#line 33747 "src/parser/generated/mylite_lemon.c"
+#line 33750 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1283: /* alter_table_reorganize_definitions ::= alter_table_reorganize_definitions create_table_definition_token */
@@ -33751,7 +33754,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1618 "src/parser/mylite_lemon.y"
 {
 }
-#line 33755 "src/parser/generated/mylite_lemon.c"
+#line 33758 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,743,&yymsp[0].minor);
 }
         break;
@@ -33760,7 +33763,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1620 "src/parser/mylite_lemon.y"
 {
 }
-#line 33764 "src/parser/generated/mylite_lemon.c"
+#line 33767 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1038,&yymsp[0].minor);
 }
         break;
@@ -33769,7 +33772,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1621 "src/parser/mylite_lemon.y"
 {
 }
-#line 33773 "src/parser/generated/mylite_lemon.c"
+#line 33776 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1038,&yymsp[0].minor);
 }
         break;
@@ -33778,7 +33781,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1624 "src/parser/mylite_lemon.y"
 {
 }
-#line 33782 "src/parser/generated/mylite_lemon.c"
+#line 33785 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-2].minor);
   yy_destructor(yypParser,960,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
@@ -33789,7 +33792,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1626 "src/parser/mylite_lemon.y"
 {
 }
-#line 33793 "src/parser/generated/mylite_lemon.c"
+#line 33796 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1289: /* alter_table_partition_names ::= alter_table_partition_names COMMA alter_table_partition_name */
@@ -33797,7 +33800,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1627 "src/parser/mylite_lemon.y"
 {
 }
-#line 33801 "src/parser/generated/mylite_lemon.c"
+#line 33804 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,1010,&yymsp[0].minor);
 }
@@ -33807,7 +33810,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1631 "src/parser/mylite_lemon.y"
 {
 }
-#line 33811 "src/parser/generated/mylite_lemon.c"
+#line 33814 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,472,&yymsp[0].minor);
 }
         break;
@@ -33816,7 +33819,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1632 "src/parser/mylite_lemon.y"
 {
 }
-#line 33820 "src/parser/generated/mylite_lemon.c"
+#line 33823 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,472,&yymsp[0].minor);
 }
         break;
@@ -33825,7 +33828,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1642 "src/parser/mylite_lemon.y"
 {
 }
-#line 33829 "src/parser/generated/mylite_lemon.c"
+#line 33832 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,673,&yymsp[-1].minor);
   yy_destructor(yypParser,944,&yymsp[0].minor);
 }
@@ -33835,7 +33838,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1644 "src/parser/mylite_lemon.y"
 {
 }
-#line 33839 "src/parser/generated/mylite_lemon.c"
+#line 33842 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,789,&yymsp[-4].minor);
   yy_destructor(yypParser,1040,&yymsp[-3].minor);
   yy_destructor(yypParser,790,&yymsp[-2].minor);
@@ -33848,7 +33851,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1645 "src/parser/mylite_lemon.y"
 {
 }
-#line 33852 "src/parser/generated/mylite_lemon.c"
+#line 33855 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1040,&yymsp[-3].minor);
   yy_destructor(yypParser,790,&yymsp[-2].minor);
   yy_destructor(yypParser,791,&yymsp[-1].minor);
@@ -33860,7 +33863,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1646 "src/parser/mylite_lemon.y"
 {
 }
-#line 33864 "src/parser/generated/mylite_lemon.c"
+#line 33867 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,790,&yymsp[-2].minor);
   yy_destructor(yypParser,791,&yymsp[-1].minor);
   yy_destructor(yypParser,1041,&yymsp[0].minor);
@@ -33871,7 +33874,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1647 "src/parser/mylite_lemon.y"
 {
 }
-#line 33875 "src/parser/generated/mylite_lemon.c"
+#line 33878 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,791,&yymsp[-1].minor);
   yy_destructor(yypParser,1041,&yymsp[0].minor);
 }
@@ -33881,7 +33884,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1648 "src/parser/mylite_lemon.y"
 {
 }
-#line 33885 "src/parser/generated/mylite_lemon.c"
+#line 33888 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1041,&yymsp[0].minor);
 }
         break;
@@ -33891,7 +33894,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1649 "src/parser/mylite_lemon.y"
 {
 }
-#line 33895 "src/parser/generated/mylite_lemon.c"
+#line 33898 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1304: /* alter_event_schedule_clause ::= ON SCHEDULE event_schedule_start alter_event_schedule_tokens */
@@ -33899,7 +33902,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1653 "src/parser/mylite_lemon.y"
 {
 }
-#line 33903 "src/parser/generated/mylite_lemon.c"
+#line 33906 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,163,&yymsp[-2].minor);
   yy_destructor(yypParser,794,&yymsp[-1].minor);
   yy_destructor(yypParser,1047,&yymsp[0].minor);
@@ -33910,7 +33913,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1656 "src/parser/mylite_lemon.y"
 {
 }
-#line 33914 "src/parser/generated/mylite_lemon.c"
+#line 33917 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1307: /* alter_event_completion_clause ::= ON COMPLETION alter_event_completion */
@@ -33918,7 +33921,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1658 "src/parser/mylite_lemon.y"
 {
 }
-#line 33922 "src/parser/generated/mylite_lemon.c"
+#line 33925 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,28,&yymsp[-1].minor);
   yy_destructor(yypParser,1048,&yymsp[0].minor);
 }
@@ -33928,7 +33931,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1660 "src/parser/mylite_lemon.y"
 {
 }
-#line 33932 "src/parser/generated/mylite_lemon.c"
+#line 33935 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1309: /* alter_event_completion ::= NOT PRESERVE */
@@ -33936,7 +33939,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1661 "src/parser/mylite_lemon.y"
 {
 }
-#line 33940 "src/parser/generated/mylite_lemon.c"
+#line 33943 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,133,&yymsp[0].minor);
 }
         break;
@@ -33945,7 +33948,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1664 "src/parser/mylite_lemon.y"
 {
 }
-#line 33949 "src/parser/generated/mylite_lemon.c"
+#line 33952 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1312: /* alter_event_rename_clause ::= RENAME TO cache_table_ref */
@@ -33953,7 +33956,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1666 "src/parser/mylite_lemon.y"
 {
 }
-#line 33957 "src/parser/generated/mylite_lemon.c"
+#line 33960 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,463,&yymsp[-1].minor);
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
@@ -33963,7 +33966,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1669 "src/parser/mylite_lemon.y"
 {
 }
-#line 33967 "src/parser/generated/mylite_lemon.c"
+#line 33970 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1316: /* alter_event_status_clause ::= DISABLE alter_event_disable_tail */
@@ -33971,7 +33974,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1672 "src/parser/mylite_lemon.y"
 {
 }
-#line 33975 "src/parser/generated/mylite_lemon.c"
+#line 33978 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1049,&yymsp[0].minor);
 }
         break;
@@ -33980,7 +33983,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1675 "src/parser/mylite_lemon.y"
 {
 }
-#line 33984 "src/parser/generated/mylite_lemon.c"
+#line 33987 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,473,&yymsp[0].minor);
 }
         break;
@@ -33989,7 +33992,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1676 "src/parser/mylite_lemon.y"
 {
 }
-#line 33993 "src/parser/generated/mylite_lemon.c"
+#line 33996 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,474,&yymsp[0].minor);
 }
         break;
@@ -33998,7 +34001,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1679 "src/parser/mylite_lemon.y"
 {
 }
-#line 34002 "src/parser/generated/mylite_lemon.c"
+#line 34005 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1325: /* alter_event_do_clause ::= DO event_statement_start statement_tail */
@@ -34006,7 +34009,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1686 "src/parser/mylite_lemon.y"
 {
 }
-#line 34010 "src/parser/generated/mylite_lemon.c"
+#line 34013 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,793,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
@@ -34016,7 +34019,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1688 "src/parser/mylite_lemon.y"
 {
 }
-#line 34020 "src/parser/generated/mylite_lemon.c"
+#line 34023 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1327: /* alter_event_schedule_tokens ::= alter_event_schedule_tokens alter_event_schedule_token */
@@ -34024,7 +34027,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1689 "src/parser/mylite_lemon.y"
 {
 }
-#line 34028 "src/parser/generated/mylite_lemon.c"
+#line 34031 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1050,&yymsp[0].minor);
 }
         break;
@@ -34033,7 +34036,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1692 "src/parser/mylite_lemon.y"
 {
 }
-#line 34037 "src/parser/generated/mylite_lemon.c"
+#line 34040 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1332: /* alter_event_schedule_token ::= AT_SIGN */
@@ -34041,7 +34044,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1696 "src/parser/mylite_lemon.y"
 {
 }
-#line 34045 "src/parser/generated/mylite_lemon.c"
+#line 34048 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1335: /* alter_event_schedule_token ::= EQUALS */
@@ -34053,7 +34056,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1699 "src/parser/mylite_lemon.y"
 {
 }
-#line 34057 "src/parser/generated/mylite_lemon.c"
+#line 34060 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1336: /* alter_event_schedule_token ::= MINUS */
@@ -34061,7 +34064,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1700 "src/parser/mylite_lemon.y"
 {
 }
-#line 34065 "src/parser/generated/mylite_lemon.c"
+#line 34068 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1337: /* alter_event_schedule_token ::= STAR */
@@ -34070,7 +34073,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1701 "src/parser/mylite_lemon.y"
 {
 }
-#line 34074 "src/parser/generated/mylite_lemon.c"
+#line 34077 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1339: /* alter_event_schedule_token ::= BY */
@@ -34081,7 +34084,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1703 "src/parser/mylite_lemon.y"
 {
 }
-#line 34085 "src/parser/generated/mylite_lemon.c"
+#line 34088 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1341: /* alter_event_schedule_token ::= CURRENT_USER */
@@ -34093,7 +34096,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1705 "src/parser/mylite_lemon.y"
 {
 }
-#line 34097 "src/parser/generated/mylite_lemon.c"
+#line 34100 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1342: /* alter_event_schedule_token ::= DAY */
@@ -34103,7 +34106,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1706 "src/parser/mylite_lemon.y"
 {
 }
-#line 34107 "src/parser/generated/mylite_lemon.c"
+#line 34110 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1343: /* alter_event_schedule_token ::= EXISTS */
@@ -34112,7 +34115,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1707 "src/parser/mylite_lemon.y"
 {
 }
-#line 34116 "src/parser/generated/mylite_lemon.c"
+#line 34119 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1344: /* alter_event_schedule_token ::= FROM */
@@ -34122,7 +34125,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1708 "src/parser/mylite_lemon.y"
 {
 }
-#line 34126 "src/parser/generated/mylite_lemon.c"
+#line 34129 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1345: /* alter_event_schedule_token ::= IN */
@@ -34133,7 +34136,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1709 "src/parser/mylite_lemon.y"
 {
 }
-#line 34137 "src/parser/generated/mylite_lemon.c"
+#line 34140 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1346: /* alter_event_schedule_token ::= INTERVAL */
@@ -34143,7 +34146,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1710 "src/parser/mylite_lemon.y"
 {
 }
-#line 34147 "src/parser/generated/mylite_lemon.c"
+#line 34150 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1347: /* alter_event_schedule_token ::= LIMIT */
@@ -34153,7 +34156,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1711 "src/parser/mylite_lemon.y"
 {
 }
-#line 34157 "src/parser/generated/mylite_lemon.c"
+#line 34160 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1349: /* alter_event_schedule_token ::= ORDER */
@@ -34164,7 +34167,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1713 "src/parser/mylite_lemon.y"
 {
 }
-#line 34168 "src/parser/generated/mylite_lemon.c"
+#line 34171 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1351: /* alter_event_schedule_token ::= WHERE */
@@ -34174,7 +34177,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1715 "src/parser/mylite_lemon.y"
 {
 }
-#line 34178 "src/parser/generated/mylite_lemon.c"
+#line 34181 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1352: /* alter_event_schedule_token ::= LP alter_event_schedule_nested RP */
@@ -34182,7 +34185,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1716 "src/parser/mylite_lemon.y"
 {
 }
-#line 34186 "src/parser/generated/mylite_lemon.c"
+#line 34189 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1051,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -34192,7 +34195,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1729 "src/parser/mylite_lemon.y"
 {
 }
-#line 34196 "src/parser/generated/mylite_lemon.c"
+#line 34199 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,875,&yymsp[-2].minor);
   yy_destructor(yypParser,1052,&yymsp[-1].minor);
   yy_destructor(yypParser,1053,&yymsp[0].minor);
@@ -34203,7 +34206,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1730 "src/parser/mylite_lemon.y"
 {
 }
-#line 34207 "src/parser/generated/mylite_lemon.c"
+#line 34210 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1052,&yymsp[-1].minor);
   yy_destructor(yypParser,1053,&yymsp[0].minor);
 }
@@ -34213,7 +34216,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1731 "src/parser/mylite_lemon.y"
 {
 }
-#line 34217 "src/parser/generated/mylite_lemon.c"
+#line 34220 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1053,&yymsp[0].minor);
 }
         break;
@@ -34222,7 +34225,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1735 "src/parser/mylite_lemon.y"
 {
 }
-#line 34226 "src/parser/generated/mylite_lemon.c"
+#line 34229 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1373: /* alter_tablespace_action ::= RENAME TO cache_name_part */
@@ -34230,7 +34233,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1743 "src/parser/mylite_lemon.y"
 {
 }
-#line 34234 "src/parser/generated/mylite_lemon.c"
+#line 34237 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,463,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
@@ -34240,7 +34243,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1744 "src/parser/mylite_lemon.y"
 {
 }
-#line 34244 "src/parser/generated/mylite_lemon.c"
+#line 34247 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,889,&yymsp[-2].minor);
   yy_destructor(yypParser,718,&yymsp[-1].minor);
   yy_destructor(yypParser,1055,&yymsp[0].minor);
@@ -34251,7 +34254,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1745 "src/parser/mylite_lemon.y"
 {
 }
-#line 34255 "src/parser/generated/mylite_lemon.c"
+#line 34258 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,889,&yymsp[-2].minor);
   yy_destructor(yypParser,718,&yymsp[-1].minor);
   yy_destructor(yypParser,1055,&yymsp[0].minor);
@@ -34262,7 +34265,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1753 "src/parser/mylite_lemon.y"
 {
 }
-#line 34266 "src/parser/generated/mylite_lemon.c"
+#line 34269 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1056,&yymsp[0].minor);
 }
         break;
@@ -34271,7 +34274,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1759 "src/parser/mylite_lemon.y"
 {
 }
-#line 34275 "src/parser/generated/mylite_lemon.c"
+#line 34278 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1057,&yymsp[-1].minor);
   yy_destructor(yypParser,898,&yymsp[0].minor);
 }
@@ -34281,7 +34284,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1761 "src/parser/mylite_lemon.y"
 {
 }
-#line 34285 "src/parser/generated/mylite_lemon.c"
+#line 34288 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1388: /* alter_undo_tablespace_state ::= INACTIVE */
@@ -34289,7 +34292,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1762 "src/parser/mylite_lemon.y"
 {
 }
-#line 34293 "src/parser/generated/mylite_lemon.c"
+#line 34296 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1389: /* alter_instance_action ::= ENABLE alter_instance_innodb alter_instance_redo_log */
@@ -34297,7 +34300,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1764 "src/parser/mylite_lemon.y"
 {
 }
-#line 34301 "src/parser/generated/mylite_lemon.c"
+#line 34304 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1058,&yymsp[-1].minor);
   yy_destructor(yypParser,1059,&yymsp[0].minor);
 }
@@ -34307,7 +34310,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1765 "src/parser/mylite_lemon.y"
 {
 }
-#line 34311 "src/parser/generated/mylite_lemon.c"
+#line 34314 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1058,&yymsp[-1].minor);
   yy_destructor(yypParser,1059,&yymsp[0].minor);
 }
@@ -34317,7 +34320,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1766 "src/parser/mylite_lemon.y"
 {
 }
-#line 34321 "src/parser/generated/mylite_lemon.c"
+#line 34324 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1060,&yymsp[-2].minor);
   yy_destructor(yypParser,456,&yymsp[-1].minor);
   yy_destructor(yypParser,376,&yymsp[0].minor);
@@ -34328,7 +34331,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1767 "src/parser/mylite_lemon.y"
 {
 }
-#line 34332 "src/parser/generated/mylite_lemon.c"
+#line 34335 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1061,&yymsp[0].minor);
 }
         break;
@@ -34337,7 +34340,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1769 "src/parser/mylite_lemon.y"
 {
 }
-#line 34341 "src/parser/generated/mylite_lemon.c"
+#line 34344 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1394: /* alter_instance_redo_log ::= REDO_LOG */
@@ -34345,7 +34348,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1771 "src/parser/mylite_lemon.y"
 {
 }
-#line 34349 "src/parser/generated/mylite_lemon.c"
+#line 34352 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1395: /* alter_instance_master_key_kind ::= alter_instance_innodb */
@@ -34353,7 +34356,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1773 "src/parser/mylite_lemon.y"
 {
 }
-#line 34357 "src/parser/generated/mylite_lemon.c"
+#line 34360 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1397: /* alter_instance_reload_target ::= TLS alter_instance_reload_tls_tail */
@@ -34361,7 +34364,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1776 "src/parser/mylite_lemon.y"
 {
 }
-#line 34365 "src/parser/generated/mylite_lemon.c"
+#line 34368 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,586,&yymsp[0].minor);
 }
         break;
@@ -34370,7 +34373,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1777 "src/parser/mylite_lemon.y"
 {
 }
-#line 34374 "src/parser/generated/mylite_lemon.c"
+#line 34377 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1399: /* alter_instance_channel_clause ::= FOR reset_channel alter_instance_channel_name */
@@ -34378,7 +34381,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1790 "src/parser/mylite_lemon.y"
 {
 }
-#line 34382 "src/parser/generated/mylite_lemon.c"
+#line 34385 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1063,&yymsp[-1].minor);
   yy_destructor(yypParser,1064,&yymsp[0].minor);
 }
@@ -34388,7 +34391,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1805 "src/parser/mylite_lemon.y"
 {
 }
-#line 34392 "src/parser/generated/mylite_lemon.c"
+#line 34395 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1067,&yymsp[0].minor);
 }
         break;
@@ -34397,7 +34400,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1806 "src/parser/mylite_lemon.y"
 {
 }
-#line 34401 "src/parser/generated/mylite_lemon.c"
+#line 34404 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1068,&yymsp[0].minor);
 }
         break;
@@ -34406,7 +34409,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1811 "src/parser/mylite_lemon.y"
 {
 }
-#line 34410 "src/parser/generated/mylite_lemon.c"
+#line 34413 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1406: /* rename_table_pairs ::= rename_table_pairs import_comma rename_table_pair */
@@ -34414,7 +34417,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1812 "src/parser/mylite_lemon.y"
 {
 }
-#line 34418 "src/parser/generated/mylite_lemon.c"
+#line 34421 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1069,&yymsp[0].minor);
 }
@@ -34424,7 +34427,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1814 "src/parser/mylite_lemon.y"
 {
 }
-#line 34428 "src/parser/generated/mylite_lemon.c"
+#line 34431 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,463,&yymsp[-1].minor);
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
@@ -34434,7 +34437,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1816 "src/parser/mylite_lemon.y"
 {
 }
-#line 34438 "src/parser/generated/mylite_lemon.c"
+#line 34441 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1409: /* rename_user_pairs ::= rename_user_pairs import_comma rename_user_pair */
@@ -34442,7 +34445,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1817 "src/parser/mylite_lemon.y"
 {
 }
-#line 34446 "src/parser/generated/mylite_lemon.c"
+#line 34449 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1070,&yymsp[0].minor);
 }
@@ -34452,7 +34455,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1819 "src/parser/mylite_lemon.y"
 {
 }
-#line 34456 "src/parser/generated/mylite_lemon.c"
+#line 34459 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,463,&yymsp[-1].minor);
   yy_destructor(yypParser,1071,&yymsp[0].minor);
 }
@@ -34462,7 +34465,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1825 "src/parser/mylite_lemon.y"
 {
 }
-#line 34466 "src/parser/generated/mylite_lemon.c"
+#line 34469 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -34472,7 +34475,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1831 "src/parser/mylite_lemon.y"
 {
 }
-#line 34476 "src/parser/generated/mylite_lemon.c"
+#line 34479 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1073,&yymsp[0].minor);
 }
         break;
@@ -34481,7 +34484,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1832 "src/parser/mylite_lemon.y"
 {
 }
-#line 34485 "src/parser/generated/mylite_lemon.c"
+#line 34488 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1417: /* truncate_table_ref ::= truncate_table_part */
@@ -34489,7 +34492,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1834 "src/parser/mylite_lemon.y"
 {
 }
-#line 34493 "src/parser/generated/mylite_lemon.c"
+#line 34496 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1418: /* truncate_table_ref ::= truncate_table_part DOT truncate_table_part */
@@ -34497,7 +34500,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1835 "src/parser/mylite_lemon.y"
 {
 }
-#line 34501 "src/parser/generated/mylite_lemon.c"
+#line 34504 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,1074,&yymsp[0].minor);
 }
@@ -34507,7 +34510,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1843 "src/parser/mylite_lemon.y"
 {
 }
-#line 34511 "src/parser/generated/mylite_lemon.c"
+#line 34514 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1076,&yymsp[0].minor);
 }
         break;
@@ -34516,7 +34519,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1844 "src/parser/mylite_lemon.y"
 {
 }
-#line 34520 "src/parser/generated/mylite_lemon.c"
+#line 34523 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1077,&yymsp[0].minor);
 }
         break;
@@ -34525,7 +34528,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1845 "src/parser/mylite_lemon.y"
 {
 }
-#line 34529 "src/parser/generated/mylite_lemon.c"
+#line 34532 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,471,&yymsp[-2].minor);
   yy_destructor(yypParser,479,&yymsp[-1].minor);
   yy_destructor(yypParser,1078,&yymsp[0].minor);
@@ -34536,7 +34539,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1846 "src/parser/mylite_lemon.y"
 {
 }
-#line 34540 "src/parser/generated/mylite_lemon.c"
+#line 34543 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,471,&yymsp[-2].minor);
   yy_destructor(yypParser,479,&yymsp[-1].minor);
   yy_destructor(yypParser,1079,&yymsp[0].minor);
@@ -34547,7 +34550,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1848 "src/parser/mylite_lemon.y"
 {
 }
-#line 34551 "src/parser/generated/mylite_lemon.c"
+#line 34554 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1081,&yymsp[-10].minor);
   yy_destructor(yypParser,1082,&yymsp[-9].minor);
   yy_destructor(yypParser,1083,&yymsp[-8].minor);
@@ -34566,7 +34569,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1849 "src/parser/mylite_lemon.y"
 {
 }
-#line 34570 "src/parser/generated/mylite_lemon.c"
+#line 34573 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1081,&yymsp[-10].minor);
   yy_destructor(yypParser,1082,&yymsp[-9].minor);
   yy_destructor(yypParser,1083,&yymsp[-8].minor);
@@ -34591,7 +34594,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1852 "src/parser/mylite_lemon.y"
 {
 }
-#line 34595 "src/parser/generated/mylite_lemon.c"
+#line 34598 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1428: /* load_file_priority_tail ::= CONCURRENT */
@@ -34601,7 +34604,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1853 "src/parser/mylite_lemon.y"
 {
 }
-#line 34605 "src/parser/generated/mylite_lemon.c"
+#line 34608 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1433: /* load_source_type ::= INFILE */
@@ -34609,7 +34612,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1861 "src/parser/mylite_lemon.y"
 {
 }
-#line 34613 "src/parser/generated/mylite_lemon.c"
+#line 34616 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1434: /* load_source_type ::= URL */
@@ -34619,7 +34622,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1862 "src/parser/mylite_lemon.y"
 {
 }
-#line 34623 "src/parser/generated/mylite_lemon.c"
+#line 34626 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1435: /* load_source_type ::= S3 */
@@ -34629,7 +34632,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1863 "src/parser/mylite_lemon.y"
 {
 }
-#line 34633 "src/parser/generated/mylite_lemon.c"
+#line 34636 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1438: /* load_source_count_tail ::= COUNT load_ignore_count */
@@ -34637,7 +34640,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1868 "src/parser/mylite_lemon.y"
 {
 }
-#line 34641 "src/parser/generated/mylite_lemon.c"
+#line 34644 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1090,&yymsp[0].minor);
 }
         break;
@@ -34646,7 +34649,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1871 "src/parser/mylite_lemon.y"
 {
 }
-#line 34650 "src/parser/generated/mylite_lemon.c"
+#line 34653 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,134,&yymsp[-2].minor);
   yy_destructor(yypParser,376,&yymsp[-1].minor);
   yy_destructor(yypParser,388,&yymsp[0].minor);
@@ -34657,7 +34660,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1877 "src/parser/mylite_lemon.y"
 {
 }
-#line 34661 "src/parser/generated/mylite_lemon.c"
+#line 34664 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1092,&yymsp[-6].minor);
   yy_destructor(yypParser,1093,&yymsp[-5].minor);
   yy_destructor(yypParser,1094,&yymsp[-4].minor);
@@ -34672,7 +34675,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1878 "src/parser/mylite_lemon.y"
 {
 }
-#line 34676 "src/parser/generated/mylite_lemon.c"
+#line 34679 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1092,&yymsp[-7].minor);
   yy_destructor(yypParser,1093,&yymsp[-6].minor);
   yy_destructor(yypParser,1094,&yymsp[-5].minor);
@@ -34688,7 +34691,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1879 "src/parser/mylite_lemon.y"
 {
 }
-#line 34692 "src/parser/generated/mylite_lemon.c"
+#line 34695 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1093,&yymsp[-4].minor);
   yy_destructor(yypParser,1100,&yymsp[-3].minor);
   yy_destructor(yypParser,1096,&yymsp[-2].minor);
@@ -34701,7 +34704,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1880 "src/parser/mylite_lemon.y"
 {
 }
-#line 34705 "src/parser/generated/mylite_lemon.c"
+#line 34708 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1093,&yymsp[-5].minor);
   yy_destructor(yypParser,1100,&yymsp[-4].minor);
   yy_destructor(yypParser,1096,&yymsp[-3].minor);
@@ -34716,7 +34719,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1883 "src/parser/mylite_lemon.y"
 {
 }
-#line 34720 "src/parser/generated/mylite_lemon.c"
+#line 34723 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-2].minor);
   yy_destructor(yypParser,960,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
@@ -34727,7 +34730,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1886 "src/parser/mylite_lemon.y"
 {
 }
-#line 34731 "src/parser/generated/mylite_lemon.c"
+#line 34734 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,384,&yymsp[-1].minor);
   yy_destructor(yypParser,749,&yymsp[0].minor);
 }
@@ -34737,7 +34740,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1889 "src/parser/mylite_lemon.y"
 {
 }
-#line 34741 "src/parser/generated/mylite_lemon.c"
+#line 34744 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -34747,7 +34750,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1892 "src/parser/mylite_lemon.y"
 {
 }
-#line 34751 "src/parser/generated/mylite_lemon.c"
+#line 34754 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1103,&yymsp[0].minor);
 }
         break;
@@ -34759,7 +34762,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1894 "src/parser/mylite_lemon.y"
 {
 }
-#line 34763 "src/parser/generated/mylite_lemon.c"
+#line 34766 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1457: /* load_fields_kind ::= COLUMNS */
@@ -34770,7 +34773,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1895 "src/parser/mylite_lemon.y"
 {
 }
-#line 34774 "src/parser/generated/mylite_lemon.c"
+#line 34777 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1459: /* load_field_options ::= load_field_options load_field_option */
@@ -34778,7 +34781,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1898 "src/parser/mylite_lemon.y"
 {
 }
-#line 34782 "src/parser/generated/mylite_lemon.c"
+#line 34785 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1104,&yymsp[0].minor);
 }
         break;
@@ -34788,7 +34791,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1900 "src/parser/mylite_lemon.y"
 {
 }
-#line 34792 "src/parser/generated/mylite_lemon.c"
+#line 34795 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,389,&yymsp[-1].minor);
   yy_destructor(yypParser,1084,&yymsp[0].minor);
 }
@@ -34798,7 +34801,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1901 "src/parser/mylite_lemon.y"
 {
 }
-#line 34802 "src/parser/generated/mylite_lemon.c"
+#line 34805 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,232,&yymsp[-2].minor);
   yy_destructor(yypParser,389,&yymsp[-1].minor);
   yy_destructor(yypParser,1084,&yymsp[0].minor);
@@ -34809,7 +34812,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1902 "src/parser/mylite_lemon.y"
 {
 }
-#line 34813 "src/parser/generated/mylite_lemon.c"
+#line 34816 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,389,&yymsp[-1].minor);
   yy_destructor(yypParser,1084,&yymsp[0].minor);
 }
@@ -34819,7 +34822,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1903 "src/parser/mylite_lemon.y"
 {
 }
-#line 34823 "src/parser/generated/mylite_lemon.c"
+#line 34826 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,389,&yymsp[-1].minor);
   yy_destructor(yypParser,1084,&yymsp[0].minor);
 }
@@ -34829,7 +34832,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1906 "src/parser/mylite_lemon.y"
 {
 }
-#line 34833 "src/parser/generated/mylite_lemon.c"
+#line 34836 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1105,&yymsp[0].minor);
 }
         break;
@@ -34838,7 +34841,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1909 "src/parser/mylite_lemon.y"
 {
 }
-#line 34842 "src/parser/generated/mylite_lemon.c"
+#line 34845 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1106,&yymsp[0].minor);
 }
         break;
@@ -34847,7 +34850,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1911 "src/parser/mylite_lemon.y"
 {
 }
-#line 34851 "src/parser/generated/mylite_lemon.c"
+#line 34854 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,389,&yymsp[-1].minor);
   yy_destructor(yypParser,1084,&yymsp[0].minor);
 }
@@ -34857,7 +34860,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1915 "src/parser/mylite_lemon.y"
 {
 }
-#line 34861 "src/parser/generated/mylite_lemon.c"
+#line 34864 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,76,&yymsp[-2].minor);
   yy_destructor(yypParser,389,&yymsp[-1].minor);
   yy_destructor(yypParser,1084,&yymsp[0].minor);
@@ -34868,7 +34871,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1918 "src/parser/mylite_lemon.y"
 {
 }
-#line 34872 "src/parser/generated/mylite_lemon.c"
+#line 34875 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1090,&yymsp[-1].minor);
   yy_destructor(yypParser,1107,&yymsp[0].minor);
 }
@@ -34880,7 +34883,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1924 "src/parser/mylite_lemon.y"
 {
 }
-#line 34884 "src/parser/generated/mylite_lemon.c"
+#line 34887 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1478: /* load_ignore_unit ::= ROWS */
@@ -34890,7 +34893,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1925 "src/parser/mylite_lemon.y"
 {
 }
-#line 34894 "src/parser/generated/mylite_lemon.c"
+#line 34897 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1481: /* load_column_list_tail ::= LP load_column_list RP */
@@ -34898,7 +34901,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1929 "src/parser/mylite_lemon.y"
 {
 }
-#line 34902 "src/parser/generated/mylite_lemon.c"
+#line 34905 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1108,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -34908,7 +34911,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1931 "src/parser/mylite_lemon.y"
 {
 }
-#line 34912 "src/parser/generated/mylite_lemon.c"
+#line 34915 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1483: /* load_column_list ::= load_column_list import_comma load_column_ref */
@@ -34916,7 +34919,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1932 "src/parser/mylite_lemon.y"
 {
 }
-#line 34920 "src/parser/generated/mylite_lemon.c"
+#line 34923 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1109,&yymsp[0].minor);
 }
@@ -34933,7 +34936,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1935 "src/parser/mylite_lemon.y"
 {
 }
-#line 34937 "src/parser/generated/mylite_lemon.c"
+#line 34940 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1486: /* load_post_options_tail ::= load_parallel_tail load_memory_tail load_algorithm_tail */
@@ -34941,7 +34944,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1937 "src/parser/mylite_lemon.y"
 {
 }
-#line 34945 "src/parser/generated/mylite_lemon.c"
+#line 34948 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1112,&yymsp[-1].minor);
   yy_destructor(yypParser,1113,&yymsp[0].minor);
 }
@@ -34951,7 +34954,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1940 "src/parser/mylite_lemon.y"
 {
 }
-#line 34955 "src/parser/generated/mylite_lemon.c"
+#line 34958 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1090,&yymsp[0].minor);
 }
@@ -34961,7 +34964,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1943 "src/parser/mylite_lemon.y"
 {
 }
-#line 34965 "src/parser/generated/mylite_lemon.c"
+#line 34968 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,891,&yymsp[0].minor);
 }
@@ -34971,7 +34974,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1946 "src/parser/mylite_lemon.y"
 {
 }
-#line 34975 "src/parser/generated/mylite_lemon.c"
+#line 34978 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,16,&yymsp[0].minor);
 }
@@ -34981,7 +34984,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1948 "src/parser/mylite_lemon.y"
 {
 }
-#line 34985 "src/parser/generated/mylite_lemon.c"
+#line 34988 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1494: /* load_index_table_list ::= load_index_table_list import_comma load_index_table_spec */
@@ -34989,7 +34992,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1949 "src/parser/mylite_lemon.y"
 {
 }
-#line 34993 "src/parser/generated/mylite_lemon.c"
+#line 34996 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1114,&yymsp[0].minor);
 }
@@ -34999,7 +35002,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1951 "src/parser/mylite_lemon.y"
 {
 }
-#line 35003 "src/parser/generated/mylite_lemon.c"
+#line 35006 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1115,&yymsp[-1].minor);
   yy_destructor(yypParser,1116,&yymsp[0].minor);
 }
@@ -35009,7 +35012,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1952 "src/parser/mylite_lemon.y"
 {
 }
-#line 35013 "src/parser/generated/mylite_lemon.c"
+#line 35016 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1117,&yymsp[-2].minor);
   yy_destructor(yypParser,1115,&yymsp[-1].minor);
   yy_destructor(yypParser,1116,&yymsp[0].minor);
@@ -35020,7 +35023,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1955 "src/parser/mylite_lemon.y"
 {
 }
-#line 35024 "src/parser/generated/mylite_lemon.c"
+#line 35027 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1119,&yymsp[0].minor);
 }
         break;
@@ -35029,7 +35032,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1958 "src/parser/mylite_lemon.y"
 {
 }
-#line 35033 "src/parser/generated/mylite_lemon.c"
+#line 35036 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1120,&yymsp[0].minor);
 }
         break;
@@ -35038,7 +35041,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1964 "src/parser/mylite_lemon.y"
 {
 }
-#line 35042 "src/parser/generated/mylite_lemon.c"
+#line 35045 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1504: /* load_partition_names ::= load_partition_names import_comma load_partition_name */
@@ -35046,7 +35049,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1965 "src/parser/mylite_lemon.y"
 {
 }
-#line 35050 "src/parser/generated/mylite_lemon.c"
+#line 35053 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1121,&yymsp[0].minor);
 }
@@ -35056,7 +35059,7 @@ static YYACTIONTYPE yy_reduce(
 #line 1970 "src/parser/mylite_lemon.y"
 {
 }
-#line 35060 "src/parser/generated/mylite_lemon.c"
+#line 35063 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1508: /* transaction_consistent ::= CONSISTENT */
@@ -35064,7 +35067,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2032 "src/parser/mylite_lemon.y"
 {
 }
-#line 35068 "src/parser/generated/mylite_lemon.c"
+#line 35071 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1509: /* transaction_snapshot ::= SNAPSHOT */
@@ -35072,7 +35075,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2033 "src/parser/mylite_lemon.y"
 {
 }
-#line 35076 "src/parser/generated/mylite_lemon.c"
+#line 35079 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1510: /* start_replica_tail ::= start_thread_tail start_until_tail start_connection_tail show_channel_tail */
@@ -35080,7 +35083,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2035 "src/parser/mylite_lemon.y"
 {
 }
-#line 35084 "src/parser/generated/mylite_lemon.c"
+#line 35087 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1127,&yymsp[-2].minor);
   yy_destructor(yypParser,1128,&yymsp[-1].minor);
   yy_destructor(yypParser,1129,&yymsp[0].minor);
@@ -35091,7 +35094,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2038 "src/parser/mylite_lemon.y"
 {
 }
-#line 35095 "src/parser/generated/mylite_lemon.c"
+#line 35098 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1513: /* start_thread_list ::= start_thread_type */
@@ -35099,7 +35102,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2040 "src/parser/mylite_lemon.y"
 {
 }
-#line 35103 "src/parser/generated/mylite_lemon.c"
+#line 35106 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1514: /* start_thread_list ::= start_thread_list import_comma start_thread_type */
@@ -35107,7 +35110,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2041 "src/parser/mylite_lemon.y"
 {
 }
-#line 35111 "src/parser/generated/mylite_lemon.c"
+#line 35114 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1131,&yymsp[0].minor);
 }
@@ -35119,7 +35122,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2043 "src/parser/mylite_lemon.y"
 {
 }
-#line 35123 "src/parser/generated/mylite_lemon.c"
+#line 35126 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1516: /* start_thread_type ::= SQL_THREAD */
@@ -35129,7 +35132,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2044 "src/parser/mylite_lemon.y"
 {
 }
-#line 35133 "src/parser/generated/mylite_lemon.c"
+#line 35136 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1518: /* start_until_tail ::= UNTIL start_until_spec */
@@ -35137,7 +35140,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2047 "src/parser/mylite_lemon.y"
 {
 }
-#line 35141 "src/parser/generated/mylite_lemon.c"
+#line 35144 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1132,&yymsp[0].minor);
 }
         break;
@@ -35146,7 +35149,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2049 "src/parser/mylite_lemon.y"
 {
 }
-#line 35150 "src/parser/generated/mylite_lemon.c"
+#line 35153 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1133,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -35156,7 +35159,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2050 "src/parser/mylite_lemon.y"
 {
 }
-#line 35160 "src/parser/generated/mylite_lemon.c"
+#line 35163 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1133,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -35166,7 +35169,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2051 "src/parser/mylite_lemon.y"
 {
 }
-#line 35170 "src/parser/generated/mylite_lemon.c"
+#line 35173 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1133,&yymsp[-5].minor);
   yy_destructor(yypParser,718,&yymsp[-4].minor);
   yy_destructor(yypParser,784,&yymsp[-3].minor);
@@ -35180,7 +35183,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2052 "src/parser/mylite_lemon.y"
 {
 }
-#line 35184 "src/parser/generated/mylite_lemon.c"
+#line 35187 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1133,&yymsp[-5].minor);
   yy_destructor(yypParser,1134,&yymsp[-4].minor);
   yy_destructor(yypParser,784,&yymsp[-3].minor);
@@ -35194,7 +35197,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2053 "src/parser/mylite_lemon.y"
 {
 }
-#line 35198 "src/parser/generated/mylite_lemon.c"
+#line 35201 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1133,&yymsp[-5].minor);
   yy_destructor(yypParser,718,&yymsp[-4].minor);
   yy_destructor(yypParser,784,&yymsp[-3].minor);
@@ -35208,7 +35211,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2054 "src/parser/mylite_lemon.y"
 {
 }
-#line 35212 "src/parser/generated/mylite_lemon.c"
+#line 35215 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1133,&yymsp[-5].minor);
   yy_destructor(yypParser,1134,&yymsp[-4].minor);
   yy_destructor(yypParser,784,&yymsp[-3].minor);
@@ -35222,7 +35225,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2055 "src/parser/mylite_lemon.y"
 {
 }
-#line 35226 "src/parser/generated/mylite_lemon.c"
+#line 35229 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1529: /* start_connection_tail ::= start_user_option start_password_option start_default_auth_option start_plugin_dir_option */
@@ -35230,7 +35233,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2061 "src/parser/mylite_lemon.y"
 {
 }
-#line 35234 "src/parser/generated/mylite_lemon.c"
+#line 35237 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1136,&yymsp[-2].minor);
   yy_destructor(yypParser,1137,&yymsp[-1].minor);
   yy_destructor(yypParser,1138,&yymsp[0].minor);
@@ -35242,7 +35245,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2064 "src/parser/mylite_lemon.y"
 {
 }
-#line 35246 "src/parser/generated/mylite_lemon.c"
+#line 35249 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1133,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -35253,7 +35256,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2067 "src/parser/mylite_lemon.y"
 {
 }
-#line 35257 "src/parser/generated/mylite_lemon.c"
+#line 35260 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1133,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -35264,7 +35267,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2070 "src/parser/mylite_lemon.y"
 {
 }
-#line 35268 "src/parser/generated/mylite_lemon.c"
+#line 35271 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1133,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -35274,7 +35277,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2073 "src/parser/mylite_lemon.y"
 {
 }
-#line 35278 "src/parser/generated/mylite_lemon.c"
+#line 35281 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1133,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
@@ -35284,7 +35287,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2076 "src/parser/mylite_lemon.y"
 {
 }
-#line 35288 "src/parser/generated/mylite_lemon.c"
+#line 35291 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1540: /* start_group_replication_options ::= start_group_replication_option */
@@ -35292,7 +35295,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2078 "src/parser/mylite_lemon.y"
 {
 }
-#line 35296 "src/parser/generated/mylite_lemon.c"
+#line 35299 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1541: /* start_group_replication_options ::= start_group_replication_options import_comma start_group_replication_option */
@@ -35300,7 +35303,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2079 "src/parser/mylite_lemon.y"
 {
 }
-#line 35304 "src/parser/generated/mylite_lemon.c"
+#line 35307 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1140,&yymsp[0].minor);
 }
@@ -35310,7 +35313,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2091 "src/parser/mylite_lemon.y"
 {
 }
-#line 35314 "src/parser/generated/mylite_lemon.c"
+#line 35317 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1142,&yymsp[0].minor);
 }
         break;
@@ -35323,7 +35326,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2095 "src/parser/mylite_lemon.y"
 {
 }
-#line 35327 "src/parser/generated/mylite_lemon.c"
+#line 35330 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1548: /* stop_replica_tail ::= start_thread_tail show_channel_tail */
@@ -35331,7 +35334,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2097 "src/parser/mylite_lemon.y"
 {
 }
-#line 35335 "src/parser/generated/mylite_lemon.c"
+#line 35338 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1129,&yymsp[0].minor);
 }
         break;
@@ -35340,7 +35343,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2120 "src/parser/mylite_lemon.y"
 {
 }
-#line 35344 "src/parser/generated/mylite_lemon.c"
+#line 35347 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1553: /* lock_table_list ::= lock_table_spec */
@@ -35348,7 +35351,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2125 "src/parser/mylite_lemon.y"
 {
 }
-#line 35352 "src/parser/generated/mylite_lemon.c"
+#line 35355 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1554: /* lock_table_list ::= lock_table_list import_comma lock_table_spec */
@@ -35356,7 +35359,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2126 "src/parser/mylite_lemon.y"
 {
 }
-#line 35360 "src/parser/generated/mylite_lemon.c"
+#line 35363 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1147,&yymsp[0].minor);
 }
@@ -35366,7 +35369,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2128 "src/parser/mylite_lemon.y"
 {
 }
-#line 35370 "src/parser/generated/mylite_lemon.c"
+#line 35373 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1148,&yymsp[-1].minor);
   yy_destructor(yypParser,1149,&yymsp[0].minor);
 }
@@ -35376,7 +35379,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2129 "src/parser/mylite_lemon.y"
 {
 }
-#line 35380 "src/parser/generated/mylite_lemon.c"
+#line 35383 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1149,&yymsp[0].minor);
 }
         break;
@@ -35385,7 +35388,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2131 "src/parser/mylite_lemon.y"
 {
 }
-#line 35389 "src/parser/generated/mylite_lemon.c"
+#line 35392 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1151,&yymsp[0].minor);
 }
         break;
@@ -35394,7 +35397,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2132 "src/parser/mylite_lemon.y"
 {
 }
-#line 35398 "src/parser/generated/mylite_lemon.c"
+#line 35401 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1561: /* lock_type ::= READ LOCAL */
@@ -35402,7 +35405,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2137 "src/parser/mylite_lemon.y"
 {
 }
-#line 35406 "src/parser/generated/mylite_lemon.c"
+#line 35409 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,392,&yymsp[0].minor);
 }
         break;
@@ -35414,7 +35417,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2138 "src/parser/mylite_lemon.y"
 {
 }
-#line 35418 "src/parser/generated/mylite_lemon.c"
+#line 35421 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1565: /* analyze_table_tail ::= table_admin_optional_binlog table_admin_table_keyword cache_table_ref analyze_table_after_first_table */
@@ -35422,7 +35425,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2173 "src/parser/mylite_lemon.y"
 {
 }
-#line 35426 "src/parser/generated/mylite_lemon.c"
+#line 35429 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1158,&yymsp[-2].minor);
   yy_destructor(yypParser,673,&yymsp[-1].minor);
   yy_destructor(yypParser,1159,&yymsp[0].minor);
@@ -35433,7 +35436,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2176 "src/parser/mylite_lemon.y"
 {
 }
-#line 35437 "src/parser/generated/mylite_lemon.c"
+#line 35440 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1568: /* analyze_table_after_first_table ::= import_comma analyze_table_remaining_list */
@@ -35441,7 +35444,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2177 "src/parser/mylite_lemon.y"
 {
 }
-#line 35445 "src/parser/generated/mylite_lemon.c"
+#line 35448 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1161,&yymsp[0].minor);
 }
         break;
@@ -35450,7 +35453,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2186 "src/parser/mylite_lemon.y"
 {
 }
-#line 35454 "src/parser/generated/mylite_lemon.c"
+#line 35457 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
@@ -35460,7 +35463,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2188 "src/parser/mylite_lemon.y"
 {
 }
-#line 35464 "src/parser/generated/mylite_lemon.c"
+#line 35467 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1162,&yymsp[-4].minor);
   yy_destructor(yypParser,330,&yymsp[-3].minor);
   yy_destructor(yypParser,1163,&yymsp[-2].minor);
@@ -35473,7 +35476,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2189 "src/parser/mylite_lemon.y"
 {
 }
-#line 35477 "src/parser/generated/mylite_lemon.c"
+#line 35480 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1162,&yymsp[-5].minor);
   yy_destructor(yypParser,330,&yymsp[-4].minor);
   yy_destructor(yypParser,1166,&yymsp[-3].minor);
@@ -35487,7 +35490,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2190 "src/parser/mylite_lemon.y"
 {
 }
-#line 35491 "src/parser/generated/mylite_lemon.c"
+#line 35494 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1162,&yymsp[-2].minor);
   yy_destructor(yypParser,330,&yymsp[-1].minor);
   yy_destructor(yypParser,1163,&yymsp[0].minor);
@@ -35498,7 +35501,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2192 "src/parser/mylite_lemon.y"
 {
 }
-#line 35502 "src/parser/generated/mylite_lemon.c"
+#line 35505 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1576: /* analyze_histogram_bucket_tail ::= WITH analyze_histogram_bucket_count analyze_buckets_marker */
@@ -35506,7 +35509,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2195 "src/parser/mylite_lemon.y"
 {
 }
-#line 35510 "src/parser/generated/mylite_lemon.c"
+#line 35513 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1167,&yymsp[-1].minor);
   yy_destructor(yypParser,1168,&yymsp[0].minor);
 }
@@ -35516,7 +35519,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2198 "src/parser/mylite_lemon.y"
 {
 }
-#line 35520 "src/parser/generated/mylite_lemon.c"
+#line 35523 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,396,&yymsp[0].minor);
 }
         break;
@@ -35525,7 +35528,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2199 "src/parser/mylite_lemon.y"
 {
 }
-#line 35529 "src/parser/generated/mylite_lemon.c"
+#line 35532 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,396,&yymsp[0].minor);
 }
         break;
@@ -35534,7 +35537,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2205 "src/parser/mylite_lemon.y"
 {
 }
-#line 35538 "src/parser/generated/mylite_lemon.c"
+#line 35541 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1584: /* table_admin_column_list ::= table_admin_column */
@@ -35542,7 +35545,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2207 "src/parser/mylite_lemon.y"
 {
 }
-#line 35546 "src/parser/generated/mylite_lemon.c"
+#line 35549 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1585: /* table_admin_column_list ::= table_admin_column_list import_comma table_admin_column */
@@ -35550,7 +35553,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2208 "src/parser/mylite_lemon.y"
 {
 }
-#line 35554 "src/parser/generated/mylite_lemon.c"
+#line 35557 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1166,&yymsp[0].minor);
 }
@@ -35560,7 +35563,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2212 "src/parser/mylite_lemon.y"
 {
 }
-#line 35564 "src/parser/generated/mylite_lemon.c"
+#line 35567 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1169,&yymsp[-1].minor);
   yy_destructor(yypParser,1007,&yymsp[0].minor);
 }
@@ -35570,7 +35573,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2215 "src/parser/mylite_lemon.y"
 {
 }
-#line 35574 "src/parser/generated/mylite_lemon.c"
+#line 35577 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1590: /* check_table_option_list ::= check_table_option */
@@ -35578,7 +35581,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2217 "src/parser/mylite_lemon.y"
 {
 }
-#line 35582 "src/parser/generated/mylite_lemon.c"
+#line 35585 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1591: /* check_table_option_list ::= check_table_option_list check_table_option */
@@ -35586,7 +35589,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2218 "src/parser/mylite_lemon.y"
 {
 }
-#line 35590 "src/parser/generated/mylite_lemon.c"
+#line 35593 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1171,&yymsp[0].minor);
 }
         break;
@@ -35595,7 +35598,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2220 "src/parser/mylite_lemon.y"
 {
 }
-#line 35599 "src/parser/generated/mylite_lemon.c"
+#line 35602 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1172,&yymsp[0].minor);
 }
         break;
@@ -35611,7 +35614,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2221 "src/parser/mylite_lemon.y"
 {
 }
-#line 35615 "src/parser/generated/mylite_lemon.c"
+#line 35618 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1594: /* check_table_option ::= QUICK */
@@ -35624,7 +35627,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2222 "src/parser/mylite_lemon.y"
 {
 }
-#line 35628 "src/parser/generated/mylite_lemon.c"
+#line 35631 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1595: /* check_table_option ::= CHANGED */
@@ -35632,7 +35635,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2223 "src/parser/mylite_lemon.y"
 {
 }
-#line 35636 "src/parser/generated/mylite_lemon.c"
+#line 35639 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1596: /* check_table_option ::= FAST */
@@ -35640,7 +35643,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2224 "src/parser/mylite_lemon.y"
 {
 }
-#line 35644 "src/parser/generated/mylite_lemon.c"
+#line 35647 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1597: /* check_table_option ::= MEDIUM */
@@ -35648,7 +35651,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2225 "src/parser/mylite_lemon.y"
 {
 }
-#line 35652 "src/parser/generated/mylite_lemon.c"
+#line 35655 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1598: /* check_upgrade_marker ::= UPGRADE */
@@ -35656,7 +35659,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2227 "src/parser/mylite_lemon.y"
 {
 }
-#line 35660 "src/parser/generated/mylite_lemon.c"
+#line 35663 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1599: /* checksum_table_tail ::= TABLE table_admin_table_list checksum_table_option */
@@ -35664,7 +35667,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2229 "src/parser/mylite_lemon.y"
 {
 }
-#line 35668 "src/parser/generated/mylite_lemon.c"
+#line 35671 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1169,&yymsp[-1].minor);
   yy_destructor(yypParser,1173,&yymsp[0].minor);
 }
@@ -35674,7 +35677,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2235 "src/parser/mylite_lemon.y"
 {
 }
-#line 35678 "src/parser/generated/mylite_lemon.c"
+#line 35681 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1158,&yymsp[-1].minor);
   yy_destructor(yypParser,1169,&yymsp[0].minor);
 }
@@ -35684,7 +35687,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2237 "src/parser/mylite_lemon.y"
 {
 }
-#line 35688 "src/parser/generated/mylite_lemon.c"
+#line 35691 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1158,&yymsp[-2].minor);
   yy_destructor(yypParser,1169,&yymsp[-1].minor);
   yy_destructor(yypParser,1008,&yymsp[0].minor);
@@ -35695,7 +35698,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2240 "src/parser/mylite_lemon.y"
 {
 }
-#line 35699 "src/parser/generated/mylite_lemon.c"
+#line 35702 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1607: /* repair_table_option_list ::= repair_table_option */
@@ -35703,7 +35706,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2242 "src/parser/mylite_lemon.y"
 {
 }
-#line 35707 "src/parser/generated/mylite_lemon.c"
+#line 35710 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1608: /* repair_table_option_list ::= repair_table_option_list repair_table_option */
@@ -35711,7 +35714,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2243 "src/parser/mylite_lemon.y"
 {
 }
-#line 35715 "src/parser/generated/mylite_lemon.c"
+#line 35718 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1175,&yymsp[0].minor);
 }
         break;
@@ -35720,7 +35723,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2247 "src/parser/mylite_lemon.y"
 {
 }
-#line 35724 "src/parser/generated/mylite_lemon.c"
+#line 35727 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1614: /* table_admin_optional_binlog ::= NO_WRITE_TO_BINLOG */
@@ -35731,7 +35734,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2251 "src/parser/mylite_lemon.y"
 {
 }
-#line 35735 "src/parser/generated/mylite_lemon.c"
+#line 35738 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1618: /* table_admin_table_list ::= table_admin_table_list import_comma cache_table_ref */
@@ -35739,7 +35742,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2257 "src/parser/mylite_lemon.y"
 {
 }
-#line 35743 "src/parser/generated/mylite_lemon.c"
+#line 35746 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
@@ -35749,7 +35752,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2266 "src/parser/mylite_lemon.y"
 {
 }
-#line 35753 "src/parser/generated/mylite_lemon.c"
+#line 35756 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1178,&yymsp[-2].minor);
   yy_destructor(yypParser,1179,&yymsp[-1].minor);
   yy_destructor(yypParser,718,&yymsp[0].minor);
@@ -35760,7 +35763,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2267 "src/parser/mylite_lemon.y"
 {
 }
-#line 35764 "src/parser/generated/mylite_lemon.c"
+#line 35767 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1180,&yymsp[-1].minor);
   yy_destructor(yypParser,1181,&yymsp[0].minor);
 }
@@ -35770,7 +35773,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2269 "src/parser/mylite_lemon.y"
 {
 }
-#line 35774 "src/parser/generated/mylite_lemon.c"
+#line 35777 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1178,&yymsp[0].minor);
 }
         break;
@@ -35779,7 +35782,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2270 "src/parser/mylite_lemon.y"
 {
 }
-#line 35783 "src/parser/generated/mylite_lemon.c"
+#line 35786 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1180,&yymsp[0].minor);
 }
         break;
@@ -35788,7 +35791,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2273 "src/parser/mylite_lemon.y"
 {
 }
-#line 35792 "src/parser/generated/mylite_lemon.c"
+#line 35795 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1182,&yymsp[0].minor);
 }
         break;
@@ -35797,7 +35800,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2275 "src/parser/mylite_lemon.y"
 {
 }
-#line 35801 "src/parser/generated/mylite_lemon.c"
+#line 35804 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1626: /* component_install_assignments ::= component_install_assignments import_comma component_install_assignment */
@@ -35805,7 +35808,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2276 "src/parser/mylite_lemon.y"
 {
 }
-#line 35809 "src/parser/generated/mylite_lemon.c"
+#line 35812 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1183,&yymsp[0].minor);
 }
@@ -35815,7 +35818,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2278 "src/parser/mylite_lemon.y"
 {
 }
-#line 35819 "src/parser/generated/mylite_lemon.c"
+#line 35822 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1185,&yymsp[-2].minor);
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1186,&yymsp[0].minor);
@@ -35832,7 +35835,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2281 "src/parser/mylite_lemon.y"
 {
 }
-#line 35836 "src/parser/generated/mylite_lemon.c"
+#line 35839 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1630: /* component_install_assignment_scope ::= PERSIST */
@@ -35844,7 +35847,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2282 "src/parser/mylite_lemon.y"
 {
 }
-#line 35848 "src/parser/generated/mylite_lemon.c"
+#line 35851 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1632: /* component_install_name ::= cache_name_part DOT cache_name_part */
@@ -35853,7 +35856,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2285 "src/parser/mylite_lemon.y"
 {
 }
-#line 35857 "src/parser/generated/mylite_lemon.c"
+#line 35860 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
@@ -35863,7 +35866,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2287 "src/parser/mylite_lemon.y"
 {
 }
-#line 35867 "src/parser/generated/mylite_lemon.c"
+#line 35870 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1634: /* component_install_value ::= component_install_value component_install_value_token */
@@ -35871,7 +35874,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2288 "src/parser/mylite_lemon.y"
 {
 }
-#line 35875 "src/parser/generated/mylite_lemon.c"
+#line 35878 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1187,&yymsp[0].minor);
 }
         break;
@@ -35881,7 +35884,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2294 "src/parser/mylite_lemon.y"
 {
 }
-#line 35885 "src/parser/generated/mylite_lemon.c"
+#line 35888 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1188,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -35892,7 +35895,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2295 "src/parser/mylite_lemon.y"
 {
 }
-#line 35896 "src/parser/generated/mylite_lemon.c"
+#line 35899 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1188,&yymsp[-1].minor);
   yy_destructor(yypParser,352,&yymsp[0].minor);
 }
@@ -35903,7 +35906,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2296 "src/parser/mylite_lemon.y"
 {
 }
-#line 35907 "src/parser/generated/mylite_lemon.c"
+#line 35910 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1188,&yymsp[-1].minor);
   yy_destructor(yypParser,354,&yymsp[0].minor);
 }
@@ -35913,7 +35916,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2299 "src/parser/mylite_lemon.y"
 {
 }
-#line 35917 "src/parser/generated/mylite_lemon.c"
+#line 35920 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1189,&yymsp[0].minor);
 }
         break;
@@ -35922,7 +35925,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2310 "src/parser/mylite_lemon.y"
 {
 }
-#line 35926 "src/parser/generated/mylite_lemon.c"
+#line 35929 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1653: /* component_file_list ::= component_file_list import_comma component_file */
@@ -35930,7 +35933,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2311 "src/parser/mylite_lemon.y"
 {
 }
-#line 35934 "src/parser/generated/mylite_lemon.c"
+#line 35937 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1190,&yymsp[0].minor);
 }
@@ -35940,7 +35943,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2323 "src/parser/mylite_lemon.y"
 {
 }
-#line 35944 "src/parser/generated/mylite_lemon.c"
+#line 35947 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1658: /* import_file_list ::= import_file_list import_comma import_file */
@@ -35948,7 +35951,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2324 "src/parser/mylite_lemon.y"
 {
 }
-#line 35952 "src/parser/generated/mylite_lemon.c"
+#line 35955 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1192,&yymsp[0].minor);
 }
@@ -35958,7 +35961,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2337 "src/parser/mylite_lemon.y"
 {
 }
-#line 35962 "src/parser/generated/mylite_lemon.c"
+#line 35965 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1662: /* cache_table_list ::= cache_table_list import_comma cache_table_spec */
@@ -35966,7 +35969,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2338 "src/parser/mylite_lemon.y"
 {
 }
-#line 35970 "src/parser/generated/mylite_lemon.c"
+#line 35973 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1196,&yymsp[0].minor);
 }
@@ -35976,7 +35979,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2341 "src/parser/mylite_lemon.y"
 {
 }
-#line 35980 "src/parser/generated/mylite_lemon.c"
+#line 35983 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1118,&yymsp[-1].minor);
   yy_destructor(yypParser,1119,&yymsp[0].minor);
 }
@@ -35986,7 +35989,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2342 "src/parser/mylite_lemon.y"
 {
 }
-#line 35990 "src/parser/generated/mylite_lemon.c"
+#line 35993 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-3].minor);
   yy_destructor(yypParser,348,&yymsp[-2].minor);
   yy_destructor(yypParser,1197,&yymsp[-1].minor);
@@ -35998,7 +36001,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2343 "src/parser/mylite_lemon.y"
 {
 }
-#line 36002 "src/parser/generated/mylite_lemon.c"
+#line 36005 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,127,&yymsp[-5].minor);
   yy_destructor(yypParser,348,&yymsp[-4].minor);
   yy_destructor(yypParser,1197,&yymsp[-3].minor);
@@ -36012,7 +36015,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2346 "src/parser/mylite_lemon.y"
 {
 }
-#line 36016 "src/parser/generated/mylite_lemon.c"
+#line 36019 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1670: /* cache_partition_names ::= cache_partition_names import_comma cache_name_part */
@@ -36020,7 +36023,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2349 "src/parser/mylite_lemon.y"
 {
 }
-#line 36024 "src/parser/generated/mylite_lemon.c"
+#line 36027 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
@@ -36034,7 +36037,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2358 "src/parser/mylite_lemon.y"
 {
 }
-#line 36038 "src/parser/generated/mylite_lemon.c"
+#line 36041 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1678: /* cache_name_part ::= COMPONENT */
@@ -36046,7 +36049,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2360 "src/parser/mylite_lemon.y"
 {
 }
-#line 36050 "src/parser/generated/mylite_lemon.c"
+#line 36053 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1679: /* cache_name_part ::= COUNT */
@@ -36058,7 +36061,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2361 "src/parser/mylite_lemon.y"
 {
 }
-#line 36062 "src/parser/generated/mylite_lemon.c"
+#line 36065 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1684: /* cache_name_part ::= EVENTS */
@@ -36070,7 +36073,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2366 "src/parser/mylite_lemon.y"
 {
 }
-#line 36074 "src/parser/generated/mylite_lemon.c"
+#line 36077 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1686: /* cache_name_part ::= FULL */
@@ -36083,7 +36086,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2368 "src/parser/mylite_lemon.y"
 {
 }
-#line 36087 "src/parser/generated/mylite_lemon.c"
+#line 36090 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1687: /* cache_name_part ::= GRANTS */
@@ -36094,7 +36097,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2369 "src/parser/mylite_lemon.y"
 {
 }
-#line 36098 "src/parser/generated/mylite_lemon.c"
+#line 36101 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1688: /* cache_name_part ::= PLUGIN */
@@ -36107,7 +36110,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2370 "src/parser/mylite_lemon.y"
 {
 }
-#line 36111 "src/parser/generated/mylite_lemon.c"
+#line 36114 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1689: /* cache_name_part ::= PROCESSLIST */
@@ -36120,7 +36123,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2371 "src/parser/mylite_lemon.y"
 {
 }
-#line 36124 "src/parser/generated/mylite_lemon.c"
+#line 36127 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1693: /* cache_name_part ::= TRIGGERS */
@@ -36131,7 +36134,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2375 "src/parser/mylite_lemon.y"
 {
 }
-#line 36135 "src/parser/generated/mylite_lemon.c"
+#line 36138 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1695: /* cache_name_part ::= VARIABLES */
@@ -36143,7 +36146,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2377 "src/parser/mylite_lemon.y"
 {
 }
-#line 36147 "src/parser/generated/mylite_lemon.c"
+#line 36150 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1697: /* cache_key_list ::= LP cache_key_names RP */
@@ -36151,7 +36154,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2380 "src/parser/mylite_lemon.y"
 {
 }
-#line 36155 "src/parser/generated/mylite_lemon.c"
+#line 36158 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1199,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -36161,7 +36164,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2382 "src/parser/mylite_lemon.y"
 {
 }
-#line 36165 "src/parser/generated/mylite_lemon.c"
+#line 36168 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1699: /* cache_key_names ::= cache_key_names import_comma cache_key_name */
@@ -36169,7 +36172,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2383 "src/parser/mylite_lemon.y"
 {
 }
-#line 36173 "src/parser/generated/mylite_lemon.c"
+#line 36176 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1200,&yymsp[0].minor);
 }
@@ -36179,7 +36182,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2396 "src/parser/mylite_lemon.y"
 {
 }
-#line 36183 "src/parser/generated/mylite_lemon.c"
+#line 36186 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1703: /* kill_tail ::= kill_mode kill_expression */
@@ -36187,7 +36190,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2397 "src/parser/mylite_lemon.y"
 {
 }
-#line 36191 "src/parser/generated/mylite_lemon.c"
+#line 36194 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1202,&yymsp[0].minor);
 }
         break;
@@ -36196,7 +36199,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2402 "src/parser/mylite_lemon.y"
 {
 }
-#line 36200 "src/parser/generated/mylite_lemon.c"
+#line 36203 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
         break;
@@ -36205,7 +36208,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2413 "src/parser/mylite_lemon.y"
 {
 }
-#line 36209 "src/parser/generated/mylite_lemon.c"
+#line 36212 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1709: /* reset_tail ::= PERSIST reset_persist_tail */
@@ -36213,7 +36216,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2414 "src/parser/mylite_lemon.y"
 {
 }
-#line 36217 "src/parser/generated/mylite_lemon.c"
+#line 36220 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1206,&yymsp[0].minor);
 }
         break;
@@ -36222,7 +36225,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2416 "src/parser/mylite_lemon.y"
 {
 }
-#line 36226 "src/parser/generated/mylite_lemon.c"
+#line 36229 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1711: /* reset_options ::= reset_options import_comma reset_option */
@@ -36230,7 +36233,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2417 "src/parser/mylite_lemon.y"
 {
 }
-#line 36234 "src/parser/generated/mylite_lemon.c"
+#line 36237 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1207,&yymsp[0].minor);
 }
@@ -36240,7 +36243,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2419 "src/parser/mylite_lemon.y"
 {
 }
-#line 36244 "src/parser/generated/mylite_lemon.c"
+#line 36247 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,512,&yymsp[-3].minor);
   yy_destructor(yypParser,420,&yymsp[-2].minor);
   yy_destructor(yypParser,1208,&yymsp[-1].minor);
@@ -36252,7 +36255,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2423 "src/parser/mylite_lemon.y"
 {
 }
-#line 36256 "src/parser/generated/mylite_lemon.c"
+#line 36259 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1210,&yymsp[0].minor);
 }
         break;
@@ -36261,7 +36264,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2429 "src/parser/mylite_lemon.y"
 {
 }
-#line 36265 "src/parser/generated/mylite_lemon.c"
+#line 36268 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1211,&yymsp[0].minor);
 }
         break;
@@ -36270,7 +36273,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2435 "src/parser/mylite_lemon.y"
 {
 }
-#line 36274 "src/parser/generated/mylite_lemon.c"
+#line 36277 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1721: /* reset_persist_tail ::= reset_persist_target */
@@ -36278,7 +36281,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2438 "src/parser/mylite_lemon.y"
 {
 }
-#line 36282 "src/parser/generated/mylite_lemon.c"
+#line 36285 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1722: /* reset_persist_tail ::= IF reset_exists reset_persist_target */
@@ -36286,7 +36289,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2439 "src/parser/mylite_lemon.y"
 {
 }
-#line 36290 "src/parser/generated/mylite_lemon.c"
+#line 36293 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,819,&yymsp[-1].minor);
   yy_destructor(yypParser,1212,&yymsp[0].minor);
 }
@@ -36296,7 +36299,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2443 "src/parser/mylite_lemon.y"
 {
 }
-#line 36300 "src/parser/generated/mylite_lemon.c"
+#line 36303 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1725: /* reset_persist_target ::= reset_persist_name DOT reset_persist_name */
@@ -36304,7 +36307,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2444 "src/parser/mylite_lemon.y"
 {
 }
-#line 36308 "src/parser/generated/mylite_lemon.c"
+#line 36311 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,1213,&yymsp[0].minor);
 }
@@ -36316,7 +36319,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2450 "src/parser/mylite_lemon.y"
 {
 }
-#line 36320 "src/parser/generated/mylite_lemon.c"
+#line 36323 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1730: /* reset_replica_tail ::= ALL replication_channel_clause */
@@ -36324,7 +36327,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2451 "src/parser/mylite_lemon.y"
 {
 }
-#line 36328 "src/parser/generated/mylite_lemon.c"
+#line 36331 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1214,&yymsp[0].minor);
 }
         break;
@@ -36333,7 +36336,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2453 "src/parser/mylite_lemon.y"
 {
 }
-#line 36337 "src/parser/generated/mylite_lemon.c"
+#line 36340 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1063,&yymsp[-1].minor);
   yy_destructor(yypParser,1215,&yymsp[0].minor);
 }
@@ -36343,7 +36346,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2455 "src/parser/mylite_lemon.y"
 {
 }
-#line 36347 "src/parser/generated/mylite_lemon.c"
+#line 36350 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1734: /* purge_tail ::= TO purge_log_name */
@@ -36351,7 +36354,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2463 "src/parser/mylite_lemon.y"
 {
 }
-#line 36355 "src/parser/generated/mylite_lemon.c"
+#line 36358 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1218,&yymsp[0].minor);
 }
         break;
@@ -36360,7 +36363,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2464 "src/parser/mylite_lemon.y"
 {
 }
-#line 36364 "src/parser/generated/mylite_lemon.c"
+#line 36367 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,668,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
@@ -36370,7 +36373,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2482 "src/parser/mylite_lemon.y"
 {
 }
-#line 36374 "src/parser/generated/mylite_lemon.c"
+#line 36377 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,66,&yymsp[-2].minor);
   yy_destructor(yypParser,1223,&yymsp[-1].minor);
   yy_destructor(yypParser,1222,&yymsp[0].minor);
@@ -36381,7 +36384,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2483 "src/parser/mylite_lemon.y"
 {
 }
-#line 36385 "src/parser/generated/mylite_lemon.c"
+#line 36388 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1224,&yymsp[-3].minor);
   yy_destructor(yypParser,463,&yymsp[-2].minor);
   yy_destructor(yypParser,1225,&yymsp[-1].minor);
@@ -36394,7 +36397,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2485 "src/parser/mylite_lemon.y"
 {
 }
-#line 36398 "src/parser/generated/mylite_lemon.c"
+#line 36401 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1742: /* change_replication_filters ::= change_replication_filter */
@@ -36402,7 +36405,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2487 "src/parser/mylite_lemon.y"
 {
 }
-#line 36406 "src/parser/generated/mylite_lemon.c"
+#line 36409 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1743: /* change_replication_filters ::= change_replication_filters import_comma change_replication_filter */
@@ -36410,7 +36413,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2488 "src/parser/mylite_lemon.y"
 {
 }
-#line 36414 "src/parser/generated/mylite_lemon.c"
+#line 36417 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1226,&yymsp[0].minor);
 }
@@ -36420,7 +36423,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2490 "src/parser/mylite_lemon.y"
 {
 }
-#line 36424 "src/parser/generated/mylite_lemon.c"
+#line 36427 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-3].minor);
   yy_destructor(yypParser,348,&yymsp[-2].minor);
   yy_destructor(yypParser,1228,&yymsp[-1].minor);
@@ -36432,7 +36435,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2492 "src/parser/mylite_lemon.y"
 {
 }
-#line 36436 "src/parser/generated/mylite_lemon.c"
+#line 36439 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1746: /* change_replication_filter_name ::= REPLICATE_IGNORE_DB */
@@ -36440,7 +36443,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2493 "src/parser/mylite_lemon.y"
 {
 }
-#line 36444 "src/parser/generated/mylite_lemon.c"
+#line 36447 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1747: /* change_replication_filter_name ::= REPLICATE_DO_TABLE */
@@ -36448,7 +36451,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2494 "src/parser/mylite_lemon.y"
 {
 }
-#line 36452 "src/parser/generated/mylite_lemon.c"
+#line 36455 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1748: /* change_replication_filter_name ::= REPLICATE_IGNORE_TABLE */
@@ -36456,7 +36459,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2495 "src/parser/mylite_lemon.y"
 {
 }
-#line 36460 "src/parser/generated/mylite_lemon.c"
+#line 36463 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1749: /* change_replication_filter_name ::= REPLICATE_WILD_DO_TABLE */
@@ -36464,7 +36467,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2496 "src/parser/mylite_lemon.y"
 {
 }
-#line 36468 "src/parser/generated/mylite_lemon.c"
+#line 36471 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1750: /* change_replication_filter_name ::= REPLICATE_WILD_IGNORE_TABLE */
@@ -36472,7 +36475,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2497 "src/parser/mylite_lemon.y"
 {
 }
-#line 36476 "src/parser/generated/mylite_lemon.c"
+#line 36479 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1751: /* change_replication_filter_name ::= REPLICATE_REWRITE_DB */
@@ -36480,7 +36483,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2498 "src/parser/mylite_lemon.y"
 {
 }
-#line 36484 "src/parser/generated/mylite_lemon.c"
+#line 36487 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1753: /* change_replication_filter_contents ::= change_replication_filter_contents change_replication_filter_token */
@@ -36488,7 +36491,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2501 "src/parser/mylite_lemon.y"
 {
 }
-#line 36492 "src/parser/generated/mylite_lemon.c"
+#line 36495 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1229,&yymsp[0].minor);
 }
         break;
@@ -36497,7 +36500,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2508 "src/parser/mylite_lemon.y"
 {
 }
-#line 36501 "src/parser/generated/mylite_lemon.c"
+#line 36504 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1228,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -36507,7 +36510,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2510 "src/parser/mylite_lemon.y"
 {
 }
-#line 36511 "src/parser/generated/mylite_lemon.c"
+#line 36514 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1761: /* change_source_options ::= change_source_options import_comma change_source_option */
@@ -36515,7 +36518,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2511 "src/parser/mylite_lemon.y"
 {
 }
-#line 36519 "src/parser/generated/mylite_lemon.c"
+#line 36522 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1230,&yymsp[0].minor);
 }
@@ -36526,7 +36529,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2513 "src/parser/mylite_lemon.y"
 {
 }
-#line 36530 "src/parser/generated/mylite_lemon.c"
+#line 36533 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1232,&yymsp[0].minor);
 }
@@ -36537,7 +36540,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2514 "src/parser/mylite_lemon.y"
 {
 }
-#line 36541 "src/parser/generated/mylite_lemon.c"
+#line 36544 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1233,&yymsp[0].minor);
 }
@@ -36548,7 +36551,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2515 "src/parser/mylite_lemon.y"
 {
 }
-#line 36552 "src/parser/generated/mylite_lemon.c"
+#line 36555 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1234,&yymsp[0].minor);
 }
@@ -36559,7 +36562,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2516 "src/parser/mylite_lemon.y"
 {
 }
-#line 36563 "src/parser/generated/mylite_lemon.c"
+#line 36566 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1235,&yymsp[0].minor);
 }
@@ -36570,7 +36573,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2517 "src/parser/mylite_lemon.y"
 {
 }
-#line 36574 "src/parser/generated/mylite_lemon.c"
+#line 36577 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1236,&yymsp[0].minor);
 }
@@ -36581,7 +36584,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2518 "src/parser/mylite_lemon.y"
 {
 }
-#line 36585 "src/parser/generated/mylite_lemon.c"
+#line 36588 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1238,&yymsp[0].minor);
 }
@@ -36592,7 +36595,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2519 "src/parser/mylite_lemon.y"
 {
 }
-#line 36596 "src/parser/generated/mylite_lemon.c"
+#line 36599 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1240,&yymsp[0].minor);
 }
@@ -36602,7 +36605,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2520 "src/parser/mylite_lemon.y"
 {
 }
-#line 36606 "src/parser/generated/mylite_lemon.c"
+#line 36609 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1232,&yymsp[0].minor);
 }
@@ -36612,7 +36615,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2521 "src/parser/mylite_lemon.y"
 {
 }
-#line 36616 "src/parser/generated/mylite_lemon.c"
+#line 36619 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1238,&yymsp[0].minor);
 }
@@ -36622,7 +36625,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2522 "src/parser/mylite_lemon.y"
 {
 }
-#line 36626 "src/parser/generated/mylite_lemon.c"
+#line 36629 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1240,&yymsp[0].minor);
 }
@@ -36632,7 +36635,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2524 "src/parser/mylite_lemon.y"
 {
 }
-#line 36636 "src/parser/generated/mylite_lemon.c"
+#line 36639 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1773: /* change_source_string_option_name ::= SOURCE_HOST */
@@ -36640,7 +36643,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2525 "src/parser/mylite_lemon.y"
 {
 }
-#line 36644 "src/parser/generated/mylite_lemon.c"
+#line 36647 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1774: /* change_source_string_option_name ::= SOURCE_USER */
@@ -36648,7 +36651,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2526 "src/parser/mylite_lemon.y"
 {
 }
-#line 36652 "src/parser/generated/mylite_lemon.c"
+#line 36655 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1775: /* change_source_string_option_name ::= SOURCE_PASSWORD */
@@ -36656,7 +36659,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2527 "src/parser/mylite_lemon.y"
 {
 }
-#line 36660 "src/parser/generated/mylite_lemon.c"
+#line 36663 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1776: /* change_source_string_option_name ::= SOURCE_LOG_FILE */
@@ -36664,7 +36667,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2528 "src/parser/mylite_lemon.y"
 {
 }
-#line 36668 "src/parser/generated/mylite_lemon.c"
+#line 36671 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1777: /* change_source_string_option_name ::= SOURCE_COMPRESSION_ALGORITHMS */
@@ -36672,7 +36675,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2529 "src/parser/mylite_lemon.y"
 {
 }
-#line 36676 "src/parser/generated/mylite_lemon.c"
+#line 36679 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1778: /* change_source_string_option_name ::= SOURCE_SSL_CA */
@@ -36680,7 +36683,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2530 "src/parser/mylite_lemon.y"
 {
 }
-#line 36684 "src/parser/generated/mylite_lemon.c"
+#line 36687 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1779: /* change_source_string_option_name ::= SOURCE_SSL_CAPATH */
@@ -36688,7 +36691,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2531 "src/parser/mylite_lemon.y"
 {
 }
-#line 36692 "src/parser/generated/mylite_lemon.c"
+#line 36695 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1780: /* change_source_string_option_name ::= SOURCE_SSL_CERT */
@@ -36696,7 +36699,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2532 "src/parser/mylite_lemon.y"
 {
 }
-#line 36700 "src/parser/generated/mylite_lemon.c"
+#line 36703 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1781: /* change_source_string_option_name ::= SOURCE_SSL_CRL */
@@ -36704,7 +36707,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2533 "src/parser/mylite_lemon.y"
 {
 }
-#line 36708 "src/parser/generated/mylite_lemon.c"
+#line 36711 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1782: /* change_source_string_option_name ::= SOURCE_SSL_CRLPATH */
@@ -36712,7 +36715,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2534 "src/parser/mylite_lemon.y"
 {
 }
-#line 36716 "src/parser/generated/mylite_lemon.c"
+#line 36719 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1783: /* change_source_string_option_name ::= SOURCE_SSL_KEY */
@@ -36720,7 +36723,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2535 "src/parser/mylite_lemon.y"
 {
 }
-#line 36724 "src/parser/generated/mylite_lemon.c"
+#line 36727 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1784: /* change_source_string_option_name ::= SOURCE_SSL_CIPHER */
@@ -36728,7 +36731,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2536 "src/parser/mylite_lemon.y"
 {
 }
-#line 36732 "src/parser/generated/mylite_lemon.c"
+#line 36735 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1785: /* change_source_string_option_name ::= SOURCE_TLS_VERSION */
@@ -36736,7 +36739,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2537 "src/parser/mylite_lemon.y"
 {
 }
-#line 36740 "src/parser/generated/mylite_lemon.c"
+#line 36743 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1786: /* change_source_string_option_name ::= SOURCE_TLS_CIPHERSUITES */
@@ -36744,7 +36747,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2538 "src/parser/mylite_lemon.y"
 {
 }
-#line 36748 "src/parser/generated/mylite_lemon.c"
+#line 36751 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1787: /* change_source_string_option_name ::= SOURCE_PUBLIC_KEY_PATH */
@@ -36752,7 +36755,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2539 "src/parser/mylite_lemon.y"
 {
 }
-#line 36756 "src/parser/generated/mylite_lemon.c"
+#line 36759 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1788: /* change_source_number_option_name ::= SOURCE_PORT */
@@ -36760,7 +36763,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2541 "src/parser/mylite_lemon.y"
 {
 }
-#line 36764 "src/parser/generated/mylite_lemon.c"
+#line 36767 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1789: /* change_source_number_option_name ::= SOURCE_LOG_POS */
@@ -36768,7 +36771,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2542 "src/parser/mylite_lemon.y"
 {
 }
-#line 36772 "src/parser/generated/mylite_lemon.c"
+#line 36775 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1790: /* change_source_number_option_name ::= SOURCE_HEARTBEAT_PERIOD */
@@ -36776,7 +36779,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2543 "src/parser/mylite_lemon.y"
 {
 }
-#line 36780 "src/parser/generated/mylite_lemon.c"
+#line 36783 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1791: /* change_source_number_option_name ::= SOURCE_CONNECT_RETRY */
@@ -36784,7 +36787,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2544 "src/parser/mylite_lemon.y"
 {
 }
-#line 36788 "src/parser/generated/mylite_lemon.c"
+#line 36791 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1792: /* change_source_number_option_name ::= SOURCE_RETRY_COUNT */
@@ -36792,7 +36795,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2545 "src/parser/mylite_lemon.y"
 {
 }
-#line 36796 "src/parser/generated/mylite_lemon.c"
+#line 36799 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1793: /* change_source_number_option_name ::= SOURCE_DELAY */
@@ -36800,7 +36803,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2546 "src/parser/mylite_lemon.y"
 {
 }
-#line 36804 "src/parser/generated/mylite_lemon.c"
+#line 36807 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1794: /* change_source_number_option_name ::= SOURCE_ZSTD_COMPRESSION_LEVEL */
@@ -36808,7 +36811,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2547 "src/parser/mylite_lemon.y"
 {
 }
-#line 36812 "src/parser/generated/mylite_lemon.c"
+#line 36815 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1795: /* change_source_boolean_option_name ::= SOURCE_AUTO_POSITION */
@@ -36816,7 +36819,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2549 "src/parser/mylite_lemon.y"
 {
 }
-#line 36820 "src/parser/generated/mylite_lemon.c"
+#line 36823 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1796: /* change_source_boolean_option_name ::= SOURCE_SSL */
@@ -36824,7 +36827,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2550 "src/parser/mylite_lemon.y"
 {
 }
-#line 36828 "src/parser/generated/mylite_lemon.c"
+#line 36831 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1797: /* change_source_boolean_option_name ::= SOURCE_SSL_VERIFY_SERVER_CERT */
@@ -36832,7 +36835,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2551 "src/parser/mylite_lemon.y"
 {
 }
-#line 36836 "src/parser/generated/mylite_lemon.c"
+#line 36839 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1798: /* change_source_boolean_option_name ::= GET_SOURCE_PUBLIC_KEY */
@@ -36840,7 +36843,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2552 "src/parser/mylite_lemon.y"
 {
 }
-#line 36844 "src/parser/generated/mylite_lemon.c"
+#line 36847 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1799: /* change_master_options ::= change_master_option */
@@ -36848,7 +36851,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2554 "src/parser/mylite_lemon.y"
 {
 }
-#line 36852 "src/parser/generated/mylite_lemon.c"
+#line 36855 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1800: /* change_master_options ::= change_master_options import_comma change_master_option */
@@ -36856,7 +36859,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2555 "src/parser/mylite_lemon.y"
 {
 }
-#line 36860 "src/parser/generated/mylite_lemon.c"
+#line 36863 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1244,&yymsp[0].minor);
 }
@@ -36866,7 +36869,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2564 "src/parser/mylite_lemon.y"
 {
 }
-#line 36870 "src/parser/generated/mylite_lemon.c"
+#line 36873 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1232,&yymsp[0].minor);
 }
@@ -36876,7 +36879,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2565 "src/parser/mylite_lemon.y"
 {
 }
-#line 36880 "src/parser/generated/mylite_lemon.c"
+#line 36883 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1238,&yymsp[0].minor);
 }
@@ -36886,7 +36889,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2566 "src/parser/mylite_lemon.y"
 {
 }
-#line 36890 "src/parser/generated/mylite_lemon.c"
+#line 36893 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1240,&yymsp[0].minor);
 }
@@ -36896,7 +36899,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2568 "src/parser/mylite_lemon.y"
 {
 }
-#line 36900 "src/parser/generated/mylite_lemon.c"
+#line 36903 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1812: /* change_master_string_option_name ::= MASTER_HOST */
@@ -36904,7 +36907,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2569 "src/parser/mylite_lemon.y"
 {
 }
-#line 36908 "src/parser/generated/mylite_lemon.c"
+#line 36911 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1813: /* change_master_string_option_name ::= MASTER_USER */
@@ -36912,7 +36915,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2570 "src/parser/mylite_lemon.y"
 {
 }
-#line 36916 "src/parser/generated/mylite_lemon.c"
+#line 36919 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1814: /* change_master_string_option_name ::= MASTER_PASSWORD */
@@ -36920,7 +36923,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2571 "src/parser/mylite_lemon.y"
 {
 }
-#line 36924 "src/parser/generated/mylite_lemon.c"
+#line 36927 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1815: /* change_master_string_option_name ::= MASTER_LOG_FILE */
@@ -36928,7 +36931,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2572 "src/parser/mylite_lemon.y"
 {
 }
-#line 36932 "src/parser/generated/mylite_lemon.c"
+#line 36935 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1816: /* change_master_string_option_name ::= MASTER_COMPRESSION_ALGORITHMS */
@@ -36936,7 +36939,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2573 "src/parser/mylite_lemon.y"
 {
 }
-#line 36940 "src/parser/generated/mylite_lemon.c"
+#line 36943 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1817: /* change_master_string_option_name ::= MASTER_SSL_CA */
@@ -36944,7 +36947,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2574 "src/parser/mylite_lemon.y"
 {
 }
-#line 36948 "src/parser/generated/mylite_lemon.c"
+#line 36951 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1818: /* change_master_string_option_name ::= MASTER_SSL_CAPATH */
@@ -36952,7 +36955,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2575 "src/parser/mylite_lemon.y"
 {
 }
-#line 36956 "src/parser/generated/mylite_lemon.c"
+#line 36959 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1819: /* change_master_string_option_name ::= MASTER_SSL_CERT */
@@ -36960,7 +36963,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2576 "src/parser/mylite_lemon.y"
 {
 }
-#line 36964 "src/parser/generated/mylite_lemon.c"
+#line 36967 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1820: /* change_master_string_option_name ::= MASTER_SSL_CRL */
@@ -36968,7 +36971,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2577 "src/parser/mylite_lemon.y"
 {
 }
-#line 36972 "src/parser/generated/mylite_lemon.c"
+#line 36975 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1821: /* change_master_string_option_name ::= MASTER_SSL_CRLPATH */
@@ -36976,7 +36979,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2578 "src/parser/mylite_lemon.y"
 {
 }
-#line 36980 "src/parser/generated/mylite_lemon.c"
+#line 36983 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1822: /* change_master_string_option_name ::= MASTER_SSL_KEY */
@@ -36984,7 +36987,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2579 "src/parser/mylite_lemon.y"
 {
 }
-#line 36988 "src/parser/generated/mylite_lemon.c"
+#line 36991 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1823: /* change_master_string_option_name ::= MASTER_SSL_CIPHER */
@@ -36992,7 +36995,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2580 "src/parser/mylite_lemon.y"
 {
 }
-#line 36996 "src/parser/generated/mylite_lemon.c"
+#line 36999 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1824: /* change_master_string_option_name ::= MASTER_TLS_VERSION */
@@ -37000,7 +37003,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2581 "src/parser/mylite_lemon.y"
 {
 }
-#line 37004 "src/parser/generated/mylite_lemon.c"
+#line 37007 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1825: /* change_master_string_option_name ::= MASTER_TLS_CIPHERSUITES */
@@ -37008,7 +37011,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2582 "src/parser/mylite_lemon.y"
 {
 }
-#line 37012 "src/parser/generated/mylite_lemon.c"
+#line 37015 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1826: /* change_master_string_option_name ::= MASTER_PUBLIC_KEY_PATH */
@@ -37016,7 +37019,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2583 "src/parser/mylite_lemon.y"
 {
 }
-#line 37020 "src/parser/generated/mylite_lemon.c"
+#line 37023 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1827: /* change_master_number_option_name ::= MASTER_PORT */
@@ -37024,7 +37027,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2585 "src/parser/mylite_lemon.y"
 {
 }
-#line 37028 "src/parser/generated/mylite_lemon.c"
+#line 37031 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1828: /* change_master_number_option_name ::= MASTER_LOG_POS */
@@ -37032,7 +37035,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2586 "src/parser/mylite_lemon.y"
 {
 }
-#line 37036 "src/parser/generated/mylite_lemon.c"
+#line 37039 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1829: /* change_master_number_option_name ::= MASTER_HEARTBEAT_PERIOD */
@@ -37040,7 +37043,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2587 "src/parser/mylite_lemon.y"
 {
 }
-#line 37044 "src/parser/generated/mylite_lemon.c"
+#line 37047 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1830: /* change_master_number_option_name ::= MASTER_CONNECT_RETRY */
@@ -37048,7 +37051,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2588 "src/parser/mylite_lemon.y"
 {
 }
-#line 37052 "src/parser/generated/mylite_lemon.c"
+#line 37055 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1831: /* change_master_number_option_name ::= MASTER_RETRY_COUNT */
@@ -37056,7 +37059,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2589 "src/parser/mylite_lemon.y"
 {
 }
-#line 37060 "src/parser/generated/mylite_lemon.c"
+#line 37063 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1832: /* change_master_number_option_name ::= MASTER_DELAY */
@@ -37064,7 +37067,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2590 "src/parser/mylite_lemon.y"
 {
 }
-#line 37068 "src/parser/generated/mylite_lemon.c"
+#line 37071 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1833: /* change_master_number_option_name ::= MASTER_ZSTD_COMPRESSION_LEVEL */
@@ -37072,7 +37075,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2591 "src/parser/mylite_lemon.y"
 {
 }
-#line 37076 "src/parser/generated/mylite_lemon.c"
+#line 37079 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1834: /* change_master_boolean_option_name ::= MASTER_AUTO_POSITION */
@@ -37080,7 +37083,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2593 "src/parser/mylite_lemon.y"
 {
 }
-#line 37084 "src/parser/generated/mylite_lemon.c"
+#line 37087 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1835: /* change_master_boolean_option_name ::= MASTER_SSL */
@@ -37088,7 +37091,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2594 "src/parser/mylite_lemon.y"
 {
 }
-#line 37092 "src/parser/generated/mylite_lemon.c"
+#line 37095 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1836: /* change_master_boolean_option_name ::= MASTER_SSL_VERIFY_SERVER_CERT */
@@ -37096,7 +37099,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2595 "src/parser/mylite_lemon.y"
 {
 }
-#line 37100 "src/parser/generated/mylite_lemon.c"
+#line 37103 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1837: /* change_master_boolean_option_name ::= GET_MASTER_PUBLIC_KEY */
@@ -37104,7 +37107,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2596 "src/parser/mylite_lemon.y"
 {
 }
-#line 37108 "src/parser/generated/mylite_lemon.c"
+#line 37111 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1838: /* change_shared_string_option_name ::= NETWORK_NAMESPACE */
@@ -37112,7 +37115,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2598 "src/parser/mylite_lemon.y"
 {
 }
-#line 37116 "src/parser/generated/mylite_lemon.c"
+#line 37119 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1839: /* change_shared_string_option_name ::= RELAY_LOG_FILE */
@@ -37120,7 +37123,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2599 "src/parser/mylite_lemon.y"
 {
 }
-#line 37124 "src/parser/generated/mylite_lemon.c"
+#line 37127 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1840: /* change_shared_number_option_name ::= RELAY_LOG_POS */
@@ -37128,7 +37131,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2601 "src/parser/mylite_lemon.y"
 {
 }
-#line 37132 "src/parser/generated/mylite_lemon.c"
+#line 37135 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1841: /* change_shared_boolean_option_name ::= GTID_ONLY */
@@ -37136,7 +37139,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2603 "src/parser/mylite_lemon.y"
 {
 }
-#line 37140 "src/parser/generated/mylite_lemon.c"
+#line 37143 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1842: /* change_shared_boolean_option_name ::= REQUIRE_ROW_FORMAT */
@@ -37144,7 +37147,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2604 "src/parser/mylite_lemon.y"
 {
 }
-#line 37148 "src/parser/generated/mylite_lemon.c"
+#line 37151 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1843: /* change_shared_boolean_option_name ::= SOURCE_CONNECTION_AUTO_FAILOVER */
@@ -37152,7 +37155,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2605 "src/parser/mylite_lemon.y"
 {
 }
-#line 37156 "src/parser/generated/mylite_lemon.c"
+#line 37159 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1849: /* change_option_string_value ::= NULL */
@@ -37163,7 +37166,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2614 "src/parser/mylite_lemon.y"
 {
 }
-#line 37167 "src/parser/generated/mylite_lemon.c"
+#line 37170 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1851: /* change_assign_gtids_value ::= OFF */
@@ -37174,7 +37177,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2617 "src/parser/mylite_lemon.y"
 {
 }
-#line 37178 "src/parser/generated/mylite_lemon.c"
+#line 37181 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1853: /* change_ignore_server_ids_value ::= LP change_ignore_server_ids RP */
@@ -37182,7 +37185,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2620 "src/parser/mylite_lemon.y"
 {
 }
-#line 37186 "src/parser/generated/mylite_lemon.c"
+#line 37189 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1248,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -37192,7 +37195,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2623 "src/parser/mylite_lemon.y"
 {
 }
-#line 37196 "src/parser/generated/mylite_lemon.c"
+#line 37199 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1856: /* change_ignore_server_id_list ::= change_option_number_value */
@@ -37200,7 +37203,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2625 "src/parser/mylite_lemon.y"
 {
 }
-#line 37204 "src/parser/generated/mylite_lemon.c"
+#line 37207 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1857: /* change_ignore_server_id_list ::= change_ignore_server_id_list import_comma change_option_number_value */
@@ -37208,7 +37211,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2626 "src/parser/mylite_lemon.y"
 {
 }
-#line 37212 "src/parser/generated/mylite_lemon.c"
+#line 37215 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1238,&yymsp[0].minor);
 }
@@ -37220,7 +37223,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2631 "src/parser/mylite_lemon.y"
 {
 }
-#line 37224 "src/parser/generated/mylite_lemon.c"
+#line 37227 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1861: /* change_primary_key_check_value ::= ON */
@@ -37233,7 +37236,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2632 "src/parser/mylite_lemon.y"
 {
 }
-#line 37237 "src/parser/generated/mylite_lemon.c"
+#line 37240 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1865: /* xa_tail ::= RECOVER */
@@ -37243,7 +37246,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2642 "src/parser/mylite_lemon.y"
 {
 }
-#line 37247 "src/parser/generated/mylite_lemon.c"
+#line 37250 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1866: /* xa_tail ::= RECOVER xa_recover_convert xa_recover_xid */
@@ -37251,7 +37254,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2643 "src/parser/mylite_lemon.y"
 {
 }
-#line 37255 "src/parser/generated/mylite_lemon.c"
+#line 37258 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1251,&yymsp[-1].minor);
   yy_destructor(yypParser,1252,&yymsp[0].minor);
 }
@@ -37261,7 +37264,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2644 "src/parser/mylite_lemon.y"
 {
 }
-#line 37265 "src/parser/generated/mylite_lemon.c"
+#line 37268 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1253,&yymsp[-1].minor);
   yy_destructor(yypParser,1254,&yymsp[0].minor);
 }
@@ -37271,7 +37274,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2645 "src/parser/mylite_lemon.y"
 {
 }
-#line 37275 "src/parser/generated/mylite_lemon.c"
+#line 37278 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1253,&yymsp[-1].minor);
   yy_destructor(yypParser,1254,&yymsp[0].minor);
 }
@@ -37281,7 +37284,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2646 "src/parser/mylite_lemon.y"
 {
 }
-#line 37285 "src/parser/generated/mylite_lemon.c"
+#line 37288 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1253,&yymsp[-1].minor);
   yy_destructor(yypParser,1255,&yymsp[0].minor);
 }
@@ -37291,7 +37294,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2647 "src/parser/mylite_lemon.y"
 {
 }
-#line 37295 "src/parser/generated/mylite_lemon.c"
+#line 37298 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1253,&yymsp[0].minor);
 }
         break;
@@ -37300,7 +37303,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2648 "src/parser/mylite_lemon.y"
 {
 }
-#line 37304 "src/parser/generated/mylite_lemon.c"
+#line 37307 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1253,&yymsp[-1].minor);
   yy_destructor(yypParser,1256,&yymsp[0].minor);
 }
@@ -37310,7 +37313,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2649 "src/parser/mylite_lemon.y"
 {
 }
-#line 37314 "src/parser/generated/mylite_lemon.c"
+#line 37317 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1253,&yymsp[0].minor);
 }
         break;
@@ -37319,7 +37322,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2651 "src/parser/mylite_lemon.y"
 {
 }
-#line 37323 "src/parser/generated/mylite_lemon.c"
+#line 37326 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1874: /* xa_recover_xid ::= XID */
@@ -37327,7 +37330,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2652 "src/parser/mylite_lemon.y"
 {
 }
-#line 37331 "src/parser/generated/mylite_lemon.c"
+#line 37334 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1875: /* xa_xid ::= xa_xid_part */
@@ -37335,7 +37338,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2654 "src/parser/mylite_lemon.y"
 {
 }
-#line 37339 "src/parser/generated/mylite_lemon.c"
+#line 37342 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1876: /* xa_xid ::= xa_xid_part import_comma xa_xid_part */
@@ -37343,7 +37346,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2655 "src/parser/mylite_lemon.y"
 {
 }
-#line 37347 "src/parser/generated/mylite_lemon.c"
+#line 37350 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1257,&yymsp[0].minor);
 }
@@ -37353,7 +37356,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2656 "src/parser/mylite_lemon.y"
 {
 }
-#line 37357 "src/parser/generated/mylite_lemon.c"
+#line 37360 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-3].minor);
   yy_destructor(yypParser,1257,&yymsp[-2].minor);
   yy_destructor(yypParser,784,&yymsp[-1].minor);
@@ -37365,7 +37368,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2668 "src/parser/mylite_lemon.y"
 {
 }
-#line 37369 "src/parser/generated/mylite_lemon.c"
+#line 37372 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1884: /* xa_start_option ::= JOIN */
@@ -37373,7 +37376,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2670 "src/parser/mylite_lemon.y"
 {
 }
-#line 37377 "src/parser/generated/mylite_lemon.c"
+#line 37380 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1885: /* xa_start_option ::= RESUME */
@@ -37381,7 +37384,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2671 "src/parser/mylite_lemon.y"
 {
 }
-#line 37385 "src/parser/generated/mylite_lemon.c"
+#line 37388 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1887: /* xa_end_tail ::= xa_suspend */
@@ -37389,7 +37392,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2674 "src/parser/mylite_lemon.y"
 {
 }
-#line 37393 "src/parser/generated/mylite_lemon.c"
+#line 37396 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1888: /* xa_end_tail ::= xa_suspend FOR xa_migrate */
@@ -37397,7 +37400,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2675 "src/parser/mylite_lemon.y"
 {
 }
-#line 37401 "src/parser/generated/mylite_lemon.c"
+#line 37404 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,393,&yymsp[-1].minor);
   yy_destructor(yypParser,1261,&yymsp[0].minor);
 }
@@ -37407,7 +37410,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2677 "src/parser/mylite_lemon.y"
 {
 }
-#line 37411 "src/parser/generated/mylite_lemon.c"
+#line 37414 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1890: /* xa_migrate ::= MIGRATE */
@@ -37415,7 +37418,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2678 "src/parser/mylite_lemon.y"
 {
 }
-#line 37419 "src/parser/generated/mylite_lemon.c"
+#line 37422 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1892: /* xa_commit_tail ::= xa_one xa_phase */
@@ -37423,7 +37426,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2681 "src/parser/mylite_lemon.y"
 {
 }
-#line 37427 "src/parser/generated/mylite_lemon.c"
+#line 37430 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1263,&yymsp[0].minor);
 }
         break;
@@ -37432,7 +37435,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2683 "src/parser/mylite_lemon.y"
 {
 }
-#line 37436 "src/parser/generated/mylite_lemon.c"
+#line 37439 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1894: /* xa_phase ::= PHASE */
@@ -37440,7 +37443,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2684 "src/parser/mylite_lemon.y"
 {
 }
-#line 37444 "src/parser/generated/mylite_lemon.c"
+#line 37447 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1895: /* show_tail ::= show_full_tail */
@@ -37448,7 +37451,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2693 "src/parser/mylite_lemon.y"
 {
 }
-#line 37452 "src/parser/generated/mylite_lemon.c"
+#line 37455 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1896: /* show_tail ::= show_scope_prefix show_scoped_kind show_filter_tail */
@@ -37456,7 +37459,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2694 "src/parser/mylite_lemon.y"
 {
 }
-#line 37460 "src/parser/generated/mylite_lemon.c"
+#line 37463 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1267,&yymsp[-1].minor);
   yy_destructor(yypParser,1268,&yymsp[0].minor);
 }
@@ -37466,7 +37469,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2695 "src/parser/mylite_lemon.y"
 {
 }
-#line 37470 "src/parser/generated/mylite_lemon.c"
+#line 37473 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-3].minor);
   yy_destructor(yypParser,1269,&yymsp[-2].minor);
   yy_destructor(yypParser,349,&yymsp[-1].minor);
@@ -37478,7 +37481,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2696 "src/parser/mylite_lemon.y"
 {
 }
-#line 37482 "src/parser/generated/mylite_lemon.c"
+#line 37485 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1271,&yymsp[0].minor);
 }
         break;
@@ -37487,7 +37490,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2697 "src/parser/mylite_lemon.y"
 {
 }
-#line 37491 "src/parser/generated/mylite_lemon.c"
+#line 37494 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1273,&yymsp[0].minor);
 }
         break;
@@ -37496,7 +37499,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2698 "src/parser/mylite_lemon.y"
 {
 }
-#line 37500 "src/parser/generated/mylite_lemon.c"
+#line 37503 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1901: /* show_tail ::= BINARY LOG STATUS */
@@ -37504,7 +37507,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2699 "src/parser/mylite_lemon.y"
 {
 }
-#line 37508 "src/parser/generated/mylite_lemon.c"
+#line 37511 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,94,&yymsp[-1].minor);
   yy_destructor(yypParser,374,&yymsp[0].minor);
 }
@@ -37514,7 +37517,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2706 "src/parser/mylite_lemon.y"
 {
 }
-#line 37518 "src/parser/generated/mylite_lemon.c"
+#line 37521 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1276,&yymsp[0].minor);
 }
         break;
@@ -37523,7 +37526,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2707 "src/parser/mylite_lemon.y"
 {
 }
-#line 37527 "src/parser/generated/mylite_lemon.c"
+#line 37530 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1268,&yymsp[0].minor);
 }
         break;
@@ -37532,7 +37535,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2708 "src/parser/mylite_lemon.y"
 {
 }
-#line 37536 "src/parser/generated/mylite_lemon.c"
+#line 37539 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1268,&yymsp[0].minor);
 }
         break;
@@ -37541,7 +37544,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2709 "src/parser/mylite_lemon.y"
 {
 }
-#line 37545 "src/parser/generated/mylite_lemon.c"
+#line 37548 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,455,&yymsp[-2].minor);
   yy_destructor(yypParser,1279,&yymsp[-1].minor);
   yy_destructor(yypParser,1268,&yymsp[0].minor);
@@ -37552,7 +37555,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2710 "src/parser/mylite_lemon.y"
 {
 }
-#line 37556 "src/parser/generated/mylite_lemon.c"
+#line 37559 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,374,&yymsp[-2].minor);
   yy_destructor(yypParser,1279,&yymsp[-1].minor);
   yy_destructor(yypParser,1268,&yymsp[0].minor);
@@ -37563,7 +37566,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2711 "src/parser/mylite_lemon.y"
 {
 }
-#line 37567 "src/parser/generated/mylite_lemon.c"
+#line 37570 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,455,&yymsp[-2].minor);
   yy_destructor(yypParser,1279,&yymsp[-1].minor);
   yy_destructor(yypParser,1268,&yymsp[0].minor);
@@ -37574,7 +37577,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2712 "src/parser/mylite_lemon.y"
 {
 }
-#line 37578 "src/parser/generated/mylite_lemon.c"
+#line 37581 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1279,&yymsp[-1].minor);
   yy_destructor(yypParser,1268,&yymsp[0].minor);
 }
@@ -37584,7 +37587,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2713 "src/parser/mylite_lemon.y"
 {
 }
-#line 37588 "src/parser/generated/mylite_lemon.c"
+#line 37591 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1279,&yymsp[-1].minor);
   yy_destructor(yypParser,1268,&yymsp[0].minor);
 }
@@ -37594,7 +37597,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2714 "src/parser/mylite_lemon.y"
 {
 }
-#line 37598 "src/parser/generated/mylite_lemon.c"
+#line 37601 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,507,&yymsp[-2].minor);
   yy_destructor(yypParser,1279,&yymsp[-1].minor);
   yy_destructor(yypParser,1268,&yymsp[0].minor);
@@ -37605,7 +37608,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2715 "src/parser/mylite_lemon.y"
 {
 }
-#line 37609 "src/parser/generated/mylite_lemon.c"
+#line 37612 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1281,&yymsp[-3].minor);
   yy_destructor(yypParser,1282,&yymsp[-2].minor);
   yy_destructor(yypParser,1279,&yymsp[-1].minor);
@@ -37617,7 +37620,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2716 "src/parser/mylite_lemon.y"
 {
 }
-#line 37621 "src/parser/generated/mylite_lemon.c"
+#line 37624 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1284,&yymsp[-3].minor);
   yy_destructor(yypParser,1282,&yymsp[-2].minor);
   yy_destructor(yypParser,1279,&yymsp[-1].minor);
@@ -37629,7 +37632,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2717 "src/parser/mylite_lemon.y"
 {
 }
-#line 37633 "src/parser/generated/mylite_lemon.c"
+#line 37636 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,384,&yymsp[-1].minor);
   yy_destructor(yypParser,1268,&yymsp[0].minor);
 }
@@ -37639,7 +37642,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2718 "src/parser/mylite_lemon.y"
 {
 }
-#line 37643 "src/parser/generated/mylite_lemon.c"
+#line 37646 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1268,&yymsp[0].minor);
 }
         break;
@@ -37648,7 +37651,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2719 "src/parser/mylite_lemon.y"
 {
 }
-#line 37652 "src/parser/generated/mylite_lemon.c"
+#line 37655 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1268,&yymsp[0].minor);
 }
         break;
@@ -37657,7 +37660,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2720 "src/parser/mylite_lemon.y"
 {
 }
-#line 37661 "src/parser/generated/mylite_lemon.c"
+#line 37664 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1286,&yymsp[-1].minor);
   yy_destructor(yypParser,1287,&yymsp[0].minor);
 }
@@ -37668,7 +37671,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2721 "src/parser/mylite_lemon.y"
 {
 }
-#line 37672 "src/parser/generated/mylite_lemon.c"
+#line 37675 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,512,&yymsp[0].minor);
 }
         break;
@@ -37677,7 +37680,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2725 "src/parser/mylite_lemon.y"
 {
 }
-#line 37681 "src/parser/generated/mylite_lemon.c"
+#line 37684 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,503,&yymsp[-1].minor);
   yy_destructor(yypParser,1288,&yymsp[0].minor);
 }
@@ -37687,7 +37690,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2726 "src/parser/mylite_lemon.y"
 {
 }
-#line 37691 "src/parser/generated/mylite_lemon.c"
+#line 37694 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,503,&yymsp[-1].minor);
   yy_destructor(yypParser,1289,&yymsp[0].minor);
 }
@@ -37697,7 +37700,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2727 "src/parser/mylite_lemon.y"
 {
 }
-#line 37701 "src/parser/generated/mylite_lemon.c"
+#line 37704 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,374,&yymsp[-1].minor);
   yy_destructor(yypParser,1268,&yymsp[0].minor);
 }
@@ -37707,7 +37710,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2728 "src/parser/mylite_lemon.y"
 {
 }
-#line 37711 "src/parser/generated/mylite_lemon.c"
+#line 37714 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1291,&yymsp[-1].minor);
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
@@ -37717,7 +37720,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2729 "src/parser/mylite_lemon.y"
 {
 }
-#line 37721 "src/parser/generated/mylite_lemon.c"
+#line 37724 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,520,&yymsp[0].minor);
 }
         break;
@@ -37726,7 +37729,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2730 "src/parser/mylite_lemon.y"
 {
 }
-#line 37730 "src/parser/generated/mylite_lemon.c"
+#line 37733 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1292,&yymsp[0].minor);
 }
         break;
@@ -37735,7 +37738,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2731 "src/parser/mylite_lemon.y"
 {
 }
-#line 37739 "src/parser/generated/mylite_lemon.c"
+#line 37742 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1293,&yymsp[0].minor);
 }
         break;
@@ -37744,7 +37747,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2732 "src/parser/mylite_lemon.y"
 {
 }
-#line 37748 "src/parser/generated/mylite_lemon.c"
+#line 37751 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,374,&yymsp[-1].minor);
   yy_destructor(yypParser,1129,&yymsp[0].minor);
 }
@@ -37754,7 +37757,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2734 "src/parser/mylite_lemon.y"
 {
 }
-#line 37758 "src/parser/generated/mylite_lemon.c"
+#line 37761 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1294,&yymsp[0].minor);
 }
         break;
@@ -37768,7 +37771,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2738 "src/parser/mylite_lemon.y"
 {
 }
-#line 37772 "src/parser/generated/mylite_lemon.c"
+#line 37775 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1933: /* show_filter_tail ::= LIKE string_literal */
@@ -37776,7 +37779,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2744 "src/parser/mylite_lemon.y"
 {
 }
-#line 37780 "src/parser/generated/mylite_lemon.c"
+#line 37783 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -37788,7 +37791,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2745 "src/parser/mylite_lemon.y"
 {
 }
-#line 37792 "src/parser/generated/mylite_lemon.c"
+#line 37795 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,668,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
 }
@@ -37798,7 +37801,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2748 "src/parser/mylite_lemon.y"
 {
 }
-#line 37802 "src/parser/generated/mylite_lemon.c"
+#line 37805 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1295,&yymsp[0].minor);
 }
         break;
@@ -37807,7 +37810,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2749 "src/parser/mylite_lemon.y"
 {
 }
-#line 37811 "src/parser/generated/mylite_lemon.c"
+#line 37814 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1295,&yymsp[0].minor);
 }
         break;
@@ -37820,7 +37823,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2753 "src/parser/mylite_lemon.y"
 {
 }
-#line 37824 "src/parser/generated/mylite_lemon.c"
+#line 37827 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1940: /* show_schema_list_kind ::= SCHEMAS */
@@ -37830,7 +37833,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2754 "src/parser/mylite_lemon.y"
 {
 }
-#line 37834 "src/parser/generated/mylite_lemon.c"
+#line 37837 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1944: /* show_table_list_prefix ::= EXTENDED FULL */
@@ -37839,7 +37842,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2759 "src/parser/mylite_lemon.y"
 {
 }
-#line 37843 "src/parser/generated/mylite_lemon.c"
+#line 37846 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,504,&yymsp[0].minor);
 }
         break;
@@ -37850,7 +37853,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2773 "src/parser/mylite_lemon.y"
 {
 }
-#line 37854 "src/parser/generated/mylite_lemon.c"
+#line 37857 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1955: /* show_index_kind ::= KEYS */
@@ -37860,7 +37863,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2774 "src/parser/mylite_lemon.y"
 {
 }
-#line 37864 "src/parser/generated/mylite_lemon.c"
+#line 37867 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1958: /* show_table_source ::= FROM cache_table_ref */
@@ -37868,7 +37871,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2779 "src/parser/mylite_lemon.y"
 {
 }
-#line 37872 "src/parser/generated/mylite_lemon.c"
+#line 37875 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
         break;
@@ -37877,7 +37880,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2780 "src/parser/mylite_lemon.y"
 {
 }
-#line 37881 "src/parser/generated/mylite_lemon.c"
+#line 37884 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
         break;
@@ -37889,7 +37892,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2786 "src/parser/mylite_lemon.y"
 {
 }
-#line 37893 "src/parser/generated/mylite_lemon.c"
+#line 37896 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1964: /* show_engine_kind ::= MUTEX */
@@ -37897,7 +37900,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2787 "src/parser/mylite_lemon.y"
 {
 }
-#line 37901 "src/parser/generated/mylite_lemon.c"
+#line 37904 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1965: /* show_binlog_events_tail ::= show_log_file_tail show_log_from_tail show_limit_tail */
@@ -37905,7 +37908,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2789 "src/parser/mylite_lemon.y"
 {
 }
-#line 37909 "src/parser/generated/mylite_lemon.c"
+#line 37912 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1297,&yymsp[-1].minor);
   yy_destructor(yypParser,1273,&yymsp[0].minor);
 }
@@ -37915,7 +37918,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2791 "src/parser/mylite_lemon.y"
 {
 }
-#line 37919 "src/parser/generated/mylite_lemon.c"
+#line 37922 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1297,&yymsp[-2].minor);
   yy_destructor(yypParser,1273,&yymsp[-1].minor);
   yy_destructor(yypParser,1129,&yymsp[0].minor);
@@ -37926,7 +37929,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2794 "src/parser/mylite_lemon.y"
 {
 }
-#line 37930 "src/parser/generated/mylite_lemon.c"
+#line 37933 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -37935,7 +37938,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2797 "src/parser/mylite_lemon.y"
 {
 }
-#line 37939 "src/parser/generated/mylite_lemon.c"
+#line 37942 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1298,&yymsp[0].minor);
 }
         break;
@@ -37944,7 +37947,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2806 "src/parser/mylite_lemon.y"
 {
 }
-#line 37948 "src/parser/generated/mylite_lemon.c"
+#line 37951 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1977: /* show_profile_tail ::= show_profile_type_tail show_profile_for_tail show_limit_tail */
@@ -37952,7 +37955,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2808 "src/parser/mylite_lemon.y"
 {
 }
-#line 37956 "src/parser/generated/mylite_lemon.c"
+#line 37959 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1300,&yymsp[-1].minor);
   yy_destructor(yypParser,1273,&yymsp[0].minor);
 }
@@ -37962,7 +37965,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2811 "src/parser/mylite_lemon.y"
 {
 }
-#line 37966 "src/parser/generated/mylite_lemon.c"
+#line 37969 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1980: /* show_profile_type_list ::= show_profile_type */
@@ -37970,7 +37973,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2813 "src/parser/mylite_lemon.y"
 {
 }
-#line 37974 "src/parser/generated/mylite_lemon.c"
+#line 37977 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1981: /* show_profile_type_list ::= show_profile_type_list import_comma show_profile_type */
@@ -37978,7 +37981,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2814 "src/parser/mylite_lemon.y"
 {
 }
-#line 37982 "src/parser/generated/mylite_lemon.c"
+#line 37985 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1302,&yymsp[0].minor);
 }
@@ -37988,7 +37991,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2817 "src/parser/mylite_lemon.y"
 {
 }
-#line 37992 "src/parser/generated/mylite_lemon.c"
+#line 37995 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,86,&yymsp[0].minor);
 }
         break;
@@ -37997,7 +38000,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2818 "src/parser/mylite_lemon.y"
 {
 }
-#line 38001 "src/parser/generated/mylite_lemon.c"
+#line 38004 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,188,&yymsp[0].minor);
 }
         break;
@@ -38006,7 +38009,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2819 "src/parser/mylite_lemon.y"
 {
 }
-#line 38010 "src/parser/generated/mylite_lemon.c"
+#line 38013 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1986: /* show_profile_type ::= IPC */
@@ -38014,7 +38017,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2820 "src/parser/mylite_lemon.y"
 {
 }
-#line 38018 "src/parser/generated/mylite_lemon.c"
+#line 38021 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1988: /* show_profile_type ::= PAGE FAULTS */
@@ -38022,7 +38025,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2822 "src/parser/mylite_lemon.y"
 {
 }
-#line 38026 "src/parser/generated/mylite_lemon.c"
+#line 38029 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,64,&yymsp[0].minor);
 }
         break;
@@ -38031,7 +38034,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2824 "src/parser/mylite_lemon.y"
 {
 }
-#line 38035 "src/parser/generated/mylite_lemon.c"
+#line 38038 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 1992: /* show_profile_for_tail ::= FOR QUERY show_profile_query_id */
@@ -38039,7 +38042,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2827 "src/parser/mylite_lemon.y"
 {
 }
-#line 38043 "src/parser/generated/mylite_lemon.c"
+#line 38046 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,372,&yymsp[-1].minor);
   yy_destructor(yypParser,1303,&yymsp[0].minor);
 }
@@ -38052,7 +38055,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2838 "src/parser/mylite_lemon.y"
 {
 }
-#line 38056 "src/parser/generated/mylite_lemon.c"
+#line 38059 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2000: /* show_count_kind ::= WARNINGS */
@@ -38063,7 +38066,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2839 "src/parser/mylite_lemon.y"
 {
 }
-#line 38067 "src/parser/generated/mylite_lemon.c"
+#line 38070 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2001: /* show_create_tail ::= show_create_database_kind create_if_not_exists_tail cache_name_part */
@@ -38071,7 +38074,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2841 "src/parser/mylite_lemon.y"
 {
 }
-#line 38075 "src/parser/generated/mylite_lemon.c"
+#line 38078 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,672,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
@@ -38081,7 +38084,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2842 "src/parser/mylite_lemon.y"
 {
 }
-#line 38085 "src/parser/generated/mylite_lemon.c"
+#line 38088 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
         break;
@@ -38090,7 +38093,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2843 "src/parser/mylite_lemon.y"
 {
 }
-#line 38094 "src/parser/generated/mylite_lemon.c"
+#line 38097 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1306,&yymsp[0].minor);
 }
         break;
@@ -38100,7 +38103,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2845 "src/parser/mylite_lemon.y"
 {
 }
-#line 38104 "src/parser/generated/mylite_lemon.c"
+#line 38107 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2011: /* show_create_named_kind ::= TRIGGER */
@@ -38111,7 +38114,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2854 "src/parser/mylite_lemon.y"
 {
 }
-#line 38115 "src/parser/generated/mylite_lemon.c"
+#line 38118 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2012: /* show_create_named_kind ::= VIEW */
@@ -38122,7 +38125,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2855 "src/parser/mylite_lemon.y"
 {
 }
-#line 38126 "src/parser/generated/mylite_lemon.c"
+#line 38129 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2016: /* show_limit_tail ::= LIMIT show_limit_value */
@@ -38130,7 +38133,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2861 "src/parser/mylite_lemon.y"
 {
 }
-#line 38134 "src/parser/generated/mylite_lemon.c"
+#line 38137 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1307,&yymsp[0].minor);
 }
         break;
@@ -38139,7 +38142,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2862 "src/parser/mylite_lemon.y"
 {
 }
-#line 38143 "src/parser/generated/mylite_lemon.c"
+#line 38146 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1307,&yymsp[-2].minor);
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1307,&yymsp[0].minor);
@@ -38150,7 +38153,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2863 "src/parser/mylite_lemon.y"
 {
 }
-#line 38154 "src/parser/generated/mylite_lemon.c"
+#line 38157 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1307,&yymsp[-2].minor);
   yy_destructor(yypParser,370,&yymsp[-1].minor);
   yy_destructor(yypParser,1307,&yymsp[0].minor);
@@ -38163,7 +38166,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2865 "src/parser/mylite_lemon.y"
 {
 }
-#line 38167 "src/parser/generated/mylite_lemon.c"
+#line 38170 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2024: /* show_simple_kind ::= ENGINES */
@@ -38173,7 +38176,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2872 "src/parser/mylite_lemon.y"
 {
 }
-#line 38177 "src/parser/generated/mylite_lemon.c"
+#line 38180 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2025: /* show_simple_kind ::= PLUGINS */
@@ -38183,7 +38186,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2873 "src/parser/mylite_lemon.y"
 {
 }
-#line 38187 "src/parser/generated/mylite_lemon.c"
+#line 38190 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2026: /* show_simple_kind ::= PRIVILEGES */
@@ -38196,7 +38199,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2874 "src/parser/mylite_lemon.y"
 {
 }
-#line 38200 "src/parser/generated/mylite_lemon.c"
+#line 38203 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2028: /* show_simple_kind ::= PROFILES */
@@ -38206,7 +38209,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2876 "src/parser/mylite_lemon.y"
 {
 }
-#line 38210 "src/parser/generated/mylite_lemon.c"
+#line 38213 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2029: /* show_simple_kind ::= REPLICAS */
@@ -38216,7 +38219,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2877 "src/parser/mylite_lemon.y"
 {
 }
-#line 38220 "src/parser/generated/mylite_lemon.c"
+#line 38223 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2030: /* show_slave_tail ::= HOSTS */
@@ -38226,7 +38229,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2879 "src/parser/mylite_lemon.y"
 {
 }
-#line 38230 "src/parser/generated/mylite_lemon.c"
+#line 38233 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2031: /* show_slave_tail ::= STATUS show_channel_tail */
@@ -38234,7 +38237,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2880 "src/parser/mylite_lemon.y"
 {
 }
-#line 38238 "src/parser/generated/mylite_lemon.c"
+#line 38241 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1129,&yymsp[0].minor);
 }
         break;
@@ -38243,7 +38246,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2886 "src/parser/mylite_lemon.y"
 {
 }
-#line 38247 "src/parser/generated/mylite_lemon.c"
+#line 38250 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1309,&yymsp[-1].minor);
   yy_destructor(yypParser,1310,&yymsp[0].minor);
 }
@@ -38253,7 +38256,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2889 "src/parser/mylite_lemon.y"
 {
 }
-#line 38257 "src/parser/generated/mylite_lemon.c"
+#line 38260 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1311,&yymsp[0].minor);
 }
         break;
@@ -38262,7 +38265,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2891 "src/parser/mylite_lemon.y"
 {
 }
-#line 38266 "src/parser/generated/mylite_lemon.c"
+#line 38269 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2039: /* show_grants_principal_list ::= show_grants_principal_list import_comma show_grants_principal */
@@ -38270,7 +38273,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2892 "src/parser/mylite_lemon.y"
 {
 }
-#line 38274 "src/parser/generated/mylite_lemon.c"
+#line 38277 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1309,&yymsp[0].minor);
 }
@@ -38280,7 +38283,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2911 "src/parser/mylite_lemon.y"
 {
 }
-#line 38284 "src/parser/generated/mylite_lemon.c"
+#line 38287 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2043: /* describe_tail ::= describe_table_ref describe_column_ref */
@@ -38288,7 +38291,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2912 "src/parser/mylite_lemon.y"
 {
 }
-#line 38292 "src/parser/generated/mylite_lemon.c"
+#line 38295 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1315,&yymsp[0].minor);
 }
         break;
@@ -38297,7 +38300,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2914 "src/parser/mylite_lemon.y"
 {
 }
-#line 38301 "src/parser/generated/mylite_lemon.c"
+#line 38304 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2045: /* describe_table_ref ::= describe_name_part DOT describe_name_part */
@@ -38305,7 +38308,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2915 "src/parser/mylite_lemon.y"
 {
 }
-#line 38309 "src/parser/generated/mylite_lemon.c"
+#line 38312 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,1316,&yymsp[0].minor);
 }
@@ -38315,7 +38318,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2921 "src/parser/mylite_lemon.y"
 {
 }
-#line 38319 "src/parser/generated/mylite_lemon.c"
+#line 38322 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,732,&yymsp[0].minor);
 }
         break;
@@ -38324,7 +38327,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2922 "src/parser/mylite_lemon.y"
 {
 }
-#line 38328 "src/parser/generated/mylite_lemon.c"
+#line 38331 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1317,&yymsp[-1].minor);
   yy_destructor(yypParser,732,&yymsp[0].minor);
 }
@@ -38334,7 +38337,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2923 "src/parser/mylite_lemon.y"
 {
 }
-#line 38338 "src/parser/generated/mylite_lemon.c"
+#line 38341 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1317,&yymsp[-1].minor);
   yy_destructor(yypParser,732,&yymsp[0].minor);
 }
@@ -38344,7 +38347,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2924 "src/parser/mylite_lemon.y"
 {
 }
-#line 38348 "src/parser/generated/mylite_lemon.c"
+#line 38351 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1318,&yymsp[-2].minor);
   yy_destructor(yypParser,1317,&yymsp[-1].minor);
   yy_destructor(yypParser,732,&yymsp[0].minor);
@@ -38355,7 +38358,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2925 "src/parser/mylite_lemon.y"
 {
 }
-#line 38359 "src/parser/generated/mylite_lemon.c"
+#line 38362 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1321,&yymsp[-2].minor);
   yy_destructor(yypParser,1317,&yymsp[-1].minor);
   yy_destructor(yypParser,732,&yymsp[0].minor);
@@ -38366,7 +38369,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2926 "src/parser/mylite_lemon.y"
 {
 }
-#line 38370 "src/parser/generated/mylite_lemon.c"
+#line 38373 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1321,&yymsp[-3].minor);
   yy_destructor(yypParser,1318,&yymsp[-2].minor);
   yy_destructor(yypParser,1317,&yymsp[-1].minor);
@@ -38379,7 +38382,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2927 "src/parser/mylite_lemon.y"
 {
 }
-#line 38383 "src/parser/generated/mylite_lemon.c"
+#line 38386 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2055: /* describe_explain_tail ::= FOR CONNECTION explain_connection_id */
@@ -38388,7 +38391,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2928 "src/parser/mylite_lemon.y"
 {
 }
-#line 38392 "src/parser/generated/mylite_lemon.c"
+#line 38395 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,363,&yymsp[-1].minor);
   yy_destructor(yypParser,1323,&yymsp[0].minor);
 }
@@ -38399,7 +38402,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2929 "src/parser/mylite_lemon.y"
 {
 }
-#line 38403 "src/parser/generated/mylite_lemon.c"
+#line 38406 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,393,&yymsp[-2].minor);
   yy_destructor(yypParser,363,&yymsp[-1].minor);
   yy_destructor(yypParser,1323,&yymsp[0].minor);
@@ -38416,7 +38419,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2933 "src/parser/mylite_lemon.y"
 {
 }
-#line 38420 "src/parser/generated/mylite_lemon.c"
+#line 38423 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2064: /* describe_explain_query_start ::= WITH */
@@ -38430,7 +38433,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2938 "src/parser/mylite_lemon.y"
 {
 }
-#line 38434 "src/parser/generated/mylite_lemon.c"
+#line 38437 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2065: /* explain_tail ::= describe_tail */
@@ -38438,7 +38441,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2944 "src/parser/mylite_lemon.y"
 {
 }
-#line 38442 "src/parser/generated/mylite_lemon.c"
+#line 38445 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2066: /* explain_tail ::= explain_query_start required_statement_tail */
@@ -38446,7 +38449,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2945 "src/parser/mylite_lemon.y"
 {
 }
-#line 38450 "src/parser/generated/mylite_lemon.c"
+#line 38453 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,732,&yymsp[0].minor);
 }
         break;
@@ -38455,7 +38458,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2946 "src/parser/mylite_lemon.y"
 {
 }
-#line 38459 "src/parser/generated/mylite_lemon.c"
+#line 38462 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1325,&yymsp[-1].minor);
   yy_destructor(yypParser,732,&yymsp[0].minor);
 }
@@ -38465,7 +38468,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2947 "src/parser/mylite_lemon.y"
 {
 }
-#line 38469 "src/parser/generated/mylite_lemon.c"
+#line 38472 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1325,&yymsp[-1].minor);
   yy_destructor(yypParser,732,&yymsp[0].minor);
 }
@@ -38475,7 +38478,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2948 "src/parser/mylite_lemon.y"
 {
 }
-#line 38479 "src/parser/generated/mylite_lemon.c"
+#line 38482 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1318,&yymsp[-2].minor);
   yy_destructor(yypParser,1325,&yymsp[-1].minor);
   yy_destructor(yypParser,732,&yymsp[0].minor);
@@ -38486,7 +38489,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2949 "src/parser/mylite_lemon.y"
 {
 }
-#line 38490 "src/parser/generated/mylite_lemon.c"
+#line 38493 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1321,&yymsp[-2].minor);
   yy_destructor(yypParser,1325,&yymsp[-1].minor);
   yy_destructor(yypParser,732,&yymsp[0].minor);
@@ -38497,7 +38500,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2950 "src/parser/mylite_lemon.y"
 {
 }
-#line 38501 "src/parser/generated/mylite_lemon.c"
+#line 38504 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1321,&yymsp[-3].minor);
   yy_destructor(yypParser,1318,&yymsp[-2].minor);
   yy_destructor(yypParser,1325,&yymsp[-1].minor);
@@ -38509,7 +38512,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2955 "src/parser/mylite_lemon.y"
 {
 }
-#line 38513 "src/parser/generated/mylite_lemon.c"
+#line 38516 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1326,&yymsp[0].minor);
 }
@@ -38519,7 +38522,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2957 "src/parser/mylite_lemon.y"
 {
 }
-#line 38523 "src/parser/generated/mylite_lemon.c"
+#line 38526 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,89,&yymsp[0].minor);
 }
@@ -38529,7 +38532,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2959 "src/parser/mylite_lemon.y"
 {
 }
-#line 38533 "src/parser/generated/mylite_lemon.c"
+#line 38536 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1110,&yymsp[0].minor);
 }
         break;
@@ -38538,7 +38541,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2961 "src/parser/mylite_lemon.y"
 {
 }
-#line 38542 "src/parser/generated/mylite_lemon.c"
+#line 38545 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1327,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
@@ -38548,7 +38551,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2970 "src/parser/mylite_lemon.y"
 {
 }
-#line 38552 "src/parser/generated/mylite_lemon.c"
+#line 38555 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1328,&yymsp[-3].minor);
   yy_destructor(yypParser,1329,&yymsp[-2].minor);
   yy_destructor(yypParser,1330,&yymsp[-1].minor);
@@ -38560,7 +38563,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2973 "src/parser/mylite_lemon.y"
 {
 }
-#line 38564 "src/parser/generated/mylite_lemon.c"
+#line 38567 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,195,&yymsp[0].minor);
 }
@@ -38570,7 +38573,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2976 "src/parser/mylite_lemon.y"
 {
 }
-#line 38574 "src/parser/generated/mylite_lemon.c"
+#line 38577 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2097: /* explain_format_name ::= JSON */
@@ -38578,7 +38581,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2987 "src/parser/mylite_lemon.y"
 {
 }
-#line 38582 "src/parser/generated/mylite_lemon.c"
+#line 38585 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2098: /* explain_format_name ::= TRADITIONAL */
@@ -38586,7 +38589,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2988 "src/parser/mylite_lemon.y"
 {
 }
-#line 38590 "src/parser/generated/mylite_lemon.c"
+#line 38593 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2099: /* explain_format_name ::= TREE */
@@ -38594,7 +38597,7 @@ static YYACTIONTYPE yy_reduce(
 #line 2989 "src/parser/mylite_lemon.y"
 {
 }
-#line 38598 "src/parser/generated/mylite_lemon.c"
+#line 38601 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2109: /* handler_name ::= handler_identifier */
@@ -38602,7 +38605,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3013 "src/parser/mylite_lemon.y"
 {
 }
-#line 38606 "src/parser/generated/mylite_lemon.c"
+#line 38609 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2110: /* handler_name ::= handler_identifier DOT handler_identifier */
@@ -38610,7 +38613,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3014 "src/parser/mylite_lemon.y"
 {
 }
-#line 38614 "src/parser/generated/mylite_lemon.c"
+#line 38617 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,1334,&yymsp[0].minor);
 }
@@ -38620,7 +38623,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3019 "src/parser/mylite_lemon.y"
 {
 }
-#line 38624 "src/parser/generated/mylite_lemon.c"
+#line 38627 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1335,&yymsp[0].minor);
 }
         break;
@@ -38629,7 +38632,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3020 "src/parser/mylite_lemon.y"
 {
 }
-#line 38633 "src/parser/generated/mylite_lemon.c"
+#line 38636 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1150,&yymsp[-1].minor);
   yy_destructor(yypParser,1335,&yymsp[0].minor);
 }
@@ -38639,7 +38642,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3021 "src/parser/mylite_lemon.y"
 {
 }
-#line 38643 "src/parser/generated/mylite_lemon.c"
+#line 38646 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1336,&yymsp[0].minor);
 }
         break;
@@ -38648,7 +38651,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3028 "src/parser/mylite_lemon.y"
 {
 }
-#line 38652 "src/parser/generated/mylite_lemon.c"
+#line 38655 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1338,&yymsp[0].minor);
 }
         break;
@@ -38657,7 +38660,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3029 "src/parser/mylite_lemon.y"
 {
 }
-#line 38661 "src/parser/generated/mylite_lemon.c"
+#line 38664 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1340,&yymsp[-1].minor);
   yy_destructor(yypParser,1338,&yymsp[0].minor);
 }
@@ -38667,7 +38670,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3030 "src/parser/mylite_lemon.y"
 {
 }
-#line 38671 "src/parser/generated/mylite_lemon.c"
+#line 38674 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1341,&yymsp[-2].minor);
   yy_destructor(yypParser,1342,&yymsp[-1].minor);
   yy_destructor(yypParser,1338,&yymsp[0].minor);
@@ -38682,7 +38685,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3035 "src/parser/mylite_lemon.y"
 {
 }
-#line 38686 "src/parser/generated/mylite_lemon.c"
+#line 38689 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2127: /* handler_read_direction ::= PREV */
@@ -38693,7 +38696,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3039 "src/parser/mylite_lemon.y"
 {
 }
-#line 38697 "src/parser/generated/mylite_lemon.c"
+#line 38700 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2130: /* handler_read_operator ::= LE */
@@ -38701,7 +38704,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3043 "src/parser/mylite_lemon.y"
 {
 }
-#line 38705 "src/parser/generated/mylite_lemon.c"
+#line 38708 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2131: /* handler_read_operator ::= GE */
@@ -38709,7 +38712,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3044 "src/parser/mylite_lemon.y"
 {
 }
-#line 38713 "src/parser/generated/mylite_lemon.c"
+#line 38716 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2132: /* handler_read_operator ::= LT */
@@ -38717,7 +38720,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3045 "src/parser/mylite_lemon.y"
 {
 }
-#line 38721 "src/parser/generated/mylite_lemon.c"
+#line 38724 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2133: /* handler_read_operator ::= GT */
@@ -38725,7 +38728,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3046 "src/parser/mylite_lemon.y"
 {
 }
-#line 38729 "src/parser/generated/mylite_lemon.c"
+#line 38732 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2134: /* handler_read_tuple ::= LP values_row_contents RP */
@@ -38734,7 +38737,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3048 "src/parser/mylite_lemon.y"
 {
 }
-#line 38738 "src/parser/generated/mylite_lemon.c"
+#line 38741 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1343,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -38744,7 +38747,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3052 "src/parser/mylite_lemon.y"
 {
 }
-#line 38748 "src/parser/generated/mylite_lemon.c"
+#line 38751 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2138: /* handler_limit_tail ::= LIMIT handler_limit_value */
@@ -38752,7 +38755,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3054 "src/parser/mylite_lemon.y"
 {
 }
-#line 38756 "src/parser/generated/mylite_lemon.c"
+#line 38759 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1345,&yymsp[0].minor);
 }
         break;
@@ -38761,7 +38764,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3055 "src/parser/mylite_lemon.y"
 {
 }
-#line 38765 "src/parser/generated/mylite_lemon.c"
+#line 38768 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1345,&yymsp[-2].minor);
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1345,&yymsp[0].minor);
@@ -38772,7 +38775,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3056 "src/parser/mylite_lemon.y"
 {
 }
-#line 38776 "src/parser/generated/mylite_lemon.c"
+#line 38779 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1345,&yymsp[-2].minor);
   yy_destructor(yypParser,370,&yymsp[-1].minor);
   yy_destructor(yypParser,1345,&yymsp[0].minor);
@@ -38783,7 +38786,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3064 "src/parser/mylite_lemon.y"
 {
 }
-#line 38787 "src/parser/generated/mylite_lemon.c"
+#line 38790 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2143: /* call_name ::= call_identifier DOT call_identifier */
@@ -38791,7 +38794,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3065 "src/parser/mylite_lemon.y"
 {
 }
-#line 38795 "src/parser/generated/mylite_lemon.c"
+#line 38798 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,1348,&yymsp[0].minor);
 }
@@ -38801,7 +38804,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3071 "src/parser/mylite_lemon.y"
 {
 }
-#line 38805 "src/parser/generated/mylite_lemon.c"
+#line 38808 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1349,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -38811,7 +38814,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3076 "src/parser/mylite_lemon.y"
 {
 }
-#line 38815 "src/parser/generated/mylite_lemon.c"
+#line 38818 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2149: /* call_argument_list ::= call_argument_list COMMA call_argument */
@@ -38819,7 +38822,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3077 "src/parser/mylite_lemon.y"
 {
 }
-#line 38823 "src/parser/generated/mylite_lemon.c"
+#line 38826 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,1350,&yymsp[0].minor);
 }
@@ -38829,7 +38832,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3079 "src/parser/mylite_lemon.y"
 {
 }
-#line 38833 "src/parser/generated/mylite_lemon.c"
+#line 38836 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2151: /* call_argument_tokens ::= call_argument_token */
@@ -38837,7 +38840,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3081 "src/parser/mylite_lemon.y"
 {
 }
-#line 38841 "src/parser/generated/mylite_lemon.c"
+#line 38844 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2152: /* call_argument_tokens ::= call_argument_tokens call_argument_token */
@@ -38845,7 +38848,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3082 "src/parser/mylite_lemon.y"
 {
 }
-#line 38849 "src/parser/generated/mylite_lemon.c"
+#line 38852 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1352,&yymsp[0].minor);
 }
         break;
@@ -38855,7 +38858,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3088 "src/parser/mylite_lemon.y"
 {
 }
-#line 38859 "src/parser/generated/mylite_lemon.c"
+#line 38862 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1353,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -38865,7 +38868,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3095 "src/parser/mylite_lemon.y"
 {
 }
-#line 38869 "src/parser/generated/mylite_lemon.c"
+#line 38872 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1354,&yymsp[0].minor);
 }
         break;
@@ -38874,7 +38877,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3118 "src/parser/mylite_lemon.y"
 {
 }
-#line 38878 "src/parser/generated/mylite_lemon.c"
+#line 38881 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,475,&yymsp[-5].minor);
   yy_destructor(yypParser,1357,&yymsp[-4].minor);
   yy_destructor(yypParser,1358,&yymsp[-3].minor);
@@ -38888,7 +38891,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3119 "src/parser/mylite_lemon.y"
 {
 }
-#line 38892 "src/parser/generated/mylite_lemon.c"
+#line 38895 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,364,&yymsp[-3].minor);
   yy_destructor(yypParser,1361,&yymsp[-2].minor);
   yy_destructor(yypParser,1362,&yymsp[-1].minor);
@@ -38900,7 +38903,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3121 "src/parser/mylite_lemon.y"
 {
 }
-#line 38904 "src/parser/generated/mylite_lemon.c"
+#line 38907 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1365,&yymsp[-1].minor);
   yy_destructor(yypParser,1366,&yymsp[0].minor);
 }
@@ -38910,7 +38913,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3123 "src/parser/mylite_lemon.y"
 {
 }
-#line 38914 "src/parser/generated/mylite_lemon.c"
+#line 38917 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1367,&yymsp[0].minor);
 }
         break;
@@ -38919,7 +38922,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3128 "src/parser/mylite_lemon.y"
 {
 }
-#line 38923 "src/parser/generated/mylite_lemon.c"
+#line 38926 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2185: /* clone_identified ::= IDENTIFIED */
@@ -38927,7 +38930,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3134 "src/parser/mylite_lemon.y"
 {
 }
-#line 38931 "src/parser/generated/mylite_lemon.c"
+#line 38934 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2187: /* clone_remote_tail ::= clone_data_directory_tail clone_require_ssl_tail */
@@ -38935,7 +38938,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3138 "src/parser/mylite_lemon.y"
 {
 }
-#line 38939 "src/parser/generated/mylite_lemon.c"
+#line 38942 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1369,&yymsp[0].minor);
 }
         break;
@@ -38944,7 +38947,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3141 "src/parser/mylite_lemon.y"
 {
 }
-#line 38948 "src/parser/generated/mylite_lemon.c"
+#line 38951 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1361,&yymsp[-2].minor);
   yy_destructor(yypParser,1362,&yymsp[-1].minor);
   yy_destructor(yypParser,1363,&yymsp[0].minor);
@@ -38955,7 +38958,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3147 "src/parser/mylite_lemon.y"
 {
 }
-#line 38959 "src/parser/generated/mylite_lemon.c"
+#line 38962 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1370,&yymsp[0].minor);
 }
         break;
@@ -38964,7 +38967,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3150 "src/parser/mylite_lemon.y"
 {
 }
-#line 38968 "src/parser/generated/mylite_lemon.c"
+#line 38971 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,179,&yymsp[0].minor);
 }
         break;
@@ -38973,7 +38976,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3152 "src/parser/mylite_lemon.y"
 {
 }
-#line 38977 "src/parser/generated/mylite_lemon.c"
+#line 38980 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2198: /* flush_tail ::= flush_binlog_modifier flush_target */
@@ -38981,7 +38984,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3160 "src/parser/mylite_lemon.y"
 {
 }
-#line 38985 "src/parser/generated/mylite_lemon.c"
+#line 38988 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1373,&yymsp[0].minor);
 }
         break;
@@ -38990,7 +38993,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3166 "src/parser/mylite_lemon.y"
 {
 }
-#line 38994 "src/parser/generated/mylite_lemon.c"
+#line 38997 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2203: /* flush_target ::= flush_table_kind flush_table_tail */
@@ -38998,7 +39001,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3167 "src/parser/mylite_lemon.y"
 {
 }
-#line 39002 "src/parser/generated/mylite_lemon.c"
+#line 39005 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1376,&yymsp[0].minor);
 }
         break;
@@ -39007,7 +39010,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3169 "src/parser/mylite_lemon.y"
 {
 }
-#line 39011 "src/parser/generated/mylite_lemon.c"
+#line 39014 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,512,&yymsp[0].minor);
 }
         break;
@@ -39016,7 +39019,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3170 "src/parser/mylite_lemon.y"
 {
 }
-#line 39020 "src/parser/generated/mylite_lemon.c"
+#line 39023 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,512,&yymsp[0].minor);
 }
         break;
@@ -39025,7 +39028,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3171 "src/parser/mylite_lemon.y"
 {
 }
-#line 39029 "src/parser/generated/mylite_lemon.c"
+#line 39032 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,512,&yymsp[0].minor);
 }
         break;
@@ -39034,7 +39037,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3172 "src/parser/mylite_lemon.y"
 {
 }
-#line 39038 "src/parser/generated/mylite_lemon.c"
+#line 39041 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,512,&yymsp[-1].minor);
   yy_destructor(yypParser,1129,&yymsp[0].minor);
 }
@@ -39044,7 +39047,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3173 "src/parser/mylite_lemon.y"
 {
 }
-#line 39048 "src/parser/generated/mylite_lemon.c"
+#line 39051 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,512,&yymsp[0].minor);
 }
         break;
@@ -39053,7 +39056,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3175 "src/parser/mylite_lemon.y"
 {
 }
-#line 39057 "src/parser/generated/mylite_lemon.c"
+#line 39060 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2211: /* flush_simple_list ::= flush_simple_list import_comma flush_simple_kind */
@@ -39061,7 +39064,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3176 "src/parser/mylite_lemon.y"
 {
 }
-#line 39065 "src/parser/generated/mylite_lemon.c"
+#line 39068 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1377,&yymsp[0].minor);
 }
@@ -39073,7 +39076,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3182 "src/parser/mylite_lemon.y"
 {
 }
-#line 39077 "src/parser/generated/mylite_lemon.c"
+#line 39080 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2216: /* flush_simple_kind ::= USER_RESOURCES */
@@ -39083,7 +39086,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3185 "src/parser/mylite_lemon.y"
 {
 }
-#line 39087 "src/parser/generated/mylite_lemon.c"
+#line 39090 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2220: /* flush_table_tail ::= flush_table_list */
@@ -39091,7 +39094,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3191 "src/parser/mylite_lemon.y"
 {
 }
-#line 39095 "src/parser/generated/mylite_lemon.c"
+#line 39098 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2221: /* flush_table_tail ::= flush_table_modifier */
@@ -39099,7 +39102,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3192 "src/parser/mylite_lemon.y"
 {
 }
-#line 39103 "src/parser/generated/mylite_lemon.c"
+#line 39106 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2222: /* flush_table_tail ::= flush_table_list flush_table_modifier */
@@ -39107,7 +39110,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3193 "src/parser/mylite_lemon.y"
 {
 }
-#line 39111 "src/parser/generated/mylite_lemon.c"
+#line 39114 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1379,&yymsp[0].minor);
 }
         break;
@@ -39116,7 +39119,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3196 "src/parser/mylite_lemon.y"
 {
 }
-#line 39120 "src/parser/generated/mylite_lemon.c"
+#line 39123 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
@@ -39126,7 +39129,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3198 "src/parser/mylite_lemon.y"
 {
 }
-#line 39130 "src/parser/generated/mylite_lemon.c"
+#line 39133 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,414,&yymsp[-1].minor);
   yy_destructor(yypParser,450,&yymsp[0].minor);
 }
@@ -39136,7 +39139,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3199 "src/parser/mylite_lemon.y"
 {
 }
-#line 39140 "src/parser/generated/mylite_lemon.c"
+#line 39143 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1380,&yymsp[0].minor);
 }
         break;
@@ -39145,7 +39148,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3201 "src/parser/mylite_lemon.y"
 {
 }
-#line 39149 "src/parser/generated/mylite_lemon.c"
+#line 39152 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2228: /* insert_tail ::= dml_insert_target dml_write_body */
@@ -39153,7 +39156,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3218 "src/parser/mylite_lemon.y"
 {
 }
-#line 39157 "src/parser/generated/mylite_lemon.c"
+#line 39160 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1383,&yymsp[0].minor);
 }
         break;
@@ -39162,7 +39165,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3219 "src/parser/mylite_lemon.y"
 {
 }
-#line 39166 "src/parser/generated/mylite_lemon.c"
+#line 39169 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1382,&yymsp[-1].minor);
   yy_destructor(yypParser,1383,&yymsp[0].minor);
 }
@@ -39172,7 +39175,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3221 "src/parser/mylite_lemon.y"
 {
 }
-#line 39176 "src/parser/generated/mylite_lemon.c"
+#line 39179 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2231: /* dml_insert_modifiers ::= dml_insert_modifiers dml_insert_modifier */
@@ -39180,7 +39183,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3222 "src/parser/mylite_lemon.y"
 {
 }
-#line 39184 "src/parser/generated/mylite_lemon.c"
+#line 39187 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1385,&yymsp[0].minor);
 }
         break;
@@ -39192,7 +39195,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3224 "src/parser/mylite_lemon.y"
 {
 }
-#line 39196 "src/parser/generated/mylite_lemon.c"
+#line 39199 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2237: /* dml_insert_target ::= INTO cache_table_ref */
@@ -39201,7 +39204,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3230 "src/parser/mylite_lemon.y"
 {
 }
-#line 39205 "src/parser/generated/mylite_lemon.c"
+#line 39208 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
         break;
@@ -39210,7 +39213,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3239 "src/parser/mylite_lemon.y"
 {
 }
-#line 39214 "src/parser/generated/mylite_lemon.c"
+#line 39217 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1383,&yymsp[0].minor);
 }
         break;
@@ -39219,7 +39222,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3240 "src/parser/mylite_lemon.y"
 {
 }
-#line 39223 "src/parser/generated/mylite_lemon.c"
+#line 39226 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1387,&yymsp[-1].minor);
   yy_destructor(yypParser,1383,&yymsp[0].minor);
 }
@@ -39229,7 +39232,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3242 "src/parser/mylite_lemon.y"
 {
 }
-#line 39233 "src/parser/generated/mylite_lemon.c"
+#line 39236 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2241: /* dml_replace_modifiers ::= dml_replace_modifiers dml_replace_modifier */
@@ -39237,7 +39240,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3243 "src/parser/mylite_lemon.y"
 {
 }
-#line 39241 "src/parser/generated/mylite_lemon.c"
+#line 39244 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1389,&yymsp[0].minor);
 }
         break;
@@ -39246,7 +39249,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3251 "src/parser/mylite_lemon.y"
 {
 }
-#line 39250 "src/parser/generated/mylite_lemon.c"
+#line 39253 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2247: /* dml_write_payload ::= LP RP dml_write_after_column_list */
@@ -39254,7 +39257,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3253 "src/parser/mylite_lemon.y"
 {
 }
-#line 39258 "src/parser/generated/mylite_lemon.c"
+#line 39261 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,349,&yymsp[-1].minor);
   yy_destructor(yypParser,1391,&yymsp[0].minor);
 }
@@ -39264,7 +39267,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3254 "src/parser/mylite_lemon.y"
 {
 }
-#line 39268 "src/parser/generated/mylite_lemon.c"
+#line 39271 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1392,&yymsp[-2].minor);
   yy_destructor(yypParser,349,&yymsp[-1].minor);
   yy_destructor(yypParser,1391,&yymsp[0].minor);
@@ -39276,7 +39279,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3255 "src/parser/mylite_lemon.y"
 {
 }
-#line 39280 "src/parser/generated/mylite_lemon.c"
+#line 39283 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,731,&yymsp[-3].minor);
   yy_destructor(yypParser,768,&yymsp[-2].minor);
   yy_destructor(yypParser,349,&yymsp[-1].minor);
@@ -39289,7 +39292,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3256 "src/parser/mylite_lemon.y"
 {
 }
-#line 39293 "src/parser/generated/mylite_lemon.c"
+#line 39296 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1099,&yymsp[0].minor);
 }
         break;
@@ -39298,7 +39301,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3260 "src/parser/mylite_lemon.y"
 {
 }
-#line 39302 "src/parser/generated/mylite_lemon.c"
+#line 39305 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1390,&yymsp[0].minor);
 }
         break;
@@ -39308,7 +39311,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3261 "src/parser/mylite_lemon.y"
 {
 }
-#line 39312 "src/parser/generated/mylite_lemon.c"
+#line 39315 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,732,&yymsp[0].minor);
 }
         break;
@@ -39317,7 +39320,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3263 "src/parser/mylite_lemon.y"
 {
 }
-#line 39321 "src/parser/generated/mylite_lemon.c"
+#line 39324 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2257: /* dml_write_column_list ::= dml_write_column_list COMMA dml_write_column_ref */
@@ -39325,7 +39328,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3264 "src/parser/mylite_lemon.y"
 {
 }
-#line 39329 "src/parser/generated/mylite_lemon.c"
+#line 39332 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,1396,&yymsp[0].minor);
 }
@@ -39335,7 +39338,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3266 "src/parser/mylite_lemon.y"
 {
 }
-#line 39339 "src/parser/generated/mylite_lemon.c"
+#line 39342 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2259: /* dml_write_column_ref ::= dml_write_column_ref DOT dml_write_column_part */
@@ -39343,7 +39346,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3267 "src/parser/mylite_lemon.y"
 {
 }
-#line 39347 "src/parser/generated/mylite_lemon.c"
+#line 39350 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,1397,&yymsp[0].minor);
 }
@@ -39354,7 +39357,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3280 "src/parser/mylite_lemon.y"
 {
 }
-#line 39358 "src/parser/generated/mylite_lemon.c"
+#line 39361 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-2].minor);
   yy_destructor(yypParser,1398,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
@@ -39371,7 +39374,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3291 "src/parser/mylite_lemon.y"
 {
 }
-#line 39375 "src/parser/generated/mylite_lemon.c"
+#line 39378 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2282: /* dml_write_parenthesized_query_tail ::= dml_write_parenthesized_query_tail dml_write_parenthesized_query_token */
@@ -39379,7 +39382,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3295 "src/parser/mylite_lemon.y"
 {
 }
-#line 39383 "src/parser/generated/mylite_lemon.c"
+#line 39386 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1399,&yymsp[0].minor);
 }
         break;
@@ -39388,7 +39391,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3301 "src/parser/mylite_lemon.y"
 {
 }
-#line 39392 "src/parser/generated/mylite_lemon.c"
+#line 39395 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,768,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -39398,7 +39401,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3311 "src/parser/mylite_lemon.y"
 {
 }
-#line 39402 "src/parser/generated/mylite_lemon.c"
+#line 39405 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1400,&yymsp[0].minor);
 }
         break;
@@ -39408,7 +39411,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3314 "src/parser/mylite_lemon.y"
 {
 }
-#line 39412 "src/parser/generated/mylite_lemon.c"
+#line 39415 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,314,&yymsp[-1].minor);
   yy_destructor(yypParser,666,&yymsp[0].minor);
 }
@@ -39419,7 +39422,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3316 "src/parser/mylite_lemon.y"
 {
 }
-#line 39423 "src/parser/generated/mylite_lemon.c"
+#line 39426 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,325,&yymsp[-2].minor);
   yy_destructor(yypParser,723,&yymsp[-1].minor);
   yy_destructor(yypParser,724,&yymsp[0].minor);
@@ -39431,7 +39434,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3318 "src/parser/mylite_lemon.y"
 {
 }
-#line 39435 "src/parser/generated/mylite_lemon.c"
+#line 39438 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,359,&yymsp[-2].minor);
   yy_destructor(yypParser,725,&yymsp[-1].minor);
   yy_destructor(yypParser,726,&yymsp[0].minor);
@@ -39443,7 +39446,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3320 "src/parser/mylite_lemon.y"
 {
 }
-#line 39447 "src/parser/generated/mylite_lemon.c"
+#line 39450 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,355,&yymsp[-3].minor);
   yy_destructor(yypParser,727,&yymsp[-2].minor);
   yy_destructor(yypParser,728,&yymsp[-1].minor);
@@ -39456,7 +39459,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3322 "src/parser/mylite_lemon.y"
 {
 }
-#line 39460 "src/parser/generated/mylite_lemon.c"
+#line 39463 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,730,&yymsp[0].minor);
 }
         break;
@@ -39465,7 +39468,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3324 "src/parser/mylite_lemon.y"
 {
 }
-#line 39469 "src/parser/generated/mylite_lemon.c"
+#line 39472 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,731,&yymsp[-3].minor);
   yy_destructor(yypParser,768,&yymsp[-2].minor);
   yy_destructor(yypParser,349,&yymsp[-1].minor);
@@ -39477,7 +39480,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3331 "src/parser/mylite_lemon.y"
 {
 }
-#line 39481 "src/parser/generated/mylite_lemon.c"
+#line 39484 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,376,&yymsp[-2].minor);
   yy_destructor(yypParser,396,&yymsp[-1].minor);
   yy_destructor(yypParser,1099,&yymsp[0].minor);
@@ -39489,7 +39492,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3334 "src/parser/mylite_lemon.y"
 {
 }
-#line 39493 "src/parser/generated/mylite_lemon.c"
+#line 39496 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2315: /* update_tail ::= dml_update_table_reference_tokens SET update_assignment_start */
@@ -39497,7 +39500,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3343 "src/parser/mylite_lemon.y"
 {
 }
-#line 39501 "src/parser/generated/mylite_lemon.c"
+#line 39504 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,384,&yymsp[-1].minor);
   yy_destructor(yypParser,1099,&yymsp[0].minor);
 }
@@ -39507,7 +39510,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3344 "src/parser/mylite_lemon.y"
 {
 }
-#line 39511 "src/parser/generated/mylite_lemon.c"
+#line 39514 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1403,&yymsp[-2].minor);
   yy_destructor(yypParser,384,&yymsp[-1].minor);
   yy_destructor(yypParser,1099,&yymsp[0].minor);
@@ -39518,7 +39521,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3346 "src/parser/mylite_lemon.y"
 {
 }
-#line 39522 "src/parser/generated/mylite_lemon.c"
+#line 39525 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1406,&yymsp[-2].minor);
   yy_destructor(yypParser,1407,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
@@ -39529,7 +39532,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3348 "src/parser/mylite_lemon.y"
 {
 }
-#line 39533 "src/parser/generated/mylite_lemon.c"
+#line 39536 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2319: /* update_assignment_target ::= update_assignment_target DOT update_assignment_part */
@@ -39537,7 +39540,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3349 "src/parser/mylite_lemon.y"
 {
 }
-#line 39541 "src/parser/generated/mylite_lemon.c"
+#line 39544 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,1408,&yymsp[0].minor);
 }
@@ -39547,7 +39550,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3361 "src/parser/mylite_lemon.y"
 {
 }
-#line 39551 "src/parser/generated/mylite_lemon.c"
+#line 39554 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2330: /* dml_update_modifiers ::= dml_update_modifiers dml_update_modifier */
@@ -39555,7 +39558,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3362 "src/parser/mylite_lemon.y"
 {
 }
-#line 39559 "src/parser/generated/mylite_lemon.c"
+#line 39562 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1409,&yymsp[0].minor);
 }
         break;
@@ -39565,7 +39568,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3367 "src/parser/mylite_lemon.y"
 {
 }
-#line 39569 "src/parser/generated/mylite_lemon.c"
+#line 39572 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2334: /* dml_update_table_reference_tokens ::= dml_update_table_reference_tokens dml_update_table_reference_continuation */
@@ -39573,7 +39576,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3368 "src/parser/mylite_lemon.y"
 {
 }
-#line 39577 "src/parser/generated/mylite_lemon.c"
+#line 39580 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1411,&yymsp[0].minor);
 }
         break;
@@ -39583,7 +39586,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3371 "src/parser/mylite_lemon.y"
 {
 }
-#line 39587 "src/parser/generated/mylite_lemon.c"
+#line 39590 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1412,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -39593,7 +39596,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3374 "src/parser/mylite_lemon.y"
 {
 }
-#line 39597 "src/parser/generated/mylite_lemon.c"
+#line 39600 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2342: /* dml_update_table_reference_keyword ::= FOR */
@@ -39603,7 +39606,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3379 "src/parser/mylite_lemon.y"
 {
 }
-#line 39607 "src/parser/generated/mylite_lemon.c"
+#line 39610 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2350: /* dml_update_table_reference_keyword ::= USE */
@@ -39613,7 +39616,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3387 "src/parser/mylite_lemon.y"
 {
 }
-#line 39617 "src/parser/generated/mylite_lemon.c"
+#line 39620 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2351: /* dml_update_table_reference_keyword ::= USING */
@@ -39623,7 +39626,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3388 "src/parser/mylite_lemon.y"
 {
 }
-#line 39627 "src/parser/generated/mylite_lemon.c"
+#line 39630 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2353: /* dml_update_table_reference_nested ::= dml_update_table_reference_nested dml_update_table_reference_nested_token */
@@ -39631,7 +39634,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3391 "src/parser/mylite_lemon.y"
 {
 }
-#line 39635 "src/parser/generated/mylite_lemon.c"
+#line 39638 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1414,&yymsp[0].minor);
 }
         break;
@@ -39640,7 +39643,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3410 "src/parser/mylite_lemon.y"
 {
 }
-#line 39644 "src/parser/generated/mylite_lemon.c"
+#line 39647 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2364: /* delete_tail ::= dml_delete_modifiers delete_core */
@@ -39648,7 +39651,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3411 "src/parser/mylite_lemon.y"
 {
 }
-#line 39652 "src/parser/generated/mylite_lemon.c"
+#line 39655 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1416,&yymsp[0].minor);
 }
         break;
@@ -39657,7 +39660,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3413 "src/parser/mylite_lemon.y"
 {
 }
-#line 39661 "src/parser/generated/mylite_lemon.c"
+#line 39664 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2366: /* dml_delete_modifiers ::= dml_delete_modifiers dml_delete_modifier */
@@ -39665,7 +39668,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3414 "src/parser/mylite_lemon.y"
 {
 }
-#line 39669 "src/parser/generated/mylite_lemon.c"
+#line 39672 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1418,&yymsp[0].minor);
 }
         break;
@@ -39674,7 +39677,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3420 "src/parser/mylite_lemon.y"
 {
 }
-#line 39678 "src/parser/generated/mylite_lemon.c"
+#line 39681 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,673,&yymsp[-1].minor);
   yy_destructor(yypParser,1419,&yymsp[0].minor);
 }
@@ -39684,7 +39687,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3421 "src/parser/mylite_lemon.y"
 {
 }
-#line 39688 "src/parser/generated/mylite_lemon.c"
+#line 39691 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,475,&yymsp[-2].minor);
   yy_destructor(yypParser,1421,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
@@ -39695,7 +39698,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3422 "src/parser/mylite_lemon.y"
 {
 }
-#line 39699 "src/parser/generated/mylite_lemon.c"
+#line 39702 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1420,&yymsp[-2].minor);
   yy_destructor(yypParser,347,&yymsp[-1].minor);
   yy_destructor(yypParser,1422,&yymsp[0].minor);
@@ -39706,7 +39709,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3424 "src/parser/mylite_lemon.y"
 {
 }
-#line 39710 "src/parser/generated/mylite_lemon.c"
+#line 39713 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2374: /* delete_using_tail ::= dml_update_table_reference_tokens WHERE expression_start statement_tail */
@@ -39714,7 +39717,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3425 "src/parser/mylite_lemon.y"
 {
 }
-#line 39718 "src/parser/generated/mylite_lemon.c"
+#line 39721 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,476,&yymsp[-2].minor);
   yy_destructor(yypParser,668,&yymsp[-1].minor);
   yy_destructor(yypParser,665,&yymsp[0].minor);
@@ -39725,7 +39728,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3428 "src/parser/mylite_lemon.y"
 {
 }
-#line 39729 "src/parser/generated/mylite_lemon.c"
+#line 39732 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,673,&yymsp[0].minor);
 }
@@ -39735,7 +39738,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3433 "src/parser/mylite_lemon.y"
 {
 }
-#line 39739 "src/parser/generated/mylite_lemon.c"
+#line 39742 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2380: /* delete_single_table_tail ::= delete_partition_clause delete_after_from_tail */
@@ -39743,7 +39746,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3434 "src/parser/mylite_lemon.y"
 {
 }
-#line 39747 "src/parser/generated/mylite_lemon.c"
+#line 39750 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1423,&yymsp[0].minor);
 }
         break;
@@ -39752,7 +39755,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3435 "src/parser/mylite_lemon.y"
 {
 }
-#line 39756 "src/parser/generated/mylite_lemon.c"
+#line 39759 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1425,&yymsp[-2].minor);
   yy_destructor(yypParser,1426,&yymsp[-1].minor);
   yy_destructor(yypParser,1423,&yymsp[0].minor);
@@ -39763,7 +39766,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3436 "src/parser/mylite_lemon.y"
 {
 }
-#line 39767 "src/parser/generated/mylite_lemon.c"
+#line 39770 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1426,&yymsp[-1].minor);
   yy_destructor(yypParser,1423,&yymsp[0].minor);
 }
@@ -39773,7 +39776,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3441 "src/parser/mylite_lemon.y"
 {
 }
-#line 39777 "src/parser/generated/mylite_lemon.c"
+#line 39780 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2389: /* delete_after_from_tail ::= LIMIT ATOM */
@@ -39782,7 +39785,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3446 "src/parser/mylite_lemon.y"
 {
 }
-#line 39786 "src/parser/generated/mylite_lemon.c"
+#line 39789 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1,&yymsp[0].minor);
 }
         break;
@@ -39791,7 +39794,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3451 "src/parser/mylite_lemon.y"
 {
 }
-#line 39795 "src/parser/generated/mylite_lemon.c"
+#line 39798 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
@@ -39803,7 +39806,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3458 "src/parser/mylite_lemon.y"
 {
 }
-#line 39807 "src/parser/generated/mylite_lemon.c"
+#line 39810 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2395: /* with_cte_list ::= with_cte */
@@ -39811,7 +39814,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3460 "src/parser/mylite_lemon.y"
 {
 }
-#line 39815 "src/parser/generated/mylite_lemon.c"
+#line 39818 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2396: /* with_cte_list ::= with_cte_list import_comma with_cte */
@@ -39819,7 +39822,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3461 "src/parser/mylite_lemon.y"
 {
 }
-#line 39823 "src/parser/generated/mylite_lemon.c"
+#line 39826 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1427,&yymsp[0].minor);
 }
@@ -39829,7 +39832,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3463 "src/parser/mylite_lemon.y"
 {
 }
-#line 39833 "src/parser/generated/mylite_lemon.c"
+#line 39836 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1429,&yymsp[-4].minor);
   yy_destructor(yypParser,1430,&yymsp[-3].minor);
   yy_destructor(yypParser,348,&yymsp[-2].minor);
@@ -39842,7 +39845,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3468 "src/parser/mylite_lemon.y"
 {
 }
-#line 39846 "src/parser/generated/mylite_lemon.c"
+#line 39849 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1432,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -39852,7 +39855,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3471 "src/parser/mylite_lemon.y"
 {
 }
-#line 39856 "src/parser/generated/mylite_lemon.c"
+#line 39859 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,681,&yymsp[0].minor);
 }
@@ -39862,7 +39865,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3475 "src/parser/mylite_lemon.y"
 {
 }
-#line 39866 "src/parser/generated/mylite_lemon.c"
+#line 39869 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2405: /* with_cte_body ::= with_cte_body with_cte_body_token */
@@ -39870,7 +39873,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3476 "src/parser/mylite_lemon.y"
 {
 }
-#line 39874 "src/parser/generated/mylite_lemon.c"
+#line 39877 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1433,&yymsp[0].minor);
 }
         break;
@@ -39879,7 +39882,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3479 "src/parser/mylite_lemon.y"
 {
 }
-#line 39883 "src/parser/generated/mylite_lemon.c"
+#line 39886 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1433,&yymsp[0].minor);
 }
         break;
@@ -39888,7 +39891,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3485 "src/parser/mylite_lemon.y"
 {
 }
-#line 39892 "src/parser/generated/mylite_lemon.c"
+#line 39895 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1434,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -39898,7 +39901,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3494 "src/parser/mylite_lemon.y"
 {
 }
-#line 39902 "src/parser/generated/mylite_lemon.c"
+#line 39905 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1415,&yymsp[0].minor);
 }
         break;
@@ -39907,7 +39910,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3495 "src/parser/mylite_lemon.y"
 {
 }
-#line 39911 "src/parser/generated/mylite_lemon.c"
+#line 39914 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1381,&yymsp[0].minor);
 }
         break;
@@ -39916,7 +39919,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3496 "src/parser/mylite_lemon.y"
 {
 }
-#line 39920 "src/parser/generated/mylite_lemon.c"
+#line 39923 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1386,&yymsp[0].minor);
 }
         break;
@@ -39925,7 +39928,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3497 "src/parser/mylite_lemon.y"
 {
 }
-#line 39929 "src/parser/generated/mylite_lemon.c"
+#line 39932 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1402,&yymsp[0].minor);
 }
         break;
@@ -39934,7 +39937,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3506 "src/parser/mylite_lemon.y"
 {
 }
-#line 39938 "src/parser/generated/mylite_lemon.c"
+#line 39941 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,771,&yymsp[-1].minor);
   yy_destructor(yypParser,1436,&yymsp[0].minor);
 }
@@ -39946,7 +39949,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3507 "src/parser/mylite_lemon.y"
 {
 }
-#line 39950 "src/parser/generated/mylite_lemon.c"
+#line 39953 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1437,&yymsp[0].minor);
 }
         break;
@@ -39955,7 +39958,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3510 "src/parser/mylite_lemon.y"
 {
 }
-#line 39959 "src/parser/generated/mylite_lemon.c"
+#line 39962 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2430: /* table_order_nonempty_tail ::= ORDER BY table_order_list */
@@ -39963,7 +39966,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3512 "src/parser/mylite_lemon.y"
 {
 }
-#line 39967 "src/parser/generated/mylite_lemon.c"
+#line 39970 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,389,&yymsp[-1].minor);
   yy_destructor(yypParser,1438,&yymsp[0].minor);
 }
@@ -39973,7 +39976,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3514 "src/parser/mylite_lemon.y"
 {
 }
-#line 39977 "src/parser/generated/mylite_lemon.c"
+#line 39980 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2432: /* table_order_list ::= table_order_list import_comma table_order_item */
@@ -39981,7 +39984,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3515 "src/parser/mylite_lemon.y"
 {
 }
-#line 39985 "src/parser/generated/mylite_lemon.c"
+#line 39988 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1439,&yymsp[0].minor);
 }
@@ -39991,7 +39994,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3517 "src/parser/mylite_lemon.y"
 {
 }
-#line 39995 "src/parser/generated/mylite_lemon.c"
+#line 39998 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1441,&yymsp[0].minor);
 }
         break;
@@ -40000,7 +40003,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3519 "src/parser/mylite_lemon.y"
 {
 }
-#line 40004 "src/parser/generated/mylite_lemon.c"
+#line 40007 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2435: /* table_order_expression ::= table_order_expression DOT table_order_part */
@@ -40008,7 +40011,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3520 "src/parser/mylite_lemon.y"
 {
 }
-#line 40012 "src/parser/generated/mylite_lemon.c"
+#line 40015 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,1442,&yymsp[0].minor);
 }
@@ -40018,7 +40021,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3530 "src/parser/mylite_lemon.y"
 {
 }
-#line 40022 "src/parser/generated/mylite_lemon.c"
+#line 40025 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1443,&yymsp[0].minor);
 }
         break;
@@ -40027,7 +40030,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3531 "src/parser/mylite_lemon.y"
 {
 }
-#line 40031 "src/parser/generated/mylite_lemon.c"
+#line 40034 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1443,&yymsp[-2].minor);
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1443,&yymsp[0].minor);
@@ -40038,7 +40041,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3532 "src/parser/mylite_lemon.y"
 {
 }
-#line 40042 "src/parser/generated/mylite_lemon.c"
+#line 40045 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1443,&yymsp[-2].minor);
   yy_destructor(yypParser,370,&yymsp[-1].minor);
   yy_destructor(yypParser,1443,&yymsp[0].minor);
@@ -40049,7 +40052,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3537 "src/parser/mylite_lemon.y"
 {
 }
-#line 40053 "src/parser/generated/mylite_lemon.c"
+#line 40056 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1444,&yymsp[0].minor);
 }
         break;
@@ -40058,7 +40061,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3539 "src/parser/mylite_lemon.y"
 {
 }
-#line 40062 "src/parser/generated/mylite_lemon.c"
+#line 40065 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[-2].minor);
   yy_destructor(yypParser,1094,&yymsp[-1].minor);
   yy_destructor(yypParser,1095,&yymsp[0].minor);
@@ -40069,7 +40072,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3540 "src/parser/mylite_lemon.y"
 {
 }
-#line 40073 "src/parser/generated/mylite_lemon.c"
+#line 40076 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
@@ -40078,7 +40081,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3541 "src/parser/mylite_lemon.y"
 {
 }
-#line 40082 "src/parser/generated/mylite_lemon.c"
+#line 40085 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2451: /* table_into_variable_list ::= table_into_variable */
@@ -40086,7 +40089,7 @@ static YYACTIONTYPE yy_reduce(
 #line 3543 "src/parser/mylite_lemon.y"
 {
 }
-#line 40090 "src/parser/generated/mylite_lemon.c"
+#line 40093 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2452: /* table_into_variable_list ::= table_into_variable_list import_comma table_into_variable */
@@ -40094,35 +40097,35 @@ static YYACTIONTYPE yy_reduce(
 #line 3544 "src/parser/mylite_lemon.y"
 {
 }
-#line 40098 "src/parser/generated/mylite_lemon.c"
+#line 40101 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1446,&yymsp[0].minor);
 }
         break;
       case 2455: /* values_row_list ::= values_row */
 {  yy_destructor(yypParser,1447,&yymsp[0].minor);
-#line 3553 "src/parser/mylite_lemon.y"
+#line 3556 "src/parser/mylite_lemon.y"
 {
 }
-#line 40108 "src/parser/generated/mylite_lemon.c"
+#line 40111 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2456: /* values_row_list ::= values_row_list import_comma values_row */
 {  yy_destructor(yypParser,725,&yymsp[-2].minor);
-#line 3554 "src/parser/mylite_lemon.y"
+#line 3557 "src/parser/mylite_lemon.y"
 {
 }
-#line 40116 "src/parser/generated/mylite_lemon.c"
+#line 40119 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1447,&yymsp[0].minor);
 }
         break;
       case 2457: /* values_row ::= ROW LP values_row_contents RP */
 {  yy_destructor(yypParser,394,&yymsp[-3].minor);
-#line 3556 "src/parser/mylite_lemon.y"
+#line 3559 "src/parser/mylite_lemon.y"
 {
 }
-#line 40126 "src/parser/generated/mylite_lemon.c"
+#line 40129 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,348,&yymsp[-2].minor);
   yy_destructor(yypParser,1343,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
@@ -40130,26 +40133,26 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2458: /* values_row_contents ::= values_row_value_list */
 {  yy_destructor(yypParser,1448,&yymsp[0].minor);
-#line 3558 "src/parser/mylite_lemon.y"
+#line 3561 "src/parser/mylite_lemon.y"
 {
 }
-#line 40137 "src/parser/generated/mylite_lemon.c"
+#line 40140 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2459: /* values_row_value_list ::= values_row_value */
 {  yy_destructor(yypParser,1449,&yymsp[0].minor);
-#line 3560 "src/parser/mylite_lemon.y"
+#line 3563 "src/parser/mylite_lemon.y"
 {
 }
-#line 40145 "src/parser/generated/mylite_lemon.c"
+#line 40148 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2460: /* values_row_value_list ::= values_row_value_list COMMA values_row_value */
 {  yy_destructor(yypParser,1448,&yymsp[-2].minor);
-#line 3561 "src/parser/mylite_lemon.y"
+#line 3564 "src/parser/mylite_lemon.y"
 {
 }
-#line 40153 "src/parser/generated/mylite_lemon.c"
+#line 40156 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,1449,&yymsp[0].minor);
 }
@@ -40157,56 +40160,56 @@ static YYACTIONTYPE yy_reduce(
       case 2461: /* values_row_value ::= values_row_value_tokens */
       case 2709: /* set_assignment_value ::= values_row_value_tokens */ yytestcase(yyruleno==2709);
 {  yy_destructor(yypParser,1450,&yymsp[0].minor);
-#line 3563 "src/parser/mylite_lemon.y"
+#line 3566 "src/parser/mylite_lemon.y"
 {
 }
-#line 40164 "src/parser/generated/mylite_lemon.c"
+#line 40167 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2462: /* values_row_value_tokens ::= values_row_value_token */
 {  yy_destructor(yypParser,1451,&yymsp[0].minor);
-#line 3565 "src/parser/mylite_lemon.y"
+#line 3568 "src/parser/mylite_lemon.y"
 {
 }
-#line 40172 "src/parser/generated/mylite_lemon.c"
+#line 40175 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2463: /* values_row_value_tokens ::= values_row_value_tokens values_row_value_token */
 {  yy_destructor(yypParser,1450,&yymsp[-1].minor);
-#line 3566 "src/parser/mylite_lemon.y"
+#line 3569 "src/parser/mylite_lemon.y"
 {
 }
-#line 40180 "src/parser/generated/mylite_lemon.c"
+#line 40183 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1451,&yymsp[0].minor);
 }
         break;
       case 2468: /* values_row_value_token ::= LP values_row_nested_tokens RP */
       case 2480: /* values_row_nested_token ::= LP values_row_nested_tokens RP */ yytestcase(yyruleno==2480);
 {  yy_destructor(yypParser,348,&yymsp[-2].minor);
-#line 3572 "src/parser/mylite_lemon.y"
+#line 3575 "src/parser/mylite_lemon.y"
 {
 }
-#line 40190 "src/parser/generated/mylite_lemon.c"
+#line 40193 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1452,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
         break;
       case 2474: /* values_row_nested_tokens ::= values_row_nested_tokens values_row_nested_token */
 {  yy_destructor(yypParser,1452,&yymsp[-1].minor);
-#line 3579 "src/parser/mylite_lemon.y"
+#line 3582 "src/parser/mylite_lemon.y"
 {
 }
-#line 40200 "src/parser/generated/mylite_lemon.c"
+#line 40203 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1453,&yymsp[0].minor);
 }
         break;
       case 2487: /* values_query_tail ::= ORDER BY values_order_list values_limit_optional_tail */
       case 2490: /* values_query_tail_nonempty ::= ORDER BY values_order_list values_limit_optional_tail */ yytestcase(yyruleno==2490);
 {  yy_destructor(yypParser,388,&yymsp[-3].minor);
-#line 3594 "src/parser/mylite_lemon.y"
+#line 3597 "src/parser/mylite_lemon.y"
 {
 }
-#line 40210 "src/parser/generated/mylite_lemon.c"
+#line 40213 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,389,&yymsp[-2].minor);
   yy_destructor(yypParser,777,&yymsp[-1].minor);
   yy_destructor(yypParser,778,&yymsp[0].minor);
@@ -40216,54 +40219,54 @@ static YYACTIONTYPE yy_reduce(
       case 2491: /* values_query_tail_nonempty ::= values_limit_tail */ yytestcase(yyruleno==2491);
       case 2493: /* values_limit_optional_tail ::= values_limit_tail */ yytestcase(yyruleno==2493);
 {  yy_destructor(yypParser,779,&yymsp[0].minor);
-#line 3595 "src/parser/mylite_lemon.y"
+#line 3598 "src/parser/mylite_lemon.y"
 {
 }
-#line 40223 "src/parser/generated/mylite_lemon.c"
+#line 40226 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2495: /* values_set_operator ::= EXCEPT */
 {  yy_destructor(yypParser,59,&yymsp[0].minor);
-#line 3605 "src/parser/mylite_lemon.y"
+#line 3608 "src/parser/mylite_lemon.y"
 {
 }
-#line 40231 "src/parser/generated/mylite_lemon.c"
+#line 40234 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2496: /* values_set_operator ::= INTERSECT */
       case 3224: /* keyword ::= INTERSECT */ yytestcase(yyruleno==3224);
       case 3528: /* keyword_not_select_clause ::= INTERSECT */ yytestcase(yyruleno==3528);
 {  yy_destructor(yypParser,84,&yymsp[0].minor);
-#line 3606 "src/parser/mylite_lemon.y"
+#line 3609 "src/parser/mylite_lemon.y"
 {
 }
-#line 40241 "src/parser/generated/mylite_lemon.c"
+#line 40244 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2509: /* values_order_list ::= values_order_item */
 {  yy_destructor(yypParser,1454,&yymsp[0].minor);
-#line 3622 "src/parser/mylite_lemon.y"
+#line 3625 "src/parser/mylite_lemon.y"
 {
 }
-#line 40249 "src/parser/generated/mylite_lemon.c"
+#line 40252 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2510: /* values_order_list ::= values_order_list import_comma values_order_item */
 {  yy_destructor(yypParser,777,&yymsp[-2].minor);
-#line 3623 "src/parser/mylite_lemon.y"
+#line 3626 "src/parser/mylite_lemon.y"
 {
 }
-#line 40257 "src/parser/generated/mylite_lemon.c"
+#line 40260 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1454,&yymsp[0].minor);
 }
         break;
       case 2511: /* values_order_item ::= values_order_expression values_order_direction */
 {  yy_destructor(yypParser,1455,&yymsp[-1].minor);
-#line 3625 "src/parser/mylite_lemon.y"
+#line 3628 "src/parser/mylite_lemon.y"
 {
 }
-#line 40267 "src/parser/generated/mylite_lemon.c"
+#line 40270 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1441,&yymsp[0].minor);
 }
         break;
@@ -40271,26 +40274,26 @@ static YYACTIONTYPE yy_reduce(
       case 3073: /* keyword ::= DESC */ yytestcase(yyruleno==3073);
       case 3380: /* keyword_not_select_clause ::= DESC */ yytestcase(yyruleno==3380);
 {  yy_destructor(yypParser,534,&yymsp[0].minor);
-#line 3632 "src/parser/mylite_lemon.y"
+#line 3635 "src/parser/mylite_lemon.y"
 {
 }
-#line 40278 "src/parser/generated/mylite_lemon.c"
+#line 40281 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2517: /* values_order_direction ::= ASC */
 {  yy_destructor(yypParser,5,&yymsp[0].minor);
-#line 3633 "src/parser/mylite_lemon.y"
+#line 3636 "src/parser/mylite_lemon.y"
 {
 }
-#line 40286 "src/parser/generated/mylite_lemon.c"
+#line 40289 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2519: /* values_limit_tail ::= LIMIT ATOM import_comma ATOM */
 {  yy_destructor(yypParser,390,&yymsp[-3].minor);
-#line 3636 "src/parser/mylite_lemon.y"
+#line 3639 "src/parser/mylite_lemon.y"
 {
 }
-#line 40294 "src/parser/generated/mylite_lemon.c"
+#line 40297 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1,&yymsp[-2].minor);
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1,&yymsp[0].minor);
@@ -40298,10 +40301,10 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2520: /* values_limit_tail ::= LIMIT ATOM OFFSET ATOM */
 {  yy_destructor(yypParser,390,&yymsp[-3].minor);
-#line 3637 "src/parser/mylite_lemon.y"
+#line 3640 "src/parser/mylite_lemon.y"
 {
 }
-#line 40305 "src/parser/generated/mylite_lemon.c"
+#line 40308 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1,&yymsp[-2].minor);
   yy_destructor(yypParser,370,&yymsp[-1].minor);
   yy_destructor(yypParser,1,&yymsp[0].minor);
@@ -40309,47 +40312,47 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2524: /* execute_tail ::= USING execute_using_list */
 {  yy_destructor(yypParser,347,&yymsp[-1].minor);
-#line 3651 "src/parser/mylite_lemon.y"
+#line 3654 "src/parser/mylite_lemon.y"
 {
 }
-#line 40316 "src/parser/generated/mylite_lemon.c"
+#line 40319 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1458,&yymsp[0].minor);
 }
         break;
       case 2525: /* execute_using_list ::= execute_using_arg */
 {  yy_destructor(yypParser,1459,&yymsp[0].minor);
-#line 3653 "src/parser/mylite_lemon.y"
+#line 3656 "src/parser/mylite_lemon.y"
 {
 }
-#line 40325 "src/parser/generated/mylite_lemon.c"
+#line 40328 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2526: /* execute_using_list ::= execute_using_list import_comma execute_using_arg */
 {  yy_destructor(yypParser,1458,&yymsp[-2].minor);
-#line 3654 "src/parser/mylite_lemon.y"
+#line 3657 "src/parser/mylite_lemon.y"
 {
 }
-#line 40333 "src/parser/generated/mylite_lemon.c"
+#line 40336 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1459,&yymsp[0].minor);
 }
         break;
       case 2528: /* user_variable_name ::= AT_HOST set_variable_dot_tail */
 {  yy_destructor(yypParser,220,&yymsp[-1].minor);
-#line 3658 "src/parser/mylite_lemon.y"
+#line 3661 "src/parser/mylite_lemon.y"
 {
 }
-#line 40343 "src/parser/generated/mylite_lemon.c"
+#line 40346 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1460,&yymsp[0].minor);
 }
         break;
       case 2529: /* user_variable_name ::= AT_SIGN set_variable_part set_variable_dot_tail */
       case 2726: /* set_variable_name ::= AT_SIGN set_variable_part set_variable_dot_tail */ yytestcase(yyruleno==2726);
 {  yy_destructor(yypParser,218,&yymsp[-2].minor);
-#line 3659 "src/parser/mylite_lemon.y"
+#line 3662 "src/parser/mylite_lemon.y"
 {
 }
-#line 40353 "src/parser/generated/mylite_lemon.c"
+#line 40356 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1461,&yymsp[-1].minor);
   yy_destructor(yypParser,1460,&yymsp[0].minor);
 }
@@ -40358,111 +40361,111 @@ static YYACTIONTYPE yy_reduce(
       case 3203: /* keyword ::= STACKED */ yytestcase(yyruleno==3203);
       case 3508: /* keyword_not_select_clause ::= STACKED */ yytestcase(yyruleno==3508);
 {  yy_destructor(yypParser,231,&yymsp[0].minor);
-#line 3669 "src/parser/mylite_lemon.y"
+#line 3672 "src/parser/mylite_lemon.y"
 {
 }
-#line 40365 "src/parser/generated/mylite_lemon.c"
+#line 40368 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2534: /* diagnostics_tail ::= diagnostics_statement_items */
 {  yy_destructor(yypParser,1464,&yymsp[0].minor);
-#line 3671 "src/parser/mylite_lemon.y"
+#line 3674 "src/parser/mylite_lemon.y"
 {
 }
-#line 40373 "src/parser/generated/mylite_lemon.c"
+#line 40376 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2535: /* diagnostics_tail ::= CONDITION diagnostics_condition_value diagnostics_condition_items */
 {  yy_destructor(yypParser,549,&yymsp[-2].minor);
-#line 3672 "src/parser/mylite_lemon.y"
+#line 3675 "src/parser/mylite_lemon.y"
 {
 }
-#line 40381 "src/parser/generated/mylite_lemon.c"
+#line 40384 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1465,&yymsp[-1].minor);
   yy_destructor(yypParser,1466,&yymsp[0].minor);
 }
         break;
       case 2536: /* diagnostics_statement_items ::= diagnostics_statement_item */
 {  yy_destructor(yypParser,1467,&yymsp[0].minor);
-#line 3674 "src/parser/mylite_lemon.y"
+#line 3677 "src/parser/mylite_lemon.y"
 {
 }
-#line 40391 "src/parser/generated/mylite_lemon.c"
+#line 40394 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2537: /* diagnostics_statement_items ::= diagnostics_statement_items import_comma diagnostics_statement_item */
 {  yy_destructor(yypParser,1464,&yymsp[-2].minor);
-#line 3675 "src/parser/mylite_lemon.y"
+#line 3678 "src/parser/mylite_lemon.y"
 {
 }
-#line 40399 "src/parser/generated/mylite_lemon.c"
+#line 40402 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1467,&yymsp[0].minor);
 }
         break;
       case 2538: /* diagnostics_statement_item ::= diagnostics_target diagnostics_equals diagnostics_statement_item_name */
 {  yy_destructor(yypParser,1468,&yymsp[-2].minor);
-#line 3677 "src/parser/mylite_lemon.y"
+#line 3680 "src/parser/mylite_lemon.y"
 {
 }
-#line 40409 "src/parser/generated/mylite_lemon.c"
+#line 40412 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1469,&yymsp[0].minor);
 }
         break;
       case 2539: /* diagnostics_condition_items ::= diagnostics_condition_item */
 {  yy_destructor(yypParser,1470,&yymsp[0].minor);
-#line 3679 "src/parser/mylite_lemon.y"
+#line 3682 "src/parser/mylite_lemon.y"
 {
 }
-#line 40419 "src/parser/generated/mylite_lemon.c"
+#line 40422 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2540: /* diagnostics_condition_items ::= diagnostics_condition_items import_comma diagnostics_condition_item */
 {  yy_destructor(yypParser,1466,&yymsp[-2].minor);
-#line 3680 "src/parser/mylite_lemon.y"
+#line 3683 "src/parser/mylite_lemon.y"
 {
 }
-#line 40427 "src/parser/generated/mylite_lemon.c"
+#line 40430 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1470,&yymsp[0].minor);
 }
         break;
       case 2541: /* diagnostics_condition_item ::= diagnostics_target diagnostics_equals diagnostics_condition_item_name */
 {  yy_destructor(yypParser,1468,&yymsp[-2].minor);
-#line 3682 "src/parser/mylite_lemon.y"
+#line 3685 "src/parser/mylite_lemon.y"
 {
 }
-#line 40437 "src/parser/generated/mylite_lemon.c"
+#line 40440 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1471,&yymsp[0].minor);
 }
         break;
       case 2542: /* diagnostics_target ::= diagnostics_variable_name */
 {  yy_destructor(yypParser,1472,&yymsp[0].minor);
-#line 3684 "src/parser/mylite_lemon.y"
+#line 3687 "src/parser/mylite_lemon.y"
 {
 }
-#line 40447 "src/parser/generated/mylite_lemon.c"
+#line 40450 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2546: /* diagnostics_condition_value ::= AT_EMPTY set_variable_part */
       case 2601: /* signal_information_value ::= AT_EMPTY set_variable_part */ yytestcase(yyruleno==2601);
 {  yy_destructor(yypParser,219,&yymsp[-1].minor);
-#line 3689 "src/parser/mylite_lemon.y"
+#line 3692 "src/parser/mylite_lemon.y"
 {
 }
-#line 40456 "src/parser/generated/mylite_lemon.c"
+#line 40459 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1461,&yymsp[0].minor);
 }
         break;
       case 2547: /* diagnostics_condition_value ::= AT_EMPTY set_variable_part DOT set_variable_part */
       case 2602: /* signal_information_value ::= AT_EMPTY set_variable_part DOT set_variable_part */ yytestcase(yyruleno==2602);
 {  yy_destructor(yypParser,219,&yymsp[-3].minor);
-#line 3690 "src/parser/mylite_lemon.y"
+#line 3693 "src/parser/mylite_lemon.y"
 {
 }
-#line 40466 "src/parser/generated/mylite_lemon.c"
+#line 40469 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1461,&yymsp[-2].minor);
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,1461,&yymsp[0].minor);
@@ -40471,10 +40474,10 @@ static YYACTIONTYPE yy_reduce(
       case 2548: /* diagnostics_condition_value ::= AT_EMPTY set_variable_part DOT set_variable_part DOT set_variable_part */
       case 2603: /* signal_information_value ::= AT_EMPTY set_variable_part DOT set_variable_part DOT set_variable_part */ yytestcase(yyruleno==2603);
 {  yy_destructor(yypParser,219,&yymsp[-5].minor);
-#line 3691 "src/parser/mylite_lemon.y"
+#line 3694 "src/parser/mylite_lemon.y"
 {
 }
-#line 40478 "src/parser/generated/mylite_lemon.c"
+#line 40481 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1461,&yymsp[-4].minor);
   yy_destructor(yypParser,212,&yymsp[-3].minor);
   yy_destructor(yypParser,1461,&yymsp[-2].minor);
@@ -40485,10 +40488,10 @@ static YYACTIONTYPE yy_reduce(
       case 2549: /* diagnostics_condition_value ::= signal_allowed_identifier_part DOT signal_allowed_identifier_part */
       case 2604: /* signal_information_value ::= signal_allowed_identifier_part DOT signal_allowed_identifier_part */ yytestcase(yyruleno==2604);
 {  yy_destructor(yypParser,1473,&yymsp[-2].minor);
-#line 3692 "src/parser/mylite_lemon.y"
+#line 3695 "src/parser/mylite_lemon.y"
 {
 }
-#line 40492 "src/parser/generated/mylite_lemon.c"
+#line 40495 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,1473,&yymsp[0].minor);
 }
@@ -40496,10 +40499,10 @@ static YYACTIONTYPE yy_reduce(
       case 2550: /* diagnostics_condition_value ::= signal_allowed_identifier_part DOT signal_allowed_identifier_part DOT signal_allowed_identifier_part */
       case 2605: /* signal_information_value ::= signal_allowed_identifier_part DOT signal_allowed_identifier_part DOT signal_allowed_identifier_part */ yytestcase(yyruleno==2605);
 {  yy_destructor(yypParser,1473,&yymsp[-4].minor);
-#line 3693 "src/parser/mylite_lemon.y"
+#line 3696 "src/parser/mylite_lemon.y"
 {
 }
-#line 40503 "src/parser/generated/mylite_lemon.c"
+#line 40506 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-3].minor);
   yy_destructor(yypParser,1473,&yymsp[-2].minor);
   yy_destructor(yypParser,212,&yymsp[-1].minor);
@@ -40511,142 +40514,142 @@ static YYACTIONTYPE yy_reduce(
       case 3093: /* keyword ::= FLUSH */ yytestcase(yyruleno==3093);
       case 3400: /* keyword_not_select_clause ::= FLUSH */ yytestcase(yyruleno==3400);
 {  yy_destructor(yypParser,540,&yymsp[0].minor);
-#line 3696 "src/parser/mylite_lemon.y"
+#line 3699 "src/parser/mylite_lemon.y"
 {
 }
-#line 40518 "src/parser/generated/mylite_lemon.c"
+#line 40521 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2558: /* diagnostics_statement_item_name ::= ROW_COUNT */
 {  yy_destructor(yypParser,160,&yymsp[0].minor);
-#line 3705 "src/parser/mylite_lemon.y"
+#line 3708 "src/parser/mylite_lemon.y"
 {
 }
-#line 40526 "src/parser/generated/mylite_lemon.c"
+#line 40529 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2559: /* diagnostics_condition_item_name ::= CATALOG_NAME */
       case 2583: /* signal_condition_item_name ::= CATALOG_NAME */ yytestcase(yyruleno==2583);
 {  yy_destructor(yypParser,18,&yymsp[0].minor);
-#line 3707 "src/parser/mylite_lemon.y"
+#line 3710 "src/parser/mylite_lemon.y"
 {
 }
-#line 40535 "src/parser/generated/mylite_lemon.c"
+#line 40538 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2560: /* diagnostics_condition_item_name ::= CLASS_ORIGIN */
       case 2584: /* signal_condition_item_name ::= CLASS_ORIGIN */ yytestcase(yyruleno==2584);
 {  yy_destructor(yypParser,21,&yymsp[0].minor);
-#line 3708 "src/parser/mylite_lemon.y"
+#line 3711 "src/parser/mylite_lemon.y"
 {
 }
-#line 40544 "src/parser/generated/mylite_lemon.c"
+#line 40547 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2561: /* diagnostics_condition_item_name ::= COLUMN_NAME */
       case 2585: /* signal_condition_item_name ::= COLUMN_NAME */ yytestcase(yyruleno==2585);
 {  yy_destructor(yypParser,26,&yymsp[0].minor);
-#line 3709 "src/parser/mylite_lemon.y"
+#line 3712 "src/parser/mylite_lemon.y"
 {
 }
-#line 40553 "src/parser/generated/mylite_lemon.c"
+#line 40556 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2562: /* diagnostics_condition_item_name ::= CONSTRAINT_CATALOG */
       case 2586: /* signal_condition_item_name ::= CONSTRAINT_CATALOG */ yytestcase(yyruleno==2586);
 {  yy_destructor(yypParser,32,&yymsp[0].minor);
-#line 3710 "src/parser/mylite_lemon.y"
+#line 3713 "src/parser/mylite_lemon.y"
 {
 }
-#line 40562 "src/parser/generated/mylite_lemon.c"
+#line 40565 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2563: /* diagnostics_condition_item_name ::= CONSTRAINT_NAME */
       case 2587: /* signal_condition_item_name ::= CONSTRAINT_NAME */ yytestcase(yyruleno==2587);
 {  yy_destructor(yypParser,33,&yymsp[0].minor);
-#line 3711 "src/parser/mylite_lemon.y"
+#line 3714 "src/parser/mylite_lemon.y"
 {
 }
-#line 40571 "src/parser/generated/mylite_lemon.c"
+#line 40574 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2564: /* diagnostics_condition_item_name ::= CONSTRAINT_SCHEMA */
       case 2588: /* signal_condition_item_name ::= CONSTRAINT_SCHEMA */ yytestcase(yyruleno==2588);
 {  yy_destructor(yypParser,34,&yymsp[0].minor);
-#line 3712 "src/parser/mylite_lemon.y"
+#line 3715 "src/parser/mylite_lemon.y"
 {
 }
-#line 40580 "src/parser/generated/mylite_lemon.c"
+#line 40583 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2565: /* diagnostics_condition_item_name ::= CURSOR_NAME */
       case 2589: /* signal_condition_item_name ::= CURSOR_NAME */ yytestcase(yyruleno==2589);
 {  yy_destructor(yypParser,40,&yymsp[0].minor);
-#line 3713 "src/parser/mylite_lemon.y"
+#line 3716 "src/parser/mylite_lemon.y"
 {
 }
-#line 40589 "src/parser/generated/mylite_lemon.c"
+#line 40592 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2566: /* diagnostics_condition_item_name ::= MESSAGE_TEXT */
       case 2590: /* signal_condition_item_name ::= MESSAGE_TEXT */ yytestcase(yyruleno==2590);
 {  yy_destructor(yypParser,101,&yymsp[0].minor);
-#line 3714 "src/parser/mylite_lemon.y"
+#line 3717 "src/parser/mylite_lemon.y"
 {
 }
-#line 40598 "src/parser/generated/mylite_lemon.c"
+#line 40601 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2567: /* diagnostics_condition_item_name ::= MYSQL_ERRNO */
 {  yy_destructor(yypParser,107,&yymsp[0].minor);
-#line 3715 "src/parser/mylite_lemon.y"
+#line 3718 "src/parser/mylite_lemon.y"
 {
 }
-#line 40606 "src/parser/generated/mylite_lemon.c"
+#line 40609 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2569: /* diagnostics_condition_item_name ::= SCHEMA_NAME */
       case 2591: /* signal_condition_item_name ::= SCHEMA_NAME */ yytestcase(yyruleno==2591);
 {  yy_destructor(yypParser,164,&yymsp[0].minor);
-#line 3717 "src/parser/mylite_lemon.y"
+#line 3720 "src/parser/mylite_lemon.y"
 {
 }
-#line 40615 "src/parser/generated/mylite_lemon.c"
+#line 40618 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2570: /* diagnostics_condition_item_name ::= SUBCLASS_ORIGIN */
       case 2592: /* signal_condition_item_name ::= SUBCLASS_ORIGIN */ yytestcase(yyruleno==2592);
 {  yy_destructor(yypParser,185,&yymsp[0].minor);
-#line 3718 "src/parser/mylite_lemon.y"
+#line 3721 "src/parser/mylite_lemon.y"
 {
 }
-#line 40624 "src/parser/generated/mylite_lemon.c"
+#line 40627 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2571: /* diagnostics_condition_item_name ::= TABLE_NAME */
       case 2593: /* signal_condition_item_name ::= TABLE_NAME */ yytestcase(yyruleno==2593);
 {  yy_destructor(yypParser,190,&yymsp[0].minor);
-#line 3719 "src/parser/mylite_lemon.y"
+#line 3722 "src/parser/mylite_lemon.y"
 {
 }
-#line 40633 "src/parser/generated/mylite_lemon.c"
+#line 40636 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2572: /* signal_condition_value ::= signal_named_condition */
 {  yy_destructor(yypParser,1476,&yymsp[0].minor);
-#line 3725 "src/parser/mylite_lemon.y"
+#line 3728 "src/parser/mylite_lemon.y"
 {
 }
-#line 40641 "src/parser/generated/mylite_lemon.c"
+#line 40644 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2573: /* signal_condition_value ::= SQLSTATE signal_sqlstate_value_tail SQLSTATE_VALUE */
       case 2940: /* declare_condition_value ::= SQLSTATE signal_sqlstate_value_tail SQLSTATE_VALUE */ yytestcase(yyruleno==2940);
 {  yy_destructor(yypParser,550,&yymsp[-2].minor);
-#line 3726 "src/parser/mylite_lemon.y"
+#line 3729 "src/parser/mylite_lemon.y"
 {
 }
-#line 40650 "src/parser/generated/mylite_lemon.c"
+#line 40653 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1477,&yymsp[-1].minor);
   yy_destructor(yypParser,225,&yymsp[0].minor);
 }
@@ -40654,47 +40657,47 @@ static YYACTIONTYPE yy_reduce(
       case 2578: /* signal_set_tail ::= SET signal_information_items */
       case 2887: /* resignal_tail ::= SET signal_information_items */ yytestcase(yyruleno==2887);
 {  yy_destructor(yypParser,384,&yymsp[-1].minor);
-#line 3734 "src/parser/mylite_lemon.y"
+#line 3737 "src/parser/mylite_lemon.y"
 {
 }
-#line 40661 "src/parser/generated/mylite_lemon.c"
+#line 40664 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1478,&yymsp[0].minor);
 }
         break;
       case 2579: /* signal_information_items ::= signal_information_item */
 {  yy_destructor(yypParser,1479,&yymsp[0].minor);
-#line 3736 "src/parser/mylite_lemon.y"
+#line 3739 "src/parser/mylite_lemon.y"
 {
 }
-#line 40670 "src/parser/generated/mylite_lemon.c"
+#line 40673 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2580: /* signal_information_items ::= signal_information_items import_comma signal_information_item */
 {  yy_destructor(yypParser,1478,&yymsp[-2].minor);
-#line 3737 "src/parser/mylite_lemon.y"
+#line 3740 "src/parser/mylite_lemon.y"
 {
 }
-#line 40678 "src/parser/generated/mylite_lemon.c"
+#line 40681 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1479,&yymsp[0].minor);
 }
         break;
       case 2581: /* signal_information_item ::= signal_condition_item_name diagnostics_equals signal_information_value */
 {  yy_destructor(yypParser,1480,&yymsp[-2].minor);
-#line 3739 "src/parser/mylite_lemon.y"
+#line 3742 "src/parser/mylite_lemon.y"
 {
 }
-#line 40688 "src/parser/generated/mylite_lemon.c"
+#line 40691 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1481,&yymsp[0].minor);
 }
         break;
       case 2582: /* signal_information_item ::= MYSQL_ERRNO diagnostics_equals signal_mysql_errno_value */
 {  yy_destructor(yypParser,107,&yymsp[-2].minor);
-#line 3740 "src/parser/mylite_lemon.y"
+#line 3743 "src/parser/mylite_lemon.y"
 {
 }
-#line 40698 "src/parser/generated/mylite_lemon.c"
+#line 40701 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,762,&yymsp[-1].minor);
   yy_destructor(yypParser,1482,&yymsp[0].minor);
 }
@@ -40703,75 +40706,75 @@ static YYACTIONTYPE yy_reduce(
       case 3260: /* keyword ::= WORK */ yytestcase(yyruleno==3260);
       case 3564: /* keyword_not_select_clause ::= WORK */ yytestcase(yyruleno==3564);
 {  yy_destructor(yypParser,551,&yymsp[0].minor);
-#line 3787 "src/parser/mylite_lemon.y"
+#line 3790 "src/parser/mylite_lemon.y"
 {
 }
-#line 40710 "src/parser/generated/mylite_lemon.c"
+#line 40713 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2609: /* transaction_end_tail ::= NO RELEASE */
 {  yy_destructor(yypParser,109,&yymsp[-1].minor);
-#line 3789 "src/parser/mylite_lemon.y"
+#line 3792 "src/parser/mylite_lemon.y"
 {
 }
-#line 40718 "src/parser/generated/mylite_lemon.c"
+#line 40721 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,409,&yymsp[0].minor);
 }
         break;
       case 2610: /* transaction_end_tail ::= AND CHAIN */
 {  yy_destructor(yypParser,420,&yymsp[-1].minor);
-#line 3790 "src/parser/mylite_lemon.y"
+#line 3793 "src/parser/mylite_lemon.y"
 {
 }
-#line 40727 "src/parser/generated/mylite_lemon.c"
+#line 40730 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,552,&yymsp[0].minor);
 }
         break;
       case 2611: /* transaction_end_tail ::= AND NO CHAIN */
 {  yy_destructor(yypParser,420,&yymsp[-2].minor);
-#line 3791 "src/parser/mylite_lemon.y"
+#line 3794 "src/parser/mylite_lemon.y"
 {
 }
-#line 40736 "src/parser/generated/mylite_lemon.c"
+#line 40739 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,109,&yymsp[-1].minor);
   yy_destructor(yypParser,552,&yymsp[0].minor);
 }
         break;
       case 2612: /* transaction_end_tail ::= WORK RELEASE */
 {  yy_destructor(yypParser,551,&yymsp[-1].minor);
-#line 3792 "src/parser/mylite_lemon.y"
+#line 3795 "src/parser/mylite_lemon.y"
 {
 }
-#line 40746 "src/parser/generated/mylite_lemon.c"
+#line 40749 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,409,&yymsp[0].minor);
 }
         break;
       case 2613: /* transaction_end_tail ::= WORK NO RELEASE */
 {  yy_destructor(yypParser,551,&yymsp[-2].minor);
-#line 3793 "src/parser/mylite_lemon.y"
+#line 3796 "src/parser/mylite_lemon.y"
 {
 }
-#line 40755 "src/parser/generated/mylite_lemon.c"
+#line 40758 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,109,&yymsp[-1].minor);
   yy_destructor(yypParser,409,&yymsp[0].minor);
 }
         break;
       case 2614: /* transaction_end_tail ::= WORK AND CHAIN */
 {  yy_destructor(yypParser,551,&yymsp[-2].minor);
-#line 3794 "src/parser/mylite_lemon.y"
+#line 3797 "src/parser/mylite_lemon.y"
 {
 }
-#line 40765 "src/parser/generated/mylite_lemon.c"
+#line 40768 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,420,&yymsp[-1].minor);
   yy_destructor(yypParser,552,&yymsp[0].minor);
 }
         break;
       case 2615: /* transaction_end_tail ::= WORK AND NO CHAIN */
 {  yy_destructor(yypParser,551,&yymsp[-3].minor);
-#line 3795 "src/parser/mylite_lemon.y"
+#line 3798 "src/parser/mylite_lemon.y"
 {
 }
-#line 40775 "src/parser/generated/mylite_lemon.c"
+#line 40778 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,420,&yymsp[-2].minor);
   yy_destructor(yypParser,109,&yymsp[-1].minor);
   yy_destructor(yypParser,552,&yymsp[0].minor);
@@ -40779,10 +40782,10 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2616: /* transaction_end_tail ::= AND CHAIN NO RELEASE */
 {  yy_destructor(yypParser,420,&yymsp[-3].minor);
-#line 3796 "src/parser/mylite_lemon.y"
+#line 3799 "src/parser/mylite_lemon.y"
 {
 }
-#line 40786 "src/parser/generated/mylite_lemon.c"
+#line 40789 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,552,&yymsp[-2].minor);
   yy_destructor(yypParser,109,&yymsp[-1].minor);
   yy_destructor(yypParser,409,&yymsp[0].minor);
@@ -40790,10 +40793,10 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2617: /* transaction_end_tail ::= AND NO CHAIN RELEASE */
 {  yy_destructor(yypParser,420,&yymsp[-3].minor);
-#line 3797 "src/parser/mylite_lemon.y"
+#line 3800 "src/parser/mylite_lemon.y"
 {
 }
-#line 40797 "src/parser/generated/mylite_lemon.c"
+#line 40800 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,109,&yymsp[-2].minor);
   yy_destructor(yypParser,552,&yymsp[-1].minor);
   yy_destructor(yypParser,409,&yymsp[0].minor);
@@ -40801,10 +40804,10 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2618: /* transaction_end_tail ::= AND NO CHAIN NO RELEASE */
 {  yy_destructor(yypParser,420,&yymsp[-4].minor);
-#line 3798 "src/parser/mylite_lemon.y"
+#line 3801 "src/parser/mylite_lemon.y"
 {
 }
-#line 40808 "src/parser/generated/mylite_lemon.c"
+#line 40811 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,109,&yymsp[-3].minor);
   yy_destructor(yypParser,552,&yymsp[-2].minor);
   yy_destructor(yypParser,109,&yymsp[-1].minor);
@@ -40813,10 +40816,10 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2619: /* transaction_end_tail ::= WORK AND CHAIN NO RELEASE */
 {  yy_destructor(yypParser,551,&yymsp[-4].minor);
-#line 3799 "src/parser/mylite_lemon.y"
+#line 3802 "src/parser/mylite_lemon.y"
 {
 }
-#line 40820 "src/parser/generated/mylite_lemon.c"
+#line 40823 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,420,&yymsp[-3].minor);
   yy_destructor(yypParser,552,&yymsp[-2].minor);
   yy_destructor(yypParser,109,&yymsp[-1].minor);
@@ -40825,10 +40828,10 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2620: /* transaction_end_tail ::= WORK AND NO CHAIN RELEASE */
 {  yy_destructor(yypParser,551,&yymsp[-4].minor);
-#line 3800 "src/parser/mylite_lemon.y"
+#line 3803 "src/parser/mylite_lemon.y"
 {
 }
-#line 40832 "src/parser/generated/mylite_lemon.c"
+#line 40835 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,420,&yymsp[-3].minor);
   yy_destructor(yypParser,109,&yymsp[-2].minor);
   yy_destructor(yypParser,552,&yymsp[-1].minor);
@@ -40837,10 +40840,10 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2621: /* transaction_end_tail ::= WORK AND NO CHAIN NO RELEASE */
 {  yy_destructor(yypParser,551,&yymsp[-5].minor);
-#line 3801 "src/parser/mylite_lemon.y"
+#line 3804 "src/parser/mylite_lemon.y"
 {
 }
-#line 40844 "src/parser/generated/mylite_lemon.c"
+#line 40847 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,420,&yymsp[-4].minor);
   yy_destructor(yypParser,109,&yymsp[-3].minor);
   yy_destructor(yypParser,552,&yymsp[-2].minor);
@@ -40850,39 +40853,39 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2622: /* rollback_to_savepoint_tail ::= TO savepoint_reference */
 {  yy_destructor(yypParser,463,&yymsp[-1].minor);
-#line 3803 "src/parser/mylite_lemon.y"
+#line 3806 "src/parser/mylite_lemon.y"
 {
 }
-#line 40857 "src/parser/generated/mylite_lemon.c"
+#line 40860 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1485,&yymsp[0].minor);
 }
         break;
       case 2623: /* rollback_to_savepoint_tail ::= TO SAVEPOINT savepoint_reference */
 {  yy_destructor(yypParser,463,&yymsp[-2].minor);
-#line 3804 "src/parser/mylite_lemon.y"
+#line 3807 "src/parser/mylite_lemon.y"
 {
 }
-#line 40866 "src/parser/generated/mylite_lemon.c"
+#line 40869 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,493,&yymsp[-1].minor);
   yy_destructor(yypParser,1485,&yymsp[0].minor);
 }
         break;
       case 2624: /* rollback_to_savepoint_tail ::= WORK TO savepoint_reference */
 {  yy_destructor(yypParser,551,&yymsp[-2].minor);
-#line 3805 "src/parser/mylite_lemon.y"
+#line 3808 "src/parser/mylite_lemon.y"
 {
 }
-#line 40876 "src/parser/generated/mylite_lemon.c"
+#line 40879 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,463,&yymsp[-1].minor);
   yy_destructor(yypParser,1485,&yymsp[0].minor);
 }
         break;
       case 2625: /* rollback_to_savepoint_tail ::= WORK TO SAVEPOINT savepoint_reference */
 {  yy_destructor(yypParser,551,&yymsp[-3].minor);
-#line 3806 "src/parser/mylite_lemon.y"
+#line 3809 "src/parser/mylite_lemon.y"
 {
 }
-#line 40886 "src/parser/generated/mylite_lemon.c"
+#line 40889 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,463,&yymsp[-2].minor);
   yy_destructor(yypParser,493,&yymsp[-1].minor);
   yy_destructor(yypParser,1485,&yymsp[0].minor);
@@ -40890,83 +40893,83 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2627: /* set_names_tail ::= NAMES set_names_value set_comma_assignment_tail */
 {  yy_destructor(yypParser,553,&yymsp[-2].minor);
-#line 3851 "src/parser/mylite_lemon.y"
+#line 3854 "src/parser/mylite_lemon.y"
 {
 }
-#line 40897 "src/parser/generated/mylite_lemon.c"
+#line 40900 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1495,&yymsp[-1].minor);
   yy_destructor(yypParser,1496,&yymsp[0].minor);
 }
         break;
       case 2629: /* set_names_value ::= set_charset_name set_names_collate_tail */
 {  yy_destructor(yypParser,749,&yymsp[-1].minor);
-#line 3854 "src/parser/mylite_lemon.y"
+#line 3857 "src/parser/mylite_lemon.y"
 {
 }
-#line 40907 "src/parser/generated/mylite_lemon.c"
+#line 40910 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1497,&yymsp[0].minor);
 }
         break;
       case 2631: /* set_names_collate_tail ::= COLLATE set_collation_value */
 {  yy_destructor(yypParser,24,&yymsp[-1].minor);
-#line 3857 "src/parser/mylite_lemon.y"
+#line 3860 "src/parser/mylite_lemon.y"
 {
 }
-#line 40916 "src/parser/generated/mylite_lemon.c"
+#line 40919 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,750,&yymsp[0].minor);
 }
         break;
       case 2632: /* set_character_set_tail ::= set_charset_value set_comma_assignment_tail */
 {  yy_destructor(yypParser,1498,&yymsp[-1].minor);
-#line 3859 "src/parser/mylite_lemon.y"
+#line 3862 "src/parser/mylite_lemon.y"
 {
 }
-#line 40925 "src/parser/generated/mylite_lemon.c"
+#line 40928 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1496,&yymsp[0].minor);
 }
         break;
       case 2634: /* set_comma_assignment_tail ::= import_comma set_assignment_list */
 {  yy_destructor(yypParser,784,&yymsp[-1].minor);
-#line 3862 "src/parser/mylite_lemon.y"
+#line 3865 "src/parser/mylite_lemon.y"
 {
 }
-#line 40934 "src/parser/generated/mylite_lemon.c"
+#line 40937 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1493,&yymsp[0].minor);
 }
         break;
       case 2661: /* set_resource_group_tail ::= FOR set_resource_group_thread_list */
 {  yy_destructor(yypParser,393,&yymsp[-1].minor);
-#line 3894 "src/parser/mylite_lemon.y"
+#line 3897 "src/parser/mylite_lemon.y"
 {
 }
-#line 40943 "src/parser/generated/mylite_lemon.c"
+#line 40946 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1499,&yymsp[0].minor);
 }
         break;
       case 2662: /* set_resource_group_thread_list ::= set_resource_group_thread */
 {  yy_destructor(yypParser,1500,&yymsp[0].minor);
-#line 3896 "src/parser/mylite_lemon.y"
+#line 3899 "src/parser/mylite_lemon.y"
 {
 }
-#line 40952 "src/parser/generated/mylite_lemon.c"
+#line 40955 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2663: /* set_resource_group_thread_list ::= set_resource_group_thread_list import_comma set_resource_group_thread */
 {  yy_destructor(yypParser,1499,&yymsp[-2].minor);
-#line 3897 "src/parser/mylite_lemon.y"
+#line 3900 "src/parser/mylite_lemon.y"
 {
 }
-#line 40960 "src/parser/generated/mylite_lemon.c"
+#line 40963 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1500,&yymsp[0].minor);
 }
         break;
       case 2665: /* set_password_tail ::= set_password_target_tail set_password_auth_option set_password_replace_tail set_password_retain_tail */
 {  yy_destructor(yypParser,1501,&yymsp[-3].minor);
-#line 3901 "src/parser/mylite_lemon.y"
+#line 3904 "src/parser/mylite_lemon.y"
 {
 }
-#line 40970 "src/parser/generated/mylite_lemon.c"
+#line 40973 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1502,&yymsp[-2].minor);
   yy_destructor(yypParser,1503,&yymsp[-1].minor);
   yy_destructor(yypParser,1504,&yymsp[0].minor);
@@ -40974,140 +40977,140 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2667: /* set_password_target_tail ::= FOR set_password_target */
 {  yy_destructor(yypParser,393,&yymsp[-1].minor);
-#line 3904 "src/parser/mylite_lemon.y"
+#line 3907 "src/parser/mylite_lemon.y"
 {
 }
-#line 40981 "src/parser/generated/mylite_lemon.c"
+#line 40984 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1505,&yymsp[0].minor);
 }
         break;
       case 2668: /* set_password_auth_option ::= EQUALS string_literal */
 {  yy_destructor(yypParser,214,&yymsp[-1].minor);
-#line 3906 "src/parser/mylite_lemon.y"
+#line 3909 "src/parser/mylite_lemon.y"
 {
 }
-#line 40990 "src/parser/generated/mylite_lemon.c"
+#line 40993 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
       case 2669: /* set_password_auth_option ::= TO RANDOM */
 {  yy_destructor(yypParser,463,&yymsp[-1].minor);
-#line 3907 "src/parser/mylite_lemon.y"
+#line 3910 "src/parser/mylite_lemon.y"
 {
 }
-#line 40999 "src/parser/generated/mylite_lemon.c"
+#line 41002 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,135,&yymsp[0].minor);
 }
         break;
       case 2671: /* set_password_replace_tail ::= REPLACE string_literal */
 {  yy_destructor(yypParser,335,&yymsp[-1].minor);
-#line 3910 "src/parser/mylite_lemon.y"
+#line 3913 "src/parser/mylite_lemon.y"
 {
 }
-#line 41008 "src/parser/generated/mylite_lemon.c"
+#line 41011 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,718,&yymsp[0].minor);
 }
         break;
       case 2679: /* set_role_tail ::= ALL EXCEPT drop_account_list */
       case 2837: /* grant_as_role_spec ::= ALL EXCEPT drop_account_list */ yytestcase(yyruleno==2837);
 {  yy_destructor(yypParser,315,&yymsp[-2].minor);
-#line 3921 "src/parser/mylite_lemon.y"
+#line 3924 "src/parser/mylite_lemon.y"
 {
 }
-#line 41018 "src/parser/generated/mylite_lemon.c"
+#line 41021 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,59,&yymsp[-1].minor);
   yy_destructor(yypParser,694,&yymsp[0].minor);
 }
         break;
       case 2681: /* set_default_role_tail ::= set_default_role_spec TO drop_account_list */
 {  yy_destructor(yypParser,1506,&yymsp[-2].minor);
-#line 3924 "src/parser/mylite_lemon.y"
+#line 3927 "src/parser/mylite_lemon.y"
 {
 }
-#line 41028 "src/parser/generated/mylite_lemon.c"
+#line 41031 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,463,&yymsp[-1].minor);
   yy_destructor(yypParser,694,&yymsp[0].minor);
 }
         break;
       case 2685: /* set_transaction_tail ::= set_transaction_access_mode set_transaction_isolation_tail */
 {  yy_destructor(yypParser,1507,&yymsp[-1].minor);
-#line 3930 "src/parser/mylite_lemon.y"
+#line 3933 "src/parser/mylite_lemon.y"
 {
 }
-#line 41038 "src/parser/generated/mylite_lemon.c"
+#line 41041 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1508,&yymsp[0].minor);
 }
         break;
       case 2686: /* set_transaction_tail ::= set_transaction_isolation_clause set_transaction_access_tail */
 {  yy_destructor(yypParser,1509,&yymsp[-1].minor);
-#line 3931 "src/parser/mylite_lemon.y"
+#line 3934 "src/parser/mylite_lemon.y"
 {
 }
-#line 41047 "src/parser/generated/mylite_lemon.c"
+#line 41050 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1510,&yymsp[0].minor);
 }
         break;
       case 2691: /* set_transaction_access_tail ::= import_comma set_transaction_access_mode */
 {  yy_destructor(yypParser,784,&yymsp[-1].minor);
-#line 3938 "src/parser/mylite_lemon.y"
+#line 3941 "src/parser/mylite_lemon.y"
 {
 }
-#line 41056 "src/parser/generated/mylite_lemon.c"
+#line 41059 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1507,&yymsp[0].minor);
 }
         break;
       case 2693: /* set_transaction_isolation_tail ::= import_comma set_transaction_isolation_clause */
 {  yy_destructor(yypParser,784,&yymsp[-1].minor);
-#line 3941 "src/parser/mylite_lemon.y"
+#line 3944 "src/parser/mylite_lemon.y"
 {
 }
-#line 41065 "src/parser/generated/mylite_lemon.c"
+#line 41068 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1509,&yymsp[0].minor);
 }
         break;
       case 2694: /* set_transaction_access_mode ::= READ transaction_access_mode */
 {  yy_destructor(yypParser,414,&yymsp[-1].minor);
-#line 3943 "src/parser/mylite_lemon.y"
+#line 3946 "src/parser/mylite_lemon.y"
 {
 }
-#line 41074 "src/parser/generated/mylite_lemon.c"
+#line 41077 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,585,&yymsp[0].minor);
 }
         break;
       case 2695: /* set_transaction_isolation_clause ::= ISOLATION LEVEL set_transaction_isolation_level */
 {  yy_destructor(yypParser,554,&yymsp[-2].minor);
-#line 3945 "src/parser/mylite_lemon.y"
+#line 3948 "src/parser/mylite_lemon.y"
 {
 }
-#line 41083 "src/parser/generated/mylite_lemon.c"
+#line 41086 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,555,&yymsp[-1].minor);
   yy_destructor(yypParser,1511,&yymsp[0].minor);
 }
         break;
       case 2696: /* set_transaction_isolation_level ::= REPEATABLE READ */
 {  yy_destructor(yypParser,556,&yymsp[-1].minor);
-#line 3947 "src/parser/mylite_lemon.y"
+#line 3950 "src/parser/mylite_lemon.y"
 {
 }
-#line 41093 "src/parser/generated/mylite_lemon.c"
+#line 41096 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,414,&yymsp[0].minor);
 }
         break;
       case 2697: /* set_transaction_isolation_level ::= READ COMMITTED */
 {  yy_destructor(yypParser,414,&yymsp[-1].minor);
-#line 3948 "src/parser/mylite_lemon.y"
+#line 3951 "src/parser/mylite_lemon.y"
 {
 }
-#line 41102 "src/parser/generated/mylite_lemon.c"
+#line 41105 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,557,&yymsp[0].minor);
 }
         break;
       case 2698: /* set_transaction_isolation_level ::= READ UNCOMMITTED */
 {  yy_destructor(yypParser,414,&yymsp[-1].minor);
-#line 3949 "src/parser/mylite_lemon.y"
+#line 3952 "src/parser/mylite_lemon.y"
 {
 }
-#line 41111 "src/parser/generated/mylite_lemon.c"
+#line 41114 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,558,&yymsp[0].minor);
 }
         break;
@@ -41115,10 +41118,10 @@ static YYACTIONTYPE yy_reduce(
       case 3265: /* keyword ::= SERIALIZABLE */ yytestcase(yyruleno==3265);
       case 3569: /* keyword_not_select_clause ::= SERIALIZABLE */ yytestcase(yyruleno==3569);
 {  yy_destructor(yypParser,559,&yymsp[0].minor);
-#line 3950 "src/parser/mylite_lemon.y"
+#line 3953 "src/parser/mylite_lemon.y"
 {
 }
-#line 41122 "src/parser/generated/mylite_lemon.c"
+#line 41125 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2703: /* set_assignment_scope ::= PERSIST_ONLY */
@@ -41126,46 +41129,46 @@ static YYACTIONTYPE yy_reduce(
       case 3135: /* keyword ::= PERSIST_ONLY */ yytestcase(yyruleno==3135);
       case 3440: /* keyword_not_select_clause ::= PERSIST_ONLY */ yytestcase(yyruleno==3440);
 {  yy_destructor(yypParser,560,&yymsp[0].minor);
-#line 3957 "src/parser/mylite_lemon.y"
+#line 3960 "src/parser/mylite_lemon.y"
 {
 }
-#line 41133 "src/parser/generated/mylite_lemon.c"
+#line 41136 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2705: /* set_assignment_list ::= set_assignment */
 {  yy_destructor(yypParser,1513,&yymsp[0].minor);
-#line 3960 "src/parser/mylite_lemon.y"
+#line 3963 "src/parser/mylite_lemon.y"
 {
 }
-#line 41141 "src/parser/generated/mylite_lemon.c"
+#line 41144 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2706: /* set_assignment_list ::= set_assignment_list import_comma set_assignment */
 {  yy_destructor(yypParser,1493,&yymsp[-2].minor);
-#line 3961 "src/parser/mylite_lemon.y"
+#line 3964 "src/parser/mylite_lemon.y"
 {
 }
-#line 41149 "src/parser/generated/mylite_lemon.c"
+#line 41152 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1513,&yymsp[0].minor);
 }
         break;
       case 2707: /* set_assignment ::= set_variable_name set_assignment_operator set_assignment_value */
 {  yy_destructor(yypParser,1514,&yymsp[-2].minor);
-#line 3963 "src/parser/mylite_lemon.y"
+#line 3966 "src/parser/mylite_lemon.y"
 {
 }
-#line 41159 "src/parser/generated/mylite_lemon.c"
+#line 41162 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1406,&yymsp[-1].minor);
   yy_destructor(yypParser,1515,&yymsp[0].minor);
 }
         break;
       case 2708: /* set_assignment ::= set_assignment_scope set_variable_name set_assignment_operator set_assignment_value */
 {  yy_destructor(yypParser,1512,&yymsp[-3].minor);
-#line 3964 "src/parser/mylite_lemon.y"
+#line 3967 "src/parser/mylite_lemon.y"
 {
 }
-#line 41169 "src/parser/generated/mylite_lemon.c"
+#line 41172 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1514,&yymsp[-2].minor);
   yy_destructor(yypParser,1406,&yymsp[-1].minor);
   yy_destructor(yypParser,1515,&yymsp[0].minor);
@@ -41173,65 +41176,65 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2711: /* set_assignment_operator ::= ASSIGN */
 {  yy_destructor(yypParser,210,&yymsp[0].minor);
-#line 3969 "src/parser/mylite_lemon.y"
+#line 3972 "src/parser/mylite_lemon.y"
 {
 }
-#line 41180 "src/parser/generated/mylite_lemon.c"
+#line 41183 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2721: /* set_value_start ::= RESET */
       case 3058: /* keyword ::= RESET */ yytestcase(yyruleno==3058);
       case 3365: /* keyword_not_select_clause ::= RESET */ yytestcase(yyruleno==3365);
 {  yy_destructor(yypParser,511,&yymsp[0].minor);
-#line 3980 "src/parser/mylite_lemon.y"
+#line 3983 "src/parser/mylite_lemon.y"
 {
 }
-#line 41190 "src/parser/generated/mylite_lemon.c"
+#line 41193 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2724: /* set_variable_name ::= set_variable_part set_variable_dot_tail */
 {  yy_destructor(yypParser,1461,&yymsp[-1].minor);
-#line 3984 "src/parser/mylite_lemon.y"
+#line 3987 "src/parser/mylite_lemon.y"
 {
 }
-#line 41198 "src/parser/generated/mylite_lemon.c"
+#line 41201 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1460,&yymsp[0].minor);
 }
         break;
       case 2725: /* set_variable_name ::= AT_EMPTY set_variable_part set_variable_dot_tail */
 {  yy_destructor(yypParser,219,&yymsp[-2].minor);
-#line 3985 "src/parser/mylite_lemon.y"
+#line 3988 "src/parser/mylite_lemon.y"
 {
 }
-#line 41207 "src/parser/generated/mylite_lemon.c"
+#line 41210 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1461,&yymsp[-1].minor);
   yy_destructor(yypParser,1460,&yymsp[0].minor);
 }
         break;
       case 2728: /* set_variable_dot_tail ::= set_variable_dot_tail DOT set_variable_part */
 {  yy_destructor(yypParser,1460,&yymsp[-2].minor);
-#line 3989 "src/parser/mylite_lemon.y"
+#line 3992 "src/parser/mylite_lemon.y"
 {
 }
-#line 41217 "src/parser/generated/mylite_lemon.c"
+#line 41220 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,212,&yymsp[-1].minor);
   yy_destructor(yypParser,1461,&yymsp[0].minor);
 }
         break;
       case 2730: /* set_variable_part ::= AT_HOST */
 {  yy_destructor(yypParser,220,&yymsp[0].minor);
-#line 3992 "src/parser/mylite_lemon.y"
+#line 3995 "src/parser/mylite_lemon.y"
 {
 }
-#line 41227 "src/parser/generated/mylite_lemon.c"
+#line 41230 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2733: /* grant_destination_tail ::= ON grant_object TO grant_recipient_list grant_tail_options */
 {  yy_destructor(yypParser,330,&yymsp[-4].minor);
-#line 4004 "src/parser/mylite_lemon.y"
+#line 4007 "src/parser/mylite_lemon.y"
 {
 }
-#line 41235 "src/parser/generated/mylite_lemon.c"
+#line 41238 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1519,&yymsp[-3].minor);
   yy_destructor(yypParser,463,&yymsp[-2].minor);
   yy_destructor(yypParser,1520,&yymsp[-1].minor);
@@ -41240,29 +41243,29 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2734: /* grant_destination_tail ::= TO grant_recipient_list grant_tail_options */
 {  yy_destructor(yypParser,463,&yymsp[-2].minor);
-#line 4005 "src/parser/mylite_lemon.y"
+#line 4008 "src/parser/mylite_lemon.y"
 {
 }
-#line 41247 "src/parser/generated/mylite_lemon.c"
+#line 41250 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1520,&yymsp[-1].minor);
   yy_destructor(yypParser,1521,&yymsp[0].minor);
 }
         break;
       case 2735: /* revoke_tail ::= grant_subject_list revoke_destination_tail */
 {  yy_destructor(yypParser,1516,&yymsp[-1].minor);
-#line 4007 "src/parser/mylite_lemon.y"
+#line 4010 "src/parser/mylite_lemon.y"
 {
 }
-#line 41257 "src/parser/generated/mylite_lemon.c"
+#line 41260 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1522,&yymsp[0].minor);
 }
         break;
       case 2736: /* revoke_tail ::= IF reset_exists grant_subject_list revoke_destination_tail */
 {  yy_destructor(yypParser,404,&yymsp[-3].minor);
-#line 4008 "src/parser/mylite_lemon.y"
+#line 4011 "src/parser/mylite_lemon.y"
 {
 }
-#line 41266 "src/parser/generated/mylite_lemon.c"
+#line 41269 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,819,&yymsp[-2].minor);
   yy_destructor(yypParser,1516,&yymsp[-1].minor);
   yy_destructor(yypParser,1522,&yymsp[0].minor);
@@ -41270,10 +41273,10 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2737: /* revoke_destination_tail ::= ON grant_object FROM grant_recipient_list revoke_ignore_unknown_tail */
 {  yy_destructor(yypParser,330,&yymsp[-4].minor);
-#line 4010 "src/parser/mylite_lemon.y"
+#line 4013 "src/parser/mylite_lemon.y"
 {
 }
-#line 41277 "src/parser/generated/mylite_lemon.c"
+#line 41280 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1519,&yymsp[-3].minor);
   yy_destructor(yypParser,475,&yymsp[-2].minor);
   yy_destructor(yypParser,1520,&yymsp[-1].minor);
@@ -41282,74 +41285,74 @@ static YYACTIONTYPE yy_reduce(
         break;
       case 2738: /* revoke_destination_tail ::= FROM grant_recipient_list revoke_ignore_unknown_tail */
 {  yy_destructor(yypParser,475,&yymsp[-2].minor);
-#line 4011 "src/parser/mylite_lemon.y"
+#line 4014 "src/parser/mylite_lemon.y"
 {
 }
-#line 41289 "src/parser/generated/mylite_lemon.c"
+#line 41292 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1520,&yymsp[-1].minor);
   yy_destructor(yypParser,1523,&yymsp[0].minor);
 }
         break;
       case 2739: /* grant_subject_list ::= grant_subject_item */
 {  yy_destructor(yypParser,1524,&yymsp[0].minor);
-#line 4013 "src/parser/mylite_lemon.y"
+#line 4016 "src/parser/mylite_lemon.y"
 {
 }
-#line 41299 "src/parser/generated/mylite_lemon.c"
+#line 41302 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2740: /* grant_subject_list ::= grant_subject_list COMMA grant_subject_item */
 {  yy_destructor(yypParser,1516,&yymsp[-2].minor);
-#line 4014 "src/parser/mylite_lemon.y"
+#line 4017 "src/parser/mylite_lemon.y"
 {
 }
-#line 41307 "src/parser/generated/mylite_lemon.c"
+#line 41310 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,1524,&yymsp[0].minor);
 }
         break;
       case 2741: /* grant_subject_item ::= grant_subject_part */
 {  yy_destructor(yypParser,1525,&yymsp[0].minor);
-#line 4016 "src/parser/mylite_lemon.y"
+#line 4019 "src/parser/mylite_lemon.y"
 {
 }
-#line 41317 "src/parser/generated/mylite_lemon.c"
+#line 41320 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2742: /* grant_subject_item ::= grant_subject_item grant_subject_part */
 {  yy_destructor(yypParser,1524,&yymsp[-1].minor);
-#line 4017 "src/parser/mylite_lemon.y"
+#line 4020 "src/parser/mylite_lemon.y"
 {
 }
-#line 41325 "src/parser/generated/mylite_lemon.c"
+#line 41328 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1525,&yymsp[0].minor);
 }
         break;
       case 2743: /* grant_subject_part ::= grant_subject_token */
 {  yy_destructor(yypParser,1526,&yymsp[0].minor);
-#line 4019 "src/parser/mylite_lemon.y"
+#line 4022 "src/parser/mylite_lemon.y"
 {
 }
-#line 41334 "src/parser/generated/mylite_lemon.c"
+#line 41337 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2744: /* grant_subject_part ::= LP grant_subject_parenthesized RP */
       case 2752: /* grant_subject_parenthesized_token ::= LP grant_subject_parenthesized RP */ yytestcase(yyruleno==2752);
 {  yy_destructor(yypParser,348,&yymsp[-2].minor);
-#line 4020 "src/parser/mylite_lemon.y"
+#line 4023 "src/parser/mylite_lemon.y"
 {
 }
-#line 41343 "src/parser/generated/mylite_lemon.c"
+#line 41346 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1527,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
         break;
       case 2746: /* grant_subject_parenthesized ::= grant_subject_parenthesized grant_subject_parenthesized_token */
 {  yy_destructor(yypParser,1527,&yymsp[-1].minor);
-#line 4023 "src/parser/mylite_lemon.y"
+#line 4026 "src/parser/mylite_lemon.y"
 {
 }
-#line 41353 "src/parser/generated/mylite_lemon.c"
+#line 41356 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1528,&yymsp[0].minor);
 }
         break;
@@ -41357,246 +41360,246 @@ static YYACTIONTYPE yy_reduce(
       case 3019: /* keyword ::= ALTER */ yytestcase(yyruleno==3019);
       case 3325: /* keyword_not_select_clause ::= ALTER */ yytestcase(yyruleno==3325);
 {  yy_destructor(yypParser,459,&yymsp[0].minor);
-#line 4037 "src/parser/mylite_lemon.y"
+#line 4040 "src/parser/mylite_lemon.y"
 {
 }
-#line 41364 "src/parser/generated/mylite_lemon.c"
+#line 41367 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2761: /* grant_subject_token ::= CREATE */
       case 3015: /* keyword ::= CREATE */ yytestcase(yyruleno==3015);
       case 3321: /* keyword_not_select_clause ::= CREATE */ yytestcase(yyruleno==3321);
 {  yy_destructor(yypParser,324,&yymsp[0].minor);
-#line 4040 "src/parser/mylite_lemon.y"
+#line 4043 "src/parser/mylite_lemon.y"
 {
 }
-#line 41374 "src/parser/generated/mylite_lemon.c"
+#line 41377 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2766: /* grant_subject_token ::= DROP */
       case 3020: /* keyword ::= DROP */ yytestcase(yyruleno==3020);
       case 3326: /* keyword_not_select_clause ::= DROP */ yytestcase(yyruleno==3326);
 {  yy_destructor(yypParser,423,&yymsp[0].minor);
-#line 4045 "src/parser/mylite_lemon.y"
+#line 4048 "src/parser/mylite_lemon.y"
 {
 }
-#line 41384 "src/parser/generated/mylite_lemon.c"
+#line 41387 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2768: /* grant_subject_token ::= EXECUTE */
       case 3063: /* keyword ::= EXECUTE */ yytestcase(yyruleno==3063);
       case 3370: /* keyword_not_select_clause ::= EXECUTE */ yytestcase(yyruleno==3370);
 {  yy_destructor(yypParser,548,&yymsp[0].minor);
-#line 4047 "src/parser/mylite_lemon.y"
+#line 4050 "src/parser/mylite_lemon.y"
 {
 }
-#line 41394 "src/parser/generated/mylite_lemon.c"
+#line 41397 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2770: /* grant_subject_token ::= GRANT */
       case 3065: /* keyword ::= GRANT */ yytestcase(yyruleno==3065);
       case 3372: /* keyword_not_select_clause ::= GRANT */ yytestcase(yyruleno==3372);
 {  yy_destructor(yypParser,561,&yymsp[0].minor);
-#line 4049 "src/parser/mylite_lemon.y"
+#line 4052 "src/parser/mylite_lemon.y"
 {
 }
-#line 41404 "src/parser/generated/mylite_lemon.c"
+#line 41407 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2775: /* grant_subject_token ::= LOCK */
       case 3050: /* keyword ::= LOCK */ yytestcase(yyruleno==3050);
       case 3357: /* keyword_not_select_clause ::= LOCK */ yytestcase(yyruleno==3357);
 {  yy_destructor(yypParser,450,&yymsp[0].minor);
-#line 4054 "src/parser/mylite_lemon.y"
+#line 4057 "src/parser/mylite_lemon.y"
 {
 }
-#line 41414 "src/parser/generated/mylite_lemon.c"
+#line 41417 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2779: /* grant_subject_token ::= PROXY */
       case 3296: /* keyword ::= PROXY */ yytestcase(yyruleno==3296);
       case 3600: /* keyword_not_select_clause ::= PROXY */ yytestcase(yyruleno==3600);
 {  yy_destructor(yypParser,563,&yymsp[0].minor);
-#line 4058 "src/parser/mylite_lemon.y"
+#line 4061 "src/parser/mylite_lemon.y"
 {
 }
-#line 41424 "src/parser/generated/mylite_lemon.c"
+#line 41427 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2780: /* grant_subject_token ::= REPLICATION */
       case 3140: /* keyword ::= REPLICATION */ yytestcase(yyruleno==3140);
       case 3445: /* keyword_not_select_clause ::= REPLICATION */ yytestcase(yyruleno==3445);
 {  yy_destructor(yypParser,514,&yymsp[0].minor);
-#line 4059 "src/parser/mylite_lemon.y"
+#line 4062 "src/parser/mylite_lemon.y"
 {
 }
-#line 41434 "src/parser/generated/mylite_lemon.c"
+#line 41437 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2783: /* grant_subject_token ::= SHOW */
       case 3069: /* keyword ::= SHOW */ yytestcase(yyruleno==3069);
       case 3376: /* keyword_not_select_clause ::= SHOW */ yytestcase(yyruleno==3376);
 {  yy_destructor(yypParser,518,&yymsp[0].minor);
-#line 4062 "src/parser/mylite_lemon.y"
+#line 4065 "src/parser/mylite_lemon.y"
 {
 }
-#line 41444 "src/parser/generated/mylite_lemon.c"
+#line 41447 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2784: /* grant_subject_token ::= SHUTDOWN */
       case 3096: /* keyword ::= SHUTDOWN */ yytestcase(yyruleno==3096);
       case 3403: /* keyword_not_select_clause ::= SHUTDOWN */ yytestcase(yyruleno==3403);
 {  yy_destructor(yypParser,545,&yymsp[0].minor);
-#line 4063 "src/parser/mylite_lemon.y"
+#line 4066 "src/parser/mylite_lemon.y"
 {
 }
-#line 41454 "src/parser/generated/mylite_lemon.c"
+#line 41457 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2785: /* grant_subject_token ::= SLAVE */
       case 3048: /* keyword ::= SLAVE */ yytestcase(yyruleno==3048);
       case 3355: /* keyword_not_select_clause ::= SLAVE */ yytestcase(yyruleno==3355);
 {  yy_destructor(yypParser,474,&yymsp[0].minor);
-#line 4064 "src/parser/mylite_lemon.y"
+#line 4067 "src/parser/mylite_lemon.y"
 {
 }
-#line 41464 "src/parser/generated/mylite_lemon.c"
+#line 41467 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2789: /* grant_subject_token ::= TEMPORARY */
       case 3144: /* keyword ::= TEMPORARY */ yytestcase(yyruleno==3144);
       case 3449: /* keyword_not_select_clause ::= TEMPORARY */ yytestcase(yyruleno==3449);
 {  yy_destructor(yypParser,326,&yymsp[0].minor);
-#line 4068 "src/parser/mylite_lemon.y"
+#line 4071 "src/parser/mylite_lemon.y"
 {
 }
-#line 41474 "src/parser/generated/mylite_lemon.c"
+#line 41477 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2794: /* grant_object ::= grant_object_token */
 {  yy_destructor(yypParser,1529,&yymsp[0].minor);
-#line 4074 "src/parser/mylite_lemon.y"
+#line 4077 "src/parser/mylite_lemon.y"
 {
 }
-#line 41482 "src/parser/generated/mylite_lemon.c"
+#line 41485 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2795: /* grant_object ::= grant_object grant_object_token */
 {  yy_destructor(yypParser,1519,&yymsp[-1].minor);
-#line 4075 "src/parser/mylite_lemon.y"
+#line 4078 "src/parser/mylite_lemon.y"
 {
 }
-#line 41490 "src/parser/generated/mylite_lemon.c"
+#line 41493 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1529,&yymsp[0].minor);
 }
         break;
       case 2810: /* grant_recipient_list ::= grant_recipient */
 {  yy_destructor(yypParser,1530,&yymsp[0].minor);
-#line 4092 "src/parser/mylite_lemon.y"
+#line 4095 "src/parser/mylite_lemon.y"
 {
 }
-#line 41499 "src/parser/generated/mylite_lemon.c"
+#line 41502 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2811: /* grant_recipient_list ::= grant_recipient_list COMMA grant_recipient */
 {  yy_destructor(yypParser,1520,&yymsp[-2].minor);
-#line 4093 "src/parser/mylite_lemon.y"
+#line 4096 "src/parser/mylite_lemon.y"
 {
 }
-#line 41507 "src/parser/generated/mylite_lemon.c"
+#line 41510 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,1530,&yymsp[0].minor);
 }
         break;
       case 2812: /* grant_recipient ::= grant_account_ref grant_recipient_auth_tail */
 {  yy_destructor(yypParser,1531,&yymsp[-1].minor);
-#line 4095 "src/parser/mylite_lemon.y"
+#line 4098 "src/parser/mylite_lemon.y"
 {
 }
-#line 41517 "src/parser/generated/mylite_lemon.c"
+#line 41520 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1532,&yymsp[0].minor);
 }
         break;
       case 2816: /* grant_recipient_auth_tail ::= grant_recipient_auth_option */
 {  yy_destructor(yypParser,1533,&yymsp[0].minor);
-#line 4101 "src/parser/mylite_lemon.y"
+#line 4104 "src/parser/mylite_lemon.y"
 {
 }
-#line 41526 "src/parser/generated/mylite_lemon.c"
+#line 41529 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2820: /* grant_tail_options ::= grant_require_tail grant_with_tails grant_as_tail */
 {  yy_destructor(yypParser,1534,&yymsp[-2].minor);
-#line 4107 "src/parser/mylite_lemon.y"
+#line 4110 "src/parser/mylite_lemon.y"
 {
 }
-#line 41534 "src/parser/generated/mylite_lemon.c"
+#line 41537 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1535,&yymsp[-1].minor);
   yy_destructor(yypParser,1536,&yymsp[0].minor);
 }
         break;
       case 2824: /* grant_with_tails ::= grant_with_tails WITH grant_with_clause */
 {  yy_destructor(yypParser,1535,&yymsp[-2].minor);
-#line 4113 "src/parser/mylite_lemon.y"
+#line 4116 "src/parser/mylite_lemon.y"
 {
 }
-#line 41544 "src/parser/generated/mylite_lemon.c"
+#line 41547 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,355,&yymsp[-1].minor);
   yy_destructor(yypParser,1537,&yymsp[0].minor);
 }
         break;
       case 2825: /* grant_with_clause ::= account_resource_options */
 {  yy_destructor(yypParser,858,&yymsp[0].minor);
-#line 4115 "src/parser/mylite_lemon.y"
+#line 4118 "src/parser/mylite_lemon.y"
 {
 }
-#line 41554 "src/parser/generated/mylite_lemon.c"
+#line 41557 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2826: /* grant_with_clause ::= GRANT OPTION */
 {  yy_destructor(yypParser,561,&yymsp[-1].minor);
-#line 4116 "src/parser/mylite_lemon.y"
+#line 4119 "src/parser/mylite_lemon.y"
 {
 }
-#line 41562 "src/parser/generated/mylite_lemon.c"
+#line 41565 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,391,&yymsp[0].minor);
 }
         break;
       case 2827: /* grant_with_clause ::= ADMIN OPTION */
 {  yy_destructor(yypParser,564,&yymsp[-1].minor);
-#line 4117 "src/parser/mylite_lemon.y"
+#line 4120 "src/parser/mylite_lemon.y"
 {
 }
-#line 41571 "src/parser/generated/mylite_lemon.c"
+#line 41574 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,391,&yymsp[0].minor);
 }
         break;
       case 2829: /* grant_as_tail ::= AS grant_as_user grant_as_role_tail */
 {  yy_destructor(yypParser,6,&yymsp[-2].minor);
-#line 4120 "src/parser/mylite_lemon.y"
+#line 4123 "src/parser/mylite_lemon.y"
 {
 }
-#line 41580 "src/parser/generated/mylite_lemon.c"
+#line 41583 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1538,&yymsp[-1].minor);
   yy_destructor(yypParser,1539,&yymsp[0].minor);
 }
         break;
       case 2833: /* grant_as_role_tail ::= WITH ROLE grant_as_role_spec */
 {  yy_destructor(yypParser,355,&yymsp[-2].minor);
-#line 4126 "src/parser/mylite_lemon.y"
+#line 4129 "src/parser/mylite_lemon.y"
 {
 }
-#line 41590 "src/parser/generated/mylite_lemon.c"
+#line 41593 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,339,&yymsp[-1].minor);
   yy_destructor(yypParser,1540,&yymsp[0].minor);
 }
         break;
       case 2840: /* revoke_ignore_unknown_tail ::= IGNORE UNKNOWN USER */
 {  yy_destructor(yypParser,360,&yymsp[-2].minor);
-#line 4135 "src/parser/mylite_lemon.y"
+#line 4138 "src/parser/mylite_lemon.y"
 {
 }
-#line 41600 "src/parser/generated/mylite_lemon.c"
+#line 41603 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,565,&yymsp[-1].minor);
   yy_destructor(yypParser,340,&yymsp[0].minor);
 }
@@ -41604,84 +41607,84 @@ static YYACTIONTYPE yy_reduce(
       case 2847: /* expression_start ::= expression_start_keyword */
       case 2883: /* if_condition_start ::= expression_start_keyword */ yytestcase(yyruleno==2883);
 {  yy_destructor(yypParser,1543,&yymsp[0].minor);
-#line 4166 "src/parser/mylite_lemon.y"
+#line 4169 "src/parser/mylite_lemon.y"
 {
 }
-#line 41611 "src/parser/generated/mylite_lemon.c"
+#line 41614 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2873: /* expression_start_keyword ::= PROFILE */
       case 3195: /* keyword ::= PROFILE */ yytestcase(yyruleno==3195);
       case 3500: /* keyword_not_select_clause ::= PROFILE */ yytestcase(yyruleno==3500);
 {  yy_destructor(yypParser,521,&yymsp[0].minor);
-#line 4193 "src/parser/mylite_lemon.y"
+#line 4196 "src/parser/mylite_lemon.y"
 {
 }
-#line 41621 "src/parser/generated/mylite_lemon.c"
+#line 41624 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2876: /* expression_start_keyword ::= ROW */
       case 3245: /* keyword ::= ROW */ yytestcase(yyruleno==3245);
       case 3549: /* keyword_not_select_clause ::= ROW */ yytestcase(yyruleno==3549);
 {  yy_destructor(yypParser,394,&yymsp[0].minor);
-#line 4196 "src/parser/mylite_lemon.y"
+#line 4199 "src/parser/mylite_lemon.y"
 {
 }
-#line 41631 "src/parser/generated/mylite_lemon.c"
+#line 41634 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2878: /* expression_start_keyword ::= TRUNCATE */
       case 3021: /* keyword ::= TRUNCATE */ yytestcase(yyruleno==3021);
       case 3327: /* keyword_not_select_clause ::= TRUNCATE */ yytestcase(yyruleno==3327);
 {  yy_destructor(yypParser,465,&yymsp[0].minor);
-#line 4198 "src/parser/mylite_lemon.y"
+#line 4201 "src/parser/mylite_lemon.y"
 {
 }
-#line 41641 "src/parser/generated/mylite_lemon.c"
+#line 41644 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2888: /* resignal_tail ::= signal_condition_value signal_set_tail */
 {  yy_destructor(yypParser,1474,&yymsp[-1].minor);
-#line 4229 "src/parser/mylite_lemon.y"
+#line 4232 "src/parser/mylite_lemon.y"
 {
 }
-#line 41649 "src/parser/generated/mylite_lemon.c"
+#line 41652 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1475,&yymsp[0].minor);
 }
         break;
       case 2890: /* while_condition_tail ::= while_condition_tail while_condition_token */
 {  yy_destructor(yypParser,1545,&yymsp[-1].minor);
-#line 4236 "src/parser/mylite_lemon.y"
+#line 4239 "src/parser/mylite_lemon.y"
 {
 }
-#line 41658 "src/parser/generated/mylite_lemon.c"
+#line 41661 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1547,&yymsp[0].minor);
 }
         break;
       case 2892: /* while_condition_nested ::= while_condition_nested while_condition_nested_token */
 {  yy_destructor(yypParser,1548,&yymsp[-1].minor);
-#line 4239 "src/parser/mylite_lemon.y"
+#line 4242 "src/parser/mylite_lemon.y"
 {
 }
-#line 41667 "src/parser/generated/mylite_lemon.c"
+#line 41670 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1549,&yymsp[0].minor);
 }
         break;
       case 2895: /* while_condition_token ::= while_condition_keyword */
 {  yy_destructor(yypParser,1550,&yymsp[0].minor);
-#line 4243 "src/parser/mylite_lemon.y"
+#line 4246 "src/parser/mylite_lemon.y"
 {
 }
-#line 41676 "src/parser/generated/mylite_lemon.c"
+#line 41679 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2897: /* while_condition_token ::= LP while_condition_nested RP */
       case 2906: /* while_condition_nested_token ::= LP while_condition_nested RP */ yytestcase(yyruleno==2906);
 {  yy_destructor(yypParser,348,&yymsp[-2].minor);
-#line 4245 "src/parser/mylite_lemon.y"
+#line 4248 "src/parser/mylite_lemon.y"
 {
 }
-#line 41685 "src/parser/generated/mylite_lemon.c"
+#line 41688 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1548,&yymsp[-1].minor);
   yy_destructor(yypParser,349,&yymsp[0].minor);
 }
@@ -41690,1152 +41693,1152 @@ static YYACTIONTYPE yy_reduce(
       case 3132: /* keyword ::= OR */ yytestcase(yyruleno==3132);
       case 3437: /* keyword_not_select_clause ::= OR */ yytestcase(yyruleno==3437);
 {  yy_destructor(yypParser,334,&yymsp[0].minor);
-#line 4270 "src/parser/mylite_lemon.y"
+#line 4273 "src/parser/mylite_lemon.y"
 {
 }
-#line 41697 "src/parser/generated/mylite_lemon.c"
+#line 41700 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2923: /* fetch_cursor_ref ::= stored_program_label_ref */
       case 2987: /* end_tail ::= stored_program_label_ref */ yytestcase(yyruleno==2987);
       case 2994: /* end_label_tail ::= stored_program_label_ref */ yytestcase(yyruleno==2994);
 {  yy_destructor(yypParser,1541,&yymsp[0].minor);
-#line 4290 "src/parser/mylite_lemon.y"
+#line 4293 "src/parser/mylite_lemon.y"
 {
 }
-#line 41707 "src/parser/generated/mylite_lemon.c"
+#line 41710 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2924: /* fetch_cursor_ref ::= FROM stored_program_label_ref */
 {  yy_destructor(yypParser,475,&yymsp[-1].minor);
-#line 4291 "src/parser/mylite_lemon.y"
+#line 4294 "src/parser/mylite_lemon.y"
 {
 }
-#line 41715 "src/parser/generated/mylite_lemon.c"
+#line 41718 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1541,&yymsp[0].minor);
 }
         break;
       case 2925: /* fetch_cursor_ref ::= NEXT FROM stored_program_label_ref */
 {  yy_destructor(yypParser,537,&yymsp[-2].minor);
-#line 4292 "src/parser/mylite_lemon.y"
+#line 4295 "src/parser/mylite_lemon.y"
 {
 }
-#line 41724 "src/parser/generated/mylite_lemon.c"
+#line 41727 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,475,&yymsp[-1].minor);
   yy_destructor(yypParser,1541,&yymsp[0].minor);
 }
         break;
       case 2926: /* fetch_target_list ::= fetch_target */
 {  yy_destructor(yypParser,1553,&yymsp[0].minor);
-#line 4294 "src/parser/mylite_lemon.y"
+#line 4297 "src/parser/mylite_lemon.y"
 {
 }
-#line 41734 "src/parser/generated/mylite_lemon.c"
+#line 41737 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2927: /* fetch_target_list ::= fetch_target_list import_comma fetch_target */
 {  yy_destructor(yypParser,1552,&yymsp[-2].minor);
-#line 4295 "src/parser/mylite_lemon.y"
+#line 4298 "src/parser/mylite_lemon.y"
 {
 }
-#line 41742 "src/parser/generated/mylite_lemon.c"
+#line 41745 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,784,&yymsp[-1].minor);
   yy_destructor(yypParser,1553,&yymsp[0].minor);
 }
         break;
       case 2929: /* declare_identifier_list ::= declare_name */
 {  yy_destructor(yypParser,1556,&yymsp[0].minor);
-#line 4332 "src/parser/mylite_lemon.y"
+#line 4335 "src/parser/mylite_lemon.y"
 {
 }
-#line 41752 "src/parser/generated/mylite_lemon.c"
+#line 41755 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2930: /* declare_identifier_list ::= declare_identifier_list COMMA declare_name */
 {  yy_destructor(yypParser,1554,&yymsp[-2].minor);
-#line 4333 "src/parser/mylite_lemon.y"
+#line 4336 "src/parser/mylite_lemon.y"
 {
 }
-#line 41760 "src/parser/generated/mylite_lemon.c"
+#line 41763 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,1556,&yymsp[0].minor);
 }
         break;
       case 2939: /* declare_condition_value ::= declare_condition_number_value */
 {  yy_destructor(yypParser,1563,&yymsp[0].minor);
-#line 4345 "src/parser/mylite_lemon.y"
+#line 4348 "src/parser/mylite_lemon.y"
 {
 }
-#line 41770 "src/parser/generated/mylite_lemon.c"
+#line 41773 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2949: /* declare_handler_action ::= CONTINUE */
       case 3219: /* keyword ::= CONTINUE */ yytestcase(yyruleno==3219);
       case 3523: /* keyword_not_select_clause ::= CONTINUE */ yytestcase(yyruleno==3523);
 {  yy_destructor(yypParser,573,&yymsp[0].minor);
-#line 4358 "src/parser/mylite_lemon.y"
+#line 4361 "src/parser/mylite_lemon.y"
 {
 }
-#line 41780 "src/parser/generated/mylite_lemon.c"
+#line 41783 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2950: /* declare_handler_action ::= EXIT */
       case 3221: /* keyword ::= EXIT */ yytestcase(yyruleno==3221);
       case 3525: /* keyword_not_select_clause ::= EXIT */ yytestcase(yyruleno==3525);
 {  yy_destructor(yypParser,574,&yymsp[0].minor);
-#line 4359 "src/parser/mylite_lemon.y"
+#line 4362 "src/parser/mylite_lemon.y"
 {
 }
-#line 41790 "src/parser/generated/mylite_lemon.c"
+#line 41793 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2951: /* declare_handler_action ::= UNDO */
       case 3147: /* keyword ::= UNDO */ yytestcase(yyruleno==3147);
       case 3452: /* keyword_not_select_clause ::= UNDO */ yytestcase(yyruleno==3452);
 {  yy_destructor(yypParser,338,&yymsp[0].minor);
-#line 4360 "src/parser/mylite_lemon.y"
+#line 4363 "src/parser/mylite_lemon.y"
 {
 }
-#line 41800 "src/parser/generated/mylite_lemon.c"
+#line 41803 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2952: /* declare_handler_keyword ::= HANDLER */
       case 3033: /* keyword ::= HANDLER */ yytestcase(yyruleno==3033);
       case 3339: /* keyword_not_select_clause ::= HANDLER */ yytestcase(yyruleno==3339);
 {  yy_destructor(yypParser,536,&yymsp[0].minor);
-#line 4362 "src/parser/mylite_lemon.y"
+#line 4365 "src/parser/mylite_lemon.y"
 {
 }
-#line 41810 "src/parser/generated/mylite_lemon.c"
+#line 41813 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2953: /* declare_handler_conditions ::= declare_handler_condition */
 {  yy_destructor(yypParser,1564,&yymsp[0].minor);
-#line 4364 "src/parser/mylite_lemon.y"
+#line 4367 "src/parser/mylite_lemon.y"
 {
 }
-#line 41818 "src/parser/generated/mylite_lemon.c"
+#line 41821 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2954: /* declare_handler_conditions ::= declare_handler_conditions COMMA declare_handler_condition */
 {  yy_destructor(yypParser,1561,&yymsp[-2].minor);
-#line 4365 "src/parser/mylite_lemon.y"
+#line 4368 "src/parser/mylite_lemon.y"
 {
 }
-#line 41826 "src/parser/generated/mylite_lemon.c"
+#line 41829 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,350,&yymsp[-1].minor);
   yy_destructor(yypParser,1564,&yymsp[0].minor);
 }
         break;
       case 2955: /* declare_handler_condition ::= declare_condition_value */
 {  yy_destructor(yypParser,1557,&yymsp[0].minor);
-#line 4367 "src/parser/mylite_lemon.y"
+#line 4370 "src/parser/mylite_lemon.y"
 {
 }
-#line 41836 "src/parser/generated/mylite_lemon.c"
+#line 41839 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2956: /* declare_handler_condition ::= declare_condition_name */
 {  yy_destructor(yypParser,1565,&yymsp[0].minor);
-#line 4368 "src/parser/mylite_lemon.y"
+#line 4371 "src/parser/mylite_lemon.y"
 {
 }
-#line 41844 "src/parser/generated/mylite_lemon.c"
+#line 41847 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2957: /* declare_handler_condition ::= declare_not declare_found */
 {  yy_destructor(yypParser,1566,&yymsp[-1].minor);
-#line 4369 "src/parser/mylite_lemon.y"
+#line 4372 "src/parser/mylite_lemon.y"
 {
 }
-#line 41852 "src/parser/generated/mylite_lemon.c"
+#line 41855 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1567,&yymsp[0].minor);
 }
         break;
       case 2961: /* declare_found ::= FOUND */
 {  yy_destructor(yypParser,70,&yymsp[0].minor);
-#line 4376 "src/parser/mylite_lemon.y"
+#line 4379 "src/parser/mylite_lemon.y"
 {
 }
-#line 41861 "src/parser/generated/mylite_lemon.c"
+#line 41864 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2989: /* end_tail ::= LOOP end_label_tail */
 {  yy_destructor(yypParser,311,&yymsp[-1].minor);
-#line 4410 "src/parser/mylite_lemon.y"
+#line 4413 "src/parser/mylite_lemon.y"
 {
 }
-#line 41869 "src/parser/generated/mylite_lemon.c"
+#line 41872 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1569,&yymsp[0].minor);
 }
         break;
       case 2990: /* end_tail ::= REPEAT end_label_tail */
 {  yy_destructor(yypParser,312,&yymsp[-1].minor);
-#line 4411 "src/parser/mylite_lemon.y"
+#line 4414 "src/parser/mylite_lemon.y"
 {
 }
-#line 41878 "src/parser/generated/mylite_lemon.c"
+#line 41881 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1569,&yymsp[0].minor);
 }
         break;
       case 2991: /* end_tail ::= WHILE end_label_tail */
 {  yy_destructor(yypParser,313,&yymsp[-1].minor);
-#line 4412 "src/parser/mylite_lemon.y"
+#line 4415 "src/parser/mylite_lemon.y"
 {
 }
-#line 41887 "src/parser/generated/mylite_lemon.c"
+#line 41890 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,1569,&yymsp[0].minor);
 }
         break;
       case 2996: /* statement_tail ::= statement_tail statement_token */
 {  yy_destructor(yypParser,665,&yymsp[-1].minor);
-#line 4463 "src/parser/mylite_lemon.y"
+#line 4466 "src/parser/mylite_lemon.y"
 {
 }
-#line 41896 "src/parser/generated/mylite_lemon.c"
+#line 41899 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,821,&yymsp[0].minor);
 }
         break;
       case 2997: /* required_statement_tail ::= statement_token */
 {  yy_destructor(yypParser,821,&yymsp[0].minor);
-#line 4465 "src/parser/mylite_lemon.y"
+#line 4468 "src/parser/mylite_lemon.y"
 {
 }
-#line 41905 "src/parser/generated/mylite_lemon.c"
+#line 41908 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 2998: /* required_statement_tail ::= required_statement_tail statement_token */
 {  yy_destructor(yypParser,732,&yymsp[-1].minor);
-#line 4466 "src/parser/mylite_lemon.y"
+#line 4469 "src/parser/mylite_lemon.y"
 {
 }
-#line 41913 "src/parser/generated/mylite_lemon.c"
+#line 41916 "src/parser/generated/mylite_lemon.c"
   yy_destructor(yypParser,821,&yymsp[0].minor);
 }
         break;
       case 3004: /* statement_token ::= RP */
 {  yy_destructor(yypParser,349,&yymsp[0].minor);
-#line 4473 "src/parser/mylite_lemon.y"
+#line 4476 "src/parser/mylite_lemon.y"
 {
 }
-#line 41922 "src/parser/generated/mylite_lemon.c"
+#line 41925 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3022: /* keyword ::= RENAME */
       case 3328: /* keyword_not_select_clause ::= RENAME */ yytestcase(yyruleno==3328);
 {  yy_destructor(yypParser,462,&yymsp[0].minor);
-#line 4492 "src/parser/mylite_lemon.y"
+#line 4495 "src/parser/mylite_lemon.y"
 {
 }
-#line 41931 "src/parser/generated/mylite_lemon.c"
+#line 41934 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3026: /* keyword ::= LOAD */
       case 3332: /* keyword_not_select_clause ::= LOAD */ yytestcase(yyruleno==3332);
 {  yy_destructor(yypParser,478,&yymsp[0].minor);
-#line 4496 "src/parser/mylite_lemon.y"
+#line 4499 "src/parser/mylite_lemon.y"
 {
 }
-#line 41940 "src/parser/generated/mylite_lemon.c"
+#line 41943 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3038: /* keyword ::= COMMIT */
       case 3345: /* keyword_not_select_clause ::= COMMIT */ yytestcase(yyruleno==3345);
 {  yy_destructor(yypParser,517,&yymsp[0].minor);
-#line 4508 "src/parser/mylite_lemon.y"
+#line 4511 "src/parser/mylite_lemon.y"
 {
 }
-#line 41949 "src/parser/generated/mylite_lemon.c"
+#line 41952 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3044: /* keyword ::= SAVEPOINT */
       case 3351: /* keyword_not_select_clause ::= SAVEPOINT */ yytestcase(yyruleno==3351);
 {  yy_destructor(yypParser,493,&yymsp[0].minor);
-#line 4514 "src/parser/mylite_lemon.y"
+#line 4517 "src/parser/mylite_lemon.y"
 {
 }
-#line 41958 "src/parser/generated/mylite_lemon.c"
+#line 41961 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3046: /* keyword ::= REPLICA */
       case 3353: /* keyword_not_select_clause ::= REPLICA */ yytestcase(yyruleno==3353);
 {  yy_destructor(yypParser,473,&yymsp[0].minor);
-#line 4516 "src/parser/mylite_lemon.y"
+#line 4519 "src/parser/mylite_lemon.y"
 {
 }
-#line 41967 "src/parser/generated/mylite_lemon.c"
+#line 41970 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3049: /* keyword ::= SLOW */
       case 3356: /* keyword_not_select_clause ::= SLOW */ yytestcase(yyruleno==3356);
 {  yy_destructor(yypParser,169,&yymsp[0].minor);
-#line 4519 "src/parser/mylite_lemon.y"
+#line 4522 "src/parser/mylite_lemon.y"
 {
 }
-#line 41976 "src/parser/generated/mylite_lemon.c"
+#line 41979 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3051: /* keyword ::= UNLOCK */
       case 3358: /* keyword_not_select_clause ::= UNLOCK */ yytestcase(yyruleno==3358);
 {  yy_destructor(yypParser,451,&yymsp[0].minor);
-#line 4521 "src/parser/mylite_lemon.y"
+#line 4524 "src/parser/mylite_lemon.y"
 {
 }
-#line 41985 "src/parser/generated/mylite_lemon.c"
+#line 41988 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3052: /* keyword ::= XA */
       case 3359: /* keyword_not_select_clause ::= XA */ yytestcase(yyruleno==3359);
 {  yy_destructor(yypParser,515,&yymsp[0].minor);
-#line 4522 "src/parser/mylite_lemon.y"
+#line 4525 "src/parser/mylite_lemon.y"
 {
 }
-#line 41994 "src/parser/generated/mylite_lemon.c"
+#line 41997 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3057: /* keyword ::= PURGE */
       case 3364: /* keyword_not_select_clause ::= PURGE */ yytestcase(yyruleno==3364);
 {  yy_destructor(yypParser,513,&yymsp[0].minor);
-#line 4527 "src/parser/mylite_lemon.y"
+#line 4530 "src/parser/mylite_lemon.y"
 {
 }
-#line 42003 "src/parser/generated/mylite_lemon.c"
+#line 42006 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3060: /* keyword ::= CHANGE */
       case 3367: /* keyword_not_select_clause ::= CHANGE */ yytestcase(yyruleno==3367);
 {  yy_destructor(yypParser,466,&yymsp[0].minor);
-#line 4530 "src/parser/mylite_lemon.y"
+#line 4533 "src/parser/mylite_lemon.y"
 {
 }
-#line 42012 "src/parser/generated/mylite_lemon.c"
+#line 42015 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3061: /* keyword ::= PREPARE */
       case 3368: /* keyword_not_select_clause ::= PREPARE */ yytestcase(yyruleno==3368);
 {  yy_destructor(yypParser,454,&yymsp[0].minor);
-#line 4531 "src/parser/mylite_lemon.y"
+#line 4534 "src/parser/mylite_lemon.y"
 {
 }
-#line 42021 "src/parser/generated/mylite_lemon.c"
+#line 42024 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3064: /* keyword ::= DEALLOCATE */
       case 3371: /* keyword_not_select_clause ::= DEALLOCATE */ yytestcase(yyruleno==3371);
 {  yy_destructor(yypParser,510,&yymsp[0].minor);
-#line 4534 "src/parser/mylite_lemon.y"
+#line 4537 "src/parser/mylite_lemon.y"
 {
 }
-#line 42030 "src/parser/generated/mylite_lemon.c"
+#line 42033 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3067: /* keyword ::= REVOKE */
       case 3374: /* keyword_not_select_clause ::= REVOKE */ yytestcase(yyruleno==3374);
 {  yy_destructor(yypParser,562,&yymsp[0].minor);
-#line 4537 "src/parser/mylite_lemon.y"
+#line 4540 "src/parser/mylite_lemon.y"
 {
 }
-#line 42039 "src/parser/generated/mylite_lemon.c"
+#line 42042 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3071: /* keyword ::= SERVER */
       case 3378: /* keyword_not_select_clause ::= SERVER */ yytestcase(yyruleno==3378);
 {  yy_destructor(yypParser,336,&yymsp[0].minor);
-#line 4541 "src/parser/mylite_lemon.y"
+#line 4544 "src/parser/mylite_lemon.y"
 {
 }
-#line 42048 "src/parser/generated/mylite_lemon.c"
+#line 42051 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3072: /* keyword ::= DESCRIBE */
       case 3379: /* keyword_not_select_clause ::= DESCRIBE */ yytestcase(yyruleno==3379);
 {  yy_destructor(yypParser,533,&yymsp[0].minor);
-#line 4542 "src/parser/mylite_lemon.y"
+#line 4545 "src/parser/mylite_lemon.y"
 {
 }
-#line 42057 "src/parser/generated/mylite_lemon.c"
+#line 42060 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3074: /* keyword ::= EXPLAIN */
       case 3381: /* keyword_not_select_clause ::= EXPLAIN */ yytestcase(yyruleno==3381);
 {  yy_destructor(yypParser,535,&yymsp[0].minor);
-#line 4544 "src/parser/mylite_lemon.y"
+#line 4547 "src/parser/mylite_lemon.y"
 {
 }
-#line 42066 "src/parser/generated/mylite_lemon.c"
+#line 42069 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3077: /* keyword ::= HELP */
       case 3384: /* keyword_not_select_clause ::= HELP */ yytestcase(yyruleno==3384);
 {  yy_destructor(yypParser,566,&yymsp[0].minor);
-#line 4547 "src/parser/mylite_lemon.y"
+#line 4550 "src/parser/mylite_lemon.y"
 {
 }
-#line 42075 "src/parser/generated/mylite_lemon.c"
+#line 42078 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3084: /* keyword ::= REPAIR */
       case 3391: /* keyword_not_select_clause ::= REPAIR */ yytestcase(yyruleno==3391);
 {  yy_destructor(yypParser,464,&yymsp[0].minor);
-#line 4554 "src/parser/mylite_lemon.y"
+#line 4557 "src/parser/mylite_lemon.y"
 {
 }
-#line 42084 "src/parser/generated/mylite_lemon.c"
+#line 42087 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3085: /* keyword ::= REQUIRE */
       case 3392: /* keyword_not_select_clause ::= REQUIRE */ yytestcase(yyruleno==3392);
 {  yy_destructor(yypParser,154,&yymsp[0].minor);
-#line 4555 "src/parser/mylite_lemon.y"
+#line 4558 "src/parser/mylite_lemon.y"
 {
 }
-#line 42093 "src/parser/generated/mylite_lemon.c"
+#line 42096 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3086: /* keyword ::= INSTALL */
       case 3393: /* keyword_not_select_clause ::= INSTALL */ yytestcase(yyruleno==3393);
 {  yy_destructor(yypParser,497,&yymsp[0].minor);
-#line 4556 "src/parser/mylite_lemon.y"
+#line 4559 "src/parser/mylite_lemon.y"
 {
 }
-#line 42102 "src/parser/generated/mylite_lemon.c"
+#line 42105 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3088: /* keyword ::= INSTANCE */
       case 3395: /* keyword_not_select_clause ::= INSTANCE */ yytestcase(yyruleno==3395);
 {  yy_destructor(yypParser,460,&yymsp[0].minor);
-#line 4558 "src/parser/mylite_lemon.y"
+#line 4561 "src/parser/mylite_lemon.y"
 {
 }
-#line 42111 "src/parser/generated/mylite_lemon.c"
+#line 42114 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3090: /* keyword ::= UNINSTALL */
       case 3397: /* keyword_not_select_clause ::= UNINSTALL */ yytestcase(yyruleno==3397);
 {  yy_destructor(yypParser,498,&yymsp[0].minor);
-#line 4560 "src/parser/mylite_lemon.y"
+#line 4563 "src/parser/mylite_lemon.y"
 {
 }
-#line 42120 "src/parser/generated/mylite_lemon.c"
+#line 42123 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3091: /* keyword ::= CLONE */
       case 3398: /* keyword_not_select_clause ::= CLONE */ yytestcase(yyruleno==3398);
 {  yy_destructor(yypParser,539,&yymsp[0].minor);
-#line 4561 "src/parser/mylite_lemon.y"
+#line 4564 "src/parser/mylite_lemon.y"
 {
 }
-#line 42129 "src/parser/generated/mylite_lemon.c"
+#line 42132 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3092: /* keyword ::= CACHE */
       case 3399: /* keyword_not_select_clause ::= CACHE */ yytestcase(yyruleno==3399);
 {  yy_destructor(yypParser,479,&yymsp[0].minor);
-#line 4562 "src/parser/mylite_lemon.y"
+#line 4565 "src/parser/mylite_lemon.y"
 {
 }
-#line 42138 "src/parser/generated/mylite_lemon.c"
+#line 42141 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3094: /* keyword ::= KILL */
       case 3401: /* keyword_not_select_clause ::= KILL */ yytestcase(yyruleno==3401);
 {  yy_destructor(yypParser,509,&yymsp[0].minor);
-#line 4564 "src/parser/mylite_lemon.y"
+#line 4567 "src/parser/mylite_lemon.y"
 {
 }
-#line 42147 "src/parser/generated/mylite_lemon.c"
+#line 42150 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3095: /* keyword ::= RESTART */
       case 3402: /* keyword_not_select_clause ::= RESTART */ yytestcase(yyruleno==3402);
 {  yy_destructor(yypParser,544,&yymsp[0].minor);
-#line 4565 "src/parser/mylite_lemon.y"
+#line 4568 "src/parser/mylite_lemon.y"
 {
 }
-#line 42156 "src/parser/generated/mylite_lemon.c"
+#line 42159 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3101: /* keyword ::= ELSEIF */
       case 3408: /* keyword_not_select_clause ::= ELSEIF */ yytestcase(yyruleno==3408);
 {  yy_destructor(yypParser,568,&yymsp[0].minor);
-#line 4571 "src/parser/mylite_lemon.y"
+#line 4574 "src/parser/mylite_lemon.y"
 {
 }
-#line 42165 "src/parser/generated/mylite_lemon.c"
+#line 42168 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3104: /* keyword ::= UNTIL */
       case 3411: /* keyword_not_select_clause ::= UNTIL */ yytestcase(yyruleno==3411);
 {  yy_destructor(yypParser,489,&yymsp[0].minor);
-#line 4574 "src/parser/mylite_lemon.y"
+#line 4577 "src/parser/mylite_lemon.y"
 {
 }
-#line 42174 "src/parser/generated/mylite_lemon.c"
+#line 42177 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3108: /* keyword ::= WHEN */
       case 3415: /* keyword_not_select_clause ::= WHEN */ yytestcase(yyruleno==3415);
 {  yy_destructor(yypParser,569,&yymsp[0].minor);
-#line 4578 "src/parser/mylite_lemon.y"
+#line 4581 "src/parser/mylite_lemon.y"
 {
 }
-#line 42183 "src/parser/generated/mylite_lemon.c"
+#line 42186 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3111: /* keyword ::= DECLARE */
       case 3418: /* keyword_not_select_clause ::= DECLARE */ yytestcase(yyruleno==3418);
 {  yy_destructor(yypParser,571,&yymsp[0].minor);
-#line 4581 "src/parser/mylite_lemon.y"
+#line 4584 "src/parser/mylite_lemon.y"
 {
 }
-#line 42192 "src/parser/generated/mylite_lemon.c"
+#line 42195 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3120: /* keyword ::= LOG */
       case 3427: /* keyword_not_select_clause ::= LOG */ yytestcase(yyruleno==3427);
 {  yy_destructor(yypParser,94,&yymsp[0].minor);
-#line 4590 "src/parser/mylite_lemon.y"
+#line 4593 "src/parser/mylite_lemon.y"
 {
 }
-#line 42201 "src/parser/generated/mylite_lemon.c"
+#line 42204 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3124: /* keyword ::= HAVING */
 {  yy_destructor(yypParser,575,&yymsp[0].minor);
-#line 4594 "src/parser/mylite_lemon.y"
+#line 4597 "src/parser/mylite_lemon.y"
 {
 }
-#line 42209 "src/parser/generated/mylite_lemon.c"
+#line 42212 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3125: /* keyword ::= ELSE */
       case 3430: /* keyword_not_select_clause ::= ELSE */ yytestcase(yyruleno==3430);
 {  yy_destructor(yypParser,570,&yymsp[0].minor);
-#line 4595 "src/parser/mylite_lemon.y"
+#line 4598 "src/parser/mylite_lemon.y"
 {
 }
-#line 42218 "src/parser/generated/mylite_lemon.c"
+#line 42221 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3127: /* keyword ::= AGGREGATE */
       case 3432: /* keyword_not_select_clause ::= AGGREGATE */ yytestcase(yyruleno==3432);
 {  yy_destructor(yypParser,327,&yymsp[0].minor);
-#line 4597 "src/parser/mylite_lemon.y"
+#line 4600 "src/parser/mylite_lemon.y"
 {
 }
-#line 42227 "src/parser/generated/mylite_lemon.c"
+#line 42230 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3128: /* keyword ::= ALGORITHM */
       case 3433: /* keyword_not_select_clause ::= ALGORITHM */ yytestcase(yyruleno==3433);
 {  yy_destructor(yypParser,385,&yymsp[0].minor);
-#line 4598 "src/parser/mylite_lemon.y"
+#line 4601 "src/parser/mylite_lemon.y"
 {
 }
-#line 42236 "src/parser/generated/mylite_lemon.c"
+#line 42239 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3131: /* keyword ::= LOGFILE */
       case 3436: /* keyword_not_select_clause ::= LOGFILE */ yytestcase(yyruleno==3436);
 {  yy_destructor(yypParser,331,&yymsp[0].minor);
-#line 4601 "src/parser/mylite_lemon.y"
+#line 4604 "src/parser/mylite_lemon.y"
 {
 }
-#line 42245 "src/parser/generated/mylite_lemon.c"
+#line 42248 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3136: /* keyword ::= RESOURCE */
       case 3441: /* keyword_not_select_clause ::= RESOURCE */ yytestcase(yyruleno==3441);
 {  yy_destructor(yypParser,332,&yymsp[0].minor);
-#line 4606 "src/parser/mylite_lemon.y"
+#line 4609 "src/parser/mylite_lemon.y"
 {
 }
-#line 42254 "src/parser/generated/mylite_lemon.c"
+#line 42257 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3145: /* keyword ::= THEN */
       case 3450: /* keyword_not_select_clause ::= THEN */ yytestcase(yyruleno==3450);
 {  yy_destructor(yypParser,567,&yymsp[0].minor);
-#line 4615 "src/parser/mylite_lemon.y"
+#line 4618 "src/parser/mylite_lemon.y"
 {
 }
-#line 42263 "src/parser/generated/mylite_lemon.c"
+#line 42266 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3146: /* keyword ::= TRANSACTION */
       case 3451: /* keyword_not_select_clause ::= TRANSACTION */ yytestcase(yyruleno==3451);
 {  yy_destructor(yypParser,469,&yymsp[0].minor);
-#line 4616 "src/parser/mylite_lemon.y"
+#line 4619 "src/parser/mylite_lemon.y"
 {
 }
-#line 42272 "src/parser/generated/mylite_lemon.c"
+#line 42275 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3158: /* keyword ::= BULK */
       case 3463: /* keyword_not_select_clause ::= BULK */ yytestcase(yyruleno==3463);
 {  yy_destructor(yypParser,16,&yymsp[0].minor);
-#line 4628 "src/parser/mylite_lemon.y"
+#line 4631 "src/parser/mylite_lemon.y"
 {
 }
-#line 42281 "src/parser/generated/mylite_lemon.c"
+#line 42284 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3160: /* keyword ::= DEFAULT_AUTH */
       case 3465: /* keyword_not_select_clause ::= DEFAULT_AUTH */ yytestcase(yyruleno==3465);
 {  yy_destructor(yypParser,490,&yymsp[0].minor);
-#line 4630 "src/parser/mylite_lemon.y"
+#line 4633 "src/parser/mylite_lemon.y"
 {
 }
-#line 42290 "src/parser/generated/mylite_lemon.c"
+#line 42293 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3165: /* keyword ::= ERROR */
       case 3470: /* keyword_not_select_clause ::= ERROR */ yytestcase(yyruleno==3470);
 {  yy_destructor(yypParser,477,&yymsp[0].minor);
-#line 4635 "src/parser/mylite_lemon.y"
+#line 4638 "src/parser/mylite_lemon.y"
 {
 }
-#line 42299 "src/parser/generated/mylite_lemon.c"
+#line 42302 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3166: /* keyword ::= ESCAPED */
       case 3471: /* keyword_not_select_clause ::= ESCAPED */ yytestcase(yyruleno==3471);
 {  yy_destructor(yypParser,233,&yymsp[0].minor);
-#line 4636 "src/parser/mylite_lemon.y"
+#line 4639 "src/parser/mylite_lemon.y"
 {
 }
-#line 42308 "src/parser/generated/mylite_lemon.c"
+#line 42311 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3170: /* keyword ::= ENCLOSED */
       case 3475: /* keyword_not_select_clause ::= ENCLOSED */ yytestcase(yyruleno==3475);
 {  yy_destructor(yypParser,232,&yymsp[0].minor);
-#line 4640 "src/parser/mylite_lemon.y"
+#line 4643 "src/parser/mylite_lemon.y"
 {
 }
-#line 42317 "src/parser/generated/mylite_lemon.c"
+#line 42320 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3173: /* keyword ::= FILTER */
       case 3478: /* keyword_not_select_clause ::= FILTER */ yytestcase(yyruleno==3478);
 {  yy_destructor(yypParser,66,&yymsp[0].minor);
-#line 4643 "src/parser/mylite_lemon.y"
+#line 4646 "src/parser/mylite_lemon.y"
 {
 }
-#line 42326 "src/parser/generated/mylite_lemon.c"
+#line 42329 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3177: /* keyword ::= GENERAL */
       case 3482: /* keyword_not_select_clause ::= GENERAL */ yytestcase(yyruleno==3482);
 {  yy_destructor(yypParser,71,&yymsp[0].minor);
-#line 4647 "src/parser/mylite_lemon.y"
+#line 4650 "src/parser/mylite_lemon.y"
 {
 }
-#line 42335 "src/parser/generated/mylite_lemon.c"
+#line 42338 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3197: /* keyword ::= RELAYLOG */
       case 3502: /* keyword_not_select_clause ::= RELAYLOG */ yytestcase(yyruleno==3502);
 {  yy_destructor(yypParser,519,&yymsp[0].minor);
-#line 4667 "src/parser/mylite_lemon.y"
+#line 4670 "src/parser/mylite_lemon.y"
 {
 }
-#line 42344 "src/parser/generated/mylite_lemon.c"
+#line 42347 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3198: /* keyword ::= RELAY */
       case 3503: /* keyword_not_select_clause ::= RELAY */ yytestcase(yyruleno==3503);
 {  yy_destructor(yypParser,541,&yymsp[0].minor);
-#line 4668 "src/parser/mylite_lemon.y"
+#line 4671 "src/parser/mylite_lemon.y"
 {
 }
-#line 42353 "src/parser/generated/mylite_lemon.c"
+#line 42356 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3205: /* keyword ::= STOP */
       case 3343: /* keyword_not_select_clause ::= STOP */ yytestcase(yyruleno==3343);
 {  yy_destructor(yypParser,492,&yymsp[0].minor);
-#line 4675 "src/parser/mylite_lemon.y"
+#line 4678 "src/parser/mylite_lemon.y"
 {
 }
-#line 42362 "src/parser/generated/mylite_lemon.c"
+#line 42365 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3217: /* keyword ::= CHAIN */
       case 3521: /* keyword_not_select_clause ::= CHAIN */ yytestcase(yyruleno==3521);
 {  yy_destructor(yypParser,552,&yymsp[0].minor);
-#line 4687 "src/parser/mylite_lemon.y"
+#line 4690 "src/parser/mylite_lemon.y"
 {
 }
-#line 42371 "src/parser/generated/mylite_lemon.c"
+#line 42374 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3218: /* keyword ::= CONDITION */
       case 3522: /* keyword_not_select_clause ::= CONDITION */ yytestcase(yyruleno==3522);
 {  yy_destructor(yypParser,549,&yymsp[0].minor);
-#line 4688 "src/parser/mylite_lemon.y"
+#line 4691 "src/parser/mylite_lemon.y"
 {
 }
-#line 42380 "src/parser/generated/mylite_lemon.c"
+#line 42383 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3220: /* keyword ::= CURSOR */
       case 3524: /* keyword_not_select_clause ::= CURSOR */ yytestcase(yyruleno==3524);
 {  yy_destructor(yypParser,572,&yymsp[0].minor);
-#line 4690 "src/parser/mylite_lemon.y"
+#line 4693 "src/parser/mylite_lemon.y"
 {
 }
-#line 42389 "src/parser/generated/mylite_lemon.c"
+#line 42392 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3225: /* keyword ::= INTO */
       case 3529: /* keyword_not_select_clause ::= INTO */ yytestcase(yyruleno==3529);
 {  yy_destructor(yypParser,471,&yymsp[0].minor);
-#line 4695 "src/parser/mylite_lemon.y"
+#line 4698 "src/parser/mylite_lemon.y"
 {
 }
-#line 42398 "src/parser/generated/mylite_lemon.c"
+#line 42401 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3226: /* keyword ::= INOUT */
       case 3530: /* keyword_not_select_clause ::= INOUT */ yytestcase(yyruleno==3530);
 {  yy_destructor(yypParser,418,&yymsp[0].minor);
-#line 4696 "src/parser/mylite_lemon.y"
+#line 4699 "src/parser/mylite_lemon.y"
 {
 }
-#line 42407 "src/parser/generated/mylite_lemon.c"
+#line 42410 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3229: /* keyword ::= NAMES */
       case 3533: /* keyword_not_select_clause ::= NAMES */ yytestcase(yyruleno==3533);
 {  yy_destructor(yypParser,553,&yymsp[0].minor);
-#line 4699 "src/parser/mylite_lemon.y"
+#line 4702 "src/parser/mylite_lemon.y"
 {
 }
-#line 42416 "src/parser/generated/mylite_lemon.c"
+#line 42419 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3237: /* keyword ::= OUT */
       case 3541: /* keyword_not_select_clause ::= OUT */ yytestcase(yyruleno==3541);
 {  yy_destructor(yypParser,417,&yymsp[0].minor);
-#line 4707 "src/parser/mylite_lemon.y"
+#line 4710 "src/parser/mylite_lemon.y"
 {
 }
-#line 42425 "src/parser/generated/mylite_lemon.c"
+#line 42428 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3238: /* keyword ::= OUTFILE */
       case 3542: /* keyword_not_select_clause ::= OUTFILE */ yytestcase(yyruleno==3542);
 {  yy_destructor(yypParser,121,&yymsp[0].minor);
-#line 4708 "src/parser/mylite_lemon.y"
+#line 4711 "src/parser/mylite_lemon.y"
 {
 }
-#line 42434 "src/parser/generated/mylite_lemon.c"
+#line 42437 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3240: /* keyword ::= PLUGIN_DIR */
       case 3544: /* keyword_not_select_clause ::= PLUGIN_DIR */ yytestcase(yyruleno==3544);
 {  yy_destructor(yypParser,491,&yymsp[0].minor);
-#line 4710 "src/parser/mylite_lemon.y"
+#line 4713 "src/parser/mylite_lemon.y"
 {
 }
-#line 42443 "src/parser/generated/mylite_lemon.c"
+#line 42446 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3247: /* keyword ::= SQLSTATE */
       case 3551: /* keyword_not_select_clause ::= SQLSTATE */ yytestcase(yyruleno==3551);
 {  yy_destructor(yypParser,550,&yymsp[0].minor);
-#line 4717 "src/parser/mylite_lemon.y"
+#line 4720 "src/parser/mylite_lemon.y"
 {
 }
-#line 42452 "src/parser/generated/mylite_lemon.c"
+#line 42455 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3251: /* keyword ::= DUMPFILE */
       case 3555: /* keyword_not_select_clause ::= DUMPFILE */ yytestcase(yyruleno==3555);
 {  yy_destructor(yypParser,50,&yymsp[0].minor);
-#line 4721 "src/parser/mylite_lemon.y"
+#line 4724 "src/parser/mylite_lemon.y"
 {
 }
-#line 42461 "src/parser/generated/mylite_lemon.c"
+#line 42464 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3261: /* keyword ::= COMMITTED */
       case 3565: /* keyword_not_select_clause ::= COMMITTED */ yytestcase(yyruleno==3565);
 {  yy_destructor(yypParser,557,&yymsp[0].minor);
-#line 4731 "src/parser/mylite_lemon.y"
+#line 4734 "src/parser/mylite_lemon.y"
 {
 }
-#line 42470 "src/parser/generated/mylite_lemon.c"
+#line 42473 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3262: /* keyword ::= ISOLATION */
       case 3566: /* keyword_not_select_clause ::= ISOLATION */ yytestcase(yyruleno==3566);
 {  yy_destructor(yypParser,554,&yymsp[0].minor);
-#line 4732 "src/parser/mylite_lemon.y"
+#line 4735 "src/parser/mylite_lemon.y"
 {
 }
-#line 42479 "src/parser/generated/mylite_lemon.c"
+#line 42482 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3263: /* keyword ::= LEVEL */
       case 3567: /* keyword_not_select_clause ::= LEVEL */ yytestcase(yyruleno==3567);
 {  yy_destructor(yypParser,555,&yymsp[0].minor);
-#line 4733 "src/parser/mylite_lemon.y"
+#line 4736 "src/parser/mylite_lemon.y"
 {
 }
-#line 42488 "src/parser/generated/mylite_lemon.c"
+#line 42491 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3264: /* keyword ::= REPEATABLE */
       case 3568: /* keyword_not_select_clause ::= REPEATABLE */ yytestcase(yyruleno==3568);
 {  yy_destructor(yypParser,556,&yymsp[0].minor);
-#line 4734 "src/parser/mylite_lemon.y"
+#line 4737 "src/parser/mylite_lemon.y"
 {
 }
-#line 42497 "src/parser/generated/mylite_lemon.c"
+#line 42500 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3266: /* keyword ::= UNCOMMITTED */
       case 3570: /* keyword_not_select_clause ::= UNCOMMITTED */ yytestcase(yyruleno==3570);
 {  yy_destructor(yypParser,558,&yymsp[0].minor);
-#line 4736 "src/parser/mylite_lemon.y"
+#line 4739 "src/parser/mylite_lemon.y"
 {
 }
-#line 42506 "src/parser/generated/mylite_lemon.c"
+#line 42509 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3268: /* keyword ::= ADMIN */
       case 3572: /* keyword_not_select_clause ::= ADMIN */ yytestcase(yyruleno==3572);
 {  yy_destructor(yypParser,564,&yymsp[0].minor);
-#line 4738 "src/parser/mylite_lemon.y"
+#line 4741 "src/parser/mylite_lemon.y"
 {
 }
-#line 42515 "src/parser/generated/mylite_lemon.c"
+#line 42518 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3269: /* keyword ::= ATTRIBUTE */
       case 3573: /* keyword_not_select_clause ::= ATTRIBUTE */ yytestcase(yyruleno==3573);
 {  yy_destructor(yypParser,430,&yymsp[0].minor);
-#line 4739 "src/parser/mylite_lemon.y"
+#line 4742 "src/parser/mylite_lemon.y"
 {
 }
-#line 42524 "src/parser/generated/mylite_lemon.c"
+#line 42527 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3270: /* keyword ::= AUTHENTICATION */
       case 3574: /* keyword_not_select_clause ::= AUTHENTICATION */ yytestcase(yyruleno==3574);
 {  yy_destructor(yypParser,422,&yymsp[0].minor);
-#line 4740 "src/parser/mylite_lemon.y"
+#line 4743 "src/parser/mylite_lemon.y"
 {
 }
-#line 42533 "src/parser/generated/mylite_lemon.c"
+#line 42536 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3271: /* keyword ::= CHALLENGE_RESPONSE */
       case 3575: /* keyword_not_select_clause ::= CHALLENGE_RESPONSE */ yytestcase(yyruleno==3575);
 {  yy_destructor(yypParser,427,&yymsp[0].minor);
-#line 4741 "src/parser/mylite_lemon.y"
+#line 4744 "src/parser/mylite_lemon.y"
 {
 }
-#line 42542 "src/parser/generated/mylite_lemon.c"
+#line 42545 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3272: /* keyword ::= CIPHER */
       case 3576: /* keyword_not_select_clause ::= CIPHER */ yytestcase(yyruleno==3576);
 {  yy_destructor(yypParser,432,&yymsp[0].minor);
-#line 4742 "src/parser/mylite_lemon.y"
+#line 4745 "src/parser/mylite_lemon.y"
 {
 }
-#line 42551 "src/parser/generated/mylite_lemon.c"
+#line 42554 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3275: /* keyword ::= EXPIRE */
       case 3579: /* keyword_not_select_clause ::= EXPIRE */ yytestcase(yyruleno==3579);
 {  yy_destructor(yypParser,439,&yymsp[0].minor);
-#line 4745 "src/parser/mylite_lemon.y"
+#line 4748 "src/parser/mylite_lemon.y"
 {
 }
-#line 42560 "src/parser/generated/mylite_lemon.c"
+#line 42563 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3276: /* keyword ::= FACTOR */
       case 3580: /* keyword_not_select_clause ::= FACTOR */ yytestcase(yyruleno==3580);
 {  yy_destructor(yypParser,429,&yymsp[0].minor);
-#line 4746 "src/parser/mylite_lemon.y"
+#line 4749 "src/parser/mylite_lemon.y"
 {
 }
-#line 42569 "src/parser/generated/mylite_lemon.c"
+#line 42572 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3277: /* keyword ::= FAILED_LOGIN_ATTEMPTS */
       case 3581: /* keyword_not_select_clause ::= FAILED_LOGIN_ATTEMPTS */ yytestcase(yyruleno==3581);
 {  yy_destructor(yypParser,445,&yymsp[0].minor);
-#line 4747 "src/parser/mylite_lemon.y"
+#line 4750 "src/parser/mylite_lemon.y"
 {
 }
-#line 42578 "src/parser/generated/mylite_lemon.c"
+#line 42581 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3278: /* keyword ::= FINISH */
       case 3582: /* keyword_not_select_clause ::= FINISH */ yytestcase(yyruleno==3582);
 {  yy_destructor(yypParser,426,&yymsp[0].minor);
-#line 4748 "src/parser/mylite_lemon.y"
+#line 4751 "src/parser/mylite_lemon.y"
 {
 }
-#line 42587 "src/parser/generated/mylite_lemon.c"
+#line 42590 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3279: /* keyword ::= HISTORY */
       case 3583: /* keyword_not_select_clause ::= HISTORY */ yytestcase(yyruleno==3583);
 {  yy_destructor(yypParser,443,&yymsp[0].minor);
-#line 4749 "src/parser/mylite_lemon.y"
+#line 4752 "src/parser/mylite_lemon.y"
 {
 }
-#line 42596 "src/parser/generated/mylite_lemon.c"
+#line 42599 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3280: /* keyword ::= INITIAL */
       case 3584: /* keyword_not_select_clause ::= INITIAL */ yytestcase(yyruleno==3584);
 {  yy_destructor(yypParser,421,&yymsp[0].minor);
-#line 4750 "src/parser/mylite_lemon.y"
+#line 4753 "src/parser/mylite_lemon.y"
 {
 }
-#line 42605 "src/parser/generated/mylite_lemon.c"
+#line 42608 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3281: /* keyword ::= INITIATE */
       case 3585: /* keyword_not_select_clause ::= INITIATE */ yytestcase(yyruleno==3585);
 {  yy_destructor(yypParser,424,&yymsp[0].minor);
-#line 4751 "src/parser/mylite_lemon.y"
+#line 4754 "src/parser/mylite_lemon.y"
 {
 }
-#line 42614 "src/parser/generated/mylite_lemon.c"
+#line 42617 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3283: /* keyword ::= ISSUER */
       case 3587: /* keyword_not_select_clause ::= ISSUER */ yytestcase(yyruleno==3587);
 {  yy_destructor(yypParser,433,&yymsp[0].minor);
-#line 4753 "src/parser/mylite_lemon.y"
+#line 4756 "src/parser/mylite_lemon.y"
 {
 }
-#line 42623 "src/parser/generated/mylite_lemon.c"
+#line 42626 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3284: /* keyword ::= MAX_CONNECTIONS_PER_HOUR */
       case 3588: /* keyword_not_select_clause ::= MAX_CONNECTIONS_PER_HOUR */ yytestcase(yyruleno==3588);
 {  yy_destructor(yypParser,437,&yymsp[0].minor);
-#line 4754 "src/parser/mylite_lemon.y"
+#line 4757 "src/parser/mylite_lemon.y"
 {
 }
-#line 42632 "src/parser/generated/mylite_lemon.c"
+#line 42635 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3285: /* keyword ::= MAX_QUERIES_PER_HOUR */
       case 3589: /* keyword_not_select_clause ::= MAX_QUERIES_PER_HOUR */ yytestcase(yyruleno==3589);
 {  yy_destructor(yypParser,435,&yymsp[0].minor);
-#line 4755 "src/parser/mylite_lemon.y"
+#line 4758 "src/parser/mylite_lemon.y"
 {
 }
-#line 42641 "src/parser/generated/mylite_lemon.c"
+#line 42644 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3286: /* keyword ::= MAX_UPDATES_PER_HOUR */
       case 3590: /* keyword_not_select_clause ::= MAX_UPDATES_PER_HOUR */ yytestcase(yyruleno==3590);
 {  yy_destructor(yypParser,436,&yymsp[0].minor);
-#line 4756 "src/parser/mylite_lemon.y"
+#line 4759 "src/parser/mylite_lemon.y"
 {
 }
-#line 42650 "src/parser/generated/mylite_lemon.c"
+#line 42653 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3287: /* keyword ::= MAX_USER_CONNECTIONS */
       case 3591: /* keyword_not_select_clause ::= MAX_USER_CONNECTIONS */ yytestcase(yyruleno==3591);
 {  yy_destructor(yypParser,438,&yymsp[0].minor);
-#line 4757 "src/parser/mylite_lemon.y"
+#line 4760 "src/parser/mylite_lemon.y"
 {
 }
-#line 42659 "src/parser/generated/mylite_lemon.c"
+#line 42662 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3288: /* keyword ::= NEVER */
       case 3592: /* keyword_not_select_clause ::= NEVER */ yytestcase(yyruleno==3592);
 {  yy_destructor(yypParser,440,&yymsp[0].minor);
-#line 4758 "src/parser/mylite_lemon.y"
+#line 4761 "src/parser/mylite_lemon.y"
 {
 }
-#line 42668 "src/parser/generated/mylite_lemon.c"
+#line 42671 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3289: /* keyword ::= OLD */
       case 3593: /* keyword_not_select_clause ::= OLD */ yytestcase(yyruleno==3593);
 {  yy_destructor(yypParser,419,&yymsp[0].minor);
-#line 4759 "src/parser/mylite_lemon.y"
+#line 4762 "src/parser/mylite_lemon.y"
 {
 }
-#line 42677 "src/parser/generated/mylite_lemon.c"
+#line 42680 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3290: /* keyword ::= OPTION */
       case 3594: /* keyword_not_select_clause ::= OPTION */ yytestcase(yyruleno==3594);
 {  yy_destructor(yypParser,391,&yymsp[0].minor);
-#line 4760 "src/parser/mylite_lemon.y"
+#line 4763 "src/parser/mylite_lemon.y"
 {
 }
-#line 42686 "src/parser/generated/mylite_lemon.c"
+#line 42689 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3292: /* keyword ::= OPTIONALLY */
       case 3596: /* keyword_not_select_clause ::= OPTIONALLY */ yytestcase(yyruleno==3596);
 {  yy_destructor(yypParser,235,&yymsp[0].minor);
-#line 4762 "src/parser/mylite_lemon.y"
+#line 4765 "src/parser/mylite_lemon.y"
 {
 }
-#line 42695 "src/parser/generated/mylite_lemon.c"
+#line 42698 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3293: /* keyword ::= PARALLEL */
       case 3597: /* keyword_not_select_clause ::= PARALLEL */ yytestcase(yyruleno==3597);
 {  yy_destructor(yypParser,125,&yymsp[0].minor);
-#line 4763 "src/parser/mylite_lemon.y"
+#line 4766 "src/parser/mylite_lemon.y"
 {
 }
-#line 42704 "src/parser/generated/mylite_lemon.c"
+#line 42707 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3294: /* keyword ::= PARSER */
       case 3598: /* keyword_not_select_clause ::= PARSER */ yytestcase(yyruleno==3598);
 {  yy_destructor(yypParser,245,&yymsp[0].minor);
-#line 4764 "src/parser/mylite_lemon.y"
+#line 4767 "src/parser/mylite_lemon.y"
 {
 }
-#line 42713 "src/parser/generated/mylite_lemon.c"
+#line 42716 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3295: /* keyword ::= PASSWORD_LOCK_TIME */
       case 3599: /* keyword_not_select_clause ::= PASSWORD_LOCK_TIME */ yytestcase(yyruleno==3599);
 {  yy_destructor(yypParser,446,&yymsp[0].minor);
-#line 4765 "src/parser/mylite_lemon.y"
+#line 4768 "src/parser/mylite_lemon.y"
 {
 }
-#line 42722 "src/parser/generated/mylite_lemon.c"
+#line 42725 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3297: /* keyword ::= REGISTRATION */
       case 3601: /* keyword_not_select_clause ::= REGISTRATION */ yytestcase(yyruleno==3601);
 {  yy_destructor(yypParser,425,&yymsp[0].minor);
-#line 4767 "src/parser/mylite_lemon.y"
+#line 4770 "src/parser/mylite_lemon.y"
 {
 }
-#line 42731 "src/parser/generated/mylite_lemon.c"
+#line 42734 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3298: /* keyword ::= REUSE */
       case 3602: /* keyword_not_select_clause ::= REUSE */ yytestcase(yyruleno==3602);
 {  yy_destructor(yypParser,444,&yymsp[0].minor);
-#line 4768 "src/parser/mylite_lemon.y"
+#line 4771 "src/parser/mylite_lemon.y"
 {
 }
-#line 42740 "src/parser/generated/mylite_lemon.c"
+#line 42743 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3300: /* keyword ::= SECONDARY_LOAD */
       case 3604: /* keyword_not_select_clause ::= SECONDARY_LOAD */ yytestcase(yyruleno==3604);
 {  yy_destructor(yypParser,167,&yymsp[0].minor);
-#line 4770 "src/parser/mylite_lemon.y"
+#line 4773 "src/parser/mylite_lemon.y"
 {
 }
-#line 42749 "src/parser/generated/mylite_lemon.c"
+#line 42752 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3301: /* keyword ::= SECONDARY_UNLOAD */
       case 3605: /* keyword_not_select_clause ::= SECONDARY_UNLOAD */ yytestcase(yyruleno==3605);
 {  yy_destructor(yypParser,168,&yymsp[0].minor);
-#line 4771 "src/parser/mylite_lemon.y"
+#line 4774 "src/parser/mylite_lemon.y"
 {
 }
-#line 42758 "src/parser/generated/mylite_lemon.c"
+#line 42761 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3302: /* keyword ::= STARTING */
       case 3606: /* keyword_not_select_clause ::= STARTING */ yytestcase(yyruleno==3606);
 {  yy_destructor(yypParser,237,&yymsp[0].minor);
-#line 4772 "src/parser/mylite_lemon.y"
+#line 4775 "src/parser/mylite_lemon.y"
 {
 }
-#line 42767 "src/parser/generated/mylite_lemon.c"
+#line 42770 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3303: /* keyword ::= SUBJECT */
       case 3607: /* keyword_not_select_clause ::= SUBJECT */ yytestcase(yyruleno==3607);
 {  yy_destructor(yypParser,434,&yymsp[0].minor);
-#line 4773 "src/parser/mylite_lemon.y"
+#line 4776 "src/parser/mylite_lemon.y"
 {
 }
-#line 42776 "src/parser/generated/mylite_lemon.c"
+#line 42779 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3304: /* keyword ::= TERMINATED */
       case 3608: /* keyword_not_select_clause ::= TERMINATED */ yytestcase(yyruleno==3608);
 {  yy_destructor(yypParser,238,&yymsp[0].minor);
-#line 4774 "src/parser/mylite_lemon.y"
+#line 4777 "src/parser/mylite_lemon.y"
 {
 }
-#line 42785 "src/parser/generated/mylite_lemon.c"
+#line 42788 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3306: /* keyword ::= UNREGISTER */
       case 3610: /* keyword_not_select_clause ::= UNREGISTER */ yytestcase(yyruleno==3610);
 {  yy_destructor(yypParser,428,&yymsp[0].minor);
-#line 4776 "src/parser/mylite_lemon.y"
+#line 4779 "src/parser/mylite_lemon.y"
 {
 }
-#line 42794 "src/parser/generated/mylite_lemon.c"
+#line 42797 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3307: /* keyword ::= UNKNOWN */
       case 3611: /* keyword_not_select_clause ::= UNKNOWN */ yytestcase(yyruleno==3611);
 {  yy_destructor(yypParser,565,&yymsp[0].minor);
-#line 4777 "src/parser/mylite_lemon.y"
+#line 4780 "src/parser/mylite_lemon.y"
 {
 }
-#line 42803 "src/parser/generated/mylite_lemon.c"
+#line 42806 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3308: /* keyword ::= PARTITIONING */
       case 3612: /* keyword_not_select_clause ::= PARTITIONING */ yytestcase(yyruleno==3612);
 {  yy_destructor(yypParser,128,&yymsp[0].minor);
-#line 4778 "src/parser/mylite_lemon.y"
+#line 4781 "src/parser/mylite_lemon.y"
 {
 }
-#line 42812 "src/parser/generated/mylite_lemon.c"
+#line 42815 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3309: /* keyword ::= PARTITIONS */
       case 3613: /* keyword_not_select_clause ::= PARTITIONS */ yytestcase(yyruleno==3613);
 {  yy_destructor(yypParser,129,&yymsp[0].minor);
-#line 4779 "src/parser/mylite_lemon.y"
+#line 4782 "src/parser/mylite_lemon.y"
 {
 }
-#line 42821 "src/parser/generated/mylite_lemon.c"
+#line 42824 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3310: /* keyword ::= VALIDATION */
       case 3614: /* keyword_not_select_clause ::= VALIDATION */ yytestcase(yyruleno==3614);
 {  yy_destructor(yypParser,203,&yymsp[0].minor);
-#line 4780 "src/parser/mylite_lemon.y"
+#line 4783 "src/parser/mylite_lemon.y"
 {
 }
-#line 42830 "src/parser/generated/mylite_lemon.c"
+#line 42833 "src/parser/generated/mylite_lemon.c"
 }
         break;
       case 3312: /* keyword ::= WITHOUT */
       case 3616: /* keyword_not_select_clause ::= WITHOUT */ yytestcase(yyruleno==3616);
 {  yy_destructor(yypParser,207,&yymsp[0].minor);
-#line 4782 "src/parser/mylite_lemon.y"
+#line 4785 "src/parser/mylite_lemon.y"
 {
 }
-#line 42839 "src/parser/generated/mylite_lemon.c"
+#line 42842 "src/parser/generated/mylite_lemon.c"
 }
         break;
       default:
@@ -43078,7 +43081,7 @@ static void yy_parse_failed(
 #line 59 "src/parser/mylite_lemon.y"
 
   mylite_parser_failure(ctx);
-#line 43082 "src/parser/generated/mylite_lemon.c"
+#line 43085 "src/parser/generated/mylite_lemon.c"
 /************ End %parse_failure code *****************************************/
   MyLiteLemonARG_STORE /* Suppress warning about unused %extra_argument variable */
   MyLiteLemonCTX_STORE
@@ -43100,7 +43103,7 @@ static void yy_syntax_error(
 #line 55 "src/parser/mylite_lemon.y"
 
   mylite_parser_syntax_error(ctx, yymajor, TOKEN);
-#line 43104 "src/parser/generated/mylite_lemon.c"
+#line 43107 "src/parser/generated/mylite_lemon.c"
 /************ End %syntax_error code ******************************************/
   MyLiteLemonARG_STORE /* Suppress warning about unused %extra_argument variable */
   MyLiteLemonCTX_STORE
@@ -43129,7 +43132,7 @@ static void yy_accept(
 #line 63 "src/parser/mylite_lemon.y"
 
   mylite_parser_accept(ctx);
-#line 43133 "src/parser/generated/mylite_lemon.c"
+#line 43136 "src/parser/generated/mylite_lemon.c"
 /*********** End %parse_accept code *******************************************/
   MyLiteLemonARG_STORE /* Suppress warning about unused %extra_argument variable */
   MyLiteLemonCTX_STORE

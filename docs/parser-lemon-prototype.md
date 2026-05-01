@@ -55,7 +55,8 @@ token sink:
   `WHERE`/`ORDER BY` adjacent operands and dangling operators, and out-of-order
   top-level DML clauses.
 - `VALUES` recognizes comma-separated row contents while preserving nested
-  expression bodies, set operators, `ORDER BY`, and `LIMIT` tails.
+  expression bodies, set operators, `ORDER BY`, and `LIMIT` tails, and malformed
+  `SELECT` operands after set operators are rejected.
 - `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`
   forms, `INTO` variable lists, and file output targets.
 - Top-level `SELECT` recognizes `SQL_NO_CACHE` as a deprecated MySQL 8.4

@@ -3547,7 +3547,10 @@ table_into_variable ::= user_variable_name.
 table_into_variable ::= cache_name_part.
 
 values_statement ::= VALUES values_row_list values_query_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  mylite_parser_validate_select_statement(ctx);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  }
 }
 
 values_row_list ::= values_row.

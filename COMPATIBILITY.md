@@ -144,7 +144,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. | Parser recognizes table references, set operators, `ORDER BY`, numeric or identifier `LIMIT` forms, `INTO` variable lists, and `INTO OUTFILE`/`INTO DUMPFILE` targets. |
 | `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. | Parser validates comma-separated assignment lists, dotted assignment targets, nested expression values, rejects repeated `SET` continuations, stray top-level `FROM` continuations after assignment values, and incomplete, repeated, out-of-order, adjacent-operand, or dangling-operator `WHERE`/`ORDER BY`/`LIMIT` tails. |
 | `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. |  |
-| `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. | Parser recognizes non-empty comma-separated `VALUES ROW(...)` contents, `UNION`/`INTERSECT`/`EXCEPT`, and combined `ORDER BY`/`LIMIT` tails. |
+| `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. | Parser recognizes non-empty comma-separated `VALUES ROW(...)` contents, `UNION`/`INTERSECT`/`EXCEPT`, combined `ORDER BY`/`LIMIT` tails, and malformed set-operation `SELECT` operands. |
 
 ### 1.3 Transactional, Locking, Replication, Prepared, and Compound Statements
 

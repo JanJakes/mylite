@@ -69,7 +69,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. | Parser recognizes schedule, completion, rename, enable/disable, comment, and `DO` clauses. |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |
-| `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
+| `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, `INITIAL_SIZE`, `WAIT`, and required `ENGINE`. |
 | `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. |  |
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. |  |
@@ -81,7 +81,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. |  |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
 | `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. | Parser recognizes functional/key-part lists plus index options for parser plugins, comments, visibility, engine attributes, `KEY_BLOCK_SIZE`, `USING`, `ALGORITHM`, and `LOCK`. |
-| `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
+| `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, NDB size/comment options, `WAIT`, and required `ENGINE`. |
 | `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. |  |
 | `CREATE SERVER` | ❌ | low | Foreign server metadata syntax. |  |
 | `CREATE SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system catalog DDL. | Parser recognizes bare, `IF NOT EXISTS`, and `OR REPLACE` syntax. |

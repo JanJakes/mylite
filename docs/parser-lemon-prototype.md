@@ -33,6 +33,8 @@ token sink:
 - `CREATE INDEX` recognizes functional/key-part lists and standalone index
   options including parser plugins, visibility, attributes, `ALGORITHM`, and
   `LOCK`.
+- `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
+  documented NDB logfile options, and required `ENGINE` clauses.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize charset, collation,
   encryption, and alter-only `READ ONLY` option clauses.
 - `CREATE EVENT` and `ALTER EVENT` recognize ordered event metadata clauses

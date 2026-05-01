@@ -24,6 +24,9 @@ static void format_near_token(MyliteParseContext *ctx, int token_id,
 static int select_clause_requires_by(int token_id);
 static int select_clause_requires_operand(int token_id);
 static int select_operand_boundary(int token_id);
+static int select_set_operator(int token_id);
+static int select_set_option(int token_id);
+static int select_set_operand_start(int token_id);
 static int token_ascii_equal(MyliteToken token, const char *expected);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
@@ -304,6 +307,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int saw_select = 0;
   int need_by = 0;
   int need_operand = 0;
+  int need_set_operand = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -340,6 +344,18 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
 
+    if (need_set_operand) {
+      if (select_set_option(token_id)) {
+        continue;
+      }
+      if (!select_set_operand_start(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT set operation");
+        return;
+      }
+      need_set_operand = 0;
+    }
+
     if (need_operand) {
       if (select_operand_boundary(token_id)) {
         mylite_parser_reject(ctx, pending_token,
@@ -367,9 +383,17 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       pending_token = token;
       continue;
     }
+    if (select_set_operator(token_id)) {
+      need_set_operand = 1;
+      pending_token = token;
+      continue;
+    }
   }
 
-  if (need_by || need_operand) {
+  if (need_set_operand) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT set operation");
+  } else if (need_by || need_operand) {
     mylite_parser_reject(ctx, pending_token, "incomplete SELECT clause");
   }
 }
@@ -453,8 +477,24 @@ static int select_clause_requires_operand(int token_id) {
 
 static int select_operand_boundary(int token_id) {
   return token_id == ML_SEMI || token_id == ML_COMMA || token_id == ML_RP ||
+         select_set_operator(token_id) ||
          select_clause_requires_by(token_id) ||
          select_clause_requires_operand(token_id);
+}
+
+static int select_set_operator(int token_id) {
+  return token_id == ML_EXCEPT || token_id == ML_INTERSECT ||
+         token_id == ML_UNION;
+}
+
+static int select_set_option(int token_id) {
+  return token_id == ML_ALL || token_id == ML_DISTINCT ||
+         token_id == ML_DISTINCTROW;
+}
+
+static int select_set_operand_start(int token_id) {
+  return token_id == ML_LP || token_id == ML_SELECT || token_id == ML_TABLE ||
+         token_id == ML_VALUES || token_id == ML_WITH;
 }
 
 static void result_init(MyliteParseResult *result) {

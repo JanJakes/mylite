@@ -1801,8 +1801,54 @@ dml_replace_target ::= INTO cache_table_ref.
 
 dml_write_body ::= dml_write_payload.
 
-dml_write_payload ::= LP required_statement_tail.
+dml_write_payload ::= LP dml_write_column_tokens RP dml_write_after_column_list.
+dml_write_payload ::= LP dml_write_query_start dml_write_parenthesized_query_tail RP dml_write_after_parenthesized_query.
 dml_write_payload ::= dml_write_start required_statement_tail.
+
+dml_write_column_tokens ::= .
+dml_write_column_tokens ::= dml_write_column_tokens dml_write_column_token.
+
+dml_write_column_token ::= ATOM.
+dml_write_column_token ::= LABEL.
+dml_write_column_token ::= CONNECTION.
+dml_write_column_token ::= COUNT.
+dml_write_column_token ::= DATA.
+dml_write_column_token ::= NO.
+dml_write_column_token ::= PLUGIN.
+dml_write_column_token ::= QUERY.
+dml_write_column_token ::= START.
+dml_write_column_token ::= STATUS.
+dml_write_column_token ::= USER.
+dml_write_column_token ::= XML.
+dml_write_column_token ::= COMMA.
+dml_write_column_token ::= LP dml_write_column_tokens RP.
+
+dml_write_after_column_list ::= dml_write_start required_statement_tail.
+dml_write_after_column_list ::= LP dml_write_query_start dml_write_parenthesized_query_tail RP dml_write_after_parenthesized_query.
+
+dml_write_query_start ::= SELECT.
+dml_write_query_start ::= TABLE.
+dml_write_query_start ::= VALUES.
+dml_write_query_start ::= WITH.
+
+dml_write_parenthesized_query_tail ::= .
+dml_write_parenthesized_query_tail ::= dml_write_parenthesized_query_tail dml_write_parenthesized_query_token.
+
+dml_write_parenthesized_query_token ::= ATOM.
+dml_write_parenthesized_query_token ::= LABEL.
+dml_write_parenthesized_query_token ::= keyword.
+dml_write_parenthesized_query_token ::= COMMA.
+dml_write_parenthesized_query_token ::= LP dml_write_parenthesized_query_tail RP.
+dml_write_parenthesized_query_token ::= LB.
+dml_write_parenthesized_query_token ::= RB.
+dml_write_parenthesized_query_token ::= LC.
+dml_write_parenthesized_query_token ::= RC.
+
+dml_write_after_parenthesized_query ::= .
+dml_write_after_parenthesized_query ::= UNION required_statement_tail.
+dml_write_after_parenthesized_query ::= ORDER BY required_statement_tail.
+dml_write_after_parenthesized_query ::= LIMIT required_statement_tail.
+dml_write_after_parenthesized_query ::= ON required_statement_tail.
 
 dml_write_start ::= VALUES.
 dml_write_start ::= SELECT.
@@ -2046,6 +2092,7 @@ prepared_statement_name ::= LABEL.
 get_statement ::= GET DIAGNOSTICS diagnostics_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
+dml_write_column_token ::= DIAGNOSTICS.
 
 diagnostics_tail ::= diagnostics_statement_items.
 diagnostics_tail ::= CONDITION diagnostics_condition_value diagnostics_condition_items.
@@ -2346,6 +2393,7 @@ declare_handler_keyword ::= HANDLER.
 end_statement ::= END end_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
+dml_write_column_token ::= END.
 
 end_tail ::= .
 end_tail ::= stored_program_label_ref.

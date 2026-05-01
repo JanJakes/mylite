@@ -272,6 +272,10 @@ static void validate_compound_statement_body_from(MyliteParseContext *ctx,
                                                   MyliteToken start);
 static void validate_return_statement_from(MyliteParseContext *ctx,
                                            MyliteToken start);
+static void validate_control_condition_from(MyliteParseContext *ctx,
+                                            MyliteToken start,
+                                            int boundary_token_id,
+                                            const char *message);
 static void validate_embedded_set_statement_from(MyliteParseContext *ctx,
                                                  MyliteToken start);
 static int validate_embedded_set_value(MyliteParseContext *ctx,
@@ -7554,7 +7558,37 @@ static void validate_compound_statement_body_from(MyliteParseContext *ctx,
       continue;
     }
 
+    if (token_id == ML_WHEN) {
+      validate_control_condition_from(ctx, token, ML_THEN,
+                                      "malformed WHEN condition");
+      if (ctx->failed) {
+        return;
+      }
+      control_boundary = ML_THEN;
+      expression_depth = 0;
+      continue;
+    }
+
+    if (token_id == ML_UNTIL) {
+      validate_control_condition_from(ctx, token, ML_END,
+                                      "malformed UNTIL condition");
+      if (ctx->failed) {
+        return;
+      }
+      continue;
+    }
+
     if (routine_compound_statement_start_token(token_id)) {
+      if (token_id == ML_IF) {
+        validate_control_condition_from(ctx, token, ML_THEN,
+                                        "malformed IF condition");
+      } else if (token_id == ML_WHILE) {
+        validate_control_condition_from(ctx, token, ML_DO,
+                                        "malformed WHILE condition");
+      }
+      if (ctx->failed) {
+        return;
+      }
       compound_depth++;
       if (token_id == ML_IF) {
         control_boundary = ML_THEN;
@@ -7602,6 +7636,38 @@ static void validate_return_statement_from(MyliteParseContext *ctx,
   }
 
   mylite_parser_reject(ctx, start, "incomplete RETURN expression");
+}
+
+static void validate_control_condition_from(MyliteParseContext *ctx,
+                                            MyliteToken start,
+                                            int boundary_token_id,
+                                            const char *message) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  int token_id;
+  int saw_statement = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (token_id == boundary_token_id ||
+        token_is_statement_terminator(token_id, token)) {
+      mylite_parser_reject(ctx, start, message);
+      return;
+    }
+
+    mylite_parser_validate_expression_until_from(ctx, token, boundary_token_id,
+                                                 message);
+    return;
+  }
+
+  mylite_parser_reject(ctx, start, message);
 }
 
 static void validate_embedded_set_statement_from(MyliteParseContext *ctx,

@@ -469,9 +469,13 @@ view_table_tail ::= view_check_option.
 
 view_values_tail ::= .
 view_values_tail ::= values_query_tail_nonempty.
+view_values_tail ::= values_set_operator view_values_check_union_tail view_check_option.
 view_values_tail ::= ORDER BY values_order_list values_limit_optional_tail view_check_option.
 view_values_tail ::= values_limit_tail view_check_option.
 view_values_tail ::= view_check_option.
+
+view_values_check_union_tail ::= VALUES values_row_list.
+view_values_check_union_tail ::= values_union_option VALUES values_row_list.
 
 view_parenthesized_tail ::= .
 view_parenthesized_tail ::= UNION dml_write_union_tail.

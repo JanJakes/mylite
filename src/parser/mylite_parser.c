@@ -621,6 +621,7 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
   int window_state = SELECT_WINDOW_NONE;
   int group_clause = 0;
   int rollup_state = SELECT_ROLLUP_NONE;
+  int group_direction_state = SELECT_ORDER_DIRECTION_NONE;
   int group_previous_top_token_id = 0;
   int group_previous_was_operator = 1;
   MyliteToken group_previous_top_token = {0};
@@ -770,6 +771,18 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
       }
       order_direction_state = SELECT_ORDER_DIRECTION_NONE;
       order_clause = 0;
+    }
+    if (group_direction_state == SELECT_ORDER_DIRECTION_COMPLETE) {
+      if (token_id != ML_COMMA && token_id != ML_WITH &&
+          !select_rollup_boundary(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "malformed SELECT GROUP BY direction");
+        return;
+      }
+      group_direction_state = SELECT_ORDER_DIRECTION_NONE;
+      if (token_id != ML_COMMA && token_id != ML_WITH) {
+        group_clause = 0;
+      }
     }
 
     if (index_hint_state == SELECT_INDEX_HINT_AFTER_TYPE) {
@@ -1787,6 +1800,16 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
       continue;
     }
     if (group_clause) {
+      if (token_id == ML_ASC || token_id == ML_DESC) {
+        if (group_previous_was_operator) {
+          mylite_parser_reject(ctx, group_previous_top_token,
+                               "incomplete SELECT GROUP BY clause");
+          return;
+        }
+        group_direction_state = SELECT_ORDER_DIRECTION_COMPLETE;
+        pending_token = token;
+        continue;
+      }
       if (!query_expression_token(
               ctx, token_id, token, &depth, &group_previous_top_token_id,
               &group_previous_top_token, &group_previous_was_operator,

@@ -137,7 +137,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. |  |
-| `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser rejects missing operands for major top-level clause starts such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `INTO`, top-level `JOIN`/`ON`/`USING` clauses, trailing top-level comma separators, incomplete `UNION`/`INTERSECT`/`EXCEPT` set operations, incomplete `LOCK IN SHARE MODE` tails, and malformed `FOR` locking tails while preserving index-hint `FOR` forms; full expression/query grammar remains incomplete. |
+| `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser rejects missing operands for major top-level clause starts such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `INTO`, top-level `JOIN`/`ON`/`USING` clauses, trailing top-level comma separators, incomplete `UNION`/`INTERSECT`/`EXCEPT` set operations, malformed `LOCK IN SHARE MODE` tails, and malformed `FOR UPDATE`/`FOR SHARE` locking tails while preserving index-hint `FOR` forms; full expression/query grammar remains incomplete. |
 | `SELECT ... INTO var_list` | ❌ | high | User/local variable assignment semantics. |  |
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. |  |
 | `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. |  |
@@ -345,7 +345,7 @@ Shared parser-level `SHOW ... LIKE` filters require string-literal patterns.
 | Index hints | ❌ | high | USE/FORCE/IGNORE INDEX with FOR JOIN/ORDER BY/GROUP BY scopes. |  |
 | Optimizer hints | ❌ | medium | Comment-hint grammar and ignored/accepted hint diagnostics. |  |
 | `PARTITION` selection | ❌ | low | Explicit partition selection syntax and errors. |  |
-| Locking clauses | ❌ | high | FOR UPDATE, FOR SHARE, OF table list, NOWAIT, and SKIP LOCKED. |  |
+| Locking clauses | ❌ | high | FOR UPDATE, FOR SHARE, OF table list, NOWAIT, and SKIP LOCKED. | Parser recognizes and validates top-level SELECT locking-clause tails; execution semantics are not implemented. |
 | SELECT modifiers | ❌ | top | ALL, HIGH_PRIORITY, SQL_SMALL_RESULT, SQL_BIG_RESULT, SQL_BUFFER_RESULT, SQL_CALC_FOUND_ROWS, and STRAIGHT_JOIN. |  |
 | Expression metadata | ❌ | top | Column type, length, decimals, flags, charset, collation, nullability, and origin metadata. |  |
 

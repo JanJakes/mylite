@@ -52,8 +52,9 @@ token sink:
 - Top-level `SELECT` rejects missing operands for top-level `JOIN`, `ON`, and
   `USING` join clauses.
 - Top-level `SELECT` requires complete `LOCK IN SHARE MODE` locking tails.
-- Top-level `SELECT` requires `FOR` locking tails to start with `UPDATE` or
-  `SHARE`, while preserving index-hint `FOR JOIN`/`FOR ORDER BY`/`FOR GROUP BY`.
+- Top-level `SELECT` validates `FOR UPDATE`/`FOR SHARE` locking tails including
+  optional `OF` table lists, `NOWAIT`, and `SKIP LOCKED`, while preserving
+  index-hint `FOR JOIN`/`FOR ORDER BY`/`FOR GROUP BY`.
 - Top-level `SELECT` also rejects incomplete `UNION`/`INTERSECT`/`EXCEPT`
   set operations.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,

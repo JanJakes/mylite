@@ -27,6 +27,8 @@ static int select_operand_boundary(int token_id);
 static int select_set_operator(int token_id);
 static int select_set_option(int token_id);
 static int select_set_operand_start(int token_id);
+static int select_lock_table_ref_start(int token_id, MyliteToken token);
+static int select_lock_table_ref_part(int token_id);
 static int token_ascii_equal(MyliteToken token, const char *expected);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
@@ -299,6 +301,20 @@ void mylite_parser_record_empty_statement(MyliteParseContext *ctx) {
 }
 
 void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
+  enum {
+    SELECT_LOCK_NONE,
+    SELECT_LOCK_AFTER_LOCK,
+    SELECT_LOCK_AFTER_LOCK_IN,
+    SELECT_LOCK_AFTER_LOCK_IN_SHARE,
+    SELECT_LOCK_AFTER_FOR,
+    SELECT_LOCK_AFTER_STRENGTH,
+    SELECT_LOCK_AFTER_OF,
+    SELECT_LOCK_AFTER_TABLE,
+    SELECT_LOCK_AFTER_DOT,
+    SELECT_LOCK_AFTER_COMMA,
+    SELECT_LOCK_AFTER_SKIP,
+    SELECT_LOCK_COMPLETE
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token;
@@ -308,8 +324,8 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int need_by = 0;
   int need_operand = 0;
   int need_set_operand = 0;
-  int lock_state = 0;
-  int for_state = 0;
+  int lock_state = SELECT_LOCK_NONE;
+  int saw_lock_tail = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -334,46 +350,173 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
 
-    if (for_state) {
-      if (token_id == ML_GROUP || token_id == ML_JOIN || token_id == ML_ORDER) {
-        for_state = 0;
+    if (lock_state == SELECT_LOCK_AFTER_LOCK) {
+      if (token_id != ML_IN) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT lock clause");
+        return;
+      }
+      lock_state = SELECT_LOCK_AFTER_LOCK_IN;
+      continue;
+    }
+    if (lock_state == SELECT_LOCK_AFTER_LOCK_IN) {
+      if (!token_ascii_equal(token, "share")) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT lock clause");
+        return;
+      }
+      lock_state = SELECT_LOCK_AFTER_LOCK_IN_SHARE;
+      continue;
+    }
+    if (lock_state == SELECT_LOCK_AFTER_LOCK_IN_SHARE) {
+      if (!token_ascii_equal(token, "mode")) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT lock clause");
+        return;
+      }
+      lock_state = SELECT_LOCK_COMPLETE;
+      saw_lock_tail = 1;
+      continue;
+    }
+    if (lock_state == SELECT_LOCK_AFTER_FOR) {
+      if (!saw_lock_tail &&
+          (token_id == ML_GROUP || token_id == ML_JOIN ||
+           token_id == ML_ORDER)) {
+        lock_state = SELECT_LOCK_NONE;
         continue;
       }
       if (token_id == ML_UPDATE || token_ascii_equal(token, "share")) {
-        for_state = 0;
+        lock_state = SELECT_LOCK_AFTER_STRENGTH;
+        saw_lock_tail = 1;
         continue;
       }
       mylite_parser_reject(ctx, pending_token,
                            "incomplete SELECT lock clause");
       return;
     }
-
-    if (lock_state == 1) {
-      if (token_id != ML_IN) {
+    if (lock_state == SELECT_LOCK_AFTER_STRENGTH) {
+      if (token_ascii_equal(token, "of")) {
+        lock_state = SELECT_LOCK_AFTER_OF;
+        pending_token = token;
+        continue;
+      }
+      if (token_ascii_equal(token, "skip")) {
+        lock_state = SELECT_LOCK_AFTER_SKIP;
+        pending_token = token;
+        continue;
+      }
+      if (token_ascii_equal(token, "nowait")) {
+        lock_state = SELECT_LOCK_COMPLETE;
+        continue;
+      }
+      if (token_id == ML_FOR) {
+        lock_state = SELECT_LOCK_AFTER_FOR;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LOCK) {
+        lock_state = SELECT_LOCK_AFTER_LOCK;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_INTO) {
+        lock_state = SELECT_LOCK_NONE;
+        need_operand = 1;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "malformed SELECT lock clause");
+      return;
+    }
+    if (lock_state == SELECT_LOCK_AFTER_OF ||
+        lock_state == SELECT_LOCK_AFTER_COMMA) {
+      if (!select_lock_table_ref_start(token_id, token)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete SELECT lock clause");
         return;
       }
-      lock_state = 2;
+      lock_state = SELECT_LOCK_AFTER_TABLE;
       continue;
     }
-    if (lock_state == 2) {
-      if (!token_ascii_equal(token, "share")) {
+    if (lock_state == SELECT_LOCK_AFTER_TABLE) {
+      if (token_id == ML_DOT) {
+        lock_state = SELECT_LOCK_AFTER_DOT;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_COMMA) {
+        lock_state = SELECT_LOCK_AFTER_COMMA;
+        pending_token = token;
+        continue;
+      }
+      if (token_ascii_equal(token, "skip")) {
+        lock_state = SELECT_LOCK_AFTER_SKIP;
+        pending_token = token;
+        continue;
+      }
+      if (token_ascii_equal(token, "nowait")) {
+        lock_state = SELECT_LOCK_COMPLETE;
+        continue;
+      }
+      if (token_id == ML_FOR) {
+        lock_state = SELECT_LOCK_AFTER_FOR;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LOCK) {
+        lock_state = SELECT_LOCK_AFTER_LOCK;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_INTO) {
+        lock_state = SELECT_LOCK_NONE;
+        need_operand = 1;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "malformed SELECT lock clause");
+      return;
+    }
+    if (lock_state == SELECT_LOCK_AFTER_DOT) {
+      if (!select_lock_table_ref_part(token_id)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete SELECT lock clause");
         return;
       }
-      lock_state = 3;
+      lock_state = SELECT_LOCK_AFTER_TABLE;
       continue;
     }
-    if (lock_state == 3) {
-      if (!token_ascii_equal(token, "mode")) {
+    if (lock_state == SELECT_LOCK_AFTER_SKIP) {
+      if (!token_ascii_equal(token, "locked")) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete SELECT lock clause");
         return;
       }
-      lock_state = 0;
+      lock_state = SELECT_LOCK_COMPLETE;
       continue;
+    }
+    if (lock_state == SELECT_LOCK_COMPLETE) {
+      if (token_id == ML_FOR) {
+        lock_state = SELECT_LOCK_AFTER_FOR;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LOCK) {
+        lock_state = SELECT_LOCK_AFTER_LOCK;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_INTO) {
+        lock_state = SELECT_LOCK_NONE;
+        need_operand = 1;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "malformed SELECT lock clause");
+      return;
     }
 
     if (need_by) {
@@ -424,12 +567,12 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
 
     if (token_id == ML_LOCK) {
-      lock_state = 1;
+      lock_state = SELECT_LOCK_AFTER_LOCK;
       pending_token = token;
       continue;
     }
     if (token_id == ML_FOR) {
-      for_state = 1;
+      lock_state = SELECT_LOCK_AFTER_FOR;
       pending_token = token;
       continue;
     }
@@ -451,7 +594,14 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
   }
 
-  if (for_state || lock_state) {
+  if (lock_state == SELECT_LOCK_AFTER_LOCK ||
+      lock_state == SELECT_LOCK_AFTER_LOCK_IN ||
+      lock_state == SELECT_LOCK_AFTER_LOCK_IN_SHARE ||
+      lock_state == SELECT_LOCK_AFTER_FOR ||
+      lock_state == SELECT_LOCK_AFTER_OF ||
+      lock_state == SELECT_LOCK_AFTER_DOT ||
+      lock_state == SELECT_LOCK_AFTER_COMMA ||
+      lock_state == SELECT_LOCK_AFTER_SKIP) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT lock clause");
   } else if (need_set_operand) {
@@ -560,6 +710,20 @@ static int select_set_option(int token_id) {
 static int select_set_operand_start(int token_id) {
   return token_id == ML_LP || token_id == ML_SELECT || token_id == ML_TABLE ||
          token_id == ML_VALUES || token_id == ML_WITH;
+}
+
+static int select_lock_table_ref_start(int token_id, MyliteToken token) {
+  if (token_ascii_equal(token, "locked") || token_ascii_equal(token, "nowait") ||
+      token_ascii_equal(token, "of") || token_ascii_equal(token, "skip")) {
+    return 0;
+  }
+
+  return token_id == ML_ATOM || token_id == ML_QUOTED_ID;
+}
+
+static int select_lock_table_ref_part(int token_id) {
+  return token_id == ML_ATOM || token_id == ML_QUOTED_ID ||
+         token_id == ML_STAR;
 }
 
 static void result_init(MyliteParseResult *result) {

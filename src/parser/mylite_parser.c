@@ -59,6 +59,10 @@ static int kill_target_token(int token_id);
 static int create_index_prefix_length_token(int token_id);
 static int alter_table_add_index_marker(int token_id);
 static int alter_table_add_non_index_marker(int token_id);
+static int event_interval_unit_token(MyliteToken token);
+static int event_schedule_boundary(int token_id);
+static int event_schedule_option_start(MyliteToken token);
+static int token_is_plus(MyliteToken token);
 static int dml_assignment_boundary(int mode, int token_id);
 static int dml_assignment_operator(int token_id);
 static int dml_assignment_target_token(int token_id);
@@ -2817,6 +2821,240 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   }
 }
 
+void mylite_parser_validate_event_statement(MyliteParseContext *ctx,
+                                             MyliteToken start) {
+  enum {
+    EVENT_FIND_ON,
+    EVENT_AFTER_ON,
+    EVENT_AFTER_SCHEDULE,
+    EVENT_AT_TIMESTAMP,
+    EVENT_AT_AFTER_PLUS,
+    EVENT_AT_AFTER_INTERVAL,
+    EVENT_AT_INTERVAL_VALUE,
+    EVENT_AT_INTERVAL_DONE,
+    EVENT_EVERY_VALUE,
+    EVENT_EVERY_DONE,
+    EVENT_OPTION_TIMESTAMP,
+    EVENT_OPTION_AFTER_PLUS,
+    EVENT_OPTION_AFTER_INTERVAL,
+    EVENT_OPTION_INTERVAL_VALUE,
+    EVENT_OPTION_INTERVAL_DONE
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int depth = 0;
+  int state = EVENT_FIND_ON;
+  int value_started = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+        continue;
+      } else {
+        continue;
+      }
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (state == EVENT_FIND_ON) {
+      if (token_id == ML_ON) {
+        state = EVENT_AFTER_ON;
+        pending_token = token;
+      } else if (token_id == ML_SEMI) {
+        break;
+      }
+      continue;
+    }
+
+    if (state == EVENT_AFTER_ON) {
+      if (token_id == ML_SCHEDULE) {
+        state = EVENT_AFTER_SCHEDULE;
+        pending_token = token;
+      } else {
+        state = EVENT_FIND_ON;
+      }
+      continue;
+    }
+
+    if (state == EVENT_AFTER_SCHEDULE) {
+      if (token_id == ML_AT) {
+        state = EVENT_AT_TIMESTAMP;
+        value_started = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_EVERY) {
+        state = EVENT_EVERY_VALUE;
+        value_started = 0;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "incomplete EVENT schedule");
+      return;
+    }
+
+    if (event_schedule_boundary(token_id)) {
+      if (state == EVENT_AT_TIMESTAMP ||
+          state == EVENT_OPTION_TIMESTAMP) {
+        if (value_started) {
+          return;
+        }
+      } else if (state == EVENT_AT_INTERVAL_DONE ||
+                 state == EVENT_EVERY_DONE ||
+                 state == EVENT_OPTION_INTERVAL_DONE) {
+        return;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "incomplete EVENT schedule");
+      return;
+    }
+
+    if (state == EVENT_EVERY_DONE &&
+        event_schedule_option_start(token)) {
+      state = EVENT_OPTION_TIMESTAMP;
+      value_started = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if ((state == EVENT_OPTION_TIMESTAMP ||
+         state == EVENT_OPTION_INTERVAL_DONE) &&
+        event_schedule_option_start(token)) {
+      if (state == EVENT_OPTION_TIMESTAMP && !value_started) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete EVENT schedule");
+        return;
+      }
+      state = EVENT_OPTION_TIMESTAMP;
+      value_started = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == EVENT_AT_TIMESTAMP ||
+        state == EVENT_OPTION_TIMESTAMP) {
+      if (token_is_plus(token) && value_started) {
+        state = state == EVENT_AT_TIMESTAMP ? EVENT_AT_AFTER_PLUS
+                                            : EVENT_OPTION_AFTER_PLUS;
+        pending_token = token;
+        continue;
+      }
+      value_started = 1;
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      }
+      continue;
+    }
+
+    if (state == EVENT_AT_AFTER_PLUS ||
+        state == EVENT_OPTION_AFTER_PLUS) {
+      if (token_id != ML_INTERVAL) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete EVENT schedule interval");
+        return;
+      }
+      state = state == EVENT_AT_AFTER_PLUS ? EVENT_AT_AFTER_INTERVAL
+                                           : EVENT_OPTION_AFTER_INTERVAL;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == EVENT_AT_AFTER_INTERVAL ||
+        state == EVENT_OPTION_AFTER_INTERVAL) {
+      if (event_interval_unit_token(token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete EVENT schedule interval");
+        return;
+      }
+      state = state == EVENT_AT_AFTER_INTERVAL
+                  ? EVENT_AT_INTERVAL_VALUE
+                  : EVENT_OPTION_INTERVAL_VALUE;
+      value_started = 1;
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      }
+      continue;
+    }
+
+    if (state == EVENT_AT_INTERVAL_VALUE ||
+        state == EVENT_OPTION_INTERVAL_VALUE) {
+      if (event_interval_unit_token(token)) {
+        state = state == EVENT_AT_INTERVAL_VALUE
+                    ? EVENT_AT_INTERVAL_DONE
+                    : EVENT_OPTION_INTERVAL_DONE;
+        continue;
+      }
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      }
+      continue;
+    }
+
+    if (state == EVENT_AT_INTERVAL_DONE ||
+        state == EVENT_OPTION_INTERVAL_DONE) {
+      if (token_is_plus(token)) {
+        state = state == EVENT_AT_INTERVAL_DONE ? EVENT_AT_AFTER_PLUS
+                                                : EVENT_OPTION_AFTER_PLUS;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, token, "malformed EVENT schedule");
+      return;
+    }
+
+    if (state == EVENT_EVERY_VALUE) {
+      if (event_interval_unit_token(token)) {
+        if (!value_started) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete EVENT schedule interval");
+          return;
+        }
+        state = EVENT_EVERY_DONE;
+        continue;
+      }
+      value_started = 1;
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      }
+      continue;
+    }
+
+    if (state == EVENT_EVERY_DONE) {
+      mylite_parser_reject(ctx, token, "malformed EVENT schedule");
+      return;
+    }
+  }
+
+  if (state != EVENT_FIND_ON) {
+    if (state == EVENT_AT_TIMESTAMP ||
+        state == EVENT_OPTION_TIMESTAMP) {
+      if (value_started) {
+        return;
+      }
+    } else if (state == EVENT_AT_INTERVAL_DONE ||
+               state == EVENT_EVERY_DONE ||
+               state == EVENT_OPTION_INTERVAL_DONE) {
+      return;
+    }
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete EVENT schedule");
+  }
+}
+
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {
@@ -3069,6 +3307,43 @@ static int alter_table_add_index_marker(int token_id) {
 static int alter_table_add_non_index_marker(int token_id) {
   return token_id == ML_CHECK || token_id == ML_COLUMN ||
          token_id == ML_FOREIGN;
+}
+
+static int event_interval_unit_token(MyliteToken token) {
+  return token_ascii_equal(token, "year") ||
+         token_ascii_equal(token, "quarter") ||
+         token_ascii_equal(token, "month") ||
+         token_ascii_equal(token, "week") ||
+         token_ascii_equal(token, "day") ||
+         token_ascii_equal(token, "hour") ||
+         token_ascii_equal(token, "minute") ||
+         token_ascii_equal(token, "second") ||
+         token_ascii_equal(token, "microsecond") ||
+         token_ascii_equal(token, "year_month") ||
+         token_ascii_equal(token, "day_hour") ||
+         token_ascii_equal(token, "day_minute") ||
+         token_ascii_equal(token, "day_second") ||
+         token_ascii_equal(token, "hour_minute") ||
+         token_ascii_equal(token, "hour_second") ||
+         token_ascii_equal(token, "minute_second") ||
+         token_ascii_equal(token, "second_microsecond") ||
+         token_ascii_equal(token, "minute_microsecond") ||
+         token_ascii_equal(token, "hour_microsecond") ||
+         token_ascii_equal(token, "day_microsecond");
+}
+
+static int event_schedule_boundary(int token_id) {
+  return token_id == ML_COMMENT || token_id == ML_DISABLE ||
+         token_id == ML_DO || token_id == ML_ENABLE || token_id == ML_ON ||
+         token_id == ML_RENAME || token_id == ML_SEMI;
+}
+
+static int event_schedule_option_start(MyliteToken token) {
+  return token_ascii_equal(token, "starts") || token_ascii_equal(token, "ends");
+}
+
+static int token_is_plus(MyliteToken token) {
+  return token.length == 1 && token.start[0] == '+';
 }
 
 static int dml_assignment_boundary(int mode, int token_id) {

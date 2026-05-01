@@ -208,7 +208,9 @@ create_tail ::= USER create_if_not_exists_tail create_user_list account_manageme
 create_tail ::= VIEW cache_table_ref view_column_tail view_body.
 create_tail ::= create_prefixed_view_tail.
 create_tail ::= create_definer_clause create_definer_object_tail.
-create_tail ::= EVENT create_if_not_exists_tail cache_table_ref create_event_body.
+create_tail ::= EVENT(A) create_if_not_exists_tail cache_table_ref create_event_body. {
+  mylite_parser_validate_event_statement(ctx, A);
+}
 create_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref create_trigger_body.
 create_tail ::= FUNCTION create_if_not_exists_tail cache_table_ref create_function_tail.
 create_tail ::= PROCEDURE create_if_not_exists_tail cache_table_ref create_procedure_tail.
@@ -528,7 +530,9 @@ create_definer_clause ::= DEFINER diagnostics_equals create_definer_account.
 create_definer_account ::= drop_account_name.
 create_definer_account ::= current_user_ref.
 
-create_definer_object_tail ::= EVENT create_if_not_exists_tail cache_table_ref create_event_body.
+create_definer_object_tail ::= EVENT(A) create_if_not_exists_tail cache_table_ref create_event_body. {
+  mylite_parser_validate_event_statement(ctx, A);
+}
 create_definer_object_tail ::= TRIGGER create_if_not_exists_tail cache_table_ref create_trigger_body.
 create_definer_object_tail ::= FUNCTION create_if_not_exists_tail cache_table_ref create_function_tail.
 create_definer_object_tail ::= PROCEDURE create_if_not_exists_tail cache_table_ref create_procedure_tail.
@@ -1182,7 +1186,9 @@ alter_tail ::= TABLESPACE cache_name_part alter_tablespace_action.
 alter_tail ::= UNDO TABLESPACE cache_name_part alter_undo_tablespace_action.
 alter_tail ::= USER drop_if_exists_tail alter_user_list account_management_options account_management_permissive_tail.
 alter_tail ::= USER drop_if_exists_tail USER LP RP alter_user_func_option_tail.
-alter_tail ::= EVENT cache_table_ref alter_event_clauses.
+alter_tail ::= EVENT(A) cache_table_ref alter_event_clauses. {
+  mylite_parser_validate_event_statement(ctx, A);
+}
 alter_tail ::= alter_routine_kind cache_table_ref alter_routine_characteristics_tail.
 alter_tail ::= alter_database_kind alter_database_options.
 alter_tail ::= alter_database_kind alter_database_name alter_database_options.

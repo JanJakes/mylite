@@ -122,9 +122,10 @@ token sink:
   `WAIT`, and `NO_WAIT`.
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
   `OPTIONS` names, string-valued options, and numeric ports.
-- `CREATE EVENT` recognizes scheduler status tails including
-  `DISABLE ON REPLICA` and deprecated `DISABLE ON SLAVE` immediately after the
-  schedule.
+- `CREATE EVENT` recognizes event schedules with `AT` timestamps and `EVERY`
+  intervals, validates interval units plus `STARTS`/`ENDS` schedule tails, and
+  recognizes scheduler status tails including `DISABLE ON REPLICA` and
+  deprecated `DISABLE ON SLAVE` immediately after the schedule.
 - `CREATE TRIGGER` recognizes timing, event, target table, optional ordering,
   and stored-program statement starts for single-statement trigger bodies.
 - `ALTER INSTANCE` recognizes redo-log enable/disable, InnoDB/binlog master-key
@@ -152,7 +153,8 @@ token sink:
   with MySQL's `DEFAULT`/`0`/`1` value grammar.
 - `CREATE EVENT` and `ALTER EVENT` recognize ordered event metadata clauses
   for schedules, completion policy, enablement state, comments, and event
-  bodies; `ALTER EVENT` also recognizes renames.
+  bodies, and reject malformed event schedule tails; `ALTER EVENT` also
+  recognizes renames.
 - `ALTER FUNCTION` and `ALTER PROCEDURE` recognize routine characteristics:
   comments, `LANGUAGE SQL`, SQL data access, and SQL security.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`,

@@ -44,6 +44,8 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
                                                     MyliteToken start);
 void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
                                                    MyliteToken start);
+void mylite_parser_validate_event_statement(MyliteParseContext *ctx,
+                                             MyliteToken start);
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token);
 void mylite_parser_require_row_format(MyliteParseContext *ctx,

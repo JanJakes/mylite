@@ -555,10 +555,13 @@ records the first explicit assignment target.
   and file I/O behavior remain unimplemented.
 - Utility object metadata records the first direct target only and does not yet
   expand multi-table maintenance, cache-index lists, load-index lists, or lock
-  lists. `DESCRIBE` and `EXPLAIN` target metadata records direct table forms,
-  `EXPLAIN ... INTO` user-variable targets, `EXPLAIN ... FOR CONNECTION`
-  targets, and documented explainable statement forms as query targets,
-  without modeling optimizer plans or result rows.
+  lists. `DESCRIBE` and `EXPLAIN` validate direct table/column forms,
+  `FORMAT`, `INTO`, `FOR SCHEMA` / `FOR DATABASE`, `FOR CONNECTION`,
+  `ANALYZE`, existing `VALUES`, and nested parenthesized query-expression
+  shells. Target metadata records direct table forms, `EXPLAIN ... INTO`
+  user-variable targets, `EXPLAIN ... FOR CONNECTION` targets, and explainable
+  statement forms as query targets, without modeling optimizer plans or result
+  rows.
   `CACHE INDEX` and `LOAD INDEX INTO CACHE` validate table/index lists,
   optional `PARTITION (...)` and `INDEX` / `KEY` groups, key-cache targets,
   and `LOAD INDEX ... IGNORE LEAVES` modifiers.

@@ -2057,6 +2057,70 @@ case "$explain_query_output" in
 		;;
 esac
 
+explain_shape_output=$("$parser" 'EXPLAIN FORMAT=JSON INTO @plan DELETE FROM t; EXPLAIN ANALYZE UPDATE t SET c=1; EXPLAIN FORMAT=TREE WITH cte AS (SELECT 1) SELECT * FROM cte; EXPLAIN FORMAT=TREE (SELECT 1) UNION ALL SELECT 2')
+case "$explain_shape_output" in
+	*"explain"*/user_variable:@plan*"explain"*/query*"explain"*/query*"explain"*/query*) ;;
+	*)
+		echo "unexpected EXPLAIN shape output: $explain_shape_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'EXPLAIN'; then
+	echo "expected bare EXPLAIN to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DESCRIBE'; then
+	echo "expected bare DESCRIBE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'EXPLAIN FORMAT SELECT 1'; then
+	echo "expected EXPLAIN FORMAT without assignment to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'EXPLAIN FORMAT=XML SELECT 1'; then
+	echo "expected EXPLAIN FORMAT with unknown format to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'EXPLAIN INTO @plan SELECT 1'; then
+	echo "expected EXPLAIN INTO without FORMAT=JSON to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'EXPLAIN FORMAT=JSON INTO plan SELECT 1'; then
+	echo "expected EXPLAIN INTO non-user variable target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'EXPLAIN FORMAT=JSON INTO @plan FOR CONNECTION 1'; then
+	echo "expected EXPLAIN INTO FOR CONNECTION to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'EXPLAIN ANALYZE FORMAT=JSON SELECT 1'; then
+	echo "expected EXPLAIN ANALYZE non-TREE format to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'EXPLAIN ANALYZE INTO @plan SELECT 1'; then
+	echo "expected EXPLAIN ANALYZE INTO to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'EXPLAIN FOR SCHEMA SELECT 1'; then
+	echo "expected EXPLAIN FOR SCHEMA without schema name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DESCRIBE t c d'; then
+	echo "expected DESCRIBE with multiple column tails to fail" >&2
+	exit 1
+fi
+
 show_sql=$(cat <<'SQL'
 SHOW CREATE TABLE `db`.`t`;
 SHOW CREATE VIEW v;

@@ -494,6 +494,10 @@ EXPLAIN INTO exposes the user-variable output target:
 ok statements=1 kinds=explain[1:8,0:39]/user_variable:@plan
 ```
 
+`DESCRIBE` / `EXPLAIN` validates table/column description forms, `FORMAT`,
+JSON `INTO @var`, `FOR SCHEMA` / `FOR DATABASE`, `FOR CONNECTION`,
+`ANALYZE`, existing `VALUES`, and parenthesized query-expression shells.
+
 KILL statements expose processlist-id expressions as connection or query
 targets:
 

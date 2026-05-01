@@ -1087,10 +1087,41 @@ static int token_is_drop_table_or_view_token(const mylite_parser *parser, size_t
 static int token_is_drop_table_tail_option(const mylite_parser *parser, size_t token_index);
 static int validate_kill_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_help_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_describe_or_explain_statement_syntax(const mylite_parser *parser,
+                                                         const mylite_statement *statement);
+static int validate_describe_or_explain_table_statement_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index);
+static int validate_explain_query_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int validate_explain_analyze_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index);
+static int consume_explain_format_clause(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index,
+                                         size_t *next_token_index,
+                                         int *is_json_format,
+                                         int *is_tree_format);
+static int consume_explain_schema_clause(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index,
+                                         size_t *next_token_index);
+static int token_can_start_describe_column_or_wild(const mylite_token *token);
+static int token_can_start_explain_connection_id(const mylite_token *token);
+static int token_can_start_explainable_statement_body(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index);
+static int token_starts_explainable_query_expression(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index);
+static int token_is_query_expression_head(int token);
+static int token_can_start_explain_format_name(const mylite_parser *parser, size_t token_index);
 static int validate_clone_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_clone_local_statement_syntax(const mylite_parser *parser,
-                                                size_t token_index,
-                                                size_t last_token_index);
+                                                 size_t token_index,
+                                                 size_t last_token_index);
 static int validate_clone_remote_statement_syntax(const mylite_parser *parser,
                                                  size_t token_index,
                                                  size_t last_token_index);
@@ -2183,6 +2214,13 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_HELP:
 			if (!validate_help_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid HELP statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_DESCRIBE:
+		case MYLITE_STATEMENT_EXPLAIN:
+			if (!validate_describe_or_explain_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid DESCRIBE or EXPLAIN statement");
 				return;
 			}
 			break;
@@ -13247,6 +13285,270 @@ static int validate_help_statement_syntax(const mylite_parser *parser, const myl
 	return 1;
 }
 
+static int validate_describe_or_explain_statement_syntax(const mylite_parser *parser,
+                                                         const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (validate_describe_or_explain_table_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	return validate_explain_query_statement_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_describe_or_explain_table_statement_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index)
+{
+	size_t last_name_token;
+
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    token_text_equals(parser, token_index, "FOR") ||
+	    token_text_equals(parser, token_index, "FORMAT") ||
+	    token_text_equals(parser, token_index, "EXTENDED") ||
+	    token_text_equals(parser, token_index, "PARTITIONS") ||
+	    token_text_equals(parser, token_index, "CONNECTION") ||
+	    !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+	token_index = last_name_token + 1;
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (!token_can_start_describe_column_or_wild(&parser->tokens[token_index])) {
+		return 0;
+	}
+	return last_qualified_name_token(parser, token_index, last_token_index) == last_token_index;
+}
+
+static int validate_explain_query_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	size_t next_token_index;
+	int has_format = 0;
+	int has_into = 0;
+	int is_json_format = 0;
+	int is_tree_format = 0;
+
+	if (token_text_equals(parser, token_index, "ANALYZE")) {
+		return validate_explain_analyze_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+
+	if (consume_explain_format_clause(parser,
+	                                  token_index,
+	                                  last_token_index,
+	                                  &next_token_index,
+	                                  &is_json_format,
+	                                  &is_tree_format)) {
+		has_format = 1;
+		token_index = next_token_index;
+	} else if (token_text_equals(parser, token_index, "FORMAT")) {
+		return 0;
+	}
+
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == INTO_T) {
+		has_into = 1;
+		if (!has_format ||
+		    !is_json_format ||
+		    token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_USER_VARIABLE) {
+			return 0;
+		}
+		token_index += 2;
+	}
+
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "FOR")) {
+		if (token_index + 2 <= last_token_index &&
+		    token_text_equals(parser, token_index + 1, "CONNECTION")) {
+			return !has_into &&
+			       token_can_start_explain_connection_id(&parser->tokens[token_index + 2]) &&
+			       token_index + 2 == last_token_index;
+		}
+		if (!consume_explain_schema_clause(parser,
+		                                   token_index,
+		                                   last_token_index,
+		                                   &next_token_index)) {
+			return 0;
+		}
+		token_index = next_token_index;
+	}
+
+	return token_can_start_explainable_statement_body(parser, token_index, last_token_index);
+}
+
+static int validate_explain_analyze_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index)
+{
+	size_t next_token_index;
+	int is_json_format = 0;
+	int is_tree_format = 0;
+
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (consume_explain_format_clause(parser,
+	                                  token_index,
+	                                  last_token_index,
+	                                  &next_token_index,
+	                                  &is_json_format,
+	                                  &is_tree_format)) {
+		if (!is_tree_format) {
+			return 0;
+		}
+		token_index = next_token_index;
+	} else if (token_text_equals(parser, token_index, "FORMAT")) {
+		return 0;
+	}
+
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "FOR")) {
+		if (!consume_explain_schema_clause(parser,
+		                                   token_index,
+		                                   last_token_index,
+		                                   &next_token_index)) {
+			return 0;
+		}
+		token_index = next_token_index;
+	}
+
+	return token_can_start_explainable_statement_body(parser, token_index, last_token_index);
+}
+
+static int consume_explain_format_clause(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index,
+                                         size_t *next_token_index,
+                                         int *is_json_format,
+                                         int *is_tree_format)
+{
+	if (token_index > last_token_index || !token_text_equals(parser, token_index, "FORMAT")) {
+		return 0;
+	}
+	if (token_index + 2 > last_token_index ||
+	    !token_is_assignment_operator(parser, token_index + 1) ||
+	    !token_can_start_explain_format_name(parser, token_index + 2)) {
+		return 0;
+	}
+
+	*is_json_format = token_text_equals(parser, token_index + 2, "JSON");
+	*is_tree_format = token_text_equals(parser, token_index + 2, "TREE");
+	*next_token_index = token_index + 3;
+	return 1;
+}
+
+static int consume_explain_schema_clause(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index,
+                                         size_t *next_token_index)
+{
+	size_t last_name_token;
+
+	if (token_index + 2 > last_token_index ||
+	    !token_text_equals(parser, token_index, "FOR") ||
+	    (!token_text_equals(parser, token_index + 1, "SCHEMA") &&
+	     !token_text_equals(parser, token_index + 1, "DATABASE")) ||
+	    !token_can_continue_object_name(&parser->tokens[token_index + 2])) {
+		return 0;
+	}
+
+	last_name_token = last_qualified_name_token(parser, token_index + 2, last_token_index);
+	*next_token_index = last_name_token + 1;
+	return 1;
+}
+
+static int token_can_start_describe_column_or_wild(const mylite_token *token)
+{
+	return token->kind == MYLITE_TOKEN_STRING ||
+	       token->kind == MYLITE_TOKEN_NUMBER ||
+	       token_can_continue_object_name(token);
+}
+
+static int token_can_start_explain_connection_id(const mylite_token *token)
+{
+	return token->kind == MYLITE_TOKEN_NUMBER ||
+	       token->kind == MYLITE_TOKEN_USER_VARIABLE ||
+	       token->kind == MYLITE_TOKEN_SYSTEM_VARIABLE ||
+	       token_can_continue_object_name(token);
+}
+
+static int token_can_start_explainable_statement_body(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	if (token_starts_explainable_query_expression(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (parser->tokens[token_index].parser_token == ANALYZE_T) {
+		return 0;
+	}
+	return token_is_explainable_statement_head(parser->tokens[token_index].parser_token) &&
+	       token_index < last_token_index;
+}
+
+static int token_starts_explainable_query_expression(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index)
+{
+	while (token_index <= last_token_index &&
+	       token_index < parser->token_count &&
+	       parser->tokens[token_index].parser_token == '(') {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+		if (matching_token <= token_index + 1 || matching_token > last_token_index + 1) {
+			return 0;
+		}
+		token_index++;
+	}
+
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	return token_is_query_expression_head(parser->tokens[token_index].parser_token) &&
+	       token_index < last_token_index;
+}
+
+static int token_is_query_expression_head(int token)
+{
+	switch (token) {
+	case SELECT_T:
+	case WITH_T:
+	case TABLE_T:
+	case VALUES_T:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+static int token_can_start_explain_format_name(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "TRADITIONAL") ||
+	       token_text_equals(parser, token_index, "JSON") ||
+	       token_text_equals(parser, token_index, "TREE");
+}
+
 static int validate_clone_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
 {
 	size_t token_index = find_statement_kind_token(parser, statement);
@@ -14507,7 +14809,8 @@ static size_t find_explainable_statement_token(const mylite_parser *parser,
                                                size_t last_token_index)
 {
 	while (token_index <= last_token_index && token_index < parser->token_count) {
-		if (token_is_explainable_statement_head(parser->tokens[token_index].parser_token)) {
+		if (token_is_explainable_statement_head(parser->tokens[token_index].parser_token) ||
+		    token_starts_explainable_query_expression(parser, token_index, last_token_index)) {
 			return token_index;
 		}
 		token_index++;
@@ -14519,7 +14822,9 @@ static int token_is_explainable_statement_head(int token)
 {
 	switch (token) {
 	case SELECT_T:
+	case WITH_T:
 	case TABLE_T:
+	case VALUES_T:
 	case DELETE_T:
 	case INSERT_T:
 	case REPLACE_T:

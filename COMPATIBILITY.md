@@ -172,7 +172,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. |  |
 | `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. |  |
 | `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |
-| `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. |  |
+| `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. | Parser recognizes MySQL 8.4 filter names, parenthesized rule lists, empty rule lists, rewrite-db pairs, and optional channel clauses. |
 | `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. |  |
 | `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. |  |
 | `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. |  |

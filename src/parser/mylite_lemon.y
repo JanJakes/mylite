@@ -2467,7 +2467,9 @@ show_tail ::= BINARY LOG STATUS.
 show_tail ::= MASTER(A) STATUS. {
   mylite_parser_require_permissive(ctx, A);
 }
-show_tail ::= SLAVE show_slave_tail.
+show_tail ::= SLAVE(A) show_slave_tail. {
+  mylite_parser_require_permissive(ctx, A);
+}
 show_tail ::= GRANTS show_grants_tail.
 show_tail ::= show_scoped_kind show_filter_tail.
 show_tail ::= show_schema_list_kind show_filter_tail.

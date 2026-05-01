@@ -25,8 +25,12 @@ EXPECTED_FRAGMENT_FAILURES = [
     7188,
     7189,
     7190,
+    # Removed SHOW SLAVE STATUS syntax.
+    13633,
     # Removed SHOW MASTER STATUS syntax.
     13642,
+    # Removed SHOW SLAVE HOSTS syntax.
+    13643,
     19528,
     # Removed RESET SLAVE syntax.
     25464,
@@ -45,8 +49,12 @@ EXPECTED_FRAGMENT_FAILURES = [
     43296,
     # Removed RESET SLAVE syntax.
     44234,
+    # Removed SHOW SLAVE HOSTS syntax.
+    50265,
     # Removed SHOW MASTER STATUS syntax.
     50277,
+    # Removed SHOW SLAVE STATUS syntax.
+    50278,
     # Malformed CREATE USER negative-test artifact with a trailing quote.
     54522,
     # Removed PURGE MASTER LOGS syntax.

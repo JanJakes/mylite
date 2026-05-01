@@ -301,6 +301,8 @@ Shared parser-level `SHOW ... LIKE` filters require string-literal patterns.
 | `SHOW RELAYLOG EVENTS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes optional string-literal log-file names, numeric `FROM` positions, and numeric `LIMIT` tails. |
 | `SHOW REPLICA STATUS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW REPLICAS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
+| `SHOW SLAVE HOSTS` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than listing replicas. | Replacement statement is `SHOW REPLICAS`; removed syntax is accepted only in permissive corpus mode. |
+| `SHOW SLAVE STATUS` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than reporting replica status. | Replacement statement is `SHOW REPLICA STATUS`; removed syntax is accepted only in permissive corpus mode. |
 | `SHOW STATUS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW TABLE STATUS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW TABLES` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |

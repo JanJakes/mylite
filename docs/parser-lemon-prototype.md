@@ -119,6 +119,9 @@ token sink:
   with string-literal log/GTID/user option values and numeric log-position
   values. Removed `START SLAVE` and `STOP SLAVE` syntax is
   permissive-corpus-only.
+- `SHOW REPLICA STATUS` and `SHOW REPLICAS` recognize the current MySQL 8.4
+  spellings. Removed `SHOW SLAVE STATUS` and `SHOW SLAVE HOSTS` syntax is
+  permissive-corpus-only.
 - `RESET BINARY LOGS AND GTIDS` recognizes optional numeric `TO` index values.
   Removed `RESET MASTER` and `RESET SLAVE` syntax is permissive-corpus-only.
 - `BINLOG` requires a string-literal payload, and `PURGE BINARY LOGS ... TO`

@@ -292,10 +292,11 @@ structured names such as `keycache1.key_buffer_size`. `INTO OUTFILE` and
 `SELECT` validation checks nonempty projection lists for direct, parenthesized,
 nested, and set-operation RHS `SELECT` terms. It also validates that major
 clause shells such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`,
-`LIMIT`, window/procedure tails, and locking tails have a following body, while
-leaving full table-reference, expression, and query-expression analysis to a
-later phase. `FOR GROUP BY` and `FOR ORDER BY` inside index hints are not
-treated as SELECT clause boundaries.
+`LIMIT`, window/procedure tails, and locking tails have a following body.
+`LIMIT` accepts single-expression, comma, and `OFFSET` forms while rejecting
+dangling separators. Full table-reference, expression, and query-expression
+analysis remains a later phase. `FOR GROUP BY` and `FOR ORDER BY` inside index
+hints are not treated as SELECT clause boundaries.
 `SELECT ... INTO` validation and target classification check the single
 top-level `INTO` rule, variable target-list separators, parenthesized
 query-expression boundaries, OUTFILE character-set and field/line options, and

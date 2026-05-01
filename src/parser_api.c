@@ -577,6 +577,14 @@ static int validate_select_order_or_group_clause_syntax(const mylite_parser *par
                                                         size_t token_index,
                                                         size_t last_token_index,
                                                         size_t *next_token_index);
+static int validate_select_limit_clause_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index,
+                                               size_t *next_token_index);
+static int validate_select_limit_expression_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   size_t *next_token_index);
 static int token_starts_select_projection_boundary(const mylite_parser *parser, size_t token_index);
 static int token_starts_select_tail_boundary(const mylite_parser *parser, size_t token_index);
 static int validate_select_into_clauses_syntax(const mylite_parser *parser,
@@ -8569,9 +8577,17 @@ static int validate_select_tail_syntax(const mylite_parser *parser,
 			}
 			continue;
 		}
+		if (token_text_equals(parser, token_index, "LIMIT")) {
+			if (!validate_select_limit_clause_syntax(parser,
+			                                         token_index,
+			                                         last_token_index,
+			                                         &token_index)) {
+				return 0;
+			}
+			continue;
+		}
 		if (parser->tokens[token_index].parser_token == WHERE_T ||
 		    token_text_equals(parser, token_index, "HAVING") ||
-		    token_text_equals(parser, token_index, "LIMIT") ||
 		    token_text_equals(parser, token_index, "WINDOW") ||
 		    token_text_equals(parser, token_index, "PROCEDURE") ||
 		    token_text_equals(parser, token_index, "FOR") ||
@@ -8646,6 +8662,82 @@ static int validate_select_order_or_group_clause_syntax(const mylite_parser *par
 	                                                   token_index + 2,
 	                                                   last_token_index,
 	                                                   next_token_index);
+}
+
+static int validate_select_limit_clause_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index,
+                                               size_t *next_token_index)
+{
+	if (token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index, "LIMIT")) {
+		return 0;
+	}
+
+	token_index++;
+	if (!validate_select_limit_expression_syntax(parser,
+	                                            token_index,
+	                                            last_token_index,
+	                                            &token_index)) {
+		return 0;
+	}
+
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    parser->tokens[token_index].parser_token == ',') {
+		token_index++;
+		return validate_select_limit_expression_syntax(parser,
+		                                               token_index,
+		                                               last_token_index,
+		                                               next_token_index);
+	}
+
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    token_text_equals(parser, token_index, "OFFSET")) {
+		token_index++;
+		return validate_select_limit_expression_syntax(parser,
+		                                               token_index,
+		                                               last_token_index,
+		                                               next_token_index);
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_select_limit_expression_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   size_t *next_token_index)
+{
+	size_t first_token_index = token_index;
+
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    parser->tokens[token_index].parser_token == ',' ||
+	    token_text_equals(parser, token_index, "OFFSET") ||
+	    token_starts_select_tail_boundary(parser, token_index)) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == ',' ||
+		    token_text_equals(parser, token_index, "OFFSET") ||
+		    token_starts_select_tail_boundary(parser, token_index)) {
+			break;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+
+	*next_token_index = token_index;
+	return token_index > first_token_index;
 }
 
 static int token_starts_select_projection_boundary(const mylite_parser *parser, size_t token_index)

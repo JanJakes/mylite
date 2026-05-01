@@ -1825,6 +1825,11 @@ if ! "$parser" --quiet "SELECT SQL_SMALL_RESULT SQL_BUFFER_RESULT 1 FROM t WHERE
 	exit 1
 fi
 
+if ! "$parser" --quiet "SELECT a LIMIT 5, 10"; then
+	echo "expected SELECT LIMIT comma form to parse" >&2
+	exit 1
+fi
+
 if ! "$parser" --quiet "SELECT 0 FROM t1 FORCE INDEX FOR GROUP BY(a) WHERE a = 0 OR b = 0 AND c = 0"; then
 	echo "expected SELECT index hint FOR GROUP BY to parse" >&2
 	exit 1
@@ -1911,6 +1916,21 @@ fi
 
 if "$parser" --quiet 'SELECT a LIMIT'; then
 	echo "expected SELECT LIMIT without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a LIMIT OFFSET 1'; then
+	echo "expected SELECT LIMIT without row count before OFFSET to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a LIMIT 1 OFFSET'; then
+	echo "expected SELECT LIMIT OFFSET without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a LIMIT , 1'; then
+	echo "expected SELECT LIMIT leading comma to fail" >&2
 	exit 1
 fi
 

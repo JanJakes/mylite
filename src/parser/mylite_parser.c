@@ -881,7 +881,8 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
 
     if (need_operand) {
-      if (select_operand_boundary(token_id)) {
+      if (select_operand_boundary(token_id) ||
+          token_ascii_equal(token, "qualify")) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete SELECT clause");
         return;
@@ -925,6 +926,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
     if (token_ascii_equal(token, "window")) {
       window_state = SELECT_WINDOW_AFTER_WINDOW;
+      pending_token = token;
+      continue;
+    }
+    if (token_ascii_equal(token, "qualify")) {
+      need_operand = 1;
       pending_token = token;
       continue;
     }

@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NONE NOT NUMBER ONE ONLY OPTIONS ORGANIZATION OWNER PACK_KEYS PAGE PARSE_TREE PARTITION PHASE PORT PRECEDES PRESERVE RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE USE_FRM VALUE VCPU WAIT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISABLE DISCARD DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NONE NOT NUMBER ONE ONLY OPTIONS ORGANIZATION OWNER PACK_KEYS PAGE PARSE_TREE PARTITION PHASE PORT PRECEDES PRESERVE RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE USE_FRM VALUE VCPU WAIT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
 %fallback ATOM FACTOR_NUMBER.
 %fallback ATOM ENCLOSED ESCAPED LINES OPTIONALLY ROWS STARTING TERMINATED.
 %fallback ATOM COPY EXCLUSIVE INPLACE INSTANT SHARED.
@@ -936,6 +936,7 @@ alter_table_tail ::= alter_table_keys_action alter_table_force_option_tail.
 alter_table_tail ::= alter_table_tablespace_transfer_kind TABLESPACE.
 alter_table_tail ::= alter_table_tablespace_transfer_kind PARTITION load_partition_names TABLESPACE.
 alter_table_tail ::= alter_table_algorithm_lock_option alter_table_algorithm_lock_tail.
+alter_table_tail ::= alter_table_rename_action alter_table_rename_action_tail.
 alter_table_tail ::= alter_table_action_start create_options_tail.
 
 alter_table_action_start ::= ADD.
@@ -967,7 +968,6 @@ alter_table_action_start ::= PARTITION.
 alter_table_action_start ::= REBUILD.
 alter_table_action_start ::= REMOVE.
 alter_table_action_start ::= REORGANIZE.
-alter_table_action_start ::= RENAME.
 alter_table_action_start ::= REPAIR.
 alter_table_action_start ::= ROW_FORMAT.
 alter_table_action_start ::= SECONDARY_ENGINE.
@@ -992,6 +992,8 @@ alter_table_algorithm_lock_tail ::= .
 alter_table_algorithm_lock_tail ::= COMMA alter_table_algorithm_lock_after_comma.
 
 alter_table_algorithm_lock_after_comma ::= alter_table_algorithm_lock_option alter_table_algorithm_lock_tail.
+alter_table_algorithm_lock_after_comma ::= alter_table_rename_action alter_table_rename_action_tail.
+alter_table_algorithm_lock_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
 alter_table_algorithm_lock_after_comma ::= alter_table_action_start create_options_tail.
 
 alter_table_algorithm_lock_option ::= ALGORITHM drop_index_option_equals_tail alter_table_algorithm_value.
@@ -1001,6 +1003,31 @@ alter_table_algorithm_value ::= DEFAULT.
 alter_table_algorithm_value ::= INSTANT.
 alter_table_algorithm_value ::= INPLACE.
 alter_table_algorithm_value ::= COPY.
+
+alter_table_rename_action_tail ::= .
+alter_table_rename_action_tail ::= COMMA alter_table_rename_after_comma.
+alter_table_rename_action_tail ::= alter_table_partition_option_start create_options_tail.
+
+alter_table_rename_after_comma ::= alter_table_algorithm_lock_option alter_table_algorithm_lock_tail.
+alter_table_rename_after_comma ::= alter_table_rename_action alter_table_rename_action_tail.
+alter_table_rename_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
+alter_table_rename_after_comma ::= alter_table_action_start create_options_tail.
+
+alter_table_rename_action ::= RENAME alter_table_rename_table_connector cache_table_ref.
+alter_table_rename_action ::= RENAME COLUMN alter_table_rename_identifier TO alter_table_rename_identifier.
+alter_table_rename_action ::= RENAME alter_table_rename_index_kind alter_table_rename_identifier TO alter_table_rename_identifier.
+
+alter_table_rename_table_connector ::= .
+alter_table_rename_table_connector ::= TO.
+alter_table_rename_table_connector ::= AS.
+
+alter_table_rename_index_kind ::= INDEX.
+alter_table_rename_index_kind ::= KEY.
+
+alter_table_rename_identifier ::= cache_name_part.
+
+alter_table_partition_option_start ::= REMOVE.
+alter_table_partition_option_start ::= PARTITION.
 
 alter_table_keys_action ::= ENABLE KEYS.
 alter_table_keys_action ::= DISABLE KEYS.
@@ -3522,6 +3549,7 @@ keyword ::= XML.
 keyword ::= CHARACTER.
 keyword ::= CHARSET.
 keyword ::= COLLATION.
+keyword ::= COLUMN.
 keyword ::= COLUMNS.
 keyword ::= COPY.
 keyword ::= COUNT.
@@ -3802,6 +3830,7 @@ keyword_not_select_clause ::= XML.
 keyword_not_select_clause ::= CHARACTER.
 keyword_not_select_clause ::= CHARSET.
 keyword_not_select_clause ::= COLLATION.
+keyword_not_select_clause ::= COLUMN.
 keyword_not_select_clause ::= COLUMNS.
 keyword_not_select_clause ::= COPY.
 keyword_not_select_clause ::= COUNT.

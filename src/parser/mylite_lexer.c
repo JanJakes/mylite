@@ -557,6 +557,7 @@ static int keyword_token(const MyliteToken *token) {
       {"CODE", ML_CODE},
       {"COLLATE", ML_COLLATE},
       {"COLLATION", ML_COLLATION},
+      {"COLUMN", ML_COLUMN},
       {"COLUMNS", ML_COLUMNS},
       {"COLUMN_NAME", ML_COLUMN_NAME},
       {"COMMIT", ML_COMMIT},

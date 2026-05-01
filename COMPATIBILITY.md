@@ -198,8 +198,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `LOOP` | ❌ | medium | Stored-program LOOP semantics. |  |
 | `REPEAT` | ❌ | medium | Stored-program REPEAT UNTIL semantics. | Parser validates `UNTIL` condition expression tails before `END`. |
 | `WHILE` | ❌ | medium | Stored-program WHILE semantics. | Parser validates `WHILE` condition expression tails before `DO`. |
-| `ITERATE` | ❌ | medium | Loop iteration transfer. |  |
-| `LEAVE` | ❌ | medium | Block/loop exit transfer. |  |
+| `ITERATE` | ❌ | medium | Loop iteration transfer. | Parser validates embedded stored-program label-control arity. |
+| `LEAVE` | ❌ | medium | Block/loop exit transfer. | Parser validates embedded stored-program label-control arity. |
 | `RETURN` | ❌ | medium | Stored-function return semantics. | Parser validates return expression tails. |
 | `OPEN` cursor | ❌ | medium | Cursor open lifecycle. | Parser validates embedded stored-program cursor statement arity. |
 | `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. | Parser recognizes `FETCH cursor INTO ...`, `FETCH FROM cursor INTO ...`, and `FETCH NEXT FROM cursor INTO ...` forms, including embedded stored-program cursor statement arity. |

@@ -280,6 +280,8 @@ static void validate_get_diagnostics_statement_from(MyliteParseContext *ctx,
                                                     MyliteToken start);
 static void validate_cursor_statement_from(MyliteParseContext *ctx,
                                            int token_id, MyliteToken start);
+static void validate_label_control_statement_from(MyliteParseContext *ctx,
+                                                  MyliteToken start);
 static void validate_flow_control_statement_from(MyliteParseContext *ctx,
                                                  int token_id,
                                                  MyliteToken token);
@@ -7451,6 +7453,10 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
     validate_cursor_statement_from(ctx, token_id, token);
     return;
   }
+  if (token_id == ML_LEAVE || token_id == ML_ITERATE) {
+    validate_label_control_statement_from(ctx, token);
+    return;
+  }
   if (token_id == ML_DO) {
     mylite_parser_validate_do_statement(ctx, token);
     return;
@@ -7524,6 +7530,10 @@ static void validate_routine_statement_body_from(MyliteParseContext *ctx,
   }
   if (token_id == ML_OPEN || token_id == ML_FETCH || token_id == ML_CLOSE) {
     validate_cursor_statement_from(ctx, token_id, token);
+    return;
+  }
+  if (token_id == ML_LEAVE || token_id == ML_ITERATE) {
+    validate_label_control_statement_from(ctx, token);
     return;
   }
   if (routine_compound_statement_start_token(token_id) ||
@@ -7947,6 +7957,45 @@ static void validate_cursor_statement_from(MyliteParseContext *ctx,
   }
 
   mylite_parser_reject(ctx, pending_token, "incomplete cursor statement");
+}
+
+static void validate_label_control_statement_from(MyliteParseContext *ctx,
+                                                  MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int saw_label = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (token_is_statement_terminator(token_id, token)) {
+      if (!saw_label) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete label-control statement");
+      }
+      return;
+    }
+
+    if (saw_label) {
+      mylite_parser_reject(ctx, token, "malformed label-control statement");
+      return;
+    }
+
+    saw_label = 1;
+    pending_token = token;
+  }
+
+  mylite_parser_reject(ctx, pending_token,
+                       "incomplete label-control statement");
 }
 
 static void validate_flow_control_statement_from(MyliteParseContext *ctx,
@@ -10411,8 +10460,9 @@ static int routine_body_statement_start_token(int token_id) {
   return token_id == ML_BEGIN || token_id == ML_CASE ||
          token_id == ML_CALL || token_id == ML_CLOSE ||
          token_id == ML_DECLARE || token_id == ML_DO || token_id == ML_FETCH ||
-         token_id == ML_GET || token_id == ML_IF || token_id == ML_LOOP ||
-         token_id == ML_OPEN || token_id == ML_REPEAT ||
+         token_id == ML_GET || token_id == ML_IF || token_id == ML_ITERATE ||
+         token_id == ML_LEAVE || token_id == ML_LOOP || token_id == ML_OPEN ||
+         token_id == ML_REPEAT ||
          token_id == ML_RESIGNAL || token_id == ML_RETURN ||
          token_id == ML_SET || token_id == ML_SIGNAL ||
          token_id == ML_UNTIL || token_id == ML_WHEN || token_id == ML_WHILE;

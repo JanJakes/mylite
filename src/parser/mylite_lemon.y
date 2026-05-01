@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ADD AS COLLATE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE PARTITION VALUE DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ADD AS COLLATE DATAFILE ENCRYPTION ENGINE_ATTRIBUTE FILE_BLOCK_SIZE GROUP PARTITION UNDOFILE VALUE DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -425,9 +425,7 @@ create_options_required_tail ::= create_options_required_tail statement_token.
 create_user_tail ::= .
 create_user_tail ::= create_user_tail statement_token.
 
-create_resource_group ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "GROUP");
-}
+create_resource_group ::= GROUP.
 
 create_resource_type ::= create_type_marker diagnostics_equals create_resource_type_value.
 
@@ -440,21 +438,15 @@ create_resource_type_value ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "SYSTEM");
 }
 
-create_logfile_group ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "GROUP");
-}
+create_logfile_group ::= GROUP.
 
 create_logfile_group_tail ::= create_add create_undofile ATOM create_options_tail.
 
 create_add ::= ADD.
 
-create_datafile ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "DATAFILE");
-}
+create_datafile ::= DATAFILE.
 
-create_undofile ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "UNDOFILE");
-}
+create_undofile ::= UNDOFILE.
 
 create_tablespace_tail ::= .
 create_tablespace_tail ::= ADD create_options_tail.
@@ -573,13 +565,9 @@ drop_restrict_tail ::= .
 drop_restrict_tail ::= RESTRICT.
 drop_restrict_tail ::= CASCADE.
 
-drop_resource_group ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "GROUP");
-}
+drop_resource_group ::= GROUP.
 
-drop_logfile_group ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "GROUP");
-}
+drop_logfile_group ::= GROUP.
 
 drop_resource_force_tail ::= .
 drop_resource_force_tail ::= ATOM(A). {

@@ -179,9 +179,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. |  |
 | `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. |  |
 | `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. |  |
-| `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. |  |
-| `EXECUTE` | ❌ | high | Prepared-statement execution with USING variables and result metadata. |  |
-| `DEALLOCATE PREPARE` / `DROP PREPARE` | ❌ | high | Prepared statement cleanup. |  |
+| `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. | Parser recognizes prepared-statement names using the shared identifier grammar. |
+| `EXECUTE` | ❌ | high | Prepared-statement execution with USING variables and result metadata. | Parser recognizes prepared-statement names using the shared identifier grammar. |
+| `DEALLOCATE PREPARE` / `DROP PREPARE` | ❌ | high | Prepared statement cleanup. | Parser recognizes prepared-statement names using the shared identifier grammar. |
 | `BEGIN ... END` | ❌ | medium | Compound statement block scope for stored programs and events. |  |
 | Statement labels | ❌ | medium | Label declaration, LEAVE/ITERATE binding, and duplicate-label diagnostics. |  |
 | `DECLARE` local variables | ❌ | medium | Stored-program local variable declarations, defaults, and scope. |  |

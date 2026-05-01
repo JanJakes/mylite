@@ -94,6 +94,7 @@ token sink:
 - Stored-program label and cursor references use the shared identifier grammar.
 - `DECLARE`, `FETCH ... INTO`, and named signal conditions use the shared
   identifier grammar for local names.
+- Prepared-statement names use the shared identifier grammar.
 - `SET NAMES` and `SET CHARACTER SET` recognize their charset/default forms,
   optional collation, and comma-following variable assignments.
 - `SET` variable assignments recognize comma-separated assignment lists with

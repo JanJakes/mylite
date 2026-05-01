@@ -3052,8 +3052,7 @@ execute_using_list ::= execute_using_list import_comma execute_using_arg.
 
 execute_using_arg ::= ATOM.
 
-prepared_statement_name ::= ATOM.
-prepared_statement_name ::= LABEL.
+prepared_statement_name ::= cache_name_part.
 
 get_statement ::= GET DIAGNOSTICS diagnostics_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

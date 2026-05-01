@@ -597,6 +597,10 @@ Cursor operations expose their cursor handle:
 ok statements=1 kinds=open[1:2,0:6]/cursor:c
 ```
 
+```text
+ok statements=1 kinds=fetch[1:6,0:24]/cursor:c
+```
+
 `LEAVE` and `ITERATE` expose their target label:
 
 ```text

@@ -295,8 +295,9 @@ block starts. Standalone matched compound and flow-control blocks keep
 semicolon-delimited bodies in one statement span, with optional end labels
 included in that span where MySQL allows them. Local variable names are
 recorded for ordinary `DECLARE` statements. Cursor names are recorded for
-`DECLARE ... CURSOR`, `OPEN`, `FETCH`, and `CLOSE`. Jump target labels are
-recorded for `LEAVE` and `ITERATE` with the same lexical rules as label
+`DECLARE ... CURSOR`, `OPEN`, `FETCH`, including optional `NEXT FROM` / `FROM`
+forms, and `CLOSE`. Jump target labels are recorded for `LEAVE` and `ITERATE`
+with the same lexical rules as label
 declarations. Label declarations are recorded when they prefix
 semicolon-delimited MySQL-labeled constructs: `BEGIN`, `LOOP`, `REPEAT`, and
 `WHILE`. Label keyword handling is separate from local-variable keyword
@@ -415,8 +416,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
 - Stored-program control matching records token pairs only; it does not yet
   validate label binding, declaration ordering, cursor scope, or control-flow
   semantics.
-- Cursor metadata records the first cursor handle only. It does not yet validate
-  declaration scope, result shape, fetch target lists, or cursor lifecycle.
+- Cursor metadata records the first cursor handle only, skipping documented
+  `FETCH` direction/from prefixes. It does not yet validate declaration scope,
+  result shape, fetch target lists, or cursor lifecycle.
 - Local variable metadata records only the first declared variable name. It does
   not expand comma-separated declaration lists, validate type/default clauses,
   or model block scope.

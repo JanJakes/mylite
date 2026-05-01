@@ -198,7 +198,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `LEAVE` | ❌ | medium | Block/loop exit transfer. | Parser records the target label; binding and transfer semantics are not implemented. |
 | `RETURN` | ❌ | medium | Stored-function return semantics. | Parser recognizes the statement head; expression validation and function return semantics are not implemented. |
 | `OPEN` cursor | ❌ | medium | Cursor open lifecycle. | Parser records the cursor handle; lifecycle semantics are not implemented. |
-| `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. | Parser records the cursor handle; fetch target assignment and NOT FOUND behavior are not implemented. |
+| `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. | Parser records the cursor handle, including optional `NEXT FROM` / `FROM` forms; fetch target assignment and NOT FOUND behavior are not implemented. |
 | `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. | Parser records the cursor handle; lifecycle semantics are not implemented. |
 | `GET DIAGNOSTICS` | ❌ | medium | Current and stacked diagnostics retrieval. | Parser accepts statement and condition-item forms, records explicit diagnostics condition-area indexes, and records the first statement-level assignment target; diagnostics storage and assignment semantics are not implemented. |
 | `SIGNAL` | ❌ | medium | User-raised SQLSTATE and condition item semantics. | Parser accepts the statement and records explicit SQLSTATE or condition-name targets; runtime diagnostics behavior is not implemented. |

@@ -80,9 +80,9 @@ case "$compound_span_output" in
 		;;
 esac
 
-cursor_output=$("$parser" 'DECLARE c CURSOR FOR SELECT 1; DECLARE x INT; OPEN c; FETCH c INTO x; CLOSE c; CREATE TABLE cursor (id int)')
+cursor_output=$("$parser" 'DECLARE c CURSOR FOR SELECT 1; DECLARE x INT; OPEN c; FETCH c INTO x; FETCH FROM c INTO x; FETCH NEXT FROM c INTO x; CLOSE c; CREATE TABLE cursor (id int)')
 case "$cursor_output" in
-	*"declare"*/cursor:c*"declare"*/local_variable:x*"open"*/cursor:c*"fetch"*/cursor:c*"close"*/cursor:c*"create"*/table:cursor*) ;;
+	*"declare"*/cursor:c*"declare"*/local_variable:x*"open"*/cursor:c*"fetch"*/cursor:c*"fetch"*/cursor:c*"fetch"*/cursor:c*"close"*/cursor:c*"create"*/table:cursor*) ;;
 	*)
 		echo "unexpected cursor output: $cursor_output" >&2
 		exit 1

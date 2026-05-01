@@ -232,6 +232,10 @@ static int classify_cursor_statement_object(const mylite_parser *parser,
                                             mylite_statement *statement,
                                             size_t token_index,
                                             size_t last_token_index);
+static size_t find_cursor_name_token(const mylite_parser *parser,
+                                     mylite_statement_kind statement_kind,
+                                     size_t token_index,
+                                     size_t last_token_index);
 static int statement_contains_token(const mylite_parser *parser,
                                     size_t token_index,
                                     size_t last_token_index,
@@ -2779,11 +2783,45 @@ static int classify_cursor_statement_object(const mylite_parser *parser,
                                             size_t token_index,
                                             size_t last_token_index)
 {
+	size_t name_token_index = find_cursor_name_token(parser,
+	                                                 statement->kind,
+	                                                 token_index,
+	                                                 last_token_index);
+
 	return set_statement_direct_object_name(parser,
 	                                        statement,
 	                                        MYLITE_STATEMENT_OBJECT_CURSOR,
-	                                        token_index,
+	                                        name_token_index,
 	                                        last_token_index);
+}
+
+static size_t find_cursor_name_token(const mylite_parser *parser,
+                                     mylite_statement_kind statement_kind,
+                                     size_t token_index,
+                                     size_t last_token_index)
+{
+	if (statement_kind == MYLITE_STATEMENT_FETCH) {
+		if (token_index <= last_token_index &&
+		    token_index < parser->token_count &&
+		    token_text_equals(parser, token_index, "NEXT")) {
+			if (token_index + 1 > last_token_index ||
+			    !token_text_equals(parser, token_index + 1, "FROM")) {
+				return parser->token_count;
+			}
+			token_index += 2;
+		} else if (token_index <= last_token_index &&
+		           token_index < parser->token_count &&
+		           token_text_equals(parser, token_index, "FROM")) {
+			token_index++;
+		}
+	}
+
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    token_can_continue_object_name(&parser->tokens[token_index])) {
+		return token_index;
+	}
+	return parser->token_count;
 }
 
 static int statement_contains_token(const mylite_parser *parser,

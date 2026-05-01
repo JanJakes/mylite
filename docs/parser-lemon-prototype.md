@@ -33,6 +33,8 @@ token sink:
   write payloads.
 - `VALUES` recognizes comma-separated row contents while preserving nested
   expression bodies.
+- `HANDLER` recognizes one- and two-part table names, aliases, read directions,
+  tuple reads, `WHERE`, and `LIMIT` tails.
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
   clauses, TLS/resource/password/lock options, comments, attributes, and
   default-role clauses rather than generic token tails, including MFA,

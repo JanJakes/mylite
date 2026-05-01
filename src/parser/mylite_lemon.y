@@ -2492,11 +2492,10 @@ handler_statement ::= HANDLER handler_name handler_operation. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 
-handler_name ::= handler_target.
-handler_name ::= handler_name handler_target.
+handler_name ::= handler_identifier.
+handler_name ::= handler_identifier DOT handler_identifier.
 
-handler_target ::= ATOM.
-handler_target ::= LABEL.
+handler_identifier ::= cache_name_part.
 
 handler_operation ::= OPEN.
 handler_operation ::= OPEN handler_alias.

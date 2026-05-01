@@ -898,6 +898,7 @@ static int keyword_token(const MyliteToken *token) {
       {"RELEASE", ML_RELEASE},
       {"RELAY_LOG_FILE", ML_RELAY_LOG_FILE},
       {"RELAY_LOG_POS", ML_RELAY_LOG_POS},
+      {"RELAY_THREAD", ML_IO_THREAD},
       {"RELOAD", ML_RELOAD},
       {"RELAY", ML_RELAY},
       {"RELAYLOG", ML_RELAYLOG},

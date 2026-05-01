@@ -96,6 +96,16 @@ void mylite_sql_ast_node_set_operator(struct mylite_sql_ast_node *node,
     node->operator_kind = operator_kind;
 }
 
+void mylite_sql_ast_node_set_schema_option(struct mylite_sql_ast_node *node,
+                                           enum mylite_sql_ast_schema_option schema_option)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->schema_option = schema_option;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -142,6 +152,40 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "binary_expression";
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
         return "parenthesized_expression";
+    case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
+        return "create_schema_statement";
+    case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
+        return "alter_schema_statement";
+    case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
+        return "drop_schema_statement";
+    case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
+        return "show_schemas_statement";
+    case MYLITE_SQL_AST_IF_EXISTS:
+        return "if_exists";
+    case MYLITE_SQL_AST_IF_NOT_EXISTS:
+        return "if_not_exists";
+    case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
+        return "schema_option_list";
+    case MYLITE_SQL_AST_SCHEMA_OPTION:
+        return "schema_option";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_schema_option_name(enum mylite_sql_ast_schema_option schema_option)
+{
+    switch (schema_option) {
+    case MYLITE_SQL_AST_SCHEMA_OPTION_NONE:
+        return "none";
+    case MYLITE_SQL_AST_SCHEMA_OPTION_CHARACTER_SET:
+        return "character_set";
+    case MYLITE_SQL_AST_SCHEMA_OPTION_COLLATE:
+        return "collate";
+    case MYLITE_SQL_AST_SCHEMA_OPTION_ENCRYPTION:
+        return "encryption";
+    case MYLITE_SQL_AST_SCHEMA_OPTION_READ_ONLY:
+        return "read_only";
     }
 
     return "unknown";

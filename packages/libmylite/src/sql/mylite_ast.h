@@ -19,6 +19,14 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_UNARY_EXPRESSION = 10,
     MYLITE_SQL_AST_BINARY_EXPRESSION = 11,
     MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION = 12,
+    MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT = 13,
+    MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT = 14,
+    MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT = 15,
+    MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT = 16,
+    MYLITE_SQL_AST_IF_EXISTS = 17,
+    MYLITE_SQL_AST_IF_NOT_EXISTS = 18,
+    MYLITE_SQL_AST_SCHEMA_OPTION_LIST = 19,
+    MYLITE_SQL_AST_SCHEMA_OPTION = 20,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -45,10 +53,19 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_DIVIDE = 6,
 };
 
+enum mylite_sql_ast_schema_option {
+    MYLITE_SQL_AST_SCHEMA_OPTION_NONE = 0,
+    MYLITE_SQL_AST_SCHEMA_OPTION_CHARACTER_SET = 1,
+    MYLITE_SQL_AST_SCHEMA_OPTION_COLLATE = 2,
+    MYLITE_SQL_AST_SCHEMA_OPTION_ENCRYPTION = 3,
+    MYLITE_SQL_AST_SCHEMA_OPTION_READ_ONLY = 4,
+};
+
 struct mylite_sql_ast_node {
     enum mylite_sql_ast_node_kind kind;
     enum mylite_sql_ast_literal_kind literal_kind;
     enum mylite_sql_ast_operator operator_kind;
+    enum mylite_sql_ast_schema_option schema_option;
     struct mylite_sql_source_span span;
     struct mylite_sql_ast_node *first_child;
     struct mylite_sql_ast_node *last_child;
@@ -75,11 +92,14 @@ void mylite_sql_ast_node_set_literal_kind(struct mylite_sql_ast_node *node,
                                           enum mylite_sql_ast_literal_kind literal_kind);
 void mylite_sql_ast_node_set_operator(struct mylite_sql_ast_node *node,
                                       enum mylite_sql_ast_operator operator_kind);
+void mylite_sql_ast_node_set_schema_option(struct mylite_sql_ast_node *node,
+                                           enum mylite_sql_ast_schema_option schema_option);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind);
 const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind kind);
 const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_kind);
+const char *mylite_sql_ast_schema_option_name(enum mylite_sql_ast_schema_option schema_option);
 
 #endif

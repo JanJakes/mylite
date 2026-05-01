@@ -6,6 +6,7 @@
 
 static int test_empty_script(void);
 static int test_use_statements(void);
+static int test_schema_lifecycle_statements(void);
 static int test_select_expression_list(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
@@ -27,6 +28,8 @@ static int expect_literal(const struct mylite_sql_ast_node *node,
                           enum mylite_sql_ast_literal_kind expected, const char *context);
 static int expect_operator(const struct mylite_sql_ast_node *node,
                            enum mylite_sql_ast_operator expected, const char *context);
+static int expect_schema_option(const struct mylite_sql_ast_node *node,
+                                enum mylite_sql_ast_schema_option expected, const char *context);
 
 int main(void)
 {
@@ -34,6 +37,7 @@ int main(void)
 
     failures += test_empty_script();
     failures += test_use_statements();
+    failures += test_schema_lifecycle_statements();
     failures += test_select_expression_list();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
@@ -88,6 +92,77 @@ static int test_use_statements(void)
     failures += expect_span_text(child_at(second_use, 0U), "`select`", "second schema");
 
     mylite_sql_parse_result_deinit(&result);
+    return failures;
+}
+
+static int test_schema_lifecycle_statements(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *options = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE DATABASE IF NOT EXISTS mylite_app DEFAULT CHARACTER SET utf8mb4 "
+                          "COLLATE utf8mb4_bin ENCRYPTION='N';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    options = child_at(statement, 2U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT, "create schema");
+    failures +=
+        expect_node(child_at(statement, 0U), MYLITE_SQL_AST_IF_NOT_EXISTS, "create if not exists");
+    failures += expect_span_text(child_at(statement, 1U), "mylite_app", "create schema name");
+    failures += expect_child_count(options, 3U, "create options");
+    failures += expect_schema_option(
+        child_at(options, 0U), MYLITE_SQL_AST_SCHEMA_OPTION_CHARACTER_SET, "create charset option");
+    failures += expect_schema_option(child_at(options, 1U), MYLITE_SQL_AST_SCHEMA_OPTION_COLLATE,
+                                     "create collate option");
+    failures += expect_schema_option(child_at(options, 2U), MYLITE_SQL_AST_SCHEMA_OPTION_ENCRYPTION,
+                                     "create encryption option");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE DATABASE encryption DEFAULT CHARSET 'utf8mb4' "
+                          "COLLATE 'utf8mb4_bin';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    options = child_at(statement, 1U);
+    failures += expect_span_text(child_at(statement, 0U), "encryption", "nonreserved schema name");
+    failures += expect_child_count(options, 2U, "create charset alias options");
+    failures += expect_literal(child_at(child_at(options, 0U), 0U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "quoted charset value");
+    failures += expect_literal(child_at(child_at(options, 1U), 0U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "quoted collate value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER SCHEMA DEFAULT COLLATE utf8mb4_0900_ai_ci READ ONLY = 1;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    options = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT, "alter schema");
+    failures += expect_child_count(statement, 1U, "alter omitted schema child count");
+    failures += expect_child_count(options, 2U, "alter options");
+    failures += expect_schema_option(child_at(options, 0U), MYLITE_SQL_AST_SCHEMA_OPTION_COLLATE,
+                                     "alter collate option");
+    failures += expect_schema_option(child_at(options, 1U), MYLITE_SQL_AST_SCHEMA_OPTION_READ_ONLY,
+                                     "alter read only option");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP SCHEMA IF EXISTS `select`;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT, "drop schema");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_IF_EXISTS, "drop if exists");
+    failures += expect_span_text(child_at(statement, 1U), "`select`", "drop schema name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW DATABASES; SHOW SCHEMAS;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(child_at(result.root, 0U), MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT,
+                            "show databases");
+    failures += expect_node(child_at(result.root, 1U), MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT,
+                            "show schemas");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW DATABASES LIKE 'my%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 
@@ -418,4 +493,19 @@ static int expect_operator(const struct mylite_sql_ast_node *node,
     }
 
     return 0;
+}
+
+static int expect_schema_option(const struct mylite_sql_ast_node *node,
+                                enum mylite_sql_ast_schema_option expected, const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_SCHEMA_OPTION, context);
+
+    if (node != NULL && node->schema_option != expected) {
+        fprintf(stderr, "%s: expected schema option %s, got %s\n", context,
+                mylite_sql_ast_schema_option_name(expected),
+                mylite_sql_ast_schema_option_name(node->schema_option));
+        failures = 1;
+    }
+
+    return failures;
 }

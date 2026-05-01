@@ -35,6 +35,36 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_use_statement(struct mylite_sql_parser_state *state,
                                      struct mylite_sql_token use_token,
                                      struct mylite_sql_ast_node *schema_name);
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *options);
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_schema_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *options);
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *if_exists, struct mylite_sql_ast_node *schema_name);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
+                                              struct mylite_sql_token show_token,
+                                              struct mylite_sql_token schemas_token);
+struct mylite_sql_ast_node *mylite_sql_parser_make_if_exists(struct mylite_sql_parser_state *state,
+                                                             struct mylite_sql_token if_token,
+                                                             struct mylite_sql_token exists_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_if_not_exists(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_token if_token,
+                                     struct mylite_sql_token exists_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_schema_option_list(struct mylite_sql_parser_state *state);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_schema_option(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *list,
+                                       struct mylite_sql_ast_node *option);
+struct mylite_sql_ast_node *mylite_sql_parser_make_schema_option(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
+    enum mylite_sql_ast_schema_option schema_option, struct mylite_sql_ast_node *value);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_wildcard_select_list(struct mylite_sql_parser_state *state,
                                             struct mylite_sql_token wildcard_token);

@@ -24,6 +24,11 @@ struct mylite_sql_parse_error {
     struct mylite_sql_token token;
 };
 
+struct mylite_sql_parser_keyword_token {
+    const char *word;
+    int parser_token;
+};
+
 static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_token_was_dot,
                             struct mylite_sql_parser_token_map *out_map);
 static void record_parse_error(struct mylite_sql_parse_result *result,
@@ -31,6 +36,8 @@ static void record_parse_error(struct mylite_sql_parse_result *result,
 static bool is_comment_token(enum mylite_sql_token_kind kind);
 static bool map_keyword_token(const struct mylite_sql_token *token, bool previous_token_was_dot,
                               int *out_parser_token);
+static bool lookup_keyword_parser_token(const struct mylite_sql_token *token,
+                                        int *out_parser_token);
 static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token);
 static bool map_operator_token(const struct mylite_sql_token *token, int *out_parser_token);
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
@@ -291,6 +298,146 @@ mylite_sql_parser_make_use_statement(struct mylite_sql_parser_state *state,
 
     mylite_sql_ast_node_append_child(statement, schema_name);
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *options)
+{
+    struct mylite_sql_source_span span = span_from_token(&create_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (schema_name != NULL) {
+        span = span_join(span, schema_name->span);
+    }
+    if (options != NULL) {
+        span = span_join(span, options->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, if_not_exists);
+    mylite_sql_ast_node_append_child(statement, schema_name);
+    mylite_sql_ast_node_append_child(statement, options);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_schema_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *options)
+{
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (schema_name != NULL) {
+        span = span_join(span, schema_name->span);
+    }
+    if (options != NULL) {
+        span = span_join(span, options->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, schema_name);
+    mylite_sql_ast_node_append_child(statement, options);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *if_exists, struct mylite_sql_ast_node *schema_name)
+{
+    struct mylite_sql_source_span span = span_from_token(&drop_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (schema_name != NULL) {
+        span = span_join(span, schema_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, if_exists);
+    mylite_sql_ast_node_append_child(statement, schema_name);
+    return statement;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
+                                              struct mylite_sql_token show_token,
+                                              struct mylite_sql_token schemas_token)
+{
+    return make_node(state, MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT,
+                     span_join(span_from_token(&show_token), span_from_token(&schemas_token)));
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_if_exists(struct mylite_sql_parser_state *state,
+                                                             struct mylite_sql_token if_token,
+                                                             struct mylite_sql_token exists_token)
+{
+    return make_node(state, MYLITE_SQL_AST_IF_EXISTS,
+                     span_join(span_from_token(&if_token), span_from_token(&exists_token)));
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_if_not_exists(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_token if_token,
+                                     struct mylite_sql_token exists_token)
+{
+    return make_node(state, MYLITE_SQL_AST_IF_NOT_EXISTS,
+                     span_join(span_from_token(&if_token), span_from_token(&exists_token)));
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_schema_option_list(struct mylite_sql_parser_state *state)
+{
+    return make_node(state, MYLITE_SQL_AST_SCHEMA_OPTION_LIST, (struct mylite_sql_source_span){0});
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_schema_option(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *list,
+                                       struct mylite_sql_ast_node *option)
+{
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, option);
+    if (option != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, option->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_schema_option(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
+    enum mylite_sql_ast_schema_option schema_option, struct mylite_sql_ast_node *value)
+{
+    struct mylite_sql_source_span span = span_from_token(&start_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_SCHEMA_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_schema_option(option, schema_option);
+    mylite_sql_ast_node_append_child(option, value);
+    return option;
 }
 
 struct mylite_sql_ast_node *
@@ -572,32 +719,7 @@ static bool map_keyword_token(const struct mylite_sql_token *token, bool previou
         return true;
     }
 
-    if (token_text_equals(token, "SELECT")) {
-        *out_parser_token = MYLITE_SQL_PARSE_SELECT;
-        return true;
-    }
-    if (token_text_equals(token, "FROM")) {
-        *out_parser_token = MYLITE_SQL_PARSE_FROM;
-        return true;
-    }
-    if (token_text_equals(token, "USE")) {
-        *out_parser_token = MYLITE_SQL_PARSE_USE;
-        return true;
-    }
-    if (token_text_equals(token, "TRUE")) {
-        *out_parser_token = MYLITE_SQL_PARSE_TRUE;
-        return true;
-    }
-    if (token_text_equals(token, "FALSE")) {
-        *out_parser_token = MYLITE_SQL_PARSE_FALSE;
-        return true;
-    }
-    if (token_text_equals(token, "NULL")) {
-        *out_parser_token = MYLITE_SQL_PARSE_NULL;
-        return true;
-    }
-    if (token_text_equals(token, "DUAL")) {
-        *out_parser_token = MYLITE_SQL_PARSE_DUAL;
+    if (lookup_keyword_parser_token(token, out_parser_token)) {
         return true;
     }
 
@@ -607,6 +729,46 @@ static bool map_keyword_token(const struct mylite_sql_token *token, bool previou
 
     *out_parser_token = MYLITE_SQL_PARSE_IDENTIFIER;
     return true;
+}
+
+static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, int *out_parser_token)
+{
+    static const struct mylite_sql_parser_keyword_token keywords[] = {
+        {"ALTER", MYLITE_SQL_PARSE_ALTER},
+        {"CHARACTER", MYLITE_SQL_PARSE_CHARACTER},
+        {"CHARSET", MYLITE_SQL_PARSE_CHARSET},
+        {"COLLATE", MYLITE_SQL_PARSE_COLLATE},
+        {"CREATE", MYLITE_SQL_PARSE_CREATE},
+        {"DATABASE", MYLITE_SQL_PARSE_DATABASE},
+        {"DATABASES", MYLITE_SQL_PARSE_DATABASES},
+        {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
+        {"DROP", MYLITE_SQL_PARSE_DROP},
+        {"DUAL", MYLITE_SQL_PARSE_DUAL},
+        {"ENCRYPTION", MYLITE_SQL_PARSE_ENCRYPTION},
+        {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
+        {"FALSE", MYLITE_SQL_PARSE_FALSE},
+        {"FROM", MYLITE_SQL_PARSE_FROM},
+        {"IF", MYLITE_SQL_PARSE_IF},
+        {"NOT", MYLITE_SQL_PARSE_NOT},
+        {"NULL", MYLITE_SQL_PARSE_NULL},
+        {"ONLY", MYLITE_SQL_PARSE_ONLY},
+        {"READ", MYLITE_SQL_PARSE_READ},
+        {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
+        {"SCHEMAS", MYLITE_SQL_PARSE_SCHEMAS},
+        {"SELECT", MYLITE_SQL_PARSE_SELECT},
+        {"SET", MYLITE_SQL_PARSE_SET},
+        {"SHOW", MYLITE_SQL_PARSE_SHOW},
+        {"TRUE", MYLITE_SQL_PARSE_TRUE},
+        {"USE", MYLITE_SQL_PARSE_USE},
+    };
+
+    for (size_t index = 0U; index < sizeof(keywords) / sizeof(keywords[0]); ++index) {
+        if (token_text_equals(token, keywords[index].word)) {
+            *out_parser_token = keywords[index].parser_token;
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token)
@@ -663,7 +825,10 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
     case MYLITE_SQL_OPERATOR_LOGICAL_AND:
     case MYLITE_SQL_OPERATOR_LOGICAL_OR:
     case MYLITE_SQL_OPERATOR_ASSIGN:
+        return false;
     case MYLITE_SQL_OPERATOR_EQUAL:
+        *out_parser_token = MYLITE_SQL_PARSE_EQ;
+        return true;
     case MYLITE_SQL_OPERATOR_LESS:
     case MYLITE_SQL_OPERATOR_GREATER:
     case MYLITE_SQL_OPERATOR_PERCENT:

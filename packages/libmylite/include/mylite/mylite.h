@@ -36,6 +36,7 @@ enum mylite_status {
     MYLITE_PARSE_ERROR = 3,
     MYLITE_UNSUPPORTED = 4,
     MYLITE_SQLITE_ERROR = 5,
+    MYLITE_EXEC_ERROR = 6,
     MYLITE_ROW = 100,
     MYLITE_DONE = 101,
 };
@@ -56,6 +57,7 @@ MYLITE_API int mylite_step(mylite_stmt *stmt);
 MYLITE_API int mylite_column_count(const mylite_stmt *stmt);
 MYLITE_API const char *mylite_column_name(const mylite_stmt *stmt, int column);
 MYLITE_API int64_t mylite_column_int64(const mylite_stmt *stmt, int column);
+MYLITE_API const char *mylite_column_text(const mylite_stmt *stmt, int column);
 
 #ifdef __cplusplus
 }

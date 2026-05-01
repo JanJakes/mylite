@@ -55,7 +55,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. |  |
+| `ALTER DATABASE` / `ALTER SCHEMA` | 🟡 | high | Database default character set, collation, encryption, and read-only options. | Implemented for the MyLite schema catalog, including omitted-name default-schema targeting; charset/collation validation, full read-only enforcement, privileges, and warning records are deferred. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md). |
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. |  |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. |  |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |
@@ -66,7 +66,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. |  |
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. |  |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |
-| `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. |  |
+| `CREATE DATABASE` / `CREATE SCHEMA` | 🟡 | high | Database creation syntax, defaults, warnings, and single-file mapping. | Implemented as catalog rows inside the single `.mylite` file, with `IF NOT EXISTS`, stored defaults, and encryption value validation; warning records and full charset/collation validation are deferred. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md). |
 | `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. |  |
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. |  |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
@@ -83,7 +83,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax and diagnostics. |  |
 | `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. |  |
 | `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. |  |
-| `DROP DATABASE` / `DROP SCHEMA` | ❌ | high | Schema removal, metadata cleanup, warnings, and embedded single-file constraints. |  |
+| `DROP DATABASE` / `DROP SCHEMA` | 🟡 | high | Schema removal, metadata cleanup, warnings, and embedded single-file constraints. | Implemented for schema catalog rows, including `IF EXISTS` and clearing the selected default schema; table cleanup, privilege cleanup, and warning records wait for later metadata work. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md). |
 | `DROP EVENT` | ❌ | medium | Event metadata deletion. |  |
 | `DROP FUNCTION` (stored) | ❌ | medium | Stored-function deletion and routine metadata cleanup. |  |
 | `DROP FUNCTION` (loadable) | ❌ | low | Loadable-function deregistration syntax. |  |
@@ -236,7 +236,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. |  |
 | `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. |  |
 | `HELP` | ❌ | low | Server help lookup result-set semantics. |  |
-| `USE` | ❌ | top | Default schema selection in the embedded single-file model. |  |
+| `USE` | 🟡 | top | Default schema selection in the embedded single-file model. | Implemented as handle-owned session state over the MyLite schema catalog; schema-qualified object execution and privilege checks are deferred. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md). |
 
 ### 1.5 SHOW statements
 
@@ -258,7 +258,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SHOW CREATE TRIGGER` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW CREATE USER` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW CREATE VIEW` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW DATABASES` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
+| `SHOW DATABASES` | 🟡 | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Unfiltered `SHOW DATABASES` / `SHOW SCHEMAS` returns MyLite catalog rows with a `Database` column; `LIKE`, `WHERE`, and privilege filtering are deferred. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md). |
 | `SHOW ENGINE` | ❌ | low | Generic SHOW ENGINE syntax, subcommand dispatch, result-set shape, and engine-specific diagnostics. |  |
 | `SHOW ENGINE LOGS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW ENGINE MUTEX` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
@@ -1463,7 +1463,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| Default schema | ❌ | top | DATABASE()/SCHEMA(), USE, schema-qualified names, and single-file mapping. |  |
+| Default schema | 🟡 | top | DATABASE()/SCHEMA(), USE, schema-qualified names, and single-file mapping. | `USE` stores handle-owned default schema state and dropping the selected schema clears it; `DATABASE()`/`SCHEMA()` expressions and schema-qualified object execution are deferred. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md). |
 | Connection character set state | ❌ | top | character_set_client, character_set_connection, character_set_results, collation_connection, and SET NAMES behavior. |  |
 | Time zone state | ❌ | top | global/session time_zone, system_time_zone, temporal functions, TIMESTAMP conversion, and named time zones. |  |
 | Autocommit state | ❌ | top | autocommit behavior, implicit transactions, and transaction boundary metadata. |  |

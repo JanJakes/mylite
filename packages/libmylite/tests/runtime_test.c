@@ -10,12 +10,16 @@
 
 static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
+static int test_schema_lifecycle(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
+static int execute_sql(mylite_db *database, const char *sql, int expected_step_status);
+static int expect_show_database_rows(mylite_db *database, const char *required,
+                                     const char *forbidden);
 static void remove_runtime_test_files(void);
 static int read_file_at(const char *path, long offset, unsigned char *buffer, size_t size);
 static int exec_sqlite(sqlite3 *database, const char *sql);
@@ -26,6 +30,7 @@ static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_u16(unsigned int actual, unsigned int expected, const char *context);
 static int expect_string(const char *actual, const char *expected, const char *context);
+static int expect_contains(const char *actual, const char *expected_fragment, const char *context);
 static int expect_bytes(const unsigned char *actual, const void *expected, size_t size,
                         const char *context);
 
@@ -35,12 +40,134 @@ int main(void)
 
     failures += test_select_integer_literal();
     failures += test_select_integer_literal_with_semicolon();
+    failures += test_schema_lifecycle();
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_schema_lifecycle(void)
+{
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+
+    failures += prepare_sql(database, "SHOW DATABASES", MYLITE_OK, &stmt);
+    failures += expect_int(mylite_column_count(stmt), 1, "show databases column count");
+    failures += expect_string(mylite_column_name(stmt, 0), "Database", "show databases column");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show databases first row");
+    failures += expect_string(mylite_column_text(stmt, 0), "information_schema",
+                              "show databases first schema");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_show_database_rows(database, "mysql", "mylite_schema_lifecycle_a");
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_schema_lifecycle_a DEFAULT CHARACTER SET "
+                            "utf8mb4 COLLATE utf8mb4_bin ENCRYPTION='N'",
+                            MYLITE_DONE);
+    failures += expect_show_database_rows(database, "mylite_schema_lifecycle_a", NULL);
+
+    failures +=
+        prepare_sql(database, "CREATE DATABASE mylite_schema_lifecycle_a", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate create step");
+    failures += expect_contains(mylite_error_message(database), "database exists",
+                                "duplicate create error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        execute_sql(database, "CREATE SCHEMA IF NOT EXISTS mylite_schema_lifecycle_a", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "ALTER DATABASE DEFAULT CHARACTER SET utf8mb4", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "alter no default schema");
+    failures += expect_contains(mylite_error_message(database), "No database selected",
+                                "alter no default schema error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "USE mylite_schema_lifecycle_a", MYLITE_DONE);
+    failures += prepare_sql(database, "USE mylite_schema_lifecycle_missing", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "use missing schema");
+    failures += expect_contains(mylite_error_message(database), "Unknown database",
+                                "use missing schema error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        execute_sql(database, "ALTER SCHEMA DEFAULT COLLATE utf8mb4_0900_ai_ci", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "ALTER DATABASE mylite_schema_lifecycle_missing DEFAULT CHARACTER SET "
+                            "utf8mb4",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "alter missing schema");
+    failures += expect_contains(mylite_error_message(database), "doesn't exist",
+                                "alter missing schema error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "DROP DATABASE mylite_schema_lifecycle_a", MYLITE_DONE);
+    failures += expect_show_database_rows(database, NULL, "mylite_schema_lifecycle_a");
+    failures +=
+        prepare_sql(database, "ALTER DATABASE DEFAULT COLLATE utf8mb4_bin", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "alter after selected schema drop");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        execute_sql(database, "DROP SCHEMA IF EXISTS mylite_schema_lifecycle_missing", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "DROP SCHEMA mylite_schema_lifecycle_missing", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop missing schema");
+    failures += expect_contains(mylite_error_message(database), "database doesn't exist",
+                                "drop missing schema error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "DROP DATABASE mysql", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop system schema");
+    failures += expect_contains(mylite_error_message(database), "system schema",
+                                "drop system schema error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE `My``Schema`", MYLITE_DONE);
+    failures += expect_show_database_rows(database, "My`Schema", NULL);
+    failures += execute_sql(database, "DROP DATABASE `My``Schema`", MYLITE_DONE);
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE encryption DEFAULT CHARSET 'utf8mb4' "
+                            "COLLATE 'utf8mb4_bin' ENCRYPTION='y'",
+                            MYLITE_DONE);
+    failures += expect_show_database_rows(database, "encryption", NULL);
+    failures += execute_sql(database, "DROP DATABASE encryption", MYLITE_DONE);
+
+    failures += prepare_sql(database, "CREATE DATABASE invalid_encryption ENCRYPTION='X'",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "invalid encryption value");
+    failures +=
+        expect_contains(mylite_error_message(database), "Y or N", "invalid encryption error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE read_only_value", MYLITE_DONE);
+    failures += execute_sql(database, "USE read_only_value", MYLITE_DONE);
+    failures += prepare_sql(database, "ALTER DATABASE READ ONLY = 2", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "invalid read only value");
+    failures +=
+        expect_contains(mylite_error_message(database), "READ ONLY", "invalid read only error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "DROP DATABASE read_only_value", MYLITE_DONE);
+
+    mylite_close(database);
+    return failures;
 }
 
 static int test_select_integer_literal(void)
@@ -236,6 +363,57 @@ static int prepare_sql(mylite_db *database, const char *sql, int expected_status
     return 0;
 }
 
+static int execute_sql(mylite_db *database, const char *sql, int expected_step_status)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, sql, MYLITE_OK, &stmt);
+
+    if (failures == 0) {
+        failures += expect_status(mylite_step(stmt), expected_step_status, sql);
+    }
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_show_database_rows(mylite_db *database, const char *required,
+                                     const char *forbidden)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, "SHOW SCHEMAS", MYLITE_OK, &stmt);
+    int saw_required = required == NULL ? 1 : 0;
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *schema_name = NULL;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "show schemas row");
+        if (failures != 0) {
+            break;
+        }
+
+        schema_name = mylite_column_text(stmt, 0);
+        if (required != NULL && schema_name != NULL && strcmp(schema_name, required) == 0) {
+            saw_required = 1;
+        }
+        if (forbidden != NULL && schema_name != NULL && strcmp(schema_name, forbidden) == 0) {
+            fprintf(stderr, "show schemas unexpectedly returned '%s'\n", forbidden);
+            failures = 1;
+            break;
+        }
+    }
+
+    if (!saw_required) {
+        fprintf(stderr, "show schemas did not return required schema '%s'\n", required);
+        failures = 1;
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
 static void remove_runtime_test_files(void)
 {
     (void)remove(MYLITE_RUNTIME_TEST_FILE_PATH);
@@ -362,6 +540,17 @@ static int expect_string(const char *actual, const char *expected, const char *c
     if (actual == NULL || strcmp(actual, expected) != 0) {
         fprintf(stderr, "%s: expected '%s', got '%s'\n", context, expected,
                 actual == NULL ? "(null)" : actual);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_contains(const char *actual, const char *expected_fragment, const char *context)
+{
+    if (actual == NULL || strstr(actual, expected_fragment) == NULL) {
+        fprintf(stderr, "%s: expected '%s' to contain '%s'\n", context,
+                actual == NULL ? "(null)" : actual, expected_fragment);
         return 1;
     }
 

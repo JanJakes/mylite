@@ -28,6 +28,7 @@
 %left PLUS MINUS.
 %left STAR SLASH.
 %right UPLUS UMINUS.
+%fallback IDENTIFIER CHARSET ENCRYPTION ONLY.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -56,10 +57,135 @@ statement(A) ::= select_statement(B). {
 statement(A) ::= use_statement(B). {
     A = B;
 }
+statement(A) ::= create_schema_statement(B). {
+    A = B;
+}
+statement(A) ::= alter_schema_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_schema_statement(B). {
+    A = B;
+}
+statement(A) ::= show_schemas_statement(B). {
+    A = B;
+}
 
 use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
 }
+
+create_schema_statement(A) ::= CREATE(T) DATABASE opt_if_not_exists(B) identifier(C) schema_create_option_list(D). {
+    A = mylite_sql_parser_make_create_schema_statement(state, T, B, C, D);
+}
+create_schema_statement(A) ::= CREATE(T) SCHEMA opt_if_not_exists(B) identifier(C) schema_create_option_list(D). {
+    A = mylite_sql_parser_make_create_schema_statement(state, T, B, C, D);
+}
+
+alter_schema_statement(A) ::= ALTER(T) DATABASE schema_alter_option_list(C). {
+    A = mylite_sql_parser_make_alter_schema_statement(state, T, NULL, C);
+}
+alter_schema_statement(A) ::= ALTER(T) DATABASE identifier(B) schema_alter_option_list(C). {
+    A = mylite_sql_parser_make_alter_schema_statement(state, T, B, C);
+}
+alter_schema_statement(A) ::= ALTER(T) SCHEMA schema_alter_option_list(C). {
+    A = mylite_sql_parser_make_alter_schema_statement(state, T, NULL, C);
+}
+alter_schema_statement(A) ::= ALTER(T) SCHEMA identifier(B) schema_alter_option_list(C). {
+    A = mylite_sql_parser_make_alter_schema_statement(state, T, B, C);
+}
+
+drop_schema_statement(A) ::= DROP(T) DATABASE opt_if_exists(B) identifier(C). {
+    A = mylite_sql_parser_make_drop_schema_statement(state, T, B, C);
+}
+drop_schema_statement(A) ::= DROP(T) SCHEMA opt_if_exists(B) identifier(C). {
+    A = mylite_sql_parser_make_drop_schema_statement(state, T, B, C);
+}
+
+show_schemas_statement(A) ::= SHOW(T) DATABASES(D). {
+    A = mylite_sql_parser_make_show_schemas_statement(state, T, D);
+}
+show_schemas_statement(A) ::= SHOW(T) SCHEMAS(D). {
+    A = mylite_sql_parser_make_show_schemas_statement(state, T, D);
+}
+
+opt_if_not_exists(A) ::= . {
+    A = NULL;
+}
+opt_if_not_exists(A) ::= IF(I) NOT EXISTS(E). {
+    A = mylite_sql_parser_make_if_not_exists(state, I, E);
+}
+
+opt_if_exists(A) ::= . {
+    A = NULL;
+}
+opt_if_exists(A) ::= IF(I) EXISTS(E). {
+    A = mylite_sql_parser_make_if_exists(state, I, E);
+}
+
+schema_create_option_list(A) ::= . {
+    A = mylite_sql_parser_make_schema_option_list(state);
+}
+schema_create_option_list(A) ::= schema_create_option_list(B) schema_create_option(C). {
+    A = mylite_sql_parser_append_schema_option(state, B, C);
+}
+
+schema_alter_option_list(A) ::= schema_alter_option(B). {
+    A = mylite_sql_parser_append_schema_option(
+        state, mylite_sql_parser_make_schema_option_list(state), B);
+}
+schema_alter_option_list(A) ::= schema_alter_option_list(B) schema_alter_option(C). {
+    A = mylite_sql_parser_append_schema_option(state, B, C);
+}
+
+schema_create_option(A) ::= schema_common_option(B). {
+    A = B;
+}
+
+schema_alter_option(A) ::= schema_common_option(B). {
+    A = B;
+}
+schema_alter_option(A) ::= READ(R) ONLY opt_equal read_only_value(B). {
+    A = mylite_sql_parser_make_schema_option(
+        state, R, MYLITE_SQL_AST_SCHEMA_OPTION_READ_ONLY, B);
+}
+
+schema_common_option(A) ::= opt_default CHARACTER(T) SET opt_equal schema_option_value(B). {
+    A = mylite_sql_parser_make_schema_option(
+        state, T, MYLITE_SQL_AST_SCHEMA_OPTION_CHARACTER_SET, B);
+}
+schema_common_option(A) ::= opt_default CHARSET(T) opt_equal schema_option_value(B). {
+    A = mylite_sql_parser_make_schema_option(
+        state, T, MYLITE_SQL_AST_SCHEMA_OPTION_CHARACTER_SET, B);
+}
+schema_common_option(A) ::= opt_default COLLATE(T) opt_equal schema_option_value(B). {
+    A = mylite_sql_parser_make_schema_option(
+        state, T, MYLITE_SQL_AST_SCHEMA_OPTION_COLLATE, B);
+}
+schema_common_option(A) ::= opt_default ENCRYPTION(T) opt_equal STRING(B). {
+    A = mylite_sql_parser_make_schema_option(
+        state, T, MYLITE_SQL_AST_SCHEMA_OPTION_ENCRYPTION,
+        mylite_sql_parser_make_literal(state, B, MYLITE_SQL_AST_LITERAL_STRING));
+}
+
+schema_option_value(A) ::= identifier(B). {
+    A = B;
+}
+schema_option_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+
+read_only_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+read_only_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+
+opt_default ::= .
+opt_default ::= DEFAULT.
+
+opt_equal ::= .
+opt_equal ::= EQ.
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {
     A = mylite_sql_parser_make_select_statement(state, T, B, NULL);

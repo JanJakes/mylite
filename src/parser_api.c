@@ -165,6 +165,7 @@ static int classify_replication_channel_statement_object(const mylite_parser *pa
                                                          size_t token_index,
                                                          size_t last_token_index);
 static int is_replication_channel_operation(const mylite_parser *parser,
+                                            mylite_statement_kind statement_kind,
                                             size_t token_index,
                                             size_t last_token_index);
 static int classify_reset_statement_object(const mylite_parser *parser,
@@ -2259,7 +2260,7 @@ static int classify_replication_channel_statement_object(const mylite_parser *pa
 	name_token_index = find_replication_channel_name_token(parser, token_index, last_token_index);
 
 	if (name_token_index >= parser->token_count) {
-		if (is_replication_channel_operation(parser, token_index, last_token_index)) {
+		if (is_replication_channel_operation(parser, statement->kind, token_index, last_token_index)) {
 			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL);
 		}
 		return 0;
@@ -2273,6 +2274,7 @@ static int classify_replication_channel_statement_object(const mylite_parser *pa
 }
 
 static int is_replication_channel_operation(const mylite_parser *parser,
+                                            mylite_statement_kind statement_kind,
                                             size_t token_index,
                                             size_t last_token_index)
 {
@@ -2282,6 +2284,8 @@ static int is_replication_channel_operation(const mylite_parser *parser,
 
 	return token_text_equals(parser, token_index, "REPLICA") ||
 	       token_text_equals(parser, token_index, "SLAVE") ||
+	       (statement_kind == MYLITE_STATEMENT_CHANGE &&
+	        token_text_equals(parser, token_index, "MASTER")) ||
 	       token_text_equals(parser, token_index, "REPLICATION");
 }
 

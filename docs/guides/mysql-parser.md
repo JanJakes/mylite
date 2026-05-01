@@ -335,6 +335,13 @@ ok statements=1 kinds=show[1:2,0:13]/replication_channel
 ok statements=1 kinds=show[1:3,0:16]/replication_channel
 ```
 
+Replication control statements expose explicit channel names or the default
+replication-channel target, including legacy `CHANGE MASTER TO` routing:
+
+```text
+ok statements=1 kinds=change[1:6,0:32]/replication_channel
+```
+
 BINLOG statements expose their event payload string:
 
 ```text

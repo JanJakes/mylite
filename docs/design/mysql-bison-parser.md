@@ -250,8 +250,9 @@ table-maintenance targets in `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and
 system-variable targets are recorded for `RESET PERSIST`. Local clone
 directories and remote donor endpoints are recorded for `CLONE`. Replication
 channel targets are recorded for explicit and default-channel `START`, `STOP`,
-`RESET`, and `CHANGE` forms. Group Replication start/stop statements record
-the group-replication subsystem target. XA transaction XID targets are recorded for the
+`RESET`, and `CHANGE` forms, including legacy `CHANGE MASTER TO` routing.
+Group Replication start/stop statements record the group-replication subsystem
+target. XA transaction XID targets are recorded for the
 XID-bearing XA statements. Non-XA transaction-control statements record the
 transaction object kind for `BEGIN`, `BEGIN WORK`, `START TRANSACTION`,
 `COMMIT`, bare `ROLLBACK`, and `SET [GLOBAL | SESSION] TRANSACTION`, while

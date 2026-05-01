@@ -39,8 +39,9 @@ token sink:
   column lists, view body starts, and explicit check-option tails for
   non-plain-`SELECT` body forms, including parenthesized query expressions and
   `VALUES` set operands, while validating parenthesized query `ORDER BY` and
-  `LIMIT` suffixes, malformed `SELECT` operands after set operators before
-  `WITH CHECK OPTION`, and `VALUES ROW(...)` row-expression tails.
+  `LIMIT` suffixes, direct body `SELECT` list tails, malformed `SELECT`
+  operands after set operators before `WITH CHECK OPTION`, and `VALUES ROW(...)`
+  row-expression tails.
 - `CALL` recognizes one- and two-part routine names plus comma-separated
   argument lists with nested expression bodies, while rejecting malformed
   argument adjacent operands, dangling operators, and invalid plain
@@ -186,8 +187,9 @@ token sink:
   `START TRANSACTION`. No-definition and post-definition CTAS forms are
   recognized explicitly with table/partition options, including
   `IGNORE`/`REPLACE` duplicate-handling modifiers, and no-definition
-  table-option forms must include a query body. Parenthesized CTAS query bodies
-  validate their outer `ORDER BY` and `LIMIT` suffixes.
+  table-option forms must include a query body. Direct CTAS query bodies validate
+  `SELECT` list tails, and parenthesized CTAS query bodies validate their outer
+  `ORDER BY` and `LIMIT` suffixes.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   string-literal file names, documented NDB logfile options with numeric
   size/nodegroup values, `WAIT`, and optional `ENGINE`/`STORAGE ENGINE`

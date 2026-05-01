@@ -172,6 +172,8 @@ static void validate_with_statement_from(MyliteParseContext *ctx,
                                          const char *message);
 static void validate_with_cte_body_from(MyliteParseContext *ctx,
                                         MyliteToken start);
+static void validate_query_body_after_optional_as_from(MyliteParseContext *ctx,
+                                                       MyliteToken start);
 static void validate_query_body_from(MyliteParseContext *ctx, int token_id,
                                      MyliteToken token);
 static int with_cte_name_token(int token_id);
@@ -5086,6 +5088,41 @@ static void validate_query_body_from(MyliteParseContext *ctx, int token_id,
   }
 }
 
+static void validate_query_body_after_optional_as_from(MyliteParseContext *ctx,
+                                                       MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  int token_id;
+  int saw_start = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_start) {
+      if (token.offset == start.offset) {
+        saw_start = 1;
+      } else {
+        continue;
+      }
+    }
+
+    if (token_id == ML_AS) {
+      continue;
+    }
+    if (token_id == ML_LIKE || token_is_statement_terminator(token_id, token)) {
+      return;
+    }
+    if (token_id == ML_LP && parenthesized_query_start_follows(ctx, token)) {
+      mylite_parser_validate_parenthesized_statement(ctx, token);
+      return;
+    }
+    if (with_query_body_start(token_id)) {
+      validate_query_body_from(ctx, token_id, token);
+      return;
+    }
+    return;
+  }
+}
+
 static int with_cte_name_token(int token_id) {
   return token_id != ML_COMMA && token_id != ML_LP && token_id != ML_RP &&
          token_id != ML_SEMI;
@@ -5212,8 +5249,15 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
         pending_token = token;
         continue;
       }
-      if (token_id == ML_SEMI || create_table_query_body_start(token_id)) {
+      if (token_id == ML_SEMI) {
         break;
+      }
+      if (create_table_query_body_start(token_id)) {
+        validate_query_body_after_optional_as_from(ctx, token);
+        if (!ctx->failed) {
+          validate_create_table_tail_options(ctx, start);
+        }
+        return;
       }
       if (token_id == ML_PARTITION ||
           create_table_tail_option_start_token(token_id)) {
@@ -5233,6 +5277,10 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
 
     if (state == CREATE_TABLE_BODY_START) {
       if (create_table_query_body_start(token_id) || token_id == ML_LP) {
+        validate_query_body_after_optional_as_from(ctx, token);
+        if (!ctx->failed) {
+          validate_create_table_tail_options(ctx, start);
+        }
         return;
       }
       state = CREATE_TABLE_IN_DEFINITION;
@@ -7206,6 +7254,9 @@ void mylite_parser_validate_view_statement(MyliteParseContext *ctx,
         depth = 1;
         pending_token = token;
         continue;
+      }
+      if (token_id == ML_SELECT || token_id == ML_WITH) {
+        validate_query_body_from(ctx, token_id, token);
       }
       return;
     }

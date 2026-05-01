@@ -33,6 +33,8 @@ token sink:
   debug/development SHOW form.
 - `SET ROLE` and `SET DEFAULT ROLE` recognize MySQL role specifiers and account
   lists rather than permissive token tails.
+- `SET PASSWORD` recognizes MySQL 8.4 literal and random password assignment
+  forms, including replacement and secondary-password clauses.
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form.
 - `EXPLAIN ... FOR SCHEMA|DATABASE name` schema specifiers are recognized.
 - `DESCRIBE` and `DESC` reuse the EXPLAIN syntax variants for execution-plan

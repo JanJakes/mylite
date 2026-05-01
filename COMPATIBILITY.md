@@ -216,7 +216,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
 | `REVOKE` | ❌ | medium | Privilege and role revocation semantics. |  |
 | `SET DEFAULT ROLE` | ❌ | medium | Default role assignment. | Parser recognizes `NONE`, `ALL`, explicit role lists, and required `TO` account lists. |
-| `SET PASSWORD` | ❌ | medium | Password assignment semantics. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
+| `SET PASSWORD` | ❌ | medium | Password assignment semantics. | Parser recognizes literal and random password assignment, `CURRENT_USER` account references, `REPLACE`, and `RETAIN CURRENT PASSWORD`. |
 | `SET ROLE` | ❌ | medium | Active-role selection. | Parser recognizes `DEFAULT`, `NONE`, `ALL`, `ALL EXCEPT`, and explicit role lists. |
 | `CREATE RESOURCE GROUP` | ❌ | low | Thread resource group creation syntax. | Parser recognizes `TYPE`, optional VCPU ranges, thread priority, and enable/disable clauses. |
 | `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. | Parser recognizes VCPU ranges, thread priority, enable, and `DISABLE [FORCE]` clauses. |

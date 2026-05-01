@@ -880,6 +880,43 @@ case "$transaction_output" in
 		;;
 esac
 
+"$parser" --quiet 'COMMIT WORK; COMMIT RELEASE; COMMIT NO RELEASE; COMMIT AND CHAIN NO RELEASE; COMMIT AND NO CHAIN RELEASE; ROLLBACK WORK NO RELEASE; ROLLBACK AND CHAIN NO RELEASE; ROLLBACK AND NO CHAIN RELEASE'
+
+if "$parser" --quiet 'COMMIT foo'; then
+	echo "expected invalid COMMIT body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'COMMIT NO CHAIN'; then
+	echo "expected COMMIT without AND before CHAIN to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'COMMIT AND CHAIN RELEASE'; then
+	echo "expected incompatible COMMIT CHAIN RELEASE form to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'COMMIT RELEASE AND CHAIN'; then
+	echo "expected reversed COMMIT completion clauses to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ROLLBACK foo'; then
+	echo "expected invalid ROLLBACK body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ROLLBACK WORK foo'; then
+	echo "expected invalid ROLLBACK WORK body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ROLLBACK AND CHAIN RELEASE'; then
+	echo "expected incompatible ROLLBACK CHAIN RELEASE form to fail" >&2
+	exit 1
+fi
+
 begin_block_output=$("$parser" 'BEGIN SELECT 1; END blk; BEGIN END; BEGIN; BEGIN WORK')
 case "$begin_block_output" in
 	*"kinds=begin[1:6"*"begin[8:9"*"begin"*/transaction*"begin"*/transaction*) ;;

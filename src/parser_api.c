@@ -31,8 +31,14 @@ static int validate_use_statement_syntax(const mylite_parser *parser, const myli
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
-static int validate_rollback_savepoint_statement_syntax(const mylite_parser *parser,
-                                                        const mylite_statement *statement);
+static int validate_commit_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_rollback_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_rollback_savepoint_clause(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index);
+static int validate_transaction_completion_clause(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
 static int validate_kill_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static void classify_statement_metadata(mylite_parser *parser);
 static void classify_grouped_query_statement_kinds(mylite_parser *parser);
@@ -1028,8 +1034,14 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_COMMIT:
+			if (!validate_commit_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid COMMIT statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_ROLLBACK:
-			if (!validate_rollback_savepoint_statement_syntax(parser, statement)) {
+			if (!validate_rollback_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid ROLLBACK statement");
 				return;
 			}
@@ -1099,25 +1111,49 @@ static int validate_release_statement_syntax(const mylite_parser *parser, const 
 	       token_can_continue_object_name(&parser->tokens[token_index + 1]);
 }
 
-static int validate_rollback_savepoint_statement_syntax(const mylite_parser *parser,
-                                                        const mylite_statement *statement)
+static int validate_commit_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
 {
 	size_t token_index = find_statement_kind_token(parser, statement);
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	return validate_transaction_completion_clause(parser, token_index + 1, statement->last_token - 1);
+}
+
+static int validate_rollback_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t body_token_index;
 	size_t last_token_index;
 
 	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
 		return 0;
 	}
 
-	token_index++;
+	body_token_index = token_index + 1;
 	last_token_index = statement->last_token - 1;
-	if (token_index <= last_token_index && token_text_equals(parser, token_index, "WORK")) {
-		token_index++;
+	if (body_token_index <= last_token_index && token_text_equals(parser, body_token_index, "WORK")) {
+		body_token_index++;
 	}
-	if (token_index > last_token_index ||
-	    token_index >= parser->token_count ||
+	if (body_token_index <= last_token_index &&
+	    body_token_index < parser->token_count &&
+	    parser->tokens[body_token_index].parser_token == TO_T) {
+		return validate_rollback_savepoint_clause(parser, body_token_index, last_token_index);
+	}
+
+	return validate_transaction_completion_clause(parser, token_index + 1, last_token_index);
+}
+
+static int validate_rollback_savepoint_clause(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	if (token_index >= parser->token_count ||
+	    token_index > last_token_index ||
 	    parser->tokens[token_index].parser_token != TO_T) {
-		return 1;
+		return 0;
 	}
 
 	token_index++;
@@ -1129,6 +1165,78 @@ static int validate_rollback_savepoint_statement_syntax(const mylite_parser *par
 
 	return token_index == last_token_index &&
 	       token_can_continue_object_name(&parser->tokens[token_index]);
+}
+
+static int validate_transaction_completion_clause(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	int no_chain = 0;
+
+	if (token_index > last_token_index) {
+		return 1;
+	}
+
+	if (token_index < parser->token_count && token_text_equals(parser, token_index, "WORK")) {
+		token_index++;
+	}
+	if (token_index > last_token_index) {
+		return 1;
+	}
+
+	if (token_index < parser->token_count && parser->tokens[token_index].parser_token == AND_T) {
+		token_index++;
+		if (token_index <= last_token_index &&
+		    token_index < parser->token_count &&
+		    parser->tokens[token_index].parser_token == NO_T) {
+			no_chain = 1;
+			token_index++;
+		}
+		if (token_index > last_token_index ||
+		    token_index >= parser->token_count ||
+		    parser->tokens[token_index].parser_token != CHAIN_T) {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (token_index < parser->token_count &&
+		    parser->tokens[token_index].parser_token == NO_T) {
+			token_index++;
+			if (token_index > last_token_index ||
+			    token_index >= parser->token_count ||
+			    parser->tokens[token_index].parser_token != RELEASE_T) {
+				return 0;
+			}
+			token_index++;
+			return token_index > last_token_index;
+		}
+		if (no_chain &&
+		    token_index < parser->token_count &&
+		    parser->tokens[token_index].parser_token == RELEASE_T) {
+			token_index++;
+			return token_index > last_token_index;
+		}
+		return 0;
+	}
+
+	if (token_index < parser->token_count && parser->tokens[token_index].parser_token == NO_T) {
+		token_index++;
+		if (token_index > last_token_index ||
+		    token_index >= parser->token_count ||
+		    parser->tokens[token_index].parser_token != RELEASE_T) {
+			return 0;
+		}
+		token_index++;
+		return token_index > last_token_index;
+	}
+	if (token_index < parser->token_count && parser->tokens[token_index].parser_token == RELEASE_T) {
+		token_index++;
+		return token_index > last_token_index;
+	}
+
+	return 0;
 }
 
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

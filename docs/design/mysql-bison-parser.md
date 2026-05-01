@@ -273,7 +273,9 @@ XID-bearing XA statements, while `XA RECOVER` records the XA transaction
 collection. Non-XA transaction-control statements record the
 transaction object kind for `BEGIN`, `BEGIN WORK`, `START TRANSACTION`,
 `COMMIT`, bare `ROLLBACK`, and `SET [GLOBAL | LOCAL | SESSION] TRANSACTION`, while
-leaving compound `BEGIN ... END` blocks objectless. Quoted `HELP` search
+leaving compound `BEGIN ... END` blocks objectless. `COMMIT` and non-savepoint
+`ROLLBACK` validate MySQL completion-clause ordering for `AND [NO] CHAIN` and
+`[NO] RELEASE`. Quoted `HELP` search
 topics are recorded as help-topic targets. Component and plugin targets are
 recorded for `INSTALL` and `UNINSTALL` administrative statements.
 Local `CLONE` directory targets and remote `CLONE INSTANCE` donor endpoints

@@ -195,8 +195,9 @@ token sink:
   user-variable sources.
 - XA statements recognize one-, two-, and three-part string or hex XIDs with
   numeric `formatID` values.
-- `CACHE INDEX` and `RESET PERSIST` use the shared identifier grammar for
-  key-cache and persisted-variable names.
+- `CACHE INDEX` recognizes table, partition, key/index, and key-cache names
+  using the shared identifier grammar; `RESET PERSIST` uses the shared grammar
+  for persisted-variable names.
 - `GET DIAGNOSTICS` recognizes optional `CURRENT`/`STACKED` diagnostics-area
   selectors; assignment targets use local/user-variable grammar and condition
   numbers may come from user variables.

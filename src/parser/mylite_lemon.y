@@ -1264,7 +1264,7 @@ alter_table_drop_action ::= DROP FOREIGN KEY alter_table_drop_identifier.
 alter_table_drop_action ::= DROP CHECK alter_table_drop_identifier.
 alter_table_drop_action ::= DROP CONSTRAINT alter_table_drop_identifier.
 
-alter_table_drop_partition_action ::= DROP PARTITION load_partition_names.
+alter_table_drop_partition_action ::= DROP PARTITION alter_table_partition_names.
 
 alter_table_column_keyword_tail ::= .
 alter_table_column_keyword_tail ::= COLUMN.
@@ -1317,7 +1317,7 @@ alter_table_visibility ::= INVISIBLE.
 alter_table_partition_action ::= alter_table_partition_maintenance_kind PARTITION load_partition_names.
 alter_table_partition_action ::= COALESCE PARTITION alter_table_partition_count.
 alter_table_partition_action ::= REMOVE PARTITIONING.
-alter_table_partition_action ::= EXCHANGE PARTITION load_partition_name WITH TABLE cache_table_ref alter_table_exchange_validation_tail.
+alter_table_partition_action ::= EXCHANGE PARTITION alter_table_partition_name WITH TABLE cache_table_ref alter_table_exchange_validation_tail.
 
 alter_table_partition_count ::= BOOLEAN_NUMBER.
 alter_table_partition_count ::= FACTOR_NUMBER.
@@ -1468,13 +1468,18 @@ alter_table_union_tables_tail ::= alter_table_union_tables.
 alter_table_union_tables ::= cache_table_ref.
 alter_table_union_tables ::= alter_table_union_tables COMMA cache_table_ref.
 
-alter_table_reorganize_action ::= REORGANIZE PARTITION load_partition_names INTO LP alter_table_reorganize_definitions RP.
+alter_table_reorganize_action ::= REORGANIZE PARTITION alter_table_partition_names INTO LP alter_table_reorganize_definitions RP.
 alter_table_reorganize_action ::= REORGANIZE(A) PARTITION. {
   mylite_parser_require_permissive(ctx, A);
 }
 
 alter_table_reorganize_definitions ::= create_table_definition_token.
 alter_table_reorganize_definitions ::= alter_table_reorganize_definitions create_table_definition_token.
+
+alter_table_partition_names ::= alter_table_partition_name.
+alter_table_partition_names ::= alter_table_partition_names COMMA alter_table_partition_name.
+
+alter_table_partition_name ::= cache_name_part.
 
 alter_table_keys_action ::= ENABLE KEYS.
 alter_table_keys_action ::= DISABLE KEYS.

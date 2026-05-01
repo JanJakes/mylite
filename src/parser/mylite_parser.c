@@ -9192,6 +9192,18 @@ void mylite_parser_require_xid_number(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, token, "invalid XA XID literal");
 }
 
+void mylite_parser_require_identifier_atom(MyliteParseContext *ctx,
+                                           MyliteToken token) {
+  if (token.length == 1 && strchr("-=.:@", token.start[0]) != NULL) {
+    mylite_parser_reject(ctx, token, "invalid identifier");
+    return;
+  }
+
+  if (token.length > 0 && token.start[0] == '@') {
+    mylite_parser_reject(ctx, token, "invalid identifier");
+  }
+}
+
 void mylite_parser_reject(MyliteParseContext *ctx, MyliteToken token,
                           const char *message) {
   if (ctx->failed) {

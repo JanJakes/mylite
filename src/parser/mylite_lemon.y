@@ -2404,7 +2404,9 @@ cache_index_kind ::= KEY.
 cache_table_ref ::= cache_name_part.
 cache_table_ref ::= cache_name_part DOT cache_name_part.
 
-cache_name_part ::= ATOM.
+cache_name_part ::= ATOM(A). {
+  mylite_parser_require_identifier_atom(ctx, A);
+}
 cache_name_part ::= ACCOUNT.
 cache_name_part ::= CASCADE.
 cache_name_part ::= COMPONENT.
@@ -3446,12 +3448,15 @@ dml_update_modifier ::= LOW_PRIORITY.
 dml_update_table_reference_tokens ::= dml_update_table_reference_head.
 dml_update_table_reference_tokens ::= dml_update_table_reference_tokens dml_update_table_reference_continuation.
 
-dml_update_table_reference_head ::= cache_name_part.
+dml_update_table_reference_head ::= cache_table_ref.
 dml_update_table_reference_head ::= LP dml_update_table_reference_nested RP.
 
 dml_update_table_reference_continuation ::= dml_update_table_reference_head.
 dml_update_table_reference_continuation ::= dml_update_table_reference_keyword.
 dml_update_table_reference_continuation ::= COMMA.
+dml_update_table_reference_continuation ::= EQUALS.
+dml_update_table_reference_continuation ::= MINUS.
+dml_update_table_reference_continuation ::= STAR.
 
 dml_update_table_reference_keyword ::= AND.
 dml_update_table_reference_keyword ::= BY.
@@ -3993,7 +3998,9 @@ set_charset_name ::= set_charset_name_part.
 
 set_collation_value ::= set_charset_name_part.
 
-set_charset_name_part ::= ATOM.
+set_charset_name_part ::= ATOM(A). {
+  mylite_parser_require_identifier_atom(ctx, A);
+}
 set_charset_name_part ::= ACCOUNT.
 set_charset_name_part ::= CASCADE.
 set_charset_name_part ::= COMPONENT.
@@ -4216,6 +4223,9 @@ grant_object_token ::= DATABASE.
 grant_object_token ::= DATABASES.
 grant_object_token ::= DEFAULT.
 grant_object_token ::= FUNCTION.
+grant_object_token ::= MINUS(A). {
+  mylite_parser_reject(ctx, A, "invalid grant object");
+}
 grant_object_token ::= PLUGIN.
 grant_object_token ::= PROCEDURE.
 grant_object_token ::= TABLE.

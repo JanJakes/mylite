@@ -13,6 +13,8 @@ token sink:
   operator-like tokens, and the current statement-start keywords.
 - `*` is no longer a generic identifier fallback; wildcard and expression-body
   uses are explicit so object-name grammar rejects MySQL-invalid wildcard names.
+- Operator-like fallback tokens are rejected in shared object-name productions
+  while remaining available in expression and permissive statement bodies.
 - A Lemon grammar recognizes MySQL statement families for DDL, DML,
   transactions, utility statements, administration statements, replication/XA,
   and stored-program statement starts.

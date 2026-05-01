@@ -2553,6 +2553,12 @@ static size_t find_set_system_variable_name_token(const mylite_parser *parser,
 		return token_index + 1;
 	}
 
+	if (token_text_equals(parser, token_index, "sql_log_bin") &&
+	    token_index + 1 <= last_token_index &&
+	    token_is_assignment_operator(parser, token_index + 1)) {
+		return token_index;
+	}
+
 	return parser->token_count;
 }
 

@@ -172,7 +172,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. | Parser records the first string event payload; event decoding and execution are not implemented. |
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser records named `TO` log files and collection-level `BEFORE` forms, including legacy `MASTER` spelling; binary-log purge behavior is not implemented. |
 | `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser records the binary-log collection, including optional `TO` file-index forms; binary-log deletion and GTID reset behavior are not implemented. |
-| `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |
+| `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. | Parser records unqualified `SET sql_log_bin = ...` targets plus scoped/system-variable spellings; binary logging behavior and privilege checks are not implemented. |
 | `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. | Parser records explicit `FOR CHANNEL` names and default-channel operations; filter semantics are not implemented. |
 | `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. | Parser records explicit `FOR CHANNEL` names and default-channel operations; source option semantics are not implemented. |
 | `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. | Parser records explicit `FOR CHANNEL` names and default-channel operations, including legacy `SLAVE` spelling; replica metadata reset behavior is not implemented. |
@@ -233,7 +233,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. | Parser records the plugin name target; plugin loading and registry behavior are not implemented. |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. | Parser records the plugin name target; plugin unloading and registry behavior are not implemented. |
 | `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser records local clone directory targets and remote donor server endpoints; clone plugin behavior, privilege checks, copying, and restart semantics are not implemented. |
-| `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser records explicit user-variable and system-variable targets plus account-management, character-set, and transaction targets; unadorned variable names remain semantic-analysis work. |
+| `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser records explicit user-variable and system-variable targets plus account-management, character-set, and transaction targets; unadorned variable names remain semantic-analysis work except for documented `SET sql_log_bin = ...` syntax. |
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser accepts the statement and records the requested character-set target; charset validation and session variable updates are not implemented. |
 | `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser accepts the statement and records the requested character-set target; collation validation and session variable updates are not implemented. |
 | `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. | Parser records the first table/index target; key-cache assignment behavior is not implemented. |
@@ -2390,7 +2390,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `sql_big_selects` | ❌ | high | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `sql_buffer_result` | ❌ | high | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `sql_generate_invisible_primary_key` | ❌ | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
-| `sql_log_bin` | ❌ | low | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
+| `sql_log_bin` | ❌ | low | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. | Parser records `SET sql_log_bin = ...` as a system-variable target; runtime variable metadata and behavior are not implemented. |
 | `sql_log_off` | ❌ | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `sql_mode` | ❌ | top | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `sql_notes` | ❌ | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |

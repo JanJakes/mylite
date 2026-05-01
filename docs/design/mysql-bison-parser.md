@@ -271,7 +271,8 @@ preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
 and variable-assignment `SET` metadata is recorded for explicit user-variable
 and system-variable targets. Unadorned `SET name = ...` assignments remain
 objectless until semantic context can distinguish local variables from system
-variables. Connection character-set `SET NAMES` and `SET CHARACTER SET` forms
+variables, except for the documented `SET sql_log_bin = ...` system-variable
+form. Connection character-set `SET NAMES` and `SET CHARACTER SET` forms
 record the target character set. Savepoint names are recorded for `SAVEPOINT`,
 `RELEASE SAVEPOINT`, and `ROLLBACK [WORK] TO [SAVEPOINT]`.
 Statements that begin with parenthesized query expressions keep spans anchored

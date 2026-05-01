@@ -192,9 +192,11 @@ token sink:
   attributes where MySQL permits them. Column definitions require a known MySQL
   type-family start plus common attribute starts and selected closed attribute
   values, require generated-column storage modifiers to follow generated
-  expressions, reject repeated generated-column storage modifiers, and
-  column-level `REFERENCES` clauses validate the referenced column-list envelope
-  plus referential-action tails. Trailing table options
+  expressions, reject repeated generated-column storage modifiers, validate
+  parenthesized default/generated expression bodies for dangling operators and
+  scalar comma lists, and
+  column-level `REFERENCES` clauses validate optional referenced column-list
+  envelopes plus referential-action tails. Trailing table options
   must start with known MySQL table-option keywords and validate selected value
   domains, including numeric options, string-literal options, closed
   `INSERT_METHOD`, closed `ROW_FORMAT`, storage values, `UNION` lists, and

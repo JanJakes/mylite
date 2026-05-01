@@ -147,6 +147,8 @@ static int query_expression_depth_token(
     MyliteExpressionStack *stack, const char *message);
 static int query_expression_stack_active(MyliteExpressionStack *stack,
                                          int depth);
+static int query_expression_stack_scalar_group(MyliteExpressionStack *stack,
+                                               int depth);
 static int query_expression_stack_open_from_previous(
     MyliteParseContext *ctx, MyliteExpressionStack *stack, int depth,
     int previous_top_token_id, MyliteToken previous_top_token,
@@ -250,6 +252,10 @@ static int column_definition_tail_token(
 static int column_definition_tail_complete(ColumnDefinitionTailState state);
 static int column_definition_tail_wants_boundary_token(
     ColumnDefinitionTailState state, int token_id);
+static int column_definition_tail_parenthesized_expression(
+    ColumnDefinitionTailState state);
+static void column_definition_tail_finish_parenthesized_expression(
+    ColumnDefinitionTailState *state, int *flags);
 static int column_definition_value_token(int token_id, MyliteToken token);
 static int column_definition_default_introducer_token(int token_id,
                                                      MyliteToken token);
@@ -268,6 +274,10 @@ static int validate_parenthesized_nonempty_body(MyliteParseContext *ctx,
                                                 MyliteLexer *lexer,
                                                 MyliteToken start,
                                                 const char *message);
+static int validate_parenthesized_expression_body(MyliteParseContext *ctx,
+                                                  MyliteLexer *lexer,
+                                                  MyliteToken start,
+                                                  const char *message);
 static int validate_create_table_index_key_list(MyliteParseContext *ctx,
                                                 MyliteLexer *lexer,
                                                 MyliteToken start);
@@ -6004,6 +6014,17 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
         constraint_prefix = 0;
         element_start = 0;
       } else if (column_in_definition) {
+        if (column_definition_tail_parenthesized_expression(
+                column_tail_state)) {
+          if (!validate_parenthesized_expression_body(
+                  ctx, &lexer, token,
+                  "malformed CREATE TABLE column definition")) {
+            return;
+          }
+          column_definition_tail_finish_parenthesized_expression(
+              &column_tail_state, &column_tail_flags);
+          continue;
+        }
         if (!column_definition_tail_token(
                 ctx, token_id, token, &column_tail_state, &depth,
                 &check_pending, &pending_token, &column_tail_flags, 0,
@@ -7032,6 +7053,18 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
           column_tail_flags = 0;
           continue;
         }
+        if (token_id == ML_LP &&
+            column_definition_tail_parenthesized_expression(
+                column_tail_state)) {
+          if (!validate_parenthesized_expression_body(
+                  ctx, &lexer, token,
+                  "malformed ALTER TABLE column definition")) {
+            return;
+          }
+          column_definition_tail_finish_parenthesized_expression(
+              &column_tail_state, &column_tail_flags);
+          continue;
+        }
         if (!column_definition_tail_token(
                 ctx, token_id, token, &column_tail_state, &depth,
                 &check_pending, &pending_token, &column_tail_flags, 1,
@@ -7098,6 +7131,18 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
         add_index_candidate = 0;
         column_tail_state = COLUMN_DEFINITION_TAIL_READY;
         column_tail_flags = 0;
+        continue;
+      }
+      if (token_id == ML_LP &&
+          column_definition_tail_parenthesized_expression(
+              column_tail_state)) {
+        if (!validate_parenthesized_expression_body(
+                ctx, &lexer, token,
+                "malformed ALTER TABLE column definition")) {
+          return;
+        }
+        column_definition_tail_finish_parenthesized_expression(
+            &column_tail_state, &column_tail_flags);
         continue;
       }
       if (!column_definition_tail_token(
@@ -9734,6 +9779,12 @@ static int query_expression_stack_active(MyliteExpressionStack *stack,
          stack->frames[depth].active;
 }
 
+static int query_expression_stack_scalar_group(MyliteExpressionStack *stack,
+                                               int depth) {
+  return query_expression_stack_active(stack, depth) &&
+         !stack->frames[depth].allow_empty;
+}
+
 static int query_expression_stack_open_from_previous(
     MyliteParseContext *ctx, MyliteExpressionStack *stack, int depth,
     int previous_top_token_id, MyliteToken previous_top_token,
@@ -10903,7 +10954,7 @@ static int column_definition_tail_token(
       *pending_token = token;
       return 1;
     }
-    if (token_id == ML_MINUS) {
+    if (token_id == ML_MINUS || token_is_plus(token)) {
       *state = COLUMN_DEFINITION_TAIL_AFTER_VALUE_SIGN;
       *pending_token = token;
       return 1;
@@ -11045,6 +11096,16 @@ static int column_definition_tail_token(
   if (*state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE) {
     if (token_id == ML_DOT) {
       *state = COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE_DOT;
+      *pending_token = token;
+      return 1;
+    }
+    if (token_ascii_equal(token, "match")) {
+      *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_MATCH;
+      *pending_token = token;
+      return 1;
+    }
+    if (token_id == ML_ON) {
+      *state = COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_ON;
       *pending_token = token;
       return 1;
     }
@@ -11399,6 +11460,7 @@ static int column_definition_tail_token(
 static int column_definition_tail_complete(ColumnDefinitionTailState state) {
   return state == COLUMN_DEFINITION_TAIL_READY ||
          state == COLUMN_DEFINITION_TAIL_AFTER_DEFAULT_VALUE ||
+         state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE ||
          state == COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_LIST;
 }
 
@@ -11414,6 +11476,20 @@ static int column_definition_tail_wants_boundary_token(
            state == COLUMN_DEFINITION_TAIL_REFERENCES_LIST_AFTER_DOT;
   }
   return 0;
+}
+
+static int column_definition_tail_parenthesized_expression(
+    ColumnDefinitionTailState state) {
+  return state == COLUMN_DEFINITION_TAIL_AFTER_DEFAULT ||
+         state == COLUMN_DEFINITION_TAIL_AFTER_AS;
+}
+
+static void column_definition_tail_finish_parenthesized_expression(
+    ColumnDefinitionTailState *state, int *flags) {
+  if (*state == COLUMN_DEFINITION_TAIL_AFTER_AS) {
+    *flags |= COLUMN_DEFINITION_FLAG_GENERATED_EXPRESSION;
+  }
+  *state = COLUMN_DEFINITION_TAIL_READY;
 }
 
 static int column_definition_value_token(int token_id, MyliteToken token) {
@@ -11549,6 +11625,37 @@ static int validate_parenthesized_nonempty_body(MyliteParseContext *ctx,
       depth++;
     } else if (token_closes_nested_expression(token_id)) {
       depth--;
+    }
+  }
+
+  mylite_parser_reject(ctx, pending_token, message);
+  return 0;
+}
+
+static int validate_parenthesized_expression_body(MyliteParseContext *ctx,
+                                                  MyliteLexer *lexer,
+                                                  MyliteToken start,
+                                                  const char *message) {
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int depth = 1;
+  MyliteExpressionStack expression_stack = {0};
+
+  query_expression_stack_open_list(&expression_stack, depth, start, 0);
+
+  while ((token_id = mylite_lexer_next(lexer, &token)) > 0) {
+    if (token_id == ML_COMMA &&
+        query_expression_stack_scalar_group(&expression_stack, depth)) {
+      mylite_parser_reject(ctx, token, message);
+      return 0;
+    }
+    if (!query_expression_depth_token(ctx, token_id, token, &depth,
+                                      &expression_stack, message)) {
+      return 0;
+    }
+    if (depth == 0) {
+      return 1;
     }
   }
 

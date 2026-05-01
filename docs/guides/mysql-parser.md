@@ -111,6 +111,11 @@ ok statements=1 kinds=use[1:2,0:7]/database:app
 ok statements=1 kinds=unlock[1:2,0:13]/table
 ```
 
+`LOCK TABLES` accepts MySQL 8.4 table-lock lists with optional aliases,
+`READ [LOCAL]` or `WRITE` modes, and the corpus-observed legacy
+`LOW_PRIORITY WRITE` form for later diagnostics. `UNLOCK TABLES` is
+intentionally objectless because it releases the session's current table locks.
+
 ```text
 ok statements=1 kinds=import[1:4,0:30]/sdi_file:'/tmp/a.sdi'
 ```

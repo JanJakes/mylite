@@ -381,8 +381,13 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   `EXPLAIN ... INTO` user-variable targets, `EXPLAIN ... FOR CONNECTION`
   targets, and documented explainable statement forms as query targets,
   without modeling optimizer plans or result rows.
+  `LOCK TABLES` validates comma-separated table entries with optional aliases
+  and MySQL 8.4 `READ [LOCAL]` / `WRITE` modes, while preserving the
+  corpus-observed legacy `LOW_PRIORITY WRITE` form for later runtime
+  diagnostics.
   `UNLOCK TABLES` metadata records the table object kind without a name because
-  the statement releases the session's table locks rather than naming tables.
+  the statement releases the session's table locks rather than naming tables;
+  parser validation rejects named unlock targets.
   `IMPORT TABLE` metadata records only the first string SDI file target and
   validates the `IMPORT TABLE FROM` string-file list shape.
   `CALL` metadata records the procedure name and validates optional

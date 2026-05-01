@@ -411,14 +411,89 @@ if "$parser" --quiet 'USE @db'; then
 	exit 1
 fi
 
-table_lock_output=$("$parser" 'LOCK TABLE t READ; LOCK TABLES `db`.`lt` AS l WRITE; UNLOCK TABLES; UNLOCK TABLE; UNLOCK INSTANCE')
+table_lock_output=$("$parser" 'LOCK TABLE t READ; LOCK TABLES `db`.`lt` AS l WRITE, u u_alias READ LOCAL; LOCK TABLE v local READ; LOCK TABLES legacy LOW_PRIORITY WRITE; LOCK INSTANCE FOR BACKUP; UNLOCK TABLES; UNLOCK TABLE; UNLOCK INSTANCE')
 case "$table_lock_output" in
-	*"lock"*/table:t*"lock"*/table:'`db`.`lt`'*"unlock"*/table*"unlock"*/table*"unlock"*/instance*) ;;
+	*"lock"*/table:t*"lock"*/table:'`db`.`lt`'*"lock"*/table:v*"lock"*/table:legacy*"lock"*/instance*"unlock"*/table*"unlock"*/table*"unlock"*/instance*) ;;
 	*)
 		echo "unexpected table lock output: $table_lock_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'LOCK TABLES'; then
+	echo "expected missing LOCK TABLES list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOCK TABLES t'; then
+	echo "expected missing LOCK TABLES mode to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOCK TABLES t READ,'; then
+	echo "expected trailing LOCK TABLES comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOCK TABLES t READ, u'; then
+	echo "expected incomplete LOCK TABLES entry to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOCK TABLES t SHARE'; then
+	echo "expected unsupported LOCK TABLES mode to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOCK TABLES t LOW_PRIORITY'; then
+	echo "expected incomplete LOCK TABLES LOW_PRIORITY mode to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOCK TABLES t LOW_PRIORITY READ'; then
+	echo "expected invalid LOCK TABLES LOW_PRIORITY READ mode to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOCK TABLES @t READ'; then
+	echo "expected variable LOCK TABLES target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOCK TABLES t AS READ READ'; then
+	echo "expected LOCK TABLES mode keyword alias to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOCK INSTANCE'; then
+	echo "expected incomplete LOCK INSTANCE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOCK INSTANCE FOR'; then
+	echo "expected incomplete LOCK INSTANCE FOR clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOCK INSTANCE FOR BACKUP extra'; then
+	echo "expected trailing LOCK INSTANCE tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UNLOCK'; then
+	echo "expected missing UNLOCK target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UNLOCK TABLES t'; then
+	echo "expected named UNLOCK TABLES target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'UNLOCK INSTANCE extra'; then
+	echo "expected trailing UNLOCK INSTANCE tokens to fail" >&2
+	exit 1
+fi
 
 import_output=$("$parser" "IMPORT TABLE FROM '/tmp/a.sdi', '/tmp/b.sdi'")
 case "$import_output" in

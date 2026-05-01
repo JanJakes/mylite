@@ -639,9 +639,9 @@ case "$account_ddl_output" in
 		;;
 esac
 
-set_account_output=$("$parser" "SET ROLE r; SET ROLE ALL EXCEPT 'r'@'h'; SET ROLE DEFAULT; SET DEFAULT ROLE r TO 'u'@'h'; SET DEFAULT ROLE ALL TO 'u'@'h'; SET PASSWORD FOR 'u'@'h' = 'x'; SET PASSWORD = 'x'; SET PASSWORD TO RANDOM; SET autocommit=1")
+set_account_output=$("$parser" "SET ROLE r; SET ROLE ALL; SET ROLE NONE; SET ROLE ALL EXCEPT 'r'@'h'; SET ROLE DEFAULT; SET DEFAULT ROLE r TO 'u'@'h'; SET DEFAULT ROLE ALL TO 'u'@'h'; SET PASSWORD FOR 'u'@'h' = 'x'; SET PASSWORD = 'x'; SET PASSWORD TO RANDOM; SET autocommit=1")
 case "$set_account_output" in
-	*"set"*/role:r*"set"*/role:"'r'@'h'"*"set[12:14"*"set"*/role:r*"set"*/user:"'u'@'h'"*"set"*/user:"'u'@'h'"*"set[40:43"*/user*"set[45:48"*/user*"set[50:53"*) ;;
+	*"set"*/role:r*"set[5:7"*/role*"set[9:11"*/role*"set"*/role:"'r'@'h'"*"set[20:22"*/role*"set"*/role:r*"set"*/user:"'u'@'h'"*"set"*/user:"'u'@'h'"*"set[48:51"*/user*"set[53:56"*/user*"set[58:61"*) ;;
 	*)
 		echo "unexpected SET account output: $set_account_output" >&2
 		exit 1

@@ -105,6 +105,7 @@ without an object-name span:
 ```text
 ok statements=1 kinds=set[1:3,0:10]/role:r
 ok statements=1 kinds=set[1:4,0:18]/user
+ok statements=1 kinds=set[1:3,0:12]/role
 ```
 
 Explicit variable-assignment targets are also reported for `SELECT ... INTO`,

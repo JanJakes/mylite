@@ -271,8 +271,9 @@ targets are recorded for
 present. Account and role DDL target spans also
 preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
 `RENAME` forms. Account-management `SET` metadata is recorded for explicit
-`SET ROLE` and `SET DEFAULT ROLE` role targets, plus `SET PASSWORD FOR` and
-bare current-user `SET PASSWORD` account targets,
+`SET ROLE` and `SET DEFAULT ROLE` role targets, collection-form `SET ROLE`
+active-role targets, plus `SET PASSWORD FOR` and bare current-user
+`SET PASSWORD` account targets,
 and variable-assignment `SET` metadata is recorded for explicit user-variable
 and system-variable targets. Unadorned `SET name = ...` assignments remain
 objectless until semantic context can distinguish local variables from system

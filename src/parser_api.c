@@ -188,6 +188,9 @@ static int classify_set_statement_object(const mylite_parser *parser,
 static size_t find_set_role_name_token(const mylite_parser *parser,
                                        size_t token_index,
                                        size_t last_token_index);
+static int is_set_role_collection_target(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index);
 static size_t find_set_default_role_user_name_token(const mylite_parser *parser,
                                                     size_t token_index,
                                                     size_t last_token_index);
@@ -2420,6 +2423,9 @@ static int classify_set_statement_object(const mylite_parser *parser,
 	if (parser->tokens[token_index].parser_token == ROLE_T) {
 		name_token_index = find_set_role_name_token(parser, token_index + 1, last_token_index);
 		if (name_token_index >= parser->token_count) {
+			if (is_set_role_collection_target(parser, token_index + 1, last_token_index)) {
+				return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_ROLE);
+			}
 			return 0;
 		}
 		statement->object_kind = MYLITE_STATEMENT_OBJECT_ROLE;
@@ -2517,6 +2523,23 @@ static size_t find_set_role_name_token(const mylite_parser *parser,
 		return token_index;
 	}
 	return parser->token_count;
+}
+
+static int is_set_role_collection_target(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == ALL_T) {
+		return token_index + 1 > last_token_index ||
+		       !token_text_equals(parser, token_index + 1, "EXCEPT");
+	}
+
+	return parser->tokens[token_index].parser_token == DEFAULT_T ||
+	       token_text_equals(parser, token_index, "NONE");
 }
 
 static size_t find_set_default_role_user_name_token(const mylite_parser *parser,

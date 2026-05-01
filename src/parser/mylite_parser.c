@@ -22,6 +22,7 @@ typedef enum ColumnDefinitionTailState {
   COLUMN_DEFINITION_TAIL_AFTER_PRIMARY,
   COLUMN_DEFINITION_TAIL_AFTER_DEFAULT,
   COLUMN_DEFINITION_TAIL_AFTER_DEFAULT_VALUE,
+  COLUMN_DEFINITION_TAIL_AFTER_DEFAULT_INTRODUCER,
   COLUMN_DEFINITION_TAIL_AFTER_VALUE_SIGN,
   COLUMN_DEFINITION_TAIL_AFTER_VALUE_DOT,
   COLUMN_DEFINITION_TAIL_AFTER_COMMENT,
@@ -105,6 +106,8 @@ static int column_definition_tail_complete(ColumnDefinitionTailState state);
 static int column_definition_tail_wants_boundary_token(
     ColumnDefinitionTailState state, int token_id);
 static int column_definition_value_token(int token_id, MyliteToken token);
+static int column_definition_default_introducer_token(int token_id,
+                                                     MyliteToken token);
 static int column_definition_charset_name_token(int token_id,
                                                 MyliteToken token);
 static int column_definition_attribute_start(int token_id, MyliteToken token,
@@ -4491,11 +4494,16 @@ static int column_definition_tail_token(
       *pending_token = token;
       return 1;
     }
+    if (column_definition_default_introducer_token(token_id, token)) {
+      *state = COLUMN_DEFINITION_TAIL_AFTER_DEFAULT_INTRODUCER;
+      *pending_token = token;
+      return 1;
+    }
     if (!column_definition_value_token(token_id, token)) {
       mylite_parser_reject(ctx, *pending_token, message);
       return 0;
     }
-    *state = COLUMN_DEFINITION_TAIL_AFTER_DEFAULT_VALUE;
+    *state = COLUMN_DEFINITION_TAIL_READY;
     return 1;
   }
 
@@ -4503,23 +4511,18 @@ static int column_definition_tail_token(
     if (column_definition_attribute_start(token_id, token, allow_position)) {
       *state = COLUMN_DEFINITION_TAIL_READY;
     } else {
-      if (token_id == ML_MINUS) {
-        *state = COLUMN_DEFINITION_TAIL_AFTER_VALUE_SIGN;
-        *pending_token = token;
-        return 1;
-      }
-      if (token_id == ML_DOT) {
-        *state = COLUMN_DEFINITION_TAIL_AFTER_VALUE_DOT;
-        *pending_token = token;
-        return 1;
-      }
-      if (!column_definition_value_token(token_id, token)) {
-        mylite_parser_reject(ctx, *pending_token, message);
-        return 0;
-      }
-      *state = COLUMN_DEFINITION_TAIL_READY;
-      return 1;
+      mylite_parser_reject(ctx, token, message);
+      return 0;
     }
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_AFTER_DEFAULT_INTRODUCER) {
+    if (!column_definition_value_token(token_id, token)) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_READY;
+    return 1;
   }
 
   if (*state == COLUMN_DEFINITION_TAIL_AFTER_VALUE_SIGN) {
@@ -4990,6 +4993,11 @@ static int column_definition_value_token(int token_id, MyliteToken token) {
          token_id == ML_QUOTED_ID || token_id == ML_SQLSTATE_VALUE ||
          token_id == ML_STRING_LITERAL ||
          token_ascii_equal(token, "false") || token_ascii_equal(token, "true");
+}
+
+static int column_definition_default_introducer_token(int token_id,
+                                                     MyliteToken token) {
+  return token_id == ML_ATOM && token.length > 1 && token.start[0] == '_';
 }
 
 static int column_definition_charset_name_token(int token_id,

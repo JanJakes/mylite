@@ -895,7 +895,11 @@ create_srs_attributes ::= create_srs_attributes create_srs_attribute.
 create_srs_attribute ::= NAME ATOM.
 create_srs_attribute ::= DEFINITION ATOM.
 create_srs_attribute ::= DESCRIPTION ATOM.
-create_srs_attribute ::= ORGANIZATION ATOM IDENTIFIED BY ATOM.
+create_srs_attribute ::= ORGANIZATION ATOM IDENTIFIED BY create_srs_authority_code.
+
+create_srs_authority_code ::= BOOLEAN_NUMBER.
+create_srs_authority_code ::= FACTOR_NUMBER.
+create_srs_authority_code ::= NUMBER_LITERAL.
 
 drop_statement ::= DROP drop_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);

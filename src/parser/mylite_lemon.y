@@ -2246,7 +2246,9 @@ change_statement ::= CHANGE change_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
 }
 
-change_tail ::= MASTER TO change_master_options change_for_channel_tail.
+change_tail ::= MASTER(A) TO change_master_options change_for_channel_tail. {
+  mylite_parser_require_permissive(ctx, A);
+}
 change_tail ::= REPLICATION FILTER change_replication_filters change_for_channel_tail.
 change_tail ::= REPLICATION change_replication_source TO change_source_options change_for_channel_tail.
 

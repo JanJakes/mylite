@@ -996,6 +996,7 @@ static int keyword_token(const MyliteToken *token) {
       {"SQL_AFTER_GTIDS", ML_SQL_AFTER_GTIDS},
       {"SQL_AFTER_MTS_GAPS", ML_SQL_AFTER_MTS_GAPS},
       {"SQL_BEFORE_GTIDS", ML_SQL_BEFORE_GTIDS},
+      {"STACKED", ML_STACKED},
       {"START", ML_START},
       {"STARTING", ML_STARTING},
       {"STATUS", ML_STATUS},

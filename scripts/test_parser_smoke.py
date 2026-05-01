@@ -1316,6 +1316,8 @@ def main() -> int:
         ("execute select;", 1, {}),
         ("deallocate prepare first;", 0, {"statements": "1", "prepared": "1"}),
         ("get diagnostics @n = number;", 0, {"statements": "1", "stored_program": "1"}),
+        ("get current diagnostics @n = number;", 0, {"statements": "1", "stored_program": "1"}),
+        ("get stacked diagnostics condition 1 @errno = mysql_errno;", 0, {"statements": "1", "stored_program": "1"}),
         ("get diagnostics @`n` = number;", 0, {"statements": "1", "stored_program": "1"}),
         ("get diagnostics @n = number, @r = row_count;", 0, {"statements": "1", "stored_program": "1"}),
         ("get diagnostics first = number;", 0, {"statements": "1", "stored_program": "1"}),

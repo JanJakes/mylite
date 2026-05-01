@@ -191,8 +191,9 @@ token sink:
   numeric `formatID` values.
 - `CACHE INDEX` and `RESET PERSIST` use the shared identifier grammar for
   key-cache and persisted-variable names.
-- `GET DIAGNOSTICS` assignment targets use local/user-variable grammar and
-  condition numbers may come from user variables.
+- `GET DIAGNOSTICS` recognizes optional `CURRENT`/`STACKED` diagnostics-area
+  selectors; assignment targets use local/user-variable grammar and condition
+  numbers may come from user variables.
 - `SIGNAL` and `RESIGNAL` recognize five-character SQLSTATE literals and
   condition item assignments with numeric `MYSQL_ERRNO` values.
 - `SET NAMES` and `SET CHARACTER SET` recognize charset/collation names using

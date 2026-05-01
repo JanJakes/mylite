@@ -33,6 +33,8 @@ token sink:
 - `CREATE INDEX` recognizes functional/key-part lists and standalone index
   options including parser plugins, visibility, attributes, `ALGORITHM`, and
   `LOCK`.
+- `CREATE DATABASE` and `ALTER DATABASE` recognize charset, collation,
+  encryption, and alter-only `READ ONLY` option clauses.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`
   and `OR REPLACE` variants.
 - `DROP INDEX` recognizes MySQL's `ALGORITHM` and `LOCK` option tails.

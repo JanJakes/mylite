@@ -65,7 +65,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. |  |
+| `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. | Parser recognizes charset, collation, encryption, and `READ ONLY` option clauses. |
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. |  |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. |  |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |
@@ -76,7 +76,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser recognizes rename, option assignment, `ADD DATAFILE`, and `DROP DATAFILE` actions. |
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. |  |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |
-| `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. |  |
+| `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. | Parser recognizes charset, collation, and encryption option clauses. |
 | `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. |  |
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. |  |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |

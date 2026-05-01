@@ -207,8 +207,7 @@ create_table_prefix ::= TEMPORARY TABLE.
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.
 
-create_database_tail ::= .
-create_database_tail ::= create_database_option_start create_options_tail.
+create_database_tail ::= create_database_options_tail.
 
 create_table_tail ::= LP create_table_definition_tokens RP create_options_tail.
 create_table_tail ::= LIKE cache_table_ref.
@@ -270,11 +269,22 @@ create_table_tail_option_start ::= STORAGE.
 create_table_tail_option_start ::= TABLESPACE.
 create_table_tail_option_start ::= UNION.
 
-create_database_option_start ::= DEFAULT.
-create_database_option_start ::= CHARACTER.
-create_database_option_start ::= CHARSET.
-create_database_option_start ::= COLLATE.
-create_database_option_start ::= ENCRYPTION.
+create_database_options_tail ::= .
+create_database_options_tail ::= create_database_options_tail create_database_option.
+
+create_database_option ::= database_default_tail database_character_set_option.
+create_database_option ::= database_default_tail database_collate_option.
+create_database_option ::= database_default_tail database_encryption_option.
+
+database_default_tail ::= .
+database_default_tail ::= DEFAULT.
+
+database_character_set_option ::= CHARACTER SET drop_index_option_equals_tail set_charset_name.
+database_character_set_option ::= CHARSET drop_index_option_equals_tail set_charset_name.
+
+database_collate_option ::= COLLATE drop_index_option_equals_tail set_collation_value.
+
+database_encryption_option ::= ENCRYPTION drop_index_option_equals_tail ATOM.
 
 create_udf_tail ::= create_returns create_udf_return_type create_soname ATOM.
 
@@ -450,9 +460,6 @@ create_not ::= NOT.
 
 create_options_tail ::= .
 create_options_tail ::= create_options_tail statement_token.
-
-create_options_required_tail ::= statement_token.
-create_options_required_tail ::= create_options_required_tail statement_token.
 
 create_user_list ::= create_user_spec.
 create_user_list ::= create_user_list import_comma create_user_spec.
@@ -838,10 +845,8 @@ alter_tail ::= USER drop_if_exists_tail alter_user_list account_management_optio
 alter_tail ::= USER drop_if_exists_tail USER LP RP alter_user_func_option_tail.
 alter_tail ::= EVENT cache_table_ref alter_event_action.
 alter_tail ::= alter_routine_kind cache_table_ref create_options_tail.
-alter_tail ::= alter_database_kind cache_name_part alter_database_tail.
-alter_tail ::= alter_database_kind CHARACTER create_options_required_tail.
-alter_tail ::= alter_database_kind CHARSET create_options_required_tail.
-alter_tail ::= alter_database_kind alter_database_read_tail.
+alter_tail ::= alter_database_kind alter_database_options.
+alter_tail ::= alter_database_kind alter_database_name alter_database_options.
 alter_tail ::= VIEW cache_table_ref view_column_tail view_body.
 alter_tail ::= alter_prefixed_view_tail.
 alter_tail ::= create_definer_clause alter_definer_object_tail.
@@ -850,13 +855,35 @@ alter_tail ::= INSTANCE alter_instance_action.
 alter_database_kind ::= DATABASE.
 alter_database_kind ::= SCHEMA.
 
-alter_database_tail ::= alter_database_option_start create_options_required_tail.
+alter_database_name ::= ATOM.
+alter_database_name ::= ACCOUNT.
+alter_database_name ::= CASCADE.
+alter_database_name ::= COMPONENT.
+alter_database_name ::= COUNT.
+alter_database_name ::= DATABASE.
+alter_database_name ::= ENGINE.
+alter_database_name ::= EVENTS.
+alter_database_name ::= FIRST.
+alter_database_name ::= FULL.
+alter_database_name ::= GRANTS.
+alter_database_name ::= LABEL.
+alter_database_name ::= PLUGIN.
+alter_database_name ::= PROCESSLIST.
+alter_database_name ::= RESTRICT.
+alter_database_name ::= TABLES.
+alter_database_name ::= TABLESPACE.
+alter_database_name ::= TRIGGERS.
+alter_database_name ::= USER.
+alter_database_name ::= VARIABLES.
 
-alter_database_option_start ::= DEFAULT.
-alter_database_option_start ::= CHARACTER.
-alter_database_option_start ::= CHARSET.
-alter_database_option_start ::= COLLATE.
-alter_database_option_start ::= ENCRYPTION.
+alter_database_options ::= alter_database_option.
+alter_database_options ::= alter_database_options alter_database_option.
+
+alter_database_option ::= create_database_option.
+alter_database_option ::= READ ONLY drop_index_option_equals_tail alter_database_read_value.
+
+alter_database_read_value ::= DEFAULT.
+alter_database_read_value ::= ATOM.
 
 alter_routine_kind ::= FUNCTION.
 alter_routine_kind ::= PROCEDURE.
@@ -1166,9 +1193,6 @@ transaction_characteristics ::= transaction_characteristics import_comma transac
 
 transaction_characteristic ::= READ transaction_access_mode.
 transaction_characteristic ::= WITH transaction_consistent transaction_snapshot.
-
-alter_database_read_tail ::= READ create_options_required_tail.
-alter_database_option_start ::= READ.
 
 transaction_access_mode ::= ONLY.
 transaction_access_mode ::= WRITE.
@@ -2665,6 +2689,7 @@ set_charset_name ::= BINARY.
 set_charset_name ::= LABEL.
 
 set_collation_value ::= ATOM.
+set_collation_value ::= BINARY.
 set_collation_value ::= LABEL.
 
 set_resource_group_tail ::= .

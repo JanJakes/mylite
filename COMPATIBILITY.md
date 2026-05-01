@@ -231,7 +231,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. |  |
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar and required `SONAME` file values. |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar. |
-| `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser recognizes local clone and remote `CLONE INSTANCE` syntax, including optional data directory and SSL clauses. |
+| `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser recognizes local clone and remote `CLONE INSTANCE` syntax, including numeric remote ports plus optional data directory and SSL clauses. |
 | `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser recognizes comma-separated variable assignment lists with optional per-assignment scopes and nested value expressions. |
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser recognizes charset names using the shared identifier grammar, `BINARY`, `DEFAULT`, and comma-following variable assignments. |
 | `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser recognizes charset/collation names using the shared identifier grammar, `BINARY`, `DEFAULT`, optional `COLLATE`, and comma-following variable assignments. |

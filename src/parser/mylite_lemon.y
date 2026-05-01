@@ -2684,7 +2684,7 @@ clone_statement ::= CLONE clone_tail. {
 clone_tail ::= INSTANCE FROM clone_instance_source clone_identified BY clone_password clone_remote_tail.
 clone_tail ::= LOCAL DATA clone_directory clone_directory_equals_tail clone_directory_path.
 
-clone_instance_source ::= clone_account_name clone_colon ATOM.
+clone_instance_source ::= clone_account_name clone_colon clone_port.
 
 clone_account_name ::= drop_account_principal clone_account_host.
 
@@ -2692,6 +2692,10 @@ clone_account_host ::= AT_HOST drop_host_dot_tail.
 clone_account_host ::= AT_SIGN drop_host_name.
 
 clone_colon ::= COLON.
+
+clone_port ::= BOOLEAN_NUMBER.
+clone_port ::= FACTOR_NUMBER.
+clone_port ::= NUMBER_LITERAL.
 
 clone_identified ::= IDENTIFIED.
 

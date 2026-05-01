@@ -28,6 +28,8 @@ token sink:
 - Stored function signatures require empty or comma-separated input parameter
   lists, and stored procedure signatures accept `IN`/`OUT`/`INOUT` modes while
   preserving nested type bodies.
+- Loadable UDF declarations and plugin installs require string-literal
+  `SONAME` values.
 - `CREATE VIEW` and `ALTER VIEW` recognize algorithm, definer, SQL security,
   column lists, view body starts, and explicit check-option tails for
   non-`SELECT` body forms.
@@ -108,6 +110,8 @@ token sink:
 - `START REPLICA` and legacy `START SLAVE` recognize thread, `UNTIL`,
   connection, and channel clauses with numeric log-position values.
 - `RESET BINARY LOGS AND GTIDS` recognizes optional numeric `TO` index values.
+- `BINLOG` requires a string-literal payload, and `PURGE BINARY LOGS ... TO`
+  requires a string-literal log name.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes and literal,
   shared-identifier local-variable, or user-variable targets.
 - `LOCK TABLES` recognizes table lists, aliases, and MySQL lock types using the

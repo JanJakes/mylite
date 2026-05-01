@@ -272,7 +272,7 @@ static int lexer_prefixed_string(MyliteLexer *lexer, MyliteToken *token) {
   }
 
   lexer_advance(lexer);
-  return lexer_string(lexer, token, '\'') == ML_ATOM;
+  return lexer_string(lexer, token, '\'') == ML_STRING_LITERAL;
 }
 
 static int lexer_string(MyliteLexer *lexer, MyliteToken *token,
@@ -309,7 +309,7 @@ static int lexer_string(MyliteLexer *lexer, MyliteToken *token,
       if (quote == '"') {
         return ML_DOUBLE_QUOTED_STRING;
       }
-      return ML_ATOM;
+      return ML_STRING_LITERAL;
     }
   }
 
@@ -317,7 +317,7 @@ static int lexer_string(MyliteLexer *lexer, MyliteToken *token,
   if (quote == '"') {
     return ML_DOUBLE_QUOTED_STRING;
   }
-  return ML_ATOM;
+  return ML_STRING_LITERAL;
 }
 
 static int lexer_quoted_identifier(MyliteLexer *lexer, MyliteToken *token) {

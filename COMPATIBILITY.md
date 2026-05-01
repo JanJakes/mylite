@@ -79,7 +79,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. | Parser recognizes charset, collation, and `'Y'`/`'N'` encryption option clauses. |
 | `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. | Parser recognizes schedule, completion, enable/disable, comment, and required `DO` clauses. |
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. | Parser recognizes empty and comma-separated input parameter signatures with nested type bodies. |
-| `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
+| `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. | Parser recognizes UDF return types and requires string-literal `SONAME` values. |
 | `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. | Parser recognizes non-empty functional/key-part lists plus index options for parser plugins, comments, visibility, engine attributes, numeric `KEY_BLOCK_SIZE`, `USING`, `ALGORITHM`, and `LOCK`. |
 | `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, NDB numeric size/nodegroup options, comments, `WAIT`, and required `ENGINE`. |
 | `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. | Parser recognizes empty and comma-separated `IN`/`OUT`/`INOUT` parameter signatures with nested type bodies. |
@@ -168,8 +168,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. | Parser recognizes one-, two-, and three-part XIDs with numeric `formatID` values. |
 | `XA ROLLBACK` | ❌ | low | XA rollback. | Parser recognizes one-, two-, and three-part XIDs with numeric `formatID` values. |
 | `XA RECOVER` | ❌ | low | XA recovery result-set metadata. |  |
-| `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. |  |
-| `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. |  |
+| `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. | Parser requires a string-literal payload. |
+| `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser recognizes `TO` string-literal log names and `BEFORE` expression tails. |
 | `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser recognizes optional numeric `TO` index values. |
 | `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |
 | `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. | Parser recognizes MySQL 8.4 filter names, parenthesized rule lists, empty rule lists, rewrite-db pairs, and optional channel clauses. |
@@ -229,7 +229,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, table lists, and `QUICK`/`EXTENDED`/`USE_FRM` options. |
 | `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. | Parser recognizes component file lists and optional `SET` assignments with global/persist scopes. |
 | `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. | Parser recognizes comma-separated component file lists. |
-| `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar and required `SONAME` file values. |
+| `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar and required string-literal `SONAME` file values. |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar. |
 | `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser recognizes local clone and remote `CLONE INSTANCE` syntax, including numeric remote ports plus optional data directory and SSL clauses. |
 | `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser recognizes comma-separated variable assignment lists with optional per-assignment scopes and nested value expressions. |

@@ -68,9 +68,9 @@ token sink:
 - `VALUES` recognizes comma-separated row contents while preserving nested
   expression bodies, rejects adjacent operands and dangling operators in row
   expression lists, applies the same checks in CTAS, view, and DML
-  set-operation `VALUES` bodies, preserves set operators, `ORDER BY`, and
-  `LIMIT` tails, and malformed `SELECT` operands after set operators are
-  rejected.
+  set-operation `VALUES` bodies, preserves set operators, validates
+  parenthesized `ORDER BY` expressions plus `ORDER BY`/`LIMIT` tails, and
+  malformed `SELECT` operands after set operators are rejected.
 - `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`
   forms, `INTO` variable lists, and file output targets, and malformed `SELECT`
   operands after set operators are rejected.
@@ -133,8 +133,8 @@ token sink:
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,
   MySQL's table-scan and indexed-read direction sets, equality/range tuple
   reads, `WHERE`, and numeric or identifier `LIMIT` tails, while rejecting
-  malformed `WHERE` adjacent operands, dangling operators, and `LIMIT`
-  suffixes after `READ`.
+  malformed tuple expressions, malformed `WHERE` adjacent operands, dangling
+  operators, and `LIMIT` suffixes after `READ`.
 - `USE` recognizes one-part schema names using the shared identifier grammar.
 - Account and role names use the shared unreserved identifier grammar across
   `CREATE`/`ALTER`/`DROP` account statements.

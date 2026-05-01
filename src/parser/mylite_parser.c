@@ -4134,6 +4134,46 @@ void mylite_parser_validate_values_statement_from(MyliteParseContext *ctx,
   }
 }
 
+void mylite_parser_validate_parenthesized_expression_list_from(
+    MyliteParseContext *ctx, MyliteToken start, const char *message) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_list = 0;
+  int depth = 0;
+  MyliteExpressionStack expression_stack = {0};
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_list) {
+      if (token.offset == start.offset) {
+        saw_list = 1;
+        if (token_id != ML_LP) {
+          return;
+        }
+        depth = 1;
+        pending_token = token;
+        query_expression_stack_open_list(&expression_stack, depth, token, 0);
+      }
+      continue;
+    }
+
+    if (depth <= 0) {
+      break;
+    }
+
+    if (!query_expression_depth_token(ctx, token_id, token, &depth,
+                                      &expression_stack, message)) {
+      return;
+    }
+  }
+
+  if (saw_list && depth > 0) {
+    mylite_parser_reject(ctx, pending_token, message);
+  }
+}
+
 void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
                                                    MyliteToken start) {
   enum {

@@ -3066,7 +3066,10 @@ handler_read_operator ::= GE.
 handler_read_operator ::= LT.
 handler_read_operator ::= GT.
 
-handler_read_tuple ::= LP values_row_contents RP.
+handler_read_tuple ::= LP(A) values_row_contents RP. {
+  mylite_parser_validate_parenthesized_expression_list_from(
+      ctx, A, "malformed HANDLER READ tuple");
+}
 
 handler_read_suffix ::= .
 handler_read_suffix ::= WHERE expression_start statement_tail.
@@ -3685,7 +3688,10 @@ values_order_item ::= values_order_expression values_order_direction.
 
 values_order_expression ::= ATOM.
 values_order_expression ::= LABEL.
-values_order_expression ::= LP values_row_contents RP.
+values_order_expression ::= LP(A) values_row_contents RP. {
+  mylite_parser_validate_parenthesized_expression_list_from(
+      ctx, A, "malformed VALUES ORDER BY");
+}
 
 values_order_direction ::= .
 values_order_direction ::= DESC.

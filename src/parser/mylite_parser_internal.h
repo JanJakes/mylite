@@ -50,6 +50,8 @@ void mylite_parser_validate_show_statement(MyliteParseContext *ctx,
                                             MyliteToken start);
 void mylite_parser_validate_values_statement_from(MyliteParseContext *ctx,
                                                   MyliteToken start);
+void mylite_parser_validate_parenthesized_expression_list_from(
+    MyliteParseContext *ctx, MyliteToken start, const char *message);
 void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
                                                    MyliteToken start);
 void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,

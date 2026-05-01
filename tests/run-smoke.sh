@@ -433,6 +433,75 @@ case "$utility_object_output" in
 		;;
 esac
 
+handler_output=$("$parser" 'HANDLER t OPEN; HANDLER `db`.`t` OPEN AS h; HANDLER t OPEN alias; HANDLER t READ FIRST; HANDLER t READ NEXT LIMIT 1; HANDLER h READ PRIMARY >= (1, @v) WHERE b > 1 LIMIT 5; HANDLER h READ `PRIMARY` PREV; HANDLER h READ a=(49); HANDLER t CLOSE')
+case "$handler_output" in
+	*"handler"*/table:t*"handler"*/table:'`db`.`t`'*"handler"*/table:t*"handler"*/table:t*"handler"*/table:t*"handler"*/table:h*"handler"*/table:h*"handler"*/table:h*"handler"*/table:t*) ;;
+	*)
+		echo "unexpected HANDLER output: $handler_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'HANDLER'; then
+	echo "expected empty HANDLER statement to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HANDLER t'; then
+	echo "expected missing HANDLER operation to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HANDLER t OPEN AS'; then
+	echo "expected missing HANDLER alias to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HANDLER t OPEN AS a extra'; then
+	echo "expected trailing HANDLER OPEN tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HANDLER t READ'; then
+	echo "expected missing HANDLER READ form to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HANDLER t READ a'; then
+	echo "expected incomplete HANDLER READ index form to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HANDLER t READ PREV'; then
+	echo "expected HANDLER READ PREV without an index to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HANDLER t READ a ='; then
+	echo "expected missing HANDLER READ key values to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HANDLER t READ a = ()'; then
+	echo "expected empty HANDLER READ key values to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HANDLER t READ a NEXT WHERE LIMIT 1'; then
+	echo "expected empty HANDLER WHERE clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HANDLER t READ a NEXT LIMIT'; then
+	echo "expected missing HANDLER LIMIT expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'HANDLER t CLOSE extra'; then
+	echo "expected trailing HANDLER CLOSE tokens to fail" >&2
+	exit 1
+fi
+
 key_cache_output=$("$parser" 'CACHE INDEX c KEY (PRIMARY, i) IN DEFAULT; CACHE INDEX `db`.`pt` PARTITION (p0, p1) KEY (i) IN hot_cache; LOAD INDEX INTO CACHE `db`.`li` PARTITION (ALL) KEY (PRIMARY) IGNORE LEAVES; LOAD INDEX INTO CACHE t, u IGNORE LEAVES')
 case "$key_cache_output" in
 	*"cache"*/table:c*"cache"*/table:'`db`.`pt`'*"load"*/table:'`db`.`li`'*"load"*/table:t*) ;;

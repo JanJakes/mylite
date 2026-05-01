@@ -264,6 +264,9 @@ single identifier-like schema-name form MySQL accepts, rejecting missing names,
 quoted strings, variables, qualified names, and trailing tokens. `TRUNCATE`
 validates a single identifier-like or qualified table target across optional
 `TABLE` forms.
+`HANDLER` validates direct table-access forms: `OPEN` with an optional
+`[AS] alias`, `READ` using documented no-index directions, indexed directions,
+key-comparison value lists, and optional `WHERE` / `LIMIT` tails, and `CLOSE`.
 Prepared-statement names are recorded in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`; those forms
 validate handle names, `PREPARE ... FROM` sources, and `EXECUTE ... USING`

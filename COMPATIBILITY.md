@@ -121,7 +121,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. |  |
 | `DELETE` (multi-table) | ❌ | high | Multi-table delete forms using FROM and USING, join semantics, and affected rows. |  |
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. |  |
-| `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. |  |
+| `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. | Parser records the table or open-handler target and validates OPEN aliases, indexed and non-indexed READ directions, key-comparison value lists, and optional WHERE/LIMIT tails; storage-engine handler cursor state and direct row access are not implemented. |
 | `IMPORT TABLE` | ❌ | low | Transportable tablespace import syntax and diagnostics. | Parser records the first SDI file and validates the `IMPORT TABLE FROM` string-file list; transportable tablespace import behavior is not implemented. |
 | `INSERT ... VALUES` | ❌ | top | Multi-row values, defaults, generated columns, warnings, affected rows, and insert ids. |  |
 | `INSERT ... SET` | ❌ | top | MySQL SET-form insert semantics. |  |

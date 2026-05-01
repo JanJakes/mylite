@@ -115,6 +115,11 @@ ok statements=1 kinds=use[1:2,0:7]/database:app
 ok statements=1 kinds=unlock[1:2,0:13]/table
 ```
 
+`HANDLER` accepts the documented `OPEN`, `READ`, and `CLOSE` syntax, including
+optional open aliases, indexed reads, key-comparison value lists, and optional
+`WHERE` / `LIMIT` tails. The parser records the table or open-handler name;
+storage-engine handler cursor state is not implemented.
+
 `CACHE INDEX` and `LOAD INDEX INTO CACHE` accept MySQL table/index-list
 syntax, including optional partition and index-name groups. `CACHE INDEX`
 also validates the `IN key_cache_name` clause, while `LOAD INDEX` accepts

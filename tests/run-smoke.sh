@@ -2416,6 +2416,15 @@ case "$show_object_output" in
 		;;
 esac
 
+show_grants_edge_output=$("$parser" 'SHOW GRANTS FOR mysqltest_7@; SHOW GRANTS FOR u USING r, s')
+case "$show_grants_edge_output" in
+	*"show"*/user:mysqltest_7@*"show"*/user:u*) ;;
+	*)
+		echo "unexpected SHOW GRANTS edge output: $show_grants_edge_output" >&2
+		exit 1
+		;;
+esac
+
 show_create_output=$("$parser" 'SHOW CREATE DATABASE IF NOT EXISTS db; SHOW CREATE EVENT e; SHOW CREATE FUNCTION f; SHOW CREATE PROCEDURE p; SHOW CREATE TRIGGER tr; SHOW CREATE TABLE t; SHOW CREATE VIEW v; SHOW CREATE USER CURRENT_USER()')
 case "$show_create_output" in
 	*"show"*/database:db*"show"*/event:e*"show"*/function:f*"show"*/procedure:p*"show"*/trigger:tr*"show"*/table:t*"show"*/view:v*"show"*/user:CURRENT_USER"()"*) ;;
@@ -2461,14 +2470,19 @@ case "$show_database_output" in
 		;;
 esac
 
-show_charset_output=$("$parser" "SHOW CHARACTER SET; SHOW CHARACTER SET LIKE 'utf8%'; SHOW CHARSET LIKE 'latin1'; SHOW COLLATION; SHOW COLLATION LIKE 'utf8mb4_0900_ai_ci'; SHOW COLLATION WHERE Charset = 'latin1'; SHOW CHARACTERISTICS AS TRANSACTION READ WRITE")
+show_charset_output=$("$parser" "SHOW CHARACTER SET; SHOW CHARACTER SET LIKE 'utf8%'; SHOW CHARSET LIKE 'latin1'; SHOW COLLATION; SHOW COLLATION LIKE 'utf8mb4_0900_ai_ci'; SHOW COLLATION WHERE Charset = 'latin1'")
 case "$show_charset_output" in
-	*"show"*/character_set*"show"*/character_set:"'utf8%'"*"show"*/character_set:"'latin1'"*"show"*/collation*"show"*/collation:"'utf8mb4_0900_ai_ci'"*"show"*/collation*"show[31:36"*) ;;
+	*"show"*/character_set*"show"*/character_set:"'utf8%'"*"show"*/character_set:"'latin1'"*"show"*/collation*"show"*/collation:"'utf8mb4_0900_ai_ci'"*"show"*/collation*) ;;
 	*)
 		echo "unexpected SHOW character set/collation output: $show_charset_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'SHOW CHARACTERISTICS AS TRANSACTION READ WRITE'; then
+	echo "expected unsupported SHOW CHARACTERISTICS form to fail" >&2
+	exit 1
+fi
 
 show_schema_output=$("$parser" 'SHOW TABLE STATUS FROM `db`; SHOW OPEN TABLES FROM `db`; SHOW TRIGGERS IN `db`; SHOW EVENTS FROM `db`; SHOW TABLES; SHOW TABLES LIKE "wp_%"; SHOW TABLE STATUS LIKE "wp_%"; SHOW OPEN TABLES; SHOW OPEN TABLES LIKE "wp_%"; SHOW EVENTS; SHOW EVENTS LIKE "e_%"; SHOW TRIGGERS; SHOW TRIGGERS LIKE "wp_%"')
 case "$show_schema_output" in
@@ -2506,23 +2520,63 @@ case "$show_collection_output" in
 		;;
 esac
 
-show_profile_output=$("$parser" 'SHOW PROFILE; SHOW PROFILES; SHOW PROFILE FOR QUERY 1; SHOW PROFILE CPU FOR QUERY 2; SHOW PROFILE FOR QUERY @q')
+show_profile_output=$("$parser" 'SHOW PROFILE; SHOW PROFILES; SHOW PROFILE FOR QUERY 1; SHOW PROFILE CPU FOR QUERY 2; SHOW PROFILE CPU FOR QUERY 9 LIMIT 2 OFFSET 2; SHOW PROFILE SWAPS LIMIT 1 OFFSET 2')
 case "$show_profile_output" in
-	*"show"*/query*"show"*/query*"show"*/query:1*"show"*/query:2*"show[20:24"*) ;;
+	*"show"*/query*"show"*/query*"show"*/query:1*"show"*/query:2*"show"*/query:9*"show"*/query*) ;;
 	*)
 		echo "unexpected SHOW PROFILE output: $show_profile_output" >&2
 		exit 1
 		;;
 esac
 
-show_parse_tree_output=$("$parser" 'SHOW PARSE_TREE SELECT 1; SHOW PARSE_TREE SELECT * FROM t; SHOW PARSE_TREE UPDATE t SET a = 1')
+if "$parser" --quiet 'SHOW PROFILE FOR QUERY @q'; then
+	echo "expected nonnumeric SHOW PROFILE query id to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SHOW PROFILE FOR QUERY'; then
+	echo "expected missing SHOW PROFILE query id to fail" >&2
+	exit 1
+fi
+
+show_parse_tree_output=$("$parser" 'SHOW PARSE_TREE SELECT 1; SHOW PARSE_TREE SELECT * FROM t')
 case "$show_parse_tree_output" in
-	"ok statements=3 kinds=show[1:4,0:24]/query,show[6:11,26:57]/query,show[13:20,59:93]") ;;
+	"ok statements=2 kinds=show[1:4,0:24]/query,show[6:11,26:57]/query") ;;
 	*)
 		echo "unexpected SHOW PARSE_TREE output: $show_parse_tree_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'SHOW PARSE_TREE UPDATE t SET a = 1'; then
+	echo "expected non-SELECT SHOW PARSE_TREE payload to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SHOW CREATE TABLE'; then
+	echo "expected SHOW CREATE TABLE without target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SHOW COLUMNS'; then
+	echo "expected SHOW COLUMNS without table target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SHOW VARIABLES LIKE'; then
+	echo "expected SHOW VARIABLES with dangling LIKE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SHOW ENGINE InnoDB'; then
+	echo "expected SHOW ENGINE without diagnostic type to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SHOW FULL ENGINES'; then
+	echo "expected SHOW FULL ENGINES to fail" >&2
+	exit 1
+fi
 
 binary_log_output=$("$parser" "SHOW BINARY LOGS; SHOW MASTER LOGS; SHOW BINARY LOG STATUS; SHOW MASTER STATUS; SHOW BINLOG EVENTS IN 'bin.000001' FROM 4; SHOW BINLOG EVENTS; PURGE BINARY LOGS TO 'bin.000001'; PURGE BINARY LOGS BEFORE NOW(); PURGE MASTER LOGS BEFORE '2024-01-01'")
 case "$binary_log_output" in
@@ -2595,6 +2649,11 @@ case "$replica_status_output" in
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'SHOW REPLICA STATUS FOR CHANNEL'; then
+	echo "expected SHOW REPLICA STATUS with missing channel to fail" >&2
+	exit 1
+fi
 
 binlog_event_output=$("$parser" "BINLOG 'abc'")
 case "$binlog_event_output" in

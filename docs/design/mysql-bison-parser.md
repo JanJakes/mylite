@@ -680,13 +680,22 @@ records the first explicit assignment target.
   Instance lifecycle metadata records only the instance object kind, not
   privilege, connection-loss, shutdown, restart, keyring, TLS, or redo-log
   semantics.
-  `SHOW PROFILE` metadata records query targets for bare forms and numeric
-  `FOR QUERY` ids, while malformed `FOR QUERY` forms stay objectless.
+  `SHOW` statement validation consumes the documented parser forms for create,
+  grant, table/index/schema collection, character-set/collation, routine,
+  engine, variable/status, diagnostics, profile, binary-log, relay-log, and
+  replica-status statements. It rejects missing SHOW targets, dangling
+  `LIKE`, incomplete `FOR CHANNEL`, missing engine diagnostic types,
+  nonnumeric `SHOW PROFILE ... FOR QUERY` ids, non-`SELECT`
+  `SHOW PARSE_TREE` payloads, and unsupported forms such as
+  `SHOW CHARACTERISTICS`.
+  `SHOW GRANTS` accepts documented `USING` role tails and corpus-observed
+  trailing-`@` account names. `SHOW PROFILE` metadata records query targets for
+  bare forms, numeric `FOR QUERY` ids, and accepts `LIMIT` / `OFFSET` profile
+  tails in the corpus-observed order variants.
   `SHOW PARSE_TREE` metadata records documented `SELECT` payloads as query
-  targets, while non-`SELECT` payloads and runtime JSON generation remain
-  analysis/runtime work.
+  targets, while runtime JSON generation remains analysis/runtime work.
   `SHOW ENGINE` metadata records the named engine for `STATUS`, `MUTEX`, and
-  runtime-accepted `LOGS` forms.
+  runtime-accepted `LOGS` forms and rejects missing diagnostic-type tails.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

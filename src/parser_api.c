@@ -1191,6 +1191,76 @@ static int token_is_drop_table_or_view_token(const mylite_parser *parser, size_t
 static int token_is_drop_table_tail_option(const mylite_parser *parser, size_t token_index);
 static int validate_kill_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_help_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_show_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_show_create_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
+static int validate_show_grants_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
+static int validate_show_table_detail_statement_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index);
+static int validate_show_index_statement_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index);
+static int validate_show_schema_collection_statement_syntax(const mylite_parser *parser,
+                                                            size_t token_index,
+                                                            size_t last_token_index);
+static int validate_show_routine_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int validate_show_engine_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
+static int validate_show_variable_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int validate_show_diagnostics_statement_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index);
+static int validate_show_profile_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int validate_show_parse_tree_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index);
+static int validate_show_binary_log_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index);
+static int validate_show_relay_log_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static int validate_show_replica_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int validate_show_common_tail_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index);
+static int validate_show_limit_tail_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index);
+static int consume_show_limit_clause_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            size_t *next_token_index);
+static int consume_show_channel_clause_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index,
+                                              size_t *next_token_index);
+static int consume_show_object_name_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index,
+                                           size_t *next_token_index);
+static int consume_show_account_name_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            size_t *next_token_index);
+static int token_is_show_table_detail_token(const mylite_parser *parser, size_t token_index);
+static int token_is_show_index_token(const mylite_parser *parser, size_t token_index);
+static int token_is_show_schema_collection_token(const mylite_parser *parser, size_t token_index);
+static int token_is_show_routine_token(const mylite_parser *parser, size_t token_index);
+static int token_is_show_profile_tail_token(const mylite_parser *parser, size_t token_index);
 static int validate_describe_or_explain_statement_syntax(const mylite_parser *parser,
                                                          const mylite_statement *statement);
 static int validate_describe_or_explain_table_statement_syntax(const mylite_parser *parser,
@@ -2333,6 +2403,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_HELP:
 			if (!validate_help_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid HELP statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_SHOW:
+			if (!validate_show_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid SHOW statement");
 				return;
 			}
 			break;
@@ -14603,6 +14679,714 @@ static int validate_help_statement_syntax(const mylite_parser *parser, const myl
 	return 1;
 }
 
+static int validate_show_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	mylite_statement classified_statement = *statement;
+	size_t show_token_index = find_statement_kind_token(parser, statement);
+	size_t token_index;
+	size_t last_token_index;
+
+	if (show_token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index = show_token_index + 1;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (!classify_show_statement_object(parser, &classified_statement, token_index, last_token_index)) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == CREATE_T) {
+		return validate_show_create_statement_syntax(parser, token_index, last_token_index);
+	}
+	if (token_text_equals(parser, token_index, "GRANTS")) {
+		return validate_show_grants_statement_syntax(parser, token_index, last_token_index);
+	}
+	if (validate_show_variable_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (validate_show_diagnostics_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (validate_show_binary_log_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (validate_show_relay_log_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (validate_show_replica_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (validate_show_profile_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (validate_show_parse_tree_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (validate_show_routine_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (validate_show_engine_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (validate_show_table_detail_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (validate_show_index_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+	if (validate_show_schema_collection_statement_syntax(parser, token_index, last_token_index)) {
+		return 1;
+	}
+
+	if (token_text_equals(parser, token_index, "DATABASES") ||
+	    token_text_equals(parser, token_index, "SCHEMAS") ||
+	    token_text_equals(parser, token_index, "COLLATION")) {
+		return validate_show_common_tail_syntax(parser, token_index + 1, last_token_index);
+	}
+	if (parser->tokens[token_index].parser_token == CHARSET_T) {
+		return validate_show_common_tail_syntax(parser, token_index + 1, last_token_index);
+	}
+	if (parser->tokens[token_index].parser_token == CHARACTER_T &&
+	    token_index + 1 <= last_token_index &&
+	    parser->tokens[token_index + 1].parser_token == SET_T) {
+		return validate_show_common_tail_syntax(parser, token_index + 2, last_token_index);
+	}
+
+	return 0;
+}
+
+static int validate_show_create_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (token_index + 1 > last_token_index ||
+	    parser->tokens[token_index].parser_token != CREATE_T) {
+		return 0;
+	}
+
+	token_index++;
+	if (parser->tokens[token_index].parser_token == DATABASE_T ||
+	    parser->tokens[token_index].parser_token == SCHEMA_T) {
+		token_index++;
+		if (token_index + 2 <= last_token_index &&
+		    token_text_equals(parser, token_index, "IF") &&
+		    parser->tokens[token_index + 1].parser_token == NOT_T &&
+		    parser->tokens[token_index + 2].parser_token == EXISTS_T) {
+			token_index += 3;
+		}
+		return consume_show_object_name_syntax(parser, token_index, last_token_index, &next_token_index) &&
+		       next_token_index > last_token_index;
+	}
+	if (parser->tokens[token_index].parser_token == USER_T) {
+		return consume_show_account_name_syntax(parser,
+		                                        token_index + 1,
+		                                        last_token_index,
+		                                        &next_token_index) &&
+		       next_token_index > last_token_index;
+	}
+	if (parser->tokens[token_index].parser_token == EVENT_T ||
+	    parser->tokens[token_index].parser_token == FUNCTION_T ||
+	    parser->tokens[token_index].parser_token == PROCEDURE_T ||
+	    parser->tokens[token_index].parser_token == TABLE_T ||
+	    parser->tokens[token_index].parser_token == TRIGGER_T ||
+	    parser->tokens[token_index].parser_token == VIEW_T) {
+		return consume_show_object_name_syntax(parser,
+		                                       token_index + 1,
+		                                       last_token_index,
+		                                       &next_token_index) &&
+		       next_token_index > last_token_index;
+	}
+
+	return 0;
+}
+
+static int validate_show_grants_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (!token_text_equals(parser, token_index, "GRANTS")) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (!token_text_equals(parser, token_index, "FOR") ||
+	    !consume_show_account_name_syntax(parser, token_index + 1, last_token_index, &next_token_index)) {
+		return 0;
+	}
+
+	token_index = next_token_index;
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (parser->tokens[token_index].parser_token != USING_T) {
+		return 0;
+	}
+	return validate_principal_name_list_syntax(parser, token_index + 1, last_token_index, 1);
+}
+
+static int validate_show_table_detail_statement_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index)
+{
+	size_t next_token_index;
+
+	token_index = skip_show_modifiers(parser, token_index, last_token_index);
+	if (!token_is_show_table_detail_token(parser, token_index)) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index ||
+	    (parser->tokens[token_index].parser_token != FROM_T &&
+	     parser->tokens[token_index].parser_token != IN_T) ||
+	    !consume_show_object_name_syntax(parser, token_index + 1, last_token_index, &next_token_index)) {
+		return 0;
+	}
+
+	token_index = next_token_index;
+	if (token_index <= last_token_index &&
+	    (parser->tokens[token_index].parser_token == FROM_T ||
+	     parser->tokens[token_index].parser_token == IN_T)) {
+		if (!consume_show_object_name_syntax(parser,
+		                                     token_index + 1,
+		                                     last_token_index,
+		                                     &next_token_index)) {
+			return 0;
+		}
+		token_index = next_token_index;
+	}
+	return validate_show_common_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_show_index_statement_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index)
+{
+	size_t next_token_index;
+
+	token_index = skip_show_modifiers(parser, token_index, last_token_index);
+	if (!token_is_show_index_token(parser, token_index)) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index > last_token_index ||
+	    (parser->tokens[token_index].parser_token != FROM_T &&
+	     parser->tokens[token_index].parser_token != IN_T) ||
+	    !consume_show_object_name_syntax(parser, token_index + 1, last_token_index, &next_token_index)) {
+		return 0;
+	}
+
+	token_index = next_token_index;
+	if (token_index <= last_token_index &&
+	    (parser->tokens[token_index].parser_token == FROM_T ||
+	     parser->tokens[token_index].parser_token == IN_T)) {
+		if (!consume_show_object_name_syntax(parser,
+		                                     token_index + 1,
+		                                     last_token_index,
+		                                     &next_token_index)) {
+			return 0;
+		}
+		token_index = next_token_index;
+	}
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	return parser->tokens[token_index].parser_token == WHERE_T &&
+	       validate_nonempty_expression_tail_syntax(parser, token_index + 1, last_token_index);
+}
+
+static int validate_show_schema_collection_statement_syntax(const mylite_parser *parser,
+                                                            size_t token_index,
+                                                            size_t last_token_index)
+{
+	size_t first_modifier_token_index = token_index;
+	size_t next_token_index;
+
+	token_index = skip_show_modifiers(parser, token_index, last_token_index);
+	if (!token_is_show_schema_collection_token(parser, token_index)) {
+		return 0;
+	}
+	if (token_index != first_modifier_token_index && !token_text_equals(parser, token_index, "TABLES")) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "TABLES") ||
+	    token_text_equals(parser, token_index, "EVENTS") ||
+	    token_text_equals(parser, token_index, "TRIGGERS")) {
+		token_index++;
+	} else if (parser->tokens[token_index].parser_token == TABLE_T &&
+	           token_index + 1 <= last_token_index &&
+	           token_text_equals(parser, token_index + 1, "STATUS")) {
+		token_index += 2;
+	} else if (parser->tokens[token_index].parser_token == OPEN_T &&
+	           token_index + 1 <= last_token_index &&
+	           token_text_equals(parser, token_index + 1, "TABLES")) {
+		token_index += 2;
+	} else {
+		return 0;
+	}
+
+	if (token_index <= last_token_index &&
+	    (parser->tokens[token_index].parser_token == FROM_T ||
+	     parser->tokens[token_index].parser_token == IN_T)) {
+		if (!consume_show_object_name_syntax(parser,
+		                                     token_index + 1,
+		                                     last_token_index,
+		                                     &next_token_index)) {
+			return 0;
+		}
+		token_index = next_token_index;
+	}
+	return validate_show_common_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_show_routine_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (!token_is_show_routine_token(parser, token_index) ||
+	    token_index + 1 > last_token_index) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index + 1, "STATUS")) {
+		return validate_show_common_tail_syntax(parser, token_index + 2, last_token_index);
+	}
+	if (token_text_equals(parser, token_index + 1, "CODE")) {
+		return consume_show_object_name_syntax(parser,
+		                                       token_index + 2,
+		                                       last_token_index,
+		                                       &next_token_index) &&
+		       next_token_index > last_token_index;
+	}
+	return 0;
+}
+
+static int validate_show_engine_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (token_text_equals(parser, token_index, "ENGINES") ||
+	    token_text_equals(parser, token_index, "PLUGINS") ||
+	    token_text_equals(parser, token_index, "PRIVILEGES") ||
+	    token_text_equals(parser, token_index, "PROCESSLIST")) {
+		return token_index == last_token_index;
+	}
+	if (parser->tokens[token_index].parser_token == FULL_T &&
+	    token_index + 1 == last_token_index &&
+	    token_text_equals(parser, token_index + 1, "PROCESSLIST")) {
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "STORAGE")) {
+		return token_index + 1 == last_token_index &&
+		       token_text_equals(parser, token_index + 1, "ENGINES");
+	}
+	if (parser->tokens[token_index].parser_token != ENGINE_T ||
+	    !consume_show_object_name_syntax(parser, token_index + 1, last_token_index, &next_token_index)) {
+		return 0;
+	}
+	return next_token_index == last_token_index &&
+	       (token_text_equals(parser, next_token_index, "STATUS") ||
+	        token_text_equals(parser, next_token_index, "MUTEX") ||
+	        token_text_equals(parser, next_token_index, "LOGS"));
+}
+
+static int validate_show_variable_statement_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	if (token_text_equals(parser, token_index, "GLOBAL") ||
+	    token_text_equals(parser, token_index, "SESSION") ||
+	    parser->tokens[token_index].parser_token == LOCAL_T) {
+		token_index++;
+	}
+	if (token_index > last_token_index ||
+	    (!token_text_equals(parser, token_index, "VARIABLES") &&
+	     !token_text_equals(parser, token_index, "STATUS"))) {
+		return 0;
+	}
+	return validate_show_common_tail_syntax(parser, token_index + 1, last_token_index);
+}
+
+static int validate_show_diagnostics_statement_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index)
+{
+	if (token_text_equals(parser, token_index, "WARNINGS") ||
+	    token_text_equals(parser, token_index, "ERRORS")) {
+		token_index++;
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != LIMIT_T) {
+			return 0;
+		}
+		return validate_show_limit_tail_syntax(parser, token_index, last_token_index);
+	}
+
+	if (!token_text_equals(parser, token_index, "COUNT") ||
+	    token_index + 4 != last_token_index) {
+		return 0;
+	}
+	return parser->tokens[token_index + 1].parser_token == '(' &&
+	       parser->tokens[token_index + 2].parser_token == '*' &&
+	       parser->tokens[token_index + 3].parser_token == ')' &&
+	       (token_text_equals(parser, token_index + 4, "WARNINGS") ||
+	        token_text_equals(parser, token_index + 4, "ERRORS"));
+}
+
+static int validate_show_profile_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	int expecting_profile_type = 1;
+	int saw_profile_type = 0;
+	int saw_limit = 0;
+	int saw_offset = 0;
+
+	if (token_text_equals(parser, token_index, "PROFILES")) {
+		return token_index == last_token_index;
+	}
+	if (!token_text_equals(parser, token_index, "PROFILE")) {
+		return 0;
+	}
+
+	token_index++;
+	while (token_index <= last_token_index && !token_is_show_profile_tail_token(parser, token_index)) {
+		if (parser->tokens[token_index].parser_token == ',') {
+			if (expecting_profile_type) {
+				return 0;
+			}
+			expecting_profile_type = 1;
+			token_index++;
+			continue;
+		}
+		expecting_profile_type = 0;
+		saw_profile_type = 1;
+		token_index++;
+	}
+	if (saw_profile_type && expecting_profile_type) {
+		return 0;
+	}
+
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "FOR")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "QUERY") ||
+		    parser->tokens[token_index + 2].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		token_index += 3;
+	}
+	while (token_index <= last_token_index) {
+		if (parser->tokens[token_index].parser_token == OFFSET_T) {
+			if (saw_offset ||
+			    token_index + 1 > last_token_index ||
+			    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+				return 0;
+			}
+			saw_offset = 1;
+			token_index += 2;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == LIMIT_T) {
+			if (saw_limit ||
+			    token_index + 1 > last_token_index ||
+			    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+				return 0;
+			}
+			saw_limit = 1;
+			token_index += 2;
+			continue;
+		}
+		return 0;
+	}
+	return 1;
+}
+
+static int validate_show_parse_tree_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index)
+{
+	return token_text_equals(parser, token_index, "PARSE_TREE") &&
+	       token_index + 2 <= last_token_index &&
+	       parser->tokens[token_index + 1].parser_token == SELECT_T &&
+	       validate_nonempty_expression_tail_syntax(parser, token_index + 2, last_token_index);
+}
+
+static int validate_show_binary_log_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (token_text_equals(parser, token_index, "BINARY")) {
+		return (token_index + 1 == last_token_index &&
+		        token_text_equals(parser, token_index + 1, "LOGS")) ||
+		       (token_index + 2 == last_token_index &&
+		        token_text_equals(parser, token_index + 1, "LOG") &&
+		        token_text_equals(parser, token_index + 2, "STATUS"));
+	}
+	if (token_text_equals(parser, token_index, "MASTER")) {
+		return token_index + 1 == last_token_index &&
+		       (token_text_equals(parser, token_index + 1, "LOGS") ||
+		        token_text_equals(parser, token_index + 1, "STATUS"));
+	}
+	if (parser->tokens[token_index].parser_token != BINLOG_T ||
+	    token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index + 1, "EVENTS")) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == IN_T) {
+		if (!consume_show_object_name_syntax(parser,
+		                                     token_index + 1,
+		                                     last_token_index,
+		                                     &next_token_index)) {
+			return 0;
+		}
+		token_index = next_token_index;
+	}
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == FROM_T) {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		token_index += 2;
+	}
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == LIMIT_T) {
+		return validate_show_limit_tail_syntax(parser, token_index, last_token_index);
+	}
+	return token_index > last_token_index;
+}
+
+static int validate_show_relay_log_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (!token_text_equals(parser, token_index, "RELAYLOG") ||
+	    token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index + 1, "EVENTS")) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == IN_T) {
+		if (!consume_show_object_name_syntax(parser,
+		                                     token_index + 1,
+		                                     last_token_index,
+		                                     &next_token_index)) {
+			return 0;
+		}
+		token_index = next_token_index;
+	}
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == FROM_T) {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		token_index += 2;
+	}
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == LIMIT_T) {
+		if (!consume_show_limit_clause_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+	}
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "FOR")) {
+		return consume_show_channel_clause_syntax(parser,
+		                                          token_index,
+		                                          last_token_index,
+		                                          &next_token_index) &&
+		       next_token_index > last_token_index;
+	}
+	return token_index > last_token_index;
+}
+
+static int validate_show_replica_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (token_text_equals(parser, token_index, "REPLICAS")) {
+		return token_index == last_token_index;
+	}
+	if (token_text_equals(parser, token_index, "SLAVE") &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index + 1, "HOSTS")) {
+		return token_index + 1 == last_token_index;
+	}
+	if ((!token_text_equals(parser, token_index, "REPLICA") &&
+	     !token_text_equals(parser, token_index, "SLAVE")) ||
+	    token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index + 1, "STATUS")) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	return consume_show_channel_clause_syntax(parser,
+	                                          token_index,
+	                                          last_token_index,
+	                                          &next_token_index) &&
+	       next_token_index > last_token_index;
+}
+
+static int validate_show_common_tail_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (token_text_equals(parser, token_index, "LIKE")) {
+		return token_index + 1 == last_token_index &&
+		       parser->tokens[token_index + 1].kind == MYLITE_TOKEN_STRING;
+	}
+	if (parser->tokens[token_index].parser_token == WHERE_T) {
+		return validate_nonempty_expression_tail_syntax(parser, token_index + 1, last_token_index);
+	}
+	return 0;
+}
+
+static int validate_show_limit_tail_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index)
+{
+	size_t next_token_index;
+
+	return consume_show_limit_clause_syntax(parser,
+	                                        token_index,
+	                                        last_token_index,
+	                                        &next_token_index) &&
+	       next_token_index > last_token_index;
+}
+
+static int consume_show_limit_clause_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            size_t *next_token_index)
+{
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token != LIMIT_T ||
+	    token_index + 1 > last_token_index ||
+	    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == ',') {
+		if (token_index + 1 > last_token_index ||
+		    parser->tokens[token_index + 1].kind != MYLITE_TOKEN_NUMBER) {
+			return 0;
+		}
+		token_index += 2;
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int consume_show_channel_clause_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index,
+                                              size_t *next_token_index)
+{
+	return validate_replication_channel_clause_syntax(parser,
+	                                                  token_index,
+	                                                  last_token_index,
+	                                                  next_token_index);
+}
+
+static int consume_show_object_name_syntax(const mylite_parser *parser,
+                                           size_t token_index,
+                                           size_t last_token_index,
+                                           size_t *next_token_index)
+{
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	*next_token_index = last_qualified_name_token(parser, token_index, last_token_index) + 1;
+	return 1;
+}
+
+static int consume_show_account_name_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            size_t *next_token_index)
+{
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	*next_token_index = last_account_name_token(parser, token_index, last_token_index) + 1;
+	return 1;
+}
+
+static int token_is_show_table_detail_token(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (token_text_equals(parser, token_index, "COLUMNS") ||
+	        token_text_equals(parser, token_index, "FIELDS"));
+}
+
+static int token_is_show_index_token(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (parser->tokens[token_index].parser_token == INDEX_T ||
+	        parser->tokens[token_index].parser_token == KEY_T ||
+	        token_text_equals(parser, token_index, "INDEXES") ||
+	        token_text_equals(parser, token_index, "KEYS"));
+}
+
+static int token_is_show_schema_collection_token(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (token_text_equals(parser, token_index, "TABLES") ||
+	        token_text_equals(parser, token_index, "EVENTS") ||
+	        token_text_equals(parser, token_index, "TRIGGERS") ||
+	        parser->tokens[token_index].parser_token == TABLE_T ||
+	        parser->tokens[token_index].parser_token == OPEN_T);
+}
+
+static int token_is_show_routine_token(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (parser->tokens[token_index].parser_token == FUNCTION_T ||
+	        parser->tokens[token_index].parser_token == PROCEDURE_T);
+}
+
+static int token_is_show_profile_tail_token(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (token_text_equals(parser, token_index, "FOR") ||
+	        parser->tokens[token_index].parser_token == OFFSET_T ||
+	        parser->tokens[token_index].parser_token == LIMIT_T);
+}
+
 static int validate_describe_or_explain_statement_syntax(const mylite_parser *parser,
                                                          const mylite_statement *statement)
 {
@@ -17421,6 +18205,10 @@ static size_t last_account_name_token(const mylite_parser *parser,
 	    !token_is_account_name_clause_boundary(parser, first_name_token + 2) &&
 	    token_can_start_object_name(&parser->tokens[first_name_token + 2])) {
 		return first_name_token + 2;
+	}
+	if (first_name_token + 1 <= last_token_index &&
+	    token_is_account_at_marker(parser, first_name_token + 1)) {
+		return first_name_token + 1;
 	}
 	return first_name_token;
 }

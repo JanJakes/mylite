@@ -30,6 +30,7 @@ void mylite_parser_syntax_error(MyliteParseContext *ctx, int token_id,
 void mylite_parser_record_statement(MyliteParseContext *ctx,
                                     MyliteStatementKind kind);
 void mylite_parser_record_empty_statement(MyliteParseContext *ctx);
+void mylite_parser_validate_select_statement(MyliteParseContext *ctx);
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token);
 void mylite_parser_require_row_format(MyliteParseContext *ctx,

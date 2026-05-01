@@ -21,6 +21,9 @@ static void set_parser_error(MyliteParseContext *ctx, const MyliteToken *token,
                              const char *message);
 static void format_near_token(MyliteParseContext *ctx, int token_id,
                               const MyliteToken *token);
+static int select_clause_requires_by(int token_id);
+static int select_clause_requires_operand(int token_id);
+static int select_operand_boundary(int token_id);
 static int token_ascii_equal(MyliteToken token, const char *expected);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
@@ -292,6 +295,85 @@ void mylite_parser_record_empty_statement(MyliteParseContext *ctx) {
   ctx->result->statement_kind_counts[MYLITE_STATEMENT_EMPTY]++;
 }
 
+void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token;
+  int token_id;
+  int depth = 0;
+  int saw_select = 0;
+  int need_by = 0;
+  int need_operand = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_select) {
+      if (token_id == ML_SELECT) {
+        saw_select = 1;
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      break;
+    }
+
+    if (depth > 0) {
+      if (token_id == ML_LP || token_id == ML_LB || token_id == ML_LC) {
+        depth++;
+      } else if (token_id == ML_RP || token_id == ML_RB ||
+                 token_id == ML_RC) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (need_by) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT clause");
+        return;
+      }
+      need_by = 0;
+      need_operand = 1;
+      pending_token = token;
+      continue;
+    }
+
+    if (need_operand) {
+      if (select_operand_boundary(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT clause");
+        return;
+      }
+      need_operand = 0;
+    }
+
+    if (token_id == ML_LP || token_id == ML_LB || token_id == ML_LC) {
+      depth++;
+      continue;
+    }
+    if (token_id == ML_RP || token_id == ML_RB || token_id == ML_RC) {
+      continue;
+    }
+
+    if (select_clause_requires_by(token_id)) {
+      need_by = 1;
+      pending_token = token;
+      continue;
+    }
+    if (select_clause_requires_operand(token_id)) {
+      need_operand = 1;
+      pending_token = token;
+      continue;
+    }
+  }
+
+  if (need_by || need_operand) {
+    mylite_parser_reject(ctx, pending_token, "incomplete SELECT clause");
+  }
+}
+
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {
@@ -357,6 +439,22 @@ static int token_ascii_equal(MyliteToken token, const char *expected) {
   }
 
   return i == token.length && expected[i] == '\0';
+}
+
+static int select_clause_requires_by(int token_id) {
+  return token_id == ML_GROUP || token_id == ML_ORDER;
+}
+
+static int select_clause_requires_operand(int token_id) {
+  return token_id == ML_FROM || token_id == ML_HAVING || token_id == ML_INTO ||
+         token_id == ML_LIMIT || token_id == ML_PROCEDURE ||
+         token_id == ML_WHERE;
+}
+
+static int select_operand_boundary(int token_id) {
+  return token_id == ML_SEMI || token_id == ML_COMMA || token_id == ML_RP ||
+         select_clause_requires_by(token_id) ||
+         select_clause_requires_operand(token_id);
 }
 
 static void result_init(MyliteParseResult *result) {

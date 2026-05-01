@@ -45,6 +45,8 @@ token sink:
   expression bodies, set operators, `ORDER BY`, and `LIMIT` tails.
 - `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`
   forms, `INTO` variable lists, and file output targets.
+- Top-level `SELECT` rejects missing operands for major clause starts such as
+  `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `INTO`.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,
   MySQL's table-scan and indexed-read direction sets, equality/range tuple
   reads, `WHERE`, and numeric or identifier `LIMIT` tails.

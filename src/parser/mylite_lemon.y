@@ -157,7 +157,10 @@ labeled_statement_start(A) ::= REPEAT. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 labeled_statement_start(A) ::= WHILE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 
 select_statement ::= SELECT select_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  mylite_parser_validate_select_statement(ctx);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  }
 }
 
 select_tail ::= select_expression_start statement_tail.

@@ -295,6 +295,8 @@ clause shells such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`,
 `LIMIT`, window/procedure tails, and locking tails have a following body.
 `LIMIT` accepts single-expression, comma, and `OFFSET` forms while rejecting
 dangling separators. Major clause order and duplicate clauses are rejected.
+Set operators require a query-expression RHS after optional `ALL` or
+`DISTINCT`.
 Full table-reference, expression, and query-expression analysis remains a later
 phase. `FOR GROUP BY` and `FOR ORDER BY` inside index hints are not treated as
 SELECT clause boundaries, and window-function modifiers such as `FROM FIRST`

@@ -1850,6 +1850,16 @@ if ! "$parser" --quiet "SELECT 1 UNION SELECT 2"; then
 	exit 1
 fi
 
+if ! "$parser" --quiet "SELECT 1 UNION ALL SELECT 2"; then
+	echo "expected SELECT UNION ALL RHS to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "SELECT 1 UNION DISTINCT (TABLE t)"; then
+	echo "expected SELECT UNION parenthesized TABLE RHS to parse" >&2
+	exit 1
+fi
+
 if ! "$parser" --quiet "(SELECT 1 INTO @v)"; then
 	echo "expected parenthesized SELECT INTO variable to parse" >&2
 	exit 1
@@ -1891,6 +1901,16 @@ fi
 
 if "$parser" --quiet 'SELECT 1 UNION SELECT FROM t'; then
 	echo "expected SELECT set-operation RHS without projection to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT 1 UNION FOO'; then
+	echo "expected SELECT set-operation identifier RHS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT 1 UNION ALL'; then
+	echo "expected SELECT set-operation without RHS after modifier to fail" >&2
 	exit 1
 fi
 

@@ -565,6 +565,9 @@ static int validate_select_projection_list_syntax(const mylite_parser *parser,
 static int validate_select_tail_syntax(const mylite_parser *parser,
                                        size_t token_index,
                                        size_t last_token_index);
+static int validate_select_set_operator_tail_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
 static int validate_select_from_clause_syntax(const mylite_parser *parser,
                                               size_t token_index,
                                               size_t last_token_index,
@@ -8572,9 +8575,7 @@ static int validate_select_tail_syntax(const mylite_parser *parser,
 			return 1;
 		}
 		if (token_starts_table_set_operator_tail(parser, token_index)) {
-			return token_index + 1 <= last_token_index &&
-			       token_index + 1 < parser->token_count &&
-			       !token_starts_select_projection_boundary(parser, token_index + 1);
+			return validate_select_set_operator_tail_syntax(parser, token_index, last_token_index);
 		}
 		if (parser->tokens[token_index].parser_token == FROM_T) {
 			if (seen_from || stage > SELECT_TAIL_PROJECTION) {
@@ -8707,6 +8708,25 @@ static int validate_select_tail_syntax(const mylite_parser *parser,
 		return 0;
 	}
 	return 1;
+}
+
+static int validate_select_set_operator_tail_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	if (token_index > last_token_index ||
+	    !token_starts_table_set_operator_tail(parser, token_index)) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    (parser->tokens[token_index].parser_token == ALL_T ||
+	     parser->tokens[token_index].parser_token == DISTINCT_T)) {
+		token_index++;
+	}
+	return token_starts_explainable_query_expression(parser, token_index, last_token_index);
 }
 
 static int validate_select_from_clause_syntax(const mylite_parser *parser,

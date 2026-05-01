@@ -2714,7 +2714,8 @@ dml_replace_target ::= INTO cache_table_ref.
 
 dml_write_body ::= dml_write_payload.
 
-dml_write_payload ::= LP dml_write_column_tokens RP dml_write_after_column_list.
+dml_write_payload ::= LP RP dml_write_after_column_list.
+dml_write_payload ::= LP dml_write_column_list RP dml_write_after_column_list.
 dml_write_payload ::= LP dml_write_query_start dml_write_parenthesized_query_tail RP dml_write_after_parenthesized_query.
 dml_write_payload ::= SET update_assignment_start.
 dml_write_payload ::= SELECT select_tail.
@@ -2723,23 +2724,22 @@ dml_write_payload ::= WITH with_recursive_tail with_cte_list with_query_body.
 dml_write_payload ::= dml_write_partition_clause dml_write_payload.
 dml_write_payload ::= dml_write_start required_statement_tail.
 
-dml_write_column_tokens ::= .
-dml_write_column_tokens ::= dml_write_column_tokens dml_write_column_token.
+dml_write_column_list ::= dml_write_column_ref.
+dml_write_column_list ::= dml_write_column_list COMMA dml_write_column_ref.
 
-dml_write_column_token ::= ATOM.
-dml_write_column_token ::= LABEL.
-dml_write_column_token ::= CONNECTION.
-dml_write_column_token ::= COUNT.
-dml_write_column_token ::= DATA.
-dml_write_column_token ::= NO.
-dml_write_column_token ::= PLUGIN.
-dml_write_column_token ::= QUERY.
-dml_write_column_token ::= START.
-dml_write_column_token ::= STATUS.
-dml_write_column_token ::= USER.
-dml_write_column_token ::= XML.
-dml_write_column_token ::= COMMA.
-dml_write_column_token ::= LP dml_write_column_tokens RP.
+dml_write_column_ref ::= dml_write_column_part.
+dml_write_column_ref ::= dml_write_column_ref DOT dml_write_column_part.
+
+dml_write_column_part ::= cache_name_part.
+dml_write_column_part ::= CONNECTION.
+dml_write_column_part ::= DATA.
+dml_write_column_part ::= DIAGNOSTICS.
+dml_write_column_part ::= END.
+dml_write_column_part ::= NO.
+dml_write_column_part ::= QUERY.
+dml_write_column_part ::= START.
+dml_write_column_part ::= STATUS.
+dml_write_column_part ::= XML.
 
 dml_write_partition_clause ::= PARTITION LP delete_partition_list RP.
 
@@ -3042,7 +3042,6 @@ prepared_statement_name ::= LABEL.
 get_statement ::= GET DIAGNOSTICS diagnostics_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-dml_write_column_token ::= DIAGNOSTICS.
 
 diagnostics_tail ::= diagnostics_statement_items.
 diagnostics_tail ::= CONDITION diagnostics_condition_value diagnostics_condition_items.
@@ -3702,7 +3701,6 @@ declare_handler_statement_start ::= UPDATE.
 end_statement ::= END end_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
-dml_write_column_token ::= END.
 
 end_tail ::= .
 end_tail ::= stored_program_label_ref.

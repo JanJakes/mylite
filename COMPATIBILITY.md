@@ -122,7 +122,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. |  |
 | `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. |  |
 | `IMPORT TABLE` | ❌ | low | Transportable tablespace import syntax and diagnostics. |  |
-| `INSERT ... VALUES` | ❌ | top | Multi-row values, defaults, generated columns, warnings, affected rows, and insert ids. |  |
+| `INSERT ... VALUES` | ❌ | top | Multi-row values, defaults, generated columns, warnings, affected rows, and insert ids. | Parser recognizes empty and comma-separated column lists before write payloads. |
 | `INSERT ... SET` | ❌ | top | MySQL SET-form insert semantics. |  |
 | `INSERT ... SELECT` | ❌ | high | Insert from query expression with locking, defaults, and metadata inference. |  |
 | `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | top | Conflict target resolution, VALUES()/row aliases, affected rows, and warnings. |  |
@@ -133,7 +133,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `LOAD DATA LOCAL INFILE` | ❌ | high | Client-side LOCAL INFILE request flow, security controls, warnings, and protocol interaction. | Parser recognizes the `LOCAL` form and the same data-file clauses as non-local `LOAD DATA`. |
 | `LOAD XML INFILE` | ❌ | low | Server-side XML import syntax, row matching, namespaces, SET clause, warnings, and security restrictions. | Parser recognizes priority/local modifiers, duplicate handling, character sets, `ROWS IDENTIFIED BY`, ignored rows, field lists, and `SET` tails. |
 | `LOAD XML LOCAL INFILE` | ❌ | low | Client-side XML import request behavior and embedded-compatible diagnostics. | Parser recognizes the `LOCAL` form and the same XML-file clauses as non-local `LOAD XML`. |
-| `REPLACE ... VALUES` | ❌ | top | Delete-then-insert semantics, cascades, triggers, affected rows, and auto-increment behavior. |  |
+| `REPLACE ... VALUES` | ❌ | top | Delete-then-insert semantics, cascades, triggers, affected rows, and auto-increment behavior. | Parser recognizes empty and comma-separated column lists before write payloads. |
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. |  |

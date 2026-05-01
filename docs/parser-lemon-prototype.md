@@ -29,6 +29,8 @@ token sink:
   parameter lists while preserving nested type bodies.
 - `CALL` recognizes bare procedure calls and comma-separated argument lists
   with nested expression bodies.
+- `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
+  write payloads.
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
   clauses, TLS/resource/password/lock options, comments, attributes, and
   default-role clauses rather than generic token tails, including MFA,

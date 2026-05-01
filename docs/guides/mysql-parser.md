@@ -64,6 +64,13 @@ Qualified names preserve reserved words after the qualifier dot:
 ok statements=1 kinds=create[1:9,0:31]/table:db.select
 ```
 
+Digit-leading identifiers that are not purely numeric are preserved as object
+names:
+
+```text
+ok statements=1 kinds=create[1:7,0:26]/table:1abc
+```
+
 Direct utility targets are reported for statements such as `USE`, `TABLE`,
 `TRUNCATE`, `HANDLER`, `IMPORT TABLE`, `CALL`, direct `DESCRIBE` / `EXPLAIN`
 table forms, `EXPLAIN ... FOR CONNECTION`, `LOAD ... INTO TABLE`, `CACHE INDEX`,

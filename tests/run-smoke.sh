@@ -329,9 +329,9 @@ case "$import_output" in
 		;;
 esac
 
-call_output=$("$parser" 'CALL p; CALL p(); CALL `db`.`p`(@a); CALL 1')
+call_output=$("$parser" 'CALL p; CALL p(); CALL `db`.`p`(@a); CALL 15298_1(); CALL 1')
 case "$call_output" in
-	*"call"*/procedure:p*"call"*/procedure:p*"call"*/procedure:'`db`.`p`'*"call[17:18"*) ;;
+	*"call"*/procedure:p*"call"*/procedure:p*"call"*/procedure:'`db`.`p`'*"call"*/procedure:15298_1*"call[22:23"*) ;;
 	*)
 		echo "unexpected CALL output: $call_output" >&2
 		exit 1
@@ -824,6 +824,15 @@ case "$nonreserved_modifier_name_output" in
 	*"create"*/table:temporary*"create"*/table:charset*"create"*/table:engine*"create"*/table:event*"create"*/table:offset*"create"*/table:quick*"create"*/table:role*"create"*/table:user*"create"*/table:until*"create"*/table:value*"create"*/table:view*) ;;
 	*)
 		echo "unexpected nonreserved modifier name output: $nonreserved_modifier_name_output" >&2
+		exit 1
+		;;
+esac
+
+numeric_identifier_output=$("$parser" --tokens 'CREATE TABLE 1abc (id int); CALL 15298_1(); CREATE TABLE 123_abc (id int); SELECT 1e3, 0x1f, 0b1010, .5')
+case "$numeric_identifier_output" in
+	*"create"*/table:1abc*"call"*/procedure:15298_1*"create"*/table:123_abc*"token 3 identifier"*"token 10 identifier"*"token 16 identifier"*"token 23 number"*"token 25 number"*"token 27 number"*"token 29 number"*) ;;
+	*)
+		echo "unexpected numeric identifier output: $numeric_identifier_output" >&2
 		exit 1
 		;;
 esac

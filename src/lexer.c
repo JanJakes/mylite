@@ -195,6 +195,7 @@ static int read_end_compound(mylite_parser *parser, int fallback);
 static int read_quoted_identifier(mylite_parser *parser);
 static int read_string(mylite_parser *parser, int quote);
 static int read_number(mylite_parser *parser);
+static int read_word_tail(mylite_lexer *lexer);
 static int read_variable(mylite_parser *parser);
 static int read_operator_or_punctuation(mylite_parser *parser);
 static int sign_starts_number(const mylite_lexer *lexer);
@@ -604,12 +605,16 @@ static int read_string(mylite_parser *parser, int quote)
 static int read_number(mylite_parser *parser)
 {
 	mylite_lexer *lexer = &parser->lexer;
+	int has_decimal_point = 0;
 
 	if (current_char(lexer) == '0' && (peek_char(lexer, 1) == 'x' || peek_char(lexer, 1) == 'X')) {
 		advance_byte(lexer);
 		advance_byte(lexer);
 		while (isxdigit(current_char(lexer))) {
 			advance_byte(lexer);
+		}
+		if (is_word_part(current_char(lexer))) {
+			return read_word_tail(lexer);
 		}
 		return NUMBER;
 	}
@@ -619,6 +624,9 @@ static int read_number(mylite_parser *parser)
 		while (current_char(lexer) == '0' || current_char(lexer) == '1') {
 			advance_byte(lexer);
 		}
+		if (is_word_part(current_char(lexer))) {
+			return read_word_tail(lexer);
+		}
 		return NUMBER;
 	}
 
@@ -626,12 +634,22 @@ static int read_number(mylite_parser *parser)
 		advance_byte(lexer);
 	}
 	if (current_char(lexer) == '.') {
+		has_decimal_point = 1;
 		advance_byte(lexer);
 		while (isdigit(current_char(lexer))) {
 			advance_byte(lexer);
 		}
 	}
 	if (current_char(lexer) == 'e' || current_char(lexer) == 'E') {
+		size_t exponent_digit_lookahead = 1;
+
+		if (peek_char(lexer, exponent_digit_lookahead) == '+' ||
+		    peek_char(lexer, exponent_digit_lookahead) == '-') {
+			exponent_digit_lookahead++;
+		}
+		if (!isdigit(peek_char(lexer, exponent_digit_lookahead))) {
+			return read_word_tail(lexer);
+		}
 		advance_byte(lexer);
 		if (current_char(lexer) == '+' || current_char(lexer) == '-') {
 			advance_byte(lexer);
@@ -640,7 +658,18 @@ static int read_number(mylite_parser *parser)
 			advance_byte(lexer);
 		}
 	}
+	if (!has_decimal_point && is_word_part(current_char(lexer))) {
+		return read_word_tail(lexer);
+	}
 	return NUMBER;
+}
+
+static int read_word_tail(mylite_lexer *lexer)
+{
+	while (is_word_part(current_char(lexer))) {
+		advance_byte(lexer);
+	}
+	return IDENT;
 }
 
 static int read_variable(mylite_parser *parser)

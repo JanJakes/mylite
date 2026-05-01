@@ -859,6 +859,7 @@ static int keyword_token(const MyliteToken *token) {
       {"PASSWORD_LOCK_TIME", ML_PASSWORD_LOCK_TIME},
       {"PARTITION", ML_PARTITION},
       {"PARTITIONING", ML_PARTITIONING},
+      {"PARTITIONS", ML_PARTITIONS},
       {"PHASE", ML_PHASE},
       {"PERSIST", ML_PERSIST},
       {"PERSIST_ONLY", ML_PERSIST_ONLY},

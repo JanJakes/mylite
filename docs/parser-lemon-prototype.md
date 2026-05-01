@@ -119,7 +119,7 @@ token sink:
   connection, and channel clauses with string-literal log/GTID/user option
   values and numeric log-position values.
 - `RESET BINARY LOGS AND GTIDS` recognizes optional numeric `TO` index values.
-  Removed `RESET MASTER` syntax is permissive-corpus-only.
+  Removed `RESET MASTER` and `RESET SLAVE` syntax is permissive-corpus-only.
 - `BINLOG` requires a string-literal payload, and `PURGE BINARY LOGS ... TO`
   requires a string-literal log name. Removed `PURGE MASTER LOGS` syntax is
   permissive-corpus-only.

@@ -2188,7 +2188,9 @@ reset_tail ::= MASTER(A). {
 }
 reset_tail ::= PERSIST reset_persist_tail.
 reset_tail ::= REPLICA reset_replica_tail.
-reset_tail ::= SLAVE reset_replica_tail.
+reset_tail ::= SLAVE(A) reset_replica_tail. {
+  mylite_parser_require_permissive(ctx, A);
+}
 
 reset_binary_logs_tail ::= .
 reset_binary_logs_tail ::= TO reset_binary_logs_index.

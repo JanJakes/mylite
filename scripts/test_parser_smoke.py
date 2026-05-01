@@ -849,6 +849,8 @@ def main() -> int:
         ("reset binary logs and gtids to next;", 1, {}),
         ("reset master;", 1, {}),
         ("reset master extra;", 1, {}),
+        ("reset slave;", 1, {}),
+        ("reset slave all;", 1, {}),
         ("reset slave all extra;", 1, {}),
         ("reset persist x y;", 1, {}),
         ("reset nonsense;", 1, {}),

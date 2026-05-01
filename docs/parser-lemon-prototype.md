@@ -91,7 +91,7 @@ token sink:
   `FIELDS`/`COLUMNS`, and `LINES` option tails, and file-output targets reject
   stray suffixes that are not valid following `SELECT` clauses.
 - Top-level `SELECT` also rejects incomplete `UNION`/`INTERSECT`/`EXCEPT`
-  set operations.
+  set operations and repeated set-operation option tokens.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,
   MySQL's table-scan and indexed-read direction sets, equality/range tuple
   reads, `WHERE`, and numeric or identifier `LIMIT` tails, while rejecting

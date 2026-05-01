@@ -181,6 +181,8 @@ def main() -> int:
         ("select * from t tablesample system (10) repeatable (1);", 1, {}),
         ("select 1 union;", 1, {}),
         ("select 1 union all;", 1, {}),
+        ("select 1 union all all select 2;", 1, {}),
+        ("select 1 union all distinct select 2;", 1, {}),
         ("select 1 intersect;", 1, {}),
         ("select 1 except;", 1, {}),
         ("nonsense 1;", 1, {}),

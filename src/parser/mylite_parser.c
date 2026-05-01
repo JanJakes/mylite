@@ -580,6 +580,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int need_operand = 0;
   int operand_clause = 0;
   int need_set_operand = 0;
+  int set_option_seen = 0;
   int lock_state = SELECT_LOCK_NONE;
   int saw_lock_tail = 0;
   int into_state = SELECT_INTO_NONE;
@@ -1386,6 +1387,12 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
 
     if (need_set_operand) {
       if (select_set_option(token_id)) {
+        if (set_option_seen) {
+          mylite_parser_reject(ctx, token,
+                               "malformed SELECT set operation");
+          return;
+        }
+        set_option_seen = 1;
         continue;
       }
       if (!select_set_operand_start(token_id)) {
@@ -1394,6 +1401,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         return;
       }
       need_set_operand = 0;
+      set_option_seen = 0;
     }
 
     if (need_operand) {
@@ -1658,6 +1666,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       seen_qualify_clause = 0;
       clause_phase = SELECT_PHASE_BODY;
       need_set_operand = 1;
+      set_option_seen = 0;
       operand_clause = 0;
       pending_token = token;
       continue;

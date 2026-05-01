@@ -307,6 +307,8 @@ according to the innermost leading query token. Parenthesized `TABLE` forms
 preserve the named table target.
 Standalone `VALUES` statements are recorded as query targets because MySQL
 treats them as DML statements that return row sets.
+`DO` statements are recorded as query targets too because they execute
+expressions without exposing a table, schema, or administrative target.
 Stored-program statement heads such as `DECLARE`, cursor operations, `IF`,
 `CASE`, loop forms, `LEAVE`, `ITERATE`, and `RETURN` have explicit statement
 kinds. Compound-control tokens are structurally matched for `BEGIN ... END`,

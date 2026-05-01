@@ -63,6 +63,12 @@ Standalone `VALUES` statements expose the query object kind:
 ok statements=1 kinds=values[1:10,0:21]/query
 ```
 
+`DO` expression statements also expose the query object kind:
+
+```text
+ok statements=1 kinds=do[1:4,0:8]/query
+```
+
 Direct and parenthesized `TABLE` statements preserve their table target:
 
 ```text

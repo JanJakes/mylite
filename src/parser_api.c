@@ -1440,6 +1440,7 @@ static int classify_direct_statement_object(const mylite_parser *parser, mylite_
 	switch (statement->kind) {
 	case MYLITE_STATEMENT_SELECT:
 		return classify_select_statement_object(parser, statement);
+	case MYLITE_STATEMENT_DO:
 	case MYLITE_STATEMENT_VALUES:
 		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_QUERY);
 	case MYLITE_STATEMENT_ALTER:

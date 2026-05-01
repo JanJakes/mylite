@@ -59,6 +59,15 @@ case "$values_query_output" in
 		;;
 esac
 
+do_query_output=$("$parser" 'DO 1 + 1; DO SLEEP(1)')
+case "$do_query_output" in
+	*"kinds=do[1:4,0:8]/query,do[6:10,10:21]/query"*) ;;
+	*)
+		echo "unexpected DO query output: $do_query_output" >&2
+		exit 1
+		;;
+esac
+
 table_query_output=$("$parser" 'TABLE t; (TABLE `db`.`t`); ((TABLE t)) ORDER BY c LIMIT 1')
 case "$table_query_output" in
 	*"kinds=table[1:2,0:7]/table:t,table[4:9,9:25]/table:\`db\`.\`t\`,table[11:21,27:57]/table:t"*) ;;

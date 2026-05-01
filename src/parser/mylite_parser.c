@@ -52,6 +52,7 @@ static int select_tablesample_percentage_token(int token_id);
 static int select_charset_name_token(int token_id, MyliteToken token);
 static int select_limit_option_token(int token_id);
 static int select_string_literal_token(int token_id);
+static int do_clause_boundary(int token_id);
 static int dml_assignment_boundary(int mode, int token_id);
 static int dml_assignment_operator(int token_id);
 static int dml_assignment_target_token(int token_id);
@@ -2228,6 +2229,77 @@ void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
   }
 }
 
+void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
+                                          MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int depth = 0;
+  int need_expression = 1;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      } else {
+        continue;
+      }
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      if (need_expression) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete DO expression list");
+      }
+      break;
+    }
+
+    if (token_id == ML_COMMA) {
+      if (need_expression) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete DO expression list");
+        return;
+      }
+      need_expression = 1;
+      pending_token = token;
+      continue;
+    }
+
+    if (need_expression) {
+      if (do_clause_boundary(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete DO expression list");
+        return;
+      }
+      need_expression = 0;
+    } else if (do_clause_boundary(token_id)) {
+      mylite_parser_reject(ctx, token, "malformed DO expression list");
+      return;
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      depth++;
+    }
+  }
+
+  if (need_expression) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete DO expression list");
+  }
+}
+
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {
@@ -2441,6 +2513,12 @@ static int select_limit_option_token(int token_id) {
 
 static int select_string_literal_token(int token_id) {
   return token_id == ML_DOUBLE_QUOTED_STRING || token_id == ML_STRING_LITERAL;
+}
+
+static int do_clause_boundary(int token_id) {
+  return token_id == ML_FROM || token_id == ML_GROUP || token_id == ML_HAVING ||
+         token_id == ML_INTO || token_id == ML_LIMIT || token_id == ML_ORDER ||
+         token_id == ML_WHERE;
 }
 
 static int dml_assignment_boundary(int mode, int token_id) {

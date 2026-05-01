@@ -37,6 +37,8 @@ token sink:
   `VALUES` set operands.
 - `CALL` recognizes one- and two-part routine names plus comma-separated
   argument lists with nested expression bodies.
+- `DO` recognizes comma-separated expression lists while rejecting dangling
+  separators and top-level query-clause tails.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
   write payloads, and validate `SET` assignment lists, explicit `VALUE(S)`
   row-list tails, `ROW(...)` constructors, `INSERT` `VALUE(S)`/`SET` row

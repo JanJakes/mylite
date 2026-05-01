@@ -4115,8 +4115,11 @@ help_topic ::= ATOM.
 help_topic ::= LABEL.
 help_topic ::= keyword_not_select_clause.
 
-do_statement ::= DO expression_start statement_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+do_statement ::= DO(A) expression_start statement_tail. {
+  mylite_parser_validate_do_statement(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+  }
 }
 
 expression_start ::= ATOM.

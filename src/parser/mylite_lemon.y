@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER ASC AS BACKUP BEFORE BUCKETS CHANNEL CODE COLLATE CONSISTENT CONVERT DATAFILE DIRECTORY DISABLE DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EXISTS EXPORT FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INVOKER JOIN KEYRING LEAVES MIGRATE MUTEX NOT ONE ONLY OPTIONS PARTITION PHASE PRECEDES REDO_LOG REFERENCE RELOAD RESUME RETURNS ROTATE SCHEDULE SNAPSHOT SONAME SOURCE SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SUSPEND SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS AT BACKUP BEFORE BUCKETS CHANNEL CODE COLLATE COMMENT COMPLETION CONSISTENT CONVERT DATAFILE DIRECTORY DISABLE DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXISTS EXPORT FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INVOKER JOIN KEYRING LEAVES MIGRATE MUTEX NOT ONE ONLY OPTIONS PARTITION PHASE PRECEDES PRESERVE REDO_LOG REFERENCE RELOAD RESUME RETURNS ROTATE SCHEDULE SNAPSHOT SONAME SOURCE SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SUSPEND SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -301,9 +301,8 @@ create_event_body ::= ON create_schedule event_schedule_start create_event_befor
 
 create_schedule ::= SCHEDULE.
 
-event_schedule_start ::= ATOM(A). {
-  mylite_parser_require_event_schedule_start(ctx, A);
-}
+event_schedule_start ::= AT.
+event_schedule_start ::= EVERY.
 
 create_event_before_do ::= .
 create_event_before_do ::= create_event_before_do create_event_before_do_token.
@@ -633,16 +632,18 @@ alter_definer_object_tail ::= EVENT cache_table_ref alter_event_action.
 
 alter_event_action ::= ON alter_event_on_tail.
 alter_event_action ::= RENAME TO cache_table_ref create_options_tail.
-alter_event_action ::= ATOM(A) create_options_tail. {
-  mylite_parser_require_event_atom_action(ctx, A);
-}
+alter_event_action ::= COMMENT create_options_tail.
+alter_event_action ::= DISABLE create_options_tail.
+alter_event_action ::= ENABLE create_options_tail.
 alter_event_action ::= DO event_statement_start statement_tail.
 
 create_event_do ::= DO.
 
-alter_event_on_tail ::= ATOM(A) ATOM(B) statement_tail. {
-  mylite_parser_require_alter_event_on_tail(ctx, A, B);
-}
+alter_event_on_tail ::= SCHEDULE event_schedule_start statement_tail.
+alter_event_on_tail ::= COMPLETION alter_event_completion_start statement_tail.
+
+alter_event_completion_start ::= NOT.
+alter_event_completion_start ::= PRESERVE.
 
 event_statement_start ::= keyword_not_select_clause.
 event_statement_start ::= LABEL.

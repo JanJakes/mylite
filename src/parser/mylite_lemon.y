@@ -1734,9 +1734,13 @@ alter_instance_reload_tls_tail(A) ::= alter_instance_reload_channel_tail(B) alte
 alter_instance_reload_channel_tail(A) ::= . {
   A = 0;
 }
-alter_instance_reload_channel_tail(A) ::= reset_channel_tail. {
+alter_instance_reload_channel_tail(A) ::= alter_instance_channel_clause. {
   A = 1;
 }
+
+alter_instance_channel_clause ::= FOR reset_channel alter_instance_channel_name.
+
+alter_instance_channel_name ::= cache_name_part.
 
 alter_instance_reload_rollback_tail(A) ::= . {
   A = 0;
@@ -2391,14 +2395,14 @@ reset_persist_name ::= cache_name_part.
 
 reset_replica_tail ::= .
 reset_replica_tail ::= ALL.
-reset_replica_tail ::= reset_channel_tail.
-reset_replica_tail ::= ALL reset_channel_tail.
+reset_replica_tail ::= replication_channel_clause.
+reset_replica_tail ::= ALL replication_channel_clause.
 
-reset_channel_tail ::= FOR reset_channel reset_channel_name.
+replication_channel_clause ::= FOR reset_channel replication_channel_name.
 
 reset_channel ::= CHANNEL.
 
-reset_channel_name ::= replication_channel_name.
+replication_channel_name ::= string_literal.
 
 purge_statement ::= PURGE purge_log_kind LOGS purge_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
@@ -2577,11 +2581,7 @@ change_primary_key_check_value ::= ON.
 change_primary_key_check_value ::= OFF.
 
 change_for_channel_tail ::= .
-change_for_channel_tail ::= FOR reset_channel change_channel_name.
-
-change_channel_name ::= replication_channel_name.
-
-replication_channel_name ::= cache_name_part.
+change_for_channel_tail ::= replication_channel_clause.
 
 xa_statement ::= XA xa_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
@@ -2823,7 +2823,7 @@ show_slave_tail ::= HOSTS.
 show_slave_tail ::= STATUS show_channel_tail.
 
 show_channel_tail ::= .
-show_channel_tail ::= reset_channel_tail.
+show_channel_tail ::= replication_channel_clause.
 
 show_grants_tail ::= .
 show_grants_tail ::= FOR show_grants_principal show_grants_using_tail.

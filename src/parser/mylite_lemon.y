@@ -2456,7 +2456,9 @@ show_tail ::= CREATE show_create_tail.
 show_tail ::= show_diagnostics_kind show_limit_tail.
 show_tail ::= show_simple_kind.
 show_tail ::= BINARY LOG STATUS.
-show_tail ::= MASTER STATUS.
+show_tail ::= MASTER(A) STATUS. {
+  mylite_parser_require_permissive(ctx, A);
+}
 show_tail ::= SLAVE show_slave_tail.
 show_tail ::= GRANTS show_grants_tail.
 show_tail ::= show_scoped_kind show_filter_tail.

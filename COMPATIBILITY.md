@@ -283,7 +283,7 @@ Shared parser-level `SHOW ... LIKE` filters require string-literal patterns.
 | `SHOW FUNCTION STATUS` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW GRANTS` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW MASTER STATUS` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than returning binary-log status rows. | Replacement statement is `SHOW BINARY LOG STATUS`. |
+| `SHOW MASTER STATUS` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than returning binary-log status rows. | Replacement statement is `SHOW BINARY LOG STATUS`; removed syntax is accepted only in permissive corpus mode. |
 | `SHOW OPEN TABLES` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW PARSE_TREE` | ❌ | low | JSON parse-tree result for the MySQL 8.4.9 grammar when enabled; syntax error when built without `WITH_SHOW_PARSE_TREE`. | Parser recognizes SELECT and WITH SELECT inputs for this conditional debug/development surface. |
 | `SHOW PLUGINS` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |

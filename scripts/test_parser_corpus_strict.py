@@ -25,6 +25,8 @@ EXPECTED_FRAGMENT_FAILURES = [
     7188,
     7189,
     7190,
+    # Removed SHOW MASTER STATUS syntax.
+    13642,
     19528,
     # ANALYZE TABLE histogram negative-test cases with multiple table names;
     # permissive corpus mode accepts them, but strict mode follows MySQL 8.4's
@@ -39,6 +41,8 @@ EXPECTED_FRAGMENT_FAILURES = [
     41408,
     # Bare ALTER TABLE REORGANIZE PARTITION negative-test fragment.
     43296,
+    # Removed SHOW MASTER STATUS syntax.
+    50277,
     # Malformed CREATE USER negative-test artifact with a trailing quote.
     54522,
 ]

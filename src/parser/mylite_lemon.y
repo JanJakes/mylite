@@ -2362,14 +2362,14 @@ kill_statement ::= KILL kill_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-kill_tail ::= kill_target.
-kill_tail ::= kill_mode kill_target.
+kill_tail ::= kill_expression.
+kill_tail ::= kill_mode kill_expression.
 
 kill_mode ::= CONNECTION.
 kill_mode ::= QUERY.
 
-kill_target ::= cache_name_part.
-kill_target ::= user_variable_name.
+kill_expression ::= expression_start statement_tail.
+kill_expression ::= user_variable_name.
 
 deallocate_statement ::= DEALLOCATE PREPARE prepared_statement_name. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);

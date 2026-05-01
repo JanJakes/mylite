@@ -154,8 +154,8 @@ token sink:
 - `BINLOG` requires a string-literal payload, and `PURGE BINARY LOGS ... TO`
   requires a string-literal log name. Removed `PURGE MASTER LOGS` syntax is
   permissive-corpus-only.
-- `KILL` recognizes optional `CONNECTION`/`QUERY` modes and literal,
-  shared-identifier local-variable, or user-variable targets.
+- `KILL` recognizes optional `CONNECTION`/`QUERY` modes, expression-style
+  targets including function-call tails, and exact user-variable targets.
 - `LOCK TABLES` recognizes table lists, aliases, and MySQL 8.4 `READ [LOCAL]`
   and `WRITE` lock types using the shared identifier grammar for alias names.
   Removed `LOW_PRIORITY WRITE` syntax is permissive-corpus-only.

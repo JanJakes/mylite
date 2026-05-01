@@ -400,10 +400,15 @@ ok statements=1 kinds=flush[1:3,0:14]/table:t
 ok statements=1 kinds=flush[1:2,0:12]/table
 ```
 
-FLUSH RELAY LOGS exposes explicit channel names:
+FLUSH RELAY LOGS exposes explicit channel names and the default channel
+collection for bare forms:
 
 ```text
 ok statements=1 kinds=flush[1:6,0:33]/replication_channel:'ch'
+```
+
+```text
+ok statements=1 kinds=flush[1:3,0:16]/replication_channel
 ```
 
 FLUSH collection forms expose clear global targets:

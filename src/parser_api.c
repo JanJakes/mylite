@@ -2030,6 +2030,12 @@ static int classify_flush_statement_object(const mylite_parser *parser,
 	    token_text_equals(parser, token_index, "RELAY") &&
 	    token_text_equals(parser, token_index + 1, "LOGS")) {
 		name_token_index = find_replication_channel_name_token(parser, token_index + 2, last_token_index);
+		if (name_token_index >= parser->token_count) {
+			if (has_replication_channel_clause(parser, token_index + 2, last_token_index)) {
+				return 0;
+			}
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL);
+		}
 		return set_statement_direct_object_name(parser,
 		                                        statement,
 		                                        MYLITE_STATEMENT_OBJECT_REPLICATION_CHANNEL,

@@ -389,8 +389,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   replication-channel collection.
   `FLUSH TABLES` metadata records the first table target when present and the
   table collection for unnamed table-cache forms. `FLUSH RELAY LOGS` records
-  only explicit channel names. Other documented global `FLUSH` options record
-  their object kinds after optional `LOCAL` /
+  explicit channel names or the default replication-channel collection when no
+  channel is named. Other documented global `FLUSH` options record their object
+  kinds after optional `LOCAL` /
   `NO_WRITE_TO_BINLOG` modifiers, but comma-separated option lists still expose
   only the first option target.
   Table-maintenance metadata records only the first concrete table target and

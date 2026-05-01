@@ -575,7 +575,7 @@ esac
 
 flush_relay_output=$("$parser" "FLUSH RELAY LOGS FOR CHANNEL 'ch'; FLUSH NO_WRITE_TO_BINLOG RELAY LOGS FOR CHANNEL 'ch2'; FLUSH RELAY LOGS; FLUSH TABLES t")
 case "$flush_relay_output" in
-	*"flush"*/replication_channel:"'ch'"*"flush"*/replication_channel:"'ch2'"*"flush[16:18"*"flush"*/table:t*) ;;
+	*"flush"*/replication_channel:"'ch'"*"flush"*/replication_channel:"'ch2'"*"flush[16:18"*/replication_channel*"flush"*/table:t*) ;;
 	*)
 		echo "unexpected FLUSH RELAY output: $flush_relay_output" >&2
 		exit 1

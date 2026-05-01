@@ -1291,12 +1291,16 @@ alter_table_drop_after_comma ::= alter_table_union_action.
 alter_table_drop_after_comma ::= alter_table_reorganize_action.
 alter_table_drop_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
 
-alter_table_drop_action ::= DROP alter_table_column_keyword_tail alter_table_drop_identifier.
+alter_table_drop_action ::= DROP alter_table_column_keyword_tail alter_table_drop_identifier alter_table_drop_column_restrict_tail.
 alter_table_drop_action ::= DROP PRIMARY KEY.
 alter_table_drop_action ::= DROP alter_table_drop_index_kind alter_table_drop_identifier.
 alter_table_drop_action ::= DROP FOREIGN KEY alter_table_drop_identifier.
 alter_table_drop_action ::= DROP CHECK alter_table_drop_identifier.
 alter_table_drop_action ::= DROP CONSTRAINT alter_table_drop_identifier.
+
+alter_table_drop_column_restrict_tail ::= .
+alter_table_drop_column_restrict_tail ::= RESTRICT.
+alter_table_drop_column_restrict_tail ::= CASCADE.
 
 alter_table_drop_partition_action ::= DROP PARTITION alter_table_partition_names.
 

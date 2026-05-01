@@ -84,10 +84,10 @@ token sink:
   rotation, TLS reload with channel/no-rollback options, and keyring reload.
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,
   `ENABLE/DISABLE KEYS`, `ADD`/`CHANGE`/`MODIFY` heads, `RENAME` forms,
-  comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `DROP` forms,
-  `ALTER` subactions, charset/order changes, partition definition,
-  maintenance/exchange, reorganize forms, maintenance binlog modifiers,
-  CHECK/REPAIR maintenance options, and numeric coalesce counts,
+  comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `DROP` forms, column-drop
+  `RESTRICT`/`CASCADE` tails, `ALTER` subactions, charset/order changes,
+  partition definition, maintenance/exchange, reorganize forms, maintenance
+  binlog modifiers, CHECK/REPAIR maintenance options, and numeric coalesce counts,
   tablespace/storage/union changes, secondary-engine load/unload actions,
   table option changes with numeric/boolean/default value domains,
   `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.

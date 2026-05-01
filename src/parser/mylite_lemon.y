@@ -1905,8 +1905,23 @@ update_statement ::= UPDATE update_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UPDATE);
 }
 
-update_tail ::= dml_update_table_reference_tokens SET required_statement_tail.
-update_tail ::= dml_update_modifiers dml_update_table_reference_tokens SET required_statement_tail.
+update_tail ::= dml_update_table_reference_tokens SET update_assignment_start.
+update_tail ::= dml_update_modifiers dml_update_table_reference_tokens SET update_assignment_start.
+
+update_assignment_start ::= update_assignment_target set_assignment_operator set_value_start statement_tail.
+
+update_assignment_target ::= update_assignment_part.
+update_assignment_target ::= update_assignment_target DOT update_assignment_part.
+
+update_assignment_part ::= cache_name_part.
+update_assignment_part ::= CHECKSUM.
+update_assignment_part ::= CONNECTION.
+update_assignment_part ::= DATA.
+update_assignment_part ::= NO.
+update_assignment_part ::= PASSWORD.
+update_assignment_part ::= QUERY.
+update_assignment_part ::= STATUS.
+update_assignment_part ::= XML.
 
 dml_update_modifiers ::= dml_update_modifier.
 dml_update_modifiers ::= dml_update_modifiers dml_update_modifier.

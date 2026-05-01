@@ -5565,6 +5565,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
   int element_start = 0;
   int constraint_prefix = 0;
   int index_using_pending = 0;
+  int index_using_requires_key_list = 0;
   int find_if_not_exists_state = 0;
   int find_table_name_parts = 0;
   int find_table_dot_pending = 0;
@@ -5982,7 +5983,16 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       column_tail_state = COLUMN_DEFINITION_TAIL_READY;
       column_tail_flags = 0;
       index_using_pending = 0;
+      index_using_requires_key_list = 0;
       continue;
+    }
+
+    if (index_candidate && index_using_requires_key_list) {
+      if (token_id != ML_LP) {
+        mylite_parser_reject(ctx, token, "invalid CREATE TABLE index USING");
+        return;
+      }
+      index_using_requires_key_list = 0;
     }
 
     if (token_id == ML_LP) {
@@ -6038,6 +6048,8 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
         return;
       }
       index_using_pending = 0;
+      index_using_requires_key_list = 1;
+      pending_token = token;
       continue;
     }
 
@@ -6125,6 +6137,9 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE TABLE index key part");
   } else if (index_using_pending) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete CREATE TABLE index USING");
+  } else if (index_using_requires_key_list) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE TABLE index USING");
   } else {

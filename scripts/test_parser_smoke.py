@@ -548,6 +548,7 @@ def main() -> int:
         ("create table t_bad_query as (select 1) union select 2 from;", 1, {}),
         ("create table t1 bogus;", 1, {}),
         ("create table t1 ('c' int);", 1, {}),
+        ("create table t1 (a int, index using btree i (a));", 1, {}),
         ("create table t1 select;", 1, {}),
         ("create table t1 as garbage;", 1, {}),
         ("create database;", 1, {}),

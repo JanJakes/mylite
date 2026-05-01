@@ -50,6 +50,27 @@ static int token_can_start_lock_table_name(const mylite_parser *parser, size_t t
 static int token_can_start_lock_table_alias(const mylite_parser *parser, size_t token_index);
 static int token_is_lock_table_mode(const mylite_parser *parser, size_t token_index);
 static int validate_unlock_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_cache_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_load_index_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_table_index_list_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            size_t *next_token_index,
+                                            int allow_ignore_leaves);
+static int validate_table_index_entry_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             size_t *next_token_index,
+                                             int allow_ignore_leaves);
+static int validate_name_list_group_syntax(const mylite_parser *parser,
+                                           size_t open_token_index,
+                                           int allow_all,
+                                           int allow_primary);
+static int token_can_start_table_index_table_name(const mylite_parser *parser, size_t token_index);
+static int token_can_start_table_index_item_name(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 int allow_primary);
+static int token_can_start_key_cache_name(const mylite_parser *parser, size_t token_index);
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1096,6 +1117,18 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_CACHE:
+			if (!validate_cache_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid CACHE statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_LOAD:
+			if (!validate_load_index_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid LOAD INDEX statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_SAVEPOINT:
 			if (!validate_savepoint_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid SAVEPOINT statement");
@@ -1588,6 +1621,215 @@ static int validate_unlock_statement_syntax(const mylite_parser *parser, const m
 	       (token_text_equals(parser, token_index, "INSTANCE") ||
 	        parser->tokens[token_index].parser_token == TABLE_T ||
 	        token_text_equals(parser, token_index, "TABLES"));
+}
+
+static int validate_cache_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t next_token_index;
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    parser->tokens[token_index].parser_token != INDEX_T) {
+		return 0;
+	}
+
+	if (!validate_table_index_list_syntax(parser, token_index + 1, last_token_index, &next_token_index, 0)) {
+		return 0;
+	}
+	if (next_token_index > last_token_index ||
+	    parser->tokens[next_token_index].parser_token != IN_T ||
+	    next_token_index + 1 != last_token_index) {
+		return 0;
+	}
+	return token_can_start_key_cache_name(parser, next_token_index + 1);
+}
+
+static int validate_load_index_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t next_token_index;
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token != INDEX_T) {
+		return 1;
+	}
+	if (token_index + 2 > last_token_index ||
+	    parser->tokens[token_index + 1].parser_token != INTO_T ||
+	    parser->tokens[token_index + 2].parser_token != CACHE_T) {
+		return 0;
+	}
+
+	return validate_table_index_list_syntax(parser, token_index + 3, last_token_index, &next_token_index, 1) &&
+	       next_token_index > last_token_index;
+}
+
+static int validate_table_index_list_syntax(const mylite_parser *parser,
+                                            size_t token_index,
+                                            size_t last_token_index,
+                                            size_t *next_token_index,
+                                            int allow_ignore_leaves)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_table_index_entry_syntax(parser,
+		                                       token_index,
+		                                       last_token_index,
+		                                       &token_index,
+		                                       allow_ignore_leaves)) {
+			return 0;
+		}
+		if (token_index > last_token_index ||
+		    parser->tokens[token_index].parser_token == IN_T) {
+			break;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index || parser->tokens[token_index].parser_token == IN_T) {
+			return 0;
+		}
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_table_index_entry_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             size_t *next_token_index,
+                                             int allow_ignore_leaves)
+{
+	size_t last_name_token;
+
+	if (!token_can_start_table_index_table_name(parser, token_index)) {
+		return 0;
+	}
+
+	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+	token_index = last_name_token + 1;
+
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "PARTITION")) {
+		token_index++;
+		if (parser->tokens[token_index].parser_token != '(' ||
+		    !validate_name_list_group_syntax(parser, token_index, 1, 0)) {
+			return 0;
+		}
+		token_index = parser->tokens[token_index].matching_token;
+	}
+
+	if (token_index + 1 <= last_token_index &&
+	    (parser->tokens[token_index].parser_token == INDEX_T ||
+	     parser->tokens[token_index].parser_token == KEY_T)) {
+		token_index++;
+		if (parser->tokens[token_index].parser_token != '(' ||
+		    !validate_name_list_group_syntax(parser, token_index, 0, 1)) {
+			return 0;
+		}
+		token_index = parser->tokens[token_index].matching_token;
+	}
+
+	if (allow_ignore_leaves &&
+	    token_index + 1 <= last_token_index &&
+	    parser->tokens[token_index].parser_token == IGNORE_T) {
+		if (!token_text_equals(parser, token_index + 1, "LEAVES")) {
+			return 0;
+		}
+		token_index += 2;
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_name_list_group_syntax(const mylite_parser *parser,
+                                           size_t open_token_index,
+                                           int allow_all,
+                                           int allow_primary)
+{
+	size_t token_index;
+	size_t close_token_index;
+	int expecting_name = 1;
+
+	if (open_token_index >= parser->token_count ||
+	    parser->tokens[open_token_index].parser_token != '(' ||
+	    parser->tokens[open_token_index].matching_token <= open_token_index + 1) {
+		return 0;
+	}
+
+	close_token_index = parser->tokens[open_token_index].matching_token - 1;
+	token_index = open_token_index + 1;
+	if (allow_all &&
+	    token_index == close_token_index - 1 &&
+	    parser->tokens[token_index].parser_token == ALL_T) {
+		return 1;
+	}
+
+	for (; token_index < close_token_index; token_index++) {
+		if (expecting_name) {
+			if (!token_can_start_table_index_item_name(parser, token_index, allow_primary)) {
+				return 0;
+			}
+			expecting_name = 0;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		expecting_name = 1;
+	}
+
+	return !expecting_name;
+}
+
+static int token_can_start_table_index_table_name(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return token_can_continue_object_name(&parser->tokens[token_index]);
+}
+
+static int token_can_start_table_index_item_name(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 int allow_primary)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return token_can_continue_object_name(&parser->tokens[token_index]) ||
+	       (allow_primary && parser->tokens[token_index].parser_token == PRIMARY_T);
+}
+
+static int token_can_start_key_cache_name(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return token_can_continue_object_name(&parser->tokens[token_index]) ||
+	       parser->tokens[token_index].parser_token == DEFAULT_T;
 }
 
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

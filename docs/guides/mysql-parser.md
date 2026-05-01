@@ -111,6 +111,11 @@ ok statements=1 kinds=use[1:2,0:7]/database:app
 ok statements=1 kinds=unlock[1:2,0:13]/table
 ```
 
+`CACHE INDEX` and `LOAD INDEX INTO CACHE` accept MySQL table/index-list
+syntax, including optional partition and index-name groups. `CACHE INDEX`
+also validates the `IN key_cache_name` clause, while `LOAD INDEX` accepts
+`IGNORE LEAVES`.
+
 `LOCK TABLES` accepts MySQL 8.4 table-lock lists with optional aliases,
 `READ [LOCAL]` or `WRITE` modes, and the corpus-observed legacy
 `LOW_PRIORITY WRITE` form for later diagnostics. `UNLOCK TABLES` is

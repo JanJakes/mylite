@@ -338,6 +338,85 @@ case "$utility_object_output" in
 		;;
 esac
 
+key_cache_output=$("$parser" 'CACHE INDEX c KEY (PRIMARY, i) IN DEFAULT; CACHE INDEX `db`.`pt` PARTITION (p0, p1) KEY (i) IN hot_cache; LOAD INDEX INTO CACHE `db`.`li` PARTITION (ALL) KEY (PRIMARY) IGNORE LEAVES; LOAD INDEX INTO CACHE t, u IGNORE LEAVES')
+case "$key_cache_output" in
+	*"cache"*/table:c*"cache"*/table:'`db`.`pt`'*"load"*/table:'`db`.`li`'*"load"*/table:t*) ;;
+	*)
+		echo "unexpected key cache output: $key_cache_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'CACHE INDEX'; then
+	echo "expected missing CACHE INDEX list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CACHE INDEX t'; then
+	echo "expected missing CACHE INDEX key cache to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CACHE INDEX t IN'; then
+	echo "expected missing CACHE INDEX key cache name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CACHE INDEX t IN 'keycache'"; then
+	echo "expected string CACHE INDEX key cache name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CACHE INDEX t KEY () IN DEFAULT'; then
+	echo "expected empty CACHE INDEX key list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CACHE INDEX t KEY (i,) IN DEFAULT'; then
+	echo "expected trailing CACHE INDEX key list comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CACHE INDEX t, IN DEFAULT'; then
+	echo "expected incomplete CACHE INDEX table list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOAD INDEX INTO CACHE'; then
+	echo "expected missing LOAD INDEX table list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOAD INDEX CACHE t'; then
+	echo "expected malformed LOAD INDEX INTO CACHE head to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOAD INDEX INTO CACHE t IGNORE'; then
+	echo "expected missing LOAD INDEX IGNORE LEAVES clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOAD INDEX INTO CACHE t IGNORE LEAF'; then
+	echo "expected invalid LOAD INDEX IGNORE LEAVES clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOAD INDEX INTO CACHE t PARTITION ()'; then
+	echo "expected empty LOAD INDEX partition list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOAD INDEX INTO CACHE t,'; then
+	echo "expected trailing LOAD INDEX table-list comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'LOAD INDEX INTO CACHE t IN DEFAULT'; then
+	echo "expected LOAD INDEX IN key cache clause to fail" >&2
+	exit 1
+fi
+
 truncate_output=$("$parser" 'TRUNCATE t; TRUNCATE TABLE `db`.`t`; TRUNCATE TABLE `select`')
 case "$truncate_output" in
 	*"truncate"*/table:t*"truncate"*/table:'`db`.`t`'*"truncate"*/table:'`select`'*) ;;

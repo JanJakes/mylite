@@ -381,6 +381,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   `EXPLAIN ... INTO` user-variable targets, `EXPLAIN ... FOR CONNECTION`
   targets, and documented explainable statement forms as query targets,
   without modeling optimizer plans or result rows.
+  `CACHE INDEX` and `LOAD INDEX INTO CACHE` validate table/index lists,
+  optional `PARTITION (...)` and `INDEX` / `KEY` groups, key-cache targets,
+  and `LOAD INDEX ... IGNORE LEAVES` modifiers.
   `LOCK TABLES` validates comma-separated table entries with optional aliases
   and MySQL 8.4 `READ [LOCAL]` / `WRITE` modes, while preserving the
   corpus-observed legacy `LOW_PRIORITY WRITE` form for later runtime

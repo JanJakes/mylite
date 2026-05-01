@@ -203,7 +203,8 @@ token sink:
   validators.
 - `CREATE TRIGGER` recognizes timing, event, target table, optional ordering,
   and stored-program statement starts for single-statement trigger bodies, and
-  recognized body starts reuse existing statement validators.
+  recognized body starts including flow-control conditions reuse existing
+  statement validators.
 - `ALTER INSTANCE` recognizes redo-log enable/disable, InnoDB/binlog master-key
   rotation, TLS reload with channel/no-rollback options, and keyring reload.
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,

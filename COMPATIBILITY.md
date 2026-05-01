@@ -73,7 +73,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. |  |
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. |  |
-| `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser recognizes rename, option assignment, `ADD DATAFILE`, and `DROP DATAFILE` actions. |
+| `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser recognizes rename, `ADD/DROP DATAFILE`, size, encryption, engine, and attribute clauses. |
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. |  |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |
 | `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. | Parser recognizes charset, collation, and encryption option clauses. |
@@ -89,7 +89,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE TEMPORARY TABLE` | ❌ | high | Session-scoped table lifecycle and name shadowing. |  |
 | `CREATE TABLE ... LIKE` | ❌ | high | Exact metadata cloning rules. |  |
 | `CREATE TABLE ... SELECT` | ❌ | high | CTAS type inference, default handling, indexes, and atomicity. |  |
-| `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. |  |
+| `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. | Parser recognizes data files, autoextend/file-block sizes, encryption, NDB logfile/size/comment options, engine, and engine attributes. |
 | `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax present in the MySQL 8.4 parser source. |  |
 | `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. |  |
 | `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. |  |

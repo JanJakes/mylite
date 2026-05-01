@@ -93,6 +93,8 @@ token sink:
 - Top-level `SELECT` recognizes `SQL_NO_CACHE` as a deprecated MySQL 8.4
   modifier token.
 - Top-level `SELECT` rejects incompatible `ALL` and `DISTINCT` modifiers.
+- Top-level and set-operand `SELECT` rejects empty or dangling select-list
+  expressions before query clause and statement boundaries.
 - Top-level `SELECT` rejects missing operands for major clause starts such as
   `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `INTO`.
 - Top-level `SELECT` rejects trailing top-level comma separators in select

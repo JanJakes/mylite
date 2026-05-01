@@ -103,6 +103,8 @@ static void format_near_token(MyliteParseContext *ctx, int token_id,
                               const MyliteToken *token);
 static void validate_select_statement_from(MyliteParseContext *ctx,
                                            int use_start, MyliteToken start);
+static void validate_select_list_tails_from(MyliteParseContext *ctx,
+                                            int use_start, MyliteToken start);
 static void validate_table_statement_from(MyliteParseContext *ctx,
                                           MyliteToken start);
 static int select_clause_requires_by(int token_id);
@@ -271,7 +273,8 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
                                                   MyliteToken token);
 static void validate_select_list_tail_from(MyliteParseContext *ctx,
                                            MyliteToken start,
-                                           int parenthesized_boundary);
+                                           int parenthesized_boundary,
+                                           int validate_nested);
 static void validate_routine_statement_body_from(MyliteParseContext *ctx,
                                                  int token_id,
                                                  MyliteToken token);
@@ -602,11 +605,17 @@ void mylite_parser_record_empty_statement(MyliteParseContext *ctx) {
 void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   MyliteToken start = {0};
   validate_select_statement_from(ctx, 0, start);
+  if (!ctx->failed) {
+    validate_select_list_tails_from(ctx, 0, start);
+  }
 }
 
 void mylite_parser_validate_select_statement_from(MyliteParseContext *ctx,
                                                   MyliteToken start) {
   validate_select_statement_from(ctx, 1, start);
+  if (!ctx->failed) {
+    validate_select_list_tails_from(ctx, 1, start);
+  }
 }
 
 void mylite_parser_validate_table_statement_from(MyliteParseContext *ctx,
@@ -2134,6 +2143,51 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
   } else if (nth_from_state != SELECT_NTH_FROM_NONE ||
              need_by || need_operand) {
     mylite_parser_reject(ctx, pending_token, "incomplete SELECT clause");
+  }
+}
+
+static void validate_select_list_tails_from(MyliteParseContext *ctx,
+                                            int use_start, MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  int token_id;
+  int scanning = !use_start;
+  int depth = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!scanning) {
+      if (token.offset >= start.offset) {
+        scanning = 1;
+      } else {
+        continue;
+      }
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (token_is_statement_terminator(token_id, token)) {
+      return;
+    }
+
+    if (token_id == ML_SELECT) {
+      validate_select_list_tail_from(ctx, token, 0, 0);
+      if (ctx->failed) {
+        return;
+      }
+      continue;
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      depth++;
+    }
   }
 }
 
@@ -4961,7 +5015,7 @@ static void validate_with_cte_body_from(MyliteParseContext *ctx,
     }
 
     if (depth == 1 && token_id == ML_SELECT) {
-      validate_select_list_tail_from(ctx, token, 1);
+      validate_select_list_tail_from(ctx, token, 1, 1);
       if (ctx->failed) {
         return;
       }
@@ -4984,9 +5038,6 @@ static void validate_query_body_from(MyliteParseContext *ctx, int token_id,
                                      MyliteToken token) {
   if (token_id == ML_SELECT) {
     mylite_parser_validate_select_statement_from(ctx, token);
-    if (!ctx->failed) {
-      validate_select_list_tail_from(ctx, token, 0);
-    }
     return;
   }
   if (token_id == ML_TABLE) {
@@ -7873,7 +7924,7 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
   if (token_id == ML_SELECT) {
     mylite_parser_validate_select_statement_from(ctx, token);
     if (!ctx->failed) {
-      validate_select_list_tail_from(ctx, token, 0);
+      validate_select_list_tail_from(ctx, token, 0, 1);
     }
     return;
   }
@@ -7915,7 +7966,8 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
 
 static void validate_select_list_tail_from(MyliteParseContext *ctx,
                                            MyliteToken start,
-                                           int parenthesized_boundary) {
+                                           int parenthesized_boundary,
+                                           int validate_nested) {
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken previous_top_token = start;
@@ -7945,10 +7997,18 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
     }
 
     if (depth > 0) {
-      if (!query_expression_depth_token(
-              ctx, token_id, token, &depth, &expression_stack,
-              "malformed SELECT expression clause")) {
-        return;
+      if (validate_nested) {
+        if (!query_expression_depth_token(
+                ctx, token_id, token, &depth, &expression_stack,
+                "malformed SELECT expression clause")) {
+          return;
+        }
+      } else {
+        if (token_opens_nested_expression(token_id)) {
+          depth++;
+        } else if (token_closes_nested_expression(token_id)) {
+          depth--;
+        }
       }
       if (token_closes_nested_expression(token_id) && depth == 0) {
         previous_top_token_id = token_id;
@@ -7989,11 +8049,18 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
     }
 
     if (token_opens_nested_expression(token_id)) {
-      if (!query_expression_token(
-              ctx, token_id, token, &depth, &previous_top_token_id,
-              &previous_top_token, &previous_was_operator, &expression_stack,
-              "malformed SELECT expression clause")) {
-        return;
+      if (validate_nested) {
+        if (!query_expression_token(
+                ctx, token_id, token, &depth, &previous_top_token_id,
+                &previous_top_token, &previous_was_operator, &expression_stack,
+                "malformed SELECT expression clause")) {
+          return;
+        }
+      } else {
+        depth = 1;
+        previous_top_token_id = token_id;
+        previous_top_token = token;
+        previous_was_operator = 0;
       }
       expression_started = 1;
       continue;

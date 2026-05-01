@@ -378,24 +378,6 @@ void mylite_parser_require_profile_type(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &first);
 }
 
-void mylite_parser_require_check_table_option(MyliteParseContext *ctx,
-                                              MyliteToken token) {
-  static const char *const options[] = {
-      "CHANGED",
-      "FAST",
-      "MEDIUM",
-  };
-
-  if (ctx->failed ||
-      token_ascii_matches_any(&token, options,
-                              sizeof(options) / sizeof(options[0]))) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
 void mylite_parser_require_explain_format(MyliteParseContext *ctx,
                                           MyliteToken token) {
   static const char *const formats[] = {

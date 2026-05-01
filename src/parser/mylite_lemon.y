@@ -226,7 +226,7 @@ create_index_option ::= KEY_BLOCK_SIZE drop_index_option_equals_tail index_numbe
 create_index_option ::= USING cache_name_part.
 create_index_option ::= create_index_type cache_name_part.
 create_index_option ::= WITH PARSER cache_name_part.
-create_index_option ::= COMMENT ATOM.
+create_index_option ::= COMMENT string_literal.
 create_index_option ::= VISIBLE.
 create_index_option ::= INVISIBLE.
 create_index_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
@@ -721,8 +721,8 @@ account_password_lock_option ::= account_password_option.
 account_password_lock_option ::= account_lock_option.
 
 account_comment_attribute_tail ::= .
-account_comment_attribute_tail ::= COMMENT user_option_value.
-account_comment_attribute_tail ::= ATTRIBUTE user_option_value.
+account_comment_attribute_tail ::= COMMENT string_literal.
+account_comment_attribute_tail ::= ATTRIBUTE string_literal.
 
 account_default_role_spec ::= NONE.
 account_default_role_spec ::= ALL.
@@ -851,7 +851,7 @@ create_logfile_group_option ::= UNDO_BUFFER_SIZE drop_index_option_equals_tail t
 create_logfile_group_option ::= REDO_BUFFER_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_logfile_group_option ::= NODEGROUP drop_index_option_equals_tail tablespace_number_value.
 create_logfile_group_option ::= WAIT.
-create_logfile_group_option ::= COMMENT drop_index_option_equals_tail ATOM.
+create_logfile_group_option ::= COMMENT drop_index_option_equals_tail string_literal.
 
 alter_logfile_group_tail ::= create_add create_undofile string_literal alter_logfile_group_options_tail logfile_group_engine_clause.
 
@@ -878,7 +878,7 @@ create_tablespace_option ::= INITIAL_SIZE drop_index_option_equals_tail tablespa
 create_tablespace_option ::= MAX_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= NODEGROUP drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= WAIT.
-create_tablespace_option ::= COMMENT drop_index_option_equals_tail ATOM.
+create_tablespace_option ::= COMMENT drop_index_option_equals_tail string_literal.
 create_tablespace_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
 create_tablespace_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
 
@@ -933,10 +933,10 @@ srs_id ::= NUMBER_LITERAL.
 create_srs_attributes ::= create_srs_attribute.
 create_srs_attributes ::= create_srs_attributes create_srs_attribute.
 
-create_srs_attribute ::= NAME ATOM.
-create_srs_attribute ::= DEFINITION ATOM.
-create_srs_attribute ::= DESCRIPTION ATOM.
-create_srs_attribute ::= ORGANIZATION ATOM IDENTIFIED BY create_srs_authority_code.
+create_srs_attribute ::= NAME string_literal.
+create_srs_attribute ::= DEFINITION string_literal.
+create_srs_attribute ::= DESCRIPTION string_literal.
+create_srs_attribute ::= ORGANIZATION string_literal IDENTIFIED BY create_srs_authority_code.
 
 create_srs_authority_code ::= BOOLEAN_NUMBER.
 create_srs_authority_code ::= FACTOR_NUMBER.
@@ -1133,7 +1133,7 @@ alter_routine_characteristic ::= READS SQL DATA.
 alter_routine_characteristic ::= MODIFIES SQL DATA.
 alter_routine_characteristic ::= SQL SECURITY create_view_security_kind.
 
-routine_comment_value ::= ATOM.
+routine_comment_value ::= string_literal.
 
 alter_table_tail ::= FORCE alter_table_force_option_tail.
 alter_table_tail ::= alter_table_keys_action alter_table_force_option_tail.
@@ -1391,7 +1391,7 @@ alter_table_table_option ::= alter_table_number_table_option drop_index_option_e
 alter_table_table_option ::= alter_table_boolean_table_option drop_index_option_equals_tail BOOLEAN_NUMBER.
 alter_table_table_option ::= alter_table_default_boolean_table_option drop_index_option_equals_tail alter_table_default_boolean_value.
 alter_table_table_option ::= STATS_SAMPLE_PAGES drop_index_option_equals_tail alter_table_default_number_value.
-alter_table_table_option ::= COMMENT drop_index_option_equals_tail ATOM.
+alter_table_table_option ::= COMMENT drop_index_option_equals_tail string_literal.
 alter_table_table_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 alter_table_table_option ::= ENGINE drop_index_option_equals_tail alter_table_table_option_value.
 alter_table_table_option ::= INSERT_METHOD drop_index_option_equals_tail alter_table_table_option_value.
@@ -1963,7 +1963,7 @@ analyze_histogram_marker ::= HISTOGRAM.
 
 analyze_histogram_value_tail ::= .
 analyze_histogram_value_tail ::= WITH analyze_histogram_bucket_count analyze_buckets_marker.
-analyze_histogram_value_tail ::= USING DATA ATOM.
+analyze_histogram_value_tail ::= USING DATA string_literal.
 
 analyze_histogram_bucket_count ::= BOOLEAN_NUMBER.
 analyze_histogram_bucket_count ::= FACTOR_NUMBER.
@@ -3517,11 +3517,11 @@ set_password_tail ::= set_password_target_tail set_password_auth_option set_pass
 set_password_target_tail ::= .
 set_password_target_tail ::= FOR set_password_target.
 
-set_password_auth_option ::= EQUALS ATOM.
+set_password_auth_option ::= EQUALS string_literal.
 set_password_auth_option ::= TO RANDOM.
 
 set_password_replace_tail ::= .
-set_password_replace_tail ::= REPLACE ATOM.
+set_password_replace_tail ::= REPLACE string_literal.
 
 set_password_retain_tail ::= .
 set_password_retain_tail ::= RETAIN CURRENT PASSWORD.

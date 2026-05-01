@@ -47,16 +47,16 @@ token sink:
 - `RENAME USER` reuses the shared account-reference grammar for source and
   destination account pairs.
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
-  clauses, TLS/resource/password/lock options, comments, attributes, and
-  default-role clauses rather than generic token tails, including numeric
-  resource limits and password policy counts, MFA, initial-authentication, and
-  WebAuthn registration syntax.
+  clauses, TLS/resource/password/lock options, string-literal comments and
+  attributes, and default-role clauses rather than generic token tails,
+  including numeric resource limits and password policy counts, MFA,
+  initial-authentication, and WebAuthn registration syntax.
 - `GRANT` and `REVOKE` recognize grant/admin options, proxy forms, recipient
   authentication/resource clauses, `AS ... WITH ROLE`, and
   `IGNORE UNKNOWN USER`.
 - `CREATE INDEX` recognizes non-empty functional/key-part lists and standalone
-  index options including parser plugins, visibility, attributes, numeric
-  `KEY_BLOCK_SIZE`, `ALGORITHM`, and `LOCK`.
+  index options including parser plugins, string-literal comments, visibility,
+  attributes, numeric `KEY_BLOCK_SIZE`, `ALGORITHM`, and `LOCK`.
 - `CREATE TABLE` table-definition bodies require non-empty comma-separated
   elements while preserving nested token bodies for column and constraint
   definitions; trailing table options must start with known MySQL table-option
@@ -91,8 +91,8 @@ token sink:
 - `ALTER FUNCTION` and `ALTER PROCEDURE` recognize routine characteristics:
   comments, `LANGUAGE SQL`, SQL data access, and SQL security.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`,
-  `OR REPLACE`, numeric SRS ids, documented attribute forms, and numeric
-  organization authority codes.
+  `OR REPLACE`, numeric SRS ids, documented string-literal attribute forms, and
+  numeric organization authority codes.
 - `DROP INDEX` recognizes MySQL's `ALGORITHM` and `LOCK` option tails.
 - `TRUNCATE TABLE` recognizes optional `TABLE` and one- or two-part table
   references using the shared identifier grammar.
@@ -102,7 +102,7 @@ token sink:
   component file lists and optional scoped `SET` assignments for installs.
 - `ANALYZE TABLE` recognizes table lists and histogram update/drop clauses using
   the shared identifier grammar for table and column names, with numeric
-  histogram bucket counts.
+  histogram bucket counts and string-literal histogram data.
 - `CHECK TABLE`, `CHECKSUM TABLE`, `OPTIMIZE TABLE`, and `REPAIR TABLE`
   recognize table lists and their documented parser-level option keywords.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
@@ -147,8 +147,8 @@ token sink:
 - `SHOW WARNINGS` and `SHOW ERRORS` recognize numeric `LIMIT` tails.
 - `SET ROLE` and `SET DEFAULT ROLE` recognize MySQL role specifiers and account
   lists rather than permissive token tails.
-- `SET PASSWORD` recognizes MySQL 8.4 literal and random password assignment
-  forms, including replacement and secondary-password clauses.
+- `SET PASSWORD` recognizes MySQL 8.4 string-literal and random password
+  assignment forms, including replacement and secondary-password clauses.
 - `SET TRANSACTION` recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and
   read access modes without permissive tails.
 - `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, and `RELEASE SAVEPOINT` recognize

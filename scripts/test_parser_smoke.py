@@ -937,6 +937,8 @@ def main() -> int:
         ("call p(,);", 1, {}),
         ("call p(1,,2);", 1, {}),
         ("call p nonsense;", 1, {}),
+        ("call a b c();", 1, {}),
+        ("call a.b.c();", 1, {}),
         ("call select();", 1, {}),
         ("binlog 'abc';", 0, {"statements": "1", "replication": "1"}),
         ("binlog 'abc' extra;", 1, {}),

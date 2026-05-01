@@ -2537,12 +2537,10 @@ call_statement ::= CALL call_name call_arguments. {
 }
 create_trigger_statement_start ::= CALL.
 
-call_name ::= call_target.
-call_name ::= call_target ATOM call_target.
+call_name ::= call_identifier.
+call_name ::= call_identifier DOT call_identifier.
 
-call_target ::= ATOM.
-call_target ::= ACCOUNT.
-call_target ::= LABEL.
+call_identifier ::= cache_name_part.
 
 call_arguments ::= .
 call_arguments ::= LP RP.

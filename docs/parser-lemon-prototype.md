@@ -27,8 +27,8 @@ token sink:
   have explicit grammar productions.
 - Stored procedure/function signatures require empty or comma-separated
   parameter lists while preserving nested type bodies.
-- `CALL` recognizes bare procedure calls and comma-separated argument lists
-  with nested expression bodies.
+- `CALL` recognizes one- and two-part routine names plus comma-separated
+  argument lists with nested expression bodies.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
   write payloads.
 - `VALUES` recognizes comma-separated row contents while preserving nested

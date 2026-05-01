@@ -160,7 +160,7 @@ create_tail ::= TABLESPACE cache_name_part create_tablespace_tail.
 create_tail ::= UNDO TABLESPACE cache_name_part create_undo_tablespace_tail.
 create_tail ::= create_database_kind create_if_not_exists_tail cache_name_part create_database_tail.
 create_tail ::= ROLE create_if_not_exists_tail drop_account_list.
-create_tail ::= USER create_if_not_exists_tail drop_account_name create_user_tail.
+create_tail ::= USER create_if_not_exists_tail create_user_list account_management_options account_management_permissive_tail.
 create_tail ::= VIEW cache_table_ref view_column_tail view_body.
 create_tail ::= create_prefixed_view_tail.
 create_tail ::= create_definer_clause create_definer_object_tail.
@@ -436,8 +436,127 @@ create_options_tail ::= create_options_tail statement_token.
 create_options_required_tail ::= statement_token.
 create_options_required_tail ::= create_options_required_tail statement_token.
 
-create_user_tail ::= .
-create_user_tail ::= create_user_tail statement_token.
+create_user_list ::= create_user_spec.
+create_user_list ::= create_user_list import_comma create_user_spec.
+
+create_user_spec ::= drop_account_name create_user_auth_tail.
+
+create_user_auth_tail ::= .
+create_user_auth_tail ::= user_auth_option.
+
+alter_user_list ::= alter_user_spec.
+alter_user_list ::= alter_user_list import_comma alter_user_spec.
+
+alter_user_spec ::= alter_user_account alter_user_account_option_tail.
+
+alter_user_account ::= drop_account_name.
+alter_user_account ::= current_user_ref.
+alter_user_account ::= USER LP RP.
+
+alter_user_account_option_tail ::= .
+alter_user_account_option_tail ::= user_auth_option alter_user_auth_tail.
+alter_user_account_option_tail ::= DISCARD OLD PASSWORD.
+
+alter_user_auth_tail ::= .
+alter_user_auth_tail ::= REPLACE user_auth_value alter_user_retain_tail.
+alter_user_auth_tail ::= RETAIN CURRENT PASSWORD.
+
+alter_user_retain_tail ::= .
+alter_user_retain_tail ::= RETAIN CURRENT PASSWORD.
+
+user_auth_option ::= IDENTIFIED BY user_auth_value.
+user_auth_option ::= IDENTIFIED WITH user_auth_plugin.
+user_auth_option ::= IDENTIFIED WITH user_auth_plugin BY user_auth_value.
+user_auth_option ::= IDENTIFIED WITH user_auth_plugin AS user_auth_value.
+
+user_auth_value ::= user_option_value.
+user_auth_value ::= RANDOM PASSWORD.
+
+user_auth_plugin ::= user_option_value.
+
+account_management_options ::= account_default_role_tail account_require_tail account_resource_tail account_password_lock_options account_comment_attribute_tail.
+
+account_management_permissive_tail ::= .
+account_management_permissive_tail ::= DOUBLE_QUOTED_STRING(A). {
+  mylite_parser_require_permissive(ctx, A);
+}
+
+account_default_role_tail ::= .
+account_default_role_tail ::= DEFAULT ROLE account_default_role_spec.
+
+account_require_tail ::= .
+account_require_tail ::= REQUIRE account_tls_requirement.
+
+account_resource_tail ::= .
+account_resource_tail ::= WITH account_resource_options.
+
+account_password_lock_options ::= .
+account_password_lock_options ::= account_password_lock_options account_password_lock_option.
+
+account_password_lock_option ::= account_password_option.
+account_password_lock_option ::= account_lock_option.
+
+account_comment_attribute_tail ::= .
+account_comment_attribute_tail ::= COMMENT user_option_value.
+account_comment_attribute_tail ::= ATTRIBUTE user_option_value.
+
+account_default_role_spec ::= NONE.
+account_default_role_spec ::= ALL.
+account_default_role_spec ::= drop_account_list.
+
+account_tls_requirement ::= NONE.
+account_tls_requirement ::= SSL.
+account_tls_requirement ::= X509.
+account_tls_requirement ::= account_tls_option_list.
+
+account_tls_option_list ::= account_tls_option.
+account_tls_option_list ::= account_tls_option_list account_tls_and_tail account_tls_option.
+
+account_tls_and_tail ::= .
+account_tls_and_tail ::= AND.
+
+account_tls_option ::= CIPHER user_option_value.
+account_tls_option ::= ISSUER user_option_value.
+account_tls_option ::= SUBJECT user_option_value.
+
+account_resource_options ::= account_resource_option.
+account_resource_options ::= account_resource_options account_resource_option.
+
+account_resource_option ::= MAX_QUERIES_PER_HOUR user_option_value.
+account_resource_option ::= MAX_UPDATES_PER_HOUR user_option_value.
+account_resource_option ::= MAX_CONNECTIONS_PER_HOUR user_option_value.
+account_resource_option ::= MAX_USER_CONNECTIONS user_option_value.
+
+account_password_option ::= PASSWORD EXPIRE.
+account_password_option ::= PASSWORD EXPIRE DEFAULT.
+account_password_option ::= PASSWORD EXPIRE NEVER.
+account_password_option ::= PASSWORD EXPIRE INTERVAL user_option_value DAY.
+account_password_option ::= PASSWORD HISTORY account_default_or_value.
+account_password_option ::= PASSWORD REUSE INTERVAL account_default_or_day_value.
+account_password_option ::= PASSWORD REQUIRE CURRENT account_current_password_tail.
+account_password_option ::= FAILED_LOGIN_ATTEMPTS user_option_value.
+account_password_option ::= PASSWORD_LOCK_TIME account_password_lock_value.
+
+account_default_or_value ::= DEFAULT.
+account_default_or_value ::= user_option_value.
+
+account_default_or_day_value ::= DEFAULT.
+account_default_or_day_value ::= user_option_value DAY.
+
+account_current_password_tail ::= .
+account_current_password_tail ::= DEFAULT.
+account_current_password_tail ::= OPTIONAL.
+
+account_password_lock_value ::= user_option_value.
+account_password_lock_value ::= UNBOUNDED.
+
+account_lock_option ::= ACCOUNT LOCK.
+account_lock_option ::= ACCOUNT UNLOCK.
+
+user_option_value ::= ATOM.
+user_option_value ::= LABEL.
+
+%fallback ATOM ACCOUNT ATTRIBUTE CIPHER DAY EXPIRE FAILED_LOGIN_ATTEMPTS HISTORY INTERVAL ISSUER MAX_CONNECTIONS_PER_HOUR MAX_QUERIES_PER_HOUR MAX_UPDATES_PER_HOUR MAX_USER_CONNECTIONS NEVER OLD OPTIONAL PASSWORD_LOCK_TIME REUSE SUBJECT UNBOUNDED X509.
 
 create_resource_group ::= GROUP.
 
@@ -633,7 +752,7 @@ alter_tail ::= RESOURCE create_resource_group cache_name_part alter_resource_gro
 alter_tail ::= SERVER cache_name_part create_server_options.
 alter_tail ::= TABLESPACE cache_name_part alter_tablespace_action.
 alter_tail ::= UNDO TABLESPACE cache_name_part alter_undo_tablespace_action.
-alter_tail ::= USER drop_if_exists_tail alter_user_target create_user_tail.
+alter_tail ::= USER drop_if_exists_tail alter_user_list account_management_options account_management_permissive_tail.
 alter_tail ::= EVENT cache_table_ref alter_event_action.
 alter_tail ::= alter_routine_kind cache_table_ref create_options_tail.
 alter_tail ::= alter_database_kind cache_name_part alter_database_tail.
@@ -801,8 +920,6 @@ alter_instance_reload_rollback_tail(A) ::= NO ROLLBACK ON ERROR. {
   A = 1;
 }
 create_trigger_statement_start ::= ROLLBACK.
-
-alter_user_target ::= drop_account_name.
 
 rename_statement ::= RENAME rename_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
@@ -2885,6 +3002,10 @@ permissive_start(A) ::= ATOM(B). {
   mylite_parser_require_permissive(ctx, B);
   A = MYLITE_STATEMENT_PERMISSIVE;
 }
+permissive_start(A) ::= DOUBLE_QUOTED_STRING(B). {
+  mylite_parser_require_permissive(ctx, B);
+  A = MYLITE_STATEMENT_PERMISSIVE;
+}
 permissive_start(A) ::= FROM(B). {
   mylite_parser_require_permissive(ctx, B);
   A = MYLITE_STATEMENT_PERMISSIVE;
@@ -3162,6 +3283,28 @@ keyword ::= LEVEL.
 keyword ::= REPEATABLE.
 keyword ::= SERIALIZABLE.
 keyword ::= UNCOMMITTED.
+keyword ::= ACCOUNT.
+keyword ::= ATTRIBUTE.
+keyword ::= CIPHER.
+keyword ::= DAY.
+keyword ::= DISCARD.
+keyword ::= EXPIRE.
+keyword ::= FAILED_LOGIN_ATTEMPTS.
+keyword ::= HISTORY.
+keyword ::= INTERVAL.
+keyword ::= ISSUER.
+keyword ::= MAX_CONNECTIONS_PER_HOUR.
+keyword ::= MAX_QUERIES_PER_HOUR.
+keyword ::= MAX_UPDATES_PER_HOUR.
+keyword ::= MAX_USER_CONNECTIONS.
+keyword ::= NEVER.
+keyword ::= OLD.
+keyword ::= OPTIONAL.
+keyword ::= PASSWORD_LOCK_TIME.
+keyword ::= REUSE.
+keyword ::= SUBJECT.
+keyword ::= UNBOUNDED.
+keyword ::= X509.
 
 keyword_not_select_clause ::= SELECT.
 keyword_not_select_clause ::= WITH.
@@ -3392,3 +3535,25 @@ keyword_not_select_clause ::= LEVEL.
 keyword_not_select_clause ::= REPEATABLE.
 keyword_not_select_clause ::= SERIALIZABLE.
 keyword_not_select_clause ::= UNCOMMITTED.
+keyword_not_select_clause ::= ACCOUNT.
+keyword_not_select_clause ::= ATTRIBUTE.
+keyword_not_select_clause ::= CIPHER.
+keyword_not_select_clause ::= DAY.
+keyword_not_select_clause ::= DISCARD.
+keyword_not_select_clause ::= EXPIRE.
+keyword_not_select_clause ::= FAILED_LOGIN_ATTEMPTS.
+keyword_not_select_clause ::= HISTORY.
+keyword_not_select_clause ::= INTERVAL.
+keyword_not_select_clause ::= ISSUER.
+keyword_not_select_clause ::= MAX_CONNECTIONS_PER_HOUR.
+keyword_not_select_clause ::= MAX_QUERIES_PER_HOUR.
+keyword_not_select_clause ::= MAX_UPDATES_PER_HOUR.
+keyword_not_select_clause ::= MAX_USER_CONNECTIONS.
+keyword_not_select_clause ::= NEVER.
+keyword_not_select_clause ::= OLD.
+keyword_not_select_clause ::= OPTIONAL.
+keyword_not_select_clause ::= PASSWORD_LOCK_TIME.
+keyword_not_select_clause ::= REUSE.
+keyword_not_select_clause ::= SUBJECT.
+keyword_not_select_clause ::= UNBOUNDED.
+keyword_not_select_clause ::= X509.

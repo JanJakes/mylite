@@ -8,7 +8,18 @@ from pathlib import Path
 import test_parser_corpus as corpus
 
 
-EXPECTED_FRAGMENT_FAILURES = [2410, 5913, 7185, 7187, 7188, 7189, 7190, 19528]
+EXPECTED_FRAGMENT_FAILURES = [
+    2410,
+    5913,
+    7185,
+    7187,
+    7188,
+    7189,
+    7190,
+    19528,
+    # Malformed CREATE USER negative-test artifact with a trailing quote.
+    54522,
+]
 
 
 def main() -> int:

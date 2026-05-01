@@ -23,6 +23,9 @@ token sink:
   structurally.
 - Account-reference forms that permit `CURRENT_USER` or `CURRENT_USER()` now
   have explicit grammar productions.
+- `CREATE USER` and `ALTER USER` recognize account lists, authentication
+  clauses, TLS/resource/password/lock options, comments, attributes, and
+  default-role clauses rather than generic token tails.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`
   and `OR REPLACE` variants.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource

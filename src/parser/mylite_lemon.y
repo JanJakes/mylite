@@ -1924,7 +1924,10 @@ dml_delete_modifier ::= QUICK.
 
 delete_core ::= FROM dml_delete_table_list delete_after_from_tail.
 delete_core ::= dml_delete_table_list FROM dml_delete_source_start statement_tail.
-delete_core ::= FROM dml_delete_table_list USING required_statement_tail.
+delete_core ::= FROM dml_delete_table_list USING delete_using_tail.
+
+delete_using_tail ::= dml_update_table_reference_tokens.
+delete_using_tail ::= dml_update_table_reference_tokens WHERE expression_start statement_tail.
 
 dml_delete_table_list ::= cache_table_ref.
 dml_delete_table_list ::= dml_delete_table_list import_comma cache_table_ref.

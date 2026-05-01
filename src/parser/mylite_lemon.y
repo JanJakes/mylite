@@ -2241,25 +2241,109 @@ rollback_to_savepoint_tail ::= WORK TO SAVEPOINT savepoint_reference.
 savepoint_reference ::= ATOM.
 savepoint_reference ::= LABEL.
 
-set_statement ::= SET set_first_token required_statement_tail. {
+set_statement ::= SET set_names_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+set_statement ::= SET CHARACTER SET set_charset_value statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+set_statement ::= SET CHARSET set_charset_value statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+set_statement ::= SET PASSWORD set_password_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+set_statement ::= SET ROLE set_role_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+set_statement ::= SET DEFAULT ROLE set_role_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+set_statement ::= SET RESOURCE create_resource_group cache_name_part statement_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+set_statement ::= SET TRANSACTION set_transaction_tail. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+set_statement ::= SET set_assignment. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+set_statement ::= SET set_assignment_scope set_assignment. {
+  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
+}
+set_statement ::= SET set_assignment_scope TRANSACTION set_transaction_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 
-set_first_token ::= ATOM.
-set_first_token ::= CHARACTER.
-set_first_token ::= CHARSET.
-set_first_token ::= DEFAULT.
-set_first_token ::= GLOBAL.
-set_first_token ::= LABEL.
-set_first_token ::= LOCAL.
-set_first_token ::= NAMES.
-set_first_token ::= PASSWORD.
-set_first_token ::= PERSIST.
-set_first_token ::= RESOURCE.
-set_first_token ::= ROLE.
-set_first_token ::= SESSION.
-set_first_token ::= SQL_BUFFER_RESULT.
-set_first_token ::= TRANSACTION.
+set_names_tail ::= NAMES set_charset_value statement_tail.
+
+set_charset_value ::= ATOM.
+set_charset_value ::= BINARY.
+set_charset_value ::= DEFAULT.
+set_charset_value ::= LABEL.
+
+set_password_tail ::= set_password_operator set_value_start statement_tail.
+set_password_tail ::= FOR set_password_target set_password_operator set_value_start statement_tail.
+
+set_password_operator ::= set_assignment_operator.
+set_password_operator ::= TO.
+
+set_password_target ::= drop_account_name.
+set_password_target ::= ATOM LP RP.
+
+set_role_tail ::= set_role_start statement_tail.
+
+set_role_start ::= ALL.
+set_role_start ::= ATOM.
+set_role_start ::= DEFAULT.
+set_role_start ::= LABEL.
+
+set_transaction_tail ::= set_transaction_token statement_tail.
+
+set_transaction_token ::= ATOM.
+set_transaction_token ::= READ.
+set_transaction_token ::= WITH.
+set_transaction_token ::= WRITE.
+
+set_assignment_scope ::= GLOBAL.
+set_assignment_scope ::= LOCAL.
+set_assignment_scope ::= PERSIST.
+set_assignment_scope ::= PERSIST_ONLY.
+set_assignment_scope ::= SESSION.
+
+set_assignment ::= set_variable_name set_assignment_operator set_value_start statement_tail.
+
+set_assignment_operator ::= ATOM(A). {
+  mylite_parser_require_token_text_any(ctx, A, "=", ":=");
+}
+
+set_value_start ::= expression_start.
+set_value_start ::= ALL.
+set_value_start ::= GLOBAL.
+set_value_start ::= LOCAL.
+set_value_start ::= NO.
+set_value_start ::= ON.
+set_value_start ::= PERSIST.
+set_value_start ::= PERSIST_ONLY.
+set_value_start ::= READ.
+set_value_start ::= RESET.
+set_value_start ::= SESSION.
+set_value_start ::= WRITE.
+
+set_variable_name ::= set_variable_part set_variable_dot_tail.
+set_variable_name ::= AT_EMPTY set_variable_part set_variable_dot_tail.
+set_variable_name ::= AT_SIGN set_variable_part set_variable_dot_tail.
+
+set_variable_dot_tail ::= .
+set_variable_dot_tail ::= set_variable_dot_tail DOT set_variable_part.
+
+set_variable_part ::= ATOM.
+set_variable_part ::= AT_HOST.
+set_variable_part ::= DEFAULT.
+set_variable_part ::= FLUSH.
+set_variable_part ::= LABEL.
+set_variable_part ::= SQL_BUFFER_RESULT.
+set_variable_part ::= USER.
 
 grant_statement ::= GRANT grant_subject_list grant_destination_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
@@ -2710,6 +2794,7 @@ keyword ::= LOGFILE.
 keyword ::= OR.
 keyword ::= PLUGIN.
 keyword ::= PERSIST.
+keyword ::= PERSIST_ONLY.
 keyword ::= RESOURCE.
 keyword ::= QUERY.
 keyword ::= READ.
@@ -2926,6 +3011,7 @@ keyword_not_select_clause ::= LOGFILE.
 keyword_not_select_clause ::= OR.
 keyword_not_select_clause ::= PLUGIN.
 keyword_not_select_clause ::= PERSIST.
+keyword_not_select_clause ::= PERSIST_ONLY.
 keyword_not_select_clause ::= RESOURCE.
 keyword_not_select_clause ::= QUERY.
 keyword_not_select_clause ::= READ.

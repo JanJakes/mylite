@@ -604,6 +604,7 @@ static int keyword_token(const MyliteToken *token) {
       {"ORDER", ML_ORDER},
       {"PASSWORD", ML_PASSWORD},
       {"PERSIST", ML_PERSIST},
+      {"PERSIST_ONLY", ML_PERSIST_ONLY},
       {"PLUGIN", ML_PLUGIN},
       {"PLUGIN_DIR", ML_PLUGIN_DIR},
       {"PLUGINS", ML_PLUGINS},

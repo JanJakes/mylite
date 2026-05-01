@@ -59,6 +59,9 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/create-user.html`
 - MySQL 8.4 ALTER USER statement:
   `https://dev.mysql.com/doc/refman/8.4/en/alter-user.html`
+- MySQL 8.4 GRANT and REVOKE statements:
+  `https://dev.mysql.com/doc/refman/8.4/en/grant.html`,
+  `https://dev.mysql.com/doc/refman/8.4/en/revoke.html`
 - MySQL 8.4 routine alteration statements:
   `https://dev.mysql.com/doc/refman/8.4/en/alter-function.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/alter-procedure.html`
@@ -433,7 +436,9 @@ and `SHUTDOWN` reject body tokens because MySQL accepts only the bare statement
 forms. Principal
 targets are recorded for
 `GRANT ... TO` and `REVOKE ... FROM`, including the first `user@host` span when
-present. Account and role DDL target spans also preserve `user@host` /
+present. Those statements validate required target-list markers and documented
+grant/revoke tails while leaving privilege graph semantics to later runtime
+work. Account and role DDL target spans also preserve `user@host` /
 `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and `RENAME` forms, including
 corpus-observed trailing-`@` accounts before option clauses. `CREATE USER`
 validates optional `IF NOT EXISTS`, account lists with authentication clauses,

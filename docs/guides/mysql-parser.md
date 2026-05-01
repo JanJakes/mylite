@@ -256,6 +256,11 @@ Grant and revoke principal targets preserve the first account span:
 ok statements=1 kinds=grant[1:10,0:31]/user:'u'@'h'
 ```
 
+`GRANT` and `REVOKE` validate required `TO` / `FROM` target lists, support
+`CURRENT_USER()` principals, and check documented grant/revoke tail shapes such
+as `WITH GRANT OPTION`, `WITH ADMIN OPTION`, `AS ... WITH ROLE`, and `IGNORE
+UNKNOWN USER`.
+
 Account and role DDL preserve the first account-style target span too.
 `CREATE USER` validates account lists, authentication clauses, default roles,
 TLS, resource, password-management, account-locking, comment, and attribute

@@ -2564,14 +2564,59 @@ if "$parser" --quiet "DROP PREPARE stmt extra"; then
 	exit 1
 fi
 
-principal_output=$("$parser" "GRANT SELECT ON db.t TO 'u'@'h'; GRANT r TO u; REVOKE SELECT ON db.t FROM 'u'@'%'; REVOKE r FROM u")
+principal_output=$("$parser" "GRANT SELECT ON db.t TO 'u'@'h'; GRANT r TO u WITH ADMIN OPTION; GRANT SELECT ON *.* TO u AS admin WITH ROLE DEFAULT; REVOKE IF EXISTS SELECT ON *.* FROM CURRENT_USER() IGNORE UNKNOWN USER; REVOKE r FROM u")
 case "$principal_output" in
-	*"grant"*/user:"'u'@'h'"*"grant"*/user:u*"revoke"*/user:"'u'@'%'"*"revoke"*/user:u*) ;;
+	*"grant"*/user:"'u'@'h'"*"grant"*/user:u*"grant"*/user:u*"revoke"*/user:CURRENT_USER*"revoke"*/user:u*) ;;
 	*)
 		echo "unexpected principal output: $principal_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet "GRANT SELECT ON db.t"; then
+	echo "expected GRANT without TO target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "GRANT TO u"; then
+	echo "expected GRANT without privilege or role source to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "GRANT SELECT ON db.t TO"; then
+	echo "expected GRANT without target principal to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "GRANT SELECT ON db.t TO u,"; then
+	echo "expected GRANT trailing principal comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "GRANT SELECT ON db.t TO u WITH GRANT"; then
+	echo "expected incomplete GRANT WITH GRANT OPTION tail to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "REVOKE SELECT ON db.t"; then
+	echo "expected REVOKE without FROM target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "REVOKE FROM u"; then
+	echo "expected REVOKE without privilege or role source to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "REVOKE SELECT ON db.t FROM"; then
+	echo "expected REVOKE without target principal to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "REVOKE SELECT ON db.t FROM u IGNORE UNKNOWN"; then
+	echo "expected incomplete REVOKE IGNORE UNKNOWN USER tail to fail" >&2
+	exit 1
+fi
 
 account_ddl_output=$("$parser" "CREATE USER 'u'@'h'; ALTER USER 'u'@'%'; DROP USER IF EXISTS 'u'@'%', user1@; RENAME USER 'u'@'h' TO 'v'@'h', u2@localhost TO u3@localhost; CREATE ROLE IF NOT EXISTS 'r'@'%'; DROP ROLE IF EXISTS 'r'@'%', role2")
 case "$account_ddl_output" in

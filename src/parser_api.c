@@ -753,6 +753,23 @@ static int validate_rollback_statement_syntax(const mylite_parser *parser, const
 static int validate_rollback_savepoint_clause(const mylite_parser *parser,
                                               size_t token_index,
                                               size_t last_token_index);
+static int validate_principal_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static size_t find_principal_statement_marker(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index,
+                                              int marker_token);
+static int validate_principal_target_list_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 int is_grant,
+                                                 size_t *next_token_index);
+static int validate_principal_statement_tail_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    int is_grant);
+static int token_starts_principal_statement_tail(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 int is_grant);
 static int validate_start_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_start_transaction_statement_syntax(const mylite_parser *parser,
                                                        size_t token_index,
@@ -2055,6 +2072,13 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_REPAIR:
 			if (!validate_maintenance_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid table maintenance statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_GRANT:
+		case MYLITE_STATEMENT_REVOKE:
+			if (!validate_principal_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid principal statement");
 				return;
 			}
 			break;
@@ -9987,6 +10011,160 @@ static int validate_rollback_savepoint_clause(const mylite_parser *parser,
 
 	return token_index == last_token_index &&
 	       token_can_continue_object_name(&parser->tokens[token_index]);
+}
+
+static int validate_principal_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+	size_t marker_token_index;
+	int is_grant = statement->kind == MYLITE_STATEMENT_GRANT;
+	int marker_token = is_grant ? TO_T : FROM_T;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (!is_grant &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "IF") &&
+	    token_text_equals(parser, token_index + 1, "EXISTS")) {
+		token_index += 2;
+	}
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	marker_token_index = find_principal_statement_marker(parser,
+	                                                     token_index,
+	                                                     last_token_index,
+	                                                     marker_token);
+	if (marker_token_index >= parser->token_count ||
+	    marker_token_index > last_token_index ||
+	    marker_token_index == token_index) {
+		return 0;
+	}
+
+	token_index = marker_token_index + 1;
+	if (!validate_principal_target_list_syntax(parser,
+	                                           token_index,
+	                                           last_token_index,
+	                                           is_grant,
+	                                           &token_index)) {
+		return 0;
+	}
+
+	return validate_principal_statement_tail_syntax(parser, token_index, last_token_index, is_grant);
+}
+
+static size_t find_principal_statement_marker(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index,
+                                              int marker_token)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == marker_token) {
+			return token_index;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+	return parser->token_count;
+}
+
+static int validate_principal_target_list_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 int is_grant,
+                                                 size_t *next_token_index)
+{
+	int saw_name = 0;
+
+	while (token_index <= last_token_index) {
+		if (token_starts_principal_statement_tail(parser, token_index, is_grant)) {
+			break;
+		}
+		if (!validate_principal_name_syntax(parser, token_index, last_token_index, 1, &token_index)) {
+			return 0;
+		}
+		saw_name = 1;
+
+		if (token_index > last_token_index ||
+		    token_starts_principal_statement_tail(parser, token_index, is_grant)) {
+			break;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index ||
+		    token_starts_principal_statement_tail(parser, token_index, is_grant)) {
+			return 0;
+		}
+	}
+
+	*next_token_index = token_index;
+	return saw_name;
+}
+
+static int validate_principal_statement_tail_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    int is_grant)
+{
+	if (token_index > last_token_index) {
+		return 1;
+	}
+
+	if (is_grant && token_text_equals(parser, token_index, "WITH")) {
+		return token_index + 2 == last_token_index &&
+		       ((parser->tokens[token_index + 1].parser_token == GRANT_T &&
+		         token_text_equals(parser, token_index + 2, "OPTION")) ||
+		        (token_text_equals(parser, token_index + 1, "ADMIN") &&
+		         token_text_equals(parser, token_index + 2, "OPTION")));
+	}
+
+	if (is_grant && parser->tokens[token_index].parser_token == AS_T) {
+		token_index++;
+		if (!validate_principal_name_syntax(parser, token_index, last_token_index, 1, &token_index)) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		return token_index + 2 <= last_token_index &&
+		       token_text_equals(parser, token_index, "WITH") &&
+		       parser->tokens[token_index + 1].parser_token == ROLE_T;
+	}
+
+	if (!is_grant && parser->tokens[token_index].parser_token == IGNORE_T) {
+		return token_index + 2 == last_token_index &&
+		       token_text_equals(parser, token_index + 1, "UNKNOWN") &&
+		       parser->tokens[token_index + 2].parser_token == USER_T;
+	}
+
+	return 0;
+}
+
+static int token_starts_principal_statement_tail(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 int is_grant)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	if (is_grant) {
+		return token_text_equals(parser, token_index, "WITH") ||
+		       parser->tokens[token_index].parser_token == AS_T;
+	}
+	return parser->tokens[token_index].parser_token == IGNORE_T;
 }
 
 static int validate_start_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

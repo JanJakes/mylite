@@ -61,6 +61,12 @@ static int test_empty_script(void)
                             "trailing semicolon statement");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT 123", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(result.root, MYLITE_SQL_AST_SCRIPT, "select 123 root");
+    failures += expect_node(child_at(result.root, 0U), MYLITE_SQL_AST_SELECT_STATEMENT,
+                            "select 123 statement");
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

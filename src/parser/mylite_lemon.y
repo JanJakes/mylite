@@ -2182,7 +2182,9 @@ reset_statement ::= RESET reset_tail. {
 }
 
 reset_tail ::= BINARY LOGS AND reset_gtids reset_binary_logs_tail.
-reset_tail ::= MASTER.
+reset_tail ::= MASTER(A). {
+  mylite_parser_require_permissive(ctx, A);
+}
 reset_tail ::= PERSIST reset_persist_tail.
 reset_tail ::= REPLICA reset_replica_tail.
 reset_tail ::= SLAVE reset_replica_tail.

@@ -9,11 +9,16 @@ import test_parser_corpus as corpus
 
 
 EXPECTED_FRAGMENT_FAILURES = [
+    # Removed RESET MASTER syntax; permissive corpus mode keeps accepting the
+    # legacy rows while strict mode requires RESET BINARY LOGS AND GTIDS.
+    103,
     # Bare ALTER TABLE negative-test fragments; permissive corpus mode accepts
     # them, but strict mode should require an alter action.
     508,
     509,
     2410,
+    # Removed RESET MASTER syntax.
+    5873,
     5913,
     7185,
     7187,

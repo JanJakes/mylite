@@ -239,7 +239,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, table forms, simple option lists, binary/engine/error/general/relay/slow log forms, and channel-qualified relay logs. |
 | `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. | Parser recognizes CONNECTION/QUERY modes and literal, shared-identifier local-variable, and user-variable targets. |
 | `LOAD INDEX INTO CACHE` | ❌ | low | MyISAM index preload syntax. | Parser recognizes table/key lists, partition lists, `ALL`, and `IGNORE LEAVES`. |
-| `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. |  |
+| `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. | Parser recognizes MySQL 8.4 reset forms and keeps removed `RESET MASTER` syntax permissive-corpus-only. |
 | `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. | Parser recognizes one- and two-part persisted variable names using the shared identifier grammar. |
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. | Parser recognizes the standalone statement. |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. | Parser recognizes the standalone statement. |

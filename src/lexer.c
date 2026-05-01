@@ -814,7 +814,7 @@ static int is_word_part(unsigned char ch)
 
 static int is_operator_char(unsigned char ch)
 {
-	return strchr("!<>=|&^~:.-+*/%", ch) != NULL;
+	return ch != '\0' && strchr("!<>=|&^~:.-+*/%", ch) != NULL;
 }
 
 static int peek_keyword_after_space(mylite_lexer *lexer, const char *word, size_t length, size_t *end_offset)

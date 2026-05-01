@@ -33,6 +33,15 @@ static int validate_call_statement_syntax(const mylite_parser *parser, const myl
 static int validate_call_argument_list_syntax(const mylite_parser *parser, size_t open_token_index);
 static int validate_import_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_binlog_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_install_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_component_uri_list_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index,
+                                              int allow_set_clause);
+static int validate_install_component_set_clause_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index);
+static int token_is_install_component_set_scope(const mylite_parser *parser, size_t token_index);
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1049,6 +1058,18 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_INSTALL:
+			if (!validate_install_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid INSTALL statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_UNINSTALL:
+			if (!validate_install_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid UNINSTALL statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_KILL:
 			if (!validate_kill_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid KILL statement");
@@ -1277,6 +1298,143 @@ static int validate_binlog_statement_syntax(const mylite_parser *parser, const m
 	last_token_index = statement->last_token - 1;
 	return token_index == last_token_index &&
 	       parser->tokens[token_index].kind == MYLITE_TOKEN_STRING;
+}
+
+static int validate_install_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "COMPONENT")) {
+		return validate_component_uri_list_syntax(parser,
+		                                          token_index + 1,
+		                                          last_token_index,
+		                                          statement->kind == MYLITE_STATEMENT_INSTALL);
+	}
+	if (!token_text_equals(parser, token_index, "PLUGIN")) {
+		return 0;
+	}
+
+	if (statement->kind == MYLITE_STATEMENT_INSTALL) {
+		return token_index + 3 == last_token_index &&
+		       token_can_continue_object_name(&parser->tokens[token_index + 1]) &&
+		       token_text_equals(parser, token_index + 2, "SONAME") &&
+		       parser->tokens[token_index + 3].kind == MYLITE_TOKEN_STRING;
+	}
+
+	return token_index + 1 == last_token_index &&
+	       token_can_continue_object_name(&parser->tokens[token_index + 1]);
+}
+
+static int validate_component_uri_list_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index,
+                                              int allow_set_clause)
+{
+	int expecting_uri = 1;
+
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	for (; token_index <= last_token_index; token_index++) {
+		if (expecting_uri) {
+			if (parser->tokens[token_index].kind != MYLITE_TOKEN_STRING) {
+				return 0;
+			}
+			expecting_uri = 0;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			break;
+		}
+		expecting_uri = 1;
+	}
+	if (expecting_uri) {
+		return 0;
+	}
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (allow_set_clause && token_text_equals(parser, token_index, "SET")) {
+		return validate_install_component_set_clause_syntax(parser, token_index + 1, last_token_index);
+	}
+	return 0;
+}
+
+static int validate_install_component_set_clause_syntax(const mylite_parser *parser,
+                                                        size_t token_index,
+                                                        size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		size_t last_name_token;
+		int has_expression_token = 0;
+
+		if (token_is_install_component_set_scope(parser, token_index)) {
+			token_index++;
+		}
+		if (token_index > last_token_index ||
+		    !token_can_start_set_system_variable_name(parser, token_index, last_token_index)) {
+			return 0;
+		}
+
+		last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+		token_index = last_name_token + 1;
+		if (token_index > last_token_index ||
+		    !token_is_assignment_operator(parser, token_index)) {
+			return 0;
+		}
+
+		token_index++;
+		while (token_index <= last_token_index) {
+			size_t matching_token = parser->tokens[token_index].matching_token;
+
+			if (matching_token > token_index + 1) {
+				has_expression_token = 1;
+				token_index = matching_token;
+				continue;
+			}
+			if (parser->tokens[token_index].parser_token == ',') {
+				break;
+			}
+			has_expression_token = 1;
+			token_index++;
+		}
+		if (!has_expression_token) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static int token_is_install_component_set_scope(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "GLOBAL") ||
+	       token_text_equals(parser, token_index, "LOCAL") ||
+	       token_text_equals(parser, token_index, "SESSION") ||
+	       token_text_equals(parser, token_index, "PERSIST") ||
+	       token_text_equals(parser, token_index, "PERSIST_ONLY");
 }
 
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

@@ -281,7 +281,9 @@ leaving compound `BEGIN ... END` blocks objectless. `COMMIT` and non-savepoint
 `ROLLBACK` validate MySQL completion-clause ordering for `AND [NO] CHAIN` and
 `[NO] RELEASE`. Quoted `HELP` search
 topics are recorded as help-topic targets. Component and plugin targets are
-recorded for `INSTALL` and `UNINSTALL` administrative statements.
+recorded for `INSTALL` and `UNINSTALL` administrative statements, with
+component URI string lists, optional `INSTALL COMPONENT ... SET` assignments,
+and plugin `SONAME` syntax validated.
 Local `CLONE` directory targets and remote `CLONE INSTANCE` donor endpoints
 are recorded as direct targets.
 `STOP` has an explicit statement kind for replication-control statements.

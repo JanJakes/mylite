@@ -977,7 +977,7 @@ if "$parser" --quiet 'SHUTDOWN NOW'; then
 	exit 1
 fi
 
-install_output=$("$parser" "INSTALL PLUGIN p SONAME 'x.so'; UNINSTALL PLUGIN p; INSTALL COMPONENT 'file://component'; UNINSTALL COMPONENT 'file://component'")
+install_output=$("$parser" "INSTALL PLUGIN p SONAME 'x.so'; UNINSTALL PLUGIN p; INSTALL COMPONENT 'file://component', 'file://component2'; INSTALL COMPONENT 'file://component_validate_password' SET length = 8 + 8, PERSIST validate_password.number_count = 13; UNINSTALL COMPONENT 'file://component', 'file://component2'")
 case "$install_output" in
 	*"install"*/plugin:p*"uninstall"*/plugin:p*"install"*/component:"'file://component'"*"uninstall"*/component:"'file://component'"*) ;;
 	*)
@@ -985,6 +985,71 @@ case "$install_output" in
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet "INSTALL PLUGIN p"; then
+	echo "expected missing INSTALL PLUGIN SONAME to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "INSTALL PLUGIN p SONAME"; then
+	echo "expected missing INSTALL PLUGIN library to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "INSTALL PLUGIN 1 SONAME 'x.so'"; then
+	echo "expected numeric INSTALL PLUGIN target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "INSTALL COMPONENT @component"; then
+	echo "expected variable INSTALL COMPONENT URI to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "INSTALL COMPONENT 'file://component',"; then
+	echo "expected trailing INSTALL COMPONENT comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "INSTALL COMPONENT 'file://component' SET"; then
+	echo "expected missing INSTALL COMPONENT SET assignment to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "INSTALL COMPONENT 'file://component' SET length"; then
+	echo "expected missing INSTALL COMPONENT SET assignment operator to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "INSTALL COMPONENT 'file://component' SET length ="; then
+	echo "expected missing INSTALL COMPONENT SET value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "INSTALL COMPONENT 'file://component' SET length = 12,"; then
+	echo "expected trailing INSTALL COMPONENT SET comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "UNINSTALL PLUGIN"; then
+	echo "expected missing UNINSTALL PLUGIN target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "UNINSTALL PLUGIN p extra"; then
+	echo "expected trailing UNINSTALL PLUGIN tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "UNINSTALL COMPONENT @component"; then
+	echo "expected variable UNINSTALL COMPONENT URI to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "UNINSTALL COMPONENT 'file://component' SET length = 12"; then
+	echo "expected UNINSTALL COMPONENT SET clause to fail" >&2
+	exit 1
+fi
 
 savepoint_output=$("$parser" 'SAVEPOINT s; SAVEPOINT `select`; RELEASE SAVEPOINT s; ROLLBACK TO SAVEPOINT `s`; ROLLBACK TO `s`; ROLLBACK WORK TO s; ROLLBACK WORK TO SAVEPOINT s; ROLLBACK; ROLLBACK WORK AND CHAIN')
 case "$savepoint_output" in

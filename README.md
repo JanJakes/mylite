@@ -120,7 +120,51 @@ evaluation before becoming part of the default build:
 
 ## Development
 
-TBD.
+MyLite uses a CMake-based C17 monorepo. The core library lives in
+`packages/libmylite/`; shared CMake helpers live in `cmake/`; command-line
+tools live under `tools/`; cross-package tests live under `tests/`.
+
+Install the local build tools on macOS:
+
+```sh
+brew install ninja llvm
+```
+
+Put Homebrew LLVM on `PATH` before running the local developer toolchain:
+
+```sh
+export PATH="$(brew --prefix llvm)/bin:$PATH"
+```
+
+Windows CI runs on `windows-2025` with clang and Ninja. Local Windows
+development should use the same CMake presets from a shell where CMake, Ninja,
+and LLVM clang are on `PATH`.
+
+Build and test from the repository root:
+
+```sh
+cmake --preset dev          # configure build/dev with Ninja and strict checks
+cmake --build --preset dev  # build the default targets
+ctest --preset dev          # run tests and print failures
+```
+
+Run all local checks:
+
+```sh
+cmake --workflow --preset check  # configure, format-check, build, test, tidy
+```
+
+Run formatting and static-analysis checks individually:
+
+```sh
+cmake --build --preset format-check  # verify clang-format
+cmake --build --preset tidy          # run clang-tidy
+```
+
+See [docs/architecture/monorepo.md](docs/architecture/monorepo.md) for the
+current layout contract and
+[docs/architecture/engineering-standards.md](docs/architecture/engineering-standards.md)
+for the coding, ABI, dependency, test, and compatibility rules.
 
 ## References
 

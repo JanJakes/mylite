@@ -3,7 +3,11 @@
 MyLite is an embedded MySQL compatibility layer built on SQLite. Keep changes
 focused on that goal.
 
-Read the [README.md](README.md) file of this repository and stick to the following rules:
+Read the [README.md](README.md) file of this repository and stick to the following rules.
+Before implementation work, also read
+[docs/architecture/engineering-standards.md](docs/architecture/engineering-standards.md)
+and follow it for C style, ABI design, ownership, testing, dependency,
+generated-code, and compatibility policy:
 
 - Preserve MySQL 8 LTS behavior, currently tested against MySQL 8.4.9.
 - Design and specify features before implementing them, then update

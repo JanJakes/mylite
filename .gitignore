@@ -1,0 +1,21 @@
+# Build outputs
+/build*/
+/cmake-build-*/
+/out/
+
+# CMake user files
+CMakeUserPresets.json
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+DartConfiguration.tcl
+Testing/
+
+# Native build products
+*.a
+*.dylib
+*.exe
+*.o
+*.so

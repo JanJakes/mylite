@@ -276,7 +276,7 @@ token sink:
   histogram bucket counts, MySQL 8.4 automatic/manual histogram update modes,
   single-table histogram clauses, and single-column string-literal histogram
   data.
-- `CHECK TABLE`, `CHECKSUM TABLE`, `OPTIMIZE TABLE`, and `REPAIR TABLE`
+- `CHECK TABLE`, `CHECKSUM TABLE`/`TABLES`, `OPTIMIZE TABLE`, and `REPAIR TABLE`
   recognize table lists and their documented parser-level option keywords.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, numeric VCPU ranges, numeric thread priorities, force modifiers,
@@ -428,7 +428,7 @@ token sink:
   lists, table forms, log variants, and channel-qualified relay logs. Removed
   `FLUSH HOSTS` syntax is permissive-corpus-only.
 - `RESTART`, `SHUTDOWN`, and `HELP` recognize their closed parser-level
-  statement shapes.
+  statement shapes, including no-topic `HELP`.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,

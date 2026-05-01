@@ -229,7 +229,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SET RESOURCE GROUP` | ❌ | low | Thread assignment to resource groups. | Parser recognizes optional numeric `FOR` thread-id lists. |
 | `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. | Parser recognizes table lists and single-table histogram update/drop clauses, including numeric histogram bucket counts, automatic/manual histogram update modes, and single-column string-literal histogram data, using the shared identifier grammar for tables and columns. |
 | `CHECK TABLE` | ❌ | high | Table consistency checks and result-set metadata. | Parser recognizes table lists and documented option keywords including `FOR UPGRADE`. |
-| `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. | Parser recognizes table lists and optional `QUICK`/`EXTENDED` modifiers. |
+| `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. | Parser recognizes `TABLE`/`TABLES`, table lists, and optional `QUICK`/`EXTENDED` modifiers. |
 | `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers and table lists. |
 | `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, table lists, and `QUICK`/`EXTENDED`/`USE_FRM` options. |
 | `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. | Parser recognizes string-literal component file lists and optional `SET` assignments with global/persist scopes, and rejects malformed assignment values with adjacent operands, dangling operators, and invalid plain parenthesized groups. |
@@ -250,7 +250,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. | Parser recognizes the standalone statement. |
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. | Parser recognizes table/column forms using the shared identifier grammar plus EXPLAIN-synonym variants, including numeric `FOR CONNECTION` ids with optional `FORMAT` clauses and validated explainable statement tails. |
 | `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. | Parser recognizes table-description forms, `FORMAT=JSON INTO @var` with user-variable targets, `FOR SCHEMA`/`FOR DATABASE` schema specifiers, numeric `FOR CONNECTION` ids with optional `FORMAT` clauses, explicit `ANALYZE` statement starts, and validated explainable statement tails including `TABLE`. |
-| `HELP` | ❌ | low | Server help lookup result-set semantics. | Parser recognizes string, identifier, and keyword help topics. |
+| `HELP` | ❌ | low | Server help lookup result-set semantics. | Parser recognizes no-topic help plus string, identifier, numeric, and keyword help topics. |
 | `USE` | ❌ | top | Default schema selection in the embedded single-file model. | Parser recognizes one-part schema names using the shared identifier grammar. |
 
 ### 1.5 SHOW Statements

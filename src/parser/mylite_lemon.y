@@ -2267,7 +2267,7 @@ check_table_option ::= MEDIUM.
 
 check_upgrade_marker ::= UPGRADE.
 
-checksum_table_tail ::= TABLE table_admin_table_list checksum_table_option.
+checksum_table_tail ::= table_admin_table_keyword table_admin_table_list checksum_table_option.
 
 checksum_table_option ::= .
 checksum_table_option ::= QUICK.
@@ -4258,9 +4258,12 @@ iterate_statement ::= ITERATE stored_program_label_ref. {
 
 stored_program_label_ref ::= cache_name_part.
 
-help_statement ::= HELP help_topic. {
+help_statement ::= HELP help_topic_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
+
+help_topic_tail ::= .
+help_topic_tail ::= help_topic.
 
 help_topic ::= ATOM.
 help_topic ::= LABEL.

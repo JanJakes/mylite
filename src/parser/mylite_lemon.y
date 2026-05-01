@@ -801,10 +801,10 @@ create_undofile ::= UNDOFILE.
 create_logfile_group_options_tail ::= .
 create_logfile_group_options_tail ::= create_logfile_group_options_tail create_logfile_group_option.
 
-create_logfile_group_option ::= INITIAL_SIZE drop_index_option_equals_tail ATOM.
-create_logfile_group_option ::= UNDO_BUFFER_SIZE drop_index_option_equals_tail ATOM.
-create_logfile_group_option ::= REDO_BUFFER_SIZE drop_index_option_equals_tail ATOM.
-create_logfile_group_option ::= NODEGROUP drop_index_option_equals_tail ATOM.
+create_logfile_group_option ::= INITIAL_SIZE drop_index_option_equals_tail tablespace_number_value.
+create_logfile_group_option ::= UNDO_BUFFER_SIZE drop_index_option_equals_tail tablespace_number_value.
+create_logfile_group_option ::= REDO_BUFFER_SIZE drop_index_option_equals_tail tablespace_number_value.
+create_logfile_group_option ::= NODEGROUP drop_index_option_equals_tail tablespace_number_value.
 create_logfile_group_option ::= WAIT.
 create_logfile_group_option ::= COMMENT drop_index_option_equals_tail ATOM.
 
@@ -813,7 +813,7 @@ alter_logfile_group_tail ::= create_add create_undofile ATOM alter_logfile_group
 alter_logfile_group_options_tail ::= .
 alter_logfile_group_options_tail ::= alter_logfile_group_options_tail alter_logfile_group_option.
 
-alter_logfile_group_option ::= INITIAL_SIZE drop_index_option_equals_tail ATOM.
+alter_logfile_group_option ::= INITIAL_SIZE drop_index_option_equals_tail tablespace_number_value.
 alter_logfile_group_option ::= WAIT.
 
 logfile_group_engine_clause ::= ENGINE drop_index_option_equals_tail cache_name_part.
@@ -824,14 +824,14 @@ create_tablespace_options_tail ::= .
 create_tablespace_options_tail ::= create_tablespace_options_tail create_tablespace_option.
 
 create_tablespace_option ::= create_add create_datafile ATOM.
-create_tablespace_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail ATOM.
-create_tablespace_option ::= FILE_BLOCK_SIZE drop_index_option_equals_tail ATOM.
+create_tablespace_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
+create_tablespace_option ::= FILE_BLOCK_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 create_tablespace_option ::= USE LOGFILE create_logfile_group cache_name_part.
-create_tablespace_option ::= EXTENT_SIZE drop_index_option_equals_tail ATOM.
-create_tablespace_option ::= INITIAL_SIZE drop_index_option_equals_tail ATOM.
-create_tablespace_option ::= MAX_SIZE drop_index_option_equals_tail ATOM.
-create_tablespace_option ::= NODEGROUP drop_index_option_equals_tail ATOM.
+create_tablespace_option ::= EXTENT_SIZE drop_index_option_equals_tail tablespace_number_value.
+create_tablespace_option ::= INITIAL_SIZE drop_index_option_equals_tail tablespace_number_value.
+create_tablespace_option ::= MAX_SIZE drop_index_option_equals_tail tablespace_number_value.
+create_tablespace_option ::= NODEGROUP drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= WAIT.
 create_tablespace_option ::= COMMENT drop_index_option_equals_tail ATOM.
 create_tablespace_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
@@ -842,11 +842,15 @@ create_undo_tablespace_tail ::= create_add create_datafile ATOM create_tablespac
 create_tablespace_post_datafile_options_tail ::= .
 create_tablespace_post_datafile_options_tail ::= create_tablespace_post_datafile_options_tail create_tablespace_post_datafile_option.
 
-create_tablespace_post_datafile_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail ATOM.
-create_tablespace_post_datafile_option ::= FILE_BLOCK_SIZE drop_index_option_equals_tail ATOM.
+create_tablespace_post_datafile_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
+create_tablespace_post_datafile_option ::= FILE_BLOCK_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_post_datafile_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 create_tablespace_post_datafile_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
 create_tablespace_post_datafile_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
+
+tablespace_number_value ::= BOOLEAN_NUMBER.
+tablespace_number_value ::= FACTOR_NUMBER.
+tablespace_number_value ::= NUMBER_LITERAL.
 
 create_server_tail ::= create_foreign DATA create_wrapper cache_name_part create_server_options.
 
@@ -1489,7 +1493,7 @@ alter_resource_group_force_tail ::= FORCE.
 alter_tablespace_action ::= RENAME TO cache_name_part.
 alter_tablespace_action ::= ADD create_datafile ATOM alter_tablespace_datafile_options_tail.
 alter_tablespace_action ::= DROP create_datafile ATOM alter_tablespace_datafile_options_tail.
-alter_tablespace_action ::= AUTOEXTEND_SIZE drop_index_option_equals_tail ATOM.
+alter_tablespace_action ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
 alter_tablespace_action ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 alter_tablespace_action ::= ENGINE drop_index_option_equals_tail cache_name_part.
 alter_tablespace_action ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
@@ -1497,7 +1501,7 @@ alter_tablespace_action ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
 alter_tablespace_datafile_options_tail ::= .
 alter_tablespace_datafile_options_tail ::= alter_tablespace_datafile_options_tail alter_tablespace_datafile_option.
 
-alter_tablespace_datafile_option ::= INITIAL_SIZE drop_index_option_equals_tail ATOM.
+alter_tablespace_datafile_option ::= INITIAL_SIZE drop_index_option_equals_tail tablespace_number_value.
 alter_tablespace_datafile_option ::= WAIT.
 alter_tablespace_datafile_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
 

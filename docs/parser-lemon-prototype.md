@@ -55,10 +55,11 @@ token sink:
   definitions; trailing table options must start with known MySQL table-option
   keywords, and post-definition CTAS forms are recognized explicitly.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
-  documented NDB logfile options, and required `ENGINE` clauses.
+  documented NDB logfile options with numeric size/nodegroup values, and
+  required `ENGINE` clauses.
 - `CREATE TABLESPACE`, `CREATE UNDO TABLESPACE`, and `ALTER TABLESPACE`
-  recognize documented data-file, size, `'Y'`/`'N'` encryption, engine, and
-  attribute clauses.
+  recognize documented data-file, numeric size, `'Y'`/`'N'` encryption,
+  engine, and attribute clauses.
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
   `OPTIONS` names and value requirements.
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,

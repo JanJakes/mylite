@@ -69,11 +69,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. | Parser recognizes schedule, completion, rename, enable/disable, comment, and `DO` clauses. |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |
-| `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, `INITIAL_SIZE`, `WAIT`, and required `ENGINE`. |
+| `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, numeric `INITIAL_SIZE`, `WAIT`, and required `ENGINE`. |
 | `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. | Parser recognizes the documented `OPTIONS` names and value requirements. |
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. | Parser recognizes selected closed actions including comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `FORCE`, `ENABLE/DISABLE KEYS`, `RENAME` forms, `DROP` forms, `ALTER` subactions, charset/order changes, partition definition/maintenance/exchange/reorganize forms, tablespace/storage/union changes, table option changes with numeric/boolean/default value domains, `ALGORITHM`/`LOCK` options, and tablespace discard/import forms. |
-| `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser recognizes rename, `ADD/DROP DATAFILE`, size, `'Y'`/`'N'` encryption, engine, and attribute clauses. |
+| `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. | Parser recognizes rename, `ADD/DROP DATAFILE`, numeric size, `'Y'`/`'N'` encryption, engine, and attribute clauses. |
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. |  |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |
 | `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. | Parser recognizes charset, collation, and `'Y'`/`'N'` encryption option clauses. |
@@ -81,7 +81,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. | Parser recognizes empty and comma-separated parameter signatures with nested type bodies. |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
 | `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. | Parser recognizes non-empty functional/key-part lists plus index options for parser plugins, comments, visibility, engine attributes, `KEY_BLOCK_SIZE`, `USING`, `ALGORITHM`, and `LOCK`. |
-| `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, NDB size/comment options, `WAIT`, and required `ENGINE`. |
+| `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, NDB numeric size/nodegroup options, comments, `WAIT`, and required `ENGINE`. |
 | `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. | Parser recognizes empty and comma-separated parameter signatures with nested type bodies. |
 | `CREATE SERVER` | ❌ | low | Foreign server metadata syntax. | Parser recognizes `FOREIGN DATA WRAPPER` with documented `OPTIONS` names and value requirements. |
 | `CREATE SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system catalog DDL. | Parser recognizes bare, `IF NOT EXISTS`, `OR REPLACE`, and documented SRS attribute syntax. |
@@ -89,7 +89,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE TEMPORARY TABLE` | ❌ | high | Session-scoped table lifecycle and name shadowing. |  |
 | `CREATE TABLE ... LIKE` | ❌ | high | Exact metadata cloning rules. |  |
 | `CREATE TABLE ... SELECT` | ❌ | high | CTAS type inference, default handling, indexes, and atomicity. |  |
-| `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. | Parser recognizes data files, autoextend/file-block sizes, `'Y'`/`'N'` encryption, NDB logfile/size/comment options, engine, and engine attributes. |
+| `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. | Parser recognizes data files, numeric autoextend/file-block sizes, `'Y'`/`'N'` encryption, NDB logfile/size/nodegroup/comment options, engine, and engine attributes. |
 | `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax present in the MySQL 8.4 parser source. |  |
 | `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. |  |
 | `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. |  |

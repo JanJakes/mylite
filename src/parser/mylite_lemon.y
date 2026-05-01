@@ -881,7 +881,7 @@ create_resource_type_value ::= SYSTEM.
 
 create_logfile_group ::= GROUP.
 
-create_logfile_group_tail ::= create_add create_undofile string_literal create_logfile_group_options_tail logfile_group_engine_clause.
+create_logfile_group_tail ::= create_add create_undofile string_literal create_logfile_group_options_tail.
 
 create_add ::= ADD.
 
@@ -896,18 +896,18 @@ create_logfile_group_option ::= INITIAL_SIZE drop_index_option_equals_tail table
 create_logfile_group_option ::= UNDO_BUFFER_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_logfile_group_option ::= REDO_BUFFER_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_logfile_group_option ::= NODEGROUP drop_index_option_equals_tail tablespace_number_value.
+create_logfile_group_option ::= tablespace_engine_option.
 create_logfile_group_option ::= WAIT.
 create_logfile_group_option ::= COMMENT drop_index_option_equals_tail string_literal.
 
-alter_logfile_group_tail ::= create_add create_undofile string_literal alter_logfile_group_options_tail logfile_group_engine_clause.
+alter_logfile_group_tail ::= create_add create_undofile string_literal alter_logfile_group_options_tail.
 
 alter_logfile_group_options_tail ::= .
 alter_logfile_group_options_tail ::= alter_logfile_group_options_tail alter_logfile_group_option.
 
 alter_logfile_group_option ::= INITIAL_SIZE drop_index_option_equals_tail tablespace_number_value.
+alter_logfile_group_option ::= tablespace_engine_option.
 alter_logfile_group_option ::= WAIT.
-
-logfile_group_engine_clause ::= ENGINE drop_index_option_equals_tail cache_name_part.
 
 create_tablespace_tail ::= create_tablespace_options_tail.
 
@@ -925,7 +925,7 @@ create_tablespace_option ::= MAX_SIZE drop_index_option_equals_tail tablespace_n
 create_tablespace_option ::= NODEGROUP drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= WAIT.
 create_tablespace_option ::= COMMENT drop_index_option_equals_tail string_literal.
-create_tablespace_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
+create_tablespace_option ::= tablespace_engine_option.
 create_tablespace_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
 
 create_undo_tablespace_tail ::= create_add create_datafile string_literal undo_tablespace_options_tail.
@@ -1679,15 +1679,16 @@ alter_tablespace_action ::= ADD create_datafile string_literal alter_tablespace_
 alter_tablespace_action ::= DROP create_datafile string_literal alter_tablespace_datafile_options_tail.
 alter_tablespace_action ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
 alter_tablespace_action ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
-alter_tablespace_action ::= ENGINE drop_index_option_equals_tail cache_name_part.
+alter_tablespace_action ::= tablespace_engine_option.
 alter_tablespace_action ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
+alter_tablespace_action ::= WAIT.
 
 alter_tablespace_datafile_options_tail ::= .
 alter_tablespace_datafile_options_tail ::= alter_tablespace_datafile_options_tail alter_tablespace_datafile_option.
 
 alter_tablespace_datafile_option ::= INITIAL_SIZE drop_index_option_equals_tail tablespace_number_value.
 alter_tablespace_datafile_option ::= WAIT.
-alter_tablespace_datafile_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
+alter_tablespace_datafile_option ::= tablespace_engine_option.
 
 alter_undo_tablespace_action ::= SET alter_undo_tablespace_state undo_tablespace_options_tail.
 

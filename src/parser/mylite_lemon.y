@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER AS BACKUP BEFORE BUCKETS CHANNEL COLLATE CONSISTENT CONVERT DATAFILE DISABLE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EXISTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN GROUP GTIDS HISTOGRAM INACTIVE INFILE INNODB INVOKER JOIN KEYRING LEAVES MIGRATE ONE ONLY OPTIONS PARTITION PHASE PRECEDES REDO_LOG REFERENCE RELOAD RESUME RETURNS ROTATE SCHEDULE SNAPSHOT SONAME SOURCE SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SUSPEND SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID DOT AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS BACKUP BEFORE BUCKETS CHANNEL COLLATE CONSISTENT CONVERT DATAFILE DIRECTORY DISABLE DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EXISTS EXPORT FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INVOKER JOIN KEYRING LEAVES MIGRATE NOT ONE ONLY OPTIONS PARTITION PHASE PRECEDES REDO_LOG REFERENCE RELOAD RESUME RETURNS ROTATE SCHEDULE SNAPSHOT SONAME SOURCE SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SUSPEND SYSTEM THREAD_PRIORITY TLS TYPE UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID DOT AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -398,9 +398,7 @@ routine_signature_token ::= RC.
 create_if_not_exists_tail ::= .
 create_if_not_exists_tail ::= IF create_not reset_exists.
 
-create_not ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "NOT");
-}
+create_not ::= NOT.
 
 create_options_tail ::= .
 create_options_tail ::= create_options_tail statement_token.
@@ -1635,15 +1633,11 @@ clone_colon ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, ":");
 }
 
-clone_identified ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "IDENTIFIED");
-}
+clone_identified ::= IDENTIFIED.
 
 clone_password ::= ATOM.
 
-clone_directory ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "DIRECTORY");
-}
+clone_directory ::= DIRECTORY.
 
 clone_directory_path ::= ATOM.
 
@@ -1683,9 +1677,7 @@ flush_table_list ::= flush_table_list import_comma cache_table_ref.
 flush_table_modifier ::= WITH READ LOCK.
 flush_table_modifier ::= FOR flush_export.
 
-flush_export ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "EXPORT");
-}
+flush_export ::= EXPORT.
 
 restart_statement ::= RESTART. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
@@ -1809,9 +1801,7 @@ query_parenthesized_tail ::= UNION dml_write_union_tail.
 query_parenthesized_tail ::= ORDER BY expression_start statement_tail.
 query_parenthesized_tail ::= LIMIT ATOM statement_tail.
 
-dml_write_duplicate_tail ::= ATOM(A) KEY UPDATE update_assignment_start. {
-  mylite_parser_require_token_text(ctx, A, "DUPLICATE");
-}
+dml_write_duplicate_tail ::= DUPLICATE KEY UPDATE update_assignment_start.
 
 dml_write_start ::= VALUES.
 dml_write_start ::= VALUE.
@@ -2031,9 +2021,7 @@ values_order_expression ::= LP values_row_contents RP.
 
 values_order_direction ::= .
 values_order_direction ::= DESC.
-values_order_direction ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "ASC");
-}
+values_order_direction ::= ASC.
 
 values_limit_tail ::= LIMIT ATOM.
 values_limit_tail ::= LIMIT ATOM import_comma ATOM.
@@ -2600,9 +2588,6 @@ declare_handler_action ::= CONTINUE.
 declare_handler_action ::= EXIT.
 declare_handler_action ::= UNDO.
 
-declare_handler_keyword ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "HANDLER");
-}
 declare_handler_keyword ::= HANDLER.
 
 declare_handler_conditions ::= declare_handler_condition.
@@ -2611,13 +2596,9 @@ declare_handler_conditions ::= declare_handler_conditions COMMA declare_handler_
 declare_handler_condition ::= declare_condition_value.
 declare_handler_condition ::= declare_not declare_found.
 
-declare_not ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "NOT");
-}
+declare_not ::= NOT.
 
-declare_found ::= ATOM(A). {
-  mylite_parser_require_token_text(ctx, A, "FOUND");
-}
+declare_found ::= FOUND.
 
 declare_handler_statement_start ::= BEGIN.
 declare_handler_statement_start ::= CALL.

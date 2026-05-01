@@ -66,8 +66,9 @@ token sink:
   plain parenthesized expression groups, trailing separators inside those
   groups, and out-of-order top-level DML clauses.
 - `VALUES` recognizes comma-separated row contents while preserving nested
-  expression bodies, set operators, `ORDER BY`, and `LIMIT` tails, and malformed
-  `SELECT` operands after set operators are rejected.
+  expression bodies, rejects adjacent operands and dangling operators in row
+  expression lists, preserves set operators, `ORDER BY`, and `LIMIT` tails, and
+  malformed `SELECT` operands after set operators are rejected.
 - `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`
   forms, `INTO` variable lists, and file output targets, and malformed `SELECT`
   operands after set operators are rejected.

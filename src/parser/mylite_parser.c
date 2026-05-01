@@ -4069,8 +4069,73 @@ void mylite_parser_validate_show_statement(MyliteParseContext *ctx,
   }
 }
 
+void mylite_parser_validate_values_statement_from(MyliteParseContext *ctx,
+                                                  MyliteToken start) {
+  enum {
+    VALUES_VALIDATE_READY,
+    VALUES_VALIDATE_AFTER_ROW,
+    VALUES_VALIDATE_IN_ROW
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int depth = 0;
+  int state = VALUES_VALIDATE_READY;
+  MyliteExpressionStack expression_stack = {0};
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (depth > 0) {
+      if (!query_expression_depth_token(ctx, token_id, token, &depth,
+                                        &expression_stack,
+                                        "malformed VALUES row")) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id) && depth == 0) {
+        state = VALUES_VALIDATE_READY;
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      break;
+    }
+
+    if (state == VALUES_VALIDATE_AFTER_ROW) {
+      if (token_id != ML_LP) {
+        mylite_parser_reject(ctx, pending_token, "incomplete VALUES row");
+        return;
+      }
+      state = VALUES_VALIDATE_IN_ROW;
+      depth = 1;
+      query_expression_stack_open_list(&expression_stack, depth, token, 0);
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_ROW) {
+      state = VALUES_VALIDATE_AFTER_ROW;
+      pending_token = token;
+      continue;
+    }
+  }
+
+  if (state == VALUES_VALIDATE_AFTER_ROW) {
+    mylite_parser_reject(ctx, pending_token, "incomplete VALUES row");
+  }
+}
+
 void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
-                                                    MyliteToken start) {
+                                                   MyliteToken start) {
   enum {
     CREATE_TABLE_FIND_BODY,
     CREATE_TABLE_BODY_START,

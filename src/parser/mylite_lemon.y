@@ -3504,7 +3504,10 @@ with_query_body ::= TABLE(A) table_statement_target table_query_tail. {
   mylite_parser_validate_select_statement_from(ctx, A);
 }
 with_query_body ::= VALUES(A) values_row_list values_query_tail. {
-  mylite_parser_validate_select_statement_from(ctx, A);
+  mylite_parser_validate_values_statement_from(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_validate_select_statement_from(ctx, A);
+  }
 }
 with_query_body ::= DELETE(A) delete_tail. {
   mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_DELETE);
@@ -3574,8 +3577,11 @@ table_into_variable_list ::= table_into_variable_list import_comma table_into_va
 table_into_variable ::= user_variable_name.
 table_into_variable ::= cache_name_part.
 
-values_statement ::= VALUES values_row_list values_query_tail. {
-  mylite_parser_validate_select_statement(ctx);
+values_statement ::= VALUES(A) values_row_list values_query_tail. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_validate_select_statement(ctx);
+  }
   if (!ctx->failed) {
     mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
   }

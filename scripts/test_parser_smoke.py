@@ -548,6 +548,7 @@ def main() -> int:
         ("describe t c extra;", 1, {}),
         ("describe from;", 1, {}),
         ("explain select * from t;", 0, {"statements": "1", "show": "1"}),
+        ("explain format=json select * from t;", 0, {"statements": "1", "show": "1"}),
         ("explain format=tree select * from t;", 0, {"statements": "1", "show": "1"}),
         ("explain format=traditional select * from t;", 0, {"statements": "1", "show": "1"}),
         ("explain for connection 1;", 0, {"statements": "1", "show": "1"}),

@@ -639,7 +639,7 @@ alter_user_func_option_tail ::= DISCARD OLD PASSWORD.
 alter_user_func_option_tail ::= account_registration_option.
 
 alter_user_auth_tail ::= .
-alter_user_auth_tail ::= REPLACE user_auth_value alter_user_retain_tail.
+alter_user_auth_tail ::= REPLACE user_auth_string_value alter_user_retain_tail.
 alter_user_auth_tail ::= RETAIN CURRENT PASSWORD.
 
 alter_user_retain_tail ::= .
@@ -657,12 +657,12 @@ create_user_third_factor_tail ::= AND create_user_factor_auth_option.
 create_user_factor_auth_option ::= user_auth_option.
 
 account_initial_auth_option ::= INITIAL AUTHENTICATION IDENTIFIED BY user_auth_value.
-account_initial_auth_option ::= INITIAL AUTHENTICATION IDENTIFIED WITH user_auth_plugin AS user_auth_value.
+account_initial_auth_option ::= INITIAL AUTHENTICATION IDENTIFIED WITH user_auth_plugin AS user_auth_string_value.
 
 user_auth_option ::= account_password_auth_option.
 user_auth_option ::= IDENTIFIED WITH user_auth_plugin.
 user_auth_option ::= IDENTIFIED WITH user_auth_plugin BY user_auth_value.
-user_auth_option ::= IDENTIFIED WITH user_auth_plugin AS user_auth_value.
+user_auth_option ::= IDENTIFIED WITH user_auth_plugin AS user_auth_string_value.
 
 account_password_auth_option ::= IDENTIFIED BY user_auth_value.
 
@@ -685,16 +685,18 @@ alter_user_factor_drop_option ::= DROP account_factor.
 
 account_factor_auth_option ::= account_password_auth_option.
 account_factor_auth_option ::= IDENTIFIED WITH user_auth_plugin BY user_auth_value.
-account_factor_auth_option ::= IDENTIFIED WITH user_auth_plugin AS user_auth_value.
+account_factor_auth_option ::= IDENTIFIED WITH user_auth_plugin AS user_auth_string_value.
 
 account_registration_option ::= account_factor INITIATE REGISTRATION.
-account_registration_option ::= account_factor FINISH REGISTRATION SET CHALLENGE_RESPONSE AS user_auth_value.
+account_registration_option ::= account_factor FINISH REGISTRATION SET CHALLENGE_RESPONSE AS user_auth_string_value.
 account_registration_option ::= account_factor UNREGISTER.
 
 account_factor ::= FACTOR_NUMBER FACTOR.
 
-user_auth_value ::= user_option_value.
+user_auth_value ::= user_auth_string_value.
 user_auth_value ::= RANDOM PASSWORD.
+
+user_auth_string_value ::= string_literal.
 
 user_auth_plugin ::= user_option_value.
 
@@ -739,9 +741,9 @@ account_tls_option_list ::= account_tls_option_list account_tls_and_tail account
 account_tls_and_tail ::= .
 account_tls_and_tail ::= AND.
 
-account_tls_option ::= CIPHER user_option_value.
-account_tls_option ::= ISSUER user_option_value.
-account_tls_option ::= SUBJECT user_option_value.
+account_tls_option ::= CIPHER string_literal.
+account_tls_option ::= ISSUER string_literal.
+account_tls_option ::= SUBJECT string_literal.
 
 account_resource_options ::= account_resource_option.
 account_resource_options ::= account_resource_options account_resource_option.

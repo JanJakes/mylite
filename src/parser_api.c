@@ -51,6 +51,15 @@ static size_t find_insert_or_replace_name_token(const mylite_parser *parser,
 static size_t find_update_name_token(const mylite_parser *parser,
                                      size_t token_index,
                                      size_t last_token_index);
+static size_t find_table_reference_name_token(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index,
+                                              int stop_token);
+static int group_starts_query_expression(const mylite_parser *parser,
+                                         size_t open_token_index);
+static size_t skip_table_reference_alias(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index);
 static size_t find_delete_name_token(const mylite_parser *parser,
                                      size_t token_index,
                                      size_t last_token_index);
@@ -1300,10 +1309,82 @@ static size_t find_update_name_token(const mylite_parser *parser,
                                      size_t last_token_index)
 {
 	token_index = skip_dml_modifiers(parser, token_index, last_token_index);
-	if (token_index <= last_token_index && token_can_start_object_name(&parser->tokens[token_index])) {
-		return token_index;
+	return find_table_reference_name_token(parser, token_index, last_token_index, SET_T);
+}
+
+static size_t find_table_reference_name_token(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index,
+                                              int stop_token)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == stop_token) {
+			return parser->token_count;
+		}
+
+		if (matching_token > token_index + 1) {
+			size_t close_token_index = matching_token - 1;
+
+			if (group_starts_query_expression(parser, token_index)) {
+				token_index = skip_table_reference_alias(parser, matching_token, last_token_index);
+			} else {
+				size_t nested_name_token = find_table_reference_name_token(parser,
+				                                                          token_index + 1,
+				                                                          close_token_index - 1,
+				                                                          stop_token);
+				if (nested_name_token < parser->token_count) {
+					return nested_name_token;
+				}
+				token_index = matching_token;
+			}
+			continue;
+		}
+
+		if (token_can_start_object_name(&parser->tokens[token_index])) {
+			return token_index;
+		}
+		token_index++;
 	}
 	return parser->token_count;
+}
+
+static int group_starts_query_expression(const mylite_parser *parser,
+                                         size_t open_token_index)
+{
+	size_t first_inner_token = open_token_index + 1;
+
+	if (first_inner_token >= parser->token_count) {
+		return 0;
+	}
+
+	switch (parser->tokens[first_inner_token].parser_token) {
+	case SELECT_T:
+	case WITH_T:
+	case TABLE_T:
+	case VALUES_T:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+static size_t skip_table_reference_alias(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index)
+{
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    parser->tokens[token_index].parser_token == AS_T) {
+		token_index++;
+	}
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    token_can_start_object_name(&parser->tokens[token_index])) {
+		token_index++;
+	}
+	return token_index;
 }
 
 static size_t find_delete_name_token(const mylite_parser *parser,

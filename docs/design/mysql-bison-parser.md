@@ -208,6 +208,8 @@ matched CTE subqueries and inspecting the outer DML verb, so `WITH ... UPDATE`,
 target-name classification uses the same matched-token data to skip CTE bodies
 before locating the first affected table for `INSERT`, `REPLACE`, `UPDATE`, and
 `DELETE`, including common priority, delayed, quick, and ignore modifiers.
+`UPDATE` table-reference scanning skips derived-table subqueries and descends
+into parenthesized joined table references before the `SET` clause.
 `SELECT ... INTO` and `TABLE ... INTO` assignment targets are recorded for user
 variables and local variables, while `INTO OUTFILE` and `INTO DUMPFILE` record
 the explicit export file target.

@@ -33,6 +33,13 @@ For DML, the reported table is the first syntactic target table, including
 ok statements=1 kinds=update[1:13,0:38]/table:wt
 ```
 
+Derived-table-leading `UPDATE` references skip the derived alias and report the
+first concrete table before `SET`:
+
+```text
+ok statements=1 kinds=update[1:15,0:43]/table:t3
+```
+
 Executable MySQL comments are tokenized only when ungated or compatible with
 the MySQL 8.4.9 target version:
 

@@ -308,6 +308,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int need_by = 0;
   int need_operand = 0;
   int need_set_operand = 0;
+  int lock_state = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -329,6 +330,34 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
                  token_id == ML_RC) {
         depth--;
       }
+      continue;
+    }
+
+    if (lock_state == 1) {
+      if (token_id != ML_IN) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT lock clause");
+        return;
+      }
+      lock_state = 2;
+      continue;
+    }
+    if (lock_state == 2) {
+      if (!token_ascii_equal(token, "share")) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT lock clause");
+        return;
+      }
+      lock_state = 3;
+      continue;
+    }
+    if (lock_state == 3) {
+      if (!token_ascii_equal(token, "mode")) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT lock clause");
+        return;
+      }
+      lock_state = 0;
       continue;
     }
 
@@ -379,6 +408,12 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
 
+    if (token_id == ML_LOCK) {
+      lock_state = 1;
+      pending_token = token;
+      continue;
+    }
+
     if (select_clause_requires_by(token_id)) {
       need_by = 1;
       pending_token = token;
@@ -396,7 +431,10 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
   }
 
-  if (need_set_operand) {
+  if (lock_state) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT lock clause");
+  } else if (need_set_operand) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT set operation");
   } else if (need_by || need_operand) {

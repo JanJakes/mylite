@@ -121,7 +121,8 @@ token sink:
 - `RESET BINARY LOGS AND GTIDS` recognizes optional numeric `TO` index values.
   Removed `RESET MASTER` syntax is permissive-corpus-only.
 - `BINLOG` requires a string-literal payload, and `PURGE BINARY LOGS ... TO`
-  requires a string-literal log name.
+  requires a string-literal log name. Removed `PURGE MASTER LOGS` syntax is
+  permissive-corpus-only.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes and literal,
   shared-identifier local-variable, or user-variable targets.
 - `LOCK TABLES` recognizes table lists, aliases, and MySQL 8.4 `READ [LOCAL]`

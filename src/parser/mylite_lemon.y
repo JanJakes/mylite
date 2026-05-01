@@ -2231,7 +2231,9 @@ purge_tail ::= purge_before expression_start statement_tail.
 purge_before ::= BEFORE.
 
 purge_log_kind ::= BINARY.
-purge_log_kind ::= MASTER.
+purge_log_kind ::= MASTER(A). {
+  mylite_parser_require_permissive(ctx, A);
+}
 
 purge_log_name ::= string_literal.
 

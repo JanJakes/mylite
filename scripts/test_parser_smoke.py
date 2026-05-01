@@ -853,7 +853,7 @@ def main() -> int:
         ("reset persist x y;", 1, {}),
         ("reset nonsense;", 1, {}),
         ("purge binary logs to 'bin.0001';", 0, {"statements": "1", "replication": "1"}),
-        ("purge master logs before now();", 0, {"statements": "1", "replication": "1"}),
+        ("purge master logs before now();", 1, {}),
         ("purge binary logs to binlog1;", 1, {}),
         ("purge binary logs garbage;", 1, {}),
         ("purge binary logs to;", 1, {}),

@@ -45,6 +45,8 @@ EXPECTED_FRAGMENT_FAILURES = [
     50277,
     # Malformed CREATE USER negative-test artifact with a trailing quote.
     54522,
+    # Removed PURGE MASTER LOGS syntax.
+    55559,
 ]
 
 

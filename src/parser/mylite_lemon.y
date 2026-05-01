@@ -1955,8 +1955,7 @@ component_file ::= ATOM.
 
 plugin_soname ::= SONAME.
 
-plugin_name ::= ATOM.
-plugin_name ::= LABEL.
+plugin_name ::= cache_name_part.
 
 import_statement ::= IMPORT TABLE FROM import_file_list. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);

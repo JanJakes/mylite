@@ -229,8 +229,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. |  |
 | `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. |  |
 | `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. |  |
-| `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. |  |
-| `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. |  |
+| `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar and required `SONAME` file values. |
+| `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar. |
 | `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser recognizes local clone and remote `CLONE INSTANCE` syntax, including optional data directory and SSL clauses. |
 | `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser recognizes comma-separated variable assignment lists with optional per-assignment scopes and nested value expressions. |
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser recognizes charset names using the shared identifier grammar, `BINARY`, `DEFAULT`, and comma-following variable assignments. |

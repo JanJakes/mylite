@@ -76,6 +76,8 @@ token sink:
 - `DROP INDEX` recognizes MySQL's `ALGORITHM` and `LOCK` option tails.
 - `TRUNCATE TABLE` recognizes optional `TABLE` and one- or two-part table
   references using the shared identifier grammar.
+- `INSTALL PLUGIN` and `UNINSTALL PLUGIN` recognize plugin names using the
+  shared identifier grammar.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, VCPU ranges, force modifiers, and thread-id assignment lists.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes and literal,

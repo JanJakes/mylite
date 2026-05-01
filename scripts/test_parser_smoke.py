@@ -255,7 +255,7 @@ def main() -> int:
         ("drop user u1@;", 0, {"statements": "1", "ddl": "1"}),
         ("drop user current_user();", 0, {"statements": "1", "ddl": "1"}),
         ("drop role if exists role, role@host.name;", 0, {"statements": "1", "ddl": "1"}),
-        ("drop prepare stmt;", 0, {"statements": "1", "ddl": "1"}),
+        ("drop prepare stmt;", 0, {"statements": "1", "prepared": "1"}),
         ("drop index i on t;", 0, {"statements": "1", "ddl": "1"}),
         ("drop index i on t algorithm=default lock=none;", 0, {"statements": "1", "ddl": "1"}),
         ("drop index i on t algorithm inplace lock shared;", 0, {"statements": "1", "ddl": "1"}),

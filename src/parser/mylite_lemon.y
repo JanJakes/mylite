@@ -13,6 +13,7 @@
 %fallback ATOM ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS GET_MASTER_PUBLIC_KEY GET_SOURCE_PUBLIC_KEY GTID_ONLY IGNORE_SERVER_IDS MASTER_AUTO_POSITION MASTER_BIND MASTER_COMPRESSION_ALGORITHMS MASTER_CONNECT_RETRY MASTER_DELAY MASTER_HEARTBEAT_PERIOD MASTER_HOST MASTER_LOG_FILE MASTER_LOG_POS MASTER_PASSWORD MASTER_PORT MASTER_PUBLIC_KEY_PATH MASTER_RETRY_COUNT MASTER_SSL MASTER_SSL_CA MASTER_SSL_CAPATH MASTER_SSL_CERT MASTER_SSL_CIPHER MASTER_SSL_CRL MASTER_SSL_CRLPATH MASTER_SSL_KEY MASTER_SSL_VERIFY_SERVER_CERT MASTER_TLS_CIPHERSUITES MASTER_TLS_VERSION MASTER_USER MASTER_ZSTD_COMPRESSION_LEVEL NETWORK_NAMESPACE PRIVILEGE_CHECKS_USER REQUIRE_ROW_FORMAT REQUIRE_TABLE_PRIMARY_KEY_CHECK SOURCE_AUTO_POSITION SOURCE_BIND SOURCE_COMPRESSION_ALGORITHMS SOURCE_CONNECT_RETRY SOURCE_CONNECTION_AUTO_FAILOVER SOURCE_DELAY SOURCE_HEARTBEAT_PERIOD SOURCE_HOST SOURCE_PASSWORD SOURCE_PORT SOURCE_PUBLIC_KEY_PATH SOURCE_RETRY_COUNT SOURCE_SSL SOURCE_SSL_CA SOURCE_SSL_CAPATH SOURCE_SSL_CERT SOURCE_SSL_CIPHER SOURCE_SSL_CRL SOURCE_SSL_CRLPATH SOURCE_SSL_KEY SOURCE_SSL_VERIFY_SERVER_CERT SOURCE_TLS_CIPHERSUITES SOURCE_TLS_VERSION SOURCE_USER SOURCE_ZSTD_COMPRESSION_LEVEL.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
+%type drop_tail {MyliteStatementKind}
 %type start_tail {MyliteStatementKind}
 %type lock_tail {MyliteStatementKind}
 %type unlock_tail {MyliteStatementKind}
@@ -936,26 +937,58 @@ create_srs_authority_code ::= BOOLEAN_NUMBER.
 create_srs_authority_code ::= FACTOR_NUMBER.
 create_srs_authority_code ::= NUMBER_LITERAL.
 
-drop_statement ::= DROP drop_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
+drop_statement ::= DROP drop_tail(A). {
+  mylite_parser_record_statement(ctx, A);
 }
 
-drop_tail ::= USER drop_if_exists_tail drop_user_ref_list drop_account_trailing_tail.
-drop_tail ::= ROLE drop_if_exists_tail drop_account_list drop_account_trailing_tail.
-drop_tail ::= drop_table_prefix drop_if_exists_tail drop_name_list drop_restrict_tail.
-drop_tail ::= LOGFILE drop_logfile_group cache_name_part drop_tablespace_engine_tail.
-drop_tail ::= RESOURCE drop_resource_group cache_name_part drop_resource_force_tail.
-drop_tail ::= SPATIAL drop_reference drop_system drop_if_exists_tail srs_id.
-drop_tail ::= UNDO TABLESPACE cache_name_part drop_tablespace_engine_tail.
-drop_tail ::= PREPARE prepared_statement_name.
-drop_tail ::= INDEX drop_index_name ON cache_table_ref drop_index_options_tail.
-drop_tail ::= drop_database_kind drop_if_exists_tail cache_name_part.
-drop_tail ::= drop_routine_kind drop_if_exists_tail cache_table_ref.
-drop_tail ::= EVENT drop_if_exists_tail cache_table_ref.
-drop_tail ::= TRIGGER drop_if_exists_tail cache_table_ref.
-drop_tail ::= VIEW drop_if_exists_tail drop_name_list drop_restrict_tail.
-drop_tail ::= SERVER drop_if_exists_tail cache_name_part.
-drop_tail ::= TABLESPACE cache_name_part drop_tablespace_engine_tail.
+drop_tail(A) ::= USER drop_if_exists_tail drop_user_ref_list drop_account_trailing_tail. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= ROLE drop_if_exists_tail drop_account_list drop_account_trailing_tail. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= drop_table_prefix drop_if_exists_tail drop_name_list drop_restrict_tail. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= LOGFILE drop_logfile_group cache_name_part drop_tablespace_engine_tail. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= RESOURCE drop_resource_group cache_name_part drop_resource_force_tail. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= SPATIAL drop_reference drop_system drop_if_exists_tail srs_id. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= UNDO TABLESPACE cache_name_part drop_tablespace_engine_tail. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= PREPARE prepared_statement_name. {
+  A = MYLITE_STATEMENT_PREPARED;
+}
+drop_tail(A) ::= INDEX drop_index_name ON cache_table_ref drop_index_options_tail. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= drop_database_kind drop_if_exists_tail cache_name_part. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= drop_routine_kind drop_if_exists_tail cache_table_ref. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= EVENT drop_if_exists_tail cache_table_ref. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= TRIGGER drop_if_exists_tail cache_table_ref. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= VIEW drop_if_exists_tail drop_name_list drop_restrict_tail. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= SERVER drop_if_exists_tail cache_name_part. {
+  A = MYLITE_STATEMENT_DDL;
+}
+drop_tail(A) ::= TABLESPACE cache_name_part drop_tablespace_engine_tail. {
+  A = MYLITE_STATEMENT_DDL;
+}
 
 drop_table_kind ::= TABLE.
 drop_table_kind ::= TABLES.

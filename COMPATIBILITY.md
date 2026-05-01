@@ -256,7 +256,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 ### 1.5 SHOW Statements
 
 Shared parser-level `SHOW ... LIKE` filters require string-literal patterns.
-`SHOW ... WHERE` filters use the general expression tail.
+`SHOW ... WHERE` filters reject adjacent bare operands and dangling operators
+while preserving common MySQL expression forms.
 
 | SHOW statement | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |

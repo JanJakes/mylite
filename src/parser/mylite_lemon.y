@@ -2675,8 +2675,11 @@ xa_commit_tail ::= xa_one xa_phase.
 xa_one ::= ONE.
 xa_phase ::= PHASE.
 
-show_statement ::= SHOW show_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+show_statement ::= SHOW(A) show_tail. {
+  mylite_parser_validate_show_statement(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SHOW);
+  }
 }
 
 show_tail ::= show_full_tail.

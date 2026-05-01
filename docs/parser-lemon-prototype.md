@@ -275,7 +275,8 @@ token sink:
 - `SHOW ENGINE ... STATUS|LOGS|MUTEX` recognizes engine names using the shared
   identifier grammar plus MySQL's `ALL` engine selector.
 - Shared `SHOW ... LIKE` filters require string-literal patterns, while
-  `SHOW ... WHERE` keeps using the general expression tail.
+  `SHOW ... WHERE` rejects adjacent bare operands and dangling operators while
+  preserving common MySQL expression forms.
 - `SHOW INDEX`/`INDEXES`/`KEYS` uses MySQL's narrower parser shape with
   optional `EXTENDED` and `WHERE`, excluding `FULL` and `LIKE`.
 - `SHOW BINLOG EVENTS` and `SHOW RELAYLOG EVENTS` recognize optional

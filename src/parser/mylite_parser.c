@@ -3351,6 +3351,124 @@ void mylite_parser_validate_set_statement(MyliteParseContext *ctx,
   }
 }
 
+void mylite_parser_validate_show_statement(MyliteParseContext *ctx,
+                                           MyliteToken start) {
+  enum {
+    SHOW_WHERE_NONE,
+    SHOW_WHERE_AFTER_WHERE,
+    SHOW_WHERE_STARTED
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  MyliteToken previous_top_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int depth = 0;
+  int where_state = SHOW_WHERE_NONE;
+  int previous_top_token_id = 0;
+  int previous_was_operator = 1;
+  int match_list = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+        if (depth == 0 && where_state == SHOW_WHERE_STARTED) {
+          previous_top_token_id = token_id;
+          previous_top_token = token;
+          previous_was_operator = 0;
+        }
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      break;
+    }
+
+    if (where_state == SHOW_WHERE_NONE) {
+      if (token_id == ML_PARSE_TREE) {
+        return;
+      }
+      if (token_id == ML_WHERE) {
+        where_state = SHOW_WHERE_AFTER_WHERE;
+        previous_top_token_id = 0;
+        previous_was_operator = 1;
+        match_list = 0;
+        pending_token = token;
+      }
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      }
+      continue;
+    }
+
+    if (where_state == SHOW_WHERE_AFTER_WHERE) {
+      if (select_expression_clause_boundary(token_id, token) ||
+          token_id == ML_COMMA) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SHOW WHERE clause");
+        return;
+      }
+      where_state = SHOW_WHERE_STARTED;
+    }
+
+    if (where_state == SHOW_WHERE_STARTED) {
+      if (token_id == ML_COMMA) {
+        if (!match_list) {
+          mylite_parser_reject(ctx, token, "malformed SHOW WHERE clause");
+          return;
+        }
+        previous_top_token_id = 0;
+        previous_was_operator = 1;
+        previous_top_token = token;
+        continue;
+      }
+      if (select_expression_clause_boundary(token_id, token)) {
+        mylite_parser_reject(ctx, token, previous_was_operator
+                                             ? "incomplete SHOW WHERE clause"
+                                             : "malformed SHOW WHERE clause");
+        return;
+      }
+      if (token_closes_nested_expression(token_id)) {
+        mylite_parser_reject(ctx, token, "malformed SHOW WHERE clause");
+        return;
+      }
+      if (!query_expression_token(
+              ctx, token_id, token, &depth, &previous_top_token_id,
+              &previous_top_token, &previous_was_operator,
+              "malformed SHOW WHERE clause")) {
+        return;
+      }
+      if (token_ascii_equal(token, "match")) {
+        match_list = 1;
+      } else if (match_list && token_ascii_equal(token, "against")) {
+        match_list = 0;
+      }
+      continue;
+    }
+  }
+
+  if (depth == 0 && where_state == SHOW_WHERE_AFTER_WHERE) {
+    mylite_parser_reject(ctx, pending_token, "incomplete SHOW WHERE clause");
+  } else if (depth == 0 && where_state == SHOW_WHERE_STARTED &&
+             previous_was_operator) {
+    mylite_parser_reject(ctx, previous_top_token,
+                         "incomplete SHOW WHERE clause");
+  }
+}
+
 void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
                                                     MyliteToken start) {
   enum {

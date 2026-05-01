@@ -3312,7 +3312,7 @@ set_resource_group_tail ::= FOR set_resource_group_thread_list.
 set_resource_group_thread_list ::= set_resource_group_thread.
 set_resource_group_thread_list ::= set_resource_group_thread_list import_comma set_resource_group_thread.
 
-set_resource_group_thread ::= ATOM.
+set_resource_group_thread ::= resource_group_number_value.
 
 set_password_tail ::= set_password_target_tail set_password_auth_option set_password_replace_tail set_password_retain_tail.
 

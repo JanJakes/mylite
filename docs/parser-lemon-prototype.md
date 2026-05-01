@@ -87,7 +87,7 @@ token sink:
   the shared identifier grammar for table and column names.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, numeric VCPU ranges, numeric thread priorities, force modifiers,
-  and thread-id assignment lists.
+  and numeric thread-id assignment lists.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes and literal,
   shared-identifier local-variable, or user-variable targets.
 - `LOCK TABLES` recognizes table lists, aliases, and MySQL lock types using the

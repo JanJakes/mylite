@@ -1260,6 +1260,7 @@ def main() -> int:
         ("set default role all to;", 1, {}),
         ("set default role all except r1 to u;", 1, {}),
         ("set resource group rg for;", 1, {}),
+        ("set resource group rg for worker;", 1, {}),
         ("set resource group rg invalid;", 1, {}),
         ("grant select on *.* to u;", 0, {"statements": "1", "admin": "1"}),
         ("grant all on *.* to u;", 0, {"statements": "1", "admin": "1"}),

@@ -41,10 +41,12 @@ expression nodes.
 - top-level statement kind
 - top-level statement grammar symbol
 - top-level statement span
+- top-level target kind
+- top-level target, schema, and name spans where the target is known
 
 The tree is not yet the final semantic MyLite AST. It is a complete generated
-parse tree with a typed statement classification layer suitable for measuring
-cost and for guiding typed-node work.
+parse tree with a typed statement classification and target descriptor layer
+suitable for measuring cost and for guiding typed-node work.
 
 For development inspection:
 
@@ -66,7 +68,7 @@ Release benchmark result on May 1, 2026:
 
 ```text
 mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.432263 qps=481844 mbps=36.64 avg_us=2.075
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=18.397929 qps=377983 mbps=28.75 avg_us=2.646 avg_nodes=74.5 avg_ast_bytes=9829.6 avg_statements=1.00
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=18.627941 qps=373316 mbps=28.39 avg_us=2.679 avg_nodes=74.5 avg_ast_bytes=9842.2 avg_statements=1.00 avg_targets=0.59
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -79,7 +81,9 @@ allocation while paying some action-call overhead.
 - Replace temporary recognizer placeholder roots with real grammar productions
   or explicit typed placeholder statements.
 - Add typed AST nodes for the analyzer's first statement families underneath
-  the statement classification layer.
+  the statement classification and target descriptor layer.
+- Expand target descriptors for multi-target statements such as `DROP TABLE`,
+  `RENAME TABLE`, multi-table `DELETE`, and joined `UPDATE`.
 - Decide whether syntax-only builds should use a separate no-action generated
   parser if the action overhead matters.
 - Add tree-shape tests for representative DDL, DML, expressions, stored

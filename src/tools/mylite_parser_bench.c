@@ -57,6 +57,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t ast_nodes = 0;
   size_t ast_bytes = 0;
   size_t statements = 0;
+  size_t targets = 0;
   double start = monotonic_seconds();
   for (int iteration = 0; iteration < iterations; iteration++) {
     for (size_t offset = 0; offset < length;) {
@@ -71,6 +72,12 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
           ast_nodes += mylite_ast_node_count(ast);
           ast_bytes += mylite_ast_allocated_bytes(ast);
           statements += mylite_ast_statement_count(ast);
+          for (size_t i = 0; i < mylite_ast_statement_count(ast); i++) {
+            if (mylite_ast_statement_target_kind(ast, i) !=
+                MYLITE_STATEMENT_TARGET_NONE) {
+              targets++;
+            }
+          }
         }
         mylite_ast_free(ast);
       } else {
@@ -95,9 +102,9 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
          elapsed, total_queries / elapsed, (total_bytes / (1024.0 * 1024.0)) / elapsed,
          (elapsed * 1000000.0) / total_queries);
   if (mode == BENCH_AST && parsed > 0) {
-    printf(" avg_nodes=%.1f avg_ast_bytes=%.1f avg_statements=%.2f",
+    printf(" avg_nodes=%.1f avg_ast_bytes=%.1f avg_statements=%.2f avg_targets=%.2f",
            (double)ast_nodes / (double)parsed, (double)ast_bytes / (double)parsed,
-           (double)statements / (double)parsed);
+           (double)statements / (double)parsed, (double)targets / (double)parsed);
   }
   printf("\n");
 

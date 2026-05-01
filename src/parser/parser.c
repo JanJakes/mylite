@@ -19,8 +19,15 @@ typedef struct MyliteAstStatement {
   const MyliteAstNode *node;
   const char *symbol_name;
   MyliteStatementKind kind;
+  MyliteStatementTargetKind target_kind;
   size_t start;
   size_t end;
+  size_t target_start;
+  size_t target_end;
+  size_t target_schema_start;
+  size_t target_schema_end;
+  size_t target_name_start;
+  size_t target_name_end;
 } MyliteAstStatement;
 
 struct MyliteAstNode {
@@ -67,8 +74,24 @@ static size_t mylite_ast_count_top_level_statements(const MyliteAstNode *node);
 static void mylite_ast_fill_top_level_statements(MyliteAst *ast,
                                                  const MyliteAstNode *node,
                                                  size_t *index);
+static void mylite_ast_init_statement(MyliteAstStatement *statement,
+                                      const MyliteAstNode *node);
 static const MyliteAstNode *mylite_ast_statement_payload(const MyliteAstNode *node);
 static MyliteStatementKind mylite_ast_classify_statement(const char *symbol_name);
+static void mylite_ast_set_statement_target(MyliteAstStatement *statement,
+                                            const MyliteAstNode *payload);
+static MyliteStatementTargetKind mylite_ast_target_kind_for_statement(
+    MyliteStatementKind kind, const char *symbol_name);
+static const MyliteAstNode *mylite_ast_find_target_node(const MyliteAstNode *node,
+                                                        MyliteStatementTargetKind kind);
+static const MyliteAstNode *mylite_ast_find_first_symbol(const MyliteAstNode *node,
+                                                         const char *symbol_name);
+static const MyliteAstNode *mylite_ast_find_first_token(const MyliteAstNode *node,
+                                                        int token);
+static void mylite_ast_set_target_spans(MyliteAstStatement *statement,
+                                        const MyliteAstNode *target);
+static void mylite_ast_set_table_name_parts(MyliteAstStatement *statement,
+                                            const MyliteAstNode *target);
 static int symbol_is_one_of(const char *symbol_name, const char *const *symbols,
                             size_t count);
 static int symbol_has_prefix(const char *symbol_name, const char *prefix);
@@ -180,6 +203,28 @@ const char *mylite_statement_kind_name(MyliteStatementKind kind) {
   return "unknown";
 }
 
+const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind) {
+  switch (kind) {
+    case MYLITE_STATEMENT_TARGET_NONE:
+      return "none";
+    case MYLITE_STATEMENT_TARGET_TABLE:
+      return "table";
+    case MYLITE_STATEMENT_TARGET_DATABASE:
+      return "database";
+    case MYLITE_STATEMENT_TARGET_VIEW:
+      return "view";
+    case MYLITE_STATEMENT_TARGET_ROUTINE:
+      return "routine";
+    case MYLITE_STATEMENT_TARGET_ACCOUNT:
+      return "account";
+    case MYLITE_STATEMENT_TARGET_VARIABLE:
+      return "variable";
+    case MYLITE_STATEMENT_TARGET_UNKNOWN:
+      return "unknown";
+  }
+  return "unknown";
+}
+
 void mylite_ast_free(MyliteAst *ast) {
   if (ast == NULL) {
     return;
@@ -232,6 +277,42 @@ size_t mylite_ast_statement_start(const MyliteAst *ast, size_t index) {
 size_t mylite_ast_statement_end(const MyliteAst *ast, size_t index) {
   const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
   return statement == NULL ? 0 : statement->end;
+}
+
+MyliteStatementTargetKind mylite_ast_statement_target_kind(const MyliteAst *ast,
+                                                           size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? MYLITE_STATEMENT_TARGET_NONE : statement->target_kind;
+}
+
+size_t mylite_ast_statement_target_start(const MyliteAst *ast, size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? 0 : statement->target_start;
+}
+
+size_t mylite_ast_statement_target_end(const MyliteAst *ast, size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? 0 : statement->target_end;
+}
+
+size_t mylite_ast_statement_target_schema_start(const MyliteAst *ast, size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? 0 : statement->target_schema_start;
+}
+
+size_t mylite_ast_statement_target_schema_end(const MyliteAst *ast, size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? 0 : statement->target_schema_end;
+}
+
+size_t mylite_ast_statement_target_name_start(const MyliteAst *ast, size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? 0 : statement->target_name_start;
+}
+
+size_t mylite_ast_statement_target_name_end(const MyliteAst *ast, size_t index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
+  return statement == NULL ? 0 : statement->target_name_end;
 }
 
 MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node) {
@@ -523,11 +604,7 @@ static int mylite_ast_finalize_statements(MyliteAst *ast) {
   mylite_ast_fill_top_level_statements(ast, ast->root, &index);
   if (index == 0) {
     const MyliteAstNode *payload = ast->root;
-    ast->statements[0].node = payload;
-    ast->statements[0].symbol_name = payload->symbol_name;
-    ast->statements[0].kind = mylite_ast_classify_statement(payload->symbol_name);
-    ast->statements[0].start = mylite_ast_node_start(payload);
-    ast->statements[0].end = mylite_ast_node_end(payload);
+    mylite_ast_init_statement(&ast->statements[0], payload);
   }
   return 1;
 }
@@ -561,14 +638,7 @@ static void mylite_ast_fill_top_level_statements(MyliteAst *ast,
   }
 
   if (strcmp(node->symbol_name, "nt_statement") == 0) {
-    const MyliteAstNode *payload = mylite_ast_statement_payload(node);
-    ast->statements[*index].node = node;
-    ast->statements[*index].symbol_name =
-        payload == NULL ? node->symbol_name : payload->symbol_name;
-    ast->statements[*index].kind =
-        mylite_ast_classify_statement(ast->statements[*index].symbol_name);
-    ast->statements[*index].start = mylite_ast_node_start(node);
-    ast->statements[*index].end = mylite_ast_node_end(node);
+    mylite_ast_init_statement(&ast->statements[*index], node);
     (*index)++;
     return;
   }
@@ -582,6 +652,20 @@ static void mylite_ast_fill_top_level_statements(MyliteAst *ast,
   for (size_t i = 0; i < node->child_count; i++) {
     mylite_ast_fill_top_level_statements(ast, node->children[i], index);
   }
+}
+
+static void mylite_ast_init_statement(MyliteAstStatement *statement,
+                                      const MyliteAstNode *node) {
+  const MyliteAstNode *payload = mylite_ast_statement_payload(node);
+  if (payload == NULL) {
+    payload = node;
+  }
+  statement->node = node;
+  statement->symbol_name = payload == NULL ? NULL : payload->symbol_name;
+  statement->kind = mylite_ast_classify_statement(statement->symbol_name);
+  statement->start = mylite_ast_node_start(node);
+  statement->end = mylite_ast_node_end(node);
+  mylite_ast_set_statement_target(statement, payload);
 }
 
 static const MyliteAstNode *mylite_ast_statement_payload(const MyliteAstNode *node) {
@@ -717,6 +801,185 @@ static MyliteStatementKind mylite_ast_classify_statement(const char *symbol_name
     return MYLITE_STATEMENT_UTILITY;
   }
   return MYLITE_STATEMENT_UNKNOWN;
+}
+
+static void mylite_ast_set_statement_target(MyliteAstStatement *statement,
+                                            const MyliteAstNode *payload) {
+  if (statement == NULL) {
+    return;
+  }
+
+  statement->target_kind =
+      mylite_ast_target_kind_for_statement(statement->kind, statement->symbol_name);
+  if (statement->target_kind == MYLITE_STATEMENT_TARGET_NONE) {
+    return;
+  }
+
+  const MyliteAstNode *target =
+      mylite_ast_find_target_node(payload, statement->target_kind);
+  if (target == NULL) {
+    statement->target_kind = MYLITE_STATEMENT_TARGET_UNKNOWN;
+    return;
+  }
+  mylite_ast_set_target_spans(statement, target);
+}
+
+static MyliteStatementTargetKind mylite_ast_target_kind_for_statement(
+    MyliteStatementKind kind, const char *symbol_name) {
+  switch (kind) {
+    case MYLITE_STATEMENT_INSERT:
+    case MYLITE_STATEMENT_UPDATE:
+    case MYLITE_STATEMENT_DELETE:
+    case MYLITE_STATEMENT_REPLACE:
+    case MYLITE_STATEMENT_RENAME:
+    case MYLITE_STATEMENT_TRUNCATE:
+      return MYLITE_STATEMENT_TARGET_TABLE;
+    case MYLITE_STATEMENT_CREATE:
+    case MYLITE_STATEMENT_ALTER:
+    case MYLITE_STATEMENT_DROP:
+      if (symbol_name == NULL) {
+        return MYLITE_STATEMENT_TARGET_UNKNOWN;
+      }
+      if (strstr(symbol_name, "database") != NULL ||
+          strstr(symbol_name, "schema") != NULL) {
+        return MYLITE_STATEMENT_TARGET_DATABASE;
+      }
+      if (strstr(symbol_name, "table") != NULL || strstr(symbol_name, "index") != NULL) {
+        return MYLITE_STATEMENT_TARGET_TABLE;
+      }
+      if (strstr(symbol_name, "view") != NULL) {
+        return MYLITE_STATEMENT_TARGET_VIEW;
+      }
+      if (strstr(symbol_name, "procedure") != NULL ||
+          strstr(symbol_name, "function") != NULL ||
+          strstr(symbol_name, "routine") != NULL) {
+        return MYLITE_STATEMENT_TARGET_ROUTINE;
+      }
+      if (strstr(symbol_name, "user") != NULL || strstr(symbol_name, "role") != NULL) {
+        return MYLITE_STATEMENT_TARGET_ACCOUNT;
+      }
+      return MYLITE_STATEMENT_TARGET_UNKNOWN;
+    case MYLITE_STATEMENT_SET:
+      return MYLITE_STATEMENT_TARGET_VARIABLE;
+    default:
+      return MYLITE_STATEMENT_TARGET_NONE;
+  }
+}
+
+static const MyliteAstNode *mylite_ast_find_target_node(const MyliteAstNode *node,
+                                                        MyliteStatementTargetKind kind) {
+  if (node == NULL) {
+    return NULL;
+  }
+  if (kind == MYLITE_STATEMENT_TARGET_TABLE) {
+    return mylite_ast_find_first_symbol(node, "nt_table_name");
+  }
+  if (kind == MYLITE_STATEMENT_TARGET_DATABASE) {
+    const MyliteAstNode *target = mylite_ast_find_first_symbol(node, "nt_db_name");
+    return target != NULL ? target : mylite_ast_find_first_symbol(node, "nt_table_name");
+  }
+  if (kind == MYLITE_STATEMENT_TARGET_VIEW) {
+    const MyliteAstNode *target = mylite_ast_find_first_symbol(node, "nt_view_name");
+    return target != NULL ? target : mylite_ast_find_first_symbol(node, "nt_table_name");
+  }
+  if (kind == MYLITE_STATEMENT_TARGET_ROUTINE) {
+    return mylite_ast_find_first_symbol(node, "nt_table_name");
+  }
+  if (kind == MYLITE_STATEMENT_TARGET_ACCOUNT) {
+    return mylite_ast_find_first_symbol(node, "nt_username");
+  }
+  if (kind == MYLITE_STATEMENT_TARGET_VARIABLE) {
+    const MyliteAstNode *target =
+        mylite_ast_find_first_token(node, MYLITE_TOK_SINGLE_AT_IDENTIFIER);
+    if (target != NULL) {
+      return target;
+    }
+    target = mylite_ast_find_first_token(node, MYLITE_TOK_DOUBLE_AT_IDENTIFIER);
+    if (target != NULL) {
+      return target;
+    }
+    return mylite_ast_find_first_symbol(node, "nt_variable_name");
+  }
+  return NULL;
+}
+
+static const MyliteAstNode *mylite_ast_find_first_symbol(const MyliteAstNode *node,
+                                                         const char *symbol_name) {
+  if (node == NULL) {
+    return NULL;
+  }
+  if (node->symbol_name != NULL && strcmp(node->symbol_name, symbol_name) == 0) {
+    return node;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    const MyliteAstNode *found =
+        mylite_ast_find_first_symbol(node->children[i], symbol_name);
+    if (found != NULL) {
+      return found;
+    }
+  }
+  return NULL;
+}
+
+static const MyliteAstNode *mylite_ast_find_first_token(const MyliteAstNode *node,
+                                                        int token) {
+  if (node == NULL) {
+    return NULL;
+  }
+  if (node->kind == MYLITE_AST_NODE_TOKEN && node->token == token) {
+    return node;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    const MyliteAstNode *found = mylite_ast_find_first_token(node->children[i], token);
+    if (found != NULL) {
+      return found;
+    }
+  }
+  return NULL;
+}
+
+static void mylite_ast_set_target_spans(MyliteAstStatement *statement,
+                                        const MyliteAstNode *target) {
+  statement->target_start = mylite_ast_node_start(target);
+  statement->target_end = mylite_ast_node_end(target);
+  statement->target_name_start = statement->target_start;
+  statement->target_name_end = statement->target_end;
+  if (statement->target_kind == MYLITE_STATEMENT_TARGET_TABLE ||
+      statement->target_kind == MYLITE_STATEMENT_TARGET_DATABASE ||
+      statement->target_kind == MYLITE_STATEMENT_TARGET_VIEW ||
+      statement->target_kind == MYLITE_STATEMENT_TARGET_ROUTINE) {
+    mylite_ast_set_table_name_parts(statement, target);
+  }
+}
+
+static void mylite_ast_set_table_name_parts(MyliteAstStatement *statement,
+                                            const MyliteAstNode *target) {
+  if (target == NULL || target->child_count < 3) {
+    return;
+  }
+
+  const MyliteAstNode *schema = NULL;
+  const MyliteAstNode *name = NULL;
+  for (size_t i = 0; i < target->child_count; i++) {
+    const MyliteAstNode *child = target->children[i];
+    if (child == NULL || child->symbol_name == NULL ||
+        strcmp(child->symbol_name, "nt_identifier") != 0) {
+      continue;
+    }
+    if (schema == NULL) {
+      schema = child;
+    } else {
+      name = child;
+      break;
+    }
+  }
+
+  if (schema != NULL && name != NULL) {
+    statement->target_schema_start = mylite_ast_node_start(schema);
+    statement->target_schema_end = mylite_ast_node_end(schema);
+    statement->target_name_start = mylite_ast_node_start(name);
+    statement->target_name_end = mylite_ast_node_end(name);
+  }
 }
 
 static int symbol_is_one_of(const char *symbol_name, const char *const *symbols,

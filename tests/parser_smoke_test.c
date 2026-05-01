@@ -7,6 +7,12 @@ static int expect_parse_ok(const char *sql);
 static int expect_ast_ok(const char *sql, const char *root_symbol);
 static int expect_ast_statements(const char *sql, size_t count,
                                  const MyliteStatementKind *kinds);
+static int expect_ast_target(const char *sql, MyliteStatementKind statement_kind,
+                             MyliteStatementTargetKind target_kind,
+                             const char *target, const char *schema,
+                             const char *name);
+static int span_matches(const char *sql, size_t start, size_t end,
+                        const char *expected);
 
 int main(void) {
   int failures = 0;
@@ -474,6 +480,25 @@ int main(void) {
     failures += expect_ast_statements("SET @a = 1; SELECT @a; CREATE TABLE s (id INT)",
                                       3, kinds);
   }
+  failures += expect_ast_target("CREATE TABLE db1.t1 (id INT)",
+                                MYLITE_STATEMENT_CREATE,
+                                MYLITE_STATEMENT_TARGET_TABLE, "db1.t1", "db1",
+                                "t1");
+  failures += expect_ast_target("INSERT INTO db1.t1 (id) VALUES (1)",
+                                MYLITE_STATEMENT_INSERT,
+                                MYLITE_STATEMENT_TARGET_TABLE, "db1.t1", "db1",
+                                "t1");
+  failures += expect_ast_target("UPDATE db1.t1 SET id = 2",
+                                MYLITE_STATEMENT_UPDATE,
+                                MYLITE_STATEMENT_TARGET_TABLE, "db1.t1", "db1",
+                                "t1");
+  failures += expect_ast_target("DELETE FROM db1.t1 WHERE id = 1",
+                                MYLITE_STATEMENT_DELETE,
+                                MYLITE_STATEMENT_TARGET_TABLE, "db1.t1", "db1",
+                                "t1");
+  failures += expect_ast_target("SET @a = 1", MYLITE_STATEMENT_SET,
+                                MYLITE_STATEMENT_TARGET_VARIABLE, "@a", NULL,
+                                "@a");
 
   return failures == 0 ? 0 : 1;
 }
@@ -519,6 +544,59 @@ static int expect_ast_ok(const char *sql, const char *root_symbol) {
 
   mylite_ast_free(ast);
   return failed;
+}
+
+static int expect_ast_target(const char *sql, MyliteStatementKind statement_kind,
+                             MyliteStatementTargetKind target_kind,
+                             const char *target, const char *schema,
+                             const char *name) {
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "AST target parse failed: %s\nstatus=%s offset=%zu token=%d message=%s\n",
+            sql, mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  int failed = 0;
+  if (mylite_ast_statement_count(ast) != 1 ||
+      mylite_ast_statement_kind(ast, 0) != statement_kind ||
+      mylite_ast_statement_target_kind(ast, 0) != target_kind ||
+      !span_matches(sql, mylite_ast_statement_target_start(ast, 0),
+                    mylite_ast_statement_target_end(ast, 0), target) ||
+      !span_matches(sql, mylite_ast_statement_target_schema_start(ast, 0),
+                    mylite_ast_statement_target_schema_end(ast, 0), schema) ||
+      !span_matches(sql, mylite_ast_statement_target_name_start(ast, 0),
+                    mylite_ast_statement_target_name_end(ast, 0), name)) {
+    fprintf(stderr,
+            "AST target failed: %s\nkind=%s target_kind=%s target=%zu..%zu "
+            "schema=%zu..%zu name=%zu..%zu\n",
+            sql, mylite_statement_kind_name(mylite_ast_statement_kind(ast, 0)),
+            mylite_statement_target_kind_name(mylite_ast_statement_target_kind(ast, 0)),
+            mylite_ast_statement_target_start(ast, 0),
+            mylite_ast_statement_target_end(ast, 0),
+            mylite_ast_statement_target_schema_start(ast, 0),
+            mylite_ast_statement_target_schema_end(ast, 0),
+            mylite_ast_statement_target_name_start(ast, 0),
+            mylite_ast_statement_target_name_end(ast, 0));
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int span_matches(const char *sql, size_t start, size_t end,
+                        const char *expected) {
+  if (expected == NULL) {
+    return start == 0 && end == 0;
+  }
+  size_t expected_length = strlen(expected);
+  return end >= start && end - start == expected_length &&
+         strncmp(sql + start, expected, expected_length) == 0;
 }
 
 static int expect_ast_statements(const char *sql, size_t count,

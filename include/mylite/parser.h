@@ -55,11 +55,23 @@ typedef enum MyliteStatementKind {
   MYLITE_STATEMENT_UTILITY
 } MyliteStatementKind;
 
+typedef enum MyliteStatementTargetKind {
+  MYLITE_STATEMENT_TARGET_NONE = 0,
+  MYLITE_STATEMENT_TARGET_TABLE,
+  MYLITE_STATEMENT_TARGET_DATABASE,
+  MYLITE_STATEMENT_TARGET_VIEW,
+  MYLITE_STATEMENT_TARGET_ROUTINE,
+  MYLITE_STATEMENT_TARGET_ACCOUNT,
+  MYLITE_STATEMENT_TARGET_VARIABLE,
+  MYLITE_STATEMENT_TARGET_UNKNOWN
+} MyliteStatementTargetKind;
+
 MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result);
 MyliteParseStatus mylite_parse_sql_ast(const char *sql, MyliteAst **ast,
                                        MyliteParseResult *result);
 const char *mylite_parse_status_name(MyliteParseStatus status);
 const char *mylite_statement_kind_name(MyliteStatementKind kind);
+const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
 
 void mylite_ast_free(MyliteAst *ast);
 const MyliteAstNode *mylite_ast_root(const MyliteAst *ast);
@@ -71,6 +83,14 @@ const char *mylite_ast_statement_symbol_name(const MyliteAst *ast, size_t index)
 const MyliteAstNode *mylite_ast_statement_node(const MyliteAst *ast, size_t index);
 size_t mylite_ast_statement_start(const MyliteAst *ast, size_t index);
 size_t mylite_ast_statement_end(const MyliteAst *ast, size_t index);
+MyliteStatementTargetKind mylite_ast_statement_target_kind(const MyliteAst *ast,
+                                                           size_t index);
+size_t mylite_ast_statement_target_start(const MyliteAst *ast, size_t index);
+size_t mylite_ast_statement_target_end(const MyliteAst *ast, size_t index);
+size_t mylite_ast_statement_target_schema_start(const MyliteAst *ast, size_t index);
+size_t mylite_ast_statement_target_schema_end(const MyliteAst *ast, size_t index);
+size_t mylite_ast_statement_target_name_start(const MyliteAst *ast, size_t index);
+size_t mylite_ast_statement_target_name_end(const MyliteAst *ast, size_t index);
 MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node);
 unsigned mylite_ast_node_rule_id(const MyliteAstNode *node);
 const char *mylite_ast_node_symbol_name(const MyliteAstNode *node);

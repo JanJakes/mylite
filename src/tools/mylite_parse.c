@@ -107,10 +107,19 @@ static void dump_statements(const MyliteAst *ast) {
   printf("statements=%zu nodes=%zu ast_bytes=%zu\n", count,
          mylite_ast_node_count(ast), mylite_ast_allocated_bytes(ast));
   for (size_t i = 0; i < count; i++) {
-    printf("statement[%zu] kind=%s symbol=%s span=%zu..%zu\n", i,
+    printf("statement[%zu] kind=%s symbol=%s span=%zu..%zu target=%s:%zu..%zu "
+           "schema=%zu..%zu name=%zu..%zu\n",
+           i,
            mylite_statement_kind_name(mylite_ast_statement_kind(ast, i)),
            mylite_ast_statement_symbol_name(ast, i),
-           mylite_ast_statement_start(ast, i), mylite_ast_statement_end(ast, i));
+           mylite_ast_statement_start(ast, i), mylite_ast_statement_end(ast, i),
+           mylite_statement_target_kind_name(mylite_ast_statement_target_kind(ast, i)),
+           mylite_ast_statement_target_start(ast, i),
+           mylite_ast_statement_target_end(ast, i),
+           mylite_ast_statement_target_schema_start(ast, i),
+           mylite_ast_statement_target_schema_end(ast, i),
+           mylite_ast_statement_target_name_start(ast, i),
+           mylite_ast_statement_target_name_end(ast, i));
   }
 }
 

@@ -248,6 +248,13 @@ static int create_index_prefix_length_token(int token_id);
 static int index_using_type_token(MyliteToken token);
 static int alter_table_add_index_marker(int token_id);
 static int alter_table_add_non_index_marker(int token_id);
+static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
+                                                  MyliteToken start);
+static void validate_alter_table_order_by_from(MyliteParseContext *ctx,
+                                               MyliteToken start);
+static int alter_table_partition_method_token(int token_id, MyliteToken token);
+static int alter_table_parenthesized_group_empty(MyliteParseContext *ctx,
+                                                 MyliteToken start);
 static int event_interval_unit_token(MyliteToken token);
 static int event_schedule_boundary(int token_id);
 static int event_schedule_option_start(MyliteToken token);
@@ -6279,7 +6286,339 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   } else if (index_using_pending) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE index USING");
+  } else if (!ctx->failed) {
+    validate_alter_table_expression_tails(ctx, start);
   }
+}
+
+static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
+                                                  MyliteToken start) {
+  enum {
+    ALTER_EXPR_READY,
+    ALTER_EXPR_AFTER_ALTER,
+    ALTER_EXPR_AFTER_ALTER_COLUMN,
+    ALTER_EXPR_AFTER_ALTER_NAME,
+    ALTER_EXPR_AFTER_ALTER_SET,
+    ALTER_EXPR_AFTER_ORDER,
+    ALTER_EXPR_AFTER_ORDER_BY,
+    ALTER_EXPR_AFTER_PARTITION,
+    ALTER_EXPR_AFTER_PARTITION_BY,
+    ALTER_EXPR_AFTER_PARTITION_METHOD
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int saw_table = 0;
+  int table_ref_done = 0;
+  int table_name_parts = 0;
+  int table_dot_pending = 0;
+  int state = ALTER_EXPR_READY;
+  int partition_key_method = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (!saw_table) {
+      if (token_id == ML_TABLE) {
+        saw_table = 1;
+      }
+      continue;
+    }
+
+    if (!table_ref_done) {
+      if (token_id == ML_SEMI) {
+        return;
+      }
+      if (table_dot_pending) {
+        table_name_parts++;
+        table_dot_pending = 0;
+        continue;
+      }
+      if (table_name_parts == 0) {
+        table_name_parts = 1;
+        continue;
+      }
+      if (token_id == ML_DOT && table_name_parts == 1) {
+        table_dot_pending = 1;
+        continue;
+      }
+      table_ref_done = 1;
+    }
+
+    if (token_id == ML_SEMI) {
+      return;
+    }
+
+    if (state == ALTER_EXPR_AFTER_ORDER) {
+      if (token_id != ML_BY) {
+        state = ALTER_EXPR_READY;
+      } else {
+        state = ALTER_EXPR_AFTER_ORDER_BY;
+        pending_token = token;
+        continue;
+      }
+    }
+
+    if (state == ALTER_EXPR_AFTER_ORDER_BY) {
+      validate_alter_table_order_by_from(ctx, token);
+      return;
+    }
+
+    if (state == ALTER_EXPR_AFTER_PARTITION) {
+      if (token_id != ML_BY) {
+        state = ALTER_EXPR_READY;
+      } else {
+        state = ALTER_EXPR_AFTER_PARTITION_BY;
+        pending_token = token;
+        continue;
+      }
+    }
+
+    if (state == ALTER_EXPR_AFTER_PARTITION_BY) {
+      if (token_ascii_equal(token, "linear")) {
+        continue;
+      }
+      if (alter_table_partition_method_token(token_id, token)) {
+        state = ALTER_EXPR_AFTER_PARTITION_METHOD;
+        partition_key_method = token_id == ML_KEY;
+      } else {
+        state = ALTER_EXPR_READY;
+      }
+      pending_token = token;
+      continue;
+    }
+
+    if (state == ALTER_EXPR_AFTER_PARTITION_METHOD) {
+      if (token_id == ML_COLUMNS) {
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LP) {
+        if (partition_key_method &&
+            alter_table_parenthesized_group_empty(ctx, token)) {
+          state = ALTER_EXPR_READY;
+          partition_key_method = 0;
+          continue;
+        }
+        mylite_parser_validate_parenthesized_expression_list_from(
+            ctx, token, "malformed ALTER TABLE partition expression");
+        state = ALTER_EXPR_READY;
+        partition_key_method = 0;
+        continue;
+      }
+      if (token_id == ML_ASSIGN || token_id == ML_EQUALS ||
+          token_id == ML_NUMBER_LITERAL || token_id == ML_BOOLEAN_NUMBER ||
+          token_id == ML_FACTOR_NUMBER) {
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "incomplete ALTER TABLE partition expression");
+      partition_key_method = 0;
+      return;
+    }
+
+    if (state == ALTER_EXPR_AFTER_ALTER) {
+      if (token_id == ML_COLUMN) {
+        state = ALTER_EXPR_AFTER_ALTER_COLUMN;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_CHECK || token_id == ML_CONSTRAINT ||
+          token_id == ML_INDEX) {
+        state = ALTER_EXPR_READY;
+        continue;
+      }
+      state = ALTER_EXPR_AFTER_ALTER_NAME;
+      continue;
+    }
+
+    if (state == ALTER_EXPR_AFTER_ALTER_COLUMN) {
+      state = ALTER_EXPR_AFTER_ALTER_NAME;
+      continue;
+    }
+
+    if (state == ALTER_EXPR_AFTER_ALTER_NAME) {
+      if (token_id == ML_SET) {
+        state = ALTER_EXPR_AFTER_ALTER_SET;
+        pending_token = token;
+        continue;
+      }
+      state = ALTER_EXPR_READY;
+    }
+
+    if (state == ALTER_EXPR_AFTER_ALTER_SET) {
+      if (token_id != ML_DEFAULT) {
+        state = ALTER_EXPR_READY;
+        continue;
+      }
+      pending_token = token;
+      token_id = mylite_lexer_next(&lexer, &token);
+      if (token_id <= 0 || token_id == ML_COMMA || token_id == ML_SEMI) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete ALTER TABLE DEFAULT expression");
+        return;
+      }
+      mylite_parser_validate_expression_until_from(
+          ctx, token, ML_COMMA, "malformed ALTER TABLE DEFAULT expression");
+      if (ctx->failed) {
+        return;
+      }
+      state = ALTER_EXPR_READY;
+      continue;
+    }
+
+    if (token_id == ML_ORDER) {
+      state = ALTER_EXPR_AFTER_ORDER;
+      pending_token = token;
+      continue;
+    }
+    if (token_id == ML_PARTITION) {
+      state = ALTER_EXPR_AFTER_PARTITION;
+      pending_token = token;
+      continue;
+    }
+    if (token_id == ML_ALTER) {
+      state = ALTER_EXPR_AFTER_ALTER;
+      pending_token = token;
+      continue;
+    }
+  }
+}
+
+static void validate_alter_table_order_by_from(MyliteParseContext *ctx,
+                                               MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  MyliteToken previous_top_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int depth = 0;
+  MyliteExpressionStack expression_stack = {0};
+  int need_expression = 1;
+  int after_direction = 0;
+  int previous_top_token_id = 0;
+  int previous_was_operator = 1;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      } else {
+        continue;
+      }
+    }
+
+    if (depth > 0) {
+      if (!query_expression_depth_token(
+              ctx, token_id, token, &depth, &expression_stack,
+              "malformed ALTER TABLE ORDER BY")) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id) && depth == 0) {
+        previous_top_token_id = token_id;
+        previous_top_token = token;
+        previous_was_operator = 0;
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      if (need_expression) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete ALTER TABLE ORDER BY");
+      } else if (previous_was_operator) {
+        mylite_parser_reject(ctx, previous_top_token,
+                             "incomplete ALTER TABLE ORDER BY");
+      }
+      return;
+    }
+
+    if (token_id == ML_COMMA) {
+      if (need_expression || previous_was_operator) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete ALTER TABLE ORDER BY");
+        return;
+      }
+      need_expression = 1;
+      after_direction = 0;
+      previous_top_token_id = 0;
+      previous_was_operator = 1;
+      pending_token = token;
+      memset(&expression_stack, 0, sizeof(expression_stack));
+      continue;
+    }
+
+    if (after_direction) {
+      mylite_parser_reject(ctx, token, "malformed ALTER TABLE ORDER BY");
+      return;
+    }
+
+    if (token_id == ML_ASC || token_id == ML_DESC) {
+      if (need_expression || previous_was_operator) {
+        mylite_parser_reject(ctx, token, "malformed ALTER TABLE ORDER BY");
+        return;
+      }
+      after_direction = 1;
+      previous_top_token_id = token_id;
+      previous_top_token = token;
+      previous_was_operator = 0;
+      continue;
+    }
+
+    if (need_expression) {
+      need_expression = 0;
+    }
+    if (!query_expression_token(
+            ctx, token_id, token, &depth, &previous_top_token_id,
+            &previous_top_token, &previous_was_operator, &expression_stack,
+            "malformed ALTER TABLE ORDER BY")) {
+      return;
+    }
+  }
+
+  if (need_expression) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete ALTER TABLE ORDER BY");
+  } else if (previous_was_operator) {
+    mylite_parser_reject(ctx, previous_top_token,
+                         "incomplete ALTER TABLE ORDER BY");
+  }
+}
+
+static int alter_table_partition_method_token(int token_id, MyliteToken token) {
+  return token_id == ML_KEY || token_ascii_equal(token, "hash") ||
+         token_ascii_equal(token, "list") || token_ascii_equal(token, "range");
+}
+
+static int alter_table_parenthesized_group_empty(MyliteParseContext *ctx,
+                                                 MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  int token_id;
+  int saw_start = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_start) {
+      if (token.offset == start.offset) {
+        saw_start = 1;
+      }
+      continue;
+    }
+    return token_id == ML_RP;
+  }
+
+  return 0;
 }
 
 void mylite_parser_validate_view_statement(MyliteParseContext *ctx,

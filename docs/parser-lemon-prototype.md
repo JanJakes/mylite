@@ -205,7 +205,9 @@ token sink:
   `ENABLE/DISABLE KEYS`, `ADD`/`CHANGE`/`MODIFY` heads, `RENAME` forms,
   comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `DROP` forms, column-drop
   `RESTRICT`/`CASCADE` tails, `ALTER` subactions, charset/order changes,
-  partition definition, maintenance/exchange, reorganize forms, maintenance
+  validated `ALTER ... SET DEFAULT` expression tails, validated `ORDER BY`
+  expression-list tails, partition definition, maintenance/exchange,
+  reorganize forms, validated partition-method expression lists, maintenance
   binlog modifiers, CHECK/REPAIR maintenance options, and numeric coalesce counts,
   tablespace/storage/union changes with closed storage values,
   secondary-engine load/unload actions,

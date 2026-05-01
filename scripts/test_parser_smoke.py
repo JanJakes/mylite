@@ -824,6 +824,7 @@ def main() -> int:
         ("alter table t1 add foreign key (a) references parent (id) on foo cascade;", 1, {}),
         ("alter table t1 add foreign key (a) references parent (id) match medium;", 1, {}),
         ("alter table t1 add foreign key (a) references parent (id) on update no;", 1, {}),
+        ("alter table t1 add constraint fk foreign key (a) references parent (id) algorithm=bogus;", 1, {}),
         ("alter table t1 add a int references parent;", 1, {}),
         ("alter table t1 modify a int references parent garbage;", 1, {}),
         ("alter table t1 add check ();", 1, {}),

@@ -3632,8 +3632,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
           pending_token = token;
           continue;
         }
-        if (token_id == ML_ALGORITHM || token_id == ML_LOCK ||
-            token_id == ML_PARTITION || token_id == ML_REMOVE) {
+        if (token_id == ML_PARTITION || token_id == ML_REMOVE) {
           add_foreign_state = ALTER_FK_NONE;
           add_scan = 0;
           add_index_candidate = 0;

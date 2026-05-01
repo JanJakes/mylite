@@ -38,6 +38,7 @@ static int select_outfile_field_option_start(int token_id);
 static int select_outfile_line_option_start(int token_id);
 static int select_index_hint_name_token(int token_id);
 static int select_index_hint_type(int token_id);
+static int select_partition_name_token(int token_id);
 static int select_charset_name_token(int token_id, MyliteToken token);
 static int select_limit_option_token(int token_id);
 static int select_string_literal_token(int token_id);
@@ -384,6 +385,13 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     SELECT_INDEX_HINT_AFTER_NAME,
     SELECT_INDEX_HINT_AFTER_COMMA
   };
+  enum {
+    SELECT_PARTITION_NONE,
+    SELECT_PARTITION_AFTER_PARTITION,
+    SELECT_PARTITION_AFTER_LP,
+    SELECT_PARTITION_AFTER_NAME,
+    SELECT_PARTITION_AFTER_COMMA
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token;
@@ -408,6 +416,8 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int order_direction_state = SELECT_ORDER_DIRECTION_NONE;
   int index_hint_state = SELECT_INDEX_HINT_NONE;
   int index_hint_allow_empty = 0;
+  int from_clause = 0;
+  int partition_state = SELECT_PARTITION_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -570,6 +580,49 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         return;
       }
       index_hint_state = SELECT_INDEX_HINT_AFTER_NAME;
+      continue;
+    }
+
+    if (partition_state == SELECT_PARTITION_AFTER_PARTITION) {
+      if (token_id != ML_LP) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT partition clause");
+        return;
+      }
+      partition_state = SELECT_PARTITION_AFTER_LP;
+      pending_token = token;
+      continue;
+    }
+    if (partition_state == SELECT_PARTITION_AFTER_LP) {
+      if (!select_partition_name_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT partition clause");
+        return;
+      }
+      partition_state = SELECT_PARTITION_AFTER_NAME;
+      continue;
+    }
+    if (partition_state == SELECT_PARTITION_AFTER_NAME) {
+      if (token_id == ML_COMMA) {
+        partition_state = SELECT_PARTITION_AFTER_COMMA;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_RP) {
+        partition_state = SELECT_PARTITION_NONE;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "malformed SELECT partition clause");
+      return;
+    }
+    if (partition_state == SELECT_PARTITION_AFTER_COMMA) {
+      if (!select_partition_name_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT partition clause");
+        return;
+      }
+      partition_state = SELECT_PARTITION_AFTER_NAME;
       continue;
     }
 
@@ -1095,6 +1148,12 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
 
+    if (from_clause && token_id == ML_PARTITION) {
+      partition_state = SELECT_PARTITION_AFTER_PARTITION;
+      pending_token = token;
+      continue;
+    }
+
     if (group_clause && token_id == ML_WITH) {
       rollup_state = SELECT_ROLLUP_AFTER_WITH;
       pending_token = token;
@@ -1104,6 +1163,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     if (token_id == ML_LOCK) {
       group_clause = 0;
       order_clause = 0;
+      from_clause = 0;
       lock_state = SELECT_LOCK_AFTER_LOCK;
       pending_token = token;
       continue;
@@ -1111,6 +1171,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     if (token_id == ML_FOR) {
       group_clause = 0;
       order_clause = 0;
+      from_clause = 0;
       lock_state = SELECT_LOCK_AFTER_FOR;
       pending_token = token;
       continue;
@@ -1118,6 +1179,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     if (token_id == ML_INTO) {
       group_clause = 0;
       order_clause = 0;
+      from_clause = 0;
       into_state = SELECT_INTO_AFTER_INTO;
       pending_token = token;
       continue;
@@ -1125,24 +1187,28 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     if (token_id == ML_LIMIT) {
       group_clause = 0;
       order_clause = 0;
+      from_clause = 0;
       limit_state = SELECT_LIMIT_AFTER_LIMIT;
       pending_token = token;
       continue;
     }
     if (token_ascii_equal(token, "window")) {
       group_clause = 0;
+      from_clause = 0;
       window_state = SELECT_WINDOW_AFTER_WINDOW;
       pending_token = token;
       continue;
     }
     if (token_ascii_equal(token, "qualify")) {
       group_clause = 0;
+      from_clause = 0;
       need_operand = 1;
       pending_token = token;
       continue;
     }
 
     if (select_clause_requires_by(token_id)) {
+      from_clause = 0;
       group_clause = token_id == ML_GROUP;
       order_clause = token_id == ML_ORDER;
       need_by = 1;
@@ -1156,6 +1222,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         group_clause = 0;
         order_clause = 0;
       }
+      from_clause = token_id == ML_FROM;
       need_operand = 1;
       pending_token = token;
       continue;
@@ -1163,6 +1230,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     if (select_set_operator(token_id)) {
       group_clause = 0;
       order_clause = 0;
+      from_clause = 0;
       need_set_operand = 1;
       pending_token = token;
       continue;
@@ -1224,6 +1292,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
              index_hint_state == SELECT_INDEX_HINT_AFTER_COMMA) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT index hint");
+  } else if (partition_state == SELECT_PARTITION_AFTER_PARTITION ||
+             partition_state == SELECT_PARTITION_AFTER_LP ||
+             partition_state == SELECT_PARTITION_AFTER_COMMA) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT partition clause");
   } else if (need_set_operand) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT set operation");
@@ -1408,6 +1481,11 @@ static int select_index_hint_name_token(int token_id) {
 
 static int select_index_hint_type(int token_id) {
   return token_id == ML_FORCE || token_id == ML_IGNORE || token_id == ML_USE;
+}
+
+static int select_partition_name_token(int token_id) {
+  return token_id != ML_COMMA && token_id != ML_LP && token_id != ML_RP &&
+         token_id != ML_SEMI;
 }
 
 static int select_charset_name_token(int token_id, MyliteToken token) {

@@ -431,8 +431,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   `SHOW PARSE_TREE` metadata records documented `SELECT` payloads as query
   targets, while non-`SELECT` payloads and runtime JSON generation remain
   analysis/runtime work.
-  `SHOW ENGINE` metadata records the named engine for MySQL 8.4 `STATUS` and
-  `MUTEX` forms; historical `LOGS` forms remain objectless.
+  `SHOW ENGINE` metadata records the named engine for `STATUS`, `MUTEX`, and
+  runtime-accepted `LOGS` forms.
 - Account and principal metadata records the first syntactic account or role
   target only. It does not yet resolve roles, dynamic privileges, multiple
   accounts, proxy grants, account-name normalization, rename destinations, or

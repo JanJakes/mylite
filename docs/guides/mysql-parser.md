@@ -318,6 +318,10 @@ ok statements=1 kinds=show[1:4,0:25]/engine:InnoDB
 ok statements=1 kinds=show[1:4,0:24]/engine:NDB
 ```
 
+```text
+ok statements=1 kinds=show[1:4,0:20]/engine:csv
+```
+
 SHOW PROFILE exposes explicit query ids:
 
 ```text

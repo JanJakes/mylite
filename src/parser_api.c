@@ -3296,7 +3296,8 @@ static int classify_show_statement_object(const mylite_parser *parser,
 	    token_index + 2 <= last_token_index &&
 	    token_can_start_object_name(&parser->tokens[token_index + 1]) &&
 	    (token_text_equals(parser, token_index + 2, "STATUS") ||
-	     token_text_equals(parser, token_index + 2, "MUTEX"))) {
+	     token_text_equals(parser, token_index + 2, "MUTEX") ||
+	     token_text_equals(parser, token_index + 2, "LOGS"))) {
 		return set_statement_direct_object_name(parser,
 		                                        statement,
 		                                        MYLITE_STATEMENT_OBJECT_ENGINE,

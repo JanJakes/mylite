@@ -40,6 +40,7 @@ add_library(mylite STATIC
   src/sql/mylite_ast.c
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c
+  src/storage/mylite_file_format.c
   src/version.c
 )
 add_library(MyLite::mylite ALIAS mylite)
@@ -51,6 +52,7 @@ target_include_directories(mylite
     "$<INSTALL_INTERFACE:include>"
   PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/sql"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/storage"
     "${MYLITE_SQL_PARSE_DIR}"
 )
 
@@ -74,6 +76,15 @@ if(BUILD_TESTING)
   target_include_directories(mylite_parser_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   mylite_configure_c_target(mylite_parser_test)
 
+  add_executable(mylite_file_format_test
+    tests/file_format_test.c
+  )
+  target_link_libraries(mylite_file_format_test PRIVATE MyLite::mylite)
+  target_include_directories(mylite_file_format_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_file_format_test)
+
   add_executable(mylite_version_test
     tests/version_test.c
   )
@@ -82,5 +93,6 @@ if(BUILD_TESTING)
 
   add_test(NAME libmylite.lexer COMMAND mylite_lexer_test)
   add_test(NAME libmylite.parser COMMAND mylite_parser_test)
+  add_test(NAME libmylite.file_format COMMAND mylite_file_format_test)
   add_test(NAME libmylite.version COMMAND mylite_version_test)
 endif()

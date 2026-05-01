@@ -279,6 +279,9 @@ multi-table `FROM` and `USING` forms, checks documented modifiers, delete-target
 lists including `.*`, table-reference spans, optional single-table partition
 lists, and the clause rule that `ORDER BY` and `LIMIT` apply only to
 single-table deletes.
+`VALUES` validation checks nonempty `ROW(...)` constructors, consistent row
+arity, unsupported standalone `DEFAULT` values, ordering, limit, and direct
+set-operator tails.
 `TABLE` validation checks direct and parenthesized table-value statements,
 documented `ORDER BY`, `LIMIT`, `OFFSET`, set-operator tails, and final `INTO`
 variable/export targets.

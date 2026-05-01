@@ -232,9 +232,9 @@ case "$grouped_query_output" in
 		;;
 esac
 
-values_query_output=$("$parser" 'VALUES ROW(1), ROW(2); VALUES ROW(1), ROW(2) ORDER BY column_0 DESC LIMIT 1; ((VALUES ROW(3))) ORDER BY 1; EXPLAIN VALUES ROW(1)')
+values_query_output=$("$parser" 'VALUES ROW(1), ROW(2); VALUES ROW(1,2), ROW(3,4) ORDER BY column_1 DESC LIMIT 1; ((VALUES ROW(3))) ORDER BY 1; VALUES ROW(1,2) UNION VALUES ROW(3,4); EXPLAIN VALUES ROW(1)')
 case "$values_query_output" in
-	*"values"*/query*"values"*/query*"values"*/query*"explain"*) ;;
+	*"values"*/query*"values"*/query*"values"*/query*"values"*/query*"explain"*) ;;
 	*)
 		echo "unexpected values query output: $values_query_output" >&2
 		exit 1
@@ -258,6 +258,21 @@ fi
 
 if "$parser" --quiet 'VALUES ROW(1),'; then
 	echo "expected trailing VALUES row comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW(1), ROW(2,3)'; then
+	echo "expected inconsistent VALUES row arity to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW(DEFAULT)'; then
+	echo "expected standalone VALUES DEFAULT to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'VALUES ROW(coalesce(DEFAULT, 1))'; then
+	echo "expected nested standalone VALUES DEFAULT to fail" >&2
 	exit 1
 fi
 

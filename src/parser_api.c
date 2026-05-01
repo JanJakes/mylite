@@ -540,6 +540,13 @@ static int validate_values_row_constructor_list_syntax(const mylite_parser *pars
                                                        size_t token_index,
                                                        size_t last_token_index,
                                                        size_t *next_token_index);
+static int validate_values_row_value_list_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 size_t *value_count);
+static int values_row_value_range_has_default_token(const mylite_parser *parser,
+                                                    size_t first_token_index,
+                                                    size_t last_token_index);
 static int validate_values_tail_syntax(const mylite_parser *parser,
                                        size_t token_index,
                                        size_t last_token_index);
@@ -7934,6 +7941,8 @@ static int validate_values_row_constructor_list_syntax(const mylite_parser *pars
                                                        size_t last_token_index,
                                                        size_t *next_token_index)
 {
+	size_t expected_value_count = 0;
+
 	if (token_index > last_token_index) {
 		return 0;
 	}
@@ -7941,6 +7950,7 @@ static int validate_values_row_constructor_list_syntax(const mylite_parser *pars
 	while (token_index <= last_token_index) {
 		size_t open_token_index;
 		size_t after_close_token_index;
+		size_t value_count;
 
 		if (token_index + 2 > last_token_index ||
 		    !token_text_equals(parser, token_index, "ROW") ||
@@ -7952,7 +7962,15 @@ static int validate_values_row_constructor_list_syntax(const mylite_parser *pars
 		after_close_token_index = parser->tokens[open_token_index].matching_token;
 		if (after_close_token_index <= open_token_index + 1 ||
 		    after_close_token_index - 1 > last_token_index ||
-		    !validate_expression_list_syntax(parser, open_token_index + 1, after_close_token_index - 2)) {
+		    !validate_values_row_value_list_syntax(parser,
+		                                           open_token_index + 1,
+		                                           after_close_token_index - 2,
+		                                           &value_count)) {
+			return 0;
+		}
+		if (expected_value_count == 0) {
+			expected_value_count = value_count;
+		} else if (value_count != expected_value_count) {
 			return 0;
 		}
 
@@ -7973,6 +7991,70 @@ static int validate_values_row_constructor_list_syntax(const mylite_parser *pars
 
 	*next_token_index = token_index;
 	return 1;
+}
+
+static int validate_values_row_value_list_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 size_t *value_count)
+{
+	int expecting_value = 1;
+	size_t count = 0;
+
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == DEFAULT_T) {
+			return 0;
+		}
+		if (matching_token > token_index + 1) {
+			if (values_row_value_range_has_default_token(parser, token_index, matching_token - 1)) {
+				return 0;
+			}
+			if (expecting_value) {
+				count++;
+			}
+			expecting_value = 0;
+			token_index = matching_token;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == ',') {
+			if (expecting_value) {
+				return 0;
+			}
+			expecting_value = 1;
+			token_index++;
+			continue;
+		}
+		if (expecting_value) {
+			count++;
+		}
+		expecting_value = 0;
+		token_index++;
+	}
+
+	if (expecting_value || count == 0) {
+		return 0;
+	}
+	*value_count = count;
+	return 1;
+}
+
+static int values_row_value_range_has_default_token(const mylite_parser *parser,
+                                                    size_t first_token_index,
+                                                    size_t last_token_index)
+{
+	while (first_token_index <= last_token_index && first_token_index < parser->token_count) {
+		if (parser->tokens[first_token_index].parser_token == DEFAULT_T) {
+			return 1;
+		}
+		first_token_index++;
+	}
+	return 0;
 }
 
 static int validate_values_tail_syntax(const mylite_parser *parser,

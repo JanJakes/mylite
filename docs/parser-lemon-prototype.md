@@ -90,6 +90,8 @@ token sink:
   read access modes without permissive tails.
 - `SET NAMES` and `SET CHARACTER SET` recognize their charset/default forms,
   optional collation, and comma-following variable assignments.
+- `SET` variable assignments recognize comma-separated assignment lists with
+  optional per-assignment scopes and nested value expressions.
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form.
 - `EXPLAIN ... FOR SCHEMA|DATABASE name` schema specifiers are recognized.
 - `DESCRIBE` and `DESC` reuse the EXPLAIN syntax variants for execution-plan
@@ -104,7 +106,8 @@ token sink:
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,
-  including unterminated quoted text.
+  including unterminated quoted text, and the parser preserves targeted
+  extracted `SET` assignment fragments with missing closing parentheses.
 - The CLI and corpus script verify that the WordPress SQLite Database
   Integration MySQL query corpus parses end to end.
 

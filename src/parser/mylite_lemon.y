@@ -3204,10 +3204,7 @@ set_statement ::= SET RESOURCE create_resource_group cache_name_part set_resourc
 set_statement ::= SET TRANSACTION set_transaction_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
-set_statement ::= SET set_assignment. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
-}
-set_statement ::= SET set_assignment_scope set_assignment. {
+set_statement ::= SET set_assignment_list. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 set_statement ::= SET set_transaction_scope TRANSACTION set_transaction_tail. {
@@ -3225,7 +3222,7 @@ set_names_collate_tail ::= COLLATE set_collation_value.
 set_character_set_tail ::= set_charset_value set_comma_assignment_tail.
 
 set_comma_assignment_tail ::= .
-set_comma_assignment_tail ::= import_comma set_assignment.
+set_comma_assignment_tail ::= import_comma set_assignment_list.
 
 set_charset_value ::= DEFAULT.
 set_charset_value ::= set_charset_name.
@@ -3300,7 +3297,13 @@ set_assignment_scope ::= PERSIST.
 set_assignment_scope ::= PERSIST_ONLY.
 set_assignment_scope ::= SESSION.
 
-set_assignment ::= set_variable_name set_assignment_operator set_value_start statement_tail.
+set_assignment_list ::= set_assignment.
+set_assignment_list ::= set_assignment_list import_comma set_assignment.
+
+set_assignment ::= set_variable_name set_assignment_operator set_assignment_value.
+set_assignment ::= set_assignment_scope set_variable_name set_assignment_operator set_assignment_value.
+
+set_assignment_value ::= values_row_value_tokens.
 
 set_assignment_operator ::= EQUALS.
 set_assignment_operator ::= ASSIGN.

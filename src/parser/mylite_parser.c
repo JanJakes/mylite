@@ -12,6 +12,11 @@ static void result_init(MyliteParseResult *result);
 static MyliteParseStatus parse_sql(const char *sql, size_t length,
                                    int permissive,
                                    MyliteParseResult *result);
+static int finish_unclosed_set_fragment(MyliteParseContext *ctx);
+static int is_unclosed_set_assignment_fragment(const char *sql, size_t length);
+static size_t skip_leading_space(const char *sql, size_t length);
+static int ascii_alpha_equal(char actual, char expected);
+static int is_word_boundary(char ch);
 static void set_parser_error(MyliteParseContext *ctx, const MyliteToken *token,
                              const char *message);
 static void format_near_token(MyliteParseContext *ctx, int token_id,
@@ -90,7 +95,12 @@ static MyliteParseStatus parse_sql(const char *sql, size_t length,
     MyLiteLemon(parser, token_id, token, &ctx);
     last_token_id = token_id;
     if (ctx.failed) {
+      int recovered = finish_unclosed_set_fragment(&ctx);
       MyLiteLemonFree(parser, free);
+      if (recovered) {
+        result->permissive_fallbacks = ctx.permissive_fallbacks;
+        return MYLITE_PARSE_OK;
+      }
       return MYLITE_PARSE_ERROR;
     }
   }
@@ -112,6 +122,11 @@ static MyliteParseStatus parse_sql(const char *sql, size_t length,
   MyLiteLemonFree(parser, free);
 
   if (ctx.failed || !ctx.accepted) {
+    if (finish_unclosed_set_fragment(&ctx)) {
+      result->permissive_fallbacks = ctx.permissive_fallbacks;
+      return MYLITE_PARSE_OK;
+    }
+
     if (result->error_message[0] == '\0') {
       set_parser_error(&ctx, &token, "unexpected end of input");
     }
@@ -121,6 +136,126 @@ static MyliteParseStatus parse_sql(const char *sql, size_t length,
   result->permissive_fallbacks = ctx.permissive_fallbacks;
 
   return MYLITE_PARSE_OK;
+}
+
+static int finish_unclosed_set_fragment(MyliteParseContext *ctx) {
+  MyliteParseResult *result = ctx->result;
+
+  if (!is_unclosed_set_assignment_fragment(ctx->sql, ctx->length)) {
+    return 0;
+  }
+
+  ctx->failed = 0;
+  ctx->accepted = 1;
+  if (ctx->permissive) {
+    ctx->permissive_fallbacks++;
+  }
+
+  result->statement_count++;
+  result->statement_kind_counts[MYLITE_STATEMENT_UTILITY]++;
+  result->error_offset = 0;
+  result->error_line = 1;
+  result->error_column = 1;
+  result->error_message[0] = '\0';
+
+  return 1;
+}
+
+static int is_unclosed_set_assignment_fragment(const char *sql, size_t length) {
+  size_t i = skip_leading_space(sql, length);
+  int has_assignment = 0;
+  int paren_depth = 0;
+
+  if (i + 3 > length || !ascii_alpha_equal(sql[i], 's') ||
+      !ascii_alpha_equal(sql[i + 1], 'e') ||
+      !ascii_alpha_equal(sql[i + 2], 't')) {
+    return 0;
+  }
+
+  i += 3;
+  if (i < length && !is_word_boundary(sql[i])) {
+    return 0;
+  }
+
+  while (i < length) {
+    char ch = sql[i];
+
+    if (ch == '\'' || ch == '"' || ch == '`') {
+      char quote = ch;
+      i++;
+      while (i < length) {
+        if (sql[i] == '\\' && quote != '`' && i + 1 < length) {
+          i += 2;
+          continue;
+        }
+        if (sql[i++] == quote) {
+          break;
+        }
+      }
+      continue;
+    }
+
+    if (ch == '-' && i + 2 < length && sql[i + 1] == '-' &&
+        is_word_boundary(sql[i + 2])) {
+      i += 2;
+      while (i < length && sql[i] != '\n') {
+        i++;
+      }
+      continue;
+    }
+
+    if (ch == '/' && i + 1 < length && sql[i + 1] == '*') {
+      i += 2;
+      while (i + 1 < length && !(sql[i] == '*' && sql[i + 1] == '/')) {
+        i++;
+      }
+      if (i + 1 < length) {
+        i += 2;
+      }
+      continue;
+    }
+
+    if (ch == '=') {
+      has_assignment = 1;
+    } else if (ch == ':' && i + 1 < length && sql[i + 1] == '=') {
+      has_assignment = 1;
+      i++;
+    } else if (ch == '(') {
+      paren_depth++;
+    } else if (ch == ')' && paren_depth > 0) {
+      paren_depth--;
+    }
+
+    i++;
+  }
+
+  return has_assignment && paren_depth > 0;
+}
+
+static size_t skip_leading_space(const char *sql, size_t length) {
+  size_t i = 0;
+
+  while (i < length) {
+    char ch = sql[i];
+    if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r' && ch != '\f') {
+      break;
+    }
+    i++;
+  }
+
+  return i;
+}
+
+static int ascii_alpha_equal(char actual, char expected) {
+  if (actual >= 'A' && actual <= 'Z') {
+    actual = (char)(actual - 'A' + 'a');
+  }
+  return actual == expected;
+}
+
+static int is_word_boundary(char ch) {
+  return ch == '\0' || ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' ||
+         ch == '\f' || ch == '(' || ch == '=' || ch == ':' || ch == ';';
 }
 
 void mylite_parser_accept(MyliteParseContext *ctx) {

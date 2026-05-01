@@ -232,7 +232,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. |  |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. |  |
 | `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser recognizes local clone and remote `CLONE INSTANCE` syntax, including optional data directory and SSL clauses. |
-| `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. |  |
+| `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser recognizes comma-separated variable assignment lists with optional per-assignment scopes and nested value expressions. |
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser recognizes explicit charset names, `DEFAULT`, and comma-following variable assignments. |
 | `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser recognizes explicit charset names, `DEFAULT`, optional `COLLATE`, and comma-following variable assignments. |
 | `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. |  |

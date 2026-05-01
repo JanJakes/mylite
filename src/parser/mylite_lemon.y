@@ -1718,7 +1718,7 @@ load_statement ::= LOAD load_tail. {
 
 load_tail ::= DATA load_file_tail.
 load_tail ::= XML load_xml_tail.
-load_tail ::= INDEX INTO CACHE load_index_table_list load_index_tail.
+load_tail ::= INDEX INTO CACHE load_index_table_list.
 
 load_file_tail ::= load_file_priority_tail load_file_local_tail load_infile load_file_name load_duplicate_tail INTO TABLE cache_table_ref load_data_options.
 load_xml_tail ::= load_file_priority_tail load_file_local_tail load_infile load_file_name load_duplicate_tail INTO TABLE cache_table_ref load_xml_options.
@@ -1799,13 +1799,16 @@ load_set_tail ::= SET update_assignment_start.
 load_index_table_list ::= load_index_table_spec.
 load_index_table_list ::= load_index_table_list import_comma load_index_table_spec.
 
-load_index_table_spec ::= cache_table_ref.
-load_index_table_spec ::= cache_table_ref cache_index_kind cache_key_list.
+load_index_table_spec ::= cache_table_ref load_index_partition_tail load_index_key_tail load_index_ignore_tail.
 
-load_index_tail ::= .
-load_index_tail ::= load_index_partition.
-load_index_tail ::= IGNORE load_leaves.
-load_index_tail ::= load_index_partition IGNORE load_leaves.
+load_index_partition_tail ::= .
+load_index_partition_tail ::= load_index_partition.
+
+load_index_key_tail ::= .
+load_index_key_tail ::= cache_index_kind cache_key_list.
+
+load_index_ignore_tail ::= .
+load_index_ignore_tail ::= IGNORE load_leaves.
 
 load_index_partition ::= load_partition LP load_partition_names RP.
 

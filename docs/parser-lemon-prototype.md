@@ -146,8 +146,8 @@ token sink:
   field/line options, numeric ignored-row counts, column/user-variable lists,
   and `SET` tails.
   `LOAD DATA` partition names use the shared identifier grammar.
-- `LOAD INDEX INTO CACHE` recognizes table/key lists, partition lists, `ALL`,
-  and `IGNORE LEAVES`.
+- `LOAD INDEX INTO CACHE` recognizes per-table partition lists, `ALL`,
+  key/index lists, and `IGNORE LEAVES`.
 - `IMPORT TABLE` recognizes comma-separated string-literal file lists.
 - `EXPLAIN` and `DESCRIBE` recognize table-description forms, explainable
   statement starts with non-empty tails, and numeric `FOR CONNECTION` ids with

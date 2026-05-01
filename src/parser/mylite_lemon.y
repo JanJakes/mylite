@@ -2471,7 +2471,7 @@ show_scoped_kind ::= STATUS.
 show_scoped_kind ::= VARIABLES.
 
 show_filter_tail ::= .
-show_filter_tail ::= LIKE ATOM.
+show_filter_tail ::= LIKE string_literal.
 show_filter_tail ::= WHERE expression_start statement_tail.
 
 show_database_tail ::= .
@@ -2512,7 +2512,7 @@ show_engine_kind ::= MUTEX.
 show_log_events_tail ::= show_log_file_tail show_log_from_tail show_limit_tail.
 
 show_log_file_tail ::= .
-show_log_file_tail ::= IN ATOM.
+show_log_file_tail ::= IN string_literal.
 
 show_log_from_tail ::= .
 show_log_from_tail ::= FROM show_log_position.

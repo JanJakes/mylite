@@ -140,8 +140,10 @@ token sink:
   debug/development SHOW form.
 - `SHOW ENGINE ... STATUS|LOGS|MUTEX` recognizes engine names using the shared
   identifier grammar.
-- `SHOW BINLOG EVENTS` and `SHOW RELAYLOG EVENTS` recognize optional log names,
-  numeric `FROM` positions, and numeric `LIMIT` tails.
+- Shared `SHOW ... LIKE` filters require string-literal patterns, while
+  `SHOW ... WHERE` keeps using the general expression tail.
+- `SHOW BINLOG EVENTS` and `SHOW RELAYLOG EVENTS` recognize optional
+  string-literal log names, numeric `FROM` positions, and numeric `LIMIT` tails.
 - `SHOW PROFILE` recognizes profile type lists, numeric `FOR QUERY` ids, and
   numeric `LIMIT` tails.
 - `SHOW WARNINGS` and `SHOW ERRORS` recognize numeric `LIMIT` tails.

@@ -285,10 +285,12 @@ optional `IF EXISTS` with an identifier-like target; the trigger and routine
 forms accept schema-qualified targets used by the corpus.
 Low-level DDL forms validate their distinctive tails: `CREATE SERVER` requires
 `FOREIGN DATA WRAPPER` and a nonempty documented `OPTIONS` list, `ALTER SERVER`
-requires a nonempty documented `OPTIONS` list, `DROP SERVER` accepts optional
-`IF EXISTS`, `DROP SPATIAL REFERENCE SYSTEM` requires a numeric SRID,
-`DROP LOGFILE GROUP` requires `ENGINE [=] name`, and `DROP TABLESPACE` /
-`DROP UNDO TABLESPACE` accept the corpus-observed optional engine tail.
+requires a nonempty documented `OPTIONS` list, `CREATE LOGFILE GROUP` and
+`ALTER LOGFILE GROUP` require `ADD UNDOFILE` and a final `ENGINE [=] name`
+clause, `DROP SERVER` accepts optional `IF EXISTS`,
+`DROP SPATIAL REFERENCE SYSTEM` requires a numeric SRID, `DROP LOGFILE GROUP`
+requires `ENGINE [=] name`, and `DROP TABLESPACE` / `DROP UNDO TABLESPACE`
+accept the corpus-observed optional engine tail.
 Account and resource DDL validation covers `DROP USER` and `DROP ROLE` with
 optional `IF EXISTS` plus comma-separated account/role lists. Resource-group
 validation covers `CREATE RESOURCE GROUP` required `TYPE` plus optional `VCPU`,
@@ -330,12 +332,13 @@ routine, event, trigger, and view targets are not confused with definer account
 tokens.
 Resource group targets are recorded and validated for `CREATE`, `ALTER`,
 `DROP`, and `SET RESOURCE GROUP`. Server DDL targets are recorded and validated
-for `CREATE SERVER`, `ALTER SERVER`, and `DROP SERVER`. Logfile-group,
-tablespace, and undo-tablespace DDL targets are recorded for the low-level
+for `CREATE SERVER`, `ALTER SERVER`, and `DROP SERVER`. Logfile-group DDL
+targets are recorded and validated for create, alter, and drop logfile-group
+forms. Tablespace and undo-tablespace DDL targets are recorded for the low-level
 storage/metadata statements that expose a direct name. Standalone `DROP INDEX`
 records the index target and validates the required `ON` table clause plus
-optional `ALGORITHM` and `LOCK` clauses. Instance-level `ALTER`, `LOCK`,
-`UNLOCK`, `RESTART`, and `SHUTDOWN`
+optional `ALGORITHM` and `LOCK` clauses. Instance-level `ALTER`,
+`LOCK`, `UNLOCK`, `RESTART`, and `SHUTDOWN`
 statements are recorded with an object kind but no object-name span. `RESTART`
 and `SHUTDOWN` reject body tokens because MySQL accepts only the bare statement
 forms. Principal

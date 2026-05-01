@@ -70,7 +70,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. |  |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. |  |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |
-| `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
+| `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser records and validates the logfile group target with required `ADD UNDOFILE`, optional `INITIAL_SIZE` and `WAIT`, and required `ENGINE [=] name`; NDB storage behavior, range checks, engine validation, and diagnostics are not implemented. |
 | `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. |  |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. | Parser records and validates the server target with a nonempty documented `OPTIONS` list; foreign-server metadata updates and diagnostics are not implemented. |
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. |  |
@@ -82,7 +82,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. | Parser records the function target while skipping optional definer account clauses; stored-function semantics are not implemented. |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
 | `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. |  |
-| `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
+| `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser records and validates the logfile group target with required `ADD UNDOFILE`, documented optional size, nodegroup, wait, and comment clauses, and required `ENGINE [=] name`; NDB storage behavior, range checks, engine validation, and diagnostics are not implemented. |
 | `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. | Parser records the procedure target while skipping optional definer account clauses; stored-procedure semantics are not implemented. |
 | `CREATE SERVER` | ❌ | low | Foreign server metadata syntax. | Parser records and validates the server target with required `FOREIGN DATA WRAPPER` and a nonempty documented `OPTIONS` list; foreign-server metadata, option truncation, range checks, and diagnostics are not implemented. |
 | `CREATE SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system catalog DDL. |  |

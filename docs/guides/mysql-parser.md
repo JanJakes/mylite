@@ -67,7 +67,9 @@ unqualified schema target.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate
 optional `IF EXISTS` with an identifier-like target.
 `CREATE SERVER` validates `FOREIGN DATA WRAPPER` and documented server
-`OPTIONS`, `ALTER SERVER` validates documented `OPTIONS`, and `DROP SERVER`,
+`OPTIONS`, `ALTER SERVER` validates documented `OPTIONS`, `CREATE LOGFILE
+GROUP` and `ALTER LOGFILE GROUP` validate `ADD UNDOFILE`, size/comment options,
+`WAIT`, and required storage engines, and `DROP SERVER`,
 `DROP SPATIAL REFERENCE SYSTEM`, `DROP LOGFILE GROUP`, `DROP TABLESPACE`, and
 `DROP UNDO TABLESPACE` validate their required object names and low-level tails,
 including `IF EXISTS`, numeric SRIDs, and `ENGINE [=] name` where MySQL syntax
@@ -734,8 +736,8 @@ ok statements=1 kinds=create[1:7,0:36]/resource_group:rg
 ```
 
 Low-level DDL targets such as server and logfile-group names are reported too,
-with `CREATE SERVER` and `ALTER SERVER` validating their documented option
-lists:
+with `CREATE SERVER`, `ALTER SERVER`, `CREATE LOGFILE GROUP`, and
+`ALTER LOGFILE GROUP` validating their documented option lists:
 
 ```text
 ok statements=1 kinds=create[1:12,0:61]/server:s

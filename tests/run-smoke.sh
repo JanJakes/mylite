@@ -2535,7 +2535,7 @@ if "$parser" --quiet 'DROP RESOURCE GROUP rg FORCE extra'; then
 	exit 1
 fi
 
-server_logfile_output=$("$parser" 'CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (HOST "h"); ALTER SERVER s OPTIONS (USER "u"); DROP SERVER IF EXISTS "server_one"; CREATE LOGFILE GROUP lg ADD UNDOFILE "u.dat"; ALTER LOGFILE GROUP lg ADD UNDOFILE "v.dat"; DROP LOGFILE GROUP lg ENGINE=NDB; CREATE TABLESPACE ts ADD DATAFILE "ts.ibd"; DROP TABLESPACE ts ENGINE InnoDB; ALTER UNDO TABLESPACE uts SET INACTIVE; DROP UNDO TABLESPACE undo_003 ENGINE InnoDB; DROP SPATIAL REFERENCE SYSTEM IF EXISTS 4120')
+server_logfile_output=$("$parser" 'CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (HOST "h"); ALTER SERVER s OPTIONS (USER "u"); DROP SERVER IF EXISTS "server_one"; CREATE LOGFILE GROUP lg ADD UNDOFILE "u.dat" ENGINE=NDB; ALTER LOGFILE GROUP lg ADD UNDOFILE "v.dat" ENGINE=NDB; DROP LOGFILE GROUP lg ENGINE=NDB; CREATE TABLESPACE ts ADD DATAFILE "ts.ibd"; DROP TABLESPACE ts ENGINE InnoDB; ALTER UNDO TABLESPACE uts SET INACTIVE; DROP UNDO TABLESPACE undo_003 ENGINE InnoDB; DROP SPATIAL REFERENCE SYSTEM IF EXISTS 4120')
 case "$server_logfile_output" in
 	*"create"*/server:s*"alter"*/server:s*"drop"*/server:*server_one*"create"*/logfile_group:lg*"alter"*/logfile_group:lg*"drop"*/logfile_group:lg*"create"*/tablespace:ts*"drop"*/tablespace:ts*"alter"*/undo_tablespace:uts*"drop"*/undo_tablespace:undo_003*"drop"*/spatial_reference_system:4120*) ;;
 	*)
@@ -2621,6 +2621,86 @@ fi
 
 if "$parser" --quiet "ALTER SERVER s OPTIONS (USER 'u') extra"; then
 	echo "expected ALTER SERVER with trailing tokens to fail" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE LOGFILE GROUP lg ADD UNDOFILE 'u.dat' ENGINE=NDB"; then
+	echo "expected CREATE LOGFILE GROUP minimal form to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE LOGFILE GROUP lg ADD UNDOFILE 'u.dat' INITIAL_SIZE=32M UNDO_BUFFER_SIZE 8M REDO_BUFFER_SIZE=16M NODEGROUP=1 WAIT COMMENT='c' ENGINE NDBCLUSTER"; then
+	echo "expected CREATE LOGFILE GROUP full option sequence to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "ALTER LOGFILE GROUP lg ADD UNDOFILE 'v.dat' INITIAL_SIZE=32M WAIT ENGINE=NDBCLUSTER"; then
+	echo "expected ALTER LOGFILE GROUP option sequence to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE LOGFILE GROUP'; then
+	echo "expected CREATE LOGFILE GROUP without a name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE LOGFILE GROUP lg'; then
+	echo "expected CREATE LOGFILE GROUP without ADD UNDOFILE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE LOGFILE GROUP lg ADD UNDOFILE'; then
+	echo "expected CREATE LOGFILE GROUP without undo file name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE LOGFILE GROUP lg ADD UNDOFILE 7 ENGINE=NDB'; then
+	echo "expected CREATE LOGFILE GROUP numeric undo file name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE LOGFILE GROUP lg ADD UNDOFILE 'u.dat'"; then
+	echo "expected CREATE LOGFILE GROUP without ENGINE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE LOGFILE GROUP lg ADD UNDOFILE 'u.dat' ENGINE"; then
+	echo "expected CREATE LOGFILE GROUP with incomplete ENGINE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE LOGFILE GROUP lg ADD UNDOFILE 'u.dat' COMMENT 1 ENGINE=NDB"; then
+	echo "expected CREATE LOGFILE GROUP nonstring COMMENT to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE LOGFILE GROUP lg DROP UNDOFILE 'u.dat' ENGINE=NDB"; then
+	echo "expected CREATE LOGFILE GROUP DROP UNDOFILE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE LOGFILE GROUP lg ADD UNDOFILE 'u.dat' ENGINE=NDB extra"; then
+	echo "expected CREATE LOGFILE GROUP with trailing ENGINE tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'ALTER LOGFILE GROUP lg'; then
+	echo "expected ALTER LOGFILE GROUP without ADD UNDOFILE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "ALTER LOGFILE GROUP lg ADD UNDOFILE 'v.dat' WAIT"; then
+	echo "expected ALTER LOGFILE GROUP without ENGINE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "ALTER LOGFILE GROUP lg ADD UNDOFILE 'v.dat' UNDO_BUFFER_SIZE=8M ENGINE=NDB"; then
+	echo "expected ALTER LOGFILE GROUP unsupported UNDO_BUFFER_SIZE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "ALTER LOGFILE GROUP lg DROP UNDOFILE 'v.dat' ENGINE=NDB"; then
+	echo "expected ALTER LOGFILE GROUP DROP UNDOFILE to fail" >&2
 	exit 1
 fi
 

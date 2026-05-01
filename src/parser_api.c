@@ -91,6 +91,22 @@ static int validate_reset_replica_option_syntax(const mylite_parser *parser,
                                                 size_t token_index,
                                                 size_t last_token_index,
                                                 size_t *next_token_index);
+static int validate_flush_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_flush_table_option_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index);
+static int validate_flush_table_name_list_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 size_t *next_token_index);
+static int token_can_start_flush_table_name(const mylite_parser *parser, size_t token_index);
+static int validate_flush_option_list_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index);
+static int validate_flush_option_syntax(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index,
+                                        size_t *next_token_index);
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1161,6 +1177,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_FLUSH:
+			if (!validate_flush_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid FLUSH statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_SAVEPOINT:
 			if (!validate_savepoint_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid SAVEPOINT statement");
@@ -2047,6 +2069,189 @@ static int validate_reset_replica_option_syntax(const mylite_parser *parser,
 	}
 	*next_token_index = token_index;
 	return 1;
+}
+
+static int validate_flush_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == LOCAL_T ||
+	    token_text_equals(parser, token_index, "NO_WRITE_TO_BINLOG")) {
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	if (parser->tokens[token_index].parser_token == TABLE_T ||
+	    token_text_equals(parser, token_index, "TABLES")) {
+		return validate_flush_table_option_syntax(parser, token_index + 1, last_token_index);
+	}
+	return validate_flush_option_list_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_flush_table_option_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	size_t next_token_index;
+
+	if (token_index > last_token_index) {
+		return 1;
+	}
+
+	if (token_text_equals(parser, token_index, "WITH")) {
+		return token_index + 2 == last_token_index &&
+		       token_text_equals(parser, token_index + 1, "READ") &&
+		       token_text_equals(parser, token_index + 2, "LOCK");
+	}
+	if (!validate_flush_table_name_list_syntax(parser, token_index, last_token_index, &next_token_index)) {
+		return 0;
+	}
+	if (next_token_index > last_token_index) {
+		return 1;
+	}
+	if (token_text_equals(parser, next_token_index, "WITH")) {
+		return next_token_index + 2 == last_token_index &&
+		       token_text_equals(parser, next_token_index + 1, "READ") &&
+		       token_text_equals(parser, next_token_index + 2, "LOCK");
+	}
+	if (token_text_equals(parser, next_token_index, "FOR")) {
+		return next_token_index + 1 == last_token_index &&
+		       token_text_equals(parser, next_token_index + 1, "EXPORT");
+	}
+	return 0;
+}
+
+static int validate_flush_table_name_list_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index,
+                                                 size_t *next_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		size_t last_name_token;
+
+		if (!token_can_start_flush_table_name(parser, token_index)) {
+			return 0;
+		}
+		last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+		token_index = last_name_token + 1;
+		if (token_index > last_token_index ||
+		    token_text_equals(parser, token_index, "WITH") ||
+		    token_text_equals(parser, token_index, "FOR")) {
+			break;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index ||
+		    token_text_equals(parser, token_index, "WITH") ||
+		    token_text_equals(parser, token_index, "FOR")) {
+			return 0;
+		}
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int token_can_start_flush_table_name(const mylite_parser *parser, size_t token_index)
+{
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	return token_can_continue_object_name(&parser->tokens[token_index]);
+}
+
+static int validate_flush_option_list_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_flush_option_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static int validate_flush_option_syntax(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index,
+                                        size_t *next_token_index)
+{
+	if (token_text_equals(parser, token_index, "RELAY")) {
+		if (token_index + 1 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "LOGS")) {
+			return 0;
+		}
+		token_index += 2;
+		if (token_index <= last_token_index && token_text_equals(parser, token_index, "FOR")) {
+			if (token_index + 2 > last_token_index ||
+			    !token_text_equals(parser, token_index + 1, "CHANNEL") ||
+			    parser->tokens[token_index + 2].kind != MYLITE_TOKEN_STRING) {
+				return 0;
+			}
+			token_index += 3;
+		}
+		*next_token_index = token_index;
+		return 1;
+	}
+
+	if (token_index + 1 <= last_token_index &&
+	    (token_text_equals(parser, token_index, "BINARY") ||
+	     token_text_equals(parser, token_index, "ENGINE") ||
+	     token_text_equals(parser, token_index, "ERROR") ||
+	     token_text_equals(parser, token_index, "GENERAL") ||
+	     token_text_equals(parser, token_index, "SLOW"))) {
+		if (!token_text_equals(parser, token_index + 1, "LOGS")) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+
+	if (token_text_equals(parser, token_index, "LOGS") ||
+	    token_text_equals(parser, token_index, "PRIVILEGES") ||
+	    token_text_equals(parser, token_index, "STATUS") ||
+	    token_text_equals(parser, token_index, "HOSTS") ||
+	    token_text_equals(parser, token_index, "OPTIMIZER_COSTS") ||
+	    token_text_equals(parser, token_index, "USER_RESOURCES")) {
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+
+	return 0;
 }
 
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

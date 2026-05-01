@@ -462,7 +462,9 @@ collection binary-log targets:
 ok statements=1 kinds=purge[1:7,0:30]/binary_log
 ```
 
-FLUSH TABLES exposes the first table target or the table collection:
+FLUSH TABLES validates table-name lists, `WITH READ LOCK`, and named-table
+`FOR EXPORT` tails, then exposes the first table target or the table
+collection:
 
 ```text
 ok statements=1 kinds=flush[1:3,0:14]/table:t
@@ -472,8 +474,8 @@ ok statements=1 kinds=flush[1:3,0:14]/table:t
 ok statements=1 kinds=flush[1:2,0:12]/table
 ```
 
-FLUSH RELAY LOGS exposes explicit channel names and the default channel
-collection for bare forms:
+FLUSH RELAY LOGS validates string channel names and exposes explicit channel
+names or the default channel collection for bare forms:
 
 ```text
 ok statements=1 kinds=flush[1:6,0:33]/replication_channel:'ch'
@@ -483,13 +485,15 @@ ok statements=1 kinds=flush[1:6,0:33]/replication_channel:'ch'
 ok statements=1 kinds=flush[1:3,0:16]/replication_channel
 ```
 
-FLUSH collection forms expose clear global targets:
+FLUSH collection forms validate comma-separated options and expose clear global
+targets:
 
 ```text
 ok statements=3 kinds=flush[1:3,0:17]/binary_log,flush[5:6,19:35]/privilege,flush[8:9,37:49]/status_variable
 ```
 
-Other documented FLUSH options expose their global targets:
+Other documented FLUSH options, plus legacy `FLUSH HOSTS` routing for
+compatibility, expose their global targets:
 
 ```text
 ok statements=3 kinds=flush[1:3,0:16]/error_log,flush[5:6,18:29]/host_cache,flush[8:9,31:51]/user_resource

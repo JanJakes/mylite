@@ -990,6 +990,76 @@ case "$flush_relay_output" in
 		;;
 esac
 
+if "$parser" --quiet 'FLUSH'; then
+	echo "expected missing FLUSH body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH LOCAL'; then
+	echo "expected missing FLUSH LOCAL body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH LOCAL NO_WRITE_TO_BINLOG STATUS'; then
+	echo "expected duplicate FLUSH modifier to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH TABLES t,'; then
+	echo "expected trailing FLUSH TABLES comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH TABLES t, WITH READ LOCK'; then
+	echo "expected incomplete FLUSH TABLES table list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH TABLES WITH READ'; then
+	echo "expected incomplete FLUSH TABLES WITH READ LOCK clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH TABLES FOR EXPORT'; then
+	echo "expected nameless FLUSH TABLES FOR EXPORT to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH TABLES t FOR'; then
+	echo "expected incomplete FLUSH TABLES FOR EXPORT clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH STATUS,'; then
+	echo "expected trailing FLUSH option comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH STATUS USER_RESOURCES'; then
+	echo "expected missing FLUSH option comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH RELAY LOGS FOR CHANNEL ch'; then
+	echo "expected unquoted FLUSH RELAY channel to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH RELAY LOGS FOR CHANNEL'; then
+	echo "expected missing FLUSH RELAY channel to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'FLUSH BINARY'; then
+	echo "expected incomplete FLUSH BINARY LOGS option to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "FLUSH BINARY LOGS FOR CHANNEL 'ch'"; then
+	echo "expected FLUSH BINARY LOGS channel clause to fail" >&2
+	exit 1
+fi
+
 maintenance_output=$("$parser" 'ANALYZE TABLE t; CHECK TABLE `db`.`t`; CHECKSUM TABLE t QUICK; OPTIMIZE TABLE t; REPAIR TABLE t USE_FRM; ANALYZE FORMAT=JSON TABLE t; CHECKSUM TABLE QUICK')
 case "$maintenance_output" in
 	*"analyze"*/table:t*"check"*/table:'`db`.`t`'*"checksum"*/table:t*"optimize"*/table:t*"repair"*/table:t*"analyze"*/table:t*"checksum[32:34"*) ;;

@@ -435,12 +435,13 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   forms. `SHOW REPLICAS` and deprecated `SHOW SLAVE HOSTS` metadata record the
   replication-channel collection.
   `FLUSH TABLES` metadata records the first table target when present and the
-  table collection for unnamed table-cache forms. `FLUSH RELAY LOGS` records
-  explicit channel names or the default replication-channel collection when no
-  channel is named. Other documented global `FLUSH` options record their object
-  kinds after optional `LOCAL` /
-  `NO_WRITE_TO_BINLOG` modifiers, but comma-separated option lists still expose
-  only the first option target.
+  table collection for unnamed table-cache forms. Parser validation covers
+  table-name lists, `WITH READ LOCK`, and named-table `FOR EXPORT` tails.
+  `FLUSH RELAY LOGS` records explicit channel names or the default
+  replication-channel collection when no channel is named and validates string
+  channel names. Other documented global `FLUSH` options record their object
+  kinds after optional `LOCAL` / `NO_WRITE_TO_BINLOG` modifiers, validate
+  comma-separated option lists, and preserve legacy `FLUSH HOSTS` routing.
   Table-maintenance metadata records only the first concrete table target and
   leaves malformed or name-less forms objectless.
   `RESET PERSIST` metadata records the first variable name when present,

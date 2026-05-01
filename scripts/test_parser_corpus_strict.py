@@ -34,6 +34,8 @@ EXPECTED_FRAGMENT_FAILURES = [
     19528,
     # Removed RESET SLAVE syntax.
     25464,
+    # Removed FLUSH HOSTS syntax.
+    25483,
     # ANALYZE TABLE histogram negative-test cases with multiple table names;
     # permissive corpus mode accepts them, but strict mode follows MySQL 8.4's
     # single-table histogram grammar.

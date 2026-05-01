@@ -244,7 +244,8 @@ token sink:
   `IF NOT EXISTS`.
 - `SHOW CREATE USER` reuses the shared account-reference grammar.
 - `FLUSH` recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, simple option
-  lists, table forms, log variants, and channel-qualified relay logs.
+  lists, table forms, log variants, and channel-qualified relay logs. Removed
+  `FLUSH HOSTS` syntax is permissive-corpus-only.
 - `RESTART`, `SHUTDOWN`, and `HELP` recognize their closed parser-level
   statement shapes.
 - A permissive mode accepts extracted corpus fragments that are not standalone

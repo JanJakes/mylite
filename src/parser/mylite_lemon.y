@@ -3058,7 +3058,9 @@ flush_target ::= SLOW LOGS.
 flush_simple_list ::= flush_simple_kind.
 flush_simple_list ::= flush_simple_list import_comma flush_simple_kind.
 
-flush_simple_kind ::= HOSTS.
+flush_simple_kind ::= HOSTS(A). {
+  mylite_parser_require_permissive(ctx, A);
+}
 flush_simple_kind ::= LOGS.
 flush_simple_kind ::= OPTIMIZER_COSTS.
 flush_simple_kind ::= PRIVILEGES.

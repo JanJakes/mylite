@@ -1280,6 +1280,7 @@ def main() -> int:
         ("flush binary logs now;", 1, {}),
         ("flush engine;", 1, {}),
         ("flush relay logs for;", 1, {}),
+        ("flush hosts;", 1, {}),
         ("flush status garbage;", 1, {}),
         ("flush tables t garbage;", 1, {}),
         ("flush nonsense;", 1, {}),

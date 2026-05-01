@@ -1761,7 +1761,9 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     PAREN_QUERY_AFTER_LIMIT_COMMA,
     PAREN_QUERY_AFTER_LIMIT_OFFSET,
     PAREN_QUERY_AFTER_LIMIT_FINAL_VALUE,
-    PAREN_QUERY_AFTER_INTO
+    PAREN_QUERY_AFTER_INTO,
+    PAREN_QUERY_AFTER_INTO_AT,
+    PAREN_QUERY_AFTER_INTO_TARGET
   };
   MyliteLexer lexer;
   MyliteToken token;
@@ -1913,13 +1915,42 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     }
 
     if (state == PAREN_QUERY_AFTER_INTO) {
-      if (select_operand_boundary(token_id)) {
+      if (token_id == ML_AT_SIGN) {
+        state = PAREN_QUERY_AFTER_INTO_AT;
+        pending_token = token;
+        continue;
+      }
+      if (!select_window_name_token(token_id, token) &&
+          token_id != ML_AT_HOST) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete parenthesized query INTO");
         return;
       }
-      state = PAREN_QUERY_AFTER_SET_OPERAND;
+      state = PAREN_QUERY_AFTER_INTO_TARGET;
       continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_INTO_AT) {
+      if (!select_window_name_token(token_id, token) &&
+          token_id != ML_DOUBLE_QUOTED_STRING &&
+          token_id != ML_STRING_LITERAL) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO");
+        return;
+      }
+      state = PAREN_QUERY_AFTER_INTO_TARGET;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_INTO_TARGET) {
+      if (token_id == ML_COMMA) {
+        state = PAREN_QUERY_AFTER_INTO;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed parenthesized query INTO");
+      return;
     }
   }
 
@@ -1937,7 +1968,8 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
              state == PAREN_QUERY_AFTER_LIMIT_OFFSET) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete parenthesized query LIMIT");
-  } else if (state == PAREN_QUERY_AFTER_INTO) {
+  } else if (state == PAREN_QUERY_AFTER_INTO ||
+             state == PAREN_QUERY_AFTER_INTO_AT) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete parenthesized query INTO");
   }

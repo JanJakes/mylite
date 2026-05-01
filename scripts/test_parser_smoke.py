@@ -2132,6 +2132,7 @@ def main() -> int:
         ("(select 1) order by 1;", 0, {"statements": "1", "select": "1"}),
         ("(select 1) limit 1;", 0, {"statements": "1", "select": "1"}),
         ("(select 1) into @var;", 0, {"statements": "1", "select": "1"}),
+        ("(select 1) into local_var, @var;", 0, {"statements": "1", "select": "1"}),
         ("(select 1) limit 1 into @var;", 0, {"statements": "1", "select": "1"}),
         ("(select 1) garbage;", 1, {}),
         ("(select 1) union garbage;", 1, {}),
@@ -2139,6 +2140,8 @@ def main() -> int:
         ("(select 1) order;", 1, {}),
         ("(select 1) limit;", 1, {}),
         ("(select 1) into;", 1, {}),
+        ("(select 1) into @var garbage;", 1, {}),
+        ("(select 1) into @var,;", 1, {}),
     ]
 
     for sql, expected_rc, expected_stats in cases:

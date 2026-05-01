@@ -811,6 +811,8 @@ def main() -> int:
         ("show procedure status like 'p%';", 0, {"statements": "1", "show": "1"}),
         ("show procedure code p1;", 0, {"statements": "1", "show": "1"}),
         ("show storage engines;", 0, {"statements": "1", "show": "1"}),
+        ("show engine innodb status;", 0, {"statements": "1", "show": "1"}),
+        ("show engine account logs;", 0, {"statements": "1", "show": "1"}),
         ("show parse_tree select * from t where id = 1;", 0, {"statements": "1", "show": "1"}),
         ("show parse_tree with cte as (select 1) select * from cte;", 0, {"statements": "1", "show": "1"}),
         ("show profile;", 0, {"statements": "1", "show": "1"}),

@@ -269,10 +269,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SHOW CREATE USER` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes `CURRENT_USER` and `CURRENT_USER()` account references. |
 | `SHOW CREATE VIEW` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW DATABASES` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW ENGINE` | ❌ | low | Generic SHOW ENGINE syntax, subcommand dispatch, result-set shape, and engine-specific diagnostics. |  |
-| `SHOW ENGINE LOGS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW ENGINE MUTEX` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW ENGINE STATUS` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
+| `SHOW ENGINE` | ❌ | low | Generic SHOW ENGINE syntax, subcommand dispatch, result-set shape, and engine-specific diagnostics. | Parser recognizes engine names using the shared identifier grammar. |
+| `SHOW ENGINE LOGS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes engine names using the shared identifier grammar. |
+| `SHOW ENGINE MUTEX` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes engine names using the shared identifier grammar. |
+| `SHOW ENGINE STATUS` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser recognizes engine names using the shared identifier grammar. |
 | `SHOW ENGINES` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW ERRORS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW EVENTS` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |

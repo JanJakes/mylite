@@ -2242,8 +2242,7 @@ show_index_kind ::= KEYS.
 show_table_source ::= FROM cache_table_ref.
 show_table_source ::= IN cache_table_ref.
 
-show_engine_name ::= ATOM.
-show_engine_name ::= LABEL.
+show_engine_name ::= cache_name_part.
 
 show_engine_kind ::= STATUS.
 show_engine_kind ::= LOGS.

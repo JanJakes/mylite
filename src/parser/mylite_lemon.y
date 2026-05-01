@@ -4289,7 +4289,9 @@ expression_start_keyword ::= TRUNCATE.
 expression_start_keyword ::= USER.
 expression_start_keyword ::= VALUES.
 
-if_statement ::= IF if_condition_start while_condition_tail THEN statement_tail. {
+if_statement ::= IF if_condition_start(A) while_condition_tail THEN statement_tail. {
+  mylite_parser_validate_expression_until_from(
+      ctx, A, ML_THEN, "malformed IF condition");
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 if_statement ::= IF LP statement_tail. {
@@ -4302,11 +4304,14 @@ if_condition_start ::= expression_start_keyword.
 if_condition_start ::= LB.
 if_condition_start ::= LC.
 
-elseif_statement ::= ELSEIF expression_start while_condition_tail THEN statement_tail. {
+elseif_statement ::= ELSEIF expression_start(A) while_condition_tail THEN statement_tail. {
+  mylite_parser_validate_expression_until_from(
+      ctx, A, ML_THEN, "malformed ELSEIF condition");
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-return_statement ::= RETURN expression_start statement_tail. {
+return_statement ::= RETURN expression_start(A) statement_tail. {
+  mylite_parser_validate_expression_from(ctx, A, "malformed RETURN expression");
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
@@ -4318,7 +4323,9 @@ resignal_tail ::= .
 resignal_tail ::= SET signal_information_items.
 resignal_tail ::= signal_condition_value signal_set_tail.
 
-while_statement ::= WHILE expression_start while_condition_tail DO statement_tail. {
+while_statement ::= WHILE expression_start(A) while_condition_tail DO statement_tail. {
+  mylite_parser_validate_expression_until_from(
+      ctx, A, ML_DO, "malformed WHILE condition");
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
@@ -4361,11 +4368,15 @@ while_condition_keyword ::= OR.
 while_condition_keyword ::= SELECT.
 while_condition_keyword ::= VALUES.
 
-until_statement ::= UNTIL expression_start statement_tail. {
+until_statement ::= UNTIL expression_start(A) statement_tail. {
+  mylite_parser_validate_expression_until_from(
+      ctx, A, ML_END, "malformed UNTIL condition");
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 
-when_statement ::= WHEN expression_start while_condition_tail THEN statement_tail. {
+when_statement ::= WHEN expression_start(A) while_condition_tail THEN statement_tail. {
+  mylite_parser_validate_expression_until_from(
+      ctx, A, ML_THEN, "malformed WHEN condition");
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);
 }
 

@@ -156,6 +156,11 @@ static int query_expression_group_validates_adjacent(int allow_empty,
 static int query_expression_group_disables_adjacent(int token_id);
 static int query_expression_malformed_operator_sequence(
     int previous_top_token_id, MyliteToken previous_top_token, int token_id);
+static void validate_expression_tail_from(MyliteParseContext *ctx,
+                                          MyliteToken start,
+                                          int boundary_token_id,
+                                          int allow_double_at_assignment,
+                                          const char *message);
 static int expression_start_follows_double_at_assignment(
     MyliteParseContext *ctx, MyliteToken start);
 static int select_window_name_token(int token_id, MyliteToken token);
@@ -4179,6 +4184,21 @@ void mylite_parser_validate_parenthesized_expression_list_from(
 void mylite_parser_validate_expression_from(MyliteParseContext *ctx,
                                             MyliteToken start,
                                             const char *message) {
+  validate_expression_tail_from(ctx, start, 0, 1, message);
+}
+
+void mylite_parser_validate_expression_until_from(MyliteParseContext *ctx,
+                                                  MyliteToken start,
+                                                  int boundary_token_id,
+                                                  const char *message) {
+  validate_expression_tail_from(ctx, start, boundary_token_id, 0, message);
+}
+
+static void validate_expression_tail_from(MyliteParseContext *ctx,
+                                          MyliteToken start,
+                                          int boundary_token_id,
+                                          int allow_double_at_assignment,
+                                          const char *message) {
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken previous_top_token = start;
@@ -4189,7 +4209,8 @@ void mylite_parser_validate_expression_from(MyliteParseContext *ctx,
   int previous_was_operator = 1;
   MyliteExpressionStack expression_stack = {0};
 
-  if (expression_start_follows_double_at_assignment(ctx, start)) {
+  if (allow_double_at_assignment &&
+      expression_start_follows_double_at_assignment(ctx, start)) {
     return;
   }
 
@@ -4216,7 +4237,8 @@ void mylite_parser_validate_expression_from(MyliteParseContext *ctx,
       continue;
     }
 
-    if (token_id == ML_SEMI || token_id == ML_COMMA) {
+    if (token_id == ML_SEMI || token_id == ML_COMMA ||
+        (boundary_token_id && token_id == boundary_token_id)) {
       break;
     }
 

@@ -193,14 +193,14 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DECLARE ... CONDITION` | ❌ | medium | Named condition declarations. | Parser recognizes named conditions with numeric MySQL error codes or five-character `SQLSTATE [VALUE]` literals. |
 | `DECLARE ... CURSOR` | ❌ | medium | Cursor declaration over SELECT statements. |  |
 | `DECLARE ... HANDLER` | ❌ | medium | CONTINUE/EXIT handler declarations for SQLSTATE, errors, warnings, and NOT FOUND. | Parser recognizes numeric MySQL error codes, named conditions, `SQLSTATE [VALUE]` literals, `SQLWARNING`, `NOT FOUND`, `SQLEXCEPTION`, and handler bodies starting with compound blocks, flow-control, cursor, DML, diagnostics, and return statements. |
-| `CASE` statement | ❌ | medium | Stored-program CASE statement semantics. |  |
-| `IF` statement | ❌ | medium | Stored-program IF/ELSEIF/ELSE semantics. |  |
+| `CASE` statement | ❌ | medium | Stored-program CASE statement semantics. | Parser validates `WHEN` condition expression tails before `THEN`. |
+| `IF` statement | ❌ | medium | Stored-program IF/ELSEIF/ELSE semantics. | Parser validates `IF`/`ELSEIF` condition expression tails before `THEN`. |
 | `LOOP` | ❌ | medium | Stored-program LOOP semantics. |  |
-| `REPEAT` | ❌ | medium | Stored-program REPEAT UNTIL semantics. |  |
-| `WHILE` | ❌ | medium | Stored-program WHILE semantics. |  |
+| `REPEAT` | ❌ | medium | Stored-program REPEAT UNTIL semantics. | Parser validates `UNTIL` condition expression tails before `END`. |
+| `WHILE` | ❌ | medium | Stored-program WHILE semantics. | Parser validates `WHILE` condition expression tails before `DO`. |
 | `ITERATE` | ❌ | medium | Loop iteration transfer. |  |
 | `LEAVE` | ❌ | medium | Block/loop exit transfer. |  |
-| `RETURN` | ❌ | medium | Stored-function return semantics. |  |
+| `RETURN` | ❌ | medium | Stored-function return semantics. | Parser validates return expression tails. |
 | `OPEN` cursor | ❌ | medium | Cursor open lifecycle. |  |
 | `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. | Parser recognizes `FETCH cursor INTO ...`, `FETCH FROM cursor INTO ...`, and `FETCH NEXT FROM cursor INTO ...` forms. |
 | `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. |  |

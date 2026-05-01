@@ -14,6 +14,8 @@
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type start_tail {MyliteStatementKind}
+%type lock_tail {MyliteStatementKind}
+%type unlock_tail {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
 %type alter_instance_reload_channel_tail {int}
 %type alter_instance_reload_rollback_tail {int}
@@ -1840,12 +1842,16 @@ release_statement ::= RELEASE SAVEPOINT savepoint_name. {
 }
 create_trigger_statement_start ::= RELEASE.
 
-lock_statement ::= LOCK lock_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+lock_statement ::= LOCK lock_tail(A). {
+  mylite_parser_record_statement(ctx, A);
 }
 
-lock_tail ::= lock_table_kind lock_table_list.
-lock_tail ::= INSTANCE FOR lock_backup.
+lock_tail(A) ::= lock_table_kind lock_table_list. {
+  A = MYLITE_STATEMENT_TRANSACTION;
+}
+lock_tail(A) ::= INSTANCE FOR lock_backup. {
+  A = MYLITE_STATEMENT_ADMIN;
+}
 
 lock_backup ::= BACKUP.
 
@@ -1868,12 +1874,16 @@ lock_type ::= READ LOCAL.
 lock_type ::= WRITE.
 lock_type ::= LOW_PRIORITY WRITE.
 
-unlock_statement ::= UNLOCK unlock_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_TRANSACTION);
+unlock_statement ::= UNLOCK unlock_tail(A). {
+  mylite_parser_record_statement(ctx, A);
 }
 
-unlock_tail ::= unlock_table_kind.
-unlock_tail ::= INSTANCE.
+unlock_tail(A) ::= unlock_table_kind. {
+  A = MYLITE_STATEMENT_TRANSACTION;
+}
+unlock_tail(A) ::= INSTANCE. {
+  A = MYLITE_STATEMENT_ADMIN;
+}
 
 unlock_table_kind ::= TABLE.
 unlock_table_kind ::= TABLES.

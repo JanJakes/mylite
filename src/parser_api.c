@@ -2817,6 +2817,12 @@ static int classify_xa_statement_object(const mylite_parser *parser,
                                         size_t token_index,
                                         size_t last_token_index)
 {
+	if (token_index <= last_token_index &&
+	    token_index < parser->token_count &&
+	    token_text_equals(parser, token_index, "RECOVER")) {
+		return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_XA_TRANSACTION);
+	}
+
 	if (token_index + 1 > last_token_index ||
 	    token_index + 1 >= parser->token_count ||
 	    !token_can_start_object_name(&parser->tokens[token_index + 1])) {

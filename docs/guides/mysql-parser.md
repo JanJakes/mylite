@@ -517,6 +517,10 @@ XA transaction statements expose XID targets:
 ok statements=1 kinds=xa[1:3,0:12]/xa_transaction:'x'
 ```
 
+```text
+ok statements=1 kinds=xa[1:2,0:10]/xa_transaction
+```
+
 HELP exposes quoted help-topic searches:
 
 ```text

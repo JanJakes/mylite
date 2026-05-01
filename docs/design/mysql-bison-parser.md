@@ -262,7 +262,8 @@ channel targets are recorded for explicit and default-channel `START`, `STOP`,
 `RESET`, and `CHANGE` forms, including legacy `CHANGE MASTER TO` routing.
 Group Replication start/stop statements record the group-replication subsystem
 target. XA transaction XID targets are recorded for the
-XID-bearing XA statements. Non-XA transaction-control statements record the
+XID-bearing XA statements, while `XA RECOVER` records the XA transaction
+collection. Non-XA transaction-control statements record the
 transaction object kind for `BEGIN`, `BEGIN WORK`, `START TRANSACTION`,
 `COMMIT`, bare `ROLLBACK`, and `SET [GLOBAL | SESSION] TRANSACTION`, while
 leaving compound `BEGIN ... END` blocks objectless. Quoted `HELP` search
@@ -415,8 +416,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   replica runtime state.
   Group Replication metadata records only the subsystem object kind, not user
   credentials, distributed recovery, group membership, or timeout behavior.
-  XA metadata records only the first XID token and leaves `XA RECOVER`
-  objectless.
+  XA metadata records only the first XID token for XID-bearing statements and
+  the XA transaction collection for `XA RECOVER`; it does not model XA state.
   `HELP` metadata records only quoted search strings and leaves keyword topics
   objectless.
   Instance lifecycle metadata records only the instance object kind, not

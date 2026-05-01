@@ -635,7 +635,7 @@ esac
 
 xa_output=$("$parser" "XA START 'x'; XA END 'x'; XA PREPARE 'x'; XA COMMIT 'x' ONE PHASE; XA ROLLBACK 'x'; XA RECOVER; XA RECOVER CONVERT XID")
 case "$xa_output" in
-	*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa[23:24"*"xa[26:29"*) ;;
+	*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa"*/xa_transaction:"'x'"*"xa[23:24"*/xa_transaction*"xa[26:29"*/xa_transaction*) ;;
 	*)
 		echo "unexpected XA output: $xa_output" >&2
 		exit 1

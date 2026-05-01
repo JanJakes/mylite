@@ -99,10 +99,12 @@ ok statements=1 kinds=create[1:5,0:19]/user:'u'@'h'
 ```
 
 Account-management `SET` statements expose the first explicit role or user
-target:
+target. Bare `SET PASSWORD` statements are reported as current-user targets
+without an object-name span:
 
 ```text
 ok statements=1 kinds=set[1:3,0:10]/role:r
+ok statements=1 kinds=set[1:4,0:18]/user
 ```
 
 Explicit variable-assignment targets are also reported for `SELECT ... INTO`,

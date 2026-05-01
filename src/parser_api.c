@@ -2415,7 +2415,7 @@ static int classify_set_statement_object(const mylite_parser *parser,
 	if (token_text_equals(parser, token_index, "PASSWORD")) {
 		name_token_index = find_set_password_name_token(parser, token_index + 1, last_token_index);
 		if (name_token_index >= parser->token_count) {
-			return 0;
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_USER);
 		}
 		statement->object_kind = MYLITE_STATEMENT_OBJECT_USER;
 		set_statement_account_name_from_first_token(parser, statement, name_token_index, last_token_index);

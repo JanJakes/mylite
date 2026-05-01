@@ -25,6 +25,7 @@ static int select_clause_requires_by(int token_id);
 static int select_clause_requires_operand(int token_id);
 static int select_operand_boundary(int token_id);
 static int select_modifier_flag(int token_id);
+static int select_rollup_boundary(int token_id, MyliteToken token);
 static int select_set_operator(int token_id);
 static int select_set_option(int token_id);
 static int select_set_operand_start(int token_id);
@@ -360,6 +361,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     SELECT_WINDOW_AFTER_AS,
     SELECT_WINDOW_AFTER_SPEC
   };
+  enum {
+    SELECT_ROLLUP_NONE,
+    SELECT_ROLLUP_AFTER_WITH,
+    SELECT_ROLLUP_COMPLETE
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token;
@@ -378,6 +384,8 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int outfile_lines = 0;
   int limit_state = SELECT_LIMIT_NONE;
   int window_state = SELECT_WINDOW_NONE;
+  int group_clause = 0;
+  int rollup_state = SELECT_ROLLUP_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -419,6 +427,25 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
         continue;
       }
       select_prefix = 0;
+    }
+
+    if (rollup_state == SELECT_ROLLUP_AFTER_WITH) {
+      if (!token_ascii_equal(token, "rollup")) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT GROUP BY rollup clause");
+        return;
+      }
+      rollup_state = SELECT_ROLLUP_COMPLETE;
+      continue;
+    }
+    if (rollup_state == SELECT_ROLLUP_COMPLETE) {
+      if (!select_rollup_boundary(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "malformed SELECT GROUP BY rollup clause");
+        return;
+      }
+      group_clause = 0;
+      rollup_state = SELECT_ROLLUP_NONE;
     }
 
     if (lock_state == SELECT_LOCK_AFTER_LOCK) {
@@ -930,48 +957,67 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
 
+    if (group_clause && token_id == ML_WITH) {
+      rollup_state = SELECT_ROLLUP_AFTER_WITH;
+      pending_token = token;
+      continue;
+    }
+
     if (token_id == ML_LOCK) {
+      group_clause = 0;
       lock_state = SELECT_LOCK_AFTER_LOCK;
       pending_token = token;
       continue;
     }
     if (token_id == ML_FOR) {
+      group_clause = 0;
       lock_state = SELECT_LOCK_AFTER_FOR;
       pending_token = token;
       continue;
     }
     if (token_id == ML_INTO) {
+      group_clause = 0;
       into_state = SELECT_INTO_AFTER_INTO;
       pending_token = token;
       continue;
     }
     if (token_id == ML_LIMIT) {
+      group_clause = 0;
       limit_state = SELECT_LIMIT_AFTER_LIMIT;
       pending_token = token;
       continue;
     }
     if (token_ascii_equal(token, "window")) {
+      group_clause = 0;
       window_state = SELECT_WINDOW_AFTER_WINDOW;
       pending_token = token;
       continue;
     }
     if (token_ascii_equal(token, "qualify")) {
+      group_clause = 0;
       need_operand = 1;
       pending_token = token;
       continue;
     }
 
     if (select_clause_requires_by(token_id)) {
+      group_clause = token_id == ML_GROUP;
       need_by = 1;
       pending_token = token;
       continue;
     }
     if (select_clause_requires_operand(token_id)) {
+      if (token_id == ML_HAVING || token_id == ML_JOIN || token_id == ML_ON ||
+          token_id == ML_PROCEDURE || token_id == ML_USING ||
+          token_id == ML_WHERE) {
+        group_clause = 0;
+      }
       need_operand = 1;
       pending_token = token;
       continue;
     }
     if (select_set_operator(token_id)) {
+      group_clause = 0;
       need_set_operand = 1;
       pending_token = token;
       continue;
@@ -1021,6 +1067,9 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
              window_state == SELECT_WINDOW_AFTER_AS) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT WINDOW clause");
+  } else if (rollup_state == SELECT_ROLLUP_AFTER_WITH) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT GROUP BY rollup clause");
   } else if (need_set_operand) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT set operation");
@@ -1129,6 +1178,13 @@ static int select_modifier_flag(int token_id) {
   }
 
   return 0;
+}
+
+static int select_rollup_boundary(int token_id, MyliteToken token) {
+  return token_id == ML_FOR || token_id == ML_HAVING || token_id == ML_INTO ||
+         token_id == ML_LIMIT || token_id == ML_LOCK || token_id == ML_ORDER ||
+         select_set_operator(token_id) || token_ascii_equal(token, "qualify") ||
+         token_ascii_equal(token, "window");
 }
 
 static int select_set_operator(int token_id) {

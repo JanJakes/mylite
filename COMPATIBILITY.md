@@ -327,7 +327,7 @@ Shared parser-level `SHOW ... LIKE` filters require string-literal patterns.
 | Lateral derived tables | ❌ | medium | LATERAL derived table correlation rules. |  |
 | `WHERE` | ❌ | top | Predicate semantics, type conversion, three-valued logic, and short-circuit-sensitive warnings. |  |
 | `GROUP BY` | ❌ | top | Grouping expression semantics, ordinals, aliases, functional-dependence handling, and ONLY_FULL_GROUP_BY. |  |
-| `WITH ROLLUP` | ❌ | medium | Super-aggregate rows and GROUPING() behavior. |  |
+| `WITH ROLLUP` | ❌ | medium | Super-aggregate rows and GROUPING() behavior. | Parser validates top-level `GROUP BY ... WITH ROLLUP` tails; execution semantics are not implemented. |
 | `HAVING` | ❌ | top | Post-group predicate semantics and alias resolution. |  |
 | Window definitions | ❌ | high | WINDOW clause, named windows, inheritance, partitioning, ordering, frames, and MySQL restrictions. | Parser validates top-level named `WINDOW name AS (...)` clause lists; `OVER` expressions and frame semantics are not implemented. |
 | `ORDER BY` | ❌ | top | Expression, alias, ordinal, collation, ASC/DESC, and filesort metadata behavior. |  |

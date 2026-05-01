@@ -12,17 +12,44 @@ static const unsigned int bigint_unsigned_precision = 20U;
 static const unsigned int bigint_storage_bytes = 8U;
 static const unsigned int display_width_max = 255U;
 static const unsigned int display_width_out_of_range = 256U;
+static const unsigned long long tiny_string_capacity = 255ULL;
+static const unsigned long long regular_string_capacity = 65535ULL;
+static const unsigned long long long_string_capacity = 4294967295ULL;
+static const unsigned long long char_default_length = 1ULL;
+static const unsigned long long char_four_length = 4ULL;
+static const unsigned long long utf8mb4_char_four_octets = 16ULL;
+static const unsigned long long utf8mb3_char_four_octets = 12ULL;
+static const unsigned long long text_utf8mb4_tiny_boundary = 63ULL;
+static const unsigned long long text_utf8mb4_regular_boundary = 64ULL;
+static const unsigned long long text_latin1_tiny_boundary = 255ULL;
+static const unsigned long long regular_overflow_length = 65536ULL;
+static const unsigned long long medium_overflow_length = 16777216ULL;
+static const unsigned long long char_binary_overflow_length = 256ULL;
+static const unsigned long long varchar_utf8mb4_overflow_length = 16384ULL;
+static const unsigned long long blob_text_overflow_length = 4294967296ULL;
 
 static int test_integer_type_metadata(void);
 static int test_integer_aliases(void);
 static int test_display_width_metadata(void);
+static int test_string_binary_type_metadata(void);
+static int test_string_binary_aliases_and_charsets(void);
+static int test_text_blob_length_mapping(void);
 static int test_rejected_type_descriptors(void);
 static struct mylite_column_type_attributes no_column_type_attributes(void);
+static struct mylite_column_type_attributes length_attribute(unsigned long long length);
+static struct mylite_column_type_attributes character_set_attribute(const char *character_set);
+static struct mylite_column_type_attributes collation_attribute(const char *collation);
 static int describe_type(const char *type_name, struct mylite_column_type_attributes attributes,
                          enum mylite_column_type_status expected_status,
                          struct mylite_column_type_descriptor *out_descriptor);
+static int describe_string_binary_type(const char *type_name,
+                                       struct mylite_column_type_attributes attributes,
+                                       enum mylite_column_type_status expected_status,
+                                       struct mylite_column_type_descriptor *out_descriptor);
 static int expect_string(const char *actual, const char *expected, const char *context);
 static int expect_uint(unsigned int actual, unsigned int expected, const char *context);
+static int expect_uint64(unsigned long long actual, unsigned long long expected,
+                         const char *context);
 static int expect_bool(bool actual, bool expected, const char *context);
 
 int main(void)
@@ -32,6 +59,9 @@ int main(void)
     failures += test_integer_type_metadata();
     failures += test_integer_aliases();
     failures += test_display_width_metadata();
+    failures += test_string_binary_type_metadata();
+    failures += test_string_binary_aliases_and_charsets();
+    failures += test_text_blob_length_mapping();
     failures += test_rejected_type_descriptors();
 
     return failures == 0 ? 0 : 1;
@@ -196,6 +226,198 @@ static int test_display_width_metadata(void)
     return failures;
 }
 
+static int test_string_binary_type_metadata(void)
+{
+    struct mylite_column_type_descriptor descriptor;
+    int failures = 0;
+
+    failures += describe_string_binary_type("CHAR", no_column_type_attributes(),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "char", "char data type");
+    failures += expect_string(descriptor.column_type, "char(1)", "char column type");
+    failures +=
+        expect_uint64(descriptor.character_maximum_length, char_default_length, "char length");
+    failures += expect_uint64(descriptor.character_octet_length, char_four_length, "char octets");
+    failures += expect_string(descriptor.character_set_name, "utf8mb4", "char charset");
+    failures += expect_string(descriptor.collation_name, "utf8mb4_0900_ai_ci", "char collation");
+
+    failures += describe_string_binary_type("CHAR", length_attribute(char_four_length),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "char(4)", "char(4) column type");
+    failures += expect_uint64(descriptor.character_octet_length, utf8mb4_char_four_octets,
+                              "char(4) octets");
+
+    failures += describe_string_binary_type("VARCHAR", length_attribute(char_four_length),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "varchar", "varchar data type");
+    failures += expect_string(descriptor.column_type, "varchar(4)", "varchar column type");
+    failures += expect_uint64(descriptor.character_octet_length, utf8mb4_char_four_octets,
+                              "varchar octets");
+
+    failures += describe_string_binary_type("BINARY", no_column_type_attributes(),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "binary", "binary data type");
+    failures += expect_string(descriptor.column_type, "binary(1)", "binary column type");
+    failures +=
+        expect_uint64(descriptor.character_octet_length, char_default_length, "binary octets");
+    failures += expect_bool(descriptor.character_set_name == NULL, true, "binary charset null");
+    failures += expect_bool(descriptor.collation_name == NULL, true, "binary collation null");
+
+    failures += describe_string_binary_type("VARBINARY", length_attribute(char_four_length),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "varbinary", "varbinary data type");
+    failures += expect_string(descriptor.column_type, "varbinary(4)", "varbinary column type");
+
+    return failures;
+}
+
+static int test_string_binary_aliases_and_charsets(void)
+{
+    struct mylite_column_type_descriptor descriptor;
+    struct mylite_column_type_attributes attributes;
+    int failures = 0;
+
+    failures += describe_string_binary_type("CHAR", character_set_attribute("latin1"),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.character_set_name, "latin1", "latin1 char charset");
+    failures += expect_string(descriptor.collation_name, "latin1_swedish_ci", "latin1 collation");
+    failures +=
+        expect_uint64(descriptor.character_octet_length, char_default_length, "latin1 char octets");
+
+    failures += describe_string_binary_type("CHAR", collation_attribute("latin1_swedish_ci"),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.character_set_name, "latin1", "collation implied charset");
+
+    failures += describe_string_binary_type("CHAR", collation_attribute("binary"),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "binary", "binary collation char data type");
+    failures += expect_string(descriptor.column_type, "binary(1)", "binary collation char type");
+    failures += expect_bool(descriptor.character_set_name == NULL, true,
+                            "binary collation char charset null");
+
+    attributes = length_attribute(char_four_length);
+    attributes.has_character_set = true;
+    attributes.character_set = "binary";
+    attributes.character_set_length = strlen("binary");
+    failures += describe_string_binary_type("CHAR", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "binary", "char charset binary data type");
+    failures += expect_string(descriptor.column_type, "binary(4)", "char charset binary type");
+
+    attributes = length_attribute(char_four_length);
+    attributes.has_character_set = true;
+    attributes.character_set = "binary";
+    attributes.character_set_length = strlen("binary");
+    failures +=
+        describe_string_binary_type("VARCHAR", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures +=
+        expect_string(descriptor.data_type, "varbinary", "varchar charset binary data type");
+    failures +=
+        expect_string(descriptor.column_type, "varbinary(4)", "varchar charset binary type");
+
+    attributes = length_attribute(char_four_length);
+    attributes.has_binary_attribute = true;
+    failures +=
+        describe_string_binary_type("VARCHAR", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "varchar", "varchar binary attr data type");
+    failures += expect_string(descriptor.collation_name, "utf8mb4_bin", "varchar binary collation");
+    failures += expect_bool(descriptor.is_deprecated_binary_attribute, true,
+                            "varchar binary attribute flag");
+
+    attributes = length_attribute(char_four_length);
+    attributes.has_byte_attribute = true;
+    failures +=
+        describe_string_binary_type("VARCHAR", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "varbinary", "varchar byte data type");
+    failures += expect_string(descriptor.column_type, "varbinary(4)", "varchar byte column type");
+
+    attributes = length_attribute(char_four_length);
+    attributes.is_national = true;
+    failures +=
+        describe_string_binary_type("VARCHAR", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.character_set_name, "utf8mb3", "national varchar charset");
+    failures += expect_string(descriptor.collation_name, "utf8mb3_general_ci",
+                              "national varchar collation");
+    failures += expect_uint64(descriptor.character_octet_length, utf8mb3_char_four_octets,
+                              "national varchar octets");
+
+    return failures;
+}
+
+static int test_text_blob_length_mapping(void)
+{
+    struct mylite_column_type_descriptor descriptor;
+    struct mylite_column_type_attributes attributes;
+    int failures = 0;
+
+    failures += describe_string_binary_type("TINYTEXT", no_column_type_attributes(),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "tinytext", "tinytext data type");
+    failures +=
+        expect_uint64(descriptor.character_maximum_length, tiny_string_capacity, "tinytext length");
+
+    failures += describe_string_binary_type("TEXT", no_column_type_attributes(),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "text", "text data type");
+    failures +=
+        expect_uint64(descriptor.character_maximum_length, regular_string_capacity, "text length");
+
+    failures += describe_string_binary_type("TEXT", length_attribute(text_utf8mb4_tiny_boundary),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "tinytext", "text(63) utf8mb4 type");
+
+    failures += describe_string_binary_type("TEXT", length_attribute(text_utf8mb4_regular_boundary),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "text", "text(64) utf8mb4 type");
+
+    attributes = length_attribute(text_latin1_tiny_boundary);
+    attributes.has_character_set = true;
+    attributes.character_set = "latin1";
+    attributes.character_set_length = strlen("latin1");
+    failures += describe_string_binary_type("TEXT", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "tinytext", "text(255) latin1 type");
+
+    attributes = no_column_type_attributes();
+    attributes.has_collation = true;
+    attributes.collation = "binary";
+    attributes.collation_length = strlen("binary");
+    failures += describe_string_binary_type("TEXT", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "blob", "text collate binary data type");
+
+    attributes = no_column_type_attributes();
+    attributes.has_character_set = true;
+    attributes.character_set = "binary";
+    attributes.character_set_length = strlen("binary");
+    failures += describe_string_binary_type("TEXT", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "blob", "text charset binary data type");
+
+    attributes = length_attribute(text_latin1_tiny_boundary);
+    attributes.has_character_set = true;
+    attributes.character_set = "binary";
+    attributes.character_set_length = strlen("binary");
+    failures += describe_string_binary_type("TEXT", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "tinyblob", "text(255) binary data type");
+
+    failures += describe_string_binary_type("BLOB", length_attribute(text_latin1_tiny_boundary),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "tinyblob", "blob(255) type");
+
+    failures += describe_string_binary_type("BLOB", length_attribute(char_binary_overflow_length),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "blob", "blob(256) type");
+
+    failures += describe_string_binary_type("BLOB", length_attribute(regular_overflow_length),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "mediumblob", "blob(65536) type");
+
+    failures += describe_string_binary_type("BLOB", length_attribute(medium_overflow_length),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.data_type, "longblob", "blob(16777216) type");
+    failures +=
+        expect_uint64(descriptor.character_maximum_length, long_string_capacity, "longblob length");
+
+    return failures;
+}
+
 static int test_rejected_type_descriptors(void)
 {
     struct mylite_column_type_descriptor descriptor;
@@ -238,6 +460,34 @@ static int test_rejected_type_descriptors(void)
                                   .has_unsigned = true,
                               },
                               MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+    failures += describe_string_binary_type("CHAR", length_attribute(char_binary_overflow_length),
+                                            MYLITE_COLUMN_TYPE_LENGTH_OUT_OF_RANGE, &descriptor);
+    failures += describe_string_binary_type("BINARY", length_attribute(char_binary_overflow_length),
+                                            MYLITE_COLUMN_TYPE_LENGTH_OUT_OF_RANGE, &descriptor);
+    failures += describe_string_binary_type("VARCHAR", no_column_type_attributes(),
+                                            MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+    failures +=
+        describe_string_binary_type("VARCHAR", length_attribute(varchar_utf8mb4_overflow_length),
+                                    MYLITE_COLUMN_TYPE_LENGTH_OUT_OF_RANGE, &descriptor);
+    failures += describe_string_binary_type("VARBINARY", no_column_type_attributes(),
+                                            MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+    failures += describe_string_binary_type("VARBINARY", length_attribute(regular_overflow_length),
+                                            MYLITE_COLUMN_TYPE_LENGTH_OUT_OF_RANGE, &descriptor);
+    failures += describe_string_binary_type("TEXT", length_attribute(blob_text_overflow_length),
+                                            MYLITE_COLUMN_TYPE_LENGTH_OUT_OF_RANGE, &descriptor);
+    failures += describe_string_binary_type("TINYTEXT", length_attribute(char_default_length),
+                                            MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+    failures += describe_string_binary_type("BLOB", character_set_attribute("utf8mb4"),
+                                            MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+
+    {
+        struct mylite_column_type_attributes mismatch = character_set_attribute("utf8mb4");
+        mismatch.has_collation = true;
+        mismatch.collation = "latin1_swedish_ci";
+        mismatch.collation_length = strlen("latin1_swedish_ci");
+        failures += describe_string_binary_type(
+            "CHAR", mismatch, MYLITE_COLUMN_TYPE_COLLATION_CHARACTER_SET_MISMATCH, &descriptor);
+    }
 
     return failures;
 }
@@ -252,11 +502,54 @@ static struct mylite_column_type_attributes no_column_type_attributes(void)
     };
 }
 
+static struct mylite_column_type_attributes length_attribute(unsigned long long length)
+{
+    struct mylite_column_type_attributes attributes = no_column_type_attributes();
+    attributes.has_length = true;
+    attributes.length = length;
+    return attributes;
+}
+
+static struct mylite_column_type_attributes character_set_attribute(const char *character_set)
+{
+    struct mylite_column_type_attributes attributes = no_column_type_attributes();
+    attributes.has_character_set = true;
+    attributes.character_set = character_set;
+    attributes.character_set_length = strlen(character_set);
+    return attributes;
+}
+
+static struct mylite_column_type_attributes collation_attribute(const char *collation)
+{
+    struct mylite_column_type_attributes attributes = no_column_type_attributes();
+    attributes.has_collation = true;
+    attributes.collation = collation;
+    attributes.collation_length = strlen(collation);
+    return attributes;
+}
+
 static int describe_type(const char *type_name, struct mylite_column_type_attributes attributes,
                          enum mylite_column_type_status expected_status,
                          struct mylite_column_type_descriptor *out_descriptor)
 {
     enum mylite_column_type_status actual = mylite_column_type_describe_integer(
+        type_name, strlen(type_name), attributes, out_descriptor);
+
+    if (actual != expected_status) {
+        fprintf(stderr, "%s: expected %s, got %s\n", type_name,
+                mylite_column_type_status_name(expected_status),
+                mylite_column_type_status_name(actual));
+        return 1;
+    }
+    return 0;
+}
+
+static int describe_string_binary_type(const char *type_name,
+                                       struct mylite_column_type_attributes attributes,
+                                       enum mylite_column_type_status expected_status,
+                                       struct mylite_column_type_descriptor *out_descriptor)
+{
+    enum mylite_column_type_status actual = mylite_column_type_describe_string_binary(
         type_name, strlen(type_name), attributes, out_descriptor);
 
     if (actual != expected_status) {
@@ -282,6 +575,16 @@ static int expect_uint(unsigned int actual, unsigned int expected, const char *c
 {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %u, got %u\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_uint64(unsigned long long actual, unsigned long long expected,
+                         const char *context)
+{
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %llu, got %llu\n", context, expected, actual);
         return 1;
     }
     return 0;

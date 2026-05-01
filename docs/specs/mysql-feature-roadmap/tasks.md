@@ -17,7 +17,7 @@ level application surfaces.
 4. [x] Integer and boolean column types: `TINYINT`, `SMALLINT`, `MEDIUMINT`,
        `INT`, `BIGINT`, unsigned ranges, display-width compatibility,
        `BOOL`/`BOOLEAN`, and integer aliases.
-5. [ ] String and binary column types: `CHAR`, `VARCHAR`, `TEXT` family,
+5. [x] String and binary column types: `CHAR`, `VARCHAR`, `TEXT` family,
        `BINARY`, `VARBINARY`, `BLOB` family, length limits, and metadata.
 6. [ ] Exact and approximate numeric column types: `DECIMAL`, `NUMERIC`,
        `FLOAT`, `DOUBLE`, aliases, precision/scale, and metadata.

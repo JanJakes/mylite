@@ -145,6 +145,65 @@ void mylite_sql_ast_node_set_column_display_width(struct mylite_sql_ast_node *no
     node->column_display_width = display_width;
 }
 
+void mylite_sql_ast_node_set_column_length(struct mylite_sql_ast_node *node, uint64_t length)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->has_column_length = true;
+    node->column_length = length;
+}
+
+void mylite_sql_ast_node_set_column_character_set(struct mylite_sql_ast_node *node,
+                                                  struct mylite_sql_source_span span)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->has_column_character_set = true;
+    node->column_character_set = span;
+}
+
+void mylite_sql_ast_node_set_column_collation(struct mylite_sql_ast_node *node,
+                                              struct mylite_sql_source_span span)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->has_column_collation = true;
+    node->column_collation = span;
+}
+
+void mylite_sql_ast_node_set_column_binary_attribute(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->column_binary_attribute = true;
+}
+
+void mylite_sql_ast_node_set_column_byte_attribute(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->column_byte_attribute = true;
+}
+
+void mylite_sql_ast_node_set_column_national_attribute(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->column_national_attribute = true;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -223,6 +282,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "column_definition";
     case MYLITE_SQL_AST_COLUMN_TYPE:
         return "column_type";
+    case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
+        return "column_type_attribute_list";
     }
 
     return "unknown";
@@ -265,6 +326,30 @@ const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type colu
         return "bool";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:
         return "boolean";
+    case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
+        return "char";
+    case MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR:
+        return "varchar";
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYTEXT:
+        return "tinytext";
+    case MYLITE_SQL_AST_COLUMN_TYPE_TEXT:
+        return "text";
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMTEXT:
+        return "mediumtext";
+    case MYLITE_SQL_AST_COLUMN_TYPE_LONGTEXT:
+        return "longtext";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BINARY:
+        return "binary";
+    case MYLITE_SQL_AST_COLUMN_TYPE_VARBINARY:
+        return "varbinary";
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYBLOB:
+        return "tinyblob";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BLOB:
+        return "blob";
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB:
+        return "mediumblob";
+    case MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB:
+        return "longblob";
     }
 
     return "unknown";

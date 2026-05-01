@@ -2,6 +2,7 @@
 
 #include "mylite_parse.h"
 #include "mylite_parser_internal.h"
+#include "types/mylite_column_type.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -30,6 +31,9 @@ struct mylite_sql_parser_keyword_token {
 };
 
 static unsigned int parse_display_width(const struct mylite_sql_ast_node *display_width);
+static bool parse_column_length(const struct mylite_sql_ast_node *length, uint64_t *out_length);
+static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type column_type);
+static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column_type column_type);
 static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_token_was_dot,
                             struct mylite_sql_parser_token_map *out_map);
 static void record_parse_error(struct mylite_sql_parse_result *result,
@@ -555,6 +559,43 @@ mylite_sql_parser_make_integer_display_width(struct mylite_sql_parser_state *sta
 }
 
 struct mylite_sql_ast_node *
+mylite_sql_parser_make_column_length(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_parser_column_length_tokens tokens)
+{
+    struct mylite_sql_ast_node *length =
+        mylite_sql_parser_make_literal(state, tokens.integer, MYLITE_SQL_AST_LITERAL_INTEGER);
+    if (length == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_span(length, span_join(span_from_token(&tokens.left_paren),
+                                                   span_from_token(&tokens.right_paren)));
+    {
+        uint64_t column_length = 0ULL;
+        if (!parse_column_length(length, &column_length)) {
+            mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_INTEGER, tokens.integer);
+            return NULL;
+        }
+        mylite_sql_ast_node_set_column_length(length, column_length);
+    }
+    return length;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_length(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *column_type,
+                                    struct mylite_sql_ast_node *length)
+{
+    if (!is_parse_ok(state) || column_type == NULL || length == NULL) {
+        return column_type;
+    }
+
+    mylite_sql_ast_node_set_column_length(column_type, length->column_length);
+    mylite_sql_ast_node_set_span(column_type, span_join(column_type->span, length->span));
+    return column_type;
+}
+
+struct mylite_sql_ast_node *
 mylite_sql_parser_set_column_type_signed(struct mylite_sql_parser_state *state,
                                          struct mylite_sql_ast_node *column_type,
                                          struct mylite_sql_token signed_token)
@@ -581,6 +622,150 @@ mylite_sql_parser_set_column_type_unsigned(struct mylite_sql_parser_state *state
     mylite_sql_ast_node_set_column_type_unsigned(column_type);
     mylite_sql_ast_node_set_span(column_type,
                                  span_join(column_type->span, span_from_token(&unsigned_token)));
+    return column_type;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_column_type_attribute_list(struct mylite_sql_parser_state *state)
+{
+    return make_node(state, MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST,
+                     (struct mylite_sql_source_span){0});
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_character_set(struct mylite_sql_parser_state *state,
+                                                struct mylite_sql_ast_node *attributes,
+                                                struct mylite_sql_ast_node *character_set)
+{
+    if (!is_parse_ok(state) || attributes == NULL || character_set == NULL) {
+        return attributes;
+    }
+
+    mylite_sql_ast_node_set_column_character_set(attributes, character_set->span);
+    mylite_sql_ast_node_set_span(attributes, span_join(attributes->span, character_set->span));
+    return attributes;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_collation(struct mylite_sql_parser_state *state,
+                                            struct mylite_sql_ast_node *attributes,
+                                            struct mylite_sql_ast_node *collation)
+{
+    if (!is_parse_ok(state) || attributes == NULL || collation == NULL) {
+        return attributes;
+    }
+
+    mylite_sql_ast_node_set_column_collation(attributes, collation->span);
+    mylite_sql_ast_node_set_span(attributes, span_join(attributes->span, collation->span));
+    return attributes;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_binary_attribute(struct mylite_sql_parser_state *state,
+                                                   struct mylite_sql_ast_node *attributes,
+                                                   struct mylite_sql_token binary_token)
+{
+    if (!is_parse_ok(state) || attributes == NULL) {
+        return attributes;
+    }
+
+    mylite_sql_ast_node_set_column_binary_attribute(attributes);
+    mylite_sql_ast_node_set_span(attributes,
+                                 span_join(attributes->span, span_from_token(&binary_token)));
+    return attributes;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_byte_attribute(struct mylite_sql_parser_state *state,
+                                                 struct mylite_sql_ast_node *attributes,
+                                                 struct mylite_sql_token byte_token)
+{
+    if (!is_parse_ok(state) || attributes == NULL) {
+        return attributes;
+    }
+
+    mylite_sql_ast_node_set_column_byte_attribute(attributes);
+    mylite_sql_ast_node_set_span(attributes,
+                                 span_join(attributes->span, span_from_token(&byte_token)));
+    return attributes;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_apply_column_type_attributes(struct mylite_sql_parser_state *state,
+                                               struct mylite_sql_ast_node *column_type,
+                                               struct mylite_sql_ast_node *attributes)
+{
+    if (!is_parse_ok(state) || column_type == NULL || attributes == NULL) {
+        return column_type;
+    }
+
+    if (attributes->has_column_character_set) {
+        mylite_sql_ast_node_set_column_character_set(column_type, attributes->column_character_set);
+    }
+    if (attributes->has_column_collation) {
+        mylite_sql_ast_node_set_column_collation(column_type, attributes->column_collation);
+    }
+    if (attributes->column_binary_attribute) {
+        mylite_sql_ast_node_set_column_binary_attribute(column_type);
+    }
+    if (attributes->column_byte_attribute) {
+        mylite_sql_ast_node_set_column_byte_attribute(column_type);
+    }
+    if (attributes->span.text != NULL) {
+        mylite_sql_ast_node_set_span(column_type, span_join(column_type->span, attributes->span));
+    }
+    return mylite_sql_parser_validate_column_type(state, column_type);
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_national(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *column_type,
+                                           struct mylite_sql_token national_token)
+{
+    if (!is_parse_ok(state) || column_type == NULL) {
+        return column_type;
+    }
+
+    mylite_sql_ast_node_set_column_national_attribute(column_type);
+    mylite_sql_ast_node_set_span(column_type,
+                                 span_join(span_from_token(&national_token), column_type->span));
+    return mylite_sql_parser_validate_column_type(state, column_type);
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *column_type)
+{
+    const char *type_name = NULL;
+    struct mylite_column_type_descriptor descriptor;
+    struct mylite_column_type_attributes attributes = {false};
+    enum mylite_column_type_status status = MYLITE_COLUMN_TYPE_OK;
+
+    if (!is_parse_ok(state) || column_type == NULL ||
+        !column_type_uses_string_binary_descriptor(column_type->column_type)) {
+        return column_type;
+    }
+
+    type_name = column_type_descriptor_name(column_type->column_type);
+    attributes = (struct mylite_column_type_attributes){
+        .has_length = column_type->has_column_length,
+        .length = column_type->column_length,
+        .has_character_set = column_type->has_column_character_set,
+        .character_set = column_type->column_character_set.text,
+        .character_set_length = column_type->column_character_set.length,
+        .has_collation = column_type->has_column_collation,
+        .collation = column_type->column_collation.text,
+        .collation_length = column_type->column_collation.length,
+        .has_binary_attribute = column_type->column_binary_attribute,
+        .has_byte_attribute = column_type->column_byte_attribute,
+        .is_national = column_type->column_national_attribute,
+    };
+
+    status = mylite_column_type_describe_string_binary(type_name, strlen(type_name), attributes,
+                                                       &descriptor);
+    if (status != MYLITE_COLUMN_TYPE_OK) {
+        mylite_sql_parser_state_parse_failed(state);
+    }
     return column_type;
 }
 
@@ -943,6 +1128,80 @@ static unsigned int parse_display_width(const struct mylite_sql_ast_node *displa
     return value;
 }
 
+static bool parse_column_length(const struct mylite_sql_ast_node *length, uint64_t *out_length)
+{
+    enum { decimal_radix = 10U };
+    uint64_t value = 0ULL;
+
+    if (out_length == NULL) {
+        return false;
+    }
+    *out_length = 0ULL;
+
+    if (length == NULL || length->span.text == NULL) {
+        return true;
+    }
+
+    for (size_t index = 0U; index < length->span.length; ++index) {
+        unsigned char byte = (unsigned char)length->span.text[index];
+        if (byte >= '0' && byte <= '9') {
+            uint64_t digit = (uint64_t)(byte - '0');
+            if (value > (UINT64_MAX - digit) / decimal_radix) {
+                return false;
+            }
+            value = (value * decimal_radix) + digit;
+        }
+    }
+    *out_length = value;
+    return true;
+}
+
+static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type column_type)
+{
+    switch (column_type) {
+    case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
+        return "CHAR";
+    case MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR:
+        return "VARCHAR";
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYTEXT:
+        return "TINYTEXT";
+    case MYLITE_SQL_AST_COLUMN_TYPE_TEXT:
+        return "TEXT";
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMTEXT:
+        return "MEDIUMTEXT";
+    case MYLITE_SQL_AST_COLUMN_TYPE_LONGTEXT:
+        return "LONGTEXT";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BINARY:
+        return "BINARY";
+    case MYLITE_SQL_AST_COLUMN_TYPE_VARBINARY:
+        return "VARBINARY";
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYBLOB:
+        return "TINYBLOB";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BLOB:
+        return "BLOB";
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB:
+        return "MEDIUMBLOB";
+    case MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB:
+        return "LONGBLOB";
+    case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_INT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_BIGINT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
+    case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:
+        break;
+    }
+    return "";
+}
+
+static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column_type column_type)
+{
+    return (column_type >= MYLITE_SQL_AST_COLUMN_TYPE_CHAR &&
+            column_type <= MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB) != 0;
+}
+
 static void record_parse_error(struct mylite_sql_parse_result *result,
                                struct mylite_sql_parse_error error)
 {
@@ -992,6 +1251,9 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"BINARY", MYLITE_SQL_PARSE_BINARY},
         {"BOOL", MYLITE_SQL_PARSE_BOOL},
         {"BOOLEAN", MYLITE_SQL_PARSE_BOOLEAN},
+        {"BLOB", MYLITE_SQL_PARSE_BLOB},
+        {"BYTE", MYLITE_SQL_PARSE_BYTE},
+        {"CHAR", MYLITE_SQL_PARSE_CHAR},
         {"CHARACTER", MYLITE_SQL_PARSE_CHARACTER},
         {"CHARSET", MYLITE_SQL_PARSE_CHARSET},
         {"COLLATE", MYLITE_SQL_PARSE_COLLATE},
@@ -1013,11 +1275,19 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"INT4", MYLITE_SQL_PARSE_INT4},
         {"INT8", MYLITE_SQL_PARSE_INT8},
         {"INTEGER", MYLITE_SQL_PARSE_INTEGERKW},
+        {"LONGBLOB", MYLITE_SQL_PARSE_LONGBLOB},
+        {"LONG", MYLITE_SQL_PARSE_LONG},
+        {"LONGTEXT", MYLITE_SQL_PARSE_LONGTEXT},
         {"MEDIUMINT", MYLITE_SQL_PARSE_MEDIUMINT},
+        {"MEDIUMBLOB", MYLITE_SQL_PARSE_MEDIUMBLOB},
+        {"MEDIUMTEXT", MYLITE_SQL_PARSE_MEDIUMTEXT},
         {"MIDDLEINT", MYLITE_SQL_PARSE_MIDDLEINT},
         {"NAMES", MYLITE_SQL_PARSE_NAMES},
+        {"NATIONAL", MYLITE_SQL_PARSE_NATIONAL},
+        {"NCHAR", MYLITE_SQL_PARSE_NCHAR},
         {"NOT", MYLITE_SQL_PARSE_NOT},
         {"NULL", MYLITE_SQL_PARSE_NULL},
+        {"NVARCHAR", MYLITE_SQL_PARSE_NVARCHAR},
         {"ONLY", MYLITE_SQL_PARSE_ONLY},
         {"READ", MYLITE_SQL_PARSE_READ},
         {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
@@ -1028,10 +1298,16 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"SIGNED", MYLITE_SQL_PARSE_SIGNED},
         {"SMALLINT", MYLITE_SQL_PARSE_SMALLINT},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
+        {"TEXT", MYLITE_SQL_PARSE_TEXT},
+        {"TINYBLOB", MYLITE_SQL_PARSE_TINYBLOB},
         {"TINYINT", MYLITE_SQL_PARSE_TINYINT},
+        {"TINYTEXT", MYLITE_SQL_PARSE_TINYTEXT},
         {"TRUE", MYLITE_SQL_PARSE_TRUE},
         {"UNSIGNED", MYLITE_SQL_PARSE_UNSIGNED},
         {"USE", MYLITE_SQL_PARSE_USE},
+        {"VARBINARY", MYLITE_SQL_PARSE_VARBINARY},
+        {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
+        {"VARYING", MYLITE_SQL_PARSE_VARYING},
     };
 
     for (size_t index = 0U; index < sizeof(keywords) / sizeof(keywords[0]); ++index) {

@@ -48,7 +48,7 @@ static int test_core_metadata_catalog(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
-static int test_create_table_integer_boolean_prepare_is_unsupported(void);
+static int test_create_table_column_type_prepare_is_unsupported(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -95,7 +95,7 @@ int main(void)
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
-    failures += test_create_table_integer_boolean_prepare_is_unsupported();
+    failures += test_create_table_column_type_prepare_is_unsupported();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -700,7 +700,7 @@ static int test_unsupported_statement(void)
     return failures;
 }
 
-static int test_create_table_integer_boolean_prepare_is_unsupported(void)
+static int test_create_table_column_type_prepare_is_unsupported(void)
 {
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -721,6 +721,24 @@ static int test_create_table_integer_boolean_prepare_is_unsupported(void)
         stmt = NULL;
     }
     failures += expect_no_information_schema_table_name_row(database, "integer_types");
+    failures += prepare_sql(database,
+                            "CREATE TABLE app.`string_binary_types` ("
+                            "a CHAR, b CHAR(4) CHARACTER SET latin1, c VARCHAR(4), "
+                            "d CHAR VARYING(5), e BINARY, f VARBINARY(4), "
+                            "g TINYTEXT, h TEXT(63) CHARACTER SET binary, i MEDIUMTEXT, "
+                            "j LONGTEXT, k TINYBLOB, l BLOB(256), m MEDIUMBLOB, "
+                            "n LONGBLOB, o TEXT BINARY, p CHAR(4) BYTE, "
+                            "q VARCHAR(4) CHARSET binary, r LONG VARCHAR, "
+                            "s LONG VARBINARY, t NCHAR(4), u NVARCHAR(4), "
+                            "v CHAR(4) COLLATE binary, w TEXT COLLATE binary)",
+                            MYLITE_UNSUPPORTED, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "parse-only string/binary CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += expect_no_information_schema_table_name_row(database, "string_binary_types");
     failures += prepare_sql(database, "CREATE TABLE invalid_width (a INT(256));",
                             MYLITE_PARSE_ERROR, &stmt);
     if (stmt != NULL) {
@@ -741,6 +759,24 @@ static int test_create_table_integer_boolean_prepare_is_unsupported(void)
                             MYLITE_PARSE_ERROR, &stmt);
     if (stmt != NULL) {
         fprintf(stderr, "unsupported-attribute CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database, "CREATE TABLE invalid_varchar (a VARCHAR);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid VARCHAR CREATE TABLE returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database,
+                            "CREATE TABLE invalid_blob_charset "
+                            "(a BLOB CHARACTER SET utf8mb4);",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "invalid BLOB charset CREATE TABLE returned a statement handle\n");
         failures = 1;
         mylite_finalize(stmt);
         stmt = NULL;

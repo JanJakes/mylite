@@ -6,6 +6,7 @@
 #include "mylite_parser.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 
 struct mylite_sql_parser_state {
     struct mylite_sql_parse_result *result;
@@ -13,6 +14,12 @@ struct mylite_sql_parser_state {
 };
 
 struct mylite_sql_parser_display_width_tokens {
+    struct mylite_sql_token left_paren;
+    struct mylite_sql_token integer;
+    struct mylite_sql_token right_paren;
+};
+
+struct mylite_sql_parser_column_length_tokens {
     struct mylite_sql_token left_paren;
     struct mylite_sql_token integer;
     struct mylite_sql_token right_paren;
@@ -88,6 +95,13 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_integer_display_width(struct mylite_sql_parser_state *state,
                                              struct mylite_sql_parser_display_width_tokens tokens);
 struct mylite_sql_ast_node *
+mylite_sql_parser_make_column_length(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_parser_column_length_tokens tokens);
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_length(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *column_type,
+                                    struct mylite_sql_ast_node *length);
+struct mylite_sql_ast_node *
 mylite_sql_parser_set_column_type_signed(struct mylite_sql_parser_state *state,
                                          struct mylite_sql_ast_node *column_type,
                                          struct mylite_sql_token signed_token);
@@ -95,6 +109,35 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_set_column_type_unsigned(struct mylite_sql_parser_state *state,
                                            struct mylite_sql_ast_node *column_type,
                                            struct mylite_sql_token unsigned_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_column_type_attribute_list(struct mylite_sql_parser_state *state);
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_character_set(struct mylite_sql_parser_state *state,
+                                                struct mylite_sql_ast_node *attributes,
+                                                struct mylite_sql_ast_node *character_set);
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_collation(struct mylite_sql_parser_state *state,
+                                            struct mylite_sql_ast_node *attributes,
+                                            struct mylite_sql_ast_node *collation);
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_binary_attribute(struct mylite_sql_parser_state *state,
+                                                   struct mylite_sql_ast_node *attributes,
+                                                   struct mylite_sql_token binary_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_byte_attribute(struct mylite_sql_parser_state *state,
+                                                 struct mylite_sql_ast_node *attributes,
+                                                 struct mylite_sql_token byte_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_apply_column_type_attributes(struct mylite_sql_parser_state *state,
+                                               struct mylite_sql_ast_node *column_type,
+                                               struct mylite_sql_ast_node *attributes);
+struct mylite_sql_ast_node *
+mylite_sql_parser_set_column_type_national(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *column_type,
+                                           struct mylite_sql_token national_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *column_type);
 struct mylite_sql_ast_node *mylite_sql_parser_make_if_exists(struct mylite_sql_parser_state *state,
                                                              struct mylite_sql_token if_token,
                                                              struct mylite_sql_token exists_token);

@@ -713,6 +713,7 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
         case MYLITE_SQL_AST_COLUMN_DEFINITION:
         case MYLITE_SQL_AST_COLUMN_TYPE:
+        case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
             break;
         }
     }
@@ -771,6 +772,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_COLUMN_TYPE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
         return MYLITE_UNSUPPORTED;
     }
 
@@ -817,6 +819,7 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_COLUMN_TYPE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
         return MYLITE_UNSUPPORTED;
     }
 

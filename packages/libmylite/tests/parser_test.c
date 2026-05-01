@@ -9,6 +9,7 @@ static int test_use_statements(void);
 static int test_schema_lifecycle_statements(void);
 static int test_connection_charset_statements(void);
 static int test_create_table_integer_boolean_columns(void);
+static int test_create_table_string_binary_columns(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -45,6 +46,7 @@ int main(void)
     failures += test_schema_lifecycle_statements();
     failures += test_connection_charset_statements();
     failures += test_create_table_integer_boolean_columns();
+    failures += test_create_table_string_binary_columns();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -403,6 +405,233 @@ static int test_create_table_integer_boolean_columns(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE TABLE unsupported_attributes (a INT NOT NULL);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_string_binary_columns(void)
+{
+    enum {
+        expected_column_count = 31,
+        varchar_length = 7,
+        char_column = 0,
+        varchar_column = 3,
+        binary_column = 6,
+        varbinary_column = 7,
+        tinytext_column = 8,
+        text_column = 9,
+        longtext_column = 12,
+        blob_column = 14,
+        longblob_column = 16,
+        char_byte_column = 20,
+        nchar_column = 24,
+        nvarchar_column = 25,
+        bare_char_byte_column = 26,
+        national_char_column = 27,
+        national_varchar_column = 28,
+        char_collate_binary_column = 29,
+        text_collate_binary_column = 30,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE TABLE app.string_binary_types ("
+                          "a CHAR, b CHAR(4) CHARACTER SET latin1, "
+                          "c CHARACTER(5) COLLATE latin1_swedish_ci, "
+                          "d VARCHAR(7), e CHAR VARYING(8), "
+                          "f CHARACTER VARYING(9) BINARY, "
+                          "g BINARY, h VARBINARY(9), "
+                          "i TINYTEXT, j TEXT, k TEXT(63) CHARACTER SET binary, "
+                          "l MEDIUMTEXT, m LONGTEXT, n TINYBLOB, o BLOB, "
+                          "p MEDIUMBLOB, q LONGBLOB, r TEXT BINARY, "
+                          "s CHAR CHARACTER SET binary, t VARCHAR(4) CHARSET binary, "
+                          "u CHAR(4) BYTE, v VARCHAR(4) BYTE, "
+                          "w LONG VARCHAR, x LONG VARBINARY, y NCHAR(4), z NVARCHAR(4), "
+                          "aa CHAR BYTE, ab NATIONAL CHAR(3), ac NATIONAL VARCHAR(3), "
+                          "ad CHAR(4) COLLATE binary, ae TEXT COLLATE binary);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    columns = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(columns, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "string column list");
+    failures += expect_child_count(columns, expected_column_count, "string columns");
+
+    column_type = child_at(child_at(columns, char_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "char column");
+    failures += expect_span_text(column_type, "CHAR", "char span");
+
+    column_type = child_at(child_at(columns, varchar_column), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR, "varchar column");
+    if (column_type != NULL &&
+        (!column_type->has_column_length || column_type->column_length != varchar_length)) {
+        fprintf(stderr, "varchar length was not recorded as 7\n");
+        failures = 1;
+    }
+
+    failures += expect_column_type(child_at(child_at(columns, binary_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_BINARY, "binary column");
+    failures += expect_column_type(child_at(child_at(columns, varbinary_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_VARBINARY, "varbinary column");
+    failures += expect_column_type(child_at(child_at(columns, tinytext_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_TINYTEXT, "tinytext column");
+    failures += expect_column_type(child_at(child_at(columns, text_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_TEXT, "text column");
+    failures += expect_column_type(child_at(child_at(columns, longtext_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_LONGTEXT, "longtext column");
+    failures += expect_column_type(child_at(child_at(columns, blob_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_BLOB, "blob column");
+    failures += expect_column_type(child_at(child_at(columns, longblob_column), 1U),
+                                   MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB, "longblob column");
+
+    column_type = child_at(child_at(columns, char_byte_column), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "char byte column");
+    if (column_type != NULL && !column_type->column_byte_attribute) {
+        fprintf(stderr, "char byte attribute was not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, bare_char_byte_column), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "bare char byte column");
+    if (column_type != NULL && !column_type->column_byte_attribute) {
+        fprintf(stderr, "bare char byte attribute was not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, nchar_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "nchar column");
+    if (column_type != NULL && !column_type->column_national_attribute) {
+        fprintf(stderr, "nchar national attribute was not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, nvarchar_column), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR, "nvarchar column");
+    if (column_type != NULL && !column_type->column_national_attribute) {
+        fprintf(stderr, "nvarchar national attribute was not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, national_char_column), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "national char column");
+    if (column_type != NULL && !column_type->column_national_attribute) {
+        fprintf(stderr, "national char attribute was not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, national_varchar_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR,
+                                   "national varchar column");
+    if (column_type != NULL && !column_type->column_national_attribute) {
+        fprintf(stderr, "national varchar attribute was not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, char_collate_binary_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_CHAR,
+                                   "char collate binary column");
+    if (column_type != NULL && !column_type->has_column_collation) {
+        fprintf(stderr, "char collate binary collation was not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, text_collate_binary_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_TEXT,
+                                   "text collate binary column");
+    if (column_type != NULL && !column_type->has_column_collation) {
+        fprintf(stderr, "text collate binary collation was not recorded\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_char_length (a CHAR(256));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_binary_length (a BINARY(256));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_varchar_missing (a VARCHAR);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_varchar_length (a VARCHAR(16384));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_varbinary_missing (a VARBINARY);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_varbinary_length (a VARBINARY(65536));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_tinytext_length (a TINYTEXT(1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_longtext_length (a LONGTEXT(1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_blob_charset (a BLOB CHARACTER SET utf8mb4);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_mediumblob_length (a MEDIUMBLOB(1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_long_varchar_length (a LONG VARCHAR(1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_long_varbinary_length (a LONG VARBINARY(1));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_varchar_byte_missing (a VARCHAR BYTE);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_text_length (a TEXT(4294967296));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_blob_length (a BLOB(4294967296));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_varchar_length_overflow "
+                          "(a VARCHAR(18446744073709551616));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_text_length_overflow "
+                          "(a TEXT(18446744073709551616));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_blob_length_overflow "
+                          "(a BLOB(18446744073709551616));",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_collation (a CHAR CHARACTER SET utf8mb4 "
+                          "COLLATE latin1_swedish_ci);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_binary_collation (a CHAR CHARACTER SET utf8mb4 "
+                          "COLLATE binary);",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

@@ -28,7 +28,7 @@
 %left PLUS MINUS.
 %left STAR SLASH.
 %right UPLUS UMINUS.
-%fallback IDENTIFIER BINARY BOOL BOOLEAN CHARSET ENCRYPTION ONLY SIGNED.
+%fallback IDENTIFIER BOOL BOOLEAN CHARSET ENCRYPTION NCHAR NVARCHAR ONLY SIGNED TEXT.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -158,14 +158,26 @@ column_definition_list(A) ::= column_definition_list(B) COMMA column_definition(
     A = mylite_sql_parser_append_column_definition(state, B, C);
 }
 
-column_definition(A) ::= identifier(B) integer_boolean_column_type(C). {
+column_definition(A) ::= identifier(B) column_type(C). {
     A = mylite_sql_parser_make_column_definition(state, B, C);
 }
 
-integer_boolean_column_type(A) ::= integer_column_type(B). {
+column_type(A) ::= integer_column_type(B). {
     A = B;
 }
-integer_boolean_column_type(A) ::= boolean_column_type(B). {
+column_type(A) ::= boolean_column_type(B). {
+    A = B;
+}
+column_type(A) ::= character_column_type(B). {
+    A = B;
+}
+column_type(A) ::= text_column_type(B). {
+    A = B;
+}
+column_type(A) ::= binary_column_type(B). {
+    A = B;
+}
+column_type(A) ::= blob_column_type(B). {
     A = B;
 }
 
@@ -233,6 +245,218 @@ boolean_column_type(A) ::= BOOL(T). {
 }
 boolean_column_type(A) ::= BOOLEAN(T). {
     A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN);
+}
+
+character_column_type(A) ::= CHAR(T) opt_column_length(B) character_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_CHAR),
+            B),
+        C);
+}
+character_column_type(A) ::= CHARACTER(T) opt_column_length(B) character_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_CHAR),
+            B),
+        C);
+}
+character_column_type(A) ::= CHAR(T) VARYING column_length(B) character_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR),
+            B),
+        C);
+}
+character_column_type(A) ::= CHARACTER(T) VARYING column_length(B) character_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR),
+            B),
+        C);
+}
+character_column_type(A) ::= VARCHAR(T) column_length(B) character_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR),
+            B),
+        C);
+}
+character_column_type(A) ::= NATIONAL(T) CHAR(C) opt_column_length(B). {
+    A = mylite_sql_parser_set_column_type_national(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, C, MYLITE_SQL_AST_COLUMN_TYPE_CHAR),
+            B),
+        T);
+}
+character_column_type(A) ::= NCHAR(T) opt_column_length(B). {
+    A = mylite_sql_parser_set_column_type_national(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_CHAR),
+            B),
+        T);
+}
+character_column_type(A) ::= NATIONAL(T) VARCHAR(V) column_length(B). {
+    A = mylite_sql_parser_set_column_type_national(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, V, MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR),
+            B),
+        T);
+}
+character_column_type(A) ::= NVARCHAR(T) column_length(B). {
+    A = mylite_sql_parser_set_column_type_national(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR),
+            B),
+        T);
+}
+
+text_column_type(A) ::= TINYTEXT(T) character_type_attribute_list(B). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_TINYTEXT),
+        B);
+}
+text_column_type(A) ::= TEXT(T) opt_column_length(B) character_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_TEXT),
+            B),
+        C);
+}
+text_column_type(A) ::= MEDIUMTEXT(T) character_type_attribute_list(B). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMTEXT),
+        B);
+}
+text_column_type(A) ::= LONGTEXT(T) character_type_attribute_list(B). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_LONGTEXT),
+        B);
+}
+text_column_type(A) ::= LONG(T) VARCHAR. {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMTEXT));
+}
+
+binary_column_type(A) ::= BINARY(T) opt_column_length(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BINARY),
+            B));
+}
+binary_column_type(A) ::= VARBINARY(T) column_length(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_VARBINARY),
+            B));
+}
+binary_column_type(A) ::= CHAR(T) opt_column_length(B) BYTE(Y). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_type_byte_attribute(
+            state,
+            mylite_sql_parser_set_column_length(
+                state,
+                mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_CHAR),
+                B),
+            Y));
+}
+binary_column_type(A) ::= CHARACTER(T) opt_column_length(B) BYTE(Y). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_type_byte_attribute(
+            state,
+            mylite_sql_parser_set_column_length(
+                state,
+                mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_CHAR),
+                B),
+            Y));
+}
+binary_column_type(A) ::= VARCHAR(T) column_length(B) BYTE(Y). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_type_byte_attribute(
+            state,
+            mylite_sql_parser_set_column_length(
+                state,
+                mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR),
+                B),
+            Y));
+}
+
+blob_column_type(A) ::= TINYBLOB(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_TINYBLOB));
+}
+blob_column_type(A) ::= BLOB(T) opt_column_length(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BLOB),
+            B));
+}
+blob_column_type(A) ::= MEDIUMBLOB(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB));
+}
+blob_column_type(A) ::= LONGBLOB(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB));
+}
+blob_column_type(A) ::= LONG(T) VARBINARY. {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB));
+}
+
+character_type_attribute_list(A) ::= . {
+    A = mylite_sql_parser_make_column_type_attribute_list(state);
+}
+character_type_attribute_list(A) ::= character_type_attribute_list(B) character_type_attribute(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(state, B, C);
+}
+
+character_type_attribute(A) ::= CHARACTER SET charset_value(B). {
+    A = mylite_sql_parser_set_column_type_character_set(
+        state, mylite_sql_parser_make_column_type_attribute_list(state), B);
+}
+character_type_attribute(A) ::= CHARSET charset_value(B). {
+    A = mylite_sql_parser_set_column_type_character_set(
+        state, mylite_sql_parser_make_column_type_attribute_list(state), B);
+}
+character_type_attribute(A) ::= COLLATE charset_value(B). {
+    A = mylite_sql_parser_set_column_type_collation(
+        state, mylite_sql_parser_make_column_type_attribute_list(state), B);
+}
+character_type_attribute(A) ::= BINARY(T). {
+    A = mylite_sql_parser_set_column_type_binary_attribute(
+        state, mylite_sql_parser_make_column_type_attribute_list(state), T);
+}
+
+opt_column_length(A) ::= . {
+    A = NULL;
+}
+opt_column_length(A) ::= column_length(B). {
+    A = B;
+}
+column_length(A) ::= LPAREN(L) INTEGER(T) RPAREN(R). {
+    A = mylite_sql_parser_make_column_length(
+        state, (struct mylite_sql_parser_column_length_tokens){
+            .left_paren = L,
+            .integer = T,
+            .right_paren = R,
+        });
 }
 
 opt_if_not_exists(A) ::= . {

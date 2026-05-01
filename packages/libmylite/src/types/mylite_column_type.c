@@ -21,15 +21,58 @@ struct mylite_integer_alias {
     bool is_boolean_alias;
 };
 
+struct mylite_string_binary_alias {
+    const char *name;
+    enum mylite_column_string_binary_type type;
+    bool is_alias;
+};
+
+struct mylite_charset_info {
+    const char *name;
+    const char *default_collation;
+    const char *binary_collation;
+    unsigned int max_bytes_per_character;
+    bool is_binary;
+};
+
+struct mylite_collation_info {
+    const char *name;
+    const char *character_set_name;
+};
+
+struct mylite_string_binary_column_type_format {
+    enum mylite_column_string_binary_type type;
+    uint64_t length;
+};
+
 enum {
     display_width_max = 255U,
 };
+
+static const uint64_t char_binary_length_max = 255ULL;
+static const uint64_t varbinary_length_max = 65535ULL;
+static const uint64_t blob_text_length_max = 4294967295ULL;
+static const uint64_t tiny_capacity = 255ULL;
+static const uint64_t regular_capacity = 65535ULL;
+static const uint64_t medium_capacity = 16777215ULL;
+static const uint64_t long_capacity = 4294967295ULL;
 
 static const struct mylite_integer_type_info *
 lookup_integer_type_info(enum mylite_column_integer_type integer_type);
 static bool lookup_integer_alias(const char *type_name, size_t type_name_length,
                                  enum mylite_column_integer_type *out_integer_type,
                                  bool *out_is_boolean_alias);
+static bool lookup_string_binary_alias(const char *type_name, size_t type_name_length,
+                                       enum mylite_column_string_binary_type *out_type,
+                                       bool *out_is_alias);
+static const struct mylite_charset_info *
+effective_charset(struct mylite_column_type_attributes attributes,
+                  enum mylite_column_type_status *out_status);
+static const struct mylite_charset_info *lookup_charset(const char *name, size_t name_length);
+static const struct mylite_collation_info *lookup_collation(const char *name, size_t name_length);
+static enum mylite_column_type_status
+check_collation_matches_charset(const struct mylite_charset_info *charset,
+                                const struct mylite_collation_info *collation);
 static bool ascii_case_equal(const char *left, size_t left_length, const char *right);
 static char ascii_lower(unsigned char byte);
 static void fill_descriptor(const struct mylite_integer_type_info *info, bool is_unsigned,
@@ -39,6 +82,32 @@ static void format_column_type(const struct mylite_integer_type_info *info, bool
                                bool is_boolean_alias,
                                struct mylite_column_type_attributes attributes,
                                char *out_column_type, size_t column_type_size);
+static enum mylite_column_type_status
+describe_char_varchar(enum mylite_column_string_binary_type requested_type,
+                      struct mylite_column_type_attributes attributes,
+                      struct mylite_column_type_descriptor *out_descriptor);
+static enum mylite_column_type_status
+describe_text_blob(enum mylite_column_string_binary_type requested_type,
+                   struct mylite_column_type_attributes attributes,
+                   struct mylite_column_type_descriptor *out_descriptor);
+static enum mylite_column_type_status
+describe_binary_varbinary(enum mylite_column_string_binary_type requested_type,
+                          struct mylite_column_type_attributes attributes,
+                          struct mylite_column_type_descriptor *out_descriptor);
+static void fill_string_descriptor(enum mylite_column_string_binary_type type, uint64_t length,
+                                   const struct mylite_charset_info *charset,
+                                   const struct mylite_collation_info *collation,
+                                   bool is_deprecated_binary_attribute, bool is_alias,
+                                   struct mylite_column_type_descriptor *out_descriptor);
+static void fill_binary_descriptor(enum mylite_column_string_binary_type type, uint64_t length,
+                                   bool is_alias,
+                                   struct mylite_column_type_descriptor *out_descriptor);
+static enum mylite_column_string_binary_type text_family_for_capacity(uint64_t capacity);
+static enum mylite_column_string_binary_type blob_family_for_capacity(uint64_t capacity);
+static uint64_t capacity_for_string_binary_type(enum mylite_column_string_binary_type type);
+static const char *name_for_string_binary_type(enum mylite_column_string_binary_type type);
+static void format_string_binary_column_type(struct mylite_string_binary_column_type_format format,
+                                             char *out_column_type, size_t column_type_size);
 
 enum mylite_column_type_status
 mylite_column_type_describe_integer(const char *type_name, size_t type_name_length,
@@ -77,6 +146,55 @@ mylite_column_type_describe_integer(const char *type_name, size_t type_name_leng
     return MYLITE_COLUMN_TYPE_OK;
 }
 
+enum mylite_column_type_status
+mylite_column_type_describe_string_binary(const char *type_name, size_t type_name_length,
+                                          struct mylite_column_type_attributes attributes,
+                                          struct mylite_column_type_descriptor *out_descriptor)
+{
+    enum mylite_column_string_binary_type requested_type = MYLITE_COLUMN_STRING_BINARY_NONE;
+    bool is_alias = false;
+
+    if (out_descriptor == NULL) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    *out_descriptor = (struct mylite_column_type_descriptor){0};
+
+    if (type_name == NULL ||
+        !lookup_string_binary_alias(type_name, type_name_length, &requested_type, &is_alias)) {
+        return MYLITE_COLUMN_TYPE_UNKNOWN;
+    }
+
+    if (ascii_case_equal(type_name, type_name_length, "NCHAR") ||
+        ascii_case_equal(type_name, type_name_length, "NATIONAL CHAR") ||
+        ascii_case_equal(type_name, type_name_length, "NVARCHAR") ||
+        ascii_case_equal(type_name, type_name_length, "NATIONAL VARCHAR")) {
+        attributes.is_national = true;
+    }
+
+    switch (requested_type) {
+    case MYLITE_COLUMN_STRING_BINARY_CHAR:
+    case MYLITE_COLUMN_STRING_BINARY_VARCHAR:
+        return describe_char_varchar(requested_type, attributes, out_descriptor);
+    case MYLITE_COLUMN_STRING_BINARY_TINYTEXT:
+    case MYLITE_COLUMN_STRING_BINARY_TEXT:
+    case MYLITE_COLUMN_STRING_BINARY_MEDIUMTEXT:
+    case MYLITE_COLUMN_STRING_BINARY_LONGTEXT:
+        return describe_text_blob(requested_type, attributes, out_descriptor);
+    case MYLITE_COLUMN_STRING_BINARY_BINARY:
+    case MYLITE_COLUMN_STRING_BINARY_VARBINARY:
+        return describe_binary_varbinary(requested_type, attributes, out_descriptor);
+    case MYLITE_COLUMN_STRING_BINARY_TINYBLOB:
+    case MYLITE_COLUMN_STRING_BINARY_BLOB:
+    case MYLITE_COLUMN_STRING_BINARY_MEDIUMBLOB:
+    case MYLITE_COLUMN_STRING_BINARY_LONGBLOB:
+        return describe_text_blob(requested_type, attributes, out_descriptor);
+    case MYLITE_COLUMN_STRING_BINARY_NONE:
+        break;
+    }
+
+    return MYLITE_COLUMN_TYPE_UNKNOWN;
+}
+
 const char *mylite_column_type_status_name(enum mylite_column_type_status status)
 {
     switch (status) {
@@ -88,6 +206,14 @@ const char *mylite_column_type_status_name(enum mylite_column_type_status status
         return "invalid_syntax";
     case MYLITE_COLUMN_TYPE_DISPLAY_WIDTH_OUT_OF_RANGE:
         return "display_width_out_of_range";
+    case MYLITE_COLUMN_TYPE_LENGTH_OUT_OF_RANGE:
+        return "length_out_of_range";
+    case MYLITE_COLUMN_TYPE_UNKNOWN_CHARACTER_SET:
+        return "unknown_character_set";
+    case MYLITE_COLUMN_TYPE_UNKNOWN_COLLATION:
+        return "unknown_collation";
+    case MYLITE_COLUMN_TYPE_COLLATION_CHARACTER_SET_MISMATCH:
+        return "collation_character_set_mismatch";
     }
 
     return "unknown";
@@ -197,6 +323,144 @@ static bool lookup_integer_alias(const char *type_name, size_t type_name_length,
     return false;
 }
 
+static bool lookup_string_binary_alias(const char *type_name, size_t type_name_length,
+                                       enum mylite_column_string_binary_type *out_type,
+                                       bool *out_is_alias)
+{
+    static const struct mylite_string_binary_alias aliases[] = {
+        {"CHAR", MYLITE_COLUMN_STRING_BINARY_CHAR, false},
+        {"CHARACTER", MYLITE_COLUMN_STRING_BINARY_CHAR, false},
+        {"NCHAR", MYLITE_COLUMN_STRING_BINARY_CHAR, true},
+        {"NATIONAL CHAR", MYLITE_COLUMN_STRING_BINARY_CHAR, true},
+        {"VARCHAR", MYLITE_COLUMN_STRING_BINARY_VARCHAR, false},
+        {"CHAR VARYING", MYLITE_COLUMN_STRING_BINARY_VARCHAR, true},
+        {"CHARACTER VARYING", MYLITE_COLUMN_STRING_BINARY_VARCHAR, true},
+        {"NVARCHAR", MYLITE_COLUMN_STRING_BINARY_VARCHAR, true},
+        {"NATIONAL VARCHAR", MYLITE_COLUMN_STRING_BINARY_VARCHAR, true},
+        {"TINYTEXT", MYLITE_COLUMN_STRING_BINARY_TINYTEXT, false},
+        {"TEXT", MYLITE_COLUMN_STRING_BINARY_TEXT, false},
+        {"MEDIUMTEXT", MYLITE_COLUMN_STRING_BINARY_MEDIUMTEXT, false},
+        {"LONGTEXT", MYLITE_COLUMN_STRING_BINARY_LONGTEXT, false},
+        {"LONG VARCHAR", MYLITE_COLUMN_STRING_BINARY_MEDIUMTEXT, true},
+        {"BINARY", MYLITE_COLUMN_STRING_BINARY_BINARY, false},
+        {"VARBINARY", MYLITE_COLUMN_STRING_BINARY_VARBINARY, false},
+        {"TINYBLOB", MYLITE_COLUMN_STRING_BINARY_TINYBLOB, false},
+        {"BLOB", MYLITE_COLUMN_STRING_BINARY_BLOB, false},
+        {"MEDIUMBLOB", MYLITE_COLUMN_STRING_BINARY_MEDIUMBLOB, false},
+        {"LONGBLOB", MYLITE_COLUMN_STRING_BINARY_LONGBLOB, false},
+        {"LONG VARBINARY", MYLITE_COLUMN_STRING_BINARY_MEDIUMBLOB, true},
+    };
+
+    if (out_type == NULL || out_is_alias == NULL) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < sizeof(aliases) / sizeof(aliases[0]); ++index) {
+        if (ascii_case_equal(type_name, type_name_length, aliases[index].name)) {
+            *out_type = aliases[index].type;
+            *out_is_alias = aliases[index].is_alias;
+            return true;
+        }
+    }
+    return false;
+}
+
+static const struct mylite_charset_info *
+effective_charset(struct mylite_column_type_attributes attributes,
+                  enum mylite_column_type_status *out_status)
+{
+    const struct mylite_charset_info *charset = NULL;
+    const struct mylite_collation_info *collation = NULL;
+
+    if (out_status == NULL) {
+        return NULL;
+    }
+    *out_status = MYLITE_COLUMN_TYPE_OK;
+
+    if (attributes.is_national) {
+        charset = lookup_charset("utf8mb3", strlen("utf8mb3"));
+    } else if (attributes.has_character_set) {
+        charset = lookup_charset(attributes.character_set, attributes.character_set_length);
+        if (charset == NULL) {
+            *out_status = MYLITE_COLUMN_TYPE_UNKNOWN_CHARACTER_SET;
+            return NULL;
+        }
+    }
+
+    if (attributes.has_collation) {
+        collation = lookup_collation(attributes.collation, attributes.collation_length);
+        if (collation == NULL) {
+            *out_status = MYLITE_COLUMN_TYPE_UNKNOWN_COLLATION;
+            return NULL;
+        }
+        if (charset == NULL) {
+            charset = lookup_charset(collation->character_set_name,
+                                     strlen(collation->character_set_name));
+        }
+    }
+
+    if (charset == NULL) {
+        charset = lookup_charset("utf8mb4", strlen("utf8mb4"));
+    }
+
+    if (collation != NULL) {
+        *out_status = check_collation_matches_charset(charset, collation);
+        if (*out_status != MYLITE_COLUMN_TYPE_OK) {
+            return NULL;
+        }
+    }
+
+    return charset;
+}
+
+static const struct mylite_charset_info *lookup_charset(const char *name, size_t name_length)
+{
+    static const struct mylite_charset_info charsets[] = {
+        {"utf8mb4", "utf8mb4_0900_ai_ci", "utf8mb4_bin", 4U, false},
+        {"utf8mb3", "utf8mb3_general_ci", "utf8mb3_bin", 3U, false},
+        {"latin1", "latin1_swedish_ci", "latin1_bin", 1U, false},
+        {"binary", NULL, NULL, 1U, true},
+    };
+
+    for (size_t index = 0U; index < sizeof(charsets) / sizeof(charsets[0]); ++index) {
+        if (ascii_case_equal(name, name_length, charsets[index].name)) {
+            return &charsets[index];
+        }
+    }
+    return NULL;
+}
+
+static const struct mylite_collation_info *lookup_collation(const char *name, size_t name_length)
+{
+    static const struct mylite_collation_info collations[] = {
+        {"binary", "binary"},       {"utf8mb4_0900_ai_ci", "utf8mb4"},
+        {"utf8mb4_bin", "utf8mb4"}, {"utf8mb3_general_ci", "utf8mb3"},
+        {"utf8mb3_bin", "utf8mb3"}, {"latin1_swedish_ci", "latin1"},
+        {"latin1_bin", "latin1"},
+    };
+
+    for (size_t index = 0U; index < sizeof(collations) / sizeof(collations[0]); ++index) {
+        if (ascii_case_equal(name, name_length, collations[index].name)) {
+            return &collations[index];
+        }
+    }
+    return NULL;
+}
+
+static enum mylite_column_type_status
+check_collation_matches_charset(const struct mylite_charset_info *charset,
+                                const struct mylite_collation_info *collation)
+{
+    if (charset == NULL || collation == NULL) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (!ascii_case_equal(collation->character_set_name, strlen(collation->character_set_name),
+                          charset->name)) {
+        return MYLITE_COLUMN_TYPE_COLLATION_CHARACTER_SET_MISMATCH;
+    }
+    return MYLITE_COLUMN_TYPE_OK;
+}
+
 static bool ascii_case_equal(const char *left, size_t left_length, const char *right)
 {
     size_t right_length = strlen(right);
@@ -283,4 +547,323 @@ static void format_column_type(const struct mylite_integer_type_info *info, bool
     }
 
     (void)snprintf(out_column_type, column_type_size, "%s", info->canonical_type_name);
+}
+
+static enum mylite_column_type_status
+describe_char_varchar(enum mylite_column_string_binary_type requested_type,
+                      struct mylite_column_type_attributes attributes,
+                      struct mylite_column_type_descriptor *out_descriptor)
+{
+    enum mylite_column_type_status status = MYLITE_COLUMN_TYPE_OK;
+    const struct mylite_charset_info *charset = effective_charset(attributes, &status);
+    const struct mylite_collation_info *collation = NULL;
+    uint64_t length = 1ULL;
+
+    if (status != MYLITE_COLUMN_TYPE_OK) {
+        return status;
+    }
+    if (charset == NULL) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (attributes.has_length) {
+        length = attributes.length;
+    }
+    if (attributes.has_binary_attribute && attributes.has_byte_attribute) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (requested_type == MYLITE_COLUMN_STRING_BINARY_VARCHAR && !attributes.has_length) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (requested_type == MYLITE_COLUMN_STRING_BINARY_CHAR && length > char_binary_length_max) {
+        return MYLITE_COLUMN_TYPE_LENGTH_OUT_OF_RANGE;
+    }
+    if (requested_type == MYLITE_COLUMN_STRING_BINARY_VARCHAR &&
+        ((!charset->is_binary &&
+          length > (regular_capacity - 3ULL) / charset->max_bytes_per_character) ||
+         length > varbinary_length_max)) {
+        return MYLITE_COLUMN_TYPE_LENGTH_OUT_OF_RANGE;
+    }
+
+    if (attributes.has_collation) {
+        collation = lookup_collation(attributes.collation, attributes.collation_length);
+    }
+
+    if (attributes.has_byte_attribute || charset->is_binary) {
+        fill_binary_descriptor(requested_type == MYLITE_COLUMN_STRING_BINARY_CHAR
+                                   ? MYLITE_COLUMN_STRING_BINARY_BINARY
+                                   : MYLITE_COLUMN_STRING_BINARY_VARBINARY,
+                               length, true, out_descriptor);
+        return MYLITE_COLUMN_TYPE_OK;
+    }
+
+    fill_string_descriptor(requested_type, length, charset, collation,
+                           attributes.has_binary_attribute, attributes.is_national, out_descriptor);
+    return MYLITE_COLUMN_TYPE_OK;
+}
+
+static enum mylite_column_type_status
+describe_text_blob(enum mylite_column_string_binary_type requested_type,
+                   struct mylite_column_type_attributes attributes,
+                   struct mylite_column_type_descriptor *out_descriptor)
+{
+    enum mylite_column_type_status status = MYLITE_COLUMN_TYPE_OK;
+    const struct mylite_charset_info *charset = NULL;
+    const struct mylite_collation_info *collation = NULL;
+    enum mylite_column_string_binary_type effective_type = requested_type;
+    bool requested_blob = requested_type >= MYLITE_COLUMN_STRING_BINARY_TINYBLOB;
+
+    if (requested_type != MYLITE_COLUMN_STRING_BINARY_TEXT &&
+        requested_type != MYLITE_COLUMN_STRING_BINARY_BLOB && attributes.has_length) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (attributes.has_byte_attribute) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (requested_blob && (attributes.has_character_set || attributes.has_collation ||
+                           attributes.has_binary_attribute)) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (attributes.has_length && attributes.length > blob_text_length_max) {
+        return MYLITE_COLUMN_TYPE_LENGTH_OUT_OF_RANGE;
+    }
+
+    if (requested_blob) {
+        if (requested_type == MYLITE_COLUMN_STRING_BINARY_BLOB && attributes.has_length) {
+            effective_type = blob_family_for_capacity(attributes.length);
+        }
+        fill_binary_descriptor(effective_type, capacity_for_string_binary_type(effective_type),
+                               requested_type != effective_type, out_descriptor);
+        return MYLITE_COLUMN_TYPE_OK;
+    }
+
+    charset = effective_charset(attributes, &status);
+    if (status != MYLITE_COLUMN_TYPE_OK) {
+        return status;
+    }
+    if (charset == NULL) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (attributes.has_collation) {
+        collation = lookup_collation(attributes.collation, attributes.collation_length);
+    }
+    if (charset != NULL && charset->is_binary) {
+        if (requested_type == MYLITE_COLUMN_STRING_BINARY_TEXT && attributes.has_length) {
+            effective_type = blob_family_for_capacity(attributes.length);
+        } else {
+            effective_type = (enum mylite_column_string_binary_type)(
+                requested_type +
+                (MYLITE_COLUMN_STRING_BINARY_TINYBLOB - MYLITE_COLUMN_STRING_BINARY_TINYTEXT));
+        }
+        fill_binary_descriptor(effective_type, capacity_for_string_binary_type(effective_type),
+                               true, out_descriptor);
+        return MYLITE_COLUMN_TYPE_OK;
+    }
+    if (requested_type == MYLITE_COLUMN_STRING_BINARY_TEXT && attributes.has_length) {
+        uint64_t capacity = attributes.length * charset->max_bytes_per_character;
+        effective_type = text_family_for_capacity(capacity);
+    }
+
+    fill_string_descriptor(effective_type, capacity_for_string_binary_type(effective_type), charset,
+                           collation, attributes.has_binary_attribute,
+                           requested_type != effective_type, out_descriptor);
+    return MYLITE_COLUMN_TYPE_OK;
+}
+
+static enum mylite_column_type_status
+describe_binary_varbinary(enum mylite_column_string_binary_type requested_type,
+                          struct mylite_column_type_attributes attributes,
+                          struct mylite_column_type_descriptor *out_descriptor)
+{
+    uint64_t length = 1ULL;
+
+    if (attributes.has_length) {
+        length = attributes.length;
+    }
+
+    if (attributes.has_character_set || attributes.has_collation ||
+        attributes.has_binary_attribute || attributes.has_byte_attribute ||
+        attributes.is_national) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (requested_type == MYLITE_COLUMN_STRING_BINARY_VARBINARY && !attributes.has_length) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if ((requested_type == MYLITE_COLUMN_STRING_BINARY_BINARY && length > char_binary_length_max) ||
+        (requested_type == MYLITE_COLUMN_STRING_BINARY_VARBINARY &&
+         length > varbinary_length_max)) {
+        return MYLITE_COLUMN_TYPE_LENGTH_OUT_OF_RANGE;
+    }
+
+    fill_binary_descriptor(requested_type, length, false, out_descriptor);
+    return MYLITE_COLUMN_TYPE_OK;
+}
+
+static void fill_string_descriptor(enum mylite_column_string_binary_type type, uint64_t length,
+                                   const struct mylite_charset_info *charset,
+                                   const struct mylite_collation_info *collation,
+                                   bool is_deprecated_binary_attribute, bool is_alias,
+                                   struct mylite_column_type_descriptor *out_descriptor)
+{
+    const char *data_type = name_for_string_binary_type(type);
+    const char *collation_name = collation == NULL ? charset->default_collation : collation->name;
+
+    if (is_deprecated_binary_attribute) {
+        collation_name = charset->binary_collation;
+    }
+
+    *out_descriptor = (struct mylite_column_type_descriptor){
+        .string_binary_type = type,
+        .is_character_string = true,
+        .is_deprecated_binary_attribute = is_deprecated_binary_attribute,
+        .is_alias = is_alias,
+        .character_maximum_length = length,
+        .character_octet_length = length * charset->max_bytes_per_character,
+        .canonical_type_name = data_type,
+        .data_type = data_type,
+        .character_set_name = charset->name,
+        .collation_name = collation_name,
+    };
+    format_string_binary_column_type(
+        (struct mylite_string_binary_column_type_format){
+            .type = type,
+            .length = length,
+        },
+        out_descriptor->column_type, sizeof(out_descriptor->column_type));
+}
+
+static void fill_binary_descriptor(enum mylite_column_string_binary_type type, uint64_t length,
+                                   bool is_alias,
+                                   struct mylite_column_type_descriptor *out_descriptor)
+{
+    const char *data_type = name_for_string_binary_type(type);
+
+    *out_descriptor = (struct mylite_column_type_descriptor){
+        .string_binary_type = type,
+        .is_binary_string = true,
+        .is_alias = is_alias,
+        .character_maximum_length = length,
+        .character_octet_length = length,
+        .canonical_type_name = data_type,
+        .data_type = data_type,
+    };
+    format_string_binary_column_type(
+        (struct mylite_string_binary_column_type_format){
+            .type = type,
+            .length = length,
+        },
+        out_descriptor->column_type, sizeof(out_descriptor->column_type));
+}
+
+static enum mylite_column_string_binary_type text_family_for_capacity(uint64_t capacity)
+{
+    if (capacity <= tiny_capacity) {
+        return MYLITE_COLUMN_STRING_BINARY_TINYTEXT;
+    }
+    if (capacity <= regular_capacity) {
+        return MYLITE_COLUMN_STRING_BINARY_TEXT;
+    }
+    if (capacity <= medium_capacity) {
+        return MYLITE_COLUMN_STRING_BINARY_MEDIUMTEXT;
+    }
+    return MYLITE_COLUMN_STRING_BINARY_LONGTEXT;
+}
+
+static enum mylite_column_string_binary_type blob_family_for_capacity(uint64_t capacity)
+{
+    if (capacity <= tiny_capacity) {
+        return MYLITE_COLUMN_STRING_BINARY_TINYBLOB;
+    }
+    if (capacity <= regular_capacity) {
+        return MYLITE_COLUMN_STRING_BINARY_BLOB;
+    }
+    if (capacity <= medium_capacity) {
+        return MYLITE_COLUMN_STRING_BINARY_MEDIUMBLOB;
+    }
+    return MYLITE_COLUMN_STRING_BINARY_LONGBLOB;
+}
+
+static uint64_t capacity_for_string_binary_type(enum mylite_column_string_binary_type type)
+{
+    switch (type) {
+    case MYLITE_COLUMN_STRING_BINARY_TINYTEXT:
+    case MYLITE_COLUMN_STRING_BINARY_TINYBLOB:
+        return tiny_capacity;
+    case MYLITE_COLUMN_STRING_BINARY_TEXT:
+    case MYLITE_COLUMN_STRING_BINARY_BLOB:
+        return regular_capacity;
+    case MYLITE_COLUMN_STRING_BINARY_MEDIUMTEXT:
+    case MYLITE_COLUMN_STRING_BINARY_MEDIUMBLOB:
+        return medium_capacity;
+    case MYLITE_COLUMN_STRING_BINARY_LONGTEXT:
+    case MYLITE_COLUMN_STRING_BINARY_LONGBLOB:
+        return long_capacity;
+    case MYLITE_COLUMN_STRING_BINARY_CHAR:
+    case MYLITE_COLUMN_STRING_BINARY_VARCHAR:
+    case MYLITE_COLUMN_STRING_BINARY_BINARY:
+    case MYLITE_COLUMN_STRING_BINARY_VARBINARY:
+    case MYLITE_COLUMN_STRING_BINARY_NONE:
+        break;
+    }
+    return 0ULL;
+}
+
+static const char *name_for_string_binary_type(enum mylite_column_string_binary_type type)
+{
+    switch (type) {
+    case MYLITE_COLUMN_STRING_BINARY_CHAR:
+        return "char";
+    case MYLITE_COLUMN_STRING_BINARY_VARCHAR:
+        return "varchar";
+    case MYLITE_COLUMN_STRING_BINARY_TINYTEXT:
+        return "tinytext";
+    case MYLITE_COLUMN_STRING_BINARY_TEXT:
+        return "text";
+    case MYLITE_COLUMN_STRING_BINARY_MEDIUMTEXT:
+        return "mediumtext";
+    case MYLITE_COLUMN_STRING_BINARY_LONGTEXT:
+        return "longtext";
+    case MYLITE_COLUMN_STRING_BINARY_BINARY:
+        return "binary";
+    case MYLITE_COLUMN_STRING_BINARY_VARBINARY:
+        return "varbinary";
+    case MYLITE_COLUMN_STRING_BINARY_TINYBLOB:
+        return "tinyblob";
+    case MYLITE_COLUMN_STRING_BINARY_BLOB:
+        return "blob";
+    case MYLITE_COLUMN_STRING_BINARY_MEDIUMBLOB:
+        return "mediumblob";
+    case MYLITE_COLUMN_STRING_BINARY_LONGBLOB:
+        return "longblob";
+    case MYLITE_COLUMN_STRING_BINARY_NONE:
+        break;
+    }
+    return "unknown";
+}
+
+static void format_string_binary_column_type(struct mylite_string_binary_column_type_format format,
+                                             char *out_column_type, size_t column_type_size)
+{
+    const char *name = name_for_string_binary_type(format.type);
+
+    switch (format.type) {
+    case MYLITE_COLUMN_STRING_BINARY_CHAR:
+    case MYLITE_COLUMN_STRING_BINARY_VARCHAR:
+    case MYLITE_COLUMN_STRING_BINARY_BINARY:
+    case MYLITE_COLUMN_STRING_BINARY_VARBINARY:
+        (void)snprintf(out_column_type, column_type_size, "%s(%llu)", name,
+                       (unsigned long long)format.length);
+        return;
+    case MYLITE_COLUMN_STRING_BINARY_TINYTEXT:
+    case MYLITE_COLUMN_STRING_BINARY_TEXT:
+    case MYLITE_COLUMN_STRING_BINARY_MEDIUMTEXT:
+    case MYLITE_COLUMN_STRING_BINARY_LONGTEXT:
+    case MYLITE_COLUMN_STRING_BINARY_TINYBLOB:
+    case MYLITE_COLUMN_STRING_BINARY_BLOB:
+    case MYLITE_COLUMN_STRING_BINARY_MEDIUMBLOB:
+    case MYLITE_COLUMN_STRING_BINARY_LONGBLOB:
+    case MYLITE_COLUMN_STRING_BINARY_NONE:
+        break;
+    }
+
+    (void)snprintf(out_column_type, column_type_size, "%s", name);
 }

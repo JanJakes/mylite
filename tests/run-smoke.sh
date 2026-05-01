@@ -535,6 +535,40 @@ if "$parser" --quiet 'ALTER FUNCTION f DETERMINISTIC'; then
 	exit 1
 fi
 
+loadable_function_output=$("$parser" "CREATE FUNCTION IF NOT EXISTS udf RETURNS STRING SONAME 'udf.so'; CREATE AGGREGATE FUNCTION agg RETURNS INTEGER SONAME 'agg.so'")
+case "$loadable_function_output" in
+	*"create"*/function:udf*"create"*/function:agg*) ;;
+	*)
+		echo "unexpected CREATE loadable FUNCTION output: $loadable_function_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet "CREATE AGGREGATE FUNCTION agg RETURNS INTEGER"; then
+	echo "expected CREATE AGGREGATE FUNCTION without SONAME to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE FUNCTION udf RETURNS STRING SONAME"; then
+	echo "expected CREATE FUNCTION SONAME without library to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE FUNCTION udf RETURNS BOOL SONAME 'udf.so'"; then
+	echo "expected CREATE FUNCTION with invalid loadable return type to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE FUNCTION udf RETURNS REAL SONAME 1"; then
+	echo "expected CREATE FUNCTION with numeric SONAME to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "CREATE FUNCTION IF EXISTS udf RETURNS DECIMAL SONAME 'udf.so'"; then
+	echo "expected CREATE FUNCTION IF EXISTS loadable form to fail" >&2
+	exit 1
+fi
+
 rename_table_output=$("$parser" 'RENAME TABLE old TO new; RENAME TABLE db.old TO other.new, a TO b; RENAME TABLES t2 TO t0, t4 TO t2')
 case "$rename_table_output" in
 	*"rename"*/table:old*"rename"*/table:db.old*"rename"*/table:t2*) ;;

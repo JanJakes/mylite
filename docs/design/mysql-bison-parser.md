@@ -59,6 +59,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
 - MySQL 8.4 routine alteration statements:
   `https://dev.mysql.com/doc/refman/8.4/en/alter-function.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/alter-procedure.html`
+- MySQL 8.4 loadable-function DDL:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-function-loadable.html`
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
@@ -298,6 +300,8 @@ and `ALTER SCHEMA` validate explicit or nameless default-database option forms,
 including character-set, collation, encryption, and `READ ONLY` options.
 `DROP DATABASE` and `DROP SCHEMA` validate optional `IF EXISTS` with a single
 unqualified schema target.
+Unambiguous `CREATE FUNCTION` loadable-function forms validate documented
+`RETURNS` and `SONAME` clauses without tightening stored-function bodies yet.
 `ALTER FUNCTION` and `ALTER PROCEDURE` validate documented routine
 characteristics without changing parameters or bodies.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate

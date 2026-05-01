@@ -68,6 +68,8 @@ character-set, collation, and encryption options. `ALTER DATABASE` and
 character-set, collation, encryption, and `READ ONLY`. `DROP DATABASE` and
 `DROP SCHEMA` validate optional `IF EXISTS` with a single unqualified schema
 target.
+Unambiguous `CREATE FUNCTION` loadable-function forms validate documented
+`RETURNS` and `SONAME` clauses without tightening stored-function bodies yet.
 `ALTER FUNCTION` and `ALTER PROCEDURE` validate documented routine
 characteristics without changing parameters or bodies.
 `DROP EVENT`, `DROP PROCEDURE`, `DROP FUNCTION`, and `DROP TRIGGER` validate

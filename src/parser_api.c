@@ -31,6 +31,13 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 static int validate_create_role_statement_syntax(const mylite_parser *parser,
                                                  size_t token_index,
                                                  size_t last_token_index);
+static int validate_create_loadable_function_statement_syntax(const mylite_parser *parser,
+                                                              size_t token_index,
+                                                              size_t last_token_index);
+static int token_starts_create_loadable_function_statement(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index);
+static int token_is_loadable_function_return_type(const mylite_parser *parser, size_t token_index);
 static int validate_create_database_statement_syntax(const mylite_parser *parser,
                                                      size_t token_index,
                                                      size_t last_token_index);
@@ -1907,6 +1914,9 @@ static int validate_create_statement_syntax(const mylite_parser *parser, const m
 	if (parser->tokens[token_index].parser_token == ROLE_T) {
 		return validate_create_role_statement_syntax(parser, token_index, last_token_index);
 	}
+	if (token_starts_create_loadable_function_statement(parser, token_index, last_token_index)) {
+		return validate_create_loadable_function_statement_syntax(parser, token_index, last_token_index);
+	}
 	if (parser->tokens[token_index].parser_token == DATABASE_T ||
 	    parser->tokens[token_index].parser_token == SCHEMA_T) {
 		return validate_create_database_statement_syntax(parser, token_index, last_token_index);
@@ -1963,6 +1973,96 @@ static int validate_create_role_statement_syntax(const mylite_parser *parser,
 	                                           token_index,
 	                                           last_token_index,
 	                                           0);
+}
+
+static int validate_create_loadable_function_statement_syntax(const mylite_parser *parser,
+                                                              size_t token_index,
+                                                              size_t last_token_index)
+{
+	if (token_text_equals(parser, token_index, "AGGREGATE")) {
+		token_index++;
+	}
+	if (token_index > last_token_index ||
+	    parser->tokens[token_index].parser_token != FUNCTION_T) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "IF")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "NOT") ||
+		    !token_text_equals(parser, token_index + 2, "EXISTS")) {
+			return 0;
+		}
+		token_index += 3;
+	}
+
+	if (token_index > last_token_index || !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index = last_qualified_name_token(parser, token_index, last_token_index) + 1;
+
+	if (token_index + 3 > last_token_index ||
+	    !token_text_equals(parser, token_index, "RETURNS") ||
+	    !token_is_loadable_function_return_type(parser, token_index + 1) ||
+	    !token_text_equals(parser, token_index + 2, "SONAME") ||
+	    parser->tokens[token_index + 3].kind != MYLITE_TOKEN_STRING) {
+		return 0;
+	}
+
+	return token_index + 3 == last_token_index;
+}
+
+static int token_starts_create_loadable_function_statement(const mylite_parser *parser,
+                                                           size_t token_index,
+                                                           size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "AGGREGATE")) {
+		return token_index + 1 <= last_token_index &&
+		       parser->tokens[token_index + 1].parser_token == FUNCTION_T;
+	}
+	if (parser->tokens[token_index].parser_token != FUNCTION_T) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "IF")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "NOT") ||
+		    !token_text_equals(parser, token_index + 2, "EXISTS")) {
+			while (token_index <= last_token_index) {
+				if (token_text_equals(parser, token_index, "SONAME")) {
+					return 1;
+				}
+				token_index++;
+			}
+			return 0;
+		}
+		token_index += 3;
+	}
+
+	if (token_index > last_token_index || !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index = last_qualified_name_token(parser, token_index, last_token_index) + 1;
+	if (token_index <= last_token_index && parser->tokens[token_index].parser_token == '(') {
+		return 0;
+	}
+
+	return token_index <= last_token_index &&
+	       (token_text_equals(parser, token_index, "RETURNS") ||
+	        token_text_equals(parser, token_index, "SONAME"));
+}
+
+static int token_is_loadable_function_return_type(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "STRING") ||
+	       token_text_equals(parser, token_index, "INTEGER") ||
+	       token_text_equals(parser, token_index, "REAL") ||
+	       token_text_equals(parser, token_index, "DECIMAL");
 }
 
 static int validate_create_database_statement_syntax(const mylite_parser *parser,
@@ -11525,6 +11625,11 @@ static mylite_statement_object_kind object_kind_from_token_sequence(const mylite
 		}
 		return MYLITE_STATEMENT_OBJECT_NONE;
 	default:
+		if (token_text_equals(parser, token_index, "AGGREGATE") &&
+		    token_index + 1 <= last_token_index &&
+		    parser->tokens[token_index + 1].parser_token == FUNCTION_T) {
+			return MYLITE_STATEMENT_OBJECT_FUNCTION;
+		}
 		if (token_text_equals(parser, token_index, "LOGFILE") &&
 		    token_index + 1 <= last_token_index &&
 		    parser->tokens[token_index + 1].parser_token == GROUP_T) {
@@ -11633,7 +11738,12 @@ static size_t first_name_token_after_object(const mylite_parser *parser,
 	    parser->tokens[token_index].parser_token == GROUP_T) {
 		token_index++;
 	}
-		if (token_text_equals(parser, object_token_index, "UNDO") &&
+	if (token_text_equals(parser, object_token_index, "AGGREGATE") &&
+	    token_index <= last_token_index &&
+	    parser->tokens[token_index].parser_token == FUNCTION_T) {
+		token_index++;
+	}
+	if (token_text_equals(parser, object_token_index, "UNDO") &&
 	    token_index <= last_token_index &&
 	    token_text_equals(parser, token_index, "TABLESPACE")) {
 		token_index++;

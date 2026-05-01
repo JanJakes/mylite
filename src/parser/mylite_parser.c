@@ -3040,6 +3040,14 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
     ALTER_CHECK_AFTER_NOT,
     ALTER_CHECK_DONE
   };
+  enum {
+    ALTER_COLUMN_NONE,
+    ALTER_COLUMN_MODIFY_EXPECT_NAME,
+    ALTER_COLUMN_CHANGE_EXPECT_OLD_NAME,
+    ALTER_COLUMN_CHANGE_EXPECT_NEW_NAME,
+    ALTER_COLUMN_EXPECT_TYPE,
+    ALTER_COLUMN_IN_DEFINITION
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token = start;
@@ -3058,6 +3066,8 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   int add_column_type_pending = 0;
   int add_column_in_definition = 0;
   int add_constraint_prefix = 0;
+  int alter_column_state = ALTER_COLUMN_NONE;
+  int alter_column_optional_keyword = 0;
   int validate_key_list = 0;
   int depth = 0;
   int key_state = ALTER_INDEX_KEY_NEED_PART;
@@ -3444,7 +3454,70 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       add_column_type_pending = 0;
       add_column_in_definition = 0;
       add_constraint_prefix = 0;
+      alter_column_state = ALTER_COLUMN_NONE;
+      alter_column_optional_keyword = 0;
       continue;
+    }
+
+    if (alter_column_state != ALTER_COLUMN_NONE) {
+      if (alter_column_state == ALTER_COLUMN_MODIFY_EXPECT_NAME ||
+          alter_column_state == ALTER_COLUMN_CHANGE_EXPECT_OLD_NAME) {
+        if (alter_column_optional_keyword && token_id == ML_COLUMN) {
+          alter_column_optional_keyword = 0;
+          continue;
+        }
+        if (!dml_row_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete ALTER TABLE column definition");
+          return;
+        }
+        alter_column_optional_keyword = 0;
+        if (alter_column_state == ALTER_COLUMN_MODIFY_EXPECT_NAME) {
+          alter_column_state =
+              create_table_column_name_needs_type_check(token_id, token)
+                  ? ALTER_COLUMN_EXPECT_TYPE
+                  : ALTER_COLUMN_IN_DEFINITION;
+        } else {
+          alter_column_state = ALTER_COLUMN_CHANGE_EXPECT_NEW_NAME;
+        }
+        pending_token = token;
+        continue;
+      }
+
+      if (alter_column_state == ALTER_COLUMN_CHANGE_EXPECT_NEW_NAME) {
+        if (!dml_row_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete ALTER TABLE column definition");
+          return;
+        }
+        alter_column_state =
+            create_table_column_name_needs_type_check(token_id, token)
+                ? ALTER_COLUMN_EXPECT_TYPE
+                : ALTER_COLUMN_IN_DEFINITION;
+        pending_token = token;
+        continue;
+      }
+
+      if (alter_column_state == ALTER_COLUMN_EXPECT_TYPE) {
+        if (!create_table_column_type_start(token_id, token)) {
+          mylite_parser_reject(ctx, token, "invalid ALTER TABLE column type");
+          return;
+        }
+        alter_column_state = ALTER_COLUMN_IN_DEFINITION;
+        continue;
+      }
+
+      if (alter_column_state == ALTER_COLUMN_IN_DEFINITION) {
+        if (token_id == ML_CHECK) {
+          check_pending = 1;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_LP) {
+          depth = 1;
+        }
+        continue;
+      }
     }
 
     if (token_id == ML_ADD) {
@@ -3457,6 +3530,20 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       add_column_type_pending = 0;
       add_column_in_definition = 0;
       add_constraint_prefix = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (!add_scan && token_id == ML_MODIFY) {
+      alter_column_state = ALTER_COLUMN_MODIFY_EXPECT_NAME;
+      alter_column_optional_keyword = 1;
+      pending_token = token;
+      continue;
+    }
+
+    if (!add_scan && token_id == ML_CHANGE) {
+      alter_column_state = ALTER_COLUMN_CHANGE_EXPECT_OLD_NAME;
+      alter_column_optional_keyword = 1;
       pending_token = token;
       continue;
     }
@@ -3585,6 +3672,10 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   } else if (add_column_type_pending) {
     mylite_parser_reject(ctx, pending_token,
                          "invalid ALTER TABLE column type");
+  } else if (alter_column_state != ALTER_COLUMN_NONE &&
+             alter_column_state != ALTER_COLUMN_IN_DEFINITION) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete ALTER TABLE column definition");
   } else if (validate_key_list) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE index key part");

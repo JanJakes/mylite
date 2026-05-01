@@ -3821,6 +3821,16 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         payload_kind == DML_PAYLOAD_NONE &&
         (token_id == ML_SELECT || token_id == ML_TABLE ||
          token_id == ML_WITH)) {
+      if (token_id == ML_SELECT) {
+        validate_select_list_tails_from(ctx, 1, token);
+      } else if (token_id == ML_TABLE) {
+        mylite_parser_validate_table_statement_from(ctx, token);
+      } else {
+        mylite_parser_validate_with_statement_from(ctx, token);
+      }
+      if (ctx->failed) {
+        return;
+      }
       payload_kind = DML_PAYLOAD_QUERY;
       continue;
     }

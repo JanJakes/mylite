@@ -57,8 +57,9 @@ token sink:
   `VALUE(S)` row expression lists with empty rows plus adjacent-operand,
   dangling-operator, and trailing-separator checks, `INSERT` `VALUE(S)`/`SET`
   row aliases,
-  parenthesized query payload `ORDER BY` and `LIMIT` suffixes, malformed
-  `SELECT` operands after set operators, and `ON DUPLICATE KEY UPDATE`
+  direct query payload `SELECT` list tails, parenthesized query payload
+  `ORDER BY` and `LIMIT` suffixes, malformed `SELECT` operands after set
+  operators, and `ON DUPLICATE KEY UPDATE`
   assignment tails including malformed post-value continuations and stray
   top-level `SELECT`/`FROM` suffixes after assignment values.
 - Single-table `UPDATE` validates `SET` assignment lists, malformed top-level

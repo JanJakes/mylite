@@ -552,6 +552,12 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int index_hint_state = SELECT_INDEX_HINT_NONE;
   int index_hint_allow_empty = 0;
   int from_clause = 0;
+  int seen_where_clause = 0;
+  int seen_group_clause = 0;
+  int seen_having_clause = 0;
+  int seen_order_clause = 0;
+  int seen_limit_clause = 0;
+  int seen_into_clause = 0;
   int partition_state = SELECT_PARTITION_NONE;
   int tablesample_state = SELECT_TABLESAMPLE_NONE;
 
@@ -1366,6 +1372,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
     if (token_id == ML_INTO) {
+      if (seen_into_clause) {
+        mylite_parser_reject(ctx, token, "duplicate SELECT clause");
+        return;
+      }
+      seen_into_clause = 1;
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
@@ -1374,6 +1385,11 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
     if (token_id == ML_LIMIT) {
+      if (seen_limit_clause) {
+        mylite_parser_reject(ctx, token, "duplicate SELECT clause");
+        return;
+      }
+      seen_limit_clause = 1;
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
@@ -1397,6 +1413,19 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
 
     if (select_clause_requires_by(token_id)) {
+      if (token_id == ML_GROUP) {
+        if (seen_group_clause) {
+          mylite_parser_reject(ctx, token, "duplicate SELECT clause");
+          return;
+        }
+        seen_group_clause = 1;
+      } else if (token_id == ML_ORDER) {
+        if (seen_order_clause) {
+          mylite_parser_reject(ctx, token, "duplicate SELECT clause");
+          return;
+        }
+        seen_order_clause = 1;
+      }
       from_clause = 0;
       group_clause = token_id == ML_GROUP;
       order_clause = token_id == ML_ORDER;
@@ -1405,6 +1434,19 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
     if (select_clause_requires_operand(token_id)) {
+      if (token_id == ML_WHERE) {
+        if (seen_where_clause) {
+          mylite_parser_reject(ctx, token, "duplicate SELECT clause");
+          return;
+        }
+        seen_where_clause = 1;
+      } else if (token_id == ML_HAVING) {
+        if (seen_having_clause) {
+          mylite_parser_reject(ctx, token, "duplicate SELECT clause");
+          return;
+        }
+        seen_having_clause = 1;
+      }
       if (token_id == ML_HAVING || token_id == ML_JOIN || token_id == ML_ON ||
           token_id == ML_PROCEDURE || token_id == ML_USING ||
           token_id == ML_WHERE) {
@@ -1420,6 +1462,12 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       group_clause = 0;
       order_clause = 0;
       from_clause = 0;
+      seen_where_clause = 0;
+      seen_group_clause = 0;
+      seen_having_clause = 0;
+      seen_order_clause = 0;
+      seen_limit_clause = 0;
+      seen_into_clause = 0;
       need_set_operand = 1;
       pending_token = token;
       continue;

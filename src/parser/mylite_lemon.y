@@ -1648,15 +1648,17 @@ event_statement_start ::= NOT.
 event_statement_start ::= QUOTED_ID.
 event_statement_start ::= READS.
 
-alter_resource_group_actions ::= resource_group_vcpu_clause resource_group_thread_priority_tail alter_resource_group_state_tail.
-alter_resource_group_actions ::= resource_group_thread_priority_clause alter_resource_group_state_tail.
-alter_resource_group_actions ::= alter_resource_group_state_clause.
+alter_resource_group_actions ::= .
+alter_resource_group_actions ::= resource_group_vcpu_clause resource_group_thread_priority_tail alter_resource_group_state_tail alter_resource_group_force_tail.
+alter_resource_group_actions ::= resource_group_thread_priority_clause alter_resource_group_state_tail alter_resource_group_force_tail.
+alter_resource_group_actions ::= alter_resource_group_state_clause alter_resource_group_force_tail.
+alter_resource_group_actions ::= FORCE.
 
 alter_resource_group_state_tail ::= .
 alter_resource_group_state_tail ::= alter_resource_group_state_clause.
 
 alter_resource_group_state_clause ::= ENABLE.
-alter_resource_group_state_clause ::= DISABLE alter_resource_group_force_tail.
+alter_resource_group_state_clause ::= DISABLE.
 
 alter_resource_group_force_tail ::= .
 alter_resource_group_force_tail ::= FORCE.

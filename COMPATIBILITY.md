@@ -178,7 +178,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. | Parser recognizes `ALL` and channel names using the shared identifier grammar. |
 | `RESET SLAVE` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than resetting replica metadata. | Replacement statement is `RESET REPLICA`; removed syntax is accepted only in permissive corpus mode. |
 | `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. | Parser recognizes thread, until, connection, and channel clauses with string-literal log/GTID/user option values, numeric log positions, and channel names using the shared identifier grammar. |
+| `START SLAVE` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than starting replica threads. | Replacement statement is `START REPLICA`; removed syntax is accepted only in permissive corpus mode. |
 | `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. | Parser recognizes thread and channel clauses with channel names using the shared identifier grammar. |
+| `STOP SLAVE` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than stopping replica threads. | Replacement statement is `STOP REPLICA`; removed syntax is accepted only in permissive corpus mode. |
 | `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. | Parser recognizes comma-separated string-literal user, password, and default-auth options. |
 | `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. |  |
 | `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. | Parser recognizes prepared-statement names, string-literal sources, and user-variable sources. |

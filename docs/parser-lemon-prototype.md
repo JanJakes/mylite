@@ -115,9 +115,10 @@ token sink:
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, numeric VCPU ranges, numeric thread priorities, force modifiers,
   and numeric thread-id assignment lists.
-- `START REPLICA` and legacy `START SLAVE` recognize thread, `UNTIL`,
-  connection, and channel clauses with string-literal log/GTID/user option
-  values and numeric log-position values.
+- `START REPLICA` recognizes thread, `UNTIL`, connection, and channel clauses
+  with string-literal log/GTID/user option values and numeric log-position
+  values. Removed `START SLAVE` and `STOP SLAVE` syntax is
+  permissive-corpus-only.
 - `RESET BINARY LOGS AND GTIDS` recognizes optional numeric `TO` index values.
   Removed `RESET MASTER` and `RESET SLAVE` syntax is permissive-corpus-only.
 - `BINLOG` requires a string-literal payload, and `PURGE BINARY LOGS ... TO`

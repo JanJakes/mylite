@@ -1803,7 +1803,8 @@ start_tail(A) ::= TRANSACTION start_transaction_tail. {
 start_tail(A) ::= REPLICA start_replica_tail. {
   A = MYLITE_STATEMENT_REPLICATION;
 }
-start_tail(A) ::= SLAVE start_replica_tail. {
+start_tail(A) ::= SLAVE(B) start_replica_tail. {
+  mylite_parser_require_permissive(ctx, B);
   A = MYLITE_STATEMENT_REPLICATION;
 }
 start_tail(A) ::= GROUP_REPLICATION start_group_replication_tail. {
@@ -1880,7 +1881,9 @@ stop_statement ::= STOP stop_tail. {
 }
 
 stop_tail ::= REPLICA stop_replica_tail.
-stop_tail ::= SLAVE stop_replica_tail.
+stop_tail ::= SLAVE(A) stop_replica_tail. {
+  mylite_parser_require_permissive(ctx, A);
+}
 stop_tail ::= GROUP_REPLICATION.
 
 stop_replica_tail ::= start_thread_tail show_channel_tail.

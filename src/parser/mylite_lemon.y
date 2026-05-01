@@ -280,13 +280,11 @@ view_body ::= view_as SELECT select_tail.
 view_body ::= view_as TABLE table_statement_target table_query_tail.
 view_body ::= view_as VALUES values_row_list values_query_tail.
 view_body ::= view_as WITH with_recursive_tail with_cte_list with_query_body.
-view_body ::= view_as view_query_start required_statement_tail.
+view_body ::= view_as query_parenthesized_body.
 
 view_as ::= ATOM(A). {
   mylite_parser_require_token_text(ctx, A, "AS");
 }
-
-view_query_start ::= LP.
 
 view_column_tail ::= .
 view_column_tail ::= LP view_column_list RP.
@@ -1908,10 +1906,15 @@ dml_write_union_tail ::= VALUES values_row_list values_query_tail.
 dml_write_union_tail ::= values_union_option VALUES values_row_list values_query_tail.
 dml_write_union_tail ::= WITH with_recursive_tail with_cte_list with_query_body.
 dml_write_union_tail ::= values_union_option WITH with_recursive_tail with_cte_list with_query_body.
-dml_write_union_tail ::= dml_write_union_query_start required_statement_tail.
-dml_write_union_tail ::= values_union_option dml_write_union_query_start required_statement_tail.
+dml_write_union_tail ::= query_parenthesized_body.
+dml_write_union_tail ::= values_union_option query_parenthesized_body.
 
-dml_write_union_query_start ::= LP.
+query_parenthesized_body ::= LP dml_write_query_start dml_write_parenthesized_query_tail RP query_parenthesized_tail.
+
+query_parenthesized_tail ::= .
+query_parenthesized_tail ::= UNION dml_write_union_tail.
+query_parenthesized_tail ::= ORDER BY expression_start statement_tail.
+query_parenthesized_tail ::= LIMIT ATOM statement_tail.
 
 dml_write_duplicate_tail ::= ATOM(A) KEY UPDATE update_assignment_start. {
   mylite_parser_require_token_text(ctx, A, "DUPLICATE");
@@ -2075,9 +2078,7 @@ with_query_body ::= DELETE delete_tail.
 with_query_body ::= INSERT insert_tail.
 with_query_body ::= REPLACE replace_tail.
 with_query_body ::= UPDATE update_tail.
-with_query_body ::= with_query_start required_statement_tail.
-
-with_query_start ::= LP.
+with_query_body ::= query_parenthesized_body.
 
 table_statement ::= TABLE table_statement_target table_query_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
@@ -2128,13 +2129,11 @@ values_union_tail ::= VALUES values_row_list values_query_tail.
 values_union_tail ::= values_union_option VALUES values_row_list values_query_tail.
 values_union_tail ::= WITH with_recursive_tail with_cte_list with_query_body.
 values_union_tail ::= values_union_option WITH with_recursive_tail with_cte_list with_query_body.
-values_union_tail ::= values_union_query_start required_statement_tail.
-values_union_tail ::= values_union_option values_union_query_start required_statement_tail.
+values_union_tail ::= query_parenthesized_body.
+values_union_tail ::= values_union_option query_parenthesized_body.
 
 values_union_option ::= ALL.
 values_union_option ::= DISTINCT.
-
-values_union_query_start ::= LP.
 
 values_order_list ::= values_order_item.
 values_order_list ::= values_order_list import_comma values_order_item.

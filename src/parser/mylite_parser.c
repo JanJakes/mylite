@@ -136,6 +136,9 @@ static int query_expression_stack_open_from_previous(
 static int query_expression_stack_open(
     MyliteParseContext *ctx, MyliteExpressionStack *stack, int current_depth,
     int new_depth, int token_id, MyliteToken token, const char *message);
+static void query_expression_stack_open_list(MyliteExpressionStack *stack,
+                                             int depth, MyliteToken token,
+                                             int allow_empty);
 static int query_expression_stack_token(
     MyliteParseContext *ctx, MyliteExpressionStack *stack, int depth,
     int token_id, MyliteToken token, const char *message);
@@ -2524,7 +2527,9 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         values_row_last_token = token;
         values_row_last_token_id = token_id;
       }
-      if (assignment_state == DML_ASSIGN_VALUE) {
+      if (values_state == DML_VALUES_IN_ROW) {
+        nested_message = "malformed DML VALUES row list";
+      } else if (assignment_state == DML_ASSIGN_VALUE) {
         nested_message = "malformed DML assignment";
       } else if (where_state == DML_WHERE_STARTED) {
         nested_message = "malformed DML WHERE clause";
@@ -2688,6 +2693,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
           values_state = DML_VALUES_IN_ROW;
           values_row_last_token_id = 0;
           depth = 1;
+          query_expression_stack_open_list(&expression_stack, depth, token, 1);
           pending_token = token;
           continue;
         }
@@ -2704,6 +2710,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         values_state = DML_VALUES_IN_ROW;
         values_row_last_token_id = 0;
         depth = 1;
+        query_expression_stack_open_list(&expression_stack, depth, token, 1);
         pending_token = token;
         continue;
       }
@@ -6677,6 +6684,25 @@ static int query_expression_stack_open(
       ctx, stack, new_depth, frame->previous_top_token_id,
       frame->previous_top_token, frame->previous_was_operator, token_id, token,
       message);
+}
+
+static void query_expression_stack_open_list(MyliteExpressionStack *stack,
+                                             int depth, MyliteToken token,
+                                             int allow_empty) {
+  MyliteExpressionFrame *frame;
+
+  if (depth <= 0 || depth >= MYLITE_EXPRESSION_STACK_LIMIT) {
+    return;
+  }
+
+  frame = &stack->frames[depth];
+  frame->active = 1;
+  frame->allow_empty = allow_empty;
+  frame->validate_adjacent = 1;
+  frame->started = 0;
+  frame->previous_top_token_id = 0;
+  frame->previous_top_token = token;
+  frame->previous_was_operator = 1;
 }
 
 static int query_expression_stack_token(

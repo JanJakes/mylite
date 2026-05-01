@@ -47,7 +47,9 @@ token sink:
   dangling operators, adjacent operands, dangling operators, and trailing
   separators inside plain parenthesized assignment value groups, explicit
   `VALUE(S)` row-list tails, `ROW(...)` constructors, `INSERT`
-  `VALUE(S)`/`SET` row aliases,
+  `VALUE(S)` row expression lists with empty rows plus adjacent-operand,
+  dangling-operator, and trailing-separator checks, `INSERT` `VALUE(S)`/`SET`
+  row aliases,
   parenthesized query payload `ORDER BY` and `LIMIT` suffixes, malformed
   `SELECT` operands after set operators, and `ON DUPLICATE KEY UPDATE`
   assignment tails including malformed post-value continuations and stray

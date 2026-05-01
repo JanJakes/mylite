@@ -1664,7 +1664,7 @@ load_column_list ::= load_column_ref.
 load_column_list ::= load_column_list import_comma load_column_ref.
 
 load_column_ref ::= cache_name_part.
-load_column_ref ::= AT_SIGN cache_name_part.
+load_column_ref ::= user_variable_name.
 
 load_set_tail ::= .
 load_set_tail ::= SET update_assignment_start.

@@ -18,6 +18,14 @@ enum mylite_stmt_kind {
     MYLITE_STMT_USE_SCHEMA = 4,
 };
 
+enum mylite_information_schema_table {
+    MYLITE_INFORMATION_SCHEMA_NONE = 0,
+    MYLITE_INFORMATION_SCHEMA_SCHEMATA = 1,
+    MYLITE_INFORMATION_SCHEMA_TABLES = 2,
+    MYLITE_INFORMATION_SCHEMA_COLUMNS = 3,
+    MYLITE_INFORMATION_SCHEMA_STATISTICS = 4,
+};
+
 struct mylite_schema_options {
     char *character_set;
     char *collation;
@@ -57,19 +65,198 @@ static const char schema_catalog_sql[] = "CREATE TABLE IF NOT EXISTS __mylite_sc
                                          "default_encryption TEXT NOT NULL,"
                                          "read_only INTEGER NOT NULL,"
                                          "is_system INTEGER NOT NULL)";
+static const char table_catalog_sql[] = "CREATE TABLE IF NOT EXISTS __mylite_table_catalog("
+                                        "table_catalog TEXT NOT NULL,"
+                                        "table_schema TEXT NOT NULL,"
+                                        "table_name TEXT NOT NULL,"
+                                        "table_type TEXT NOT NULL,"
+                                        "engine TEXT,"
+                                        "version INTEGER,"
+                                        "row_format TEXT,"
+                                        "table_rows INTEGER,"
+                                        "avg_row_length INTEGER,"
+                                        "data_length INTEGER,"
+                                        "max_data_length INTEGER,"
+                                        "index_length INTEGER,"
+                                        "data_free INTEGER,"
+                                        "auto_increment INTEGER,"
+                                        "create_time TEXT NOT NULL,"
+                                        "update_time TEXT,"
+                                        "check_time TEXT,"
+                                        "table_collation TEXT,"
+                                        "checksum INTEGER,"
+                                        "create_options TEXT,"
+                                        "table_comment TEXT,"
+                                        "PRIMARY KEY(table_schema, table_name))";
+static const char column_catalog_sql[] = "CREATE TABLE IF NOT EXISTS __mylite_column_catalog("
+                                         "table_catalog TEXT NOT NULL,"
+                                         "table_schema TEXT NOT NULL,"
+                                         "table_name TEXT NOT NULL,"
+                                         "column_name TEXT,"
+                                         "ordinal_position INTEGER NOT NULL,"
+                                         "column_default TEXT,"
+                                         "is_nullable TEXT NOT NULL,"
+                                         "data_type TEXT,"
+                                         "character_maximum_length INTEGER,"
+                                         "character_octet_length INTEGER,"
+                                         "numeric_precision INTEGER,"
+                                         "numeric_scale INTEGER,"
+                                         "datetime_precision INTEGER,"
+                                         "character_set_name TEXT,"
+                                         "collation_name TEXT,"
+                                         "column_type TEXT NOT NULL,"
+                                         "column_key TEXT NOT NULL,"
+                                         "extra TEXT,"
+                                         "privileges TEXT,"
+                                         "column_comment TEXT NOT NULL,"
+                                         "generation_expression TEXT NOT NULL,"
+                                         "srs_id INTEGER,"
+                                         "PRIMARY KEY(table_schema, table_name, ordinal_position))";
+static const char index_catalog_sql[] =
+    "CREATE TABLE IF NOT EXISTS __mylite_index_catalog("
+    "table_catalog TEXT NOT NULL,"
+    "table_schema TEXT NOT NULL,"
+    "table_name TEXT NOT NULL,"
+    "non_unique INTEGER NOT NULL,"
+    "index_schema TEXT NOT NULL,"
+    "index_name TEXT,"
+    "seq_in_index INTEGER NOT NULL,"
+    "column_name TEXT,"
+    "collation TEXT,"
+    "cardinality INTEGER,"
+    "sub_part INTEGER,"
+    "packed TEXT,"
+    "nullable TEXT NOT NULL,"
+    "index_type TEXT NOT NULL,"
+    "comment TEXT NOT NULL,"
+    "index_comment TEXT NOT NULL,"
+    "is_visible TEXT NOT NULL,"
+    "expression TEXT,"
+    "PRIMARY KEY(table_schema, table_name, index_name, seq_in_index))";
 static const char show_schemas_sql[] =
     "SELECT name AS \"Database\" FROM __mylite_schema_catalog ORDER BY name COLLATE BINARY";
+static const char information_schema_schemata_sql[] =
+    "SELECT 'def' AS CATALOG_NAME,"
+    "name AS SCHEMA_NAME,"
+    "default_character_set AS DEFAULT_CHARACTER_SET_NAME,"
+    "default_collation AS DEFAULT_COLLATION_NAME,"
+    "NULL AS SQL_PATH,"
+    "CASE WHEN upper(default_encryption) = 'Y' THEN 'YES' ELSE 'NO' END AS DEFAULT_ENCRYPTION "
+    "FROM __mylite_schema_catalog ORDER BY name COLLATE BINARY";
+static const char information_schema_tables_sql[] =
+    "SELECT * FROM ("
+    "SELECT 'def' AS TABLE_CATALOG,"
+    "'information_schema' AS TABLE_SCHEMA,"
+    "table_name AS TABLE_NAME,"
+    "'SYSTEM VIEW' AS TABLE_TYPE,"
+    "NULL AS ENGINE,"
+    "10 AS VERSION,"
+    "NULL AS ROW_FORMAT,"
+    "0 AS TABLE_ROWS,"
+    "NULL AS AVG_ROW_LENGTH,"
+    "NULL AS DATA_LENGTH,"
+    "NULL AS MAX_DATA_LENGTH,"
+    "NULL AS INDEX_LENGTH,"
+    "NULL AS DATA_FREE,"
+    "NULL AS AUTO_INCREMENT,"
+    "'1970-01-01 00:00:00' AS CREATE_TIME,"
+    "NULL AS UPDATE_TIME,"
+    "NULL AS CHECK_TIME,"
+    "NULL AS TABLE_COLLATION,"
+    "NULL AS CHECKSUM,"
+    "'' AS CREATE_OPTIONS,"
+    "'' AS TABLE_COMMENT "
+    "FROM ("
+    "SELECT 'SCHEMATA' AS table_name "
+    "UNION ALL SELECT 'TABLES' "
+    "UNION ALL SELECT 'COLUMNS' "
+    "UNION ALL SELECT 'STATISTICS') "
+    "UNION ALL "
+    "SELECT table_catalog AS TABLE_CATALOG,"
+    "table_schema AS TABLE_SCHEMA,"
+    "table_name AS TABLE_NAME,"
+    "table_type AS TABLE_TYPE,"
+    "engine AS ENGINE,"
+    "version AS VERSION,"
+    "row_format AS ROW_FORMAT,"
+    "table_rows AS TABLE_ROWS,"
+    "avg_row_length AS AVG_ROW_LENGTH,"
+    "data_length AS DATA_LENGTH,"
+    "max_data_length AS MAX_DATA_LENGTH,"
+    "index_length AS INDEX_LENGTH,"
+    "data_free AS DATA_FREE,"
+    "auto_increment AS AUTO_INCREMENT,"
+    "create_time AS CREATE_TIME,"
+    "update_time AS UPDATE_TIME,"
+    "check_time AS CHECK_TIME,"
+    "table_collation AS TABLE_COLLATION,"
+    "checksum AS CHECKSUM,"
+    "create_options AS CREATE_OPTIONS,"
+    "table_comment AS TABLE_COMMENT "
+    "FROM __mylite_table_catalog) "
+    "ORDER BY TABLE_SCHEMA COLLATE BINARY, TABLE_NAME COLLATE BINARY";
+static const char information_schema_columns_sql[] =
+    "SELECT table_catalog AS TABLE_CATALOG,"
+    "table_schema AS TABLE_SCHEMA,"
+    "table_name AS TABLE_NAME,"
+    "column_name AS COLUMN_NAME,"
+    "ordinal_position AS ORDINAL_POSITION,"
+    "column_default AS COLUMN_DEFAULT,"
+    "is_nullable AS IS_NULLABLE,"
+    "data_type AS DATA_TYPE,"
+    "character_maximum_length AS CHARACTER_MAXIMUM_LENGTH,"
+    "character_octet_length AS CHARACTER_OCTET_LENGTH,"
+    "numeric_precision AS NUMERIC_PRECISION,"
+    "numeric_scale AS NUMERIC_SCALE,"
+    "datetime_precision AS DATETIME_PRECISION,"
+    "character_set_name AS CHARACTER_SET_NAME,"
+    "collation_name AS COLLATION_NAME,"
+    "column_type AS COLUMN_TYPE,"
+    "column_key AS COLUMN_KEY,"
+    "extra AS EXTRA,"
+    "privileges AS PRIVILEGES,"
+    "column_comment AS COLUMN_COMMENT,"
+    "generation_expression AS GENERATION_EXPRESSION,"
+    "srs_id AS SRS_ID "
+    "FROM __mylite_column_catalog "
+    "ORDER BY table_schema COLLATE BINARY, table_name COLLATE BINARY, ordinal_position";
+static const char information_schema_statistics_sql[] =
+    "SELECT table_catalog AS TABLE_CATALOG,"
+    "table_schema AS TABLE_SCHEMA,"
+    "table_name AS TABLE_NAME,"
+    "non_unique AS NON_UNIQUE,"
+    "index_schema AS INDEX_SCHEMA,"
+    "index_name AS INDEX_NAME,"
+    "seq_in_index AS SEQ_IN_INDEX,"
+    "column_name AS COLUMN_NAME,"
+    "collation AS COLLATION,"
+    "cardinality AS CARDINALITY,"
+    "sub_part AS SUB_PART,"
+    "packed AS PACKED,"
+    "nullable AS NULLABLE,"
+    "index_type AS INDEX_TYPE,"
+    "comment AS COMMENT,"
+    "index_comment AS INDEX_COMMENT,"
+    "is_visible AS IS_VISIBLE,"
+    "expression AS EXPRESSION "
+    "FROM __mylite_index_catalog "
+    "ORDER BY table_schema COLLATE BINARY, table_name COLLATE BINARY, "
+    "index_name COLLATE BINARY, seq_in_index";
 
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
                                 mylite_db **out_db);
 static int initialize_schema_catalog(mylite_db *database);
-static int seed_system_schema(mylite_db *database, const char *name);
+static int seed_system_schema(mylite_db *database, const char *name, const char *character_set,
+                              const char *collation);
 static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
                                     mylite_stmt **out_stmt);
 static int prepare_schema_lifecycle_statement(mylite_db *database,
                                               const struct mylite_sql_ast_node *statement,
                                               mylite_stmt **out_stmt);
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt);
+static int prepare_information_schema_select_statement(mylite_db *database,
+                                                       const struct mylite_sql_ast_node *statement,
+                                                       mylite_stmt **out_stmt);
 static int prepare_sqlite_statement(mylite_db *database, const char *sqlite_sql,
                                     mylite_stmt **out_stmt);
 static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind kind,
@@ -89,6 +276,17 @@ static int update_schema(mylite_db *database, const char *schema_name,
 static int delete_schema(mylite_db *database, const char *schema_name);
 static int set_selected_schema(mylite_db *database, const char *schema_name);
 static void clear_selected_schema_if_matches(mylite_db *database, const char *schema_name);
+static int information_schema_table_from_select(const struct mylite_sql_ast_node *statement,
+                                                enum mylite_information_schema_table *out_table);
+static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list);
+static int
+information_schema_table_from_from_clause(const struct mylite_sql_ast_node *from_clause,
+                                          enum mylite_information_schema_table *out_table);
+static int
+information_schema_table_from_qualified_name(const struct mylite_sql_ast_node *identifier,
+                                             enum mylite_information_schema_table *out_table);
+static enum mylite_information_schema_table information_schema_table_from_name(const char *name);
+static const char *information_schema_table_sql(enum mylite_information_schema_table table);
 static int copy_statement_schema_name(const struct mylite_sql_ast_node *statement,
                                       enum mylite_stmt_kind kind, char **out_schema_name);
 static int copy_schema_options(const struct mylite_sql_ast_node *statement,
@@ -98,6 +296,7 @@ static int apply_schema_option(const struct mylite_sql_ast_node *option,
 static int validate_schema_options(mylite_db *database,
                                    const struct mylite_schema_options *options);
 static bool is_valid_encryption_value(const char *value);
+static bool ascii_case_equal(const char *left, const char *right);
 static char *copy_identifier_span(const struct mylite_sql_ast_node *node);
 static char *copy_string_literal_span(const struct mylite_sql_ast_node *node);
 static char *copy_schema_text_span(const struct mylite_sql_ast_node *node);
@@ -344,28 +543,49 @@ static int initialize_schema_catalog(mylite_db *database)
         return set_sqlite_error(database);
     }
 
-    rc = seed_system_schema(database, "information_schema");
+    rc = sqlite3_exec(database->sqlite, table_catalog_sql, NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(database);
+    }
+
+    rc = sqlite3_exec(database->sqlite, column_catalog_sql, NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(database);
+    }
+
+    rc = sqlite3_exec(database->sqlite, index_catalog_sql, NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(database);
+    }
+
+    rc = seed_system_schema(database, "information_schema", "utf8mb3", "utf8mb3_general_ci");
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = seed_system_schema(database, "mysql");
+    rc = seed_system_schema(database, "mysql", "utf8mb4", "utf8mb4_0900_ai_ci");
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = seed_system_schema(database, "performance_schema");
+    rc = seed_system_schema(database, "performance_schema", "utf8mb4", "utf8mb4_0900_ai_ci");
     if (rc != MYLITE_OK) {
         return rc;
     }
-    return seed_system_schema(database, "sys");
+    return seed_system_schema(database, "sys", "utf8mb4", "utf8mb4_0900_ai_ci");
 }
 
-static int seed_system_schema(mylite_db *database, const char *name)
+static int seed_system_schema(mylite_db *database, const char *name, const char *character_set,
+                              const char *collation)
 {
     sqlite3_stmt *stmt = NULL;
     static const char sql[] =
-        "INSERT OR IGNORE INTO __mylite_schema_catalog("
+        "INSERT INTO __mylite_schema_catalog("
         "name, default_character_set, default_collation, default_encryption, read_only, is_system)"
-        " VALUES(?, 'utf8mb4', 'utf8mb4_0900_ai_ci', 'N', 0, 1)";
+        " VALUES(?, ?, ?, 'N', 0, 1) "
+        "ON CONFLICT(name) DO UPDATE SET "
+        "default_character_set = excluded.default_character_set,"
+        "default_collation = excluded.default_collation,"
+        "default_encryption = 'N',"
+        "is_system = 1";
     int rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 
     if (rc != SQLITE_OK) {
@@ -373,6 +593,8 @@ static int seed_system_schema(mylite_db *database, const char *name)
     }
 
     sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, character_set, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, collation, -1, SQLITE_STATIC);
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
@@ -398,11 +620,17 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_schema_lifecycle_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
             return prepare_show_schemas_statement(database, out_stmt);
-        case MYLITE_SQL_AST_SCRIPT:
         case MYLITE_SQL_AST_SELECT_STATEMENT:
+            status = prepare_information_schema_select_statement(database, statement, out_stmt);
+            if (status != MYLITE_UNSUPPORTED) {
+                return status;
+            }
+            break;
+        case MYLITE_SQL_AST_SCRIPT:
         case MYLITE_SQL_AST_SELECT_LIST:
         case MYLITE_SQL_AST_SELECT_ITEM:
         case MYLITE_SQL_AST_FROM_DUAL:
+        case MYLITE_SQL_AST_FROM_TABLE:
         case MYLITE_SQL_AST_IDENTIFIER:
         case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
         case MYLITE_SQL_AST_WILDCARD:
@@ -452,6 +680,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_SELECT_LIST:
     case MYLITE_SQL_AST_SELECT_ITEM:
     case MYLITE_SQL_AST_FROM_DUAL:
+    case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
     case MYLITE_SQL_AST_WILDCARD:
@@ -473,6 +702,28 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt)
 {
     return prepare_sqlite_statement(database, show_schemas_sql, out_stmt);
+}
+
+static int prepare_information_schema_select_statement(mylite_db *database,
+                                                       const struct mylite_sql_ast_node *statement,
+                                                       mylite_stmt **out_stmt)
+{
+    enum mylite_information_schema_table table = MYLITE_INFORMATION_SCHEMA_NONE;
+    const char *sql = NULL;
+    int status = information_schema_table_from_select(statement, &table);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (table == MYLITE_INFORMATION_SCHEMA_NONE) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    sql = information_schema_table_sql(table);
+    if (sql == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    return prepare_sqlite_statement(database, sql, out_stmt);
 }
 
 static int prepare_sqlite_statement(mylite_db *database, const char *sqlite_sql,
@@ -846,6 +1097,130 @@ static void clear_selected_schema_if_matches(mylite_db *database, const char *sc
     }
 }
 
+static int information_schema_table_from_select(const struct mylite_sql_ast_node *statement,
+                                                enum mylite_information_schema_table *out_table)
+{
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    enum mylite_information_schema_table table = MYLITE_INFORMATION_SCHEMA_NONE;
+    int status = information_schema_table_from_from_clause(from_clause, &table);
+
+    *out_table = MYLITE_INFORMATION_SCHEMA_NONE;
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (table == MYLITE_INFORMATION_SCHEMA_NONE) {
+        return MYLITE_OK;
+    }
+    if (!select_list_is_wildcard(select_list)) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    *out_table = table;
+    return MYLITE_OK;
+}
+
+static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list)
+{
+    const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
+    const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
+        select_item == NULL || select_item->next_sibling != NULL ||
+        select_item->kind != MYLITE_SQL_AST_SELECT_ITEM || expression == NULL ||
+        expression->kind != MYLITE_SQL_AST_WILDCARD) {
+        return false;
+    }
+    return true;
+}
+
+static int
+information_schema_table_from_from_clause(const struct mylite_sql_ast_node *from_clause,
+                                          enum mylite_information_schema_table *out_table)
+{
+    const struct mylite_sql_ast_node *identifier = child_at(from_clause, 0U);
+
+    *out_table = MYLITE_INFORMATION_SCHEMA_NONE;
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return MYLITE_OK;
+    }
+
+    return information_schema_table_from_qualified_name(identifier, out_table);
+}
+
+static int
+information_schema_table_from_qualified_name(const struct mylite_sql_ast_node *identifier,
+                                             enum mylite_information_schema_table *out_table)
+{
+    const struct mylite_sql_ast_node *schema = child_at(identifier, 0U);
+    const struct mylite_sql_ast_node *table = child_at(identifier, 1U);
+    char *schema_name = NULL;
+    char *table_name = NULL;
+
+    *out_table = MYLITE_INFORMATION_SCHEMA_NONE;
+    if (identifier == NULL || identifier->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER ||
+        schema == NULL || schema->kind != MYLITE_SQL_AST_IDENTIFIER || table == NULL ||
+        table->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return MYLITE_OK;
+    }
+
+    schema_name = copy_identifier_span(schema);
+    table_name = copy_identifier_span(table);
+    if (schema_name == NULL || table_name == NULL) {
+        free(schema_name);
+        free(table_name);
+        return MYLITE_NOMEM;
+    }
+
+    if (ascii_case_equal(schema_name, "information_schema")) {
+        *out_table = information_schema_table_from_name(table_name);
+        if (*out_table == MYLITE_INFORMATION_SCHEMA_NONE) {
+            free(schema_name);
+            free(table_name);
+            return MYLITE_UNSUPPORTED;
+        }
+    }
+
+    free(schema_name);
+    free(table_name);
+    return MYLITE_OK;
+}
+
+static enum mylite_information_schema_table information_schema_table_from_name(const char *name)
+{
+    if (ascii_case_equal(name, "schemata")) {
+        return MYLITE_INFORMATION_SCHEMA_SCHEMATA;
+    }
+    if (ascii_case_equal(name, "tables")) {
+        return MYLITE_INFORMATION_SCHEMA_TABLES;
+    }
+    if (ascii_case_equal(name, "columns")) {
+        return MYLITE_INFORMATION_SCHEMA_COLUMNS;
+    }
+    if (ascii_case_equal(name, "statistics")) {
+        return MYLITE_INFORMATION_SCHEMA_STATISTICS;
+    }
+    return MYLITE_INFORMATION_SCHEMA_NONE;
+}
+
+static const char *information_schema_table_sql(enum mylite_information_schema_table table)
+{
+    switch (table) {
+    case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
+        return information_schema_schemata_sql;
+    case MYLITE_INFORMATION_SCHEMA_TABLES:
+        return information_schema_tables_sql;
+    case MYLITE_INFORMATION_SCHEMA_COLUMNS:
+        return information_schema_columns_sql;
+    case MYLITE_INFORMATION_SCHEMA_STATISTICS:
+        return information_schema_statistics_sql;
+    case MYLITE_INFORMATION_SCHEMA_NONE:
+        return NULL;
+    }
+
+    return NULL;
+}
+
 static int copy_statement_schema_name(const struct mylite_sql_ast_node *statement,
                                       enum mylite_stmt_kind kind, char **out_schema_name)
 {
@@ -960,6 +1335,35 @@ static bool is_valid_encryption_value(const char *value)
         return false;
     }
     if (value[0] == 'Y' || value[0] == 'y' || value[0] == 'N' || value[0] == 'n') {
+        return true;
+    }
+    return false;
+}
+
+static bool ascii_case_equal(const char *left, const char *right)
+{
+    size_t index = 0U;
+
+    if (left == NULL || right == NULL) {
+        return false;
+    }
+
+    while (left[index] != '\0' && right[index] != '\0') {
+        unsigned char left_byte = (unsigned char)left[index];
+        unsigned char right_byte = (unsigned char)right[index];
+
+        if (left_byte >= 'A' && left_byte <= 'Z') {
+            left_byte = (unsigned char)(left_byte - 'A' + 'a');
+        }
+        if (right_byte >= 'A' && right_byte <= 'Z') {
+            right_byte = (unsigned char)(right_byte - 'A' + 'a');
+        }
+        if (left_byte != right_byte) {
+            return false;
+        }
+        ++index;
+    }
+    if (left[index] == '\0' && right[index] == '\0') {
         return true;
     }
     return false;

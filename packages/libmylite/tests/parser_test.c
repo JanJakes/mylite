@@ -8,6 +8,7 @@ static int test_empty_script(void);
 static int test_use_statements(void);
 static int test_schema_lifecycle_statements(void);
 static int test_select_expression_list(void);
+static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -39,6 +40,7 @@ int main(void)
     failures += test_use_statements();
     failures += test_schema_lifecycle_statements();
     failures += test_select_expression_list();
+    failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -209,6 +211,50 @@ static int test_select_expression_list(void)
                                "null literal");
 
     mylite_sql_parse_result_deinit(&result);
+    return failures;
+}
+
+static int test_information_schema_select(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *from_table = NULL;
+    const struct mylite_sql_ast_node *qualified = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("SELECT * FROM INFORMATION_SCHEMA.SCHEMATA;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_SELECT_STATEMENT, "information schema select");
+    failures += expect_node(from_table, MYLITE_SQL_AST_FROM_TABLE, "information schema from");
+    failures += expect_node(qualified, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "information schema table name");
+    failures += expect_span_text(child_at(qualified, 0U), "INFORMATION_SCHEMA",
+                                 "information schema qualifier");
+    failures += expect_span_text(child_at(qualified, 1U), "SCHEMATA", "information schema table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM `information_schema`.`STATISTICS`;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "`information_schema`",
+                                 "quoted information schema qualifier");
+    failures += expect_span_text(child_at(qualified, 1U), "`STATISTICS`",
+                                 "quoted information schema table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM INFORMATION_SCHEMA.SCHEMATA WHERE TRUE;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

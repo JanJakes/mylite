@@ -503,6 +503,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_dual(struct mylite_sql_p
                      span_join(span_from_token(&from_token), span_from_token(&dual_token)));
 }
 
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_from_table(struct mylite_sql_parser_state *state,
+                                  struct mylite_sql_token from_token,
+                                  struct mylite_sql_ast_node *table_name)
+{
+    struct mylite_sql_source_span span = span_from_token(&from_token);
+    struct mylite_sql_ast_node *from_table = NULL;
+
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    from_table = make_node(state, MYLITE_SQL_AST_FROM_TABLE, span);
+    if (from_table == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(from_table, table_name);
+    return from_table;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(struct mylite_sql_parser_state *state,
                                                               struct mylite_sql_token token)
 {

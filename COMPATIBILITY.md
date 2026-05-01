@@ -1015,7 +1015,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.COLLATIONS` | ❌ | high | Collations for each character set |  |
 | `INFORMATION_SCHEMA.COLUMN_PRIVILEGES` | ❌ | high | Privileges defined on columns |  |
 | `INFORMATION_SCHEMA.COLUMN_STATISTICS` | ❌ | low | Histogram statistics for column values |  |
-| `INFORMATION_SCHEMA.COLUMNS` | ❌ | top | Columns in each table |  |
+| `INFORMATION_SCHEMA.COLUMNS` | 🟡 | top | Columns in each table | `SELECT * FROM INFORMATION_SCHEMA.COLUMNS` exposes the MySQL 8.4.9 column shape over the internal column catalog and returns an empty result before table metadata exists; projections, filters, privilege visibility, and self-describing system-view column rows are deferred. See [core metadata catalog spec](docs/specs/core-metadata-catalog/specs.md). |
 | `INFORMATION_SCHEMA.COLUMNS_EXTENSIONS` | ❌ | medium | Column attributes for primary and secondary storage engines |  |
 | `INFORMATION_SCHEMA.CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS` | ❌ | low | Current number of consecutive failed connection attempts per account |  |
 | `INFORMATION_SCHEMA.ENABLED_ROLES` | ❌ | low | Roles enabled within current session |  |
@@ -1071,16 +1071,16 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.ROLE_TABLE_GRANTS` | ❌ | low | Table privileges for roles available to or granted by currently enabled roles |  |
 | `INFORMATION_SCHEMA.ROUTINES` | ❌ | high | Stored routine information |  |
 | `INFORMATION_SCHEMA.SCHEMA_PRIVILEGES` | ❌ | high | Privileges defined on schemas |  |
-| `INFORMATION_SCHEMA.SCHEMATA` | ❌ | top | Schema information |  |
+| `INFORMATION_SCHEMA.SCHEMATA` | 🟡 | top | Schema information | `SELECT * FROM INFORMATION_SCHEMA.SCHEMATA` exposes MyLite schema catalog rows, seeded system schemas, schema defaults, and create/drop changes; projections, filters, privileges, and full result metadata are deferred. See [core metadata catalog spec](docs/specs/core-metadata-catalog/specs.md). |
 | `INFORMATION_SCHEMA.SCHEMATA_EXTENSIONS` | ❌ | medium | Schema options |  |
 | `INFORMATION_SCHEMA.ST_GEOMETRY_COLUMNS` | ❌ | medium | Columns in each table that store spatial data |  |
 | `INFORMATION_SCHEMA.ST_SPATIAL_REFERENCE_SYSTEMS` | ❌ | medium | Available spatial reference systems |  |
 | `INFORMATION_SCHEMA.ST_UNITS_OF_MEASURE` | ❌ | medium | Acceptable units for ST_Distance() |  |
-| `INFORMATION_SCHEMA.STATISTICS` | ❌ | top | Table index statistics |  |
+| `INFORMATION_SCHEMA.STATISTICS` | 🟡 | top | Table index statistics | `SELECT * FROM INFORMATION_SCHEMA.STATISTICS` exposes the MySQL 8.4.9 column shape over the internal index catalog and returns an empty result before index metadata exists; projections, filters, privileges, and full index metadata are deferred. See [core metadata catalog spec](docs/specs/core-metadata-catalog/specs.md). |
 | `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` | ❌ | high | Which tables have constraints |  |
 | `INFORMATION_SCHEMA.TABLE_CONSTRAINTS_EXTENSIONS` | ❌ | medium | Table constraint attributes for primary and secondary storage engines |  |
 | `INFORMATION_SCHEMA.TABLE_PRIVILEGES` | ❌ | high | Privileges defined on tables |  |
-| `INFORMATION_SCHEMA.TABLES` | ❌ | top | Table information |  |
+| `INFORMATION_SCHEMA.TABLES` | 🟡 | top | Table information | `SELECT * FROM INFORMATION_SCHEMA.TABLES` exposes the MySQL 8.4.9 column shape, four scoped information-schema system-view rows, and the internal table catalog with no user-object rows before table metadata exists; projections, filters, privileges, and full table metadata are deferred. See [core metadata catalog spec](docs/specs/core-metadata-catalog/specs.md). |
 | `INFORMATION_SCHEMA.TABLES_EXTENSIONS` | ❌ | medium | Table attributes for primary and secondary storage engines |  |
 | `INFORMATION_SCHEMA.TABLESPACES_EXTENSIONS` | ❌ | low | Tablespace attributes for primary storage engines |  |
 | `INFORMATION_SCHEMA.TP_THREAD_GROUP_STATE` | ❌ | low | Thread pool thread group states |  |

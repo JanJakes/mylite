@@ -8,9 +8,41 @@
 #include <stdio.h>
 #include <string.h>
 
+enum {
+    schemata_column_count = 6,
+    tables_column_count = 21,
+    columns_column_count = 22,
+    statistics_column_count = 18,
+    information_schema_view_count = 4,
+    schemata_catalog_column = 0,
+    schemata_name_column = 1,
+    schemata_character_set_column = 2,
+    schemata_collation_column = 3,
+    schemata_sql_path_column = 4,
+    schemata_encryption_column = 5,
+    tables_catalog_column = 0,
+    tables_schema_column = 1,
+    tables_name_column = 2,
+    tables_type_column = 3,
+    tables_engine_column = 4,
+    tables_version_column = 5,
+    tables_rows_column = 7,
+    tables_collation_column = 17,
+    tables_comment_column = 20,
+    information_schema_table_version = 10,
+};
+
+struct expected_schemata_row {
+    const char *schema_name;
+    const char *character_set;
+    const char *collation;
+    const char *encryption;
+};
+
 static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_schema_lifecycle(void);
+static int test_core_metadata_catalog(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
@@ -18,8 +50,18 @@ static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
 static int execute_sql(mylite_db *database, const char *sql, int expected_step_status);
+static int expect_information_schema_schemata_row(mylite_db *database,
+                                                  const struct expected_schemata_row *expected);
+static int expect_no_information_schema_schemata_row(mylite_db *database, const char *schema_name);
+static int expect_information_schema_tables_views(mylite_db *database);
+static int expect_no_information_schema_table_schema_row(mylite_db *database,
+                                                         const char *schema_name);
+static int expect_empty_information_schema_table(mylite_db *database, const char *sql,
+                                                 const char *const *columns, int column_count);
 static int expect_show_database_rows(mylite_db *database, const char *required,
                                      const char *forbidden);
+static int expect_column_names(const mylite_stmt *stmt, const char *const *expected, int count,
+                               const char *context);
 static void remove_runtime_test_files(void);
 static int read_file_at(const char *path, long offset, unsigned char *buffer, size_t size);
 static int exec_sqlite(sqlite3 *database, const char *sql);
@@ -30,6 +72,7 @@ static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_u16(unsigned int actual, unsigned int expected, const char *context);
 static int expect_string(const char *actual, const char *expected, const char *context);
+static int expect_null_text(const char *actual, const char *context);
 static int expect_contains(const char *actual, const char *expected_fragment, const char *context);
 static int expect_bytes(const unsigned char *actual, const void *expected, size_t size,
                         const char *context);
@@ -41,6 +84,7 @@ int main(void)
     failures += test_select_integer_literal();
     failures += test_select_integer_literal_with_semicolon();
     failures += test_schema_lifecycle();
+    failures += test_core_metadata_catalog();
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
@@ -165,6 +209,167 @@ static int test_schema_lifecycle(void)
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "DROP DATABASE read_only_value", MYLITE_DONE);
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_core_metadata_catalog(void)
+{
+    static const char *const schemata_columns[] = {
+        "CATALOG_NAME",           "SCHEMA_NAME", "DEFAULT_CHARACTER_SET_NAME",
+        "DEFAULT_COLLATION_NAME", "SQL_PATH",    "DEFAULT_ENCRYPTION",
+    };
+    static const char *const tables_columns[] = {
+        "TABLE_CATALOG",   "TABLE_SCHEMA", "TABLE_NAME",      "TABLE_TYPE",     "ENGINE",
+        "VERSION",         "ROW_FORMAT",   "TABLE_ROWS",      "AVG_ROW_LENGTH", "DATA_LENGTH",
+        "MAX_DATA_LENGTH", "INDEX_LENGTH", "DATA_FREE",       "AUTO_INCREMENT", "CREATE_TIME",
+        "UPDATE_TIME",     "CHECK_TIME",   "TABLE_COLLATION", "CHECKSUM",       "CREATE_OPTIONS",
+        "TABLE_COMMENT",
+    };
+    static const char *const columns_columns[] = {
+        "TABLE_CATALOG",
+        "TABLE_SCHEMA",
+        "TABLE_NAME",
+        "COLUMN_NAME",
+        "ORDINAL_POSITION",
+        "COLUMN_DEFAULT",
+        "IS_NULLABLE",
+        "DATA_TYPE",
+        "CHARACTER_MAXIMUM_LENGTH",
+        "CHARACTER_OCTET_LENGTH",
+        "NUMERIC_PRECISION",
+        "NUMERIC_SCALE",
+        "DATETIME_PRECISION",
+        "CHARACTER_SET_NAME",
+        "COLLATION_NAME",
+        "COLUMN_TYPE",
+        "COLUMN_KEY",
+        "EXTRA",
+        "PRIVILEGES",
+        "COLUMN_COMMENT",
+        "GENERATION_EXPRESSION",
+        "SRS_ID",
+    };
+    static const char *const statistics_columns[] = {
+        "TABLE_CATALOG", "TABLE_SCHEMA", "TABLE_NAME",  "NON_UNIQUE", "INDEX_SCHEMA",
+        "INDEX_NAME",    "SEQ_IN_INDEX", "COLUMN_NAME", "COLLATION",  "CARDINALITY",
+        "SUB_PART",      "PACKED",       "NULLABLE",    "INDEX_TYPE", "COMMENT",
+        "INDEX_COMMENT", "IS_VISIBLE",   "EXPRESSION",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+
+    failures +=
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.SCHEMATA", MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, schemata_columns, schemata_column_count, "schemata");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_information_schema_schemata_row(database, &(const struct expected_schemata_row){
+                                                             .schema_name = "information_schema",
+                                                             .character_set = "utf8mb3",
+                                                             .collation = "utf8mb3_general_ci",
+                                                             .encryption = "NO",
+                                                         });
+    failures +=
+        expect_information_schema_schemata_row(database, &(const struct expected_schemata_row){
+                                                             .schema_name = "mysql",
+                                                             .character_set = "utf8mb4",
+                                                             .collation = "utf8mb4_0900_ai_ci",
+                                                             .encryption = "NO",
+                                                         });
+    failures +=
+        expect_information_schema_schemata_row(database, &(const struct expected_schemata_row){
+                                                             .schema_name = "performance_schema",
+                                                             .character_set = "utf8mb4",
+                                                             .collation = "utf8mb4_0900_ai_ci",
+                                                             .encryption = "NO",
+                                                         });
+    failures +=
+        expect_information_schema_schemata_row(database, &(const struct expected_schemata_row){
+                                                             .schema_name = "sys",
+                                                             .character_set = "utf8mb4",
+                                                             .collation = "utf8mb4_0900_ai_ci",
+                                                             .encryption = "NO",
+                                                         });
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_metadata_catalog_a DEFAULT CHARACTER SET "
+                            "latin1 COLLATE latin1_swedish_ci ENCRYPTION='Y'",
+                            MYLITE_DONE);
+    failures += expect_information_schema_schemata_row(
+        database, &(const struct expected_schemata_row){
+                      .schema_name = "mylite_metadata_catalog_a",
+                      .character_set = "latin1",
+                      .collation = "latin1_swedish_ci",
+                      .encryption = "YES",
+                  });
+    failures += execute_sql(database, "DROP DATABASE mylite_metadata_catalog_a", MYLITE_DONE);
+    failures += expect_no_information_schema_schemata_row(database, "mylite_metadata_catalog_a");
+
+    failures +=
+        prepare_sql(database, "SELECT * FROM information_schema.schemata", MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.schemata", MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "SELECT * FROM `information_schema`.`SCHEMATA`", MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLES", MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, tables_columns, tables_column_count, "tables");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_information_schema_tables_views(database);
+    failures += execute_sql(database, "CREATE DATABASE mylite_metadata_catalog_empty", MYLITE_DONE);
+    failures +=
+        expect_no_information_schema_table_schema_row(database, "mylite_metadata_catalog_empty");
+    failures +=
+        expect_empty_information_schema_table(database, "SELECT * FROM INFORMATION_SCHEMA.COLUMNS",
+                                              columns_columns, columns_column_count);
+    failures += expect_empty_information_schema_table(database,
+                                                      "SELECT * FROM INFORMATION_SCHEMA.STATISTICS",
+                                                      statistics_columns, statistics_column_count);
+    failures += execute_sql(database, "DROP DATABASE mylite_metadata_catalog_empty", MYLITE_DONE);
+
+    failures += prepare_sql(database, "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA",
+                            MYLITE_UNSUPPORTED, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "unsupported information_schema projection returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.SCHEMATA WHERE TRUE",
+                            MYLITE_PARSE_ERROR, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "unsupported information_schema filter returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+    }
+    failures += prepare_sql(database, "SELECT * FROM SCHEMATA", MYLITE_UNSUPPORTED, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "unqualified information_schema table returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    failures +=
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.VIEWS", MYLITE_UNSUPPORTED, &stmt);
+    if (stmt != NULL) {
+        fprintf(stderr, "unsupported information_schema table returned a statement handle\n");
+        failures = 1;
+        mylite_finalize(stmt);
+    }
 
     mylite_close(database);
     return failures;
@@ -375,6 +580,183 @@ static int execute_sql(mylite_db *database, const char *sql, int expected_step_s
     return failures;
 }
 
+static int expect_information_schema_schemata_row(mylite_db *database,
+                                                  const struct expected_schemata_row *expected)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.SCHEMATA", MYLITE_OK, &stmt);
+    int saw_schema = 0;
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "schemata row");
+        if (failures != 0) {
+            break;
+        }
+
+        if (strcmp(mylite_column_text(stmt, schemata_name_column), expected->schema_name) == 0) {
+            saw_schema = 1;
+            failures += expect_string(mylite_column_text(stmt, schemata_catalog_column), "def",
+                                      "schemata catalog");
+            failures += expect_string(mylite_column_text(stmt, schemata_character_set_column),
+                                      expected->character_set, "schemata charset");
+            failures += expect_string(mylite_column_text(stmt, schemata_collation_column),
+                                      expected->collation, "schemata collation");
+            failures += expect_null_text(mylite_column_text(stmt, schemata_sql_path_column),
+                                         "schemata sql path");
+            failures += expect_string(mylite_column_text(stmt, schemata_encryption_column),
+                                      expected->encryption, "schemata encryption");
+            break;
+        }
+    }
+
+    if (!saw_schema) {
+        fprintf(stderr, "schemata did not return required schema '%s'\n", expected->schema_name);
+        failures = 1;
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_no_information_schema_schemata_row(mylite_db *database, const char *schema_name)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.SCHEMATA", MYLITE_OK, &stmt);
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "schemata row");
+        if (failures != 0) {
+            break;
+        }
+        if (strcmp(mylite_column_text(stmt, schemata_name_column), schema_name) == 0) {
+            fprintf(stderr, "schemata unexpectedly returned schema '%s'\n", schema_name);
+            failures = 1;
+            break;
+        }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_information_schema_tables_views(mylite_db *database)
+{
+    static const char *const expected_tables[] = {
+        "COLUMNS",
+        "SCHEMATA",
+        "STATISTICS",
+        "TABLES",
+    };
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLES", MYLITE_OK, &stmt);
+    int seen[information_schema_view_count] = {0};
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *schema_name = NULL;
+        const char *table_name = NULL;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "tables row");
+        if (failures != 0) {
+            break;
+        }
+
+        schema_name = mylite_column_text(stmt, tables_schema_column);
+        table_name = mylite_column_text(stmt, tables_name_column);
+        if (schema_name == NULL || strcmp(schema_name, "information_schema") != 0) {
+            continue;
+        }
+
+        for (int index = 0; index < information_schema_view_count; ++index) {
+            if (strcmp(table_name, expected_tables[index]) == 0) {
+                seen[index] = 1;
+                failures += expect_string(mylite_column_text(stmt, tables_catalog_column), "def",
+                                          "tables catalog");
+                failures += expect_string(mylite_column_text(stmt, tables_type_column),
+                                          "SYSTEM VIEW", "tables type");
+                failures += expect_null_text(mylite_column_text(stmt, tables_engine_column),
+                                             "tables engine");
+                failures += expect_int64(mylite_column_int64(stmt, tables_version_column),
+                                         information_schema_table_version, "tables version");
+                failures +=
+                    expect_int64(mylite_column_int64(stmt, tables_rows_column), 0, "tables rows");
+                failures += expect_null_text(mylite_column_text(stmt, tables_collation_column),
+                                             "tables table collation");
+                failures += expect_string(mylite_column_text(stmt, tables_comment_column), "",
+                                          "tables comment");
+            }
+        }
+    }
+
+    for (int index = 0; index < information_schema_view_count; ++index) {
+        if (!seen[index]) {
+            fprintf(stderr, "tables did not return information_schema.%s\n",
+                    expected_tables[index]);
+            failures = 1;
+        }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_no_information_schema_table_schema_row(mylite_db *database,
+                                                         const char *schema_name)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLES", MYLITE_OK, &stmt);
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "tables row");
+        if (failures != 0) {
+            break;
+        }
+        if (strcmp(mylite_column_text(stmt, tables_schema_column), schema_name) == 0) {
+            fprintf(stderr, "tables unexpectedly returned row for schema '%s'\n", schema_name);
+            failures = 1;
+            break;
+        }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_empty_information_schema_table(mylite_db *database, const char *sql,
+                                                 const char *const *columns, int column_count)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, sql, MYLITE_OK, &stmt);
+
+    failures += expect_column_names(stmt, columns, column_count, sql);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, sql);
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
 static int expect_show_database_rows(mylite_db *database, const char *required,
                                      const char *forbidden)
 {
@@ -411,6 +793,17 @@ static int expect_show_database_rows(mylite_db *database, const char *required,
     }
 
     mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_column_names(const mylite_stmt *stmt, const char *const *expected, int count,
+                               const char *context)
+{
+    int failures = expect_int(mylite_column_count(stmt), count, context);
+
+    for (int index = 0; index < count; ++index) {
+        failures += expect_string(mylite_column_name(stmt, index), expected[index], context);
+    }
     return failures;
 }
 
@@ -540,6 +933,16 @@ static int expect_string(const char *actual, const char *expected, const char *c
     if (actual == NULL || strcmp(actual, expected) != 0) {
         fprintf(stderr, "%s: expected '%s', got '%s'\n", context, expected,
                 actual == NULL ? "(null)" : actual);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_null_text(const char *actual, const char *context)
+{
+    if (actual != NULL) {
+        fprintf(stderr, "%s: expected null, got '%s'\n", context, actual);
         return 1;
     }
 

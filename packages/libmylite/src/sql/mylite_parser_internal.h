@@ -81,6 +81,10 @@ mylite_sql_parser_make_select_item(struct mylite_sql_parser_state *state,
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_dual(struct mylite_sql_parser_state *state,
                                                              struct mylite_sql_token from_token,
                                                              struct mylite_sql_token dual_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_from_table(struct mylite_sql_parser_state *state,
+                                  struct mylite_sql_token from_token,
+                                  struct mylite_sql_ast_node *table_name);
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(struct mylite_sql_parser_state *state,
                                                               struct mylite_sql_token token);
 struct mylite_sql_ast_node *

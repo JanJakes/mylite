@@ -9,7 +9,7 @@ level application surfaces.
 
 1. [x] Schema selection and database lifecycle: `CREATE DATABASE`, `USE`,
        `ALTER DATABASE`, `DROP DATABASE`, and `SHOW DATABASES`.
-2. [ ] Core metadata catalog: internal schema/table/column/index storage plus
+2. [x] Core metadata catalog: internal schema/table/column/index storage plus
        `INFORMATION_SCHEMA.SCHEMATA`, `TABLES`, `COLUMNS`, and `STATISTICS`.
 3. [ ] Character set and collation foundation: `utf8mb4`, `utf8mb3`, `latin1`,
        `binary`, default charset/collation tracking, `SET NAMES`, and

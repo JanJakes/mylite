@@ -194,6 +194,10 @@ select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, B, mylite_sql_parser_make_from_dual(state, F, D));
 }
+select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(C). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, B, mylite_sql_parser_make_from_table(state, F, C));
+}
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL);
@@ -202,6 +206,15 @@ select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_dual(state, F, D));
+}
+select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(C). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_table(state, F, C));
+}
+
+table_name(A) ::= qualified_identifier(B). {
+    A = B;
 }
 
 select_item_list(A) ::= select_item(B). {

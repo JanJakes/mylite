@@ -9,6 +9,10 @@ import test_parser_corpus as corpus
 
 
 EXPECTED_FRAGMENT_FAILURES = [
+    # Bare ALTER TABLE negative-test fragments; permissive corpus mode accepts
+    # them, but strict mode should require an alter action.
+    508,
+    509,
     2410,
     5913,
     7185,
@@ -17,6 +21,9 @@ EXPECTED_FRAGMENT_FAILURES = [
     7189,
     7190,
     19528,
+    # Bare ALTER TABLE negative-test fragments.
+    31132,
+    41408,
     # Malformed CREATE USER negative-test artifact with a trailing quote.
     54522,
 ]

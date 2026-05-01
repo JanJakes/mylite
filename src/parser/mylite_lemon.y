@@ -862,7 +862,9 @@ alter_statement ::= ALTER alter_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
 }
 
-alter_tail ::= TABLE cache_table_ref.
+alter_tail ::= TABLE(A) cache_table_ref. {
+  mylite_parser_require_permissive(ctx, A);
+}
 alter_tail ::= TABLE cache_table_ref alter_table_tail.
 alter_tail ::= LOGFILE create_logfile_group cache_name_part alter_logfile_group_tail.
 alter_tail ::= RESOURCE create_resource_group cache_name_part alter_resource_group_actions.

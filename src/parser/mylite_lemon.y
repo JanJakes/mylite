@@ -2671,9 +2671,13 @@ handler_read_suffix ::= .
 handler_read_suffix ::= WHERE expression_start statement_tail.
 handler_read_suffix ::= handler_limit_tail.
 
-handler_limit_tail ::= LIMIT ATOM.
-handler_limit_tail ::= LIMIT ATOM import_comma ATOM.
-handler_limit_tail ::= LIMIT ATOM OFFSET ATOM.
+handler_limit_tail ::= LIMIT handler_limit_value.
+handler_limit_tail ::= LIMIT handler_limit_value import_comma handler_limit_value.
+handler_limit_tail ::= LIMIT handler_limit_value OFFSET handler_limit_value.
+
+handler_limit_value ::= BOOLEAN_NUMBER.
+handler_limit_value ::= FACTOR_NUMBER.
+handler_limit_value ::= NUMBER_LITERAL.
 
 call_statement ::= CALL call_name call_arguments. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

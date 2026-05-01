@@ -35,7 +35,7 @@ token sink:
 - `VALUES` recognizes comma-separated row contents while preserving nested
   expression bodies.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names, read
-  directions, tuple reads, `WHERE`, and `LIMIT` tails.
+  directions, tuple reads, `WHERE`, and numeric `LIMIT` tails.
 - `USE` recognizes one-part schema names using the shared identifier grammar.
 - Account and role names use the shared unreserved identifier grammar across
   `CREATE`/`ALTER`/`DROP` account statements.

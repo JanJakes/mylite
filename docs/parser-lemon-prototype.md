@@ -11,6 +11,8 @@ token sink:
 - A MySQL-aware lexer recognizes strings, quoted identifiers, executable
   version comments, regular comments, numbers, identifiers, delimiters,
   operator-like tokens, and the current statement-start keywords.
+- `*` is no longer a generic identifier fallback; wildcard and expression-body
+  uses are explicit so object-name grammar rejects MySQL-invalid wildcard names.
 - A Lemon grammar recognizes MySQL statement families for DDL, DML,
   transactions, utility statements, administration statements, replication/XA,
   and stored-program statement starts.

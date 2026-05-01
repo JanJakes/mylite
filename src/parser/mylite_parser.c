@@ -9930,9 +9930,10 @@ static int kill_target_allows_call(int token_id) {
 }
 
 static int kill_target_token(int token_id) {
-  return token_id == ML_AT_HOST || token_id == ML_BOOLEAN_NUMBER ||
-         token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
-         dml_row_alias_token(token_id);
+  return token_id != ML_STAR &&
+         (token_id == ML_AT_HOST || token_id == ML_BOOLEAN_NUMBER ||
+          token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
+          dml_row_alias_token(token_id));
 }
 
 static int reset_persist_name_part_token(int token_id, MyliteToken token) {

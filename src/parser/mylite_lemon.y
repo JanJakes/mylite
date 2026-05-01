@@ -5,7 +5,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS BULK CASCADED CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISCARD DUMPFILE DUPLICATE EACH ENABLE ENCRYPTION ENFORCED ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INTERSECT INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MANUAL MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NO_WAIT NONE NOT NULL NUMBER OFF ONE ONLY OPTIONS ORGANIZATION OUTFILE OWNER PACK_KEYS PAGE PARALLEL PARSE_TREE PARTITION PARTITIONING PARTITIONS PHASE PORT PRECEDES PRESERVE PRIMARY RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT S3 SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SECONDARY_LOAD SECONDARY_UNLOAD SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STREAM STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE URL USE_FRM VALIDATION VALUE VCPU WAIT WITHOUT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID STAR AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO AUTOEXTEND_SIZE AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS BULK CASCADED CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN COALESCE CODE COLLATE COLUMN COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS CONTEXT CONVERT CPU CURRENT CURSOR_NAME CURRENT_USER DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DETERMINISTIC DIRECTORY DISCARD DUMPFILE DUPLICATE EACH ENABLE ENCRYPTION ENFORCED ENGINE_ATTRIBUTE EVERY EXCHANGE EXCEPT EXISTS EXPORT EXTENT_SIZE FAST FAULTS FILE_BLOCK_SIZE FILTER FOLLOWS FORCE FOREIGN FOUND GENERAL GROUP GTIDS HISTOGRAM HOST IDENTIFIED INACTIVE INFILE INITIAL_SIZE INNODB INSERT_METHOD INT INTEGER INTERSECT INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LANGUAGE LEAVES LOG MANUAL MAX_ROWS MAX_SIZE MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MODIFIES MODIFY MUTEX MYSQL_ERRNO NAME NO NODEGROUP NO_WAIT NONE NOT NULL NUMBER OFF ONE ONLY OPTIONS ORGANIZATION OUTFILE OWNER PACK_KEYS PAGE PARALLEL PARSE_TREE PARTITION PARTITIONING PARTITIONS PHASE PORT PRECEDES PRESERVE PRIMARY RANDOM READS REAL REBUILD REDO_BUFFER_SIZE REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD REMOVE REORGANIZE REPLICATE_DO_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_DB REPLICATE_IGNORE_TABLE REPLICATE_REWRITE_DB REPLICATE_WILD_DO_TABLE REPLICATE_WILD_IGNORE_TABLE REQUIRE RESUME RETAIN RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT S3 SCHEDULE SCHEMA_NAME SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE SECONDARY_LOAD SECONDARY_UNLOAD SLOW SNAPSHOT SOCKET SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS SSL STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STREAM STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDO_BUFFER_SIZE UNDOFILE UPGRADE URL USE_FRM VALIDATION VALUE VCPU WAIT WITHOUT WRAPPER XID ASSIGN COLON DOT DOUBLE_QUOTED_STRING EQUALS MINUS QUOTED_ID AT_SIGN AT_EMPTY AT_HOST.
 %fallback ATOM BOOLEAN_NUMBER ENCRYPTION_VALUE FACTOR_NUMBER NUMBER_LITERAL SQLSTATE_VALUE STRING_LITERAL.
 %fallback ATOM GE GT LE LT.
 %fallback ATOM STACKED.
@@ -167,7 +167,9 @@ select_statement ::= SELECT select_tail. {
 select_tail ::= select_expression_start statement_tail.
 
 select_expression_start ::= expression_start.
+select_expression_start ::= STAR.
 select_expression_start ::= select_modifiers expression_start.
+select_expression_start ::= select_modifiers STAR.
 
 select_modifiers ::= select_modifier.
 select_modifiers ::= select_modifiers select_modifier.
@@ -395,6 +397,7 @@ create_table_definition_token ::= LB.
 create_table_definition_token ::= RB.
 create_table_definition_token ::= LC.
 create_table_definition_token ::= RC.
+create_table_definition_token ::= STAR.
 
 create_table_tail_option_start ::= AUTOEXTEND_SIZE.
 create_table_tail_option_start ::= AUTO_INCREMENT.
@@ -1524,6 +1527,7 @@ alter_table_definition_token ::= LB.
 alter_table_definition_token ::= RB.
 alter_table_definition_token ::= LC.
 alter_table_definition_token ::= RC.
+alter_table_definition_token ::= STAR.
 
 alter_table_partition_binlog_maintenance_kind ::= ANALYZE.
 alter_table_partition_binlog_maintenance_kind ::= OPTIMIZE.
@@ -2338,6 +2342,7 @@ component_install_value_token ::= DOT.
 component_install_value_token ::= LP component_install_value_inner RP.
 component_install_value_token ::= LB component_install_value_inner RB.
 component_install_value_token ::= LC component_install_value_inner RC.
+component_install_value_token ::= STAR.
 
 component_install_value_inner ::= .
 component_install_value_inner ::= component_install_value_inner component_install_value_inner_token.
@@ -2350,6 +2355,7 @@ component_install_value_inner_token ::= COMMA.
 component_install_value_inner_token ::= LP component_install_value_inner RP.
 component_install_value_inner_token ::= LB component_install_value_inner RB.
 component_install_value_inner_token ::= LC component_install_value_inner RC.
+component_install_value_inner_token ::= STAR.
 
 component_file_list ::= component_file.
 component_file_list ::= component_file_list import_comma component_file.
@@ -3061,6 +3067,7 @@ use_statement ::= USE use_target. {
 }
 
 use_target ::= cache_name_part.
+use_target ::= STAR.
 
 handler_statement ::= HANDLER(A) handler_name handler_operation. {
   mylite_parser_validate_handler_statement(ctx, A);
@@ -3155,6 +3162,7 @@ call_argument_token ::= LB.
 call_argument_token ::= RB.
 call_argument_token ::= LC.
 call_argument_token ::= RC.
+call_argument_token ::= STAR.
 
 call_argument_nested_tokens ::= .
 call_argument_nested_tokens ::= call_argument_nested_tokens call_argument_nested_token.
@@ -3169,6 +3177,7 @@ call_argument_nested_token ::= LB.
 call_argument_nested_token ::= RB.
 call_argument_nested_token ::= LC.
 call_argument_nested_token ::= RC.
+call_argument_nested_token ::= STAR.
 
 binlog_statement ::= BINLOG binlog_payload. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
@@ -3368,6 +3377,7 @@ dml_write_parenthesized_query_token ::= LB.
 dml_write_parenthesized_query_token ::= RB.
 dml_write_parenthesized_query_token ::= LC.
 dml_write_parenthesized_query_token ::= RC.
+dml_write_parenthesized_query_token ::= STAR.
 
 dml_write_after_parenthesized_query ::= .
 dml_write_after_parenthesized_query ::= UNION dml_write_union_tail.
@@ -3468,6 +3478,7 @@ dml_update_table_reference_nested_token ::= LB.
 dml_update_table_reference_nested_token ::= RB.
 dml_update_table_reference_nested_token ::= LC.
 dml_update_table_reference_nested_token ::= RC.
+dml_update_table_reference_nested_token ::= STAR.
 
 delete_statement ::= DELETE(A) delete_tail. {
   mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_DELETE);
@@ -3493,8 +3504,12 @@ delete_core ::= FROM dml_delete_table_list USING delete_using_tail.
 delete_using_tail ::= dml_update_table_reference_tokens.
 delete_using_tail ::= dml_update_table_reference_tokens WHERE expression_start statement_tail.
 
-dml_delete_table_list ::= cache_table_ref.
-dml_delete_table_list ::= dml_delete_table_list import_comma cache_table_ref.
+dml_delete_table_list ::= dml_delete_table_ref.
+dml_delete_table_list ::= dml_delete_table_list import_comma dml_delete_table_ref.
+
+dml_delete_table_ref ::= cache_table_ref.
+dml_delete_table_ref ::= cache_name_part DOT STAR.
+dml_delete_table_ref ::= cache_name_part DOT cache_name_part DOT STAR.
 
 dml_delete_source_start ::= cache_table_ref.
 dml_delete_source_start ::= LP.
@@ -3559,6 +3574,7 @@ with_cte_body_token ::= LB.
 with_cte_body_token ::= RB.
 with_cte_body_token ::= LC.
 with_cte_body_token ::= RC.
+with_cte_body_token ::= STAR.
 
 with_query_body ::= SELECT(A) select_tail. {
   mylite_parser_validate_select_statement_from(ctx, A);
@@ -3674,6 +3690,7 @@ values_row_value_token ::= LB.
 values_row_value_token ::= RB.
 values_row_value_token ::= LC.
 values_row_value_token ::= RC.
+values_row_value_token ::= STAR.
 
 values_row_nested_tokens ::= .
 values_row_nested_tokens ::= values_row_nested_tokens values_row_nested_token.
@@ -3688,6 +3705,7 @@ values_row_nested_token ::= LB.
 values_row_nested_token ::= RB.
 values_row_nested_token ::= LC.
 values_row_nested_token ::= RC.
+values_row_nested_token ::= STAR.
 
 values_query_tail ::= .
 values_query_tail ::= values_set_operator values_union_tail.
@@ -4147,6 +4165,7 @@ grant_subject_parenthesized_token ::= LB.
 grant_subject_parenthesized_token ::= RB.
 grant_subject_parenthesized_token ::= LC.
 grant_subject_parenthesized_token ::= RC.
+grant_subject_parenthesized_token ::= STAR.
 
 grant_subject_token ::= ALL.
 grant_subject_token ::= ALTER.
@@ -4203,6 +4222,7 @@ grant_object_token ::= TABLE.
 grant_object_token ::= TABLES.
 grant_object_token ::= TABLESPACE.
 grant_object_token ::= USER.
+grant_object_token ::= STAR.
 
 grant_recipient_list ::= grant_recipient.
 grant_recipient_list ::= grant_recipient_list COMMA grant_recipient.
@@ -4271,6 +4291,7 @@ help_topic_tail ::= help_topic.
 help_topic ::= ATOM.
 help_topic ::= LABEL.
 help_topic ::= keyword_not_select_clause.
+help_topic ::= STAR.
 
 do_statement ::= DO(A) expression_start statement_tail. {
   mylite_parser_validate_do_statement(ctx, A);
@@ -4372,6 +4393,7 @@ while_condition_token ::= LB.
 while_condition_token ::= RB.
 while_condition_token ::= LC.
 while_condition_token ::= RC.
+while_condition_token ::= STAR.
 
 while_condition_nested_token ::= ATOM.
 while_condition_nested_token ::= LABEL.
@@ -4382,6 +4404,7 @@ while_condition_nested_token ::= LB.
 while_condition_nested_token ::= RB.
 while_condition_nested_token ::= LC.
 while_condition_nested_token ::= RC.
+while_condition_nested_token ::= STAR.
 
 while_condition_keyword ::= ALL.
 while_condition_keyword ::= AND.
@@ -4619,6 +4642,7 @@ statement_token ::= LB.
 statement_token ::= RB.
 statement_token ::= LC.
 statement_token ::= RC.
+statement_token ::= STAR.
 
 keyword ::= SELECT.
 keyword ::= WITH.

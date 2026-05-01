@@ -30,6 +30,9 @@ token sink:
 - `GRANT` and `REVOKE` recognize grant/admin options, proxy forms, recipient
   authentication/resource clauses, `AS ... WITH ROLE`, and
   `IGNORE UNKNOWN USER`.
+- `CREATE INDEX` recognizes functional/key-part lists and standalone index
+  options including parser plugins, visibility, attributes, `ALGORITHM`, and
+  `LOCK`.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`
   and `OR REPLACE` variants.
 - `DROP INDEX` recognizes MySQL's `ALGORITHM` and `LOCK` option tails.

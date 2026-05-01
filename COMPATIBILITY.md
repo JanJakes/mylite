@@ -80,7 +80,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. |  |
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. |  |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
-| `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. |  |
+| `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. | Parser recognizes functional/key-part lists plus index options for parser plugins, comments, visibility, engine attributes, `KEY_BLOCK_SIZE`, `USING`, `ALGORITHM`, and `LOCK`. |
 | `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
 | `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. |  |
 | `CREATE SERVER` | ❌ | low | Foreign server metadata syntax. |  |

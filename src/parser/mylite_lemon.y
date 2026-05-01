@@ -6,6 +6,7 @@
 %fallback ATOM FACTOR_NUMBER.
 %fallback ATOM ENCLOSED ESCAPED LINES OPTIONALLY ROWS STARTING TERMINATED.
 %fallback ATOM COPY EXCLUSIVE INPLACE SHARED.
+%fallback ATOM INVISIBLE PARSER VISIBLE.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -184,7 +185,21 @@ create_index_using_tail ::= create_index_type cache_name_part.
 
 create_index_type ::= TYPE.
 
-create_index_tail ::= LP create_table_definition_tokens RP create_options_tail.
+create_index_tail ::= LP create_table_definition_tokens RP create_index_options_tail.
+
+create_index_options_tail ::= .
+create_index_options_tail ::= create_index_options_tail create_index_option.
+
+create_index_option ::= KEY_BLOCK_SIZE drop_index_option_equals_tail ATOM.
+create_index_option ::= USING cache_name_part.
+create_index_option ::= create_index_type cache_name_part.
+create_index_option ::= WITH PARSER cache_name_part.
+create_index_option ::= COMMENT ATOM.
+create_index_option ::= VISIBLE.
+create_index_option ::= INVISIBLE.
+create_index_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
+create_index_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail ATOM.
+create_index_option ::= drop_index_option.
 
 create_table_prefix ::= TABLE.
 create_table_prefix ::= TEMPORARY TABLE.
@@ -3374,6 +3389,7 @@ keyword ::= GRANTS.
 keyword ::= HOSTS.
 keyword ::= INDEXES.
 keyword ::= INPLACE.
+keyword ::= INVISIBLE.
 keyword ::= KEY.
 keyword ::= KEYS.
 keyword ::= LAST.
@@ -3469,6 +3485,7 @@ keyword ::= OLD.
 keyword ::= OPTION.
 keyword ::= OPTIONAL.
 keyword ::= OPTIONALLY.
+keyword ::= PARSER.
 keyword ::= PASSWORD_LOCK_TIME.
 keyword ::= PROXY.
 keyword ::= REGISTRATION.
@@ -3480,6 +3497,7 @@ keyword ::= TERMINATED.
 keyword ::= UNBOUNDED.
 keyword ::= UNREGISTER.
 keyword ::= UNKNOWN.
+keyword ::= VISIBLE.
 keyword ::= X509.
 
 keyword_not_select_clause ::= SELECT.
@@ -3650,6 +3668,7 @@ keyword_not_select_clause ::= GRANTS.
 keyword_not_select_clause ::= HOSTS.
 keyword_not_select_clause ::= INDEXES.
 keyword_not_select_clause ::= INPLACE.
+keyword_not_select_clause ::= INVISIBLE.
 keyword_not_select_clause ::= KEY.
 keyword_not_select_clause ::= KEYS.
 keyword_not_select_clause ::= LAST.
@@ -3744,6 +3763,7 @@ keyword_not_select_clause ::= OLD.
 keyword_not_select_clause ::= OPTION.
 keyword_not_select_clause ::= OPTIONAL.
 keyword_not_select_clause ::= OPTIONALLY.
+keyword_not_select_clause ::= PARSER.
 keyword_not_select_clause ::= PASSWORD_LOCK_TIME.
 keyword_not_select_clause ::= PROXY.
 keyword_not_select_clause ::= REGISTRATION.
@@ -3755,4 +3775,5 @@ keyword_not_select_clause ::= TERMINATED.
 keyword_not_select_clause ::= UNBOUNDED.
 keyword_not_select_clause ::= UNREGISTER.
 keyword_not_select_clause ::= UNKNOWN.
+keyword_not_select_clause ::= VISIBLE.
 keyword_not_select_clause ::= X509.

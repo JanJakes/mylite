@@ -7,7 +7,7 @@ level application surfaces.
 
 ## First 50 Tasks
 
-1. [ ] Schema selection and database lifecycle: `CREATE DATABASE`, `USE`,
+1. [x] Schema selection and database lifecycle: `CREATE DATABASE`, `USE`,
        `ALTER DATABASE`, `DROP DATABASE`, and `SHOW DATABASES`.
 2. [ ] Core metadata catalog: internal schema/table/column/index storage plus
        `INFORMATION_SCHEMA.SCHEMATA`, `TABLES`, `COLUMNS`, and `STATISTICS`.

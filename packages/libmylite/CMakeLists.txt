@@ -4,8 +4,42 @@ configure_file(
   @ONLY
 )
 
+set(MYLITE_SQL_PARSE_DIR "${PROJECT_BINARY_DIR}/generated/libmylite/sql")
+set(MYLITE_SQL_PARSE_C "${MYLITE_SQL_PARSE_DIR}/mylite_parse.c")
+set(MYLITE_SQL_PARSE_H "${MYLITE_SQL_PARSE_DIR}/mylite_parse.h")
+
+add_custom_command(
+  OUTPUT
+    "${MYLITE_SQL_PARSE_C}"
+    "${MYLITE_SQL_PARSE_H}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${MYLITE_SQL_PARSE_DIR}"
+  COMMAND "$<TARGET_FILE:mylite_lemon>"
+    -q
+    "-T$<TARGET_FILE_DIR:mylite_lemon>/lempar.c"
+    "-d${MYLITE_SQL_PARSE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/sql/mylite_parse.y"
+  DEPENDS
+    mylite_lemon
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/sql/mylite_parse.y"
+  COMMENT "Generating MyLite SQL parser"
+  VERBATIM
+)
+
+if(MSVC)
+  set_source_files_properties("${MYLITE_SQL_PARSE_C}" PROPERTIES
+    COMPILE_OPTIONS "/wd4100;/wd4189"
+  )
+else()
+  set_source_files_properties("${MYLITE_SQL_PARSE_C}" PROPERTIES
+    COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-unused-variable"
+  )
+endif()
+
 add_library(mylite STATIC
+  "${MYLITE_SQL_PARSE_C}"
+  src/sql/mylite_ast.c
   src/sql/mylite_lexer.c
+  src/sql/mylite_parser.c
   src/version.c
 )
 add_library(MyLite::mylite ALIAS mylite)
@@ -15,6 +49,9 @@ target_include_directories(mylite
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
     "$<INSTALL_INTERFACE:include>"
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/sql"
+    "${MYLITE_SQL_PARSE_DIR}"
 )
 
 mylite_configure_c_target(mylite)
@@ -30,6 +67,13 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_lexer_test)
 
+  add_executable(mylite_parser_test
+    tests/parser_test.c
+  )
+  target_link_libraries(mylite_parser_test PRIVATE MyLite::mylite)
+  target_include_directories(mylite_parser_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  mylite_configure_c_target(mylite_parser_test)
+
   add_executable(mylite_version_test
     tests/version_test.c
   )
@@ -37,5 +81,6 @@ if(BUILD_TESTING)
   mylite_configure_c_target(mylite_version_test)
 
   add_test(NAME libmylite.lexer COMMAND mylite_lexer_test)
+  add_test(NAME libmylite.parser COMMAND mylite_parser_test)
   add_test(NAME libmylite.version COMMAND mylite_version_test)
 endif()

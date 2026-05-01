@@ -19,6 +19,7 @@ include(MyLiteDeveloperTools)
 option(MYLITE_BUILD_TOOLS "Build MyLite command-line tools" ON)
 option(MYLITE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
+add_subdirectory(tools/lemon)
 add_subdirectory(packages/libmylite)
 
 if(MYLITE_BUILD_TOOLS)

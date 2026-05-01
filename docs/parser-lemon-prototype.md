@@ -39,7 +39,8 @@ token sink:
   column lists, view body starts, and explicit check-option tails for
   non-plain-`SELECT` body forms, including parenthesized query expressions and
   `VALUES` set operands, while validating parenthesized query `ORDER BY` and
-  `LIMIT` suffixes, direct body `SELECT` list tails, malformed `SELECT`
+  `LIMIT` suffixes, parenthesized query-body `SELECT`/`WITH`/`TABLE`/`VALUES`
+  expression tails, direct body `SELECT` list tails, malformed `SELECT`
   operands after set operators before `WITH CHECK OPTION`, and `VALUES ROW(...)`
   row-expression tails.
 - `CALL` recognizes one- and two-part routine names plus comma-separated
@@ -59,8 +60,9 @@ token sink:
   dangling-operator, and trailing-separator checks, `INSERT` `VALUE(S)`/`SET`
   row aliases,
   direct query payload `SELECT` list tails, parenthesized query payload
-  `ORDER BY` and `LIMIT` suffixes, malformed `SELECT` operands after set
-  operators, and `ON DUPLICATE KEY UPDATE`
+  `SELECT`/`WITH`/`TABLE`/`VALUES` expression tails plus outer `ORDER BY` and
+  `LIMIT` suffixes, malformed `SELECT` operands after set operators, and
+  `ON DUPLICATE KEY UPDATE`
   assignment tails including malformed post-value continuations and stray
   top-level `SELECT`/`FROM` suffixes after assignment values.
 - Single-table `UPDATE` validates `SET` assignment lists, malformed top-level
@@ -141,8 +143,9 @@ token sink:
   set operations and repeated set-operation option tokens.
 - Top-level parenthesized query expressions reject stray suffixes after the
   outer `)`, validate `ORDER BY` expression-list tails plus `LIMIT`/`INTO`
-  continuations, validate `INTO` variable-list tails, and require set-operation
-  tails to start with a query operand whose `SELECT` clause tail is well formed.
+  continuations, validate inner `SELECT`/`WITH`/`TABLE`/`VALUES` expression
+  tails, validate `INTO` variable-list tails, and require set-operation tails to
+  start with a query operand whose `SELECT` clause tail is well formed.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,
   MySQL's table-scan and indexed-read direction sets, equality/range tuple
   reads, `WHERE`, and numeric or identifier `LIMIT` tails, while rejecting
@@ -188,8 +191,9 @@ token sink:
   recognized explicitly with table/partition options, including
   `IGNORE`/`REPLACE` duplicate-handling modifiers, and no-definition
   table-option forms must include a query body. Direct CTAS query bodies validate
-  `SELECT` list tails, and parenthesized CTAS query bodies validate their outer
-  `ORDER BY` and `LIMIT` suffixes.
+  `SELECT` list tails, and parenthesized CTAS query bodies validate their inner
+  `SELECT`/`WITH`/`TABLE`/`VALUES` expression tails plus their outer `ORDER BY`
+  and `LIMIT` suffixes.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   string-literal file names, documented NDB logfile options with numeric
   size/nodegroup values, `WAIT`, and optional `ENGINE`/`STORAGE ENGINE`

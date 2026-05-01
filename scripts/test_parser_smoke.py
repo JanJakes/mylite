@@ -1210,6 +1210,7 @@ def main() -> int:
         ("alter table t1 row_format;", 1, {}),
         ("alter table t1 row_format=bogus;", 1, {}),
         ("alter table t1 add 'c' int;", 1, {}),
+        ("alter table t1 add index using btree i (a);", 1, {}),
         ("alter table t1 rename column 'a' to b;", 1, {}),
         ("alter table t1 rename column a to 'b';", 1, {}),
         ("alter table t1 default;", 1, {}),

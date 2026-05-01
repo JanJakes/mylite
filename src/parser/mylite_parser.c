@@ -6421,6 +6421,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   int add_index_option_state = ALTER_INDEX_OPTION_READY;
   int add_index_option_equals = 0;
   int index_using_pending = 0;
+  int index_using_requires_key_list = 0;
   int depth = 0;
   int key_state = ALTER_INDEX_KEY_NEED_PART;
 
@@ -6528,8 +6529,9 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
         add_index_candidate = 0;
         add_index_options = 1;
         add_index_option_state = ALTER_INDEX_OPTION_READY;
-        add_index_option_equals = 0;
-        continue;
+      add_index_option_equals = 0;
+      index_using_requires_key_list = 0;
+      continue;
       }
 
       if (token_id == ML_COMMA) {
@@ -6858,6 +6860,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       column_tail_state = COLUMN_DEFINITION_TAIL_READY;
       column_tail_flags = 0;
       index_using_pending = 0;
+      index_using_requires_key_list = 0;
       continue;
     }
 
@@ -7098,7 +7101,17 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
         return;
       }
       index_using_pending = 0;
+      index_using_requires_key_list = 1;
+      pending_token = token;
       continue;
+    }
+
+    if (add_index_candidate && index_using_requires_key_list) {
+      if (token_id != ML_LP) {
+        mylite_parser_reject(ctx, token, "invalid ALTER TABLE index USING");
+        return;
+      }
+      index_using_requires_key_list = 0;
     }
 
     if (token_id == ML_CONSTRAINT) {
@@ -7223,6 +7236,9 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE index option");
   } else if (index_using_pending) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete ALTER TABLE index USING");
+  } else if (index_using_requires_key_list) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE index USING");
   } else if (!ctx->failed) {

@@ -302,6 +302,16 @@ void mylite_parser_require_permissive(MyliteParseContext *ctx,
   set_parser_error(ctx, &token, "unsupported statement start");
 }
 
+void mylite_parser_reject(MyliteParseContext *ctx, MyliteToken token,
+                          const char *message) {
+  if (ctx->failed) {
+    return;
+  }
+
+  ctx->failed = 1;
+  set_parser_error(ctx, &token, message);
+}
+
 static void result_init(MyliteParseResult *result) {
   memset(result, 0, sizeof(*result));
   result->error_line = 1;

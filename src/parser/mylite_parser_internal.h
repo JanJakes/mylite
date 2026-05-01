@@ -32,6 +32,8 @@ void mylite_parser_record_statement(MyliteParseContext *ctx,
 void mylite_parser_record_empty_statement(MyliteParseContext *ctx);
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token);
+void mylite_parser_reject(MyliteParseContext *ctx, MyliteToken token,
+                          const char *message);
 
 void *MyLiteLemonAlloc(void *(*malloc_proc)(size_t));
 void MyLiteLemon(void *parser, int token_id, MyliteToken token,

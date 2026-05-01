@@ -19,6 +19,10 @@
 %type start_tail {MyliteStatementKind}
 %type lock_tail {MyliteStatementKind}
 %type unlock_tail {MyliteStatementKind}
+%type start_transaction_tail {MyliteTransactionOptions}
+%type transaction_characteristics {MyliteTransactionOptions}
+%type transaction_characteristic {MyliteTransactionOptions}
+%type transaction_access_mode {MyliteTransactionOptions}
 %type alter_instance_reload_tls_tail {int}
 %type alter_instance_reload_channel_tail {int}
 %type alter_instance_reload_rollback_tail {int}
@@ -34,6 +38,17 @@
 
 #define mylite_lemon_realloc(P, N, C) realloc((P), (N))
 #define mylite_lemon_free(P, C) free(P)
+
+enum {
+  MYLITE_TRANSACTION_READ_ONLY = 1,
+  MYLITE_TRANSACTION_READ_WRITE = 2,
+  MYLITE_TRANSACTION_CONSISTENT_SNAPSHOT = 4
+};
+
+typedef struct MyliteTransactionOptions {
+  int flags;
+  MyliteToken token;
+} MyliteTransactionOptions;
 }
 
 %syntax_error {
@@ -1904,7 +1919,11 @@ start_statement ::= START start_tail(A). {
   mylite_parser_record_statement(ctx, A);
 }
 
-start_tail(A) ::= TRANSACTION start_transaction_tail. {
+start_tail(A) ::= TRANSACTION start_transaction_tail(B). {
+  if ((B.flags & MYLITE_TRANSACTION_READ_ONLY) &&
+      (B.flags & MYLITE_TRANSACTION_READ_WRITE)) {
+    mylite_parser_reject(ctx, B.token, "conflicting transaction access modes");
+  }
   A = MYLITE_STATEMENT_TRANSACTION;
 }
 start_tail(A) ::= REPLICA start_replica_tail. {
@@ -1918,17 +1937,43 @@ start_tail(A) ::= GROUP_REPLICATION start_group_replication_tail. {
   A = MYLITE_STATEMENT_REPLICATION;
 }
 
-start_transaction_tail ::= .
-start_transaction_tail ::= transaction_characteristics.
+start_transaction_tail(A) ::= . {
+  memset(&A, 0, sizeof(A));
+}
+start_transaction_tail(A) ::= transaction_characteristics(B). {
+  A = B;
+}
 
-transaction_characteristics ::= transaction_characteristic.
-transaction_characteristics ::= transaction_characteristics import_comma transaction_characteristic.
+transaction_characteristics(A) ::= transaction_characteristic(B). {
+  A = B;
+}
+transaction_characteristics(A) ::= transaction_characteristics(B) import_comma transaction_characteristic(C). {
+  A.flags = B.flags | C.flags;
+  A.token = C.token;
+  if (!((B.flags & MYLITE_TRANSACTION_READ_ONLY) &&
+        (C.flags & MYLITE_TRANSACTION_READ_WRITE)) &&
+      !((B.flags & MYLITE_TRANSACTION_READ_WRITE) &&
+        (C.flags & MYLITE_TRANSACTION_READ_ONLY))) {
+    A.token = B.token;
+  }
+}
 
-transaction_characteristic ::= READ transaction_access_mode.
-transaction_characteristic ::= WITH transaction_consistent transaction_snapshot.
+transaction_characteristic(A) ::= READ transaction_access_mode(B). {
+  A = B;
+}
+transaction_characteristic(A) ::= WITH(B) transaction_consistent transaction_snapshot. {
+  A.flags = MYLITE_TRANSACTION_CONSISTENT_SNAPSHOT;
+  A.token = B;
+}
 
-transaction_access_mode ::= ONLY.
-transaction_access_mode ::= WRITE.
+transaction_access_mode(A) ::= ONLY(B). {
+  A.flags = MYLITE_TRANSACTION_READ_ONLY;
+  A.token = B;
+}
+transaction_access_mode(A) ::= WRITE(B). {
+  A.flags = MYLITE_TRANSACTION_READ_WRITE;
+  A.token = B;
+}
 
 transaction_consistent ::= CONSISTENT.
 transaction_snapshot ::= SNAPSHOT.

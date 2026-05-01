@@ -200,6 +200,8 @@ token sink:
   assignment forms, including replacement and secondary-password clauses.
 - `SET TRANSACTION` recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and
   read access modes without permissive tails.
+- `START TRANSACTION` recognizes comma-separated characteristics and rejects
+  conflicting `READ ONLY`/`READ WRITE` access modes.
 - `COMMIT` and `ROLLBACK` recognize `WORK`, `AND [NO] CHAIN`, and
   `[NO] RELEASE` tails while rejecting MySQL's invalid `AND CHAIN RELEASE`
   combination.

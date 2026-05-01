@@ -1934,14 +1934,54 @@ case "$principal_output" in
 		;;
 esac
 
-account_ddl_output=$("$parser" "CREATE USER 'u'@'h'; ALTER USER 'u'@'%'; DROP USER IF EXISTS 'u'@'%'; RENAME USER 'u'@'h' TO 'v'@'h'; CREATE ROLE IF NOT EXISTS 'r'@'%'; DROP ROLE r")
+account_ddl_output=$("$parser" "CREATE USER 'u'@'h'; ALTER USER 'u'@'%'; DROP USER IF EXISTS 'u'@'%', user1@; RENAME USER 'u'@'h' TO 'v'@'h'; CREATE ROLE IF NOT EXISTS 'r'@'%'; DROP ROLE IF EXISTS 'r'@'%', role2")
 case "$account_ddl_output" in
-	*"create"*/user:"'u'@'h'"*"alter"*/user:"'u'@'%'"*"drop"*/user:"'u'@'%'"*"rename"*/user:"'u'@'h'"*"create"*/role:"'r'@'%'"*"drop"*/role:r*) ;;
+	*"create"*/user:"'u'@'h'"*"alter"*/user:"'u'@'%'"*"drop"*/user:"'u'@'%'"*"rename"*/user:"'u'@'h'"*"create"*/role:"'r'@'%'"*"drop"*/role:"'r'@'%"*) ;;
 	*)
 		echo "unexpected account DDL output: $account_ddl_output" >&2
 		exit 1
 		;;
 esac
+
+if ! "$parser" --quiet 'DROP USER CURRENT_USER()'; then
+	echo "expected DROP USER CURRENT_USER() to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP USER'; then
+	echo "expected missing DROP USER account list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP USER IF EXISTS'; then
+	echo "expected missing DROP USER IF EXISTS account list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP USER u extra'; then
+	echo "expected DROP USER with trailing tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP USER u,'; then
+	echo "expected DROP USER with a trailing comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP ROLE'; then
+	echo "expected missing DROP ROLE role list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP ROLE CURRENT_USER()'; then
+	echo "expected DROP ROLE CURRENT_USER() to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP ROLE r extra'; then
+	echo "expected DROP ROLE with trailing tokens to fail" >&2
+	exit 1
+fi
 
 set_account_output=$("$parser" "SET ROLE r; SET ROLE ALL; SET ROLE NONE; SET ROLE ALL EXCEPT 'r'@'h'; SET ROLE DEFAULT; SET DEFAULT ROLE r TO 'u'@'h'; SET DEFAULT ROLE ALL TO 'u'@'h'; SET PASSWORD FOR 'u'@'h' = 'x'; SET PASSWORD = 'x'; SET PASSWORD TO RANDOM; SET autocommit=1")
 case "$set_account_output" in
@@ -2001,14 +2041,29 @@ if "$parser" --quiet 'SET CHARSET utf8mb4 @x = 1'; then
 	exit 1
 fi
 
-resource_group_output=$("$parser" 'CREATE RESOURCE GROUP rg TYPE = USER; ALTER RESOURCE GROUP rg ENABLE; DROP RESOURCE GROUP rg; SET RESOURCE GROUP rg')
+resource_group_output=$("$parser" 'CREATE RESOURCE GROUP rg TYPE = USER; ALTER RESOURCE GROUP rg ENABLE; DROP RESOURCE GROUP rg; DROP RESOURCE GROUP rg1 FORCE; SET RESOURCE GROUP rg')
 case "$resource_group_output" in
-	*"create"*/resource_group:rg*"alter"*/resource_group:rg*"drop"*/resource_group:rg*"set"*/resource_group:rg*) ;;
+	*"create"*/resource_group:rg*"alter"*/resource_group:rg*"drop"*/resource_group:rg*"drop"*/resource_group:rg1*"set"*/resource_group:rg*) ;;
 	*)
 		echo "unexpected resource group output: $resource_group_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'DROP RESOURCE GROUP'; then
+	echo "expected missing DROP RESOURCE GROUP name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP RESOURCE GROUP rg IF EXISTS'; then
+	echo "expected unsupported DROP RESOURCE GROUP IF EXISTS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP RESOURCE GROUP rg FORCE extra'; then
+	echo "expected DROP RESOURCE GROUP with trailing FORCE tokens to fail" >&2
+	exit 1
+fi
 
 server_logfile_output=$("$parser" 'CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (HOST "h"); ALTER SERVER s OPTIONS (USER "u"); DROP SERVER IF EXISTS "server_one"; CREATE LOGFILE GROUP lg ADD UNDOFILE "u.dat"; ALTER LOGFILE GROUP lg ADD UNDOFILE "v.dat"; DROP LOGFILE GROUP lg ENGINE=NDB; CREATE TABLESPACE ts ADD DATAFILE "ts.ibd"; DROP TABLESPACE ts ENGINE InnoDB; ALTER UNDO TABLESPACE uts SET INACTIVE; DROP UNDO TABLESPACE undo_003 ENGINE InnoDB; DROP SPATIAL REFERENCE SYSTEM IF EXISTS 4120')
 case "$server_logfile_output" in

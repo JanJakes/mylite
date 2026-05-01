@@ -70,6 +70,9 @@ optional `IF EXISTS` with an identifier-like target.
 `DROP TABLESPACE`, and `DROP UNDO TABLESPACE` validate their required object
 names and low-level tails, including `IF EXISTS`, numeric SRIDs, and
 `ENGINE [=] name` where MySQL syntax or the corpus requires it.
+`DROP USER` and `DROP ROLE` validate optional `IF EXISTS` and account/role
+lists, while `DROP RESOURCE GROUP` validates the required group name and
+optional `FORCE`.
 
 Standalone `DROP INDEX` records the index target and validates the required
 `ON` table clause plus optional `ALGORITHM` and `LOCK` clauses:

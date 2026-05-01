@@ -312,6 +312,22 @@ static int validate_drop_logfile_group_statement_syntax(const mylite_parser *par
 static int validate_drop_engine_tail_syntax(const mylite_parser *parser,
                                             size_t token_index,
                                             size_t last_token_index);
+static int validate_drop_principal_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    int allow_current_user);
+static int validate_drop_principal_name_list_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    int allow_current_user);
+static int validate_drop_principal_name_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index,
+                                               int allow_current_user,
+                                               size_t *next_token_index);
+static int validate_drop_resource_group_statement_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index);
 static int validate_drop_index_statement_syntax(const mylite_parser *parser,
                                                 size_t token_index,
                                                 size_t last_token_index);
@@ -336,6 +352,9 @@ static int token_is_drop_spatial_reference_system_token(const mylite_parser *par
                                                         size_t token_index,
                                                         size_t last_token_index);
 static int token_is_drop_stored_object_token(int token);
+static int token_is_drop_resource_group_token(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index);
 static int token_is_drop_tablespace_token(const mylite_parser *parser, size_t token_index);
 static int token_is_drop_undo_tablespace_token(const mylite_parser *parser,
                                                size_t token_index,
@@ -4490,6 +4509,15 @@ static int validate_drop_statement_syntax(const mylite_parser *parser, const myl
 	if (token_is_drop_logfile_group_token(parser, token_index + 1, last_token_index)) {
 		return validate_drop_logfile_group_statement_syntax(parser, token_index + 1, last_token_index);
 	}
+	if (parser->tokens[token_index + 1].parser_token == USER_T) {
+		return validate_drop_principal_statement_syntax(parser, token_index + 1, last_token_index, 1);
+	}
+	if (parser->tokens[token_index + 1].parser_token == ROLE_T) {
+		return validate_drop_principal_statement_syntax(parser, token_index + 1, last_token_index, 0);
+	}
+	if (token_is_drop_resource_group_token(parser, token_index + 1, last_token_index)) {
+		return validate_drop_resource_group_statement_syntax(parser, token_index + 1, last_token_index);
+	}
 	if (parser->tokens[token_index + 1].parser_token == INDEX_T) {
 		return validate_drop_index_statement_syntax(parser, token_index + 1, last_token_index);
 	}
@@ -4675,6 +4703,112 @@ static int validate_drop_engine_tail_syntax(const mylite_parser *parser,
 	       token_is_drop_engine_name(parser, token_index);
 }
 
+static int validate_drop_principal_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    int allow_current_user)
+{
+	int token;
+
+	if (token_index >= parser->token_count) {
+		return 0;
+	}
+	token = parser->tokens[token_index].parser_token;
+	if (token != USER_T && token != ROLE_T) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "IF") &&
+	    token_text_equals(parser, token_index + 1, "EXISTS")) {
+		token_index += 2;
+	}
+
+	return validate_drop_principal_name_list_syntax(parser,
+	                                                token_index,
+	                                                last_token_index,
+	                                                allow_current_user);
+}
+
+static int validate_drop_principal_name_list_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index,
+                                                    int allow_current_user)
+{
+	int saw_name = 0;
+
+	while (token_index <= last_token_index) {
+		if (!validate_drop_principal_name_syntax(parser,
+		                                         token_index,
+		                                         last_token_index,
+		                                         allow_current_user,
+		                                         &token_index)) {
+			return 0;
+		}
+		saw_name = 1;
+
+		if (token_index > last_token_index) {
+			break;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return saw_name;
+}
+
+static int validate_drop_principal_name_syntax(const mylite_parser *parser,
+                                               size_t token_index,
+                                               size_t last_token_index,
+                                               int allow_current_user,
+                                               size_t *next_token_index)
+{
+	size_t last_name_token;
+
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+	if (!allow_current_user && token_is_current_user_function_name(parser, token_index)) {
+		return 0;
+	}
+	if (!token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	last_name_token = last_account_name_token(parser, token_index, last_token_index);
+	if (last_name_token + 1 <= last_token_index &&
+	    token_is_account_at_marker(parser, last_name_token + 1)) {
+		last_name_token++;
+	}
+
+	*next_token_index = last_name_token + 1;
+	return 1;
+}
+
+static int validate_drop_resource_group_statement_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index)
+{
+	if (!token_is_drop_resource_group_token(parser, token_index, last_token_index)) {
+		return 0;
+	}
+
+	token_index += 2;
+	if (token_index > last_token_index ||
+	    !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+	token_index++;
+
+	return token_index > last_token_index ||
+	       (token_index == last_token_index && token_text_equals(parser, token_index, "FORCE"));
+}
+
 static int validate_drop_index_statement_syntax(const mylite_parser *parser,
                                                 size_t token_index,
                                                 size_t last_token_index)
@@ -4850,6 +4984,16 @@ static int token_is_drop_stored_object_token(int token)
 	       token == FUNCTION_T ||
 	       token == PROCEDURE_T ||
 	       token == TRIGGER_T;
+}
+
+static int token_is_drop_resource_group_token(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	return token_index + 1 <= last_token_index &&
+	       token_index + 1 < parser->token_count &&
+	       token_text_equals(parser, token_index, "RESOURCE") &&
+	       parser->tokens[token_index + 1].parser_token == GROUP_T;
 }
 
 static int token_is_drop_tablespace_token(const mylite_parser *parser, size_t token_index)

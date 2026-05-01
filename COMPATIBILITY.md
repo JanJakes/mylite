@@ -212,8 +212,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER USER` | ❌ | medium | Authentication plugins, passwords, MFA, TLS, resources, lock/expire, comments, attributes, and default roles. |  |
 | `CREATE USER` | ❌ | medium | User creation syntax, IF NOT EXISTS, auth factors, TLS, resources, password options, and comments. |  |
 | `CREATE ROLE` | ❌ | medium | Role creation syntax and metadata. |  |
-| `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. |  |
-| `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. |  |
+| `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. | Parser records the first account target and validates optional `IF EXISTS` plus comma-separated account lists, including corpus-observed `user@` forms; privilege cleanup and diagnostics are not implemented. |
+| `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. | Parser records the first role target and validates optional `IF EXISTS` plus comma-separated role lists; grant cleanup and diagnostics are not implemented. |
 | `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. | Parser records the first granted-to user or role target; privilege graph updates and diagnostics are not implemented. |
 | `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. |  |
 | `REVOKE` | ❌ | medium | Privilege and role revocation semantics. | Parser records the first revoked-from user or role target; privilege graph updates and diagnostics are not implemented. |
@@ -222,7 +222,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SET ROLE` | ❌ | medium | Active-role selection. | Parser records explicit role targets plus `DEFAULT`, `ALL`, and `NONE` active-role collection targets; privilege checks and active-role state are not implemented. |
 | `CREATE RESOURCE GROUP` | ❌ | low | Thread resource group creation syntax. |  |
 | `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. |  |
-| `DROP RESOURCE GROUP` | ❌ | low | Resource group deletion syntax. |  |
+| `DROP RESOURCE GROUP` | ❌ | low | Resource group deletion syntax. | Parser records and validates the resource group target with optional `FORCE`; resource group metadata, thread reassignment, and diagnostics are not implemented. |
 | `SET RESOURCE GROUP` | ❌ | low | Thread assignment to resource groups. |  |
 | `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. | Parser records the first concrete table target and validates table lists, `ANALYZE FORMAT=... TABLE`, and histogram update/drop clause shape; statistics behavior is not implemented. |
 | `CHECK TABLE` | ❌ | high | Table consistency checks and result-set metadata. | Parser records the first concrete table target and validates table lists plus documented check options; check behavior and result rows are not implemented. |

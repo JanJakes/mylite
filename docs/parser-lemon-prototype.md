@@ -114,6 +114,8 @@ token sink:
   debug/development SHOW form.
 - `SHOW ENGINE ... STATUS|LOGS|MUTEX` recognizes engine names using the shared
   identifier grammar.
+- `SHOW BINLOG EVENTS` and `SHOW RELAYLOG EVENTS` recognize optional log names,
+  numeric `FROM` positions, and `LIMIT` tails.
 - `SHOW PROFILE` recognizes profile type lists and numeric `FOR QUERY` ids.
 - `SET ROLE` and `SET DEFAULT ROLE` recognize MySQL role specifiers and account
   lists rather than permissive token tails.

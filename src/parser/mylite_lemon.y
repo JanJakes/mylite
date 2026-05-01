@@ -2384,7 +2384,11 @@ show_log_file_tail ::= .
 show_log_file_tail ::= IN ATOM.
 
 show_log_from_tail ::= .
-show_log_from_tail ::= FROM ATOM.
+show_log_from_tail ::= FROM show_log_position.
+
+show_log_position ::= BOOLEAN_NUMBER.
+show_log_position ::= FACTOR_NUMBER.
+show_log_position ::= NUMBER_LITERAL.
 
 show_routine_status_kind ::= FUNCTION.
 show_routine_status_kind ::= PROCEDURE.

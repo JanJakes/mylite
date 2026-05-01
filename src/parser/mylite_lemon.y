@@ -348,6 +348,7 @@ create_table_definition_token ::= RB.
 create_table_definition_token ::= LC.
 create_table_definition_token ::= RC.
 
+create_table_tail_option_start ::= AUTOEXTEND_SIZE.
 create_table_tail_option_start ::= AUTO_INCREMENT.
 create_table_tail_option_start ::= AVG_ROW_LENGTH.
 create_table_tail_option_start ::= CHARACTER.

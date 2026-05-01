@@ -68,7 +68,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. | Parser recognizes schema names using shared unreserved identifier grammar plus charset, collation, `'Y'`/`'N'` encryption, and `READ ONLY` clauses limited to `DEFAULT`, `0`, or `1`. |
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. | Parser recognizes schedule, completion, rename, enable/disable, comment, and `DO` clauses. |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
-| `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |
+| `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. | Parser recognizes redo-log enable/disable, InnoDB/binlog master-key rotation, TLS reload with channel and no-rollback options, and keyring reload. |
 | `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. | Parser recognizes `ADD UNDOFILE`, numeric `INITIAL_SIZE`, `WAIT`, and required `ENGINE`. |
 | `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. | Parser recognizes routine characteristic clauses: comments, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. | Parser recognizes the documented `OPTIONS` names and value requirements. |
@@ -158,10 +158,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. | Parser recognizes optional `WORK` and savepoint names using the shared identifier grammar. |
 | `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. | Parser recognizes savepoint names using the shared identifier grammar. |
 | `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/local/next-transaction scope. | Parser recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and READ ONLY/READ WRITE access modes. |
-| `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. |  |
-| `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. |  |
+| `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. | Parser recognizes the backup-lock statement shape. |
+| `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. | Parser recognizes the instance unlock statement shape. |
 | `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. | Parser recognizes table lists, lock types, and aliases using the shared identifier grammar. |
-| `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. |  |
+| `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. | Parser recognizes `UNLOCK TABLE` and `UNLOCK TABLES` without table tails. |
 | `XA START` | ❌ | low | XA transaction branch start. | Parser recognizes one-, two-, and three-part XIDs with numeric `formatID` values. |
 | `XA END` | ❌ | low | XA transaction branch end. |  |
 | `XA PREPARE` | ❌ | low | XA prepare phase. |  |
@@ -223,12 +223,12 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP RESOURCE GROUP` | ❌ | low | Resource group deletion syntax. | Parser recognizes the optional `FORCE` modifier. |
 | `SET RESOURCE GROUP` | ❌ | low | Thread assignment to resource groups. | Parser recognizes optional numeric `FOR` thread-id lists. |
 | `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. | Parser recognizes table lists and histogram update/drop clauses, including numeric histogram bucket counts, using the shared identifier grammar for tables and columns. |
-| `CHECK TABLE` | ❌ | high | Table consistency checks and result-set metadata. |  |
-| `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. |  |
-| `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. |  |
-| `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. |  |
-| `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. |  |
-| `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. |  |
+| `CHECK TABLE` | ❌ | high | Table consistency checks and result-set metadata. | Parser recognizes table lists and documented option keywords including `FOR UPGRADE`. |
+| `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. | Parser recognizes table lists and optional `QUICK`/`EXTENDED` modifiers. |
+| `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers and table lists. |
+| `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, table lists, and `QUICK`/`EXTENDED`/`USE_FRM` options. |
+| `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. | Parser recognizes component file lists and optional `SET` assignments with global/persist scopes. |
+| `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. | Parser recognizes comma-separated component file lists. |
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar and required `SONAME` file values. |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. | Parser recognizes plugin names using the shared identifier grammar. |
 | `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. | Parser recognizes local clone and remote `CLONE INSTANCE` syntax, including numeric remote ports plus optional data directory and SSL clauses. |
@@ -238,14 +238,14 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. | Parser recognizes table references, key lists, and key-cache names using the shared identifier grammar. |
 | `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. | Parser recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, table forms, simple option lists, binary/engine/error/general/relay/slow log forms, and channel-qualified relay logs. |
 | `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. | Parser recognizes CONNECTION/QUERY modes and literal, shared-identifier local-variable, and user-variable targets. |
-| `LOAD INDEX INTO CACHE` | ❌ | low | MyISAM index preload syntax. |  |
+| `LOAD INDEX INTO CACHE` | ❌ | low | MyISAM index preload syntax. | Parser recognizes table/key lists, partition lists, `ALL`, and `IGNORE LEAVES`. |
 | `RESET` | ❌ | medium | RESET variants for source/replica/persist-style operations exposed by MySQL 8.4. |  |
 | `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. | Parser recognizes one- and two-part persisted variable names using the shared identifier grammar. |
-| `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. |  |
-| `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. |  |
+| `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. | Parser recognizes the standalone statement. |
+| `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. | Parser recognizes the standalone statement. |
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. | Parser recognizes table/column forms using the shared identifier grammar plus EXPLAIN-synonym variants, including numeric `FOR CONNECTION` ids. |
 | `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. | Parser recognizes `FORMAT=JSON INTO @var` with user-variable targets, `FOR SCHEMA`/`FOR DATABASE` schema specifiers, numeric `FOR CONNECTION` ids, and explicit `ANALYZE` statement starts. |
-| `HELP` | ❌ | low | Server help lookup result-set semantics. |  |
+| `HELP` | ❌ | low | Server help lookup result-set semantics. | Parser recognizes string, identifier, and keyword help topics. |
 | `USE` | ❌ | top | Default schema selection in the embedded single-file model. | Parser recognizes one-part schema names using the shared identifier grammar. |
 
 ### 1.5 SHOW Statements

@@ -64,6 +64,8 @@ token sink:
   engine, and attribute clauses.
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
   `OPTIONS` names, string-valued options, and numeric ports.
+- `ALTER INSTANCE` recognizes redo-log enable/disable, InnoDB/binlog master-key
+  rotation, TLS reload with channel/no-rollback options, and keyring reload.
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,
   `ENABLE/DISABLE KEYS`, `ADD`/`CHANGE`/`MODIFY` heads, `RENAME` forms,
   comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `DROP` forms,
@@ -88,9 +90,13 @@ token sink:
   references using the shared identifier grammar.
 - `INSTALL PLUGIN` and `UNINSTALL PLUGIN` recognize plugin names using the
   shared identifier grammar.
+- `INSTALL COMPONENT` and `UNINSTALL COMPONENT` recognize component file lists
+  and optional scoped `SET` assignments for installs.
 - `ANALYZE TABLE` recognizes table lists and histogram update/drop clauses using
   the shared identifier grammar for table and column names, with numeric
   histogram bucket counts.
+- `CHECK TABLE`, `CHECKSUM TABLE`, `OPTIMIZE TABLE`, and `REPAIR TABLE`
+  recognize table lists and their documented parser-level option keywords.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, numeric VCPU ranges, numeric thread priorities, force modifiers,
   and numeric thread-id assignment lists.
@@ -101,10 +107,14 @@ token sink:
   shared-identifier local-variable, or user-variable targets.
 - `LOCK TABLES` recognizes table lists, aliases, and MySQL lock types using the
   shared identifier grammar for alias names.
+- `LOCK INSTANCE FOR BACKUP`, `UNLOCK INSTANCE`, and `UNLOCK TABLES` have
+  closed statement shapes.
 - `LOAD DATA` and `LOAD XML` recognize file modifiers, duplicate handling,
   partition or row-matching clauses, character sets, field/line options,
   numeric ignored-row counts, column/user-variable lists, and `SET` tails.
   `LOAD DATA` partition names use the shared identifier grammar.
+- `LOAD INDEX INTO CACHE` recognizes table/key lists, partition lists, `ALL`,
+  and `IGNORE LEAVES`.
 - `EXPLAIN` and `DESCRIBE` recognize numeric `FOR CONNECTION` ids.
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
@@ -162,6 +172,8 @@ token sink:
 - `SHOW CREATE USER` reuses the shared account-reference grammar.
 - `FLUSH` recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, simple option
   lists, table forms, log variants, and channel-qualified relay logs.
+- `RESTART`, `SHUTDOWN`, and `HELP` recognize their closed parser-level
+  statement shapes.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,

@@ -622,6 +622,44 @@ static int validate_update_limit_tail_syntax(const mylite_parser *parser,
                                              size_t token_index,
                                              size_t last_token_index);
 static int token_starts_update_tail(const mylite_parser *parser, size_t token_index);
+static int validate_delete_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int skip_delete_modifiers(const mylite_parser *parser,
+                                 size_t token_index,
+                                 size_t last_token_index,
+                                 size_t *next_token_index);
+static int validate_delete_from_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
+static int validate_delete_multi_from_statement_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index);
+static int validate_delete_single_table_statement_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index);
+static int validate_delete_target_list_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index);
+static int validate_delete_target_syntax(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index,
+                                         size_t *next_token_index);
+static int validate_delete_table_reference_span_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index);
+static size_t find_delete_clause_token(const mylite_parser *parser,
+                                       size_t token_index,
+                                       size_t last_token_index,
+                                       int clause_token);
+static size_t find_delete_tail_token(const mylite_parser *parser,
+                                     size_t token_index,
+                                     size_t last_token_index);
+static int validate_delete_single_table_tail_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static int validate_delete_multi_table_tail_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index);
+static int token_starts_delete_tail(const mylite_parser *parser, size_t token_index);
 static int validate_import_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_binlog_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_install_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -2006,6 +2044,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_UPDATE:
 			if (!validate_update_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid UPDATE statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_DELETE:
+			if (!validate_delete_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid DELETE statement");
 				return;
 			}
 			break;
@@ -8470,6 +8514,327 @@ static int validate_update_limit_tail_syntax(const mylite_parser *parser,
 }
 
 static int token_starts_update_tail(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (parser->tokens[token_index].parser_token == WHERE_T ||
+	        token_text_equals(parser, token_index, "ORDER") ||
+	        token_text_equals(parser, token_index, "LIMIT"));
+}
+
+static int validate_delete_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (!skip_delete_modifiers(parser, token_index, last_token_index, &token_index)) {
+		return 0;
+	}
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == FROM_T) {
+		return validate_delete_from_statement_syntax(parser, token_index, last_token_index);
+	}
+	return validate_delete_multi_from_statement_syntax(parser, token_index, last_token_index);
+}
+
+static int skip_delete_modifiers(const mylite_parser *parser,
+                                 size_t token_index,
+                                 size_t last_token_index,
+                                 size_t *next_token_index)
+{
+	int seen_low_priority = 0;
+	int seen_quick = 0;
+	int seen_ignore = 0;
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (parser->tokens[token_index].parser_token == LOW_PRIORITY_T) {
+			if (seen_low_priority || seen_quick || seen_ignore) {
+				return 0;
+			}
+			seen_low_priority = 1;
+			token_index++;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == QUICK_T) {
+			if (seen_quick || seen_ignore) {
+				return 0;
+			}
+			seen_quick = 1;
+			token_index++;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == IGNORE_T) {
+			if (seen_ignore) {
+				return 0;
+			}
+			seen_ignore = 1;
+			token_index++;
+			continue;
+		}
+		break;
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_delete_from_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	size_t target_first_token = token_index + 1;
+	size_t using_token_index;
+
+	if (target_first_token > last_token_index) {
+		return 0;
+	}
+
+	using_token_index = find_delete_clause_token(parser, target_first_token, last_token_index, USING_T);
+	if (using_token_index < parser->token_count) {
+		size_t tail_token_index;
+		size_t references_last_token;
+
+		if (using_token_index == target_first_token ||
+		    !validate_delete_target_list_syntax(parser, target_first_token, using_token_index - 1)) {
+			return 0;
+		}
+
+		tail_token_index = find_delete_tail_token(parser, using_token_index + 1, last_token_index);
+		references_last_token = tail_token_index < parser->token_count ?
+			tail_token_index - 1 :
+			last_token_index;
+		if (!validate_delete_table_reference_span_syntax(parser, using_token_index + 1, references_last_token)) {
+			return 0;
+		}
+		return validate_delete_multi_table_tail_syntax(parser, tail_token_index, last_token_index);
+	}
+
+	return validate_delete_single_table_statement_syntax(parser, target_first_token, last_token_index);
+}
+
+static int validate_delete_multi_from_statement_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index)
+{
+	size_t from_token_index = find_delete_clause_token(parser, token_index, last_token_index, FROM_T);
+	size_t tail_token_index;
+	size_t references_last_token;
+
+	if (from_token_index >= parser->token_count ||
+	    from_token_index == token_index ||
+	    !validate_delete_target_list_syntax(parser, token_index, from_token_index - 1)) {
+		return 0;
+	}
+
+	tail_token_index = find_delete_tail_token(parser, from_token_index + 1, last_token_index);
+	references_last_token = tail_token_index < parser->token_count ?
+		tail_token_index - 1 :
+		last_token_index;
+	if (!validate_delete_table_reference_span_syntax(parser, from_token_index + 1, references_last_token)) {
+		return 0;
+	}
+	return validate_delete_multi_table_tail_syntax(parser, tail_token_index, last_token_index);
+}
+
+static int validate_delete_single_table_statement_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index)
+{
+	int seen_alias = 0;
+	int seen_partition = 0;
+
+	if (token_index > last_token_index || !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	token_index = last_qualified_name_token(parser, token_index, last_token_index) + 1;
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		if (!seen_partition && token_text_equals(parser, token_index, "PARTITION")) {
+			if (token_index + 1 > last_token_index ||
+			    !validate_dml_name_list_group_syntax(parser, token_index + 1, 0)) {
+				return 0;
+			}
+			token_index = parser->tokens[token_index + 1].matching_token;
+			seen_partition = 1;
+			continue;
+		}
+		if (!seen_alias && parser->tokens[token_index].parser_token == AS_T) {
+			if (token_index + 1 > last_token_index ||
+			    !token_can_continue_object_name(&parser->tokens[token_index + 1])) {
+				return 0;
+			}
+			token_index += 2;
+			seen_alias = 1;
+			continue;
+		}
+		if (!seen_alias &&
+		    !token_starts_delete_tail(parser, token_index) &&
+		    token_can_start_object_name(&parser->tokens[token_index])) {
+			token_index++;
+			seen_alias = 1;
+			continue;
+		}
+		break;
+	}
+
+	return validate_delete_single_table_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_delete_target_list_syntax(const mylite_parser *parser,
+                                              size_t token_index,
+                                              size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_delete_target_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static int validate_delete_target_syntax(const mylite_parser *parser,
+                                         size_t token_index,
+                                         size_t last_token_index,
+                                         size_t *next_token_index)
+{
+	if (token_index > last_token_index || !token_can_start_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	token_index = last_qualified_name_token(parser, token_index, last_token_index) + 1;
+	if (token_index + 1 <= last_token_index &&
+	    parser->tokens[token_index].parser_token == '.' &&
+	    token_text_equals(parser, token_index + 1, "*")) {
+		token_index += 2;
+	}
+
+	*next_token_index = token_index;
+	return 1;
+}
+
+static int validate_delete_table_reference_span_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index)
+{
+	int expecting_reference = 1;
+	int saw_reference = 0;
+
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (matching_token > token_index + 1) {
+			saw_reference = 1;
+			expecting_reference = 0;
+			token_index = matching_token;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == ',') {
+			if (expecting_reference) {
+				return 0;
+			}
+			expecting_reference = 1;
+			token_index++;
+			continue;
+		}
+		saw_reference = 1;
+		expecting_reference = 0;
+		token_index++;
+	}
+
+	return saw_reference && !expecting_reference;
+}
+
+static size_t find_delete_clause_token(const mylite_parser *parser,
+                                       size_t token_index,
+                                       size_t last_token_index,
+                                       int clause_token)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (token_starts_delete_tail(parser, token_index)) {
+			return parser->token_count;
+		}
+		if (parser->tokens[token_index].parser_token == clause_token) {
+			return token_index;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+	return parser->token_count;
+}
+
+static size_t find_delete_tail_token(const mylite_parser *parser,
+                                     size_t token_index,
+                                     size_t last_token_index)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (token_starts_delete_tail(parser, token_index)) {
+			return token_index;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+	return parser->token_count;
+}
+
+static int validate_delete_single_table_tail_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	return validate_update_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_delete_multi_table_tail_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	if (token_index >= parser->token_count || parser->tokens[token_index].parser_token != WHERE_T) {
+		return 0;
+	}
+	if (!validate_update_where_tail_syntax(parser, token_index, last_token_index, &token_index)) {
+		return 0;
+	}
+	return token_index > last_token_index;
+}
+
+static int token_starts_delete_tail(const mylite_parser *parser, size_t token_index)
 {
 	return token_index < parser->token_count &&
 	       (parser->tokens[token_index].parser_token == WHERE_T ||

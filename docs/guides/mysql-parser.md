@@ -39,6 +39,9 @@ column lists, `VALUES` / `VALUE`, `SET`, and query-backed source forms.
 tails while leaving expression semantics and row changes to later phases.
 `UPDATE` validates optional modifiers, the table-reference span before `SET`,
 assignment-list shape, and optional `WHERE`, `ORDER BY`, and `LIMIT` tails.
+`DELETE` validates documented single-table and multi-table shapes, including
+modifiers, target lists, `FROM` / `USING` table references, optional single-table
+partitions, `WHERE`, and single-table-only `ORDER BY` / `LIMIT`.
 
 Derived-table-leading `UPDATE` references skip the derived alias and report the
 first concrete table before `SET`:

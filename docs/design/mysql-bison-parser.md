@@ -48,6 +48,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/replace.html`
 - MySQL 8.4 UPDATE statement:
   `https://dev.mysql.com/doc/refman/8.4/en/update.html`
+- MySQL 8.4 DELETE statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/delete.html`
 - MySQL 8.4 LOAD DATA and LOAD XML statements:
   `https://dev.mysql.com/doc/refman/8.4/en/load-data.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/load-xml.html`
@@ -272,6 +274,11 @@ into parenthesized joined table references before the `SET` clause. `UPDATE`
 validation checks optional modifiers, a nonempty table-reference span, required
 assignment-list shape, and optional `WHERE`, `ORDER BY`, and `LIMIT` tails while
 leaving expression, join, ordering, and affected-row semantics to later phases.
+`DELETE` validation distinguishes single-table `FROM` deletes from both
+multi-table `FROM` and `USING` forms, checks documented modifiers, delete-target
+lists including `.*`, table-reference spans, optional single-table partition
+lists, and the clause rule that `ORDER BY` and `LIMIT` apply only to
+single-table deletes.
 `SELECT ... INTO` and `TABLE ... INTO` assignment targets are recorded for user
 variables and local variables. `SET` system-variable targets preserve qualified
 structured names such as `keycache1.key_buffer_size`. `INTO OUTFILE` and

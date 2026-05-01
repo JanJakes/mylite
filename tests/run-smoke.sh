@@ -135,6 +135,70 @@ if "$parser" --quiet 'UPDATE t1, SET a=1'; then
 	exit 1
 fi
 
+delete_output=$("$parser" "DELETE LOW_PRIORITY FROM t1 WHERE id=1 ORDER BY id LIMIT 1; DELETE t1, t2 FROM t1 JOIN t2 ON t1.id=t2.id WHERE t1.id=1; DELETE FROM alias USING t1, t2 alias WHERE t1.a = alias.a")
+case "$delete_output" in
+	*"delete[1:13"*/table:t1*"delete[15:36"*/table:t1*"delete[38:53"*/table:alias*) ;;
+	*)
+		echo "unexpected DELETE output: $delete_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'DELETE'; then
+	echo "expected DELETE without target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DELETE FROM'; then
+	echo "expected DELETE FROM without target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DELETE FROM t1,'; then
+	echo "expected trailing single-table DELETE comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DELETE t1'; then
+	echo "expected multi-table DELETE without FROM to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DELETE FROM t1 USING'; then
+	echo "expected DELETE USING without table references to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DELETE t1 FROM'; then
+	echo "expected multi-table DELETE without table references to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DELETE t1, FROM t1'; then
+	echo "expected trailing DELETE target comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DELETE FROM t1 ORDER BY'; then
+	echo "expected DELETE ORDER BY without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DELETE FROM t1 LIMIT'; then
+	echo "expected DELETE LIMIT without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DELETE FROM t1 WHERE'; then
+	echo "expected DELETE WHERE without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DELETE t1 FROM t1 ORDER BY id'; then
+	echo "expected multi-table DELETE ORDER BY to fail" >&2
+	exit 1
+fi
+
 version_comment_output=$("$parser" "SELECT /*! STRAIGHT_JOIN */ 1; /*!80409 SET @ok=1 */; /*!080409 SET @six=1 */; /*!80410 SET @future=1 */; /*!99999 SET @far=1 */; /*!123 SET @short=1 */; SELECT 2")
 case "$version_comment_output" in
 	*"@future"*|*"@far"*|*"@short"*)

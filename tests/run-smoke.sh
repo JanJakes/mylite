@@ -1820,8 +1820,88 @@ case "$select_into_output" in
 		;;
 esac
 
+if ! "$parser" --quiet "SELECT SQL_SMALL_RESULT SQL_BUFFER_RESULT 1 FROM t WHERE a > 0 GROUP BY b HAVING COUNT(*) > 0 ORDER BY b LIMIT 5 OFFSET 1"; then
+	echo "expected SELECT modifiers and major clause tails to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "SELECT 0 FROM t1 FORCE INDEX FOR GROUP BY(a) WHERE a = 0 OR b = 0 AND c = 0"; then
+	echo "expected SELECT index hint FOR GROUP BY to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "SELECT a FROM t1 IGNORE INDEX FOR ORDER BY (PRIMARY,i2) ORDER BY a"; then
+	echo "expected SELECT index hint FOR ORDER BY to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "SELECT 1 UNION SELECT 2"; then
+	echo "expected SELECT set-operation RHS to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "(SELECT 1 INTO @v)"; then
+	echo "expected parenthesized SELECT INTO variable to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "SELECT 1 UNION (SELECT 2 INTO OUTFILE 'parser.test.file2')"; then
+	echo "expected parenthesized SELECT INTO OUTFILE set-operation RHS to parse" >&2
+	exit 1
+fi
+
 if "$parser" --quiet 'SELECT INTO @x'; then
 	echo "expected SELECT INTO without select expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT FROM t'; then
+	echo "expected SELECT without projection before FROM to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet '(SELECT FROM t)'; then
+	echo "expected parenthesized SELECT without projection before FROM to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'WITH c AS (SELECT 1) SELECT FROM c'; then
+	echo "expected WITH SELECT without projection before FROM to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT 1 UNION SELECT FROM t'; then
+	echo "expected SELECT set-operation RHS without projection to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a, FROM t'; then
+	echo "expected SELECT projection trailing comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a FROM'; then
+	echo "expected SELECT FROM without table reference to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a WHERE'; then
+	echo "expected SELECT WHERE without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a GROUP BY'; then
+	echo "expected SELECT GROUP BY without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a ORDER x'; then
+	echo "expected SELECT ORDER without BY to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SELECT a LIMIT'; then
+	echo "expected SELECT LIMIT without expression to fail" >&2
 	exit 1
 fi
 

@@ -289,10 +289,16 @@ variable/export targets, and outer tails after parenthesized table expressions.
 variables and local variables. `SET` system-variable targets preserve qualified
 structured names such as `keycache1.key_buffer_size`. `INTO OUTFILE` and
 `INTO DUMPFILE` record the explicit export file target.
+`SELECT` validation checks nonempty projection lists for direct, parenthesized,
+nested, and set-operation RHS `SELECT` terms. It also validates that major
+clause shells such as `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`,
+`LIMIT`, window/procedure tails, and locking tails have a following body, while
+leaving full table-reference, expression, and query-expression analysis to a
+later phase. `FOR GROUP BY` and `FOR ORDER BY` inside index hints are not
+treated as SELECT clause boundaries.
 `SELECT ... INTO` validation checks the single top-level `INTO` rule, variable
-target-list separators, OUTFILE character-set and field/line options, and
-DUMPFILE target shape while leaving full SELECT query-expression analysis to a
-later phase.
+target-list separators, parenthesized query-expression boundaries, OUTFILE
+character-set and field/line options, and DUMPFILE target shape.
 Direct target metadata is also recorded for simple utility and table statements
 where the target is syntactically unambiguous: `USE`, `TABLE`, `TRUNCATE`,
 `HANDLER`, `IMPORT TABLE FROM`, `CALL`, direct `DESCRIBE` / `EXPLAIN` table
@@ -525,6 +531,9 @@ expressions, and rejects CTE shells that do not expose an outer DML/query
 statement.
 Plain `SELECT` and `WITH` query statements are recorded as query targets unless
 they expose a more specific `INTO` target.
+SELECT validation walks nested `SELECT` tokens so malformed parenthesized
+selects and set-operation RHS terms are rejected even before full query
+expression AST construction exists.
 Standalone `VALUES` statements are recorded as query targets because MySQL
 treats them as DML statements that return row sets; parser validation checks
 `ROW(...)` constructor-list shape plus optional `ORDER BY`, `LIMIT`, and

@@ -1442,6 +1442,9 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int where_state = DML_WHERE_NONE;
   int order_state = DML_ORDER_NONE;
   int limit_state = DML_LIMIT_NONE;
+  int seen_where = 0;
+  int seen_order = 0;
+  int seen_limit = 0;
   int payload_kind = DML_PAYLOAD_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
@@ -1611,6 +1614,10 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         pending_token = token;
         continue;
       }
+      if (token_id == ML_ORDER || token_id == ML_WHERE) {
+        mylite_parser_reject(ctx, token, "malformed DML clause order");
+        return;
+      }
       if (token_id == ML_ASC || token_id == ML_DESC) {
         order_state = DML_ORDER_AFTER_DIRECTION;
         pending_token = token;
@@ -1714,6 +1721,11 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     if ((kind == MYLITE_STATEMENT_UPDATE ||
          kind == MYLITE_STATEMENT_DELETE) &&
         token_id == ML_WHERE) {
+      if (seen_where || seen_order || seen_limit) {
+        mylite_parser_reject(ctx, token, "malformed DML clause order");
+        return;
+      }
+      seen_where = 1;
       where_state = DML_WHERE_AFTER_WHERE;
       pending_token = token;
       continue;
@@ -1722,6 +1734,11 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     if ((kind == MYLITE_STATEMENT_UPDATE ||
          kind == MYLITE_STATEMENT_DELETE) &&
         token_id == ML_ORDER) {
+      if (seen_order || seen_limit) {
+        mylite_parser_reject(ctx, token, "malformed DML clause order");
+        return;
+      }
+      seen_order = 1;
       order_state = DML_ORDER_AFTER_ORDER;
       pending_token = token;
       continue;
@@ -1730,6 +1747,11 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     if ((kind == MYLITE_STATEMENT_UPDATE ||
          kind == MYLITE_STATEMENT_DELETE) &&
         token_id == ML_LIMIT) {
+      if (seen_limit) {
+        mylite_parser_reject(ctx, token, "malformed DML clause order");
+        return;
+      }
+      seen_limit = 1;
       limit_state = DML_LIMIT_AFTER_LIMIT;
       pending_token = token;
       continue;

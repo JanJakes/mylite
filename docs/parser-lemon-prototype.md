@@ -42,7 +42,8 @@ token sink:
   `ON DUPLICATE KEY UPDATE` assignment tails.
 - Single-table `DELETE` recognizes table aliases before optional partition
   lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails, rejecting incomplete
-  DML clause tails and invalid top-level `ORDER BY` direction sequences.
+  DML clause tails, invalid top-level `ORDER BY` direction sequences, and
+  out-of-order top-level DML clauses.
 - `VALUES` recognizes comma-separated row contents while preserving nested
   expression bodies, set operators, `ORDER BY`, and `LIMIT` tails.
 - `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`

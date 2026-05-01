@@ -117,7 +117,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | `CALL` | ❌ | medium | Procedure invocation, result sets, OUT/INOUT parameters, and diagnostics. | Parser recognizes one- and two-part routine names plus comma-separated argument lists with nested expression bodies. |
-| `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. | Parser recognizes priority modifiers, table aliases before optional partition lists, `WHERE`/`ORDER BY`/`LIMIT` tails, and rejects incomplete DML clause tails plus invalid top-level `ORDER BY` direction sequences. |
+| `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. | Parser recognizes priority modifiers, table aliases before optional partition lists, `WHERE`/`ORDER BY`/`LIMIT` tails, and rejects incomplete, repeated, or out-of-order DML clause tails plus invalid top-level `ORDER BY` direction sequences. |
 | `DELETE` (multi-table) | ❌ | high | Multi-table delete forms using FROM and USING, join semantics, and affected rows. |  |
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. |  |
 | `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. | Parser recognizes one- and two-part table names, aliases, key names, MySQL's table-scan and indexed-read direction sets, equality/range tuple reads, `WHERE`, and numeric or identifier `LIMIT` tails. |
@@ -142,7 +142,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. | Parser requires the file-name string and validates basic character-set, field, and line option tails; export execution is not implemented. |
 | `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. | Parser requires the file-name string; export execution is not implemented. |
 | `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. | Parser recognizes table references, set operators, `ORDER BY`, numeric or identifier `LIMIT` forms, `INTO` variable lists, and `INTO OUTFILE`/`INTO DUMPFILE` targets. |
-| `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. | Parser validates comma-separated assignment lists, dotted assignment targets, nested expression values, and incomplete `WHERE`/`ORDER BY`/`LIMIT` tails. |
+| `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. | Parser validates comma-separated assignment lists, dotted assignment targets, nested expression values, and incomplete, repeated, or out-of-order `WHERE`/`ORDER BY`/`LIMIT` tails. |
 | `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. |  |
 | `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. | Parser recognizes non-empty comma-separated `VALUES ROW(...)` contents, `UNION`/`INTERSECT`/`EXCEPT`, and combined `ORDER BY`/`LIMIT` tails. |
 

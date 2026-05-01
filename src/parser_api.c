@@ -280,7 +280,17 @@ static int validate_transaction_completion_clause(const mylite_parser *parser,
 static int validate_prepare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_execute_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_deallocate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_drop_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_drop_prepare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_drop_index_statement_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index);
+static int validate_drop_index_option_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             size_t *next_token_index);
+static int token_is_drop_index_algorithm_value(const mylite_parser *parser, size_t token_index);
+static int token_is_drop_index_lock_value(const mylite_parser *parser, size_t token_index);
 static int validate_kill_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_help_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_clone_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1483,8 +1493,8 @@ static void validate_statement_syntax(mylite_parser *parser)
 			}
 			break;
 		case MYLITE_STATEMENT_DROP:
-			if (!validate_drop_prepare_statement_syntax(parser, statement)) {
-				mylite_parser_set_error(parser, "invalid DROP PREPARE statement");
+			if (!validate_drop_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid DROP statement");
 				return;
 			}
 			break;
@@ -4310,6 +4320,28 @@ static int validate_deallocate_statement_syntax(const mylite_parser *parser, con
 	       token_can_continue_object_name(&parser->tokens[token_index + 2]);
 }
 
+static int validate_drop_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	last_token_index = statement->last_token - 1;
+	if (token_index + 1 > last_token_index) {
+		return 0;
+	}
+	if (parser->tokens[token_index + 1].parser_token == PREPARE_T) {
+		return validate_drop_prepare_statement_syntax(parser, statement);
+	}
+	if (parser->tokens[token_index + 1].parser_token == INDEX_T) {
+		return validate_drop_index_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+	return 1;
+}
+
 static int validate_drop_prepare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
 {
 	size_t token_index = find_statement_kind_token(parser, statement);
@@ -4326,6 +4358,81 @@ static int validate_drop_prepare_statement_syntax(const mylite_parser *parser, c
 	}
 	return token_index + 2 == last_token_index &&
 	       token_can_continue_object_name(&parser->tokens[token_index + 2]);
+}
+
+static int validate_drop_index_statement_syntax(const mylite_parser *parser,
+                                                size_t token_index,
+                                                size_t last_token_index)
+{
+	size_t last_name_token;
+
+	if (token_index >= parser->token_count ||
+	    parser->tokens[token_index].parser_token != INDEX_T ||
+	    token_index + 3 > last_token_index ||
+	    !token_can_continue_object_name(&parser->tokens[token_index + 1]) ||
+	    !token_text_equals(parser, token_index + 2, "ON") ||
+	    !token_can_continue_object_name(&parser->tokens[token_index + 3])) {
+		return 0;
+	}
+
+	token_index += 3;
+	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+	token_index = last_name_token + 1;
+	while (token_index <= last_token_index) {
+		if (!validate_drop_index_option_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static int validate_drop_index_option_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             size_t *next_token_index)
+{
+	int is_algorithm_option = token_text_equals(parser, token_index, "ALGORITHM");
+	int is_lock_option = token_text_equals(parser, token_index, "LOCK");
+
+	if (!is_algorithm_option && !is_lock_option) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "=")) {
+		token_index++;
+	}
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	if (is_algorithm_option) {
+		if (!token_is_drop_index_algorithm_value(parser, token_index)) {
+			return 0;
+		}
+	} else if (!token_is_drop_index_lock_value(parser, token_index)) {
+		return 0;
+	}
+
+	*next_token_index = token_index + 1;
+	return 1;
+}
+
+static int token_is_drop_index_algorithm_value(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (parser->tokens[token_index].parser_token == DEFAULT_T ||
+	        token_text_equals(parser, token_index, "INPLACE") ||
+	        token_text_equals(parser, token_index, "COPY"));
+}
+
+static int token_is_drop_index_lock_value(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (parser->tokens[token_index].parser_token == DEFAULT_T ||
+	        token_text_equals(parser, token_index, "NONE") ||
+	        token_text_equals(parser, token_index, "SHARED") ||
+	        token_text_equals(parser, token_index, "EXCLUSIVE"));
 }
 
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

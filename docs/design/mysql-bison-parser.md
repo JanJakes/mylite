@@ -301,7 +301,9 @@ tokens.
 Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`, and
 `SET RESOURCE GROUP`. Server, logfile-group, tablespace, and undo-tablespace
 DDL targets are recorded for the low-level storage/metadata statements that
-expose a direct name. Instance-level `ALTER`, `LOCK`, `UNLOCK`, `RESTART`, and
+expose a direct name. Standalone `DROP INDEX` records the index target and
+validates the required `ON` table clause plus optional `ALGORITHM` and `LOCK`
+clauses. Instance-level `ALTER`, `LOCK`, `UNLOCK`, `RESTART`, and
 `SHUTDOWN`
 statements are recorded with an object kind but no object-name span. `RESTART`
 and `SHUTDOWN` reject body tokens because MySQL accepts only the bare statement

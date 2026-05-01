@@ -332,8 +332,62 @@ case "$object_output" in
 	*)
 		echo "unexpected object output: $object_output" >&2
 		exit 1
-	;;
+		;;
 esac
+
+drop_index_output=$("$parser" 'DROP INDEX i ON t; DROP INDEX `PRIMARY` ON `db`.`t` ALGORITHM=INPLACE LOCK=NONE; DROP INDEX i2 ON t LOCK SHARED ALGORITHM COPY')
+case "$drop_index_output" in
+	*"drop"*/index:i*"drop"*/index:'`PRIMARY`'*"drop"*/index:i2*) ;;
+	*)
+		echo "unexpected DROP INDEX output: $drop_index_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'DROP'; then
+	echo "expected empty DROP statement to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP INDEX'; then
+	echo "expected missing DROP INDEX name to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP INDEX i'; then
+	echo "expected missing DROP INDEX table to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP INDEX i t'; then
+	echo "expected DROP INDEX without ON to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP INDEX i ON'; then
+	echo "expected missing DROP INDEX ON table to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP INDEX PRIMARY ON t'; then
+	echo "expected unquoted DROP INDEX PRIMARY to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP INDEX i ON t ALGORITHM'; then
+	echo "expected missing DROP INDEX ALGORITHM value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP INDEX i ON t ALGORITHM=BAD'; then
+	echo "expected invalid DROP INDEX ALGORITHM value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DROP INDEX i ON t LOCK=BAD'; then
+	echo "expected invalid DROP INDEX LOCK value to fail" >&2
+	exit 1
+fi
 
 plural_tables_output=$("$parser" 'DROP TABLES t1, t4; RENAME TABLES old TO new; ANALYZE TABLES c, cc; CHECK TABLES t1; OPTIMIZE TABLES columns_priv, db, user')
 case "$plural_tables_output" in

@@ -87,7 +87,8 @@ token sink:
 - Top-level `SELECT` requires `INTO OUTFILE` and `INTO DUMPFILE` to include
   the mandatory file-name string.
 - Top-level `SELECT ... INTO OUTFILE` validates the basic `CHARACTER SET`,
-  `FIELDS`/`COLUMNS`, and `LINES` option tails.
+  `FIELDS`/`COLUMNS`, and `LINES` option tails, and file-output targets reject
+  stray suffixes that are not valid following `SELECT` clauses.
 - Top-level `SELECT` also rejects incomplete `UNION`/`INTERSECT`/`EXCEPT`
   set operations.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,

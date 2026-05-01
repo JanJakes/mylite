@@ -102,6 +102,7 @@ static int select_window_name_token(int token_id, MyliteToken token);
 static int select_lock_table_ref_start(int token_id, MyliteToken token);
 static int select_lock_table_ref_part(int token_id);
 static int select_into_output_option_start(int token_id);
+static int select_into_output_follow_token(int token_id, MyliteToken token);
 static int select_outfile_field_option_start(int token_id);
 static int select_outfile_line_option_start(int token_id);
 static int select_index_hint_name_token(int token_id);
@@ -1170,10 +1171,20 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
                              "malformed SELECT INTO OUTFILE option");
         return;
       }
+      if (!select_into_output_follow_token(token_id, token)) {
+        mylite_parser_reject(ctx, token,
+                             "malformed SELECT INTO OUTFILE option");
+        return;
+      }
       into_state = SELECT_INTO_NONE;
     }
     if (into_state == SELECT_INTO_DUMPFILE_READY) {
       if (select_into_output_option_start(token_id)) {
+        mylite_parser_reject(ctx, token,
+                             "malformed SELECT INTO DUMPFILE option");
+        return;
+      }
+      if (!select_into_output_follow_token(token_id, token)) {
         mylite_parser_reject(ctx, token,
                              "malformed SELECT INTO DUMPFILE option");
         return;
@@ -5007,6 +5018,14 @@ static int select_into_output_option_start(int token_id) {
          token_id == ML_ESCAPED || token_id == ML_FIELDS ||
          token_id == ML_LINES || token_id == ML_OPTIONALLY ||
          token_id == ML_STARTING || token_id == ML_TERMINATED;
+}
+
+static int select_into_output_follow_token(int token_id, MyliteToken token) {
+  return token_id == ML_FOR || token_id == ML_FROM || token_id == ML_GROUP ||
+         token_id == ML_HAVING || token_id == ML_LIMIT ||
+         token_id == ML_LOCK || token_id == ML_ORDER || token_id == ML_WHERE ||
+         token_ascii_equal(token, "qualify") ||
+         token_ascii_equal(token, "window");
 }
 
 static int select_outfile_field_option_start(int token_id) {

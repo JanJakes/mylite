@@ -190,6 +190,9 @@ static int select_lock_table_ref_start(int token_id, MyliteToken token);
 static int select_lock_table_ref_part(int token_id);
 static int select_into_output_option_start(int token_id);
 static int select_into_output_follow_token(int token_id, MyliteToken token);
+static int select_into_variable_target_token(int token_id, MyliteToken token);
+static int select_into_variable_at_target_token(int token_id,
+                                                MyliteToken token);
 static int select_outfile_field_option_start(int token_id);
 static int select_outfile_line_option_start(int token_id);
 static int select_index_hint_name_token(int token_id);
@@ -669,6 +672,9 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
   enum {
     SELECT_INTO_NONE,
     SELECT_INTO_AFTER_INTO,
+    SELECT_INTO_VAR_READY,
+    SELECT_INTO_AFTER_VAR_COMMA,
+    SELECT_INTO_AFTER_VAR_AT,
     SELECT_INTO_AFTER_OUTFILE,
     SELECT_INTO_AFTER_DUMPFILE,
     SELECT_INTO_OUTFILE_READY,
@@ -1333,13 +1339,63 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
         pending_token = token;
         continue;
       }
+      if (token_id == ML_AT_SIGN) {
+        into_state = SELECT_INTO_AFTER_VAR_AT;
+        pending_token = token;
+        continue;
+      }
+      if (select_into_variable_target_token(token_id, token)) {
+        into_state = SELECT_INTO_VAR_READY;
+        continue;
+      }
       if (select_operand_boundary(token_id)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete SELECT INTO clause");
         return;
       }
-      into_state = SELECT_INTO_NONE;
+      mylite_parser_reject(ctx, pending_token,
+                           "incomplete SELECT INTO clause");
+      return;
+    }
+    if (into_state == SELECT_INTO_AFTER_VAR_COMMA) {
+      if (token_id == ML_AT_SIGN) {
+        into_state = SELECT_INTO_AFTER_VAR_AT;
+        pending_token = token;
+        continue;
+      }
+      if (!select_into_variable_target_token(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO clause");
+        return;
+      }
+      into_state = SELECT_INTO_VAR_READY;
       continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_VAR_AT) {
+      if (!select_into_variable_at_target_token(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO clause");
+        return;
+      }
+      into_state = SELECT_INTO_VAR_READY;
+      continue;
+    }
+    if (into_state == SELECT_INTO_VAR_READY) {
+      if (token_id == ML_COMMA) {
+        into_state = SELECT_INTO_AFTER_VAR_COMMA;
+        pending_token = token;
+        continue;
+      }
+      if (select_has_outer_parenthesis &&
+          token_closes_nested_expression(token_id)) {
+        break;
+      }
+      if (select_into_output_follow_token(token_id, token)) {
+        into_state = SELECT_INTO_NONE;
+      } else {
+        mylite_parser_reject(ctx, token, "malformed SELECT INTO clause");
+        return;
+      }
     }
     if (into_state == SELECT_INTO_AFTER_OUTFILE) {
       if (!select_string_literal_token(token_id)) {
@@ -2115,6 +2171,10 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT lock clause");
   } else if (into_state == SELECT_INTO_AFTER_INTO) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT INTO clause");
+  } else if (into_state == SELECT_INTO_AFTER_VAR_COMMA ||
+             into_state == SELECT_INTO_AFTER_VAR_AT) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT INTO clause");
   } else if (into_state == SELECT_INTO_AFTER_OUTFILE ||
@@ -9501,6 +9561,16 @@ static int select_into_output_follow_token(int token_id, MyliteToken token) {
          token_id == ML_LOCK || token_id == ML_ORDER || token_id == ML_WHERE ||
          token_ascii_equal(token, "qualify") ||
          token_ascii_equal(token, "window");
+}
+
+static int select_into_variable_target_token(int token_id, MyliteToken token) {
+  return select_window_name_token(token_id, token) || token_id == ML_AT_HOST;
+}
+
+static int select_into_variable_at_target_token(int token_id,
+                                                MyliteToken token) {
+  return select_window_name_token(token_id, token) ||
+         token_id == ML_DOUBLE_QUOTED_STRING || token_id == ML_STRING_LITERAL;
 }
 
 static int select_outfile_field_option_start(int token_id) {

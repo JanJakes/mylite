@@ -1164,8 +1164,11 @@ drop_database_kind ::= SCHEMA.
 drop_if_exists_tail ::= .
 drop_if_exists_tail ::= IF reset_exists.
 
-alter_statement ::= ALTER alter_tail. {
-  mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
+alter_statement ::= ALTER(A) alter_tail. {
+  mylite_parser_validate_alter_table_statement(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_DDL);
+  }
 }
 
 alter_tail ::= TABLE(A) cache_table_ref. {

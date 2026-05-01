@@ -57,6 +57,8 @@ static int kill_at_sign_target_token(int token_id);
 static int kill_target_allows_call(int token_id);
 static int kill_target_token(int token_id);
 static int create_index_prefix_length_token(int token_id);
+static int alter_table_add_index_marker(int token_id);
+static int alter_table_add_non_index_marker(int token_id);
 static int dml_assignment_boundary(int mode, int token_id);
 static int dml_assignment_operator(int token_id);
 static int dml_assignment_target_token(int token_id);
@@ -2574,6 +2576,247 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
   }
 }
 
+void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
+                                                   MyliteToken start) {
+  enum {
+    ALTER_INDEX_KEY_NEED_PART,
+    ALTER_INDEX_KEY_AFTER_NAME,
+    ALTER_INDEX_KEY_AFTER_DOT,
+    ALTER_INDEX_KEY_PREFIX_VALUE,
+    ALTER_INDEX_KEY_PREFIX_AFTER_VALUE,
+    ALTER_INDEX_KEY_AFTER_PART,
+    ALTER_INDEX_KEY_AFTER_DIRECTION,
+    ALTER_INDEX_KEY_IN_FUNCTION
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_statement = 0;
+  int saw_table = 0;
+  int table_ref_done = 0;
+  int table_name_parts = 0;
+  int table_dot_pending = 0;
+  int add_scan = 0;
+  int add_index_candidate = 0;
+  int validate_key_list = 0;
+  int depth = 0;
+  int key_state = ALTER_INDEX_KEY_NEED_PART;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+        continue;
+      } else {
+        continue;
+      }
+    }
+
+    if (!saw_table) {
+      if (token_id != ML_TABLE) {
+        return;
+      }
+      saw_table = 1;
+      continue;
+    }
+
+    if (!table_ref_done) {
+      if (token_id == ML_SEMI) {
+        return;
+      }
+      if (table_dot_pending) {
+        table_name_parts++;
+        table_dot_pending = 0;
+        continue;
+      }
+      if (table_name_parts == 0) {
+        table_name_parts = 1;
+        continue;
+      }
+      if (token_id == ML_DOT && table_name_parts == 1) {
+        table_dot_pending = 1;
+        continue;
+      }
+      table_ref_done = 1;
+    }
+
+    if (validate_key_list) {
+      if (depth > 1) {
+        if (token_opens_nested_expression(token_id)) {
+          depth++;
+        } else if (token_closes_nested_expression(token_id)) {
+          depth--;
+          if (depth == 1 &&
+              key_state == ALTER_INDEX_KEY_IN_FUNCTION) {
+            key_state = ALTER_INDEX_KEY_AFTER_PART;
+          }
+        }
+        continue;
+      }
+
+      if (key_state == ALTER_INDEX_KEY_PREFIX_VALUE) {
+        if (!create_index_prefix_length_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete ALTER TABLE index key part");
+          return;
+        }
+        key_state = ALTER_INDEX_KEY_PREFIX_AFTER_VALUE;
+        continue;
+      }
+
+      if (key_state == ALTER_INDEX_KEY_PREFIX_AFTER_VALUE) {
+        if (token_id != ML_RP) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete ALTER TABLE index key part");
+          return;
+        }
+        key_state = ALTER_INDEX_KEY_AFTER_PART;
+        continue;
+      }
+
+      if (token_id == ML_LP) {
+        if (key_state == ALTER_INDEX_KEY_NEED_PART) {
+          key_state = ALTER_INDEX_KEY_IN_FUNCTION;
+          depth = 2;
+          pending_token = token;
+          continue;
+        }
+        if (key_state == ALTER_INDEX_KEY_AFTER_NAME) {
+          key_state = ALTER_INDEX_KEY_PREFIX_VALUE;
+          pending_token = token;
+          continue;
+        }
+        mylite_parser_reject(ctx, token,
+                             "malformed ALTER TABLE index key part");
+        return;
+      }
+
+      if (token_id == ML_RP) {
+        if (key_state == ALTER_INDEX_KEY_NEED_PART ||
+            key_state == ALTER_INDEX_KEY_AFTER_DOT ||
+            key_state == ALTER_INDEX_KEY_IN_FUNCTION) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete ALTER TABLE index key part");
+          return;
+        }
+        validate_key_list = 0;
+        add_scan = 0;
+        add_index_candidate = 0;
+        continue;
+      }
+
+      if (token_id == ML_COMMA) {
+        if (key_state != ALTER_INDEX_KEY_AFTER_NAME &&
+            key_state != ALTER_INDEX_KEY_AFTER_PART &&
+            key_state != ALTER_INDEX_KEY_AFTER_DIRECTION) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete ALTER TABLE index key part");
+          return;
+        }
+        key_state = ALTER_INDEX_KEY_NEED_PART;
+        pending_token = token;
+        continue;
+      }
+
+      if (token_id == ML_ASC || token_id == ML_DESC) {
+        if (key_state != ALTER_INDEX_KEY_AFTER_NAME &&
+            key_state != ALTER_INDEX_KEY_AFTER_PART) {
+          mylite_parser_reject(ctx, token,
+                               "malformed ALTER TABLE index key part");
+          return;
+        }
+        key_state = ALTER_INDEX_KEY_AFTER_DIRECTION;
+        continue;
+      }
+
+      if (token_id == ML_DOT) {
+        if (key_state != ALTER_INDEX_KEY_AFTER_NAME) {
+          mylite_parser_reject(ctx, token,
+                               "malformed ALTER TABLE index key part");
+          return;
+        }
+        key_state = ALTER_INDEX_KEY_AFTER_DOT;
+        pending_token = token;
+        continue;
+      }
+
+      if (key_state == ALTER_INDEX_KEY_NEED_PART ||
+          key_state == ALTER_INDEX_KEY_AFTER_DOT) {
+        if (!dml_row_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete ALTER TABLE index key part");
+          return;
+        }
+        key_state = ALTER_INDEX_KEY_AFTER_NAME;
+        continue;
+      }
+
+      mylite_parser_reject(ctx, token,
+                           "malformed ALTER TABLE index key part");
+      return;
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      break;
+    }
+
+    if (token_id == ML_COMMA) {
+      add_scan = 0;
+      add_index_candidate = 0;
+      continue;
+    }
+
+    if (token_id == ML_ADD) {
+      add_scan = 1;
+      add_index_candidate = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (!add_scan) {
+      continue;
+    }
+
+    if (alter_table_add_non_index_marker(token_id)) {
+      add_scan = 0;
+      add_index_candidate = 0;
+      continue;
+    }
+
+    if (alter_table_add_index_marker(token_id)) {
+      add_index_candidate = 1;
+      continue;
+    }
+
+    if (token_id == ML_LP) {
+      if (add_index_candidate) {
+        validate_key_list = 1;
+        depth = 1;
+        key_state = ALTER_INDEX_KEY_NEED_PART;
+        pending_token = token;
+      } else {
+        depth = 1;
+      }
+    }
+  }
+
+  if (validate_key_list) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete ALTER TABLE index key part");
+  }
+}
+
 void mylite_parser_require_permissive(MyliteParseContext *ctx,
                                       MyliteToken token) {
   if (ctx->permissive) {
@@ -2815,6 +3058,17 @@ static int kill_target_token(int token_id) {
 static int create_index_prefix_length_token(int token_id) {
   return token_id == ML_BOOLEAN_NUMBER || token_id == ML_FACTOR_NUMBER ||
          token_id == ML_NUMBER_LITERAL;
+}
+
+static int alter_table_add_index_marker(int token_id) {
+  return token_id == ML_FULLTEXT || token_id == ML_INDEX ||
+         token_id == ML_KEY || token_id == ML_PRIMARY ||
+         token_id == ML_SPATIAL || token_id == ML_UNIQUE;
+}
+
+static int alter_table_add_non_index_marker(int token_id) {
+  return token_id == ML_CHECK || token_id == ML_COLUMN ||
+         token_id == ML_FOREIGN;
 }
 
 static int dml_assignment_boundary(int mode, int token_id) {

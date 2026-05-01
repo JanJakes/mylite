@@ -141,7 +141,8 @@ token sink:
   `INSERT_METHOD` and `ROW_FORMAT` values, string-literal data/index
   directories, string-literal compression/password/connection/engine
   attributes, `AUTOEXTEND_SIZE`, `TABLE_CHECKSUM`, `START TRANSACTION`,
-  `ALGORITHM`/`LOCK` options, and tablespace discard/import forms.
+  `ALGORITHM`/`LOCK` options, tablespace discard/import forms, and validated
+  `ADD` index key-part prefix lengths and `ASC`/`DESC` tails.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;
   `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body.
   Table-level `ENGINE_ATTRIBUTE` and `SECONDARY_ENGINE_ATTRIBUTE` changes

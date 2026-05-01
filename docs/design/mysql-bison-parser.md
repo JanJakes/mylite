@@ -290,7 +290,9 @@ Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`, and
 DDL targets are recorded for the low-level storage/metadata statements that
 expose a direct name. Instance-level `ALTER`, `LOCK`, `UNLOCK`, `RESTART`, and
 `SHUTDOWN`
-statements are recorded with an object kind but no object-name span. Principal
+statements are recorded with an object kind but no object-name span. `RESTART`
+and `SHUTDOWN` reject body tokens because MySQL accepts only the bare statement
+forms. Principal
 targets are recorded for
 `GRANT ... TO` and `REVOKE ... FROM`, including the first `user@host` span when
 present. Account and role DDL target spans also

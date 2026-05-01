@@ -28,6 +28,7 @@ static void set_statement_end_from_token(const mylite_parser *parser,
 static void remove_statements_covered_by_previous(mylite_parser *parser, size_t statement_index);
 static void validate_statement_syntax(mylite_parser *parser);
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_kill_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static void classify_statement_metadata(mylite_parser *parser);
 static void classify_grouped_query_statement_kinds(mylite_parser *parser);
@@ -1011,6 +1012,18 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_RESTART:
+			if (!validate_single_token_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid RESTART statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_SHUTDOWN:
+			if (!validate_single_token_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid SHUTDOWN statement");
+				return;
+			}
+			break;
 		default:
 			break;
 		}
@@ -1030,6 +1043,15 @@ static int validate_use_statement_syntax(const mylite_parser *parser, const myli
 	last_token_index = statement->last_token - 1;
 	return token_index == last_token_index &&
 	       token_can_continue_object_name(&parser->tokens[token_index]);
+}
+
+static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+
+	return token_index < parser->token_count &&
+	       statement->last_token >= statement->first_token &&
+	       token_index == statement->last_token - 1;
 }
 
 static int validate_kill_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

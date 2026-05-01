@@ -808,6 +808,16 @@ case "$instance_output" in
 		;;
 esac
 
+if "$parser" --quiet 'RESTART NOW'; then
+	echo "expected RESTART body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SHUTDOWN NOW'; then
+	echo "expected SHUTDOWN body to fail" >&2
+	exit 1
+fi
+
 install_output=$("$parser" "INSTALL PLUGIN p SONAME 'x.so'; UNINSTALL PLUGIN p; INSTALL COMPONENT 'file://component'; UNINSTALL COMPONENT 'file://component'")
 case "$install_output" in
 	*"install"*/plugin:p*"uninstall"*/plugin:p*"install"*/component:"'file://component'"*"uninstall"*/component:"'file://component'"*) ;;

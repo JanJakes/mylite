@@ -407,7 +407,8 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   specific backup-lock, TLS, keyring, or redo-log operation.
   `KILL` metadata records single processlist-id expressions and distinguishes
   `KILL QUERY` from connection termination. `KILL` also has targeted syntax
-  validation for missing targets and comma-separated target lists.
+  validation for missing targets and comma-separated target lists. `BINLOG`
+  validates and records the single string event payload only.
   `CLONE` metadata records local clone directories or remote donor endpoints
   only; plugin availability, privilege checks, copy behavior, SSL requirements,
   and restart side effects remain runtime work.

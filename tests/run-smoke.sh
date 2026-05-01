@@ -693,14 +693,39 @@ case "$replica_status_output" in
 		;;
 esac
 
-binlog_event_output=$("$parser" "BINLOG 'abc'; BINLOG @payload")
+binlog_event_output=$("$parser" "BINLOG 'abc'")
 case "$binlog_event_output" in
-	*"binlog"*/binary_log_event:"'abc'"*"binlog[4:5"*) ;;
+	*"binlog"*/binary_log_event:"'abc'"*) ;;
 	*)
 		echo "unexpected BINLOG event output: $binlog_event_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet "BINLOG"; then
+	echo "expected missing BINLOG payload to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "BINLOG @payload"; then
+	echo "expected variable BINLOG payload to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "BINLOG 1"; then
+	echo "expected numeric BINLOG payload to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "BINLOG 'abc' extra"; then
+	echo "expected trailing BINLOG tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "BINLOG 'abc', 'def'"; then
+	echo "expected multi-payload BINLOG to fail" >&2
+	exit 1
+fi
 
 kill_output=$("$parser" 'KILL 123; KILL QUERY 456; KILL CONNECTION 789; KILL @id; KILL QUERY @thread_id; KILL CONNECTION_ID(); KILL "1"; KILL QUERY @id + 1')
 case "$kill_output" in

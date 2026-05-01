@@ -32,6 +32,7 @@ static int validate_truncate_statement_syntax(const mylite_parser *parser, const
 static int validate_call_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_call_argument_list_syntax(const mylite_parser *parser, size_t open_token_index);
 static int validate_import_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_binlog_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_single_token_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_release_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1042,6 +1043,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_BINLOG:
+			if (!validate_binlog_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid BINLOG statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_KILL:
 			if (!validate_kill_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid KILL statement");
@@ -1255,6 +1262,21 @@ static int validate_import_statement_syntax(const mylite_parser *parser, const m
 		expecting_file = 1;
 	}
 	return !expecting_file;
+}
+
+static int validate_binlog_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	return token_index == last_token_index &&
+	       parser->tokens[token_index].kind == MYLITE_TOKEN_STRING;
 }
 
 static int validate_savepoint_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

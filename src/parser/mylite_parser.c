@@ -72,6 +72,21 @@ typedef enum CreateTableOptionValueKind {
   CREATE_TABLE_OPTION_VALUE_STORAGE
 } CreateTableOptionValueKind;
 
+#define MYLITE_EXPRESSION_STACK_LIMIT 1024
+
+typedef struct MyliteExpressionFrame {
+  int active;
+  int allow_empty;
+  int started;
+  int previous_top_token_id;
+  int previous_was_operator;
+  MyliteToken previous_top_token;
+} MyliteExpressionFrame;
+
+typedef struct MyliteExpressionStack {
+  MyliteExpressionFrame frames[MYLITE_EXPRESSION_STACK_LIMIT];
+} MyliteExpressionStack;
+
 static void result_init(MyliteParseResult *result);
 static MyliteParseStatus parse_sql(const char *sql, size_t length,
                                    int permissive,
@@ -105,7 +120,33 @@ static int parenthesized_query_order_boundary(int token_id);
 static int query_expression_token(
     MyliteParseContext *ctx, int token_id, MyliteToken token, int *depth,
     int *previous_top_token_id, MyliteToken *previous_top_token,
-    int *previous_was_operator, const char *message);
+    int *previous_was_operator, MyliteExpressionStack *stack,
+    const char *message);
+static int query_expression_depth_token(
+    MyliteParseContext *ctx, int token_id, MyliteToken token, int *depth,
+    MyliteExpressionStack *stack, const char *message);
+static int query_expression_stack_active(MyliteExpressionStack *stack,
+                                         int depth);
+static int query_expression_stack_open_from_previous(
+    MyliteParseContext *ctx, MyliteExpressionStack *stack, int depth,
+    int previous_top_token_id, MyliteToken previous_top_token,
+    int previous_was_operator, int token_id, MyliteToken token,
+    const char *message);
+static int query_expression_stack_open(
+    MyliteParseContext *ctx, MyliteExpressionStack *stack, int current_depth,
+    int new_depth, int token_id, MyliteToken token, const char *message);
+static int query_expression_stack_token(
+    MyliteParseContext *ctx, MyliteExpressionStack *stack, int depth,
+    int token_id, MyliteToken token, const char *message);
+static int query_expression_stack_close(
+    MyliteParseContext *ctx, MyliteExpressionStack *stack, int depth,
+    MyliteToken token, const char *message);
+static void query_expression_stack_note_terminal(
+    MyliteExpressionStack *stack, int depth, int token_id, MyliteToken token);
+static int query_expression_group_allows_empty(int previous_top_token_id,
+                                               MyliteToken previous_top_token,
+                                               int previous_was_operator,
+                                               int token_id);
 static int select_window_name_token(int token_id, MyliteToken token);
 static int select_lock_table_ref_start(int token_id, MyliteToken token);
 static int select_lock_table_ref_part(int token_id);
@@ -604,6 +645,9 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
   MyliteToken pending_token;
   int token_id;
   int depth = 0;
+  MyliteExpressionStack expression_stack = {0};
+  int pre_select_depth = 0;
+  int select_has_outer_parenthesis = 0;
   int saw_select = 0;
   int select_prefix = 1;
   int select_modifiers = 0;
@@ -656,9 +700,16 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
     if (!saw_select) {
+      if (token_opens_nested_expression(token_id)) {
+        pre_select_depth++;
+      } else if (token_closes_nested_expression(token_id) &&
+                 pre_select_depth > 0) {
+        pre_select_depth--;
+      }
       if ((!use_start || token.offset >= start.offset) &&
           token_id == ML_SELECT) {
         saw_select = 1;
+        select_has_outer_parenthesis = pre_select_depth > 0;
       }
       continue;
     }
@@ -668,11 +719,17 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
     }
 
     if (depth > 0) {
-      if (token_id == ML_LP || token_id == ML_LB || token_id == ML_LC) {
-        depth++;
-      } else if (token_id == ML_RP || token_id == ML_RB ||
-                 token_id == ML_RC) {
-        depth--;
+      const char *nested_message = "malformed SELECT expression clause";
+      if (group_clause) {
+        nested_message = "malformed SELECT GROUP BY clause";
+      } else if (order_clause) {
+        nested_message = "malformed SELECT ORDER BY clause";
+      }
+      if (!query_expression_depth_token(ctx, token_id, token, &depth,
+                                        &expression_stack, nested_message)) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id)) {
         if (depth == 0 && order_clause) {
           order_previous_top_token_id = token_id;
           order_previous_top_token = token;
@@ -1489,11 +1546,15 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
       need_operand = 0;
     }
 
-    if (token_id == ML_LP || token_id == ML_LB || token_id == ML_LC) {
+    if (expression_clause == SELECT_EXPRESSION_NONE && !group_clause &&
+        !order_clause &&
+        (token_id == ML_LP || token_id == ML_LB || token_id == ML_LC)) {
       depth++;
       continue;
     }
-    if (token_id == ML_RP || token_id == ML_RB || token_id == ML_RC) {
+    if (expression_clause == SELECT_EXPRESSION_NONE && !group_clause &&
+        !order_clause &&
+        (token_id == ML_RP || token_id == ML_RB || token_id == ML_RC)) {
       continue;
     }
 
@@ -1800,6 +1861,15 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
       continue;
     }
     if (group_clause) {
+      if (token_closes_nested_expression(token_id) &&
+          select_has_outer_parenthesis) {
+        if (group_previous_was_operator) {
+          mylite_parser_reject(ctx, group_previous_top_token,
+                               "incomplete SELECT GROUP BY clause");
+          return;
+        }
+        break;
+      }
       if (token_id == ML_ASC || token_id == ML_DESC) {
         if (group_previous_was_operator) {
           mylite_parser_reject(ctx, group_previous_top_token,
@@ -1813,6 +1883,7 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
       if (!query_expression_token(
               ctx, token_id, token, &depth, &group_previous_top_token_id,
               &group_previous_top_token, &group_previous_was_operator,
+              &expression_stack,
               "malformed SELECT GROUP BY clause")) {
         return;
       }
@@ -1844,6 +1915,14 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
 
     if (expression_clause != SELECT_EXPRESSION_NONE) {
       if (token_closes_nested_expression(token_id)) {
+        if (select_has_outer_parenthesis) {
+          if (expression_previous_was_operator) {
+            mylite_parser_reject(ctx, expression_previous_top_token,
+                                 "incomplete SELECT expression clause");
+            return;
+          }
+          break;
+        }
         mylite_parser_reject(ctx, token,
                              "malformed SELECT expression clause");
         return;
@@ -1851,6 +1930,7 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
       if (!query_expression_token(
               ctx, token_id, token, &depth, &expression_previous_top_token_id,
               &expression_previous_top_token, &expression_previous_was_operator,
+              &expression_stack,
               "malformed SELECT expression clause")) {
         return;
       }
@@ -1865,12 +1945,21 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
 
     if (order_clause) {
       if (token_closes_nested_expression(token_id)) {
+        if (select_has_outer_parenthesis) {
+          if (order_previous_was_operator) {
+            mylite_parser_reject(ctx, order_previous_top_token,
+                                 "incomplete SELECT ORDER BY clause");
+            return;
+          }
+          break;
+        }
         mylite_parser_reject(ctx, token, "malformed SELECT ORDER BY clause");
         return;
       }
       if (!query_expression_token(
               ctx, token_id, token, &depth, &order_previous_top_token_id,
               &order_previous_top_token, &order_previous_was_operator,
+              &expression_stack,
               "malformed SELECT ORDER BY clause")) {
         return;
       }
@@ -1991,6 +2080,7 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
   int state = PAREN_QUERY_IN_BODY;
   int set_option_seen = 0;
   int order_depth = 0;
+  MyliteExpressionStack order_expression_stack = {0};
   int order_previous_top_token_id = 0;
   int order_previous_was_operator = 1;
   MyliteToken order_previous_top_token = start;
@@ -2019,10 +2109,12 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     }
 
     if (order_depth > 0) {
-      if (token_opens_nested_expression(token_id)) {
-        order_depth++;
-      } else if (token_closes_nested_expression(token_id)) {
-        order_depth--;
+      if (!query_expression_depth_token(
+              ctx, token_id, token, &order_depth, &order_expression_stack,
+              "malformed parenthesized query ORDER BY")) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id)) {
         if (order_depth == 0) {
           order_previous_top_token_id = token_id;
           order_previous_top_token = token;
@@ -2152,7 +2244,7 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
       if (!query_expression_token(
               ctx, token_id, token, &order_depth,
               &order_previous_top_token_id, &order_previous_top_token,
-              &order_previous_was_operator,
+              &order_previous_was_operator, &order_expression_stack,
               "malformed parenthesized query ORDER BY")) {
         return;
       }
@@ -2380,6 +2472,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int values_row_last_token_id = 0;
   int saw_statement = 0;
   int depth = 0;
+  MyliteExpressionStack expression_stack = {0};
   int assignment_state = DML_ASSIGN_NONE;
   int assignment_mode = DML_ASSIGNMENT_NONE;
   int assignment_value_started = 0;
@@ -2420,14 +2513,25 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     }
 
     if (depth > 0) {
+      const char *nested_message = "malformed DML expression";
       if (values_state == DML_VALUES_IN_ROW) {
         values_row_last_token = token;
         values_row_last_token_id = token_id;
       }
-      if (token_opens_nested_expression(token_id)) {
-        depth++;
-      } else if (token_closes_nested_expression(token_id)) {
-        depth--;
+      if (assignment_state == DML_ASSIGN_VALUE) {
+        nested_message = "malformed DML assignment";
+      } else if (where_state == DML_WHERE_STARTED) {
+        nested_message = "malformed DML WHERE clause";
+      } else if (order_state == DML_ORDER_STARTED) {
+        nested_message = "malformed DML ORDER BY clause";
+      } else if (query_tail_state == DML_QUERY_TAIL_ORDER_EXPR) {
+        nested_message = "malformed DML parenthesized query ORDER BY";
+      }
+      if (!query_expression_depth_token(ctx, token_id, token, &depth,
+                                        &expression_stack, nested_message)) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id)) {
         if (depth == 0 && order_state == DML_ORDER_STARTED) {
           order_previous_top_token_id = token_id;
           order_previous_top_token = token;
@@ -2558,7 +2662,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
                 ctx, token_id, token, &depth,
                 &assignment_value_previous_top_token_id,
                 &assignment_value_previous_top_token,
-                &assignment_value_previous_was_operator,
+                &assignment_value_previous_was_operator, &expression_stack,
                 "malformed DML assignment")) {
           return;
         }
@@ -2902,7 +3006,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
       if (!query_expression_token(
               ctx, token_id, token, &depth, &query_order_previous_top_token_id,
               &query_order_previous_top_token,
-              &query_order_previous_was_operator,
+              &query_order_previous_was_operator, &expression_stack,
               "malformed DML parenthesized query ORDER BY")) {
         return;
       }
@@ -3030,6 +3134,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         if (!query_expression_token(
                 ctx, token_id, token, &depth, &where_previous_top_token_id,
                 &where_previous_top_token, &where_previous_was_operator,
+                &expression_stack,
                 "malformed DML WHERE clause")) {
           return;
         }
@@ -3065,6 +3170,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
       if (!query_expression_token(
               ctx, token_id, token, &depth, &order_previous_top_token_id,
               &order_previous_top_token, &order_previous_was_operator,
+              &expression_stack,
               "malformed DML ORDER BY clause")) {
         return;
       }
@@ -3116,6 +3222,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         if (!query_expression_token(
                 ctx, token_id, token, &depth, &order_previous_top_token_id,
                 &order_previous_top_token, &order_previous_was_operator,
+                &expression_stack,
                 "malformed DML ORDER BY clause")) {
           return;
         }
@@ -3361,6 +3468,7 @@ void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
   int saw_statement = 0;
   int saw_read = 0;
   int depth = 0;
+  MyliteExpressionStack expression_stack = {0};
   int seen_where = 0;
   int seen_limit = 0;
   int where_state = HANDLER_WHERE_NONE;
@@ -3380,10 +3488,12 @@ void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
     }
 
     if (depth > 0) {
-      if (token_opens_nested_expression(token_id)) {
-        depth++;
-      } else if (token_closes_nested_expression(token_id)) {
-        depth--;
+      if (!query_expression_depth_token(
+              ctx, token_id, token, &depth, &expression_stack,
+              "malformed HANDLER WHERE clause")) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id)) {
         if (depth == 0 && where_state == HANDLER_WHERE_STARTED) {
           where_previous_top_token_id = token_id;
           where_previous_top_token = token;
@@ -3468,6 +3578,7 @@ void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
       if (!query_expression_token(
               ctx, token_id, token, &depth, &where_previous_top_token_id,
               &where_previous_top_token, &where_previous_was_operator,
+              &expression_stack,
               "malformed HANDLER WHERE clause")) {
         return;
       }
@@ -3838,6 +3949,7 @@ void mylite_parser_validate_show_statement(MyliteParseContext *ctx,
   int token_id;
   int saw_statement = 0;
   int depth = 0;
+  MyliteExpressionStack expression_stack = {0};
   int where_state = SHOW_WHERE_NONE;
   int previous_top_token_id = 0;
   int previous_was_operator = 1;
@@ -3853,10 +3965,12 @@ void mylite_parser_validate_show_statement(MyliteParseContext *ctx,
     }
 
     if (depth > 0) {
-      if (token_opens_nested_expression(token_id)) {
-        depth++;
-      } else if (token_closes_nested_expression(token_id)) {
-        depth--;
+      if (!query_expression_depth_token(ctx, token_id, token, &depth,
+                                        &expression_stack,
+                                        "malformed SHOW WHERE clause")) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id)) {
         if (depth == 0 && where_state == SHOW_WHERE_STARTED) {
           previous_top_token_id = token_id;
           previous_top_token = token;
@@ -3920,7 +4034,7 @@ void mylite_parser_validate_show_statement(MyliteParseContext *ctx,
       }
       if (!query_expression_token(
               ctx, token_id, token, &depth, &previous_top_token_id,
-              &previous_top_token, &previous_was_operator,
+              &previous_top_token, &previous_was_operator, &expression_stack,
               "malformed SHOW WHERE clause")) {
         return;
       }
@@ -5672,6 +5786,7 @@ void mylite_parser_validate_view_statement(MyliteParseContext *ctx,
   int saw_statement = 0;
   int state = VIEW_FIND_AS;
   int depth = 0;
+  MyliteExpressionStack expression_stack = {0};
   int tail_state = VIEW_QUERY_TAIL_NONE;
   int order_previous_top_token_id = 0;
   int order_previous_was_operator = 1;
@@ -5686,11 +5801,16 @@ void mylite_parser_validate_view_statement(MyliteParseContext *ctx,
     }
 
     if (depth > 0) {
-      if (token_opens_nested_expression(token_id)) {
-        depth++;
-      } else if (token_closes_nested_expression(token_id)) {
-        depth--;
-        if (depth == 0) {
+      const char *nested_message = "malformed VIEW parenthesized query tail";
+      if (tail_state == VIEW_QUERY_TAIL_ORDER_EXPR) {
+        nested_message = "malformed VIEW parenthesized query ORDER BY";
+      }
+      if (!query_expression_depth_token(ctx, token_id, token, &depth,
+                                        &expression_stack, nested_message)) {
+        return;
+      }
+      if (token_closes_nested_expression(token_id)) {
+        if (depth == 0 && state != VIEW_TAIL) {
           tail_state = VIEW_QUERY_TAIL_AFTER_RP;
           state = VIEW_TAIL;
         }
@@ -5822,6 +5942,7 @@ void mylite_parser_validate_view_statement(MyliteParseContext *ctx,
       if (!query_expression_token(
               ctx, token_id, token, &depth, &order_previous_top_token_id,
               &order_previous_top_token, &order_previous_was_operator,
+              &expression_stack,
               "malformed VIEW parenthesized query ORDER BY")) {
         return;
       }
@@ -6442,7 +6563,8 @@ static int parenthesized_query_order_boundary(int token_id) {
 static int query_expression_token(
     MyliteParseContext *ctx, int token_id, MyliteToken token, int *depth,
     int *previous_top_token_id, MyliteToken *previous_top_token,
-    int *previous_was_operator, const char *message) {
+    int *previous_was_operator, MyliteExpressionStack *stack,
+    const char *message) {
   if (do_expression_value_start(token_id, token) &&
       !do_expression_operator(token_id, token) && !*previous_was_operator &&
       do_expression_value_terminal(*previous_top_token_id,
@@ -6455,6 +6577,12 @@ static int query_expression_token(
 
   if (token_opens_nested_expression(token_id)) {
     (*depth)++;
+    if (stack &&
+        !query_expression_stack_open_from_previous(
+            ctx, stack, *depth, *previous_top_token_id, *previous_top_token,
+            *previous_was_operator, token_id, token, message)) {
+      return 0;
+    }
   } else {
     *previous_top_token_id = token_id;
     *previous_top_token = token;
@@ -6462,6 +6590,155 @@ static int query_expression_token(
   }
 
   return 1;
+}
+
+static int query_expression_depth_token(
+    MyliteParseContext *ctx, int token_id, MyliteToken token, int *depth,
+    MyliteExpressionStack *stack, const char *message) {
+  int active = query_expression_stack_active(stack, *depth);
+
+  if (token_opens_nested_expression(token_id)) {
+    if (active &&
+        !query_expression_stack_open(ctx, stack, *depth, *depth + 1,
+                                     token_id, token, message)) {
+      return 0;
+    }
+    (*depth)++;
+  } else if (token_closes_nested_expression(token_id)) {
+    if (active &&
+        !query_expression_stack_close(ctx, stack, *depth, token, message)) {
+      return 0;
+    }
+    (*depth)--;
+    if (*depth > 0 && query_expression_stack_active(stack, *depth)) {
+      query_expression_stack_note_terminal(stack, *depth, token_id, token);
+    }
+  } else if (active &&
+             !query_expression_stack_token(ctx, stack, *depth, token_id,
+                                           token, message)) {
+    return 0;
+  }
+
+  return 1;
+}
+
+static int query_expression_stack_active(MyliteExpressionStack *stack,
+                                         int depth) {
+  return stack && depth > 0 && depth < MYLITE_EXPRESSION_STACK_LIMIT &&
+         stack->frames[depth].active;
+}
+
+static int query_expression_stack_open_from_previous(
+    MyliteParseContext *ctx, MyliteExpressionStack *stack, int depth,
+    int previous_top_token_id, MyliteToken previous_top_token,
+    int previous_was_operator, int token_id, MyliteToken token,
+    const char *message) {
+  MyliteExpressionFrame *frame;
+
+  if (depth <= 0 || depth >= MYLITE_EXPRESSION_STACK_LIMIT) {
+    return 1;
+  }
+
+  (void) ctx;
+  (void) message;
+
+  frame = &stack->frames[depth];
+  frame->active = 1;
+  frame->allow_empty = query_expression_group_allows_empty(
+      previous_top_token_id, previous_top_token, previous_was_operator,
+      token_id);
+  frame->started = 0;
+  frame->previous_top_token_id = 0;
+  frame->previous_top_token = token;
+  frame->previous_was_operator = 1;
+
+  return 1;
+}
+
+static int query_expression_stack_open(
+    MyliteParseContext *ctx, MyliteExpressionStack *stack, int current_depth,
+    int new_depth, int token_id, MyliteToken token, const char *message) {
+  MyliteExpressionFrame *frame = &stack->frames[current_depth];
+
+  return query_expression_stack_open_from_previous(
+      ctx, stack, new_depth, frame->previous_top_token_id,
+      frame->previous_top_token, frame->previous_was_operator, token_id, token,
+      message);
+}
+
+static int query_expression_stack_token(
+    MyliteParseContext *ctx, MyliteExpressionStack *stack, int depth,
+    int token_id, MyliteToken token, const char *message) {
+  MyliteExpressionFrame *frame = &stack->frames[depth];
+
+  (void) ctx;
+  (void) message;
+
+  frame->started = 1;
+  frame->previous_top_token_id = token_id;
+  frame->previous_top_token = token;
+  frame->previous_was_operator = do_expression_operator(token_id, token);
+
+  return 1;
+}
+
+static int query_expression_stack_close(
+    MyliteParseContext *ctx, MyliteExpressionStack *stack, int depth,
+    MyliteToken token, const char *message) {
+  MyliteExpressionFrame *frame = &stack->frames[depth];
+
+  if ((!frame->started && !frame->allow_empty) ||
+      (frame->started && frame->previous_was_operator &&
+       !(frame->allow_empty &&
+         (frame->previous_top_token_id == ML_STAR ||
+          (frame->previous_top_token_id == ML_ATOM &&
+           frame->previous_top_token.length == 1 &&
+           frame->previous_top_token.start[0] == '*'))))) {
+    mylite_parser_reject(
+        ctx, frame->started ? frame->previous_top_token : token, message);
+    return 0;
+  }
+
+  frame->active = 0;
+  return 1;
+}
+
+static void query_expression_stack_note_terminal(
+    MyliteExpressionStack *stack, int depth, int token_id, MyliteToken token) {
+  MyliteExpressionFrame *frame = &stack->frames[depth];
+
+  frame->started = 1;
+  frame->previous_top_token_id = token_id;
+  frame->previous_top_token = token;
+  frame->previous_was_operator = 0;
+}
+
+static int query_expression_group_allows_empty(int previous_top_token_id,
+                                               MyliteToken previous_top_token,
+                                               int previous_was_operator,
+                                               int token_id) {
+  if (token_id != ML_LP || previous_top_token_id == 0) {
+    return 0;
+  }
+
+  if (previous_top_token_id == ML_ATOM &&
+      token_ascii_equal(previous_top_token, "over")) {
+    return 1;
+  }
+
+  if (previous_was_operator) {
+    return 0;
+  }
+
+  if (previous_top_token_id == ML_ATOM ||
+      previous_top_token_id == ML_QUOTED_ID ||
+      previous_top_token_id == ML_VALUE ||
+      previous_top_token_id == ML_VALUES) {
+    return 1;
+  }
+
+  return !do_expression_value_terminal(previous_top_token_id,
+                                       previous_top_token);
 }
 
 static int select_window_name_token(int token_id, MyliteToken token) {
@@ -6659,6 +6936,11 @@ static int do_expression_allows_adjacent(int previous_id,
   if ((previous_id == ML_ATOM || previous_id == ML_QUOTED_ID) &&
       token_ascii_equal(previous, "match")) {
     return current_id == ML_ATOM || current_id == ML_QUOTED_ID;
+  }
+
+  if (previous_id == ML_ATOM && current_id == ML_ATOM &&
+      token_ascii_equal(previous, "boolean")) {
+    return token_ascii_equal(current, "mode");
   }
 
   if (previous_id == ML_ATOM && previous.length > 0 &&

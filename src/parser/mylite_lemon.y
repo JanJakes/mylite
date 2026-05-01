@@ -1529,6 +1529,11 @@ alter_table_row_format_value ::= ATOM(A). {
   mylite_parser_require_row_format(ctx, A);
 }
 
+alter_table_storage_value ::= MEMORY.
+alter_table_storage_value ::= ATOM(A). {
+  mylite_parser_require_storage_type(ctx, A);
+}
+
 alter_table_charset_action_tail ::= .
 alter_table_charset_action_tail ::= COMMA alter_table_charset_after_comma.
 
@@ -1568,7 +1573,7 @@ alter_table_order_action ::= ORDER BY required_statement_tail.
 
 alter_table_tablespace_action ::= TABLESPACE alter_table_drop_identifier create_options_tail.
 
-alter_table_storage_action ::= STORAGE alter_table_table_option_value create_options_tail.
+alter_table_storage_action ::= STORAGE alter_table_storage_value create_options_tail.
 
 alter_table_union_action ::= UNION drop_index_option_equals_tail LP alter_table_union_tables_tail RP.
 

@@ -316,6 +316,15 @@ void mylite_parser_require_row_format(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, token, "invalid row format option");
 }
 
+void mylite_parser_require_storage_type(MyliteParseContext *ctx,
+                                        MyliteToken token) {
+  if (token_ascii_equal(token, "disk")) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid storage option");
+}
+
 void mylite_parser_reject(MyliteParseContext *ctx, MyliteToken token,
                           const char *message) {
   if (ctx->failed) {

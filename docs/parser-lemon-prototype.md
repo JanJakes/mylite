@@ -98,7 +98,8 @@ token sink:
   `RESTRICT`/`CASCADE` tails, `ALTER` subactions, charset/order changes,
   partition definition, maintenance/exchange, reorganize forms, maintenance
   binlog modifiers, CHECK/REPAIR maintenance options, and numeric coalesce counts,
-  tablespace/storage/union changes, secondary-engine load/unload actions,
+  tablespace/storage/union changes with closed storage values,
+  secondary-engine load/unload actions,
   table option changes with numeric/boolean/default value domains, closed
   `INSERT_METHOD` and `ROW_FORMAT` values, string-literal data/index
   directories, string-literal compression/password/connection/engine

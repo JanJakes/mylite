@@ -34,8 +34,6 @@ void mylite_parser_require_event_statement_atom(MyliteParseContext *ctx,
                                                 MyliteToken token);
 void mylite_parser_require_create_procedure_tail_atom(MyliteParseContext *ctx,
                                                       MyliteToken token);
-void mylite_parser_require_create_table_tail_atom(MyliteParseContext *ctx,
-                                                  MyliteToken token);
 void mylite_parser_require_alter_table_action_start(MyliteParseContext *ctx,
                                                     MyliteToken token);
 void mylite_parser_require_token_prefix(MyliteParseContext *ctx,

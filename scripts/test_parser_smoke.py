@@ -84,6 +84,7 @@ def main() -> int:
         ("create table t7 with cte as (select 1) select * from cte;", 0, {"statements": "1", "ddl": "1"}),
         ("create table t8 as select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create table t9 as (select 1);", 0, {"statements": "1", "ddl": "1"}),
+        ("create table t_opts auto_increment=10 max_rows=100 select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create table t10 as ((values row(1) order by column_0 limit 1) order by column_0 limit 1);", 0, {"statements": "1", "ddl": "1"}),
         ("create temporary table if not exists t2 select * from t1;", 0, {"statements": "1", "ddl": "1"}),
         ("create temporary;", 1, {}),

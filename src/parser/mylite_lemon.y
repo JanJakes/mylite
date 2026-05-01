@@ -2,7 +2,7 @@
 %token_prefix ML_
 %token_type {MyliteToken}
 %default_type {MyliteToken}
-%fallback ATOM ACTIVE ADD AFTER ASC AS AT BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN CODE COLLATE COLUMN_NAME COMMENT COMPLETION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTEXT CONVERT CPU CURSOR_NAME DATAFILE DECIMAL DEFINITION DESCRIPTION DIRECTORY DISABLE DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INT INTEGER INVOKER IO IPC JOIN JSON KEYRING LEAVES MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MUTEX MYSQL_ERRNO NAME NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PAGE PARTITION PHASE PRECEDES PRESERVE REAL REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD RESUME RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT SCHEDULE SCHEMA_NAME SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT EQUALS STAR AT_SIGN AT_EMPTY AT_HOST.
+%fallback ATOM ACTIVE ADD AFTER ASC AS AT AUTO_INCREMENT AVG_ROW_LENGTH BACKUP BEFORE BLOCK BUCKETS CATALOG_NAME CHANGED CHANNEL CLASS_ORIGIN CODE COLLATE COLUMN_NAME COMMENT COMPLETION COMPRESSION CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTEXT CONVERT CPU CURSOR_NAME DATAFILE DECIMAL DEFINITION DELAY_KEY_WRITE DESCRIPTION DIRECTORY DISABLE DUPLICATE EACH ENABLE ENCRYPTION ENGINE_ATTRIBUTE EVERY EXISTS EXPORT FAST FAULTS FILE_BLOCK_SIZE FOLLOWS FORCE FOREIGN FOUND GROUP GTIDS HISTOGRAM IDENTIFIED INACTIVE INFILE INNODB INSERT_METHOD INT INTEGER INVOKER IO IPC JOIN JSON KEYRING KEY_BLOCK_SIZE LEAVES MAX_ROWS MEDIUM MEMORY MERGE MESSAGE_TEXT MIGRATE MIN_ROWS MUTEX MYSQL_ERRNO NAME NOT NUMBER ONE ONLY OPTIONS ORGANIZATION PACK_KEYS PAGE PARTITION PHASE PRECEDES PRESERVE REAL REDO_LOG REFERENCE RELAY_LOG_FILE RELAY_LOG_POS RELOAD RESUME RETURNED_SQLSTATE RETURNS ROTATE ROW_COUNT ROW_FORMAT SCHEDULE SCHEMA_NAME SECONDARY_ENGINE_ATTRIBUTE SNAPSHOT SONAME SOURCE SOURCE_LOG_FILE SOURCE_LOG_POS SQL_AFTER_GTIDS SQL_AFTER_MTS_GAPS SQL_BEFORE_GTIDS STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STRING SUBCLASS_ORIGIN SUSPEND SWAPS SWITCHES SYSTEM TABLE_NAME TEMPTABLE THREAD_PRIORITY TLS TRADITIONAL TREE TYPE UNDEFINED UNDOFILE UPGRADE USE_FRM VALUE VCPU WRAPPER XID ASSIGN COLON DOT EQUALS STAR AT_SIGN AT_EMPTY AT_HOST.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type alter_instance_reload_tls_tail {int}
@@ -203,10 +203,7 @@ create_table_tail ::= WITH with_recursive_tail with_cte_list with_query_body.
 create_table_tail ::= AS WITH with_recursive_tail with_cte_list with_query_body.
 create_table_tail ::= AS query_parenthesized_body.
 create_table_tail ::= AS LP LP dml_write_query_start required_statement_tail.
-create_table_tail ::= create_table_query_start required_statement_tail.
-create_table_tail ::= ATOM(A) required_statement_tail. {
-  mylite_parser_require_create_table_tail_atom(ctx, A);
-}
+create_table_tail ::= create_table_tail_option_start required_statement_tail.
 
 create_table_definition_tokens ::= .
 create_table_definition_tokens ::= create_table_definition_tokens create_table_definition_token.
@@ -222,11 +219,37 @@ create_table_definition_token ::= RB.
 create_table_definition_token ::= LC.
 create_table_definition_token ::= RC.
 
-create_table_query_start ::= CHARACTER.
-create_table_query_start ::= CHARSET.
-create_table_query_start ::= DEFAULT.
-create_table_query_start ::= ENGINE.
-create_table_query_start ::= TABLESPACE.
+create_table_tail_option_start ::= AUTO_INCREMENT.
+create_table_tail_option_start ::= AVG_ROW_LENGTH.
+create_table_tail_option_start ::= CHARACTER.
+create_table_tail_option_start ::= CHARSET.
+create_table_tail_option_start ::= CHECKSUM.
+create_table_tail_option_start ::= COLLATE.
+create_table_tail_option_start ::= COMMENT.
+create_table_tail_option_start ::= COMPRESSION.
+create_table_tail_option_start ::= CONNECTION.
+create_table_tail_option_start ::= DATA.
+create_table_tail_option_start ::= DEFAULT.
+create_table_tail_option_start ::= DELAY_KEY_WRITE.
+create_table_tail_option_start ::= ENCRYPTION.
+create_table_tail_option_start ::= ENGINE.
+create_table_tail_option_start ::= ENGINE_ATTRIBUTE.
+create_table_tail_option_start ::= INDEX.
+create_table_tail_option_start ::= INSERT_METHOD.
+create_table_tail_option_start ::= KEY_BLOCK_SIZE.
+create_table_tail_option_start ::= MAX_ROWS.
+create_table_tail_option_start ::= MIN_ROWS.
+create_table_tail_option_start ::= PACK_KEYS.
+create_table_tail_option_start ::= PASSWORD.
+create_table_tail_option_start ::= PARTITION.
+create_table_tail_option_start ::= ROW_FORMAT.
+create_table_tail_option_start ::= SECONDARY_ENGINE_ATTRIBUTE.
+create_table_tail_option_start ::= STATS_AUTO_RECALC.
+create_table_tail_option_start ::= STATS_PERSISTENT.
+create_table_tail_option_start ::= STATS_SAMPLE_PAGES.
+create_table_tail_option_start ::= STORAGE.
+create_table_tail_option_start ::= TABLESPACE.
+create_table_tail_option_start ::= UNION.
 
 create_database_option_start ::= DEFAULT.
 create_database_option_start ::= CHARACTER.

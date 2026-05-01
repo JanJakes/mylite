@@ -8601,6 +8601,10 @@ static void validate_embedded_statement_body_from(MyliteParseContext *ctx,
     validate_compound_statement_body_from(ctx, token);
     return;
   }
+  if (token_id == ML_RETURN) {
+    validate_return_statement_from(ctx, token);
+    return;
+  }
   if (routine_compound_statement_start_token(token_id) ||
       token_id == ML_UNTIL || token_id == ML_WHEN) {
     validate_flow_control_statement_from(ctx, token_id, token);

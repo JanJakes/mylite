@@ -615,6 +615,7 @@ create_trigger_statement_start ::= REPEAT.
 create_trigger_statement_start ::= REPLACE.
 create_trigger_statement_start ::= RESIGNAL.
 create_trigger_statement_start ::= RELEASE.
+create_trigger_statement_start ::= RETURN.
 create_trigger_statement_start ::= ROLLBACK.
 create_trigger_statement_start ::= SELECT.
 create_trigger_statement_start ::= SET.

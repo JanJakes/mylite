@@ -85,6 +85,8 @@ token sink:
 - Top-level `SELECT` validates table `PARTITION (...)` selection lists.
 - Top-level `SELECT` validates table `TABLESAMPLE SYSTEM|BERNOULLI (...)`
   suffixes.
+- Top-level `SELECT` rejects adjacent bare operands and dangling operators in
+  `ORDER BY` expression lists.
 - Top-level `SELECT` requires `INTO OUTFILE` and `INTO DUMPFILE` to include
   the mandatory file-name string.
 - Top-level `SELECT ... INTO OUTFILE` validates the basic `CHARACTER SET`,

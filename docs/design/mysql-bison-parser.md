@@ -267,6 +267,8 @@ validates a single identifier-like or qualified table target across optional
 `HANDLER` validates direct table-access forms: `OPEN` with an optional
 `[AS] alias`, `READ` using documented no-index directions, indexed directions,
 key-comparison value lists, and optional `WHERE` / `LIMIT` tails, and `CLOSE`.
+`RENAME TABLE` validates comma-separated `old TO new` rename pairs, while the
+corpus-observed `RENAME TABLES` spelling remains accepted for parser coverage.
 Prepared-statement names are recorded in
 `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`, and `DROP PREPARE`; those forms
 validate handle names, `PREPARE ... FROM` sources, and `EXECUTE ... USING`

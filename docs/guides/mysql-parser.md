@@ -66,6 +66,13 @@ Standalone `DROP INDEX` records the index target and validates the required
 ok statements=1 kinds=drop[1:5,0:17]/index:i
 ```
 
+`RENAME TABLE` records the first source table and validates comma-separated
+`old TO new` rename pairs:
+
+```text
+ok statements=1 kinds=rename[1:5,0:23]/table:old
+```
+
 `SELECT` and `WITH` query statements expose the query object kind unless a more
 specific `INTO` target is present:
 

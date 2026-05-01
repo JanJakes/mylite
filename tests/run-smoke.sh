@@ -389,6 +389,50 @@ if "$parser" --quiet 'DROP INDEX i ON t LOCK=BAD'; then
 	exit 1
 fi
 
+rename_table_output=$("$parser" 'RENAME TABLE old TO new; RENAME TABLE db.old TO other.new, a TO b; RENAME TABLES t2 TO t0, t4 TO t2')
+case "$rename_table_output" in
+	*"rename"*/table:old*"rename"*/table:db.old*"rename"*/table:t2*) ;;
+	*)
+		echo "unexpected RENAME TABLE output: $rename_table_output" >&2
+		exit 1
+		;;
+esac
+
+if "$parser" --quiet 'RENAME'; then
+	echo "expected empty RENAME statement to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RENAME TABLE'; then
+	echo "expected missing RENAME TABLE pair to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RENAME TABLE old'; then
+	echo "expected incomplete RENAME TABLE pair to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RENAME TABLE old new'; then
+	echo "expected RENAME TABLE without TO to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RENAME TABLE old TO'; then
+	echo "expected missing RENAME TABLE destination to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RENAME TABLE old TO new,'; then
+	echo "expected trailing RENAME TABLE comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'RENAME TABLE old TO new extra'; then
+	echo "expected trailing RENAME TABLE tokens to fail" >&2
+	exit 1
+fi
+
 plural_tables_output=$("$parser" 'DROP TABLES t1, t4; RENAME TABLES old TO new; ANALYZE TABLES c, cc; CHECK TABLES t1; OPTIMIZE TABLES columns_priv, db, user')
 case "$plural_tables_output" in
 	*"drop"*/table:t1*"rename"*/table:old*"analyze"*/table:c*"check"*/table:t1*"optimize"*/table:columns_priv*) ;;

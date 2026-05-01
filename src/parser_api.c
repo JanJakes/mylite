@@ -29,6 +29,14 @@ static void remove_statements_covered_by_previous(mylite_parser *parser, size_t 
 static void validate_statement_syntax(mylite_parser *parser);
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_truncate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_rename_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_rename_table_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int validate_rename_table_pair_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             size_t *next_token_index);
 static int validate_call_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_call_argument_list_syntax(const mylite_parser *parser, size_t open_token_index);
 static int validate_do_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1300,6 +1308,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 				return;
 			}
 			break;
+		case MYLITE_STATEMENT_RENAME:
+			if (!validate_rename_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid RENAME statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_CALL:
 			if (!validate_call_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid CALL statement");
@@ -1556,6 +1570,80 @@ static int validate_truncate_statement_syntax(const mylite_parser *parser, const
 
 	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
 	return last_name_token == last_token_index;
+}
+
+static int validate_rename_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == TABLE_T ||
+	    token_text_equals(parser, token_index, "TABLES")) {
+		return validate_rename_table_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+	return 1;
+}
+
+static int validate_rename_table_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!validate_rename_table_pair_syntax(parser, token_index, last_token_index, &token_index)) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static int validate_rename_table_pair_syntax(const mylite_parser *parser,
+                                             size_t token_index,
+                                             size_t last_token_index,
+                                             size_t *next_token_index)
+{
+	size_t last_name_token;
+
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    !token_can_continue_object_name(&parser->tokens[token_index])) {
+		return 0;
+	}
+
+	last_name_token = last_qualified_name_token(parser, token_index, last_token_index);
+	token_index = last_name_token + 1;
+	if (token_index + 1 > last_token_index ||
+	    !token_text_equals(parser, token_index, "TO") ||
+	    !token_can_continue_object_name(&parser->tokens[token_index + 1])) {
+		return 0;
+	}
+
+	last_name_token = last_qualified_name_token(parser, token_index + 1, last_token_index);
+	*next_token_index = last_name_token + 1;
+	return 1;
 }
 
 static int validate_call_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

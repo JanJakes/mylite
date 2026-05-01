@@ -327,6 +327,13 @@ BINLOG statements expose their event payload string:
 ok statements=1 kinds=binlog[1:2,0:12]/binary_log_event:'abc'
 ```
 
+SHOW BINARY LOGS exposes the binary-log collection, including the legacy
+`SHOW MASTER LOGS` spelling:
+
+```text
+ok statements=1 kinds=show[1:3,0:16]/binary_log
+```
+
 PURGE BINARY LOGS exposes named or collection binary-log targets:
 
 ```text

@@ -233,6 +233,7 @@ system-variable and status-variable targets in `SHOW VARIABLES`,
 `SHOW WARNINGS`, `SHOW ERRORS`, and their `SHOW COUNT(*) ...` forms,
 connection targets in `KILL`, binary log event
 payloads in `BINLOG`, binary log targets in `SHOW BINARY LOGS`,
+legacy `SHOW MASTER LOGS`,
 `SHOW BINARY LOG STATUS`, `SHOW MASTER STATUS`, `SHOW BINLOG EVENTS`,
 `PURGE BINARY LOGS TO ...`, `PURGE BINARY LOGS BEFORE ...`, and
 `RESET BINARY LOGS AND GTIDS`, including legacy `RESET MASTER` routing, relay
@@ -361,9 +362,9 @@ Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
   only; plugin availability, privilege checks, copy behavior, SSL requirements,
   and restart side effects remain runtime work.
   Binary log metadata records explicit log-file targets or binary-log collection
-  targets for `BEFORE` purge and reset forms, including legacy `RESET MASTER`,
-  but does not classify position or time expressions. `BINLOG` metadata records
-  only the first string event payload.
+  targets for `BEFORE` purge and reset forms, including legacy
+  `SHOW MASTER LOGS` and `RESET MASTER`, but does not classify position or time
+  expressions. `BINLOG` metadata records only the first string event payload.
   `SHOW RELAYLOG EVENTS` metadata records the explicit relay log name when
   present, bare relay-log targets, or an explicit channel name when no log file
   is named.

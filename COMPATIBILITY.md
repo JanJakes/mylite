@@ -254,7 +254,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | SHOW statement | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | `SHOW BINARY LOG STATUS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser records the binary-log object kind; result rows are not implemented. |
-| `SHOW BINARY LOGS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser records the binary-log object kind; result rows are not implemented. |
+| `SHOW BINARY LOGS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser records the binary-log object kind, including legacy `SHOW MASTER LOGS` routing; result rows are not implemented. |
 | `SHOW BINLOG EVENTS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser records the named binary-log file when `IN` is present, otherwise the binary-log object kind. |
 | `SHOW CHARACTER SET` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser records the character-set object kind, including the `LIKE` pattern when present. |
 | `SHOW COLLATION` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser records the collation object kind, including the `LIKE` pattern when present. |

@@ -792,6 +792,10 @@ DECLARE HANDLER exposes the first handled condition value:
 ok statements=1 kinds=declare[1:9,0:48]/condition:SQLEXCEPTION
 ```
 
+`DECLARE` validates local-variable names, type/default skeletons,
+`CONDITION FOR` condition values, `CURSOR FOR` query bodies, and handler
+actions, condition lists, and nonempty bodies.
+
 GET DIAGNOSTICS CONDITION exposes the requested condition-area index:
 
 ```text

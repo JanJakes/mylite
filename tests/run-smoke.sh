@@ -434,6 +434,66 @@ case "$declare_handler_output" in
 	;;
 esac
 
+if "$parser" --quiet 'DECLARE'; then
+	echo "expected bare DECLARE to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DECLARE x'; then
+	echo "expected DECLARE variable without type to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DECLARE x, INT'; then
+	echo "expected DECLARE variable list without type to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DECLARE x INT DEFAULT'; then
+	echo "expected DECLARE DEFAULT without expression to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DECLARE cond CONDITION'; then
+	echo "expected DECLARE CONDITION without FOR value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DECLARE cond CONDITION FOR SQLSTATE'; then
+	echo "expected DECLARE CONDITION SQLSTATE without literal to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DECLARE c CURSOR'; then
+	echo "expected DECLARE CURSOR without SELECT to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DECLARE c CURSOR FOR UPDATE t SET a=1'; then
+	echo "expected DECLARE CURSOR for non-SELECT statement to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DECLARE HANDLER FOR SQLEXCEPTION SET @x=1'; then
+	echo "expected DECLARE HANDLER without action to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DECLARE CONTINUE HANDLER SQLEXCEPTION SET @x=1'; then
+	echo "expected DECLARE HANDLER without FOR to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DECLARE CONTINUE HANDLER FOR SQLEXCEPTION'; then
+	echo "expected DECLARE HANDLER without body to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'DECLARE CONTINUE HANDLER FOR SQLEXCEPTION, SET @x=1'; then
+	echo "expected trailing DECLARE HANDLER condition comma to fail" >&2
+	exit 1
+fi
+
 diagnostics_output=$("$parser" 'GET DIAGNOSTICS @n = NUMBER; GET CURRENT DIAGNOSTICS CONDITION 1 @state = RETURNED_SQLSTATE; GET STACKED DIAGNOSTICS CONDITION @i v = MYSQL_ERRNO; GET DIAGNOSTICS CONDITION local_index v = MESSAGE_TEXT')
 case "$diagnostics_output" in
 	*"get[1:5"*"get"*/diagnostics_condition:1*"get"*/diagnostics_condition:@i*"get"*/diagnostics_condition:local_index*) ;;

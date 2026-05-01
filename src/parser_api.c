@@ -714,6 +714,29 @@ static int token_can_start_handler_index_name(const mylite_parser *parser, size_
 static int token_is_handler_read_direction(const mylite_parser *parser, size_t token_index);
 static int token_is_handler_indexed_read_direction(const mylite_parser *parser, size_t token_index);
 static int token_is_handler_read_comparison_operator(const mylite_parser *parser, size_t token_index);
+static int validate_declare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_declare_condition_statement_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index);
+static int validate_declare_cursor_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index);
+static int validate_declare_handler_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index);
+static int validate_declare_local_variable_statement_syntax(const mylite_parser *parser,
+                                                            size_t token_index,
+                                                            size_t last_token_index);
+static int validate_declare_condition_value_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   int allow_condition_class,
+                                                   int allow_condition_name,
+                                                   size_t *next_token_index);
+static int token_is_declare_handler_action(const mylite_parser *parser, size_t token_index);
+static int span_has_top_level_comma(const mylite_parser *parser,
+                                    size_t token_index,
+                                    size_t last_token_index);
 static int validate_cache_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_load_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_load_data_or_xml_statement_syntax(const mylite_parser *parser,
@@ -2178,6 +2201,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_HANDLER:
 			if (!validate_handler_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid HANDLER statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_DECLARE:
+			if (!validate_declare_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid DECLARE statement");
 				return;
 			}
 			break;
@@ -9502,6 +9531,243 @@ static int token_is_handler_read_comparison_operator(const mylite_parser *parser
 	        token_text_equals(parser, token_index, ">=") ||
 	        token_text_equals(parser, token_index, "<") ||
 	        token_text_equals(parser, token_index, ">"));
+}
+
+static int validate_declare_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_index + 1 <= last_token_index &&
+	    token_can_continue_object_name(&parser->tokens[token_index]) &&
+	    token_text_equals(parser, token_index + 1, "CONDITION")) {
+		return validate_declare_condition_statement_syntax(parser, token_index, last_token_index);
+	}
+	if (token_index + 1 <= last_token_index &&
+	    token_can_continue_object_name(&parser->tokens[token_index]) &&
+	    parser->tokens[token_index + 1].parser_token == CURSOR_T) {
+		return validate_declare_cursor_statement_syntax(parser, token_index, last_token_index);
+	}
+	if (token_index + 1 <= last_token_index &&
+	    token_is_declare_handler_action(parser, token_index) &&
+	    parser->tokens[token_index + 1].parser_token == HANDLER_T) {
+		return validate_declare_handler_statement_syntax(parser, token_index, last_token_index);
+	}
+	return validate_declare_local_variable_statement_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_declare_condition_statement_syntax(const mylite_parser *parser,
+                                                       size_t token_index,
+                                                       size_t last_token_index)
+{
+	if (token_index + 3 > last_token_index ||
+	    !token_can_continue_object_name(&parser->tokens[token_index]) ||
+	    !token_text_equals(parser, token_index + 1, "CONDITION") ||
+	    !token_text_equals(parser, token_index + 2, "FOR")) {
+		return 0;
+	}
+
+	token_index += 3;
+	if (!validate_declare_condition_value_syntax(parser,
+	                                             token_index,
+	                                             last_token_index,
+	                                             1,
+	                                             0,
+	                                             &token_index)) {
+		return 0;
+	}
+	return token_index > last_token_index;
+}
+
+static int validate_declare_cursor_statement_syntax(const mylite_parser *parser,
+                                                    size_t token_index,
+                                                    size_t last_token_index)
+{
+	if (token_index + 3 > last_token_index ||
+	    !token_can_continue_object_name(&parser->tokens[token_index]) ||
+	    parser->tokens[token_index + 1].parser_token != CURSOR_T ||
+	    !token_text_equals(parser, token_index + 2, "FOR")) {
+		return 0;
+	}
+
+	token_index += 3;
+	return token_index <= last_token_index &&
+	       (parser->tokens[token_index].parser_token == SELECT_T ||
+	        parser->tokens[token_index].parser_token == WITH_T) &&
+	       validate_nonempty_expression_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_declare_handler_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index)
+{
+	if (token_index + 3 > last_token_index ||
+	    !token_is_declare_handler_action(parser, token_index) ||
+	    parser->tokens[token_index + 1].parser_token != HANDLER_T ||
+	    !token_text_equals(parser, token_index + 2, "FOR")) {
+		return 0;
+	}
+
+	token_index += 3;
+	while (token_index <= last_token_index) {
+		if (!validate_declare_condition_value_syntax(parser,
+		                                             token_index,
+		                                             last_token_index,
+		                                             1,
+		                                             1,
+		                                             &token_index)) {
+			return 0;
+		}
+		if (token_index > last_token_index) {
+			return 0;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return validate_nonempty_expression_tail_syntax(parser, token_index, last_token_index);
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+	return 0;
+}
+
+static int validate_declare_local_variable_statement_syntax(const mylite_parser *parser,
+                                                            size_t token_index,
+                                                            size_t last_token_index)
+{
+	size_t type_first_token;
+	size_t default_token_index = parser->token_count;
+	size_t type_last_token;
+
+	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		if (!token_can_start_local_variable_name(&parser->tokens[token_index])) {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index || parser->tokens[token_index].parser_token != ',') {
+			break;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	type_first_token = token_index;
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == DEFAULT_T) {
+			default_token_index = token_index;
+			break;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+
+	type_last_token = default_token_index < parser->token_count ?
+		default_token_index - 1 :
+		last_token_index;
+	if (type_first_token > type_last_token ||
+	    !validate_nonempty_expression_tail_syntax(parser, type_first_token, type_last_token) ||
+	    span_has_top_level_comma(parser, type_first_token, type_last_token)) {
+		return 0;
+	}
+	if (default_token_index >= parser->token_count) {
+		return 1;
+	}
+	return validate_nonempty_expression_tail_syntax(parser, default_token_index + 1, last_token_index);
+}
+
+static int validate_declare_condition_value_syntax(const mylite_parser *parser,
+                                                   size_t token_index,
+                                                   size_t last_token_index,
+                                                   int allow_condition_class,
+                                                   int allow_condition_name,
+                                                   size_t *next_token_index)
+{
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "SQLSTATE")) {
+		token_index++;
+		if (token_index <= last_token_index && token_text_equals(parser, token_index, "VALUE")) {
+			token_index++;
+		}
+		if (token_index > last_token_index ||
+		    parser->tokens[token_index].kind != MYLITE_TOKEN_STRING) {
+			return 0;
+		}
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+	if (allow_condition_class &&
+	    token_index + 1 <= last_token_index &&
+	    token_text_equals(parser, token_index, "NOT") &&
+	    token_text_equals(parser, token_index + 1, "FOUND")) {
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	if (allow_condition_class &&
+	    (token_text_equals(parser, token_index, "SQLWARNING") ||
+	     token_text_equals(parser, token_index, "SQLEXCEPTION"))) {
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+	if (parser->tokens[token_index].kind == MYLITE_TOKEN_NUMBER) {
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+	if (allow_condition_name && token_can_continue_object_name(&parser->tokens[token_index])) {
+		*next_token_index = token_index + 1;
+		return 1;
+	}
+	return 0;
+}
+
+static int token_is_declare_handler_action(const mylite_parser *parser, size_t token_index)
+{
+	return token_text_equals(parser, token_index, "CONTINUE") ||
+	       token_text_equals(parser, token_index, "EXIT") ||
+	       token_text_equals(parser, token_index, "UNDO");
+}
+
+static int span_has_top_level_comma(const mylite_parser *parser,
+                                    size_t token_index,
+                                    size_t last_token_index)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token == ',') {
+			return 1;
+		}
+		token_index++;
+	}
+	return 0;
 }
 
 static int validate_cache_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

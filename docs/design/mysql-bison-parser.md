@@ -510,19 +510,22 @@ kinds. Compound-control tokens are structurally matched for `BEGIN ... END`,
 block starts. Standalone matched compound and flow-control blocks keep
 semicolon-delimited bodies in one statement span, with optional end labels
 included in that span where MySQL allows them. Local variable names are
-recorded for ordinary `DECLARE` statements. Cursor names are recorded for
-`DECLARE ... CURSOR`, `OPEN`, `FETCH`, including optional `NEXT FROM` / `FROM`
-forms, and `CLOSE`. Jump target labels are recorded for `LEAVE` and `ITERATE`
-with the same lexical rules as label
+recorded for ordinary `DECLARE` statements, which validate comma-separated
+names, a nonempty type span, and optional nonempty `DEFAULT` expression. Cursor
+names are recorded for `DECLARE ... CURSOR`, `OPEN`, `FETCH`, including
+optional `NEXT FROM` / `FROM` forms, and `CLOSE`; cursor declarations validate
+`CURSOR FOR` plus a nonempty `SELECT` or `WITH` query body. Jump target labels
+are recorded for `LEAVE` and `ITERATE` with the same lexical rules as label
 declarations. Label declarations are recorded when they prefix
 semicolon-delimited MySQL-labeled constructs: `BEGIN`, `LOOP`, `REPEAT`, and
 `WHILE`. Label keyword handling is separate from local-variable keyword
 handling so unrestricted nonreserved label keywords can be used without quotes
 while MySQL's restricted label keywords are not treated as declarations or
 targets.
-Named condition
-declarations are recorded for `DECLARE ... CONDITION`, and the first handled
-condition value is recorded for `DECLARE ... HANDLER`. `GET DIAGNOSTICS
+Named condition declarations are recorded for `DECLARE ... CONDITION`, which
+validates `CONDITION FOR` condition values. The first handled condition value is
+recorded for `DECLARE ... HANDLER`, which validates handler actions, required
+`FOR`, condition lists, and a nonempty handler body. `GET DIAGNOSTICS
 ... CONDITION` records the requested diagnostics condition area number.
 Statement-level `GET DIAGNOSTICS` records the first explicit assignment target.
 

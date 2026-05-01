@@ -299,7 +299,7 @@ token sink:
 - `START REPLICA` recognizes `IO_THREAD`/`RELAY_THREAD` and `SQL_THREAD`,
   `UNTIL`, connection, and channel clauses with string-literal log/GTID/user
   option values and numeric log-position values. Source/relay log coordinate
-  pairs are accepted in either MySQL parser order, and replication channel names
+  option lists are accepted in MySQL parser order, and replication channel names
   use MySQL's string-literal channel grammar. Removed `START SLAVE` and
   `STOP SLAVE` syntax is
   permissive-corpus-only.

@@ -2092,11 +2092,16 @@ start_until_tail ::= UNTIL start_until_spec.
 
 start_until_spec ::= SQL_BEFORE_GTIDS start_option_equals string_literal.
 start_until_spec ::= SQL_AFTER_GTIDS start_option_equals string_literal.
-start_until_spec ::= SOURCE_LOG_FILE start_option_equals string_literal import_comma SOURCE_LOG_POS start_option_equals start_log_position_value.
-start_until_spec ::= SOURCE_LOG_POS start_option_equals start_log_position_value import_comma SOURCE_LOG_FILE start_option_equals string_literal.
-start_until_spec ::= RELAY_LOG_FILE start_option_equals string_literal import_comma RELAY_LOG_POS start_option_equals start_log_position_value.
-start_until_spec ::= RELAY_LOG_POS start_option_equals start_log_position_value import_comma RELAY_LOG_FILE start_option_equals string_literal.
+start_until_spec ::= start_until_log_options.
 start_until_spec ::= SQL_AFTER_MTS_GAPS.
+
+start_until_log_options ::= start_until_log_option.
+start_until_log_options ::= start_until_log_options import_comma start_until_log_option.
+
+start_until_log_option ::= SOURCE_LOG_FILE start_option_equals string_literal.
+start_until_log_option ::= SOURCE_LOG_POS start_option_equals start_log_position_value.
+start_until_log_option ::= RELAY_LOG_FILE start_option_equals string_literal.
+start_until_log_option ::= RELAY_LOG_POS start_option_equals start_log_position_value.
 
 start_log_position_value ::= BOOLEAN_NUMBER.
 start_log_position_value ::= FACTOR_NUMBER.

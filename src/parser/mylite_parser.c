@@ -378,22 +378,6 @@ void mylite_parser_require_profile_type(MyliteParseContext *ctx,
   format_near_token(ctx, 0, &first);
 }
 
-void mylite_parser_require_diagnostics_statement_item(MyliteParseContext *ctx,
-                                                      MyliteToken token) {
-  static const char *const items[] = {
-      "NUMBER",
-      "ROW_COUNT",
-  };
-
-  if (ctx->failed || token_ascii_matches_any(&token, items,
-                                             sizeof(items) / sizeof(items[0]))) {
-    return;
-  }
-
-  ctx->failed = 1;
-  format_near_token(ctx, 0, &token);
-}
-
 void mylite_parser_require_diagnostics_condition_item(MyliteParseContext *ctx,
                                                       MyliteToken token) {
   static const char *const items[] = {

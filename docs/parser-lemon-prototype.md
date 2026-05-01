@@ -33,6 +33,9 @@ token sink:
 - `CREATE INDEX` recognizes functional/key-part lists and standalone index
   options including parser plugins, visibility, attributes, `ALGORITHM`, and
   `LOCK`.
+- `CREATE TABLE` table-definition bodies require non-empty comma-separated
+  elements while preserving nested token bodies for column and constraint
+  definitions.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   documented NDB logfile options, and required `ENGINE` clauses.
 - `CREATE TABLESPACE`, `CREATE UNDO TABLESPACE`, and `ALTER TABLESPACE`

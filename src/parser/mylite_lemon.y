@@ -209,7 +209,7 @@ create_database_kind ::= SCHEMA.
 
 create_database_tail ::= create_database_options_tail.
 
-create_table_tail ::= LP create_table_definition_tokens RP create_options_tail.
+create_table_tail ::= LP create_table_elements RP create_options_tail.
 create_table_tail ::= LIKE cache_table_ref.
 create_table_tail ::= SELECT select_tail.
 create_table_tail ::= AS SELECT select_tail.
@@ -219,9 +219,62 @@ create_table_tail ::= VALUES values_row_list values_query_tail.
 create_table_tail ::= AS VALUES values_row_list values_query_tail.
 create_table_tail ::= WITH with_recursive_tail with_cte_list with_query_body.
 create_table_tail ::= AS WITH with_recursive_tail with_cte_list with_query_body.
+create_table_tail ::= query_parenthesized_body.
 create_table_tail ::= AS query_parenthesized_body.
 create_table_tail ::= AS LP LP dml_write_query_start required_statement_tail.
 create_table_tail ::= create_table_tail_option_start required_statement_tail.
+
+create_table_elements ::= create_table_element.
+create_table_elements ::= create_table_elements COMMA create_table_element.
+
+create_table_element ::= create_table_element_name create_table_element_tokens.
+create_table_element ::= create_table_constraint_start create_table_element_tokens.
+create_table_element ::= CONSTRAINT create_table_constraint_start create_table_element_tokens.
+create_table_element ::= CONSTRAINT create_table_element_name create_table_constraint_start create_table_element_tokens.
+
+create_table_element_name ::= cache_name_part.
+create_table_element_name ::= BINLOG.
+create_table_element_name ::= CHECKSUM.
+create_table_element_name ::= CONNECTION.
+create_table_element_name ::= CURRENT.
+create_table_element_name ::= DATA.
+create_table_element_name ::= DEFINER.
+create_table_element_name ::= DIAGNOSTICS.
+create_table_element_name ::= END.
+create_table_element_name ::= EVENT.
+create_table_element_name ::= FORMAT.
+create_table_element_name ::= LAST.
+create_table_element_name ::= LIKE.
+create_table_element_name ::= NUMBER.
+create_table_element_name ::= OFFSET.
+create_table_element_name ::= PASSWORD.
+create_table_element_name ::= QUERY.
+create_table_element_name ::= RETURNED_SQLSTATE.
+create_table_element_name ::= START.
+create_table_element_name ::= STATUS.
+create_table_element_name ::= XML.
+
+create_table_constraint_start ::= PRIMARY.
+create_table_constraint_start ::= UNIQUE.
+create_table_constraint_start ::= FULLTEXT.
+create_table_constraint_start ::= SPATIAL.
+create_table_constraint_start ::= INDEX.
+create_table_constraint_start ::= KEY.
+create_table_constraint_start ::= FOREIGN.
+create_table_constraint_start ::= CHECK.
+
+create_table_element_tokens ::= create_table_element_token.
+create_table_element_tokens ::= create_table_element_tokens create_table_element_token.
+
+create_table_element_token ::= ATOM.
+create_table_element_token ::= LABEL.
+create_table_element_token ::= keyword.
+create_table_element_token ::= DOT.
+create_table_element_token ::= LP create_table_definition_tokens RP.
+create_table_element_token ::= LB.
+create_table_element_token ::= RB.
+create_table_element_token ::= LC.
+create_table_element_token ::= RC.
 
 create_table_definition_tokens ::= .
 create_table_definition_tokens ::= create_table_definition_tokens create_table_definition_token.

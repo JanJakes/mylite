@@ -883,7 +883,11 @@ create_server_option ::= USER ATOM.
 create_server_option ::= PASSWORD ATOM.
 create_server_option ::= SOCKET ATOM.
 create_server_option ::= OWNER ATOM.
-create_server_option ::= PORT ATOM.
+create_server_option ::= PORT create_server_port.
+
+create_server_port ::= BOOLEAN_NUMBER.
+create_server_port ::= FACTOR_NUMBER.
+create_server_port ::= NUMBER_LITERAL.
 
 create_reference ::= REFERENCE.
 

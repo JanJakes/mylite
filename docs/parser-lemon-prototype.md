@@ -62,7 +62,7 @@ token sink:
   recognize documented data-file, numeric size, `'Y'`/`'N'` encryption,
   engine, and attribute clauses.
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
-  `OPTIONS` names and value requirements.
+  `OPTIONS` names, string-valued options, and numeric ports.
 - `ALTER TABLE` recognizes selected closed actions including `FORCE`,
   `ENABLE/DISABLE KEYS`, `ADD`/`CHANGE`/`MODIFY` heads, `RENAME` forms,
   comma-separated `ADD`/`CHANGE`/`MODIFY` bodies, `DROP` forms,

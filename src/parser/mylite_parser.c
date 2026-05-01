@@ -36,6 +36,8 @@ static int select_lock_table_ref_part(int token_id);
 static int select_into_output_option_start(int token_id);
 static int select_outfile_field_option_start(int token_id);
 static int select_outfile_line_option_start(int token_id);
+static int select_index_hint_name_token(int token_id);
+static int select_index_hint_type(int token_id);
 static int select_charset_name_token(int token_id, MyliteToken token);
 static int select_limit_option_token(int token_id);
 static int select_string_literal_token(int token_id);
@@ -371,6 +373,17 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     SELECT_ORDER_DIRECTION_NONE,
     SELECT_ORDER_DIRECTION_COMPLETE
   };
+  enum {
+    SELECT_INDEX_HINT_NONE,
+    SELECT_INDEX_HINT_AFTER_TYPE,
+    SELECT_INDEX_HINT_AFTER_KEY,
+    SELECT_INDEX_HINT_AFTER_FOR,
+    SELECT_INDEX_HINT_AFTER_FOR_ORDER_GROUP,
+    SELECT_INDEX_HINT_AFTER_SCOPE,
+    SELECT_INDEX_HINT_AFTER_LP,
+    SELECT_INDEX_HINT_AFTER_NAME,
+    SELECT_INDEX_HINT_AFTER_COMMA
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token;
@@ -393,6 +406,8 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int rollup_state = SELECT_ROLLUP_NONE;
   int order_clause = 0;
   int order_direction_state = SELECT_ORDER_DIRECTION_NONE;
+  int index_hint_state = SELECT_INDEX_HINT_NONE;
+  int index_hint_allow_empty = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -463,6 +478,99 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       }
       order_direction_state = SELECT_ORDER_DIRECTION_NONE;
       order_clause = 0;
+    }
+
+    if (index_hint_state == SELECT_INDEX_HINT_AFTER_TYPE) {
+      if (token_id != ML_INDEX && token_id != ML_KEY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT index hint");
+        return;
+      }
+      index_hint_state = SELECT_INDEX_HINT_AFTER_KEY;
+      continue;
+    }
+    if (index_hint_state == SELECT_INDEX_HINT_AFTER_KEY) {
+      if (token_id == ML_FOR) {
+        index_hint_state = SELECT_INDEX_HINT_AFTER_FOR;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LP) {
+        index_hint_state = SELECT_INDEX_HINT_AFTER_LP;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "incomplete SELECT index hint");
+      return;
+    }
+    if (index_hint_state == SELECT_INDEX_HINT_AFTER_FOR) {
+      if (token_id == ML_JOIN) {
+        index_hint_state = SELECT_INDEX_HINT_AFTER_SCOPE;
+        continue;
+      }
+      if (token_id == ML_GROUP || token_id == ML_ORDER) {
+        index_hint_state = SELECT_INDEX_HINT_AFTER_FOR_ORDER_GROUP;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "incomplete SELECT index hint");
+      return;
+    }
+    if (index_hint_state == SELECT_INDEX_HINT_AFTER_FOR_ORDER_GROUP) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT index hint");
+        return;
+      }
+      index_hint_state = SELECT_INDEX_HINT_AFTER_SCOPE;
+      continue;
+    }
+    if (index_hint_state == SELECT_INDEX_HINT_AFTER_SCOPE) {
+      if (token_id != ML_LP) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT index hint");
+        return;
+      }
+      index_hint_state = SELECT_INDEX_HINT_AFTER_LP;
+      pending_token = token;
+      continue;
+    }
+    if (index_hint_state == SELECT_INDEX_HINT_AFTER_LP) {
+      if (token_id == ML_RP && index_hint_allow_empty) {
+        index_hint_state = SELECT_INDEX_HINT_NONE;
+        continue;
+      }
+      if (!select_index_hint_name_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT index hint");
+        return;
+      }
+      index_hint_state = SELECT_INDEX_HINT_AFTER_NAME;
+      continue;
+    }
+    if (index_hint_state == SELECT_INDEX_HINT_AFTER_NAME) {
+      if (token_id == ML_COMMA) {
+        index_hint_state = SELECT_INDEX_HINT_AFTER_COMMA;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_RP) {
+        index_hint_state = SELECT_INDEX_HINT_NONE;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "malformed SELECT index hint");
+      return;
+    }
+    if (index_hint_state == SELECT_INDEX_HINT_AFTER_COMMA) {
+      if (!select_index_hint_name_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT index hint");
+        return;
+      }
+      index_hint_state = SELECT_INDEX_HINT_AFTER_NAME;
+      continue;
     }
 
     if (lock_state == SELECT_LOCK_AFTER_LOCK) {
@@ -980,6 +1088,13 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       continue;
     }
 
+    if (select_index_hint_type(token_id)) {
+      index_hint_state = SELECT_INDEX_HINT_AFTER_TYPE;
+      index_hint_allow_empty = token_id == ML_USE;
+      pending_token = token;
+      continue;
+    }
+
     if (group_clause && token_id == ML_WITH) {
       rollup_state = SELECT_ROLLUP_AFTER_WITH;
       pending_token = token;
@@ -1100,6 +1215,15 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   } else if (rollup_state == SELECT_ROLLUP_AFTER_WITH) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT GROUP BY rollup clause");
+  } else if (index_hint_state == SELECT_INDEX_HINT_AFTER_TYPE ||
+             index_hint_state == SELECT_INDEX_HINT_AFTER_KEY ||
+             index_hint_state == SELECT_INDEX_HINT_AFTER_FOR ||
+             index_hint_state == SELECT_INDEX_HINT_AFTER_FOR_ORDER_GROUP ||
+             index_hint_state == SELECT_INDEX_HINT_AFTER_SCOPE ||
+             index_hint_state == SELECT_INDEX_HINT_AFTER_LP ||
+             index_hint_state == SELECT_INDEX_HINT_AFTER_COMMA) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT index hint");
   } else if (need_set_operand) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT set operation");
@@ -1275,6 +1399,15 @@ static int select_outfile_field_option_start(int token_id) {
 
 static int select_outfile_line_option_start(int token_id) {
   return token_id == ML_STARTING || token_id == ML_TERMINATED;
+}
+
+static int select_index_hint_name_token(int token_id) {
+  return token_id != ML_COMMA && token_id != ML_LP && token_id != ML_RP &&
+         token_id != ML_SEMI;
+}
+
+static int select_index_hint_type(int token_id) {
+  return token_id == ML_FORCE || token_id == ML_IGNORE || token_id == ML_USE;
 }
 
 static int select_charset_name_token(int token_id, MyliteToken token) {

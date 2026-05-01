@@ -342,7 +342,7 @@ Shared parser-level `SHOW ... LIKE` filters require string-literal patterns.
 | `IN` subqueries | ❌ | top | NULL-aware membership semantics and type conversion. |  |
 | `ANY` / `SOME` / `ALL` subqueries | ❌ | high | Quantified comparison semantics. |  |
 | Derived table materialization/merge | ❌ | high | Optimizer-visible semantics and metadata results. |  |
-| Index hints | ❌ | high | USE/FORCE/IGNORE INDEX with FOR JOIN/ORDER BY/GROUP BY scopes. |  |
+| Index hints | ❌ | high | USE/FORCE/IGNORE INDEX with FOR JOIN/ORDER BY/GROUP BY scopes. | Parser validates top-level `USE`/`FORCE`/`IGNORE INDEX|KEY` hint tails; optimizer behavior is not implemented. |
 | Optimizer hints | ❌ | medium | Comment-hint grammar and ignored/accepted hint diagnostics. |  |
 | `PARTITION` selection | ❌ | low | Explicit partition selection syntax and errors. |  |
 | Locking clauses | ❌ | high | FOR UPDATE, FOR SHARE, OF table list, NOWAIT, and SKIP LOCKED. | Parser recognizes and validates top-level SELECT locking-clause tails; execution semantics are not implemented. |

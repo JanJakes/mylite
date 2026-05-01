@@ -117,7 +117,25 @@ evaluation before becoming part of the default build:
 
 ## Development
 
-TBD.
+### Parser prototype
+
+This branch contains a Lemon-based MySQL syntax parser prototype ported from
+TiDB's parser grammar. Build it with CMake and run the smoke test with CTest:
+
+```sh
+cmake -S . -B build
+cmake --build build -j4
+ctest --test-dir build --output-on-failure
+```
+
+The `mylite-parse` tool accepts SQL from stdin or file paths:
+
+```sh
+printf 'SELECT 1\n' | build/mylite-parse
+```
+
+Parser design and corpus verification notes live in
+[docs/parser/lemon-tidb-port.md](docs/parser/lemon-tidb-port.md).
 
 ## References
 

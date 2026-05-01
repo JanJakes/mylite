@@ -55,6 +55,15 @@ Priority is a delivery-order signal, not a relaxation of correctness:
 
 The parser should eventually recognize the full MySQL grammar. Unsupported embedded-server features may still be accepted with a MySQL-compatible diagnostic, warning, or placeholder when that is safer for applications than a syntax error.
 
+### Parser prototype status
+
+A Lemon-based syntax parser prototype is present and generated from the vendored
+TiDB grammar plus MyLite MySQL overlay rules. It currently provides syntax
+acceptance only: it does not build the final MyLite AST and does not imply
+runtime support for the statement rows below. The current prototype parses the
+WordPress MySQL server query corpus with `parsed=69541 skipped=36 failed=0`.
+See [docs/parser/lemon-tidb-port.md](docs/parser/lemon-tidb-port.md).
+
 ### 1.1 Data Definition Statements
 
 | Feature | Status | Priority | Target behavior | Implementation notes |

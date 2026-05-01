@@ -82,6 +82,8 @@ def main() -> int:
         ("create event e2 on schedule at current_timestamp on completion not preserve do begin end;", 0, {"statements": "1", "ddl": "1"}),
         ("create event e3 on schedule every 1 year on completion preserve disable on replica comment 'yearly' do select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create event e4 on schedule at current_timestamp + interval 1 hour enable do begin end;", 0, {"statements": "1", "ddl": "1"}),
+        ("create event e5 on schedule every 1 day disable on replica do select 1;", 0, {"statements": "1", "ddl": "1"}),
+        ("create event e6 on schedule every 1 day disable on slave do select 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create trigger if not exists db1.tr1 before insert on t for each row set @a = 1;", 0, {"statements": "1", "ddl": "1"}),
         ("create trigger tr_order before insert on t for each row follows tr0 begin end;", 0, {"statements": "1", "ddl": "1"}),
         ("create trigger tr_after after update on t for each row precedes tr0 set @a = 1;", 0, {"statements": "1", "ddl": "1"}),

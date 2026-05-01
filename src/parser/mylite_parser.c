@@ -29,7 +29,10 @@ static int select_set_option(int token_id);
 static int select_set_operand_start(int token_id);
 static int select_lock_table_ref_start(int token_id, MyliteToken token);
 static int select_lock_table_ref_part(int token_id);
-static int select_into_file_target(int token_id);
+static int select_into_output_option_start(int token_id);
+static int select_outfile_field_option_start(int token_id);
+static int select_outfile_line_option_start(int token_id);
+static int select_charset_name_token(int token_id, MyliteToken token);
 static int select_string_literal_token(int token_id);
 static int token_ascii_equal(MyliteToken token, const char *expected);
 
@@ -320,7 +323,20 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   enum {
     SELECT_INTO_NONE,
     SELECT_INTO_AFTER_INTO,
-    SELECT_INTO_AFTER_FILE_TARGET
+    SELECT_INTO_AFTER_OUTFILE,
+    SELECT_INTO_AFTER_DUMPFILE,
+    SELECT_INTO_OUTFILE_READY,
+    SELECT_INTO_DUMPFILE_READY,
+    SELECT_INTO_AFTER_CHARACTER,
+    SELECT_INTO_AFTER_CHARSET,
+    SELECT_INTO_AFTER_FIELDS,
+    SELECT_INTO_AFTER_FIELD_OPTION,
+    SELECT_INTO_AFTER_FIELD_BY,
+    SELECT_INTO_AFTER_OPTIONALLY,
+    SELECT_INTO_AFTER_OPTIONALLY_ENCLOSED,
+    SELECT_INTO_AFTER_LINES,
+    SELECT_INTO_AFTER_LINE_OPTION,
+    SELECT_INTO_AFTER_LINE_BY
   };
   MyliteLexer lexer;
   MyliteToken token;
@@ -334,6 +350,8 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   int lock_state = SELECT_LOCK_NONE;
   int saw_lock_tail = 0;
   int into_state = SELECT_INTO_NONE;
+  int outfile_fields = 0;
+  int outfile_lines = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -528,8 +546,15 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
     }
 
     if (into_state == SELECT_INTO_AFTER_INTO) {
-      if (select_into_file_target(token_id)) {
-        into_state = SELECT_INTO_AFTER_FILE_TARGET;
+      if (token_id == ML_OUTFILE) {
+        into_state = SELECT_INTO_AFTER_OUTFILE;
+        outfile_fields = 0;
+        outfile_lines = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_DUMPFILE) {
+        into_state = SELECT_INTO_AFTER_DUMPFILE;
         pending_token = token;
         continue;
       }
@@ -541,13 +566,200 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
       into_state = SELECT_INTO_NONE;
       continue;
     }
-    if (into_state == SELECT_INTO_AFTER_FILE_TARGET) {
+    if (into_state == SELECT_INTO_AFTER_OUTFILE) {
       if (!select_string_literal_token(token_id)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete SELECT INTO file target");
         return;
       }
+      into_state = SELECT_INTO_OUTFILE_READY;
+      continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_DUMPFILE) {
+      if (!select_string_literal_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO file target");
+        return;
+      }
+      into_state = SELECT_INTO_DUMPFILE_READY;
+      continue;
+    }
+    if (into_state == SELECT_INTO_OUTFILE_READY) {
+      if (token_id == ML_CHARACTER) {
+        if (outfile_fields || outfile_lines) {
+          mylite_parser_reject(ctx, token,
+                               "malformed SELECT INTO OUTFILE option");
+          return;
+        }
+        into_state = SELECT_INTO_AFTER_CHARACTER;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_CHARSET) {
+        if (outfile_fields || outfile_lines) {
+          mylite_parser_reject(ctx, token,
+                               "malformed SELECT INTO OUTFILE option");
+          return;
+        }
+        into_state = SELECT_INTO_AFTER_CHARSET;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_FIELDS || token_id == ML_COLUMNS) {
+        if (outfile_fields || outfile_lines) {
+          mylite_parser_reject(ctx, token,
+                               "malformed SELECT INTO OUTFILE option");
+          return;
+        }
+        outfile_fields = 1;
+        into_state = SELECT_INTO_AFTER_FIELDS;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LINES) {
+        if (outfile_lines) {
+          mylite_parser_reject(ctx, token,
+                               "malformed SELECT INTO OUTFILE option");
+          return;
+        }
+        outfile_lines = 1;
+        into_state = SELECT_INTO_AFTER_LINES;
+        pending_token = token;
+        continue;
+      }
+      if (select_outfile_line_option_start(token_id) && outfile_lines) {
+        into_state = SELECT_INTO_AFTER_LINE_OPTION;
+        pending_token = token;
+        continue;
+      }
+      if (select_outfile_field_option_start(token_id)) {
+        if (!outfile_fields || outfile_lines) {
+          mylite_parser_reject(ctx, token,
+                               "malformed SELECT INTO OUTFILE option");
+          return;
+        }
+        if (token_id == ML_OPTIONALLY) {
+          into_state = SELECT_INTO_AFTER_OPTIONALLY;
+        } else {
+          into_state = SELECT_INTO_AFTER_FIELD_OPTION;
+        }
+        pending_token = token;
+        continue;
+      }
+      if (select_outfile_line_option_start(token_id)) {
+        mylite_parser_reject(ctx, token,
+                             "malformed SELECT INTO OUTFILE option");
+        return;
+      }
       into_state = SELECT_INTO_NONE;
+    }
+    if (into_state == SELECT_INTO_DUMPFILE_READY) {
+      if (select_into_output_option_start(token_id)) {
+        mylite_parser_reject(ctx, token,
+                             "malformed SELECT INTO DUMPFILE option");
+        return;
+      }
+      into_state = SELECT_INTO_NONE;
+    }
+    if (into_state == SELECT_INTO_AFTER_CHARACTER) {
+      if (token_id != ML_SET) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO OUTFILE charset");
+        return;
+      }
+      into_state = SELECT_INTO_AFTER_CHARSET;
+      pending_token = token;
+      continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_CHARSET) {
+      if (!select_charset_name_token(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO OUTFILE charset");
+        return;
+      }
+      into_state = SELECT_INTO_OUTFILE_READY;
+      continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_FIELDS) {
+      if (!select_outfile_field_option_start(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO OUTFILE fields option");
+        return;
+      }
+      if (token_id == ML_OPTIONALLY) {
+        into_state = SELECT_INTO_AFTER_OPTIONALLY;
+      } else {
+        into_state = SELECT_INTO_AFTER_FIELD_OPTION;
+      }
+      pending_token = token;
+      continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_FIELD_OPTION) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO OUTFILE fields option");
+        return;
+      }
+      into_state = SELECT_INTO_AFTER_FIELD_BY;
+      pending_token = token;
+      continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_FIELD_BY) {
+      if (!select_string_literal_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO OUTFILE fields option");
+        return;
+      }
+      into_state = SELECT_INTO_OUTFILE_READY;
+      continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_OPTIONALLY) {
+      if (token_id != ML_ENCLOSED) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO OUTFILE fields option");
+        return;
+      }
+      into_state = SELECT_INTO_AFTER_OPTIONALLY_ENCLOSED;
+      pending_token = token;
+      continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_OPTIONALLY_ENCLOSED) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO OUTFILE fields option");
+        return;
+      }
+      into_state = SELECT_INTO_AFTER_FIELD_BY;
+      pending_token = token;
+      continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_LINES) {
+      if (!select_outfile_line_option_start(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO OUTFILE lines option");
+        return;
+      }
+      into_state = SELECT_INTO_AFTER_LINE_OPTION;
+      pending_token = token;
+      continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_LINE_OPTION) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO OUTFILE lines option");
+        return;
+      }
+      into_state = SELECT_INTO_AFTER_LINE_BY;
+      pending_token = token;
+      continue;
+    }
+    if (into_state == SELECT_INTO_AFTER_LINE_BY) {
+      if (!select_string_literal_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete SELECT INTO OUTFILE lines option");
+        return;
+      }
+      into_state = SELECT_INTO_OUTFILE_READY;
       continue;
     }
 
@@ -644,9 +856,26 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   } else if (into_state == SELECT_INTO_AFTER_INTO) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT INTO clause");
-  } else if (into_state == SELECT_INTO_AFTER_FILE_TARGET) {
+  } else if (into_state == SELECT_INTO_AFTER_OUTFILE ||
+             into_state == SELECT_INTO_AFTER_DUMPFILE) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT INTO file target");
+  } else if (into_state == SELECT_INTO_AFTER_CHARACTER ||
+             into_state == SELECT_INTO_AFTER_CHARSET) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT INTO OUTFILE charset");
+  } else if (into_state == SELECT_INTO_AFTER_FIELDS ||
+             into_state == SELECT_INTO_AFTER_FIELD_OPTION ||
+             into_state == SELECT_INTO_AFTER_FIELD_BY ||
+             into_state == SELECT_INTO_AFTER_OPTIONALLY ||
+             into_state == SELECT_INTO_AFTER_OPTIONALLY_ENCLOSED) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT INTO OUTFILE fields option");
+  } else if (into_state == SELECT_INTO_AFTER_LINES ||
+             into_state == SELECT_INTO_AFTER_LINE_OPTION ||
+             into_state == SELECT_INTO_AFTER_LINE_BY) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete SELECT INTO OUTFILE lines option");
   } else if (need_set_operand) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete SELECT set operation");
@@ -769,8 +998,26 @@ static int select_lock_table_ref_part(int token_id) {
          token_id == ML_STAR;
 }
 
-static int select_into_file_target(int token_id) {
-  return token_id == ML_DUMPFILE || token_id == ML_OUTFILE;
+static int select_into_output_option_start(int token_id) {
+  return token_id == ML_CHARACTER || token_id == ML_CHARSET ||
+         token_id == ML_COLUMNS || token_id == ML_ENCLOSED ||
+         token_id == ML_ESCAPED || token_id == ML_FIELDS ||
+         token_id == ML_LINES || token_id == ML_OPTIONALLY ||
+         token_id == ML_STARTING || token_id == ML_TERMINATED;
+}
+
+static int select_outfile_field_option_start(int token_id) {
+  return token_id == ML_ENCLOSED || token_id == ML_ESCAPED ||
+         token_id == ML_OPTIONALLY || token_id == ML_TERMINATED;
+}
+
+static int select_outfile_line_option_start(int token_id) {
+  return token_id == ML_STARTING || token_id == ML_TERMINATED;
+}
+
+static int select_charset_name_token(int token_id, MyliteToken token) {
+  return token_id == ML_ATOM || token_id == ML_BINARY ||
+         token_id == ML_QUOTED_ID || token_ascii_equal(token, "binary");
 }
 
 static int select_string_literal_token(int token_id) {

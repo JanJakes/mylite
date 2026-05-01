@@ -57,6 +57,8 @@ token sink:
   index-hint `FOR JOIN`/`FOR ORDER BY`/`FOR GROUP BY`.
 - Top-level `SELECT` requires `INTO OUTFILE` and `INTO DUMPFILE` to include
   the mandatory file-name string.
+- Top-level `SELECT ... INTO OUTFILE` validates the basic `CHARACTER SET`,
+  `FIELDS`/`COLUMNS`, and `LINES` option tails.
 - Top-level `SELECT` also rejects incomplete `UNION`/`INTERSECT`/`EXCEPT`
   set operations.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,

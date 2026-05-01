@@ -1788,6 +1788,11 @@ case "$variable_assignment_output" in
 		;;
 esac
 
+if ! "$parser" --quiet "SET @a = 1, @@SESSION.sql_mode = DEFAULT, GLOBAL max_connections = 10"; then
+	echo "expected comma-separated SET assignments to parse" >&2
+	exit 1
+fi
+
 select_into_output=$("$parser" "SELECT a, b INTO @x, local_y FROM t; SELECT a FROM t INTO @x FOR UPDATE; SELECT a FROM t FOR UPDATE INTO @x; SELECT a INTO OUTFILE '/tmp/x' CHARACTER SET utf8mb4 FIELDS TERMINATED BY ',' FROM t; SELECT a INTO DUMPFILE '/tmp/y' FROM t")
 case "$select_into_output" in
 	*"select"*/user_variable:@x*"select"*/user_variable:@x*"select"*/user_variable:@x*"select"*/outfile:"'/tmp/x'"*"select"*/dumpfile:"'/tmp/y'"*) ;;
@@ -4716,6 +4721,7 @@ case "$transaction_output" in
 		;;
 esac
 
+"$parser" --quiet 'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY; SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; SET CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED, READ WRITE'
 "$parser" --quiet 'COMMIT WORK; COMMIT RELEASE; COMMIT NO RELEASE; COMMIT AND CHAIN NO RELEASE; COMMIT AND NO CHAIN RELEASE; ROLLBACK WORK NO RELEASE; ROLLBACK AND CHAIN NO RELEASE; ROLLBACK AND NO CHAIN RELEASE'
 
 if "$parser" --quiet 'COMMIT foo'; then
@@ -4730,6 +4736,41 @@ fi
 
 if "$parser" --quiet 'START TRANSACTION READ ONLY, READ WRITE'; then
 	echo "expected conflicting START TRANSACTION read modes to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET TRANSACTION'; then
+	echo "expected SET TRANSACTION without characteristics to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET TRANSACTION ISOLATION'; then
+	echo "expected incomplete SET TRANSACTION ISOLATION clause to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET TRANSACTION ISOLATION LEVEL REPEATABLE COMMITTED'; then
+	echo "expected invalid SET TRANSACTION REPEATABLE isolation level to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET TRANSACTION READ'; then
+	echo "expected incomplete SET TRANSACTION access mode to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET TRANSACTION READ WRITE,'; then
+	echo "expected trailing SET TRANSACTION characteristic comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET CHARACTERISTICS AS TRANSACTION'; then
+	echo "expected SET CHARACTERISTICS without characteristics to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'SET CHARACTERISTICS TRANSACTION READ ONLY'; then
+	echo "expected SET CHARACTERISTICS without AS to fail" >&2
 	exit 1
 fi
 
@@ -4949,5 +4990,30 @@ fi
 
 if "$parser" --quiet "SET"; then
 	echo "expected bare SET to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SET ="; then
+	echo "expected SET without assignment target to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SET a"; then
+	echo "expected SET assignment without operator to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SET a ="; then
+	echo "expected SET assignment without value to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SET @a = 1,"; then
+	echo "expected SET assignment trailing comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "SET @a = 1, = 2"; then
+	echo "expected SET assignment without second target to fail" >&2
 	exit 1
 fi

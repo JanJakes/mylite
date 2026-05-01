@@ -419,14 +419,15 @@ target. XA transaction XID targets are recorded for the
 XID-bearing XA statements, while `XA RECOVER` records the XA transaction
 collection. Non-XA transaction-control statements record the
 transaction object kind for validated `BEGIN`, `BEGIN WORK`,
-`START TRANSACTION`, `COMMIT`, bare `ROLLBACK`, and
-`SET [GLOBAL | LOCAL | SESSION] TRANSACTION`, while leaving compound
+`START TRANSACTION`, `COMMIT`, bare `ROLLBACK`,
+`SET [GLOBAL | LOCAL | SESSION] TRANSACTION`, and
+`SET CHARACTERISTICS AS TRANSACTION`, while leaving compound
 `BEGIN ... END` blocks objectless. `BEGIN` validation rejects extra
 transaction tails and MySQL-unsupported compound `BEGIN [NOT] ATOMIC` clauses.
 `COMMIT` and non-savepoint
 `ROLLBACK` validate MySQL completion-clause ordering for `AND [NO] CHAIN` and
-`[NO] RELEASE`, and `START TRANSACTION` validates comma-separated transaction
-characteristics. Quoted `HELP` search
+`[NO] RELEASE`, and `START TRANSACTION` plus `SET` transaction forms validate
+comma-separated transaction characteristics. Quoted `HELP` search
 topics are recorded as help-topic targets. Component and plugin targets are
 recorded for `INSTALL` and `UNINSTALL` administrative statements, with
 component URI string lists, optional `INSTALL COMPONENT ... SET` assignments,
@@ -506,6 +507,8 @@ targets at the statement boundary. User-variable targets include MySQL's quoted
 variable-name forms. Structured system-variable targets include the predefined
 `default` instance used by key-cache variables. System-variable assignment
 targets may use keyword-shaped names when followed by an assignment operator.
+Generic `SET` assignment lists validate that each comma-separated assignment has
+a target, an assignment operator, and a nonempty value expression tail.
 Connection character-set `SET NAMES` and `SET CHARACTER SET` forms record the
 target character set and validate the shorthand and optional `COLLATE` clause
 shape, including following comma-separated `SET` assignments. Savepoint names

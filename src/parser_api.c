@@ -900,9 +900,28 @@ static int validate_set_names_statement_syntax(const mylite_parser *parser,
 static int validate_set_character_set_statement_syntax(const mylite_parser *parser,
                                                        size_t token_index,
                                                        size_t last_token_index);
+static int validate_set_transaction_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index);
+static int validate_set_characteristics_statement_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index);
+static int validate_set_transaction_characteristic_list_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index);
+static int validate_set_transaction_characteristic_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index,
+                                                          size_t *next_token_index);
 static int validate_set_assignment_tail_syntax(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index);
+static size_t find_set_assignment_boundary_token(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
+static int validate_set_assignment_syntax(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index);
 static int token_can_be_character_set_value(const mylite_parser *parser, size_t token_index);
 static int token_can_be_collation_value(const mylite_parser *parser, size_t token_index);
 static int validate_reset_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -11672,7 +11691,129 @@ static int validate_set_statement_syntax(const mylite_parser *parser, const myli
 		return validate_set_character_set_statement_syntax(parser, token_index + 1, last_token_index);
 	}
 
-	return 1;
+	if (token_text_equals(parser, token_index, "CHARACTERISTICS")) {
+		return validate_set_characteristics_statement_syntax(parser, token_index, last_token_index);
+	}
+	if (token_text_equals(parser, token_index, "TRANSACTION") ||
+	    ((token_text_equals(parser, token_index, "GLOBAL") ||
+	      token_text_equals(parser, token_index, "LOCAL") ||
+	      token_text_equals(parser, token_index, "SESSION")) &&
+	     token_index + 1 <= last_token_index &&
+	     token_text_equals(parser, token_index + 1, "TRANSACTION"))) {
+		return validate_set_transaction_statement_syntax(parser, token_index, last_token_index);
+	}
+
+	return validate_set_assignment_tail_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_set_transaction_statement_syntax(const mylite_parser *parser,
+                                                     size_t token_index,
+                                                     size_t last_token_index)
+{
+	if (token_text_equals(parser, token_index, "GLOBAL") ||
+	    token_text_equals(parser, token_index, "LOCAL") ||
+	    token_text_equals(parser, token_index, "SESSION")) {
+		token_index++;
+	}
+	if (token_index > last_token_index ||
+	    !token_text_equals(parser, token_index, "TRANSACTION")) {
+		return 0;
+	}
+
+	token_index++;
+	return validate_set_transaction_characteristic_list_syntax(parser, token_index, last_token_index);
+}
+
+static int validate_set_characteristics_statement_syntax(const mylite_parser *parser,
+                                                         size_t token_index,
+                                                         size_t last_token_index)
+{
+	if (token_index + 3 > last_token_index ||
+	    !token_text_equals(parser, token_index, "CHARACTERISTICS") ||
+	    !token_text_equals(parser, token_index + 1, "AS") ||
+	    !token_text_equals(parser, token_index + 2, "TRANSACTION")) {
+		return 0;
+	}
+
+	return validate_set_transaction_characteristic_list_syntax(parser, token_index + 3, last_token_index);
+}
+
+static int validate_set_transaction_characteristic_list_syntax(const mylite_parser *parser,
+                                                               size_t token_index,
+                                                               size_t last_token_index)
+{
+	int saw_characteristic = 0;
+
+	while (token_index <= last_token_index) {
+		if (!validate_set_transaction_characteristic_syntax(parser,
+		                                                    token_index,
+		                                                    last_token_index,
+		                                                    &token_index)) {
+			return 0;
+		}
+		saw_characteristic = 1;
+		if (token_index > last_token_index) {
+			return 1;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	return saw_characteristic;
+}
+
+static int validate_set_transaction_characteristic_syntax(const mylite_parser *parser,
+                                                          size_t token_index,
+                                                          size_t last_token_index,
+                                                          size_t *next_token_index)
+{
+	if (token_index > last_token_index) {
+		return 0;
+	}
+	if (token_text_equals(parser, token_index, "ISOLATION")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "LEVEL")) {
+			return 0;
+		}
+		token_index += 2;
+		if (token_text_equals(parser, token_index, "REPEATABLE")) {
+			if (token_index + 1 > last_token_index ||
+			    !token_text_equals(parser, token_index + 1, "READ")) {
+				return 0;
+			}
+			*next_token_index = token_index + 2;
+			return 1;
+		}
+		if (token_text_equals(parser, token_index, "READ")) {
+			if (token_index + 1 > last_token_index ||
+			    (!token_text_equals(parser, token_index + 1, "COMMITTED") &&
+			     !token_text_equals(parser, token_index + 1, "UNCOMMITTED"))) {
+				return 0;
+			}
+			*next_token_index = token_index + 2;
+			return 1;
+		}
+		if (token_text_equals(parser, token_index, "SERIALIZABLE")) {
+			*next_token_index = token_index + 1;
+			return 1;
+		}
+		return 0;
+	}
+	if (parser->tokens[token_index].parser_token == READ_T) {
+		if (token_index + 1 > last_token_index ||
+		    (!token_text_equals(parser, token_index + 1, "ONLY") &&
+		     parser->tokens[token_index + 1].parser_token != WRITE_T)) {
+			return 0;
+		}
+		*next_token_index = token_index + 2;
+		return 1;
+	}
+	return 0;
 }
 
 static int validate_set_role_statement_syntax(const mylite_parser *parser,
@@ -11926,9 +12067,55 @@ static int validate_set_assignment_tail_syntax(const mylite_parser *parser,
                                                size_t token_index,
                                                size_t last_token_index)
 {
-	int expecting_assignment = 1;
-
 	if (token_index > last_token_index) {
+		return 0;
+	}
+
+	while (token_index <= last_token_index) {
+		size_t boundary_token_index = find_set_assignment_boundary_token(parser, token_index, last_token_index);
+
+		if (!validate_set_assignment_syntax(parser, token_index, boundary_token_index - 1)) {
+			return 0;
+		}
+		if (boundary_token_index > last_token_index) {
+			return 1;
+		}
+		token_index = boundary_token_index + 1;
+		if (token_index > last_token_index) {
+			return 0;
+		}
+	}
+
+	return 0;
+}
+
+static size_t find_set_assignment_boundary_token(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	while (token_index <= last_token_index && token_index < parser->token_count) {
+		size_t matching_token = parser->tokens[token_index].matching_token;
+
+		if (parser->tokens[token_index].parser_token == ',') {
+			return token_index;
+		}
+		if (matching_token > token_index + 1) {
+			token_index = matching_token;
+		} else {
+			token_index++;
+		}
+	}
+	return parser->token_count;
+}
+
+static int validate_set_assignment_syntax(const mylite_parser *parser,
+                                          size_t token_index,
+                                          size_t last_token_index)
+{
+	if (token_index > last_token_index ||
+	    token_index >= parser->token_count ||
+	    parser->tokens[token_index].parser_token == ',' ||
+	    token_is_assignment_operator(parser, token_index)) {
 		return 0;
 	}
 
@@ -11936,22 +12123,19 @@ static int validate_set_assignment_tail_syntax(const mylite_parser *parser,
 		size_t matching_token = parser->tokens[token_index].matching_token;
 
 		if (matching_token > token_index + 1) {
-			expecting_assignment = 0;
 			token_index = matching_token;
 			continue;
 		}
-		if (parser->tokens[token_index].parser_token == ',') {
-			if (expecting_assignment) {
-				return 0;
-			}
-			expecting_assignment = 1;
-			token_index++;
-			continue;
+		if (token_is_assignment_operator(parser, token_index)) {
+			return token_index < last_token_index &&
+			       validate_nonempty_expression_tail_syntax(parser,
+			                                                token_index + 1,
+			                                                last_token_index);
 		}
-		expecting_assignment = 0;
 		token_index++;
 	}
-	return !expecting_assignment;
+
+	return 0;
 }
 
 static int token_can_be_character_set_value(const mylite_parser *parser, size_t token_index)
@@ -17593,6 +17777,12 @@ static int classify_transaction_statement_object(const mylite_parser *parser,
 		     token_text_equals(parser, token_index, "LOCAL") ||
 		     token_text_equals(parser, token_index, "SESSION")) &&
 		    parser->tokens[token_index + 1].parser_token == TRANSACTION_T) {
+			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_TRANSACTION);
+		}
+		if (token_index + 2 <= last_token_index &&
+		    token_text_equals(parser, token_index, "CHARACTERISTICS") &&
+		    token_text_equals(parser, token_index + 1, "AS") &&
+		    parser->tokens[token_index + 2].parser_token == TRANSACTION_T) {
 			return set_statement_direct_object(statement, MYLITE_STATEMENT_OBJECT_TRANSACTION);
 		}
 		return 0;

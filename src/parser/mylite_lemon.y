@@ -732,8 +732,6 @@ account_default_role_spec ::= ALL.
 account_default_role_spec ::= drop_account_list.
 
 account_tls_requirement ::= NONE.
-account_tls_requirement ::= SSL.
-account_tls_requirement ::= X509.
 account_tls_requirement ::= account_tls_option_list.
 
 account_tls_option_list ::= account_tls_option.
@@ -742,6 +740,8 @@ account_tls_option_list ::= account_tls_option_list account_tls_and_tail account
 account_tls_and_tail ::= .
 account_tls_and_tail ::= AND.
 
+account_tls_option ::= SSL.
+account_tls_option ::= X509.
 account_tls_option ::= CIPHER string_literal.
 account_tls_option ::= ISSUER string_literal.
 account_tls_option ::= SUBJECT string_literal.

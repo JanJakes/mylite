@@ -72,6 +72,8 @@ def main() -> int:
         ("create user 'u1'@'localhost', u2@host account lock;", 0, {"statements": "1", "ddl": "1"}),
         ("create user u1 identified by random password, u2 identified with mysql_native_password by 'pw' require ssl;", 0, {"statements": "1", "ddl": "1"}),
         ("create user u3 default role r1, r2 require cipher 'c' and issuer 'i' subject 's' with max_queries_per_hour 2 max_user_connections 3 password expire interval 4 day account unlock comment 'x';", 0, {"statements": "1", "ddl": "1"}),
+        ("create user u_tls require x509 and cipher 'c' and issuer 'i' and subject 's';", 0, {"statements": "1", "ddl": "1"}),
+        ("create user u_ssl require ssl and x509;", 0, {"statements": "1", "ddl": "1"}),
         ("create user u4 password history default password reuse interval 1 day password require current optional failed_login_attempts 2 password_lock_time unbounded attribute '{}';", 0, {"statements": "1", "ddl": "1"}),
         ("create user u5 identified by 'pw' and identified by random password;", 0, {"statements": "1", "ddl": "1"}),
         ("create user u6 identified with mysql_native_password and identified with authentication_ldap_sasl as 'x';", 0, {"statements": "1", "ddl": "1"}),

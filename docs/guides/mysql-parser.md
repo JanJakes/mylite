@@ -552,7 +552,8 @@ ok statements=1 kinds=start[1:5,0:30]/replication_channel:'ch'
 ok statements=4 kinds=start[1:2,0:13]/replication_channel,stop[4:5,15:27]/replication_channel,reset[7:8,29:42]/replication_channel,change[10:16,44:88]/replication_channel
 ```
 
-Group Replication start and stop statements expose the group-replication target:
+Group Replication start and stop statements expose the group-replication target;
+`STOP GROUP_REPLICATION` is validated as a bare statement:
 
 ```text
 ok statements=2 kinds=start[1:2,0:23]/group_replication,stop[4:5,25:47]/group_replication

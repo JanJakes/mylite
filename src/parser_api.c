@@ -159,6 +159,15 @@ static int validate_start_transaction_characteristic_syntax(const mylite_parser 
                                                             size_t *next_token_index,
                                                             int *seen_snapshot,
                                                             int *seen_read_mode);
+static int validate_stop_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_stop_replica_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index);
+static int validate_replication_channel_clause_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index,
+                                                      size_t *next_token_index);
+static int token_is_replication_thread_type(const mylite_parser *parser, size_t token_index);
 static int validate_transaction_completion_clause(const mylite_parser *parser,
                                                   size_t token_index,
                                                   size_t last_token_index);
@@ -1308,6 +1317,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 		case MYLITE_STATEMENT_START:
 			if (!validate_start_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid START statement");
+				return;
+			}
+			break;
+		case MYLITE_STATEMENT_STOP:
+			if (!validate_stop_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid STOP statement");
 				return;
 			}
 			break;
@@ -2919,6 +2934,97 @@ static int validate_start_transaction_characteristic_syntax(const mylite_parser 
 	}
 
 	return 0;
+}
+
+static int validate_stop_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (token_text_equals(parser, token_index, "GROUP_REPLICATION")) {
+		return token_index == last_token_index;
+	}
+	if (token_text_equals(parser, token_index, "REPLICA") ||
+	    token_text_equals(parser, token_index, "SLAVE")) {
+		return validate_stop_replica_statement_syntax(parser, token_index + 1, last_token_index);
+	}
+
+	return 0;
+}
+
+static int validate_stop_replica_statement_syntax(const mylite_parser *parser,
+                                                  size_t token_index,
+                                                  size_t last_token_index)
+{
+	int seen_io_thread = 0;
+	int seen_sql_thread = 0;
+
+	while (token_index <= last_token_index && token_is_replication_thread_type(parser, token_index)) {
+		if (token_text_equals(parser, token_index, "IO_THREAD")) {
+			if (seen_io_thread) {
+				return 0;
+			}
+			seen_io_thread = 1;
+		} else {
+			if (seen_sql_thread) {
+				return 0;
+			}
+			seen_sql_thread = 1;
+		}
+		token_index++;
+		if (token_index > last_token_index ||
+		    token_text_equals(parser, token_index, "FOR")) {
+			break;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		token_index++;
+		if (token_index > last_token_index || !token_is_replication_thread_type(parser, token_index)) {
+			return 0;
+		}
+	}
+
+	if (token_index > last_token_index) {
+		return 1;
+	}
+	return validate_replication_channel_clause_syntax(parser,
+	                                                  token_index,
+	                                                  last_token_index,
+	                                                  &token_index) &&
+	       token_index > last_token_index;
+}
+
+static int validate_replication_channel_clause_syntax(const mylite_parser *parser,
+                                                      size_t token_index,
+                                                      size_t last_token_index,
+                                                      size_t *next_token_index)
+{
+	if (token_index + 2 > last_token_index ||
+	    !token_text_equals(parser, token_index, "FOR") ||
+	    !token_text_equals(parser, token_index + 1, "CHANNEL") ||
+	    !token_can_start_object_name(&parser->tokens[token_index + 2])) {
+		return 0;
+	}
+	*next_token_index = token_index + 3;
+	return 1;
+}
+
+static int token_is_replication_thread_type(const mylite_parser *parser, size_t token_index)
+{
+	return token_index < parser->token_count &&
+	       (token_text_equals(parser, token_index, "IO_THREAD") ||
+	        token_text_equals(parser, token_index, "SQL_THREAD"));
 }
 
 static int validate_transaction_completion_clause(const mylite_parser *parser,

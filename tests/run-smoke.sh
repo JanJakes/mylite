@@ -1400,14 +1400,39 @@ if "$parser" --quiet 'CLONE INSTANCE FROM user@host:3306 IDENTIFIED BY '\''p'\''
 	exit 1
 fi
 
-stop_output=$("$parser" 'STOP REPLICA; STOP GROUP_REPLICATION; STOP SLAVE SQL_THREAD; CREATE TABLE stop (id int)')
+stop_output=$("$parser" "STOP REPLICA; STOP GROUP_REPLICATION; STOP SLAVE SQL_THREAD; STOP REPLICA IO_THREAD, SQL_THREAD FOR CHANNEL 'ch'; CREATE TABLE stop (id int)")
 case "$stop_output" in
-	*"stop"*/replication_channel*"stop"*/group_replication*"stop"*/replication_channel*"create"*/table:stop*) ;;
+	*"stop"*/replication_channel*"stop"*/group_replication*"stop"*/replication_channel*"stop"*/replication_channel:"'ch'"*"create"*/table:stop*) ;;
 	*)
 		echo "unexpected STOP output: $stop_output" >&2
 		exit 1
 		;;
 esac
+
+if "$parser" --quiet 'STOP'; then
+	echo "expected missing STOP operation to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'STOP GROUP_REPLICATION NOW'; then
+	echo "expected trailing STOP GROUP_REPLICATION tokens to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'STOP REPLICA IO_THREAD,'; then
+	echo "expected trailing STOP REPLICA thread comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'STOP REPLICA IO_THREAD IO_THREAD'; then
+	echo "expected missing STOP REPLICA thread comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'STOP REPLICA FOR CHANNEL'; then
+	echo "expected missing STOP REPLICA channel name to fail" >&2
+	exit 1
+fi
 
 prepared_output=$("$parser" "PREPARE stmt FROM @sql; PREPARE \`select\` FROM 'SELECT 1'; EXECUTE stmt USING @a, @b; EXECUTE \`select\`; DEALLOCATE PREPARE stmt; DEALLOCATE PREPARE \`select\`; DROP PREPARE stmt")
 case "$prepared_output" in

@@ -246,6 +246,21 @@ case "$database_option_output" in
 		;;
 esac
 
+definer_object_output=$("$parser" 'CREATE DEFINER = user@localhost PROCEDURE p() SELECT 1; CREATE DEFINER = event@localhost VIEW v AS SELECT 1; CREATE DEFINER = trigger@localhost EVENT e ON SCHEDULE EVERY 1 DAY DO SELECT 1; ALTER DEFINER = user@localhost VIEW v AS SELECT 1')
+case "$definer_object_output" in
+	*"/user:"*)
+		echo "unexpected definer account object output: $definer_object_output" >&2
+		exit 1
+		;;
+esac
+case "$definer_object_output" in
+	*"create"*/procedure:p*"create"*/view:v*"create"*/event:e*"alter"*/view:v*) ;;
+	*)
+		echo "unexpected definer object output: $definer_object_output" >&2
+		exit 1
+		;;
+esac
+
 dml_sql='INSERT INTO `db`.`t` VALUES (1);
 REPLACE LOW_PRIORITY INTO r VALUES (1);
 UPDATE IGNORE u SET a=1;

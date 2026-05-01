@@ -265,6 +265,9 @@ are recorded as direct targets.
 Nameless `ALTER DATABASE` / `ALTER SCHEMA` option forms are recorded with the
 database or schema object kind and no invented target name, matching MySQL's
 default-database syntax.
+Stored-object `DEFINER = user` clauses are skipped during object scanning so
+routine, event, trigger, and view targets are not confused with definer account
+tokens.
 Resource group targets are recorded for `CREATE`, `ALTER`, `DROP`, and
 `SET RESOURCE GROUP`. Server, logfile-group, tablespace, and undo-tablespace
 DDL targets are recorded for the low-level storage/metadata statements that

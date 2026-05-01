@@ -39,6 +39,10 @@ static int classify_labeled_statement(mylite_parser *parser, mylite_statement *s
 static mylite_statement_kind labeled_statement_kind_from_token(int token);
 static void classify_statement_objects(mylite_parser *parser);
 static void classify_statement_object(const mylite_parser *parser, mylite_statement *statement);
+static size_t last_definer_clause_token(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index);
+static int token_can_start_definer_account_name(const mylite_token *token);
 static int classify_dml_statement_object(const mylite_parser *parser, mylite_statement *statement);
 static size_t find_statement_kind_token(const mylite_parser *parser, const mylite_statement *statement);
 static size_t find_insert_or_replace_name_token(const mylite_parser *parser,
@@ -1162,6 +1166,13 @@ static void classify_statement_object(const mylite_parser *parser, mylite_statem
 	token_index = statement->first_token;
 	last_token_index = statement->last_token - 1;
 	for (; token_index <= last_token_index && token_index < parser->token_count; token_index++) {
+		size_t definer_clause_last_token = last_definer_clause_token(parser, token_index, last_token_index);
+
+		if (definer_clause_last_token > token_index) {
+			token_index = definer_clause_last_token;
+			continue;
+		}
+
 		mylite_statement_object_kind object_kind =
 			object_kind_from_token_sequence(parser, token_index, last_token_index);
 		if (object_kind != MYLITE_STATEMENT_OBJECT_NONE) {
@@ -1170,6 +1181,32 @@ static void classify_statement_object(const mylite_parser *parser, mylite_statem
 			return;
 		}
 	}
+}
+
+static size_t last_definer_clause_token(const mylite_parser *parser,
+                                        size_t token_index,
+                                        size_t last_token_index)
+{
+	size_t first_account_token;
+
+	if (!token_text_equals(parser, token_index, "DEFINER") ||
+	    token_index + 2 > last_token_index ||
+	    !token_is_assignment_operator(parser, token_index + 1)) {
+		return token_index;
+	}
+
+	first_account_token = token_index + 2;
+	if (!token_can_start_definer_account_name(&parser->tokens[first_account_token])) {
+		return token_index;
+	}
+
+	return last_account_name_token(parser, first_account_token, last_token_index);
+}
+
+static int token_can_start_definer_account_name(const mylite_token *token)
+{
+	return token_can_start_object_name(token) ||
+	       token->kind == MYLITE_TOKEN_KEYWORD;
 }
 
 static int classify_dml_statement_object(const mylite_parser *parser, mylite_statement *statement)

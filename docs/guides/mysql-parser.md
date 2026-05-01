@@ -105,6 +105,12 @@ inventing a target name:
 ok statements=1 kinds=alter[1:5,0:36]/database
 ```
 
+Stored-object definers are skipped when selecting the DDL target:
+
+```text
+ok statements=1 kinds=create[1:11,0:54]/procedure:p
+```
+
 Grant and revoke principal targets preserve the first account span:
 
 ```text

@@ -76,14 +76,14 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. |  |
 | `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. |  |
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. | Parser records the undo tablespace target; storage-engine behavior is not implemented. |
-| `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |
+| `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. | Parser records the view target while skipping optional definer account clauses; view replacement semantics are not implemented. |
 | `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. |  |
-| `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. |  |
-| `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. |  |
+| `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. | Parser records the event target while skipping optional definer account clauses; scheduler metadata and execution are not implemented. |
+| `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. | Parser records the function target while skipping optional definer account clauses; stored-function semantics are not implemented. |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
 | `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. |  |
 | `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
-| `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. |  |
+| `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. | Parser records the procedure target while skipping optional definer account clauses; stored-procedure semantics are not implemented. |
 | `CREATE SERVER` | ❌ | low | Foreign server metadata syntax. |  |
 | `CREATE SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system catalog DDL. |  |
 | `CREATE TABLE` | ❌ | top | Column definitions, constraints, indexes, table options, generated columns, and partitions; see section 3.1. |  |
@@ -92,8 +92,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE TABLE ... SELECT` | ❌ | high | CTAS type inference, default handling, indexes, and atomicity. |  |
 | `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. |  |
 | `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax present in the MySQL 8.4 parser source. | Parser records the undo tablespace target; storage-engine behavior is not implemented. |
-| `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. |  |
-| `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. |  |
+| `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. | Parser records the trigger target while skipping optional definer account clauses; trigger execution is not implemented. |
+| `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. | Parser records the view target while skipping optional definer account clauses; view metadata and expansion are not implemented. |
 | `DROP DATABASE` / `DROP SCHEMA` | ❌ | high | Schema removal, metadata cleanup, warnings, and embedded single-file constraints. |  |
 | `DROP EVENT` | ❌ | medium | Event metadata deletion. |  |
 | `DROP FUNCTION` (stored) | ❌ | medium | Stored-function deletion and routine metadata cleanup. |  |

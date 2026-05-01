@@ -3251,6 +3251,7 @@ signal_information_items ::= signal_information_item.
 signal_information_items ::= signal_information_items import_comma signal_information_item.
 
 signal_information_item ::= signal_condition_item_name diagnostics_equals signal_information_value.
+signal_information_item ::= MYSQL_ERRNO diagnostics_equals signal_mysql_errno_value.
 
 signal_condition_item_name ::= CATALOG_NAME.
 signal_condition_item_name ::= CLASS_ORIGIN.
@@ -3260,10 +3261,13 @@ signal_condition_item_name ::= CONSTRAINT_NAME.
 signal_condition_item_name ::= CONSTRAINT_SCHEMA.
 signal_condition_item_name ::= CURSOR_NAME.
 signal_condition_item_name ::= MESSAGE_TEXT.
-signal_condition_item_name ::= MYSQL_ERRNO.
 signal_condition_item_name ::= SCHEMA_NAME.
 signal_condition_item_name ::= SUBCLASS_ORIGIN.
 signal_condition_item_name ::= TABLE_NAME.
+
+signal_mysql_errno_value ::= BOOLEAN_NUMBER.
+signal_mysql_errno_value ::= FACTOR_NUMBER.
+signal_mysql_errno_value ::= NUMBER_LITERAL.
 
 signal_information_value ::= ATOM.
 signal_information_value ::= LABEL.

@@ -200,8 +200,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `FETCH` cursor | ❌ | medium | Cursor fetch into variables and NOT FOUND handling. |  |
 | `CLOSE` cursor | ❌ | medium | Cursor close lifecycle. |  |
 | `GET DIAGNOSTICS` | ❌ | medium | Current and stacked diagnostics retrieval. | Parser recognizes diagnostics item lists, local/user-variable assignment targets, and variable condition numbers. |
-| `SIGNAL` | ❌ | medium | User-raised SQLSTATE and condition item semantics. |  |
-| `RESIGNAL` | ❌ | medium | Handler rethrow and diagnostics mutation. |  |
+| `SIGNAL` | ❌ | medium | User-raised SQLSTATE and condition item semantics. | Parser recognizes condition item assignments with numeric `MYSQL_ERRNO` values. |
+| `RESIGNAL` | ❌ | medium | Handler rethrow and diagnostics mutation. | Parser recognizes condition item assignments with numeric `MYSQL_ERRNO` values. |
 
 ### 1.4 Account, Resource, Plugin, Maintenance, SHOW, and Utility Statements
 

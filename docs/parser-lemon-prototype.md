@@ -137,6 +137,8 @@ token sink:
   key-cache and persisted-variable names.
 - `GET DIAGNOSTICS` assignment targets use local/user-variable grammar and
   condition numbers may come from user variables.
+- `SIGNAL` and `RESIGNAL` condition item assignments recognize numeric
+  `MYSQL_ERRNO` values.
 - `SET NAMES` and `SET CHARACTER SET` recognize charset/collation names using
   the shared identifier grammar, `BINARY`, `DEFAULT`, optional collation, and
   comma-following variable assignments.

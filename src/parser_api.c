@@ -2801,7 +2801,9 @@ static int token_can_start_set_system_variable_name(const mylite_parser *parser,
 		return 0;
 	}
 
-	if (token_can_start_local_variable_name(&parser->tokens[token_index])) {
+	if (parser->tokens[token_index].kind == MYLITE_TOKEN_IDENTIFIER ||
+	    parser->tokens[token_index].kind == MYLITE_TOKEN_QUOTED_IDENTIFIER ||
+	    token_can_be_unquoted_object_name_keyword(parser->tokens[token_index].parser_token)) {
 		return 1;
 	}
 

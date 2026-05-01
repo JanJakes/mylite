@@ -300,7 +300,8 @@ and variable-assignment `SET` metadata is recorded for explicit user-variable
 and system-variable targets, including direct unadorned `SET name = ...`
 targets at the statement boundary. User-variable targets include MySQL's quoted
 variable-name forms. Structured system-variable targets include the predefined
-`default` instance used by key-cache variables.
+`default` instance used by key-cache variables. System-variable assignment
+targets may use keyword-shaped names when followed by an assignment operator.
 Connection character-set `SET NAMES` and `SET CHARACTER SET` forms record the
 target character set. Savepoint names are recorded for `SAVEPOINT`,
 `RELEASE SAVEPOINT`, and `ROLLBACK [WORK] TO [SAVEPOINT]`.

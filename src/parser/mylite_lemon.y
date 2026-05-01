@@ -491,7 +491,7 @@ create_trigger_statement_start ::= SELECT.
 create_trigger_statement_start ::= UPDATE.
 
 create_function_tail ::= create_udf_tail.
-create_function_tail ::= routine_signature create_returns create_function_return_tail create_function_body_start statement_tail.
+create_function_tail ::= function_signature create_returns create_function_return_tail create_function_body_start statement_tail.
 
 create_function_return_tail ::= create_function_return_token.
 create_function_return_tail ::= create_function_return_tail create_function_return_token.
@@ -521,7 +521,7 @@ create_function_return_token ::= LP create_function_return_nested RP.
 create_function_body_start ::= BEGIN.
 create_function_body_start ::= RETURN.
 
-create_procedure_tail ::= routine_signature create_procedure_tail_start statement_tail.
+create_procedure_tail ::= procedure_signature create_procedure_tail_start statement_tail.
 
 create_procedure_tail_start ::= keyword_not_select_clause.
 create_procedure_tail_start ::= LABEL.
@@ -534,14 +534,24 @@ create_procedure_tail_start ::= NOT.
 create_procedure_tail_start ::= QUOTED_ID.
 create_procedure_tail_start ::= READS.
 
-routine_signature ::= LP RP.
-routine_signature ::= LP routine_parameters RP.
+function_signature ::= LP RP.
+function_signature ::= LP function_parameters RP.
 
-routine_parameters ::= routine_parameter.
-routine_parameters ::= routine_parameters COMMA routine_parameter.
+function_parameters ::= function_parameter.
+function_parameters ::= function_parameters COMMA function_parameter.
 
-routine_parameter ::= routine_parameter_name routine_parameter_tokens.
-routine_parameter ::= IN routine_parameter_name routine_parameter_tokens.
+function_parameter ::= routine_parameter_name routine_parameter_tokens.
+
+procedure_signature ::= LP RP.
+procedure_signature ::= LP procedure_parameters RP.
+
+procedure_parameters ::= procedure_parameter.
+procedure_parameters ::= procedure_parameters COMMA procedure_parameter.
+
+procedure_parameter ::= routine_parameter_name routine_parameter_tokens.
+procedure_parameter ::= IN routine_parameter_name routine_parameter_tokens.
+procedure_parameter ::= OUT routine_parameter_name routine_parameter_tokens.
+procedure_parameter ::= INOUT routine_parameter_name routine_parameter_tokens.
 
 routine_parameter_name ::= create_table_element_name.
 
@@ -4158,6 +4168,7 @@ keyword ::= EXIT.
 keyword ::= HIGH_PRIORITY.
 keyword ::= IGNORE.
 keyword ::= INTO.
+keyword ::= INOUT.
 keyword ::= IO_THREAD.
 keyword ::= LOW_PRIORITY.
 keyword ::= NAMES.
@@ -4165,6 +4176,7 @@ keyword ::= NO.
 keyword ::= OFFSET.
 keyword ::= ON.
 keyword ::= ORDER.
+keyword ::= OUT.
 keyword ::= PASSWORD.
 keyword ::= PLUGIN_DIR.
 keyword ::= QUICK.
@@ -4444,6 +4456,7 @@ keyword_not_select_clause ::= EXIT.
 keyword_not_select_clause ::= HIGH_PRIORITY.
 keyword_not_select_clause ::= IGNORE.
 keyword_not_select_clause ::= INTO.
+keyword_not_select_clause ::= INOUT.
 keyword_not_select_clause ::= IO_THREAD.
 keyword_not_select_clause ::= LOW_PRIORITY.
 keyword_not_select_clause ::= NAMES.
@@ -4451,6 +4464,7 @@ keyword_not_select_clause ::= NO.
 keyword_not_select_clause ::= OFFSET.
 keyword_not_select_clause ::= ON.
 keyword_not_select_clause ::= ORDER.
+keyword_not_select_clause ::= OUT.
 keyword_not_select_clause ::= PASSWORD.
 keyword_not_select_clause ::= PLUGIN_DIR.
 keyword_not_select_clause ::= QUICK.

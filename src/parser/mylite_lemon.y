@@ -189,8 +189,12 @@ create_statement ::= CREATE create_tail. {
 
 create_tail ::= create_table_prefix create_if_not_exists_tail cache_table_ref create_table_tail.
 create_tail ::= AGGREGATE FUNCTION cache_table_ref create_udf_tail.
-create_tail ::= INDEX create_index_name create_index_using_tail ON cache_table_ref create_index_tail.
-create_tail ::= create_index_kind INDEX create_index_name create_index_using_tail ON cache_table_ref create_index_tail.
+create_tail ::= INDEX(A) create_index_name create_index_using_tail ON cache_table_ref create_index_tail. {
+  mylite_parser_validate_create_index_statement(ctx, A);
+}
+create_tail ::= create_index_kind INDEX(A) create_index_name create_index_using_tail ON cache_table_ref create_index_tail. {
+  mylite_parser_validate_create_index_statement(ctx, A);
+}
 create_tail ::= LOGFILE create_logfile_group cache_name_part create_logfile_group_tail.
 create_tail ::= RESOURCE create_resource_group cache_name_part create_resource_group_tail.
 create_tail ::= SPATIAL create_reference create_system create_if_not_exists_tail srs_id create_srs_attributes.

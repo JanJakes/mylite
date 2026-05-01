@@ -100,7 +100,8 @@ token sink:
   `IGNORE UNKNOWN USER`.
 - `CREATE INDEX` recognizes non-empty functional/key-part lists and standalone
   index options including parser plugins, string-literal comments, visibility,
-  string-literal attributes, numeric `KEY_BLOCK_SIZE`, `ALGORITHM`, and `LOCK`.
+  string-literal attributes, numeric `KEY_BLOCK_SIZE`, `ALGORITHM`, and `LOCK`,
+  while validating standalone key-part prefix lengths and `ASC`/`DESC` tails.
 - `CREATE TABLE` table-definition bodies require non-empty comma-separated
   elements while preserving nested token bodies for column and constraint
   definitions; trailing table options must start with known MySQL table-option

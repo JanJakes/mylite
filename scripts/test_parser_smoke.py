@@ -595,6 +595,7 @@ def main() -> int:
         ("load data local infile 'x' ignore into table t;", 0, {"statements": "1", "utility": "1"}),
         ("load data concurrent infile 'x' replace into table t;", 0, {"statements": "1", "utility": "1"}),
         ("load xml infile 'x' into table t;", 0, {"statements": "1", "utility": "1"}),
+        ("load data infile 'x' into table t partition (account, first);", 0, {"statements": "1", "utility": "1"}),
         ("load data infile 'x' into table t ();", 0, {"statements": "1", "utility": "1"}),
         ("load data infile 'x' into table t partition (p0, p1) character set utf8mb4 fields terminated by ',' optionally enclosed by '\"' escaped by '\\\\' lines starting by '>' terminated by '\\n' ignore 1 lines (a, @b) set c=default;", 0, {"statements": "1", "utility": "1"}),
         ("load data infile 'x' into table t (@first, @account);", 0, {"statements": "1", "utility": "1"}),

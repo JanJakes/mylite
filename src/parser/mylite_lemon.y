@@ -1650,8 +1650,7 @@ load_partition ::= PARTITION.
 load_partition_names ::= load_partition_name.
 load_partition_names ::= load_partition_names import_comma load_partition_name.
 
-load_partition_name ::= ATOM.
-load_partition_name ::= LABEL.
+load_partition_name ::= cache_name_part.
 load_partition_name ::= ALL.
 
 load_leaves ::= LEAVES.

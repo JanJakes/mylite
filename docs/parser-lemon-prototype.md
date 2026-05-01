@@ -92,7 +92,8 @@ token sink:
   shared identifier grammar for alias names.
 - `LOAD DATA` and `LOAD XML` recognize file modifiers, duplicate handling,
   partition or row-matching clauses, character sets, field/line options,
-  ignored rows, column/user-variable lists, and `SET` tails.
+  ignored rows, column/user-variable lists, and `SET` tails. `LOAD DATA`
+  partition names use the shared identifier grammar.
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
 - `SHOW PARSE_TREE` recognizes SELECT and WITH SELECT inputs as a

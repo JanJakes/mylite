@@ -106,8 +106,9 @@ token sink:
   elements while preserving nested token bodies for column and constraint
   definitions, and validate table-level index key-part prefix lengths plus
   `ASC`/`DESC` tails plus table-level foreign-key child/reference column-list
-  envelopes; trailing table options must start with known MySQL table-option
-  keywords, including `AUTOEXTEND_SIZE` and `START TRANSACTION`, and
+  envelopes and referential-action tails; trailing table options must start with
+  known MySQL table-option keywords, including `AUTOEXTEND_SIZE` and
+  `START TRANSACTION`, and
   no-definition and post-definition CTAS forms are recognized explicitly,
   including `IGNORE`/`REPLACE` duplicate-handling modifiers.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
@@ -146,7 +147,8 @@ token sink:
   attributes, `AUTOEXTEND_SIZE`, `TABLE_CHECKSUM`, `START TRANSACTION`,
   `ALGORITHM`/`LOCK` options, tablespace discard/import forms, and validated
   `ADD` index key-part prefix lengths and `ASC`/`DESC` tails. `ADD FOREIGN KEY`
-  child/reference column-list envelopes are also validated.
+  child/reference column-list envelopes and referential-action tails are also
+  validated.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;
   `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body.
   Table-level `ENGINE_ATTRIBUTE` and `SECONDARY_ENGINE_ATTRIBUTE` changes

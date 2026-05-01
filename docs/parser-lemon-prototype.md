@@ -147,7 +147,8 @@ token sink:
   `START TRANSACTION`. No-definition and post-definition CTAS forms are
   recognized explicitly with table/partition options, including
   `IGNORE`/`REPLACE` duplicate-handling modifiers, and no-definition
-  table-option forms must include a query body.
+  table-option forms must include a query body. Parenthesized CTAS query bodies
+  validate their outer `ORDER BY` and `LIMIT` suffixes.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   string-literal file names, documented NDB logfile options with numeric
   size/nodegroup values, `WAIT`, and optional `ENGINE`/`STORAGE ENGINE`

@@ -2010,7 +2010,8 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     }
 
     if (state == PAREN_QUERY_AFTER_ORDER_BY) {
-      if (select_operand_boundary(token_id)) {
+      if (select_operand_boundary(token_id) || token_id == ML_ASC ||
+          token_id == ML_DESC) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete parenthesized query ORDER BY");
         return;
@@ -2047,8 +2048,12 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
                              "malformed parenthesized query ORDER BY");
         return;
       }
-      if (!order_previous_was_operator &&
-          (token_id == ML_ASC || token_id == ML_DESC)) {
+      if (token_id == ML_ASC || token_id == ML_DESC) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(ctx, order_previous_top_token,
+                               "incomplete parenthesized query ORDER BY");
+          return;
+        }
         state = PAREN_QUERY_AFTER_ORDER_DIRECTION;
         pending_token = token;
         continue;
@@ -3921,6 +3926,10 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
         if (pre_query_option_tail) {
           pre_query_depth = 1;
           continue;
+        }
+        if (parenthesized_query_start_follows(ctx, token)) {
+          mylite_parser_validate_parenthesized_statement(ctx, token);
+          return;
         }
         state = CREATE_TABLE_BODY_START;
         depth = 1;
@@ -6838,6 +6847,10 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
     }
 
     if (state == CREATE_TABLE_TAIL_AFTER_CTAS_AS) {
+      if (token_id == ML_LP && parenthesized_query_start_follows(ctx, token)) {
+        mylite_parser_validate_parenthesized_statement(ctx, token);
+        return;
+      }
       if (!create_table_query_expression_start(token_id)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete CREATE TABLE query body");
@@ -6851,6 +6864,10 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
         state = CREATE_TABLE_TAIL_AFTER_CTAS_AS;
         pending_token = token;
         continue;
+      }
+      if (token_id == ML_LP && parenthesized_query_start_follows(ctx, token)) {
+        mylite_parser_validate_parenthesized_statement(ctx, token);
+        return;
       }
       if (create_table_query_expression_start(token_id)) {
         return;
@@ -6909,6 +6926,9 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
       if (need_option_after_comma) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete CREATE TABLE table option");
+      } else if (token_id == ML_LP &&
+                 parenthesized_query_start_follows(ctx, token)) {
+        mylite_parser_validate_parenthesized_statement(ctx, token);
       }
       return;
     }

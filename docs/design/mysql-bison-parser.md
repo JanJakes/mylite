@@ -536,7 +536,8 @@ according to the innermost leading query token. Parenthesized `TABLE` forms
 preserve the named table target.
 `WITH` classification walks the CTE list, including parenthesized outer query
 expressions, and rejects CTE shells that do not expose an outer DML/query
-statement.
+statement. Optional CTE column lists must be nonempty comma-separated
+identifier lists.
 Plain `SELECT` and `WITH` query statements are recorded as query targets unless
 they expose a more specific `INTO` target, including parenthesized and
 set-operation terms.

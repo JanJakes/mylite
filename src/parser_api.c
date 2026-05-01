@@ -1397,6 +1397,7 @@ static mylite_statement_kind query_statement_kind_from_token(int token);
 static void classify_with_statement_kinds(mylite_parser *parser);
 static mylite_statement_kind classify_with_statement_kind(const mylite_parser *parser,
                                                           const mylite_statement *statement);
+static int validate_with_column_list_syntax(const mylite_parser *parser, size_t open_token_index);
 static void classify_labeled_statement_metadata(mylite_parser *parser);
 static int classify_labeled_statement(mylite_parser *parser, mylite_statement *statement);
 static mylite_statement_kind labeled_statement_kind_from_token(int token);
@@ -17085,7 +17086,9 @@ static mylite_statement_kind classify_with_statement_kind(const mylite_parser *p
 		    token_index < parser->token_count &&
 		    parser->tokens[token_index].parser_token == '(') {
 			matching_token = parser->tokens[token_index].matching_token;
-			if (matching_token <= token_index + 1 || matching_token > statement->last_token) {
+			if (matching_token <= token_index + 1 ||
+			    matching_token > statement->last_token ||
+			    !validate_with_column_list_syntax(parser, token_index)) {
 				return MYLITE_STATEMENT_UNKNOWN;
 			}
 			token_index = matching_token;
@@ -17134,6 +17137,39 @@ static mylite_statement_kind classify_with_statement_kind(const mylite_parser *p
 		}
 	}
 	return MYLITE_STATEMENT_UNKNOWN;
+}
+
+static int validate_with_column_list_syntax(const mylite_parser *parser, size_t open_token_index)
+{
+	size_t token_index;
+	size_t close_token_index;
+	int expecting_name = 1;
+
+	if (open_token_index >= parser->token_count ||
+	    parser->tokens[open_token_index].parser_token != '(' ||
+	    parser->tokens[open_token_index].matching_token <= open_token_index + 1 ||
+	    parser->tokens[open_token_index].matching_token > parser->token_count) {
+		return 0;
+	}
+
+	token_index = open_token_index + 1;
+	close_token_index = parser->tokens[open_token_index].matching_token - 1;
+	while (token_index < close_token_index && token_index < parser->token_count) {
+		if (expecting_name) {
+			if (!token_can_continue_object_name(&parser->tokens[token_index])) {
+				return 0;
+			}
+			expecting_name = 0;
+			token_index++;
+			continue;
+		}
+		if (parser->tokens[token_index].parser_token != ',') {
+			return 0;
+		}
+		expecting_name = 1;
+		token_index++;
+	}
+	return !expecting_name;
 }
 
 static void classify_labeled_statement_metadata(mylite_parser *parser)

@@ -307,8 +307,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | Query expression grammar | ❌ | top | Parenthesized query expressions, query terms, and query primary rules. |  |
-| `WITH` common table expressions | ❌ | high | Non-recursive CTEs, column lists, name shadowing, and scope. |  |
-| `WITH RECURSIVE` | ❌ | high | Recursive CTE execution, cycle behavior, limits, and type inference. |  |
+| `WITH` common table expressions | ❌ | high | Non-recursive CTEs, column lists, name shadowing, and scope. | Parser classifies CTE-backed outer DML/query statements and validates nonempty comma-separated optional CTE column-list shape; CTE scope, name binding, materialization, and result typing are not implemented. |
+| `WITH RECURSIVE` | ❌ | high | Recursive CTE execution, cycle behavior, limits, and type inference. | Parser accepts the `RECURSIVE` modifier and validates the same CTE-list shell as nonrecursive `WITH`; recursive evaluation, cycle behavior, limits, and type inference are not implemented. |
 | Projection list | ❌ | top | Expression aliases, wildcard expansion, qualified wildcards, duplicate names, and metadata. |  |
 | Table references | ❌ | top | Base tables, aliases, schema qualifiers, derived tables, table functions, and parentheses. |  |
 | Inner joins | ❌ | top | JOIN, INNER JOIN, CROSS JOIN, comma join, ON, and USING. |  |

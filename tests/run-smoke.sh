@@ -16,9 +16,25 @@ python3 tests/check_keywords.py
 "$parser" --quiet "CREATE PROCEDURE p_loop(x int) WHILE x DO SET x = x - 1; END WHILE"
 "$parser" --quiet "CREATE PROCEDURE p_repeat(x int) REPEAT SELECT REPEAT('a', 2); UNTIL x = 0 END REPEAT"
 "$parser" --quiet "WITH cte AS (SELECT 0 /*! ) */ SELECT * FROM cte a, cte b"
+"$parser" --quiet "WITH c(a, b) AS (SELECT 1, 2) SELECT a FROM c"
 "$parser" --quiet "WITH c AS (SELECT 1) UPDATE t SET a=1"
 "$parser" --quiet "WITH c AS (SELECT 1) (SELECT * FROM c) LIMIT 1"
 "$parser" --quiet "COMMIT"
+
+if "$parser" --quiet "WITH c() AS (SELECT 1) SELECT 1"; then
+	echo "expected empty WITH column list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "WITH c(a,) AS (SELECT 1) SELECT 1"; then
+	echo "expected trailing WITH column-list comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet "WITH c(a b) AS (SELECT 1) SELECT 1"; then
+	echo "expected adjacent WITH column names without comma to fail" >&2
+	exit 1
+fi
 
 insert_replace_output=$("$parser" "INSERT INTO t1 () VALUES (); INSERT INTO t1 VALUES ROW(); INSERT INTO t1 SET a=1, b=DEFAULT AS new(a,b) ON DUPLICATE KEY UPDATE b = VALUES(b); INSERT INTO t1 (a) WITH c AS (SELECT 1) SELECT * FROM c; INSERT INTO t1 (SELECT 1) UNION SELECT 2; REPLACE DELAYED INTO t1 VALUES (1); REPLACE INTO t1 SET a=1")
 case "$insert_replace_output" in

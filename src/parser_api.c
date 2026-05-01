@@ -27,6 +27,10 @@ static void set_statement_end_from_token(const mylite_parser *parser,
                                          size_t token_index);
 static void remove_statements_covered_by_previous(mylite_parser *parser, size_t statement_index);
 static void validate_statement_syntax(mylite_parser *parser);
+static int validate_create_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
+static int validate_create_role_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index);
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_truncate_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
 static int validate_rename_statement_syntax(const mylite_parser *parser, const mylite_statement *statement);
@@ -1383,6 +1387,12 @@ static void validate_statement_syntax(mylite_parser *parser)
 		const mylite_statement *statement = &parser->statements[i];
 
 		switch (statement->kind) {
+		case MYLITE_STATEMENT_CREATE:
+			if (!validate_create_statement_syntax(parser, statement)) {
+				mylite_parser_set_error(parser, "invalid CREATE statement");
+				return;
+			}
+			break;
 		case MYLITE_STATEMENT_USE:
 			if (!validate_use_statement_syntax(parser, statement)) {
 				mylite_parser_set_error(parser, "invalid USE statement");
@@ -1615,6 +1625,52 @@ static void validate_statement_syntax(mylite_parser *parser)
 			break;
 		}
 	}
+}
+
+static int validate_create_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)
+{
+	size_t token_index = find_statement_kind_token(parser, statement);
+	size_t last_token_index;
+
+	if (token_index >= parser->token_count || statement->last_token < statement->first_token) {
+		return 0;
+	}
+
+	token_index++;
+	last_token_index = statement->last_token - 1;
+	if (token_index > last_token_index || token_index >= parser->token_count) {
+		return 0;
+	}
+
+	if (parser->tokens[token_index].parser_token == ROLE_T) {
+		return validate_create_role_statement_syntax(parser, token_index, last_token_index);
+	}
+	return 1;
+}
+
+static int validate_create_role_statement_syntax(const mylite_parser *parser,
+                                                 size_t token_index,
+                                                 size_t last_token_index)
+{
+	if (token_index >= parser->token_count ||
+	    parser->tokens[token_index].parser_token != ROLE_T) {
+		return 0;
+	}
+
+	token_index++;
+	if (token_index <= last_token_index && token_text_equals(parser, token_index, "IF")) {
+		if (token_index + 2 > last_token_index ||
+		    !token_text_equals(parser, token_index + 1, "NOT") ||
+		    !token_text_equals(parser, token_index + 2, "EXISTS")) {
+			return 0;
+		}
+		token_index += 3;
+	}
+
+	return validate_principal_name_list_syntax(parser,
+	                                           token_index,
+	                                           last_token_index,
+	                                           0);
 }
 
 static int validate_use_statement_syntax(const mylite_parser *parser, const mylite_statement *statement)

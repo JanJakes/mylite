@@ -1943,6 +1943,46 @@ case "$account_ddl_output" in
 		;;
 esac
 
+if ! "$parser" --quiet "CREATE ROLE r1, r2@localhost, 'r3'@'%'"; then
+	echo "expected CREATE ROLE role list to parse" >&2
+	exit 1
+fi
+
+if ! "$parser" --quiet "CREATE ROLE IF NOT EXISTS 'r'@'%'"; then
+	echo "expected CREATE ROLE IF NOT EXISTS to parse" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE ROLE'; then
+	echo "expected missing CREATE ROLE role list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE ROLE IF EXISTS r'; then
+	echo "expected CREATE ROLE IF EXISTS to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE ROLE IF NOT EXISTS'; then
+	echo "expected CREATE ROLE IF NOT EXISTS without role list to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE ROLE CURRENT_USER()'; then
+	echo "expected CREATE ROLE CURRENT_USER() to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE ROLE r,'; then
+	echo "expected CREATE ROLE with trailing comma to fail" >&2
+	exit 1
+fi
+
+if "$parser" --quiet 'CREATE ROLE r extra'; then
+	echo "expected CREATE ROLE with trailing tokens to fail" >&2
+	exit 1
+fi
+
 if ! "$parser" --quiet 'DROP USER CURRENT_USER()'; then
 	echo "expected DROP USER CURRENT_USER() to parse" >&2
 	exit 1

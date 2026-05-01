@@ -211,7 +211,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | --- | --- | --- | --- | --- |
 | `ALTER USER` | ❌ | medium | Authentication plugins, passwords, MFA, TLS, resources, lock/expire, comments, attributes, and default roles. |  |
 | `CREATE USER` | ❌ | medium | User creation syntax, IF NOT EXISTS, auth factors, TLS, resources, password options, and comments. |  |
-| `CREATE ROLE` | ❌ | medium | Role creation syntax and metadata. |  |
+| `CREATE ROLE` | ❌ | medium | Role creation syntax and metadata. | Parser records the first role target and validates optional `IF NOT EXISTS` plus comma-separated role lists; role metadata and diagnostics are not implemented. |
 | `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. | Parser records the first account target and validates optional `IF EXISTS` plus comma-separated account lists, including corpus-observed `user@` forms; privilege cleanup and diagnostics are not implemented. |
 | `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. | Parser records the first role target and validates optional `IF EXISTS` plus comma-separated role lists; grant cleanup and diagnostics are not implemented. |
 | `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. | Parser records the first granted-to user or role target; privilege graph updates and diagnostics are not implemented. |

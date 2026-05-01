@@ -50,6 +50,8 @@ corpus gate against the WordPress SQLite Database Integration MySQL query set.
   `https://dev.mysql.com/doc/refman/8.4/en/set-role.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/set-default-role.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/set-password.html`
+- MySQL 8.4 CREATE ROLE statement:
+  `https://dev.mysql.com/doc/refman/8.4/en/create-role.html`
 - MySQL 8.4 account-introspection SHOW statements:
   `https://dev.mysql.com/doc/refman/8.4/en/show-create-user.html`,
   `https://dev.mysql.com/doc/refman/8.4/en/show-grants.html`
@@ -330,15 +332,15 @@ targets are recorded for
 `GRANT ... TO` and `REVOKE ... FROM`, including the first `user@host` span when
 present. Account and role DDL target spans also
 preserve `user@host` / `role@host` syntax for `CREATE`, `ALTER`, `DROP`, and
-`RENAME` forms. Account-management `SET` metadata is recorded for explicit
-`SET ROLE` and `SET DEFAULT ROLE` role targets, collection-form `SET ROLE`
-active-role targets, plus `SET PASSWORD FOR` and bare current-user
-`SET PASSWORD` account targets. `SET PASSWORD` validates optional `FOR`
-account targets, literal assignment, `TO RANDOM`, `REPLACE`, and
-`RETAIN CURRENT PASSWORD` tails. `SET ROLE` validates `DEFAULT`, `NONE`,
-`ALL`, `ALL EXCEPT` role lists, and explicit role lists, while
-`SET DEFAULT ROLE` validates `NONE`, `ALL`, and role-list defaults with
-required `TO` account lists,
+`RENAME` forms. `CREATE ROLE` validates optional `IF NOT EXISTS` plus
+comma-separated role lists. Account-management `SET` metadata is recorded for
+explicit `SET ROLE` and `SET DEFAULT ROLE` role targets, collection-form
+`SET ROLE` active-role targets, plus `SET PASSWORD FOR` and bare current-user
+`SET PASSWORD` account targets. `SET PASSWORD` validates optional `FOR` account
+targets, literal assignment, `TO RANDOM`, `REPLACE`, and
+`RETAIN CURRENT PASSWORD` tails. `SET ROLE` validates `DEFAULT`, `NONE`, `ALL`,
+`ALL EXCEPT` role lists, and explicit role lists, while `SET DEFAULT ROLE`
+validates `NONE`, `ALL`, and role-list defaults with required `TO` account lists,
 and variable-assignment `SET` metadata is recorded for explicit user-variable
 and system-variable targets, including direct unadorned `SET name = ...`
 targets at the statement boundary. User-variable targets include MySQL's quoted

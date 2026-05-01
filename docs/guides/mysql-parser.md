@@ -203,7 +203,9 @@ Grant and revoke principal targets preserve the first account span:
 ok statements=1 kinds=grant[1:10,0:31]/user:'u'@'h'
 ```
 
-Account and role DDL preserve the first account-style target span too:
+Account and role DDL preserve the first account-style target span too.
+`CREATE ROLE` validates optional `IF NOT EXISTS` and comma-separated role
+lists:
 
 ```text
 ok statements=1 kinds=create[1:5,0:19]/user:'u'@'h'

@@ -93,6 +93,11 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_CASE_WHEN_LIST = 82,
     MYLITE_SQL_AST_CASE_WHEN = 83,
     MYLITE_SQL_AST_CAST_EXPRESSION = 84,
+    MYLITE_SQL_AST_GROUP_BY_CLAUSE = 85,
+    MYLITE_SQL_AST_GROUP_ITEM_LIST = 86,
+    MYLITE_SQL_AST_GROUP_ITEM = 87,
+    MYLITE_SQL_AST_HAVING_CLAUSE = 88,
+    MYLITE_SQL_AST_AGGREGATE_CALL = 89,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -271,6 +276,21 @@ enum mylite_sql_ast_transaction_release {
     MYLITE_SQL_AST_TRANSACTION_RELEASE_NO = 2,
 };
 
+enum mylite_sql_ast_aggregate_kind {
+    MYLITE_SQL_AST_AGGREGATE_NONE = 0,
+    MYLITE_SQL_AST_AGGREGATE_COUNT = 1,
+    MYLITE_SQL_AST_AGGREGATE_SUM = 2,
+    MYLITE_SQL_AST_AGGREGATE_AVG = 3,
+    MYLITE_SQL_AST_AGGREGATE_MIN = 4,
+    MYLITE_SQL_AST_AGGREGATE_MAX = 5,
+};
+
+enum mylite_sql_ast_aggregate_argument {
+    MYLITE_SQL_AST_AGGREGATE_ARGUMENT_NONE = 0,
+    MYLITE_SQL_AST_AGGREGATE_ARGUMENT_STAR = 1,
+    MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION = 2,
+};
+
 struct mylite_sql_ast_node {
     struct mylite_sql_ast_node *first_child;
     struct mylite_sql_ast_node *last_child;
@@ -298,6 +318,8 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_transaction_access_mode transaction_access_mode;
     enum mylite_sql_ast_transaction_chain transaction_chain;
     enum mylite_sql_ast_transaction_release transaction_release;
+    enum mylite_sql_ast_aggregate_kind aggregate_kind;
+    enum mylite_sql_ast_aggregate_argument aggregate_argument;
     unsigned int column_display_width;
     bool column_type_unsigned;
     bool column_type_signed;
@@ -382,6 +404,9 @@ void mylite_sql_ast_node_set_transaction_completion(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_chain chain,
     enum mylite_sql_ast_transaction_release release);
 void mylite_sql_ast_node_set_case_expression_simple(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_aggregate(struct mylite_sql_ast_node *node,
+                                       enum mylite_sql_ast_aggregate_kind aggregate_kind,
+                                       enum mylite_sql_ast_aggregate_argument aggregate_argument);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 
@@ -397,5 +422,8 @@ const char *mylite_sql_ast_column_storage_name(enum mylite_sql_ast_column_storag
 const char *mylite_sql_ast_key_part_order_name(enum mylite_sql_ast_key_part_order order);
 const char *mylite_sql_ast_index_algorithm_name(enum mylite_sql_ast_index_algorithm algorithm);
 const char *mylite_sql_ast_index_option_name(enum mylite_sql_ast_index_option option);
+const char *mylite_sql_ast_aggregate_kind_name(enum mylite_sql_ast_aggregate_kind aggregate_kind);
+const char *
+mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument aggregate_argument);
 
 #endif

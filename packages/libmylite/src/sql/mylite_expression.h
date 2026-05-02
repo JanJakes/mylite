@@ -40,15 +40,21 @@ typedef int (*mylite_expression_eval_constant_fn)(void *user_data,
                                                   const struct mylite_sql_ast_node *expression,
                                                   struct mylite_expression_warnings *warnings,
                                                   struct mylite_expression_value *out_value);
+typedef int (*mylite_expression_eval_aggregate_fn)(void *user_data,
+                                                   const struct mylite_sql_ast_node *aggregate,
+                                                   struct mylite_expression_value *out_value);
 
 struct mylite_expression_eval_context {
     void *user_data;
     mylite_expression_resolve_identifier_fn resolve_identifier;
     mylite_expression_eval_constant_fn eval_constant;
+    mylite_expression_eval_aggregate_fn eval_aggregate;
 };
 
 void mylite_expression_value_deinit(struct mylite_expression_value *value);
 void mylite_expression_warnings_deinit(struct mylite_expression_warnings *warnings);
+int mylite_expression_warnings_append(struct mylite_expression_warnings *warnings,
+                                      unsigned int code, const char *message);
 
 int mylite_expression_eval(const struct mylite_sql_ast_node *expression,
                            struct mylite_expression_warnings *warnings,

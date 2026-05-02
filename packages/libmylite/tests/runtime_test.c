@@ -69,6 +69,9 @@ enum {
     simple_create_statistics_count = 3,
     mysql_warning_ambiguous_column = 1052,
     mysql_warning_unknown_column = 1054,
+    mysql_warning_wrong_field_with_group = 1055,
+    mysql_warning_invalid_group_function = 1111,
+    mysql_warning_mix_group_function_fields = 1140,
     mysql_warning_unknown = 1105,
     mysql_warning_incorrect_escape_arguments = 1210,
     mysql_warning_truncated_wrong_value = 1292,
@@ -134,6 +137,7 @@ static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_case_expression_execution(void);
 static int test_cast_expression_execution(void);
+static int test_aggregate_grouping_execution(void);
 static int test_schema_lifecycle(void);
 static int test_character_set_collation_foundation(void);
 static int test_core_metadata_catalog(void);
@@ -243,6 +247,7 @@ int main(void)
     failures += test_scalar_builtin_functions_execution();
     failures += test_case_expression_execution();
     failures += test_cast_expression_execution();
+    failures += test_aggregate_grouping_execution();
     failures += test_schema_lifecycle();
     failures += test_character_set_collation_foundation();
     failures += test_core_metadata_catalog();
@@ -1577,6 +1582,250 @@ static int test_cast_expression_execution(void)
         "CAST delete order");
     failures += expect_select_rows(database, "SELECT id FROM del ORDER BY id", id_column, 1, id_3,
                                    1, "CAST delete order remaining rows");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_aggregate_grouping_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const aggregate_columns[] = {
+        "c_all", "c_n", "c_nullable", "sum_n", "avg_n", "min_n", "max_n",
+    };
+    static const char *const rowless_columns[] = {
+        "c_all", "c_null", "c_one", "sum_one", "avg_one", "min_one", "max_one",
+    };
+    static const char *const rowless_values[] = {
+        "1", "0", "1", "1", "1.0000", "1", "1",
+    };
+    static const char *const rowless_conversion_columns[] = {
+        "sum_bad",
+        "avg_text",
+    };
+    static const char *const rowless_conversion_values[] = {
+        "0",
+        "2.5",
+    };
+    static const char *const aggregate_values[] = {
+        "5", "4", "3", "37", "9.2500", "0", "20",
+    };
+    static const char *const empty_values[] = {
+        "0", "0", NULL, NULL, NULL, NULL,
+    };
+    static const char *const empty_columns[] = {"c_all", "c_n", "sum_n", "avg_n", "min_n", "max_n"};
+    static const char *const grouped_columns[] = {"g",     "c",       "cn",     "sum_n",
+                                                  "avg_n", "min_txt", "max_txt"};
+    static const char *const grouped_values[] = {
+        "a", "2", "2", "30", "15.0000", "alpha", "beta",
+        "b", "2", "1", "0",  "0.0000",  "delta", "gamma",
+    };
+    static const char *const total_columns[] = {"g", "total"};
+    static const char *const total_a[] = {"a", "30"};
+    static const char *const derived_columns[] = {"next_id", "c"};
+    static const char *const derived_values[] = {"4", "1", "5", "1", "6", "1"};
+    static const char *const count_column[] = {"c"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const alias_count_column[] = {"col2"};
+    static const char *const alias_count_all[] = {"3"};
+    static const char *const alias_count_group[] = {"2"};
+    static const char *const conversion_columns[] = {"sum_s", "avg_s", "min_s", "max_s"};
+    static const char *const conversion_values[] = {"12.5", "4.166666666666667", "10", "bad"};
+    static const struct expected_result_metadata metadata[] = {
+        {"grp", "mylite_aggregate_grouping", "t", "mylite_aggregate_grouping", "t", "grp", 40U,
+         MYLITE_FIELD_TYPE_VAR_STRING, 0U, 255U, 0U, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"c", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"sum_n", NULL, NULL, NULL, NULL, NULL, 33U, MYLITE_FIELD_TYPE_NEWDECIMAL, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"avg_n", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_NEWDECIMAL, 4U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"min_txt", NULL, NULL, NULL, NULL, NULL, 80U, MYLITE_FIELD_TYPE_VAR_STRING, 0U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open aggregate database");
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_aggregate_grouping "
+                            "DEFAULT CHARACTER SET utf8mb4",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_aggregate_grouping", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE t ("
+                            "id INT PRIMARY KEY, "
+                            "grp VARCHAR(10), "
+                            "n INT, "
+                            "decv DECIMAL(10,2), "
+                            "txt VARCHAR(20), "
+                            "nullable INT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO t VALUES "
+                            "(1,'a',10,1.50,'alpha',NULL),"
+                            "(2,'a',20,2.25,'beta',5),"
+                            "(3,'b',NULL,NULL,'gamma',NULL),"
+                            "(4,'b',0,-3.75,'delta',0),"
+                            "(5,NULL,7,4.00,'epsilon',7)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE empty_t ("
+                            "id INT, n INT, decv DECIMAL(10,2), txt VARCHAR(20))",
+                            MYLITE_DONE);
+
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c_all, COUNT(NULL) AS c_null, COUNT(1) AS c_one, "
+        "SUM(1) AS sum_one, AVG(1) AS avg_one, MIN(1) AS min_one, MAX(1) AS max_one",
+        rowless_columns, 7, rowless_values, 1, "rowless aggregate");
+    failures +=
+        expect_select_rows(database, "SELECT SUM('bad') AS sum_bad, AVG('2.5x') AS avg_text",
+                           rowless_conversion_columns, 2, rowless_conversion_values, 1,
+                           "rowless string aggregate conversion");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "rowless string aggregate warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "rowless string aggregate first warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 1), mysql_warning_truncated_wrong_value,
+                   "rowless string aggregate second warning code");
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT COUNT(*) AS c_all, COUNT(n) AS c_n, "
+                           "COUNT(nullable) AS c_nullable, SUM(n) AS sum_n, "
+                           "AVG(n) AS avg_n, MIN(n) AS min_n, MAX(n) AS max_n FROM t",
+                           aggregate_columns, 7, aggregate_values, 1, "aggregate implicit group");
+
+    failures += prepare_sql(database,
+                            "SELECT COUNT(*) AS c_all, COUNT(n) AS c_n, SUM(n) AS sum_n, "
+                            "AVG(n) AS avg_n, MIN(n) AS min_n, MAX(n) AS max_n FROM empty_t",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, empty_columns, 6, "empty aggregate columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "empty aggregate row");
+    failures += expect_string(mylite_column_text(stmt, 0), empty_values[0], "empty count star");
+    failures += expect_string(mylite_column_text(stmt, 1), empty_values[1], "empty count expr");
+    for (int index = 2; index < 6; ++index) {
+        failures += expect_null_text(mylite_column_text(stmt, index), "empty aggregate null");
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "empty aggregate done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT grp AS g, COUNT(*) AS c, COUNT(n) AS cn, SUM(n) AS sum_n, "
+                           "AVG(n) AS avg_n, MIN(txt) AS min_txt, MAX(txt) AS max_txt "
+                           "FROM t WHERE grp IS NOT NULL GROUP BY grp ORDER BY grp",
+                           grouped_columns, 7, grouped_values, 2, "grouped aggregate rows");
+
+    failures += expect_select_rows(database,
+                                   "SELECT grp AS g, SUM(n) AS total "
+                                   "FROM t GROUP BY g HAVING total > 10 ORDER BY g",
+                                   total_columns, 2, total_a, 1, "group by alias having alias");
+    failures += expect_select_rows(database,
+                                   "SELECT grp AS g, SUM(n) AS total "
+                                   "FROM t GROUP BY 1 HAVING SUM(n) >= 10 ORDER BY 2 DESC",
+                                   total_columns, 2, total_a, 1, "group by ordinal order ordinal");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id + 1 AS next_id, COUNT(*) AS c "
+                           "FROM t GROUP BY id HAVING next_id > 3 ORDER BY next_id",
+                           derived_columns, 2, derived_values, 3, "derived grouped expression");
+    failures +=
+        expect_select_rows(database, "SELECT COUNT(*) AS c FROM t WHERE id > 10 HAVING c = 0",
+                           count_column, 1, zero_count, 1, "implicit group having zero count");
+    failures +=
+        expect_select_rows(database, "SELECT COUNT(*) AS c FROM t WHERE id > 10 HAVING c > 0",
+                           count_column, 1, NULL, 0, "implicit group having filtered count");
+
+    failures += prepare_sql(database,
+                            "SELECT grp, COUNT(*) AS c, SUM(n) AS sum_n, AVG(n) AS avg_n, "
+                            "MIN(txt) AS min_txt FROM t GROUP BY grp",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "aggregate metadata");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE TABLE conv_t (id INT PRIMARY KEY, s VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(
+        database, "INSERT INTO conv_t VALUES (1,'10'),(2,'bad'),(3,NULL),(4,'2.5x')", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT SUM(s) AS sum_s, AVG(s) AS avg_s, "
+                            "MIN(s) AS min_s, MAX(s) AS max_s FROM conv_t",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, conversion_columns, 4, "aggregate conversion columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "aggregate conversion row");
+    for (int index = 0; index < 4; ++index) {
+        failures += expect_string(mylite_column_text(stmt, index), conversion_values[index],
+                                  "aggregate conversion value");
+    }
+    failures += expect_int(mylite_warning_count(database), 4, "aggregate conversion warning count");
+    for (int index = 0; index < 4; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "aggregate conversion warning code");
+    }
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_prepare_error(database, "SELECT n FROM t WHERE COUNT(*) > 1", MYLITE_EXEC_ERROR,
+                             "Invalid use of group function", "aggregate in where");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_invalid_group_function, "aggregate in where warning code");
+    failures +=
+        expect_prepare_error(database, "SELECT grp, n FROM t GROUP BY grp", MYLITE_EXEC_ERROR,
+                             "not functionally dependent", "unsafe grouped select");
+    failures += expect_int(mylite_warning_count(database), 2, "unsafe grouped select warnings");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 1), mysql_warning_wrong_field_with_group,
+                   "unsafe grouped select warning code");
+    failures += expect_prepare_error(database, "SELECT n + SUM(n) AS bad FROM t", MYLITE_EXEC_ERROR,
+                                     "without GROUP BY", "unsafe aggregate expression sibling");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_mix_group_function_fields,
+                   "unsafe aggregate expression sibling warning code");
+    failures += expect_prepare_error(database, "SELECT grp, COUNT(*) FROM t", MYLITE_EXEC_ERROR,
+                                     "without GROUP BY", "unsafe implicit aggregate");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_mix_group_function_fields,
+                   "unsafe implicit aggregate warning code");
+    failures += expect_prepare_error(
+        database, "SELECT grp, COUNT(*) AS c FROM t GROUP BY grp ORDER BY n", MYLITE_EXEC_ERROR,
+        "not functionally dependent", "unsafe grouped order");
+    failures += expect_prepare_error(
+        database, "SELECT grp, COUNT(*) AS c FROM t GROUP BY grp HAVING n > 0", MYLITE_EXEC_ERROR,
+        "Unknown column 'n' in 'having clause'", "unknown hidden having column");
+    failures +=
+        expect_prepare_error(database, "SELECT COUNT(*) FROM t GROUP BY 3", MYLITE_EXEC_ERROR,
+                             "Unknown column '3'", "unknown group ordinal");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "unknown group warning code");
+
+    failures += execute_sql(database, "CREATE TABLE alias_t (col2 INT, col1 INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO alias_t VALUES (2,10),(3,20),(2,30)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SELECT COUNT(col1) AS col2 FROM alias_t HAVING col2 = 3", alias_count_column, 1,
+        alias_count_all, 1, "having aggregate alias over ungrouped table column");
+    failures += expect_int(mylite_warning_count(database), 0, "having aggregate alias warnings");
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(col1) AS col2 "
+                                   "FROM alias_t GROUP BY col2 HAVING col2 = 2",
+                                   alias_count_column, 1, alias_count_group, 1,
+                                   "having grouped table column over aggregate alias");
+    failures += expect_int(mylite_warning_count(database), 2, "ambiguous group having warnings");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_ambiguous_column,
+                           "ambiguous group warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_ambiguous_column,
+                           "ambiguous having warning code");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

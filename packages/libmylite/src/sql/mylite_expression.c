@@ -338,6 +338,30 @@ void mylite_expression_warnings_deinit(struct mylite_expression_warnings *warnin
     *warnings = (struct mylite_expression_warnings){0};
 }
 
+int mylite_expression_warnings_append(struct mylite_expression_warnings *warnings,
+                                      unsigned int code, const char *message)
+{
+    struct mylite_expression_warning *items = NULL;
+    char *copy = NULL;
+
+    if (warnings == NULL) {
+        return 0;
+    }
+    copy = copy_span_text(message == NULL ? "" : message, message == NULL ? 0U : strlen(message));
+    if (copy == NULL) {
+        return -1;
+    }
+    items = realloc(warnings->items, (warnings->count + 1U) * sizeof(*warnings->items));
+    if (items == NULL) {
+        free(copy);
+        return -1;
+    }
+    warnings->items = items;
+    warnings->items[warnings->count++] =
+        (struct mylite_expression_warning){.code = code, .message = copy};
+    return 0;
+}
+
 int mylite_expression_eval(const struct mylite_sql_ast_node *expression,
                            struct mylite_expression_warnings *warnings,
                            struct mylite_expression_value *out_value)
@@ -566,6 +590,11 @@ static int eval_node(const struct mylite_sql_ast_node *node,
         return eval_case_expression(node, context, warnings, out_value);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return eval_cast_expression(node, context, warnings, out_value);
+    case MYLITE_SQL_AST_AGGREGATE_CALL:
+        if (context != NULL && context->eval_aggregate != NULL) {
+            return context->eval_aggregate(context->user_data, node, out_value);
+        }
+        return -1;
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return eval_function_call(node, context, warnings, out_value);
     default:
@@ -2785,25 +2814,7 @@ static size_t utf8_offset_for_chars(const char *text, int64_t char_count)
 static int append_warning(struct mylite_expression_warnings *warnings, unsigned int code,
                           const char *message)
 {
-    struct mylite_expression_warning *items = NULL;
-    char *copy = NULL;
-
-    if (warnings == NULL) {
-        return 0;
-    }
-    copy = copy_span_text(message, strlen(message));
-    if (copy == NULL) {
-        return -1;
-    }
-    items = realloc(warnings->items, (warnings->count + 1U) * sizeof(*warnings->items));
-    if (items == NULL) {
-        free(copy);
-        return -1;
-    }
-    warnings->items = items;
-    warnings->items[warnings->count++] =
-        (struct mylite_expression_warning){.code = code, .message = copy};
-    return 0;
+    return mylite_expression_warnings_append(warnings, code, message);
 }
 
 static int append_truncation_warning(struct mylite_expression_warnings *warnings, const char *text)

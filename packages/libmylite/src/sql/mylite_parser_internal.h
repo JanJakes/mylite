@@ -13,6 +13,12 @@ struct mylite_sql_parser_state {
     bool accepted;
 };
 
+struct mylite_sql_parser_aggregate_star_tokens {
+    struct mylite_sql_token left_paren;
+    struct mylite_sql_token star;
+    struct mylite_sql_token right_paren;
+};
+
 struct mylite_sql_parser_display_width_tokens {
     struct mylite_sql_token left_paren;
     struct mylite_sql_token integer;
@@ -104,12 +110,31 @@ mylite_sql_parser_append_statement(struct mylite_sql_parser_state *state,
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token select_token,
     struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause,
-    struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *group_by_clause,
+    struct mylite_sql_ast_node *having_clause, struct mylite_sql_ast_node *order_by_clause,
     struct mylite_sql_ast_node *limit_clause);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_where_clause(struct mylite_sql_parser_state *state,
                                     struct mylite_sql_token where_token,
                                     struct mylite_sql_ast_node *expression);
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token group_token,
+    struct mylite_sql_token by_token, struct mylite_sql_ast_node *items);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_group_item_list(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *item);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_group_item(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *list,
+                                    struct mylite_sql_ast_node *item);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_group_item(struct mylite_sql_parser_state *state,
+                                  struct mylite_sql_ast_node *expression,
+                                  struct mylite_sql_token direction_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_having_clause(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_token having_token,
+                                     struct mylite_sql_ast_node *expression);
 struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
     struct mylite_sql_parser_state *state, struct mylite_sql_token order_token,
     struct mylite_sql_token by_token, struct mylite_sql_ast_node *items);
@@ -547,6 +572,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
     struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_aggregate_star_call(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *name,
+                                           struct mylite_sql_parser_aggregate_star_tokens tokens);
 struct mylite_sql_ast_node *mylite_sql_parser_make_cast_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_token cast_token,
     struct mylite_sql_ast_node *expression, struct mylite_sql_ast_node *target_type,

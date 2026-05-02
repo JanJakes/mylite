@@ -53,6 +53,10 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token,
 static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token);
 static bool map_operator_token(const struct mylite_sql_token *token, int *out_parser_token);
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
+static bool span_text_equals(struct mylite_sql_source_span span, const char *text);
+static enum mylite_sql_ast_aggregate_kind
+aggregate_kind_from_name(struct mylite_sql_source_span name);
+static bool aggregate_accepts_star(enum mylite_sql_ast_aggregate_kind aggregate_kind);
 static bool transaction_characteristics_conflict(const struct mylite_sql_ast_node *left,
                                                  const struct mylite_sql_ast_node *right);
 static bool expression_contains_function_call(const struct mylite_sql_ast_node *expression);
@@ -275,7 +279,8 @@ mylite_sql_parser_append_statement(struct mylite_sql_parser_state *state,
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token select_token,
     struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause,
-    struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *group_by_clause,
+    struct mylite_sql_ast_node *having_clause, struct mylite_sql_ast_node *order_by_clause,
     struct mylite_sql_ast_node *limit_clause)
 {
     struct mylite_sql_source_span span = span_from_token(&select_token);
@@ -289,6 +294,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     }
     if (where_clause != NULL) {
         span = span_join(span, where_clause->span);
+    }
+    if (group_by_clause != NULL) {
+        span = span_join(span, group_by_clause->span);
+    }
+    if (having_clause != NULL) {
+        span = span_join(span, having_clause->span);
     }
     if (order_by_clause != NULL) {
         span = span_join(span, order_by_clause->span);
@@ -305,6 +316,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     mylite_sql_ast_node_append_child(statement, select_list);
     mylite_sql_ast_node_append_child(statement, from_clause);
     mylite_sql_ast_node_append_child(statement, where_clause);
+    mylite_sql_ast_node_append_child(statement, group_by_clause);
+    mylite_sql_ast_node_append_child(statement, having_clause);
     mylite_sql_ast_node_append_child(statement, order_by_clause);
     mylite_sql_ast_node_append_child(statement, limit_clause);
     return statement;
@@ -329,6 +342,109 @@ mylite_sql_parser_make_where_clause(struct mylite_sql_parser_state *state,
 
     mylite_sql_ast_node_append_child(where_clause, expression);
     return where_clause;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token group_token,
+    struct mylite_sql_token by_token, struct mylite_sql_ast_node *items)
+{
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&group_token), span_from_token(&by_token));
+    struct mylite_sql_ast_node *group_by_clause = NULL;
+
+    if (items != NULL) {
+        span = span_join(span, items->span);
+    }
+
+    group_by_clause = make_node(state, MYLITE_SQL_AST_GROUP_BY_CLAUSE, span);
+    if (group_by_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(group_by_clause, items);
+    return group_by_clause;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_group_item_list(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *item)
+{
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_GROUP_ITEM_LIST,
+                  item == NULL ? (struct mylite_sql_source_span){0} : item->span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, item);
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_group_item(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *list,
+                                    struct mylite_sql_ast_node *item)
+{
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, item);
+    if (item != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, item->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_group_item(struct mylite_sql_parser_state *state,
+                                  struct mylite_sql_ast_node *expression,
+                                  struct mylite_sql_token direction_token)
+{
+    enum mylite_sql_ast_key_part_order direction = MYLITE_SQL_AST_KEY_PART_ORDER_NONE;
+    struct mylite_sql_source_span span =
+        expression == NULL ? (struct mylite_sql_source_span){0} : expression->span;
+    struct mylite_sql_ast_node *item = NULL;
+
+    if (direction_token.text != NULL) {
+        span = span_join(span, span_from_token(&direction_token));
+        if (token_text_equals(&direction_token, "DESC")) {
+            direction = MYLITE_SQL_AST_KEY_PART_ORDER_DESC;
+        } else {
+            direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC;
+        }
+    }
+
+    item = make_node(state, MYLITE_SQL_AST_GROUP_ITEM, span);
+    if (item == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_key_part_order(item, direction);
+    mylite_sql_ast_node_append_child(item, expression);
+    return item;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_having_clause(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_token having_token,
+                                     struct mylite_sql_ast_node *expression)
+{
+    struct mylite_sql_source_span span = span_from_token(&having_token);
+    struct mylite_sql_ast_node *having_clause = NULL;
+
+    if (expression != NULL) {
+        span = span_join(span, expression->span);
+    }
+
+    having_clause = make_node(state, MYLITE_SQL_AST_HAVING_CLAUSE, span);
+    if (having_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(having_clause, expression);
+    return having_clause;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
@@ -2771,9 +2887,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     struct mylite_sql_token right_paren)
 {
     struct mylite_sql_source_span span = name == NULL ? span_from_token(&left_paren) : name->span;
+    enum mylite_sql_ast_aggregate_kind aggregate_kind = MYLITE_SQL_AST_AGGREGATE_NONE;
     struct mylite_sql_ast_node *call = NULL;
 
     span = span_join(span, span_from_token(&right_paren));
+
+    aggregate_kind =
+        name == NULL ? MYLITE_SQL_AST_AGGREGATE_NONE : aggregate_kind_from_name(name->span);
+    if (aggregate_kind != MYLITE_SQL_AST_AGGREGATE_NONE) {
+        if (arguments == NULL) {
+            return NULL;
+        }
+        if (mylite_sql_ast_node_child_count(arguments) != 1U) {
+            mylite_sql_parser_state_parse_failed(state);
+            return NULL;
+        }
+
+        call = make_node(state, MYLITE_SQL_AST_AGGREGATE_CALL, span);
+        if (call == NULL) {
+            return NULL;
+        }
+
+        mylite_sql_ast_node_set_aggregate(call, aggregate_kind,
+                                          MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION);
+        mylite_sql_ast_node_append_child(call, name);
+        mylite_sql_ast_node_append_child(call, arguments->first_child);
+        return call;
+    }
 
     call = make_node(state, MYLITE_SQL_AST_FUNCTION_CALL, span);
     if (call == NULL) {
@@ -2782,6 +2922,36 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
 
     mylite_sql_ast_node_append_child(call, name);
     mylite_sql_ast_node_append_child(call, arguments);
+    return call;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_aggregate_star_call(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *name,
+                                           struct mylite_sql_parser_aggregate_star_tokens tokens)
+{
+    enum mylite_sql_ast_aggregate_kind aggregate_kind =
+        name == NULL ? MYLITE_SQL_AST_AGGREGATE_NONE : aggregate_kind_from_name(name->span);
+    struct mylite_sql_source_span span =
+        name == NULL ? span_from_token(&tokens.left_paren) : name->span;
+    struct mylite_sql_ast_node *star = NULL;
+    struct mylite_sql_ast_node *call = NULL;
+
+    if (!aggregate_accepts_star(aggregate_kind)) {
+        mylite_sql_parser_state_parse_failed(state);
+        return NULL;
+    }
+
+    span = span_join(span, span_from_token(&tokens.right_paren));
+    star = mylite_sql_parser_make_wildcard(state, tokens.star);
+    call = make_node(state, MYLITE_SQL_AST_AGGREGATE_CALL, span);
+    if (star == NULL || call == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_aggregate(call, aggregate_kind, MYLITE_SQL_AST_AGGREGATE_ARGUMENT_STAR);
+    mylite_sql_ast_node_append_child(call, name);
+    mylite_sql_ast_node_append_child(call, star);
     return call;
 }
 
@@ -2952,7 +3122,8 @@ static bool expression_contains_function_call(const struct mylite_sql_ast_node *
     if (expression == NULL) {
         return false;
     }
-    if (expression->kind == MYLITE_SQL_AST_FUNCTION_CALL) {
+    if (expression->kind == MYLITE_SQL_AST_FUNCTION_CALL ||
+        expression->kind == MYLITE_SQL_AST_AGGREGATE_CALL) {
         return true;
     }
     for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
@@ -3435,7 +3606,9 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"FLOAT4", MYLITE_SQL_PARSE_FLOAT4},
         {"FLOAT8", MYLITE_SQL_PARSE_FLOAT8},
         {"FROM", MYLITE_SQL_PARSE_FROM},
+        {"GROUP", MYLITE_SQL_PARSE_GROUP},
         {"HASH", MYLITE_SQL_PARSE_HASH},
+        {"HAVING", MYLITE_SQL_PARSE_HAVING},
         {"IF", MYLITE_SQL_PARSE_IF},
         {"IN", MYLITE_SQL_PARSE_IN},
         {"INT", MYLITE_SQL_PARSE_INT},
@@ -3654,6 +3827,9 @@ static bool token_text_equals(const struct mylite_sql_token *token, const char *
 {
     size_t length = strlen(text);
 
+    if (token == NULL || token->text == NULL) {
+        return false;
+    }
     if (token->length != length) {
         return false;
     }
@@ -3665,6 +3841,49 @@ static bool token_text_equals(const struct mylite_sql_token *token, const char *
     }
 
     return true;
+}
+
+static bool span_text_equals(struct mylite_sql_source_span span, const char *text)
+{
+    size_t length = strlen(text);
+
+    if (span.text == NULL || span.length != length) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < length; ++index) {
+        if (ascii_upper((unsigned char)span.text[index]) != text[index]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static enum mylite_sql_ast_aggregate_kind
+aggregate_kind_from_name(struct mylite_sql_source_span name)
+{
+    if (span_text_equals(name, "COUNT")) {
+        return MYLITE_SQL_AST_AGGREGATE_COUNT;
+    }
+    if (span_text_equals(name, "SUM")) {
+        return MYLITE_SQL_AST_AGGREGATE_SUM;
+    }
+    if (span_text_equals(name, "AVG")) {
+        return MYLITE_SQL_AST_AGGREGATE_AVG;
+    }
+    if (span_text_equals(name, "MIN")) {
+        return MYLITE_SQL_AST_AGGREGATE_MIN;
+    }
+    if (span_text_equals(name, "MAX")) {
+        return MYLITE_SQL_AST_AGGREGATE_MAX;
+    }
+    return MYLITE_SQL_AST_AGGREGATE_NONE;
+}
+
+static bool aggregate_accepts_star(enum mylite_sql_ast_aggregate_kind aggregate_kind)
+{
+    return aggregate_kind == MYLITE_SQL_AST_AGGREGATE_COUNT;
 }
 
 static bool transaction_characteristics_conflict(const struct mylite_sql_ast_node *left,

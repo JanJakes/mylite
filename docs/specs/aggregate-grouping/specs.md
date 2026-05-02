@@ -42,8 +42,8 @@ Out of scope for the first implementable slice:
 - window-function execution and aggregate `OVER (...)` clauses
 - aggregate functions beyond `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`, including
   bit, JSON, string, statistical, spatial, and variance aggregates
-- `ANY_VALUE()` and broad functional-dependence detection beyond the first
-  primary-key/unique-key slice described below
+- `ANY_VALUE()` and functional-dependence detection, including
+  primary-key/unique-key proof for non-grouped base columns
 - `HAVING` references to outer query columns
 - `SELECT` modifiers that tune MySQL execution strategy, such as
   `SQL_BIG_RESULT` and `SQL_SMALL_RESULT`
@@ -280,18 +280,19 @@ Verified diagnostics:
 | `SELECT grp FROM t HAVING SUM(n) > 0` | error 1140 / `42000`, aggregate query without `GROUP BY` contains a nonaggregated select expression |
 | `SELECT id, name, MAX(age) FROM fd_t GROUP BY id` | accepted because `id` is a primary key and `name` is functionally dependent on it; returns `(1,'ann',10)`, `(2,'bob',20)` |
 
-The first implementation should support a conservative functional-dependence
-slice:
+The first implementation deliberately uses a narrower proof than MySQL:
 
-- A base-table column is allowed if every column of a `PRIMARY KEY` or `UNIQUE`
-  `NOT NULL` key from the same base table is present in the effective grouping
-  key.
-- Nullable unique keys must not be treated as sufficient for this rule.
+- A selected expression is group-invariant when it is an aggregate call, a
+  grouping expression, a selected expression reached through a valid grouping
+  ordinal, a resolved grouping alias, a constant, or an expression derived only
+  from group-invariant children.
+- Primary-key and `UNIQUE NOT NULL` functional-dependence proof is deferred even
+  when MySQL can prove it.
 - Functional dependence through joins, generated columns, expressions,
-  equality predicates, outer joins, derived tables, views, and schema metadata
-  not yet represented by MyLite remains deferred.
+  equality predicates, outer joins, derived tables, views, and broader schema
+  metadata remains deferred.
 
-When MyLite cannot prove functional dependence, it should reject the query
+When MyLite cannot prove functional dependence, it rejects the query
 rather than returning nondeterministic nonaggregate values. This is stricter
 than MySQL only for cases MySQL can prove and MyLite cannot yet prove, and those
 cases must be listed as deferred until metadata support catches up.
@@ -465,7 +466,7 @@ Expression classification should distinguish:
 - group-invariant expressions: aggregate calls, grouping expressions,
   constants, and expressions derived only from group-invariant expressions
 - row-dependent nonaggregates: base columns or expressions over base columns
-  that are neither grouped nor functionally dependent
+  that are not group-invariant in the first implementation
 - illegal aggregate nesting: aggregate calls inside aggregate arguments for the
   same query block
 
@@ -595,7 +596,7 @@ expectations:
 | aggregate in `WHERE` | `SELECT COUNT(*) FROM t WHERE COUNT(*) > 0` | error 1111 / `HY000` |
 | unsafe grouped select | `SELECT grp, n, SUM(n) FROM t GROUP BY grp` | error 1055 / `42000` |
 | unsafe implicit aggregate | `SELECT name, MAX(age) FROM fd_t` | error 1140 / `42000` |
-| primary-key dependence | `SELECT id, name, MAX(age) FROM fd_t GROUP BY id` | two rows: `(1,'ann',10)`, `(2,'bob',20)` |
+| deferred primary-key dependence | `SELECT id, name, MAX(age) FROM fd_t GROUP BY id` | MySQL returns `(1,'ann',10)`, `(2,'bob',20)`; MyLite first slice rejects with 1055 until functional-dependence proof is implemented |
 | unresolved group key | `SELECT COUNT(*) FROM t GROUP BY missing_col` | error 1054 / `42S22` |
 | invalid aggregate arity | `SELECT COUNT() FROM t` | syntax error 1064 / `42000` |
 | deferred distinct aggregate | `SELECT COUNT(DISTINCT grp) FROM t` | initially unsupported by MyLite; MySQL result is `2` |
@@ -610,7 +611,8 @@ aggregate results and `HAVING`-filtered empty result sets.
 - Keep `ONLY_FULL_GROUP_BY` enabled by default, matching the current MySQL 8.4.9
   probe mode.
 - Prefer rejection over nondeterministic row choice when functional dependence
-  cannot yet be proven.
+  cannot yet be proven; primary-key and unique-key proofs are deferred from
+  this first implementation slice.
 - Implement aggregate execution in MyLite so diagnostics, warnings, metadata,
   and type conversion remain MySQL-facing rather than SQLite-facing.
 - Defer `COUNT(DISTINCT)` even though it is a top-priority feature row, because

@@ -32,6 +32,7 @@ static int test_information_schema_select(void);
 static int test_select_table_core_syntax(void);
 static int test_select_where_clause_syntax(void);
 static int test_select_order_limit_offset_syntax(void);
+static int test_aggregate_grouping_syntax(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -51,6 +52,10 @@ static int expect_span_text(const struct mylite_sql_ast_node *node, const char *
                             const char *context);
 static int expect_function_call(const struct mylite_sql_ast_node *node, const char *expected_name,
                                 size_t expected_arg_count, const char *context);
+static int expect_aggregate_call(const struct mylite_sql_ast_node *node,
+                                 enum mylite_sql_ast_aggregate_kind expected_kind,
+                                 enum mylite_sql_ast_aggregate_argument expected_argument,
+                                 const char *expected_name, const char *context);
 static int expect_literal(const struct mylite_sql_ast_node *node,
                           enum mylite_sql_ast_literal_kind expected, const char *context);
 static int expect_operator(const struct mylite_sql_ast_node *node,
@@ -69,6 +74,9 @@ static int expect_column_storage(const struct mylite_sql_ast_node *node,
 static int expect_key_part_order(const struct mylite_sql_ast_node *node,
                                  enum mylite_sql_ast_key_part_order expected, const char *context);
 static int expect_order_item_direction(const struct mylite_sql_ast_node *node,
+                                       enum mylite_sql_ast_key_part_order expected,
+                                       const char *context);
+static int expect_group_item_direction(const struct mylite_sql_ast_node *node,
                                        enum mylite_sql_ast_key_part_order expected,
                                        const char *context);
 static int expect_limit_bound(const struct mylite_sql_ast_node *node, uint64_t expected,
@@ -122,6 +130,7 @@ int main(void)
     failures += test_select_table_core_syntax();
     failures += test_select_where_clause_syntax();
     failures += test_select_order_limit_offset_syntax();
+    failures += test_aggregate_grouping_syntax();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -3404,13 +3413,7 @@ static int test_select_table_core_syntax(void)
     failures += parse_sql("SELECT a, * FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT a FROM t GROUP BY a;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parse_sql("SELECT a FROM t JOIN u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql("SELECT COUNT(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT a INTO @x FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -3606,6 +3609,132 @@ static int test_select_order_limit_offset_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT a FROM t LIMIT ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_aggregate_grouping_syntax(void)
+{
+    enum {
+        aggregate_select_item_count = 6U,
+        grouped_select_child_count = 7U,
+        aggregate_where_child = 2U,
+        aggregate_group_by_child = 3U,
+        aggregate_having_child = 4U,
+        aggregate_order_by_child = 5U,
+        aggregate_limit_child = 6U,
+        aggregate_max_item = 5U,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *group_by = NULL;
+    const struct mylite_sql_ast_node *group_items = NULL;
+    const struct mylite_sql_ast_node *having = NULL;
+    const struct mylite_sql_ast_node *order_by = NULL;
+    const struct mylite_sql_ast_node *limit = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT grp, COUNT(*), SUM(n) AS total, AVG(n), MIN(txt), MAX(txt) "
+                          "FROM t WHERE n IS NOT NULL GROUP BY grp ASC, 1 DESC "
+                          "HAVING total > 10 ORDER BY total DESC LIMIT 2;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    group_by = child_at(select, aggregate_group_by_child);
+    group_items = child_at(group_by, 0U);
+    having = child_at(select, aggregate_having_child);
+    order_by = child_at(select, aggregate_order_by_child);
+    limit = child_at(select, aggregate_limit_child);
+
+    failures +=
+        expect_child_count(select, grouped_select_child_count, "grouped select child count");
+    failures +=
+        expect_child_count(select_list, aggregate_select_item_count, "aggregate select item count");
+    failures += expect_node(child_at(select, aggregate_where_child), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "grouping where clause");
+    failures += expect_node(group_by, MYLITE_SQL_AST_GROUP_BY_CLAUSE, "group by clause");
+    failures += expect_span_text(group_by, "GROUP BY grp ASC, 1 DESC", "group by span");
+    failures += expect_node(group_items, MYLITE_SQL_AST_GROUP_ITEM_LIST, "group item list");
+    failures += expect_child_count(group_items, 2U, "group item count");
+    failures +=
+        expect_span_text(child_at(child_at(group_items, 0U), 0U), "grp", "first group expression");
+    failures += expect_group_item_direction(
+        child_at(group_items, 0U), MYLITE_SQL_AST_KEY_PART_ORDER_ASC, "first group direction");
+    failures += expect_literal(child_at(child_at(group_items, 1U), 0U),
+                               MYLITE_SQL_AST_LITERAL_INTEGER, "ordinal group expression");
+    failures += expect_group_item_direction(
+        child_at(group_items, 1U), MYLITE_SQL_AST_KEY_PART_ORDER_DESC, "second group direction");
+    failures += expect_node(having, MYLITE_SQL_AST_HAVING_CLAUSE, "having clause");
+    failures +=
+        expect_operator(child_at(having, 0U), MYLITE_SQL_AST_OPERATOR_GREATER, "having predicate");
+    failures += expect_node(order_by, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "order after having");
+    failures += expect_node(limit, MYLITE_SQL_AST_LIMIT_CLAUSE, "limit after grouping");
+
+    failures += expect_aggregate_call(
+        child_at(child_at(select_list, 1U), 0U), MYLITE_SQL_AST_AGGREGATE_COUNT,
+        MYLITE_SQL_AST_AGGREGATE_ARGUMENT_STAR, "COUNT", "COUNT star aggregate");
+    failures +=
+        expect_aggregate_call(child_at(child_at(select_list, 2U), 0U), MYLITE_SQL_AST_AGGREGATE_SUM,
+                              MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION, "SUM", "SUM aggregate");
+    failures += expect_span_text(child_at(child_at(child_at(select_list, 2U), 0U), 1U), "n",
+                                 "SUM argument");
+    failures +=
+        expect_aggregate_call(child_at(child_at(select_list, 3U), 0U), MYLITE_SQL_AST_AGGREGATE_AVG,
+                              MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION, "AVG", "AVG aggregate");
+    failures +=
+        expect_aggregate_call(child_at(child_at(select_list, 4U), 0U), MYLITE_SQL_AST_AGGREGATE_MIN,
+                              MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION, "MIN", "MIN aggregate");
+    failures += expect_aggregate_call(
+        child_at(child_at(select_list, aggregate_max_item), 0U), MYLITE_SQL_AST_AGGREGATE_MAX,
+        MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION, "MAX", "MAX aggregate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT COUNT(n) FROM t HAVING COUNT(*) > 0 ORDER BY 1 LIMIT 1;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    having = child_at(select, 2U);
+    failures += expect_aggregate_call(
+        child_at(child_at(child_at(select, 0U), 0U), 0U), MYLITE_SQL_AST_AGGREGATE_COUNT,
+        MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION, "COUNT", "COUNT expression aggregate");
+    failures += expect_node(having, MYLITE_SQL_AST_HAVING_CLAUSE, "having without group");
+    failures +=
+        expect_aggregate_call(child_at(child_at(having, 0U), 0U), MYLITE_SQL_AST_AGGREGATE_COUNT,
+                              MYLITE_SQL_AST_AGGREGATE_ARGUMENT_STAR, "COUNT", "having COUNT star");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT COUNT(*);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_aggregate_call(
+        child_at(child_at(child_at(select, 0U), 0U), 0U), MYLITE_SQL_AST_AGGREGATE_COUNT,
+        MYLITE_SQL_AST_AGGREGATE_ARGUMENT_STAR, "COUNT", "no-table COUNT star");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT COUNT() FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SUM() FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT COUNT(*, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SUM(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t GROUP BY;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t HAVING;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT a FROM t ORDER BY a GROUP BY a;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t HAVING a > 0 GROUP BY a;", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -3900,6 +4029,37 @@ static int expect_function_call(const struct mylite_sql_ast_node *node, const ch
     return failures;
 }
 
+static int expect_aggregate_call(const struct mylite_sql_ast_node *node,
+                                 enum mylite_sql_ast_aggregate_kind expected_kind,
+                                 enum mylite_sql_ast_aggregate_argument expected_argument,
+                                 const char *expected_name, const char *context)
+{
+    const struct mylite_sql_ast_node *name = NULL;
+    int failures = expect_node(node, MYLITE_SQL_AST_AGGREGATE_CALL, context);
+
+    if (node == NULL) {
+        return failures;
+    }
+
+    failures += expect_child_count(node, 2U, context);
+    name = child_at(node, 0U);
+    failures += expect_node(name, MYLITE_SQL_AST_IDENTIFIER, context);
+    failures += expect_span_text(name, expected_name, context);
+    if (node->aggregate_kind != expected_kind) {
+        fprintf(stderr, "%s: expected aggregate kind %s, got %s\n", context,
+                mylite_sql_ast_aggregate_kind_name(expected_kind),
+                mylite_sql_ast_aggregate_kind_name(node->aggregate_kind));
+        failures = 1;
+    }
+    if (node->aggregate_argument != expected_argument) {
+        fprintf(stderr, "%s: expected aggregate argument %s, got %s\n", context,
+                mylite_sql_ast_aggregate_argument_name(expected_argument),
+                mylite_sql_ast_aggregate_argument_name(node->aggregate_argument));
+        failures = 1;
+    }
+    return failures;
+}
+
 static int expect_literal(const struct mylite_sql_ast_node *node,
                           enum mylite_sql_ast_literal_kind expected, const char *context)
 {
@@ -4034,6 +4194,22 @@ static int expect_order_item_direction(const struct mylite_sql_ast_node *node,
 
     if (node != NULL && node->key_part_order != expected) {
         fprintf(stderr, "%s: expected order direction %s, got %s\n", context,
+                mylite_sql_ast_key_part_order_name(expected),
+                mylite_sql_ast_key_part_order_name(node->key_part_order));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_group_item_direction(const struct mylite_sql_ast_node *node,
+                                       enum mylite_sql_ast_key_part_order expected,
+                                       const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_GROUP_ITEM, context);
+
+    if (node != NULL && node->key_part_order != expected) {
+        fprintf(stderr, "%s: expected group direction %s, got %s\n", context,
                 mylite_sql_ast_key_part_order_name(expected),
                 mylite_sql_ast_key_part_order_name(node->key_part_order));
         failures = 1;

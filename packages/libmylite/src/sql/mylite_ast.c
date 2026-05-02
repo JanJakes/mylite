@@ -380,6 +380,18 @@ void mylite_sql_ast_node_set_case_expression_simple(struct mylite_sql_ast_node *
     node->case_expression_simple = true;
 }
 
+void mylite_sql_ast_node_set_aggregate(struct mylite_sql_ast_node *node,
+                                       enum mylite_sql_ast_aggregate_kind aggregate_kind,
+                                       enum mylite_sql_ast_aggregate_argument aggregate_argument)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->aggregate_kind = aggregate_kind;
+    node->aggregate_argument = aggregate_argument;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -570,6 +582,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "case_when";
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return "cast_expression";
+    case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
+        return "group_by_clause";
+    case MYLITE_SQL_AST_GROUP_ITEM_LIST:
+        return "group_item_list";
+    case MYLITE_SQL_AST_GROUP_ITEM:
+        return "group_item";
+    case MYLITE_SQL_AST_HAVING_CLAUSE:
+        return "having_clause";
+    case MYLITE_SQL_AST_AGGREGATE_CALL:
+        return "aggregate_call";
     }
 
     return "unknown";
@@ -771,6 +793,41 @@ const char *mylite_sql_ast_index_option_name(enum mylite_sql_ast_index_option op
         return "engine_attribute";
     case MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE:
         return "secondary_engine_attribute";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_aggregate_kind_name(enum mylite_sql_ast_aggregate_kind aggregate_kind)
+{
+    switch (aggregate_kind) {
+    case MYLITE_SQL_AST_AGGREGATE_NONE:
+        return "none";
+    case MYLITE_SQL_AST_AGGREGATE_COUNT:
+        return "count";
+    case MYLITE_SQL_AST_AGGREGATE_SUM:
+        return "sum";
+    case MYLITE_SQL_AST_AGGREGATE_AVG:
+        return "avg";
+    case MYLITE_SQL_AST_AGGREGATE_MIN:
+        return "min";
+    case MYLITE_SQL_AST_AGGREGATE_MAX:
+        return "max";
+    }
+
+    return "unknown";
+}
+
+const char *
+mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument aggregate_argument)
+{
+    switch (aggregate_argument) {
+    case MYLITE_SQL_AST_AGGREGATE_ARGUMENT_NONE:
+        return "none";
+    case MYLITE_SQL_AST_AGGREGATE_ARGUMENT_STAR:
+        return "star";
+    case MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION:
+        return "expression";
     }
 
     return "unknown";

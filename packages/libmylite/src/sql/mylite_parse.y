@@ -1442,31 +1442,34 @@ opt_equal ::= .
 opt_equal ::= EQ.
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {
-    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL);
+    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
+        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(C) opt_table_alias(D)
-        opt_where_clause(E) opt_order_by_clause(G) opt_limit_clause(H). {
+        opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_order_by_clause(I)
+        opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, C, D), E, G, H);
+        state, T, B, mylite_sql_parser_make_from_table(state, F, C, D), E, G, H, I, J);
 }
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL);
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
+        NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(C) opt_table_alias(D)
-        opt_where_clause(E) opt_order_by_clause(G) opt_limit_clause(H). {
+        opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_order_by_clause(I)
+        opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, C, D), E, G, H);
+        mylite_sql_parser_make_from_table(state, F, C, D), E, G, H, I, J);
 }
 
 opt_where_clause(A) ::= . {
@@ -1478,6 +1481,39 @@ opt_where_clause(A) ::= where_clause(B). {
 
 where_clause(A) ::= WHERE(T) expression(B). {
     A = mylite_sql_parser_make_where_clause(state, T, B);
+}
+
+opt_group_by_clause(A) ::= . {
+    A = NULL;
+}
+opt_group_by_clause(A) ::= group_by_clause(B). {
+    A = B;
+}
+
+group_by_clause(A) ::= GROUP(G) BY(B) group_item_list(C). {
+    A = mylite_sql_parser_make_group_by_clause(state, G, B, C);
+}
+
+group_item_list(A) ::= group_item(B). {
+    A = mylite_sql_parser_make_group_item_list(state, B);
+}
+group_item_list(A) ::= group_item_list(B) COMMA group_item(C). {
+    A = mylite_sql_parser_append_group_item(state, B, C);
+}
+
+group_item(A) ::= expression(B) opt_order_direction(C). {
+    A = mylite_sql_parser_make_group_item(state, B, C);
+}
+
+opt_having_clause(A) ::= . {
+    A = NULL;
+}
+opt_having_clause(A) ::= having_clause(B). {
+    A = B;
+}
+
+having_clause(A) ::= HAVING(T) expression(B). {
+    A = mylite_sql_parser_make_having_clause(state, T, B);
 }
 
 opt_order_by_clause(A) ::= . {
@@ -1837,6 +1873,9 @@ primary_expression(A) ::= cast_expression(B). {
 primary_expression(A) ::= case_expression(B). {
     A = B;
 }
+primary_expression(A) ::= aggregate_star_call(B). {
+    A = B;
+}
 primary_expression(A) ::= scalar_function_call(B). {
     A = B;
 }
@@ -1961,6 +2000,16 @@ bare_temporal_function(A) ::= UTC_TIME(T). {
 }
 bare_temporal_function(A) ::= UTC_TIMESTAMP(T). {
     A = mylite_sql_parser_make_bare_function_call(state, T);
+}
+
+aggregate_star_call(A) ::= function_name(B) LPAREN(L) STAR(S) RPAREN(R). {
+    A = mylite_sql_parser_make_aggregate_star_call(
+        state, B,
+        (struct mylite_sql_parser_aggregate_star_tokens){
+            .left_paren = L,
+            .star = S,
+            .right_paren = R,
+        });
 }
 
 scalar_function_call(A) ::= function_name(B) LPAREN(L) RPAREN(R). {

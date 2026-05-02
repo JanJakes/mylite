@@ -2,12 +2,11 @@
 
 ## Scope
 
-This specification starts the next Task 29 subquery slice: row subqueries and
-row `IN` / `NOT IN` predicates. It is a start-feature pass only. It documents
-the target MySQL behavior and MyLite implementation plan, but it does not mark
-the feature implemented.
+This specification covers the implemented Task 29 row-subquery predicate slice:
+row scalar subquery comparisons and row `IN` / `NOT IN` predicates for the
+first uncorrelated runtime surface.
 
-The executable row-subquery slice should support:
+The executable row-subquery slice supports:
 
 - multi-element row constructors written as `(expr, expr, ...)` and
   `ROW(expr, expr, ...)`
@@ -28,7 +27,7 @@ The executable row-subquery slice should support:
   `SELECT` implementation, including table scans, joins, grouping, `HAVING`,
   `DISTINCT`, and `ORDER BY`
 
-The first runtime slice should not support:
+The first runtime slice does not support:
 
 - one-element `ROW(expr)` row constructors in subquery comparison contexts;
   MySQL rejects these forms syntactically
@@ -379,8 +378,10 @@ boolean metadata:
 - decimals `0`
 - `BINARY` and `NUM` flags
 - no origin database, table, original table, or original column
-- nullable result metadata; the `NOT_NULL` flag is not set because the result
-  can be `NULL`
+- nullable result metadata for ordinary row comparisons, row `IN`, and row
+  `NOT IN`; the `NOT_NULL` flag is not set because the result can be `NULL`
+- row `<=>` scalar-subquery comparison is null-safe and exposes `NOT_NULL`
+  metadata because it always returns `0` or `1`
 
 Observed metadata from `mysql --column-type-info -vvv`:
 
@@ -389,6 +390,7 @@ Observed metadata from `mysql --column-type-info -vvv`:
 | `SELECT (val,grp) IN (SELECT a,b FROM pair_t) AS row_in_result FROM outer_t LIMIT 0` | `row_in_result` | `LONGLONG` | `1` | `BINARY NUM` |
 | `SELECT (val,grp) NOT IN (SELECT a,b FROM pair_t) AS row_not_in_result FROM outer_t LIMIT 0` | `row_not_in_result` | `LONGLONG` | `1` | `BINARY NUM` |
 | `SELECT (val,grp) = (SELECT a,b FROM pair_t WHERE a=10 AND b=1) AS row_eq_result FROM outer_t LIMIT 0` | `row_eq_result` | `LONGLONG` | `1` | `BINARY NUM` |
+| `SELECT (val,grp) <=> (SELECT a,b FROM pair_t WHERE a=10 AND b=1) AS row_nse_result FROM outer_t LIMIT 0` | `row_nse_result` | `LONGLONG` | `1` | `NOT_NULL BINARY NUM` |
 | `SELECT (1,2) IN (SELECT a,b FROM pair_t WHERE a=999) AS no_table_row_in LIMIT 0` | `no_table_row_in` | `LONGLONG` | `1` | `BINARY NUM` |
 
 MyLite should use the Task 23 result descriptor machinery and should not expose
@@ -644,28 +646,22 @@ Runtime tests should cover:
 - error 1235 for row `IN` / `NOT IN` with inner `LIMIT`
 - error 1241 for tuple width mismatch
 - error 1054 for unknown outer or inner columns
+- error 3065 for `DISTINCT` with a hidden row-subquery `ORDER BY` expression
+  that references non-selected outer columns
 - warning counts and order for numeric/string conversion in tuple elements
-- nullable `LONGLONG(1)` boolean metadata with no origin fields
+- nullable `LONGLONG(1)` boolean metadata with no origin fields, except
+  null-safe row scalar comparison which exposes `NOT_NULL`
 - unsupported diagnostics for correlated row subqueries in the first runtime
   slice
 - unsupported diagnostics for DML contexts in the first runtime slice
 - no regressions for scalar subqueries, `EXISTS`, scalar `IN` / `NOT IN`, and
   scalar quantified comparisons
 
-## Open Implementation Risks
+## Remaining Implementation Risks
 
-- Tuple comparison must reuse scalar comparison paths without losing
-  left-to-right short-circuit warning behavior.
-- Null-safe row subquery comparison has verified leading-`NULL` edge cases
-  that must be tested directly against MySQL rather than inferred from
-  literal row-constructor comparison.
-- Row `NOT IN` has easy-to-misimplement `NULL` semantics; it is not a simple
-  negation after converting `NULL` to false.
-- Tuple width validation must report the consumer's expected column count,
-  not the subquery's actual count.
-- Row scalar comparisons and row `IN` have different cardinality rules; sharing
-  too much code can accidentally raise 1242 for valid row `IN` subqueries.
 - Correlation should remain explicitly rejected in the first runtime slice
   until nested query-block binding and per-row evaluation are implemented.
 - DML support should remain deferred until statement rollback, affected rows,
   warnings, and target-table restrictions are tested together.
+- Future row quantified-comparison work must not accidentally change the row
+  `IN` and row scalar subquery truth tables covered here.

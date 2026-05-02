@@ -4756,6 +4756,54 @@ static int test_subquery_execution(void)
         {"some_result", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
     };
+    static const char *const row_scalar_columns[] = {
+        "eq_match",      "eq_miss",        "eq_null_tail", "eq_null_head", "ne_miss",
+        "ne_null_tail",  "lt_same_head",   "lt_next_head", "lt_prev_head", "lt_null_tail",
+        "lt_early_true", "lt_early_false", "row_eq",       "nse_match",    "nse_miss",
+        "nse_null_tail", "nse_null_head",  "nse_all_null", "empty_eq",     "empty_nse"};
+    static const char *const row_scalar_values[] = {
+        "1", "0", NULL, NULL, "1", NULL, "1", "1", "0",  NULL,
+        "1", "0", "1",  "1",  "0", "1",  "0", "1", NULL, "0",
+    };
+    static const char *const row_scalar_nse_columns[] = {"nse_head_null", "nse_middle_null",
+                                                         "nse_tail_null", "nse_all_null"};
+    static const char *const row_scalar_nse_values[] = {"0", "0", "1", "1"};
+    static const char *const row_in_truth_columns[] = {
+        "match_in",     "match_not_in",  "unknown_in",    "unknown_not_in",
+        "left_null_in", "left_null2_in", "miss_in",       "miss_not_in",
+        "empty_in",     "empty_not_in",  "null_empty_in", "null_empty_not_in"};
+    static const char *const row_in_truth_values[] = {"1", "0", NULL, NULL, NULL, NULL,
+                                                      "0", "1", "0",  "1",  "0",  "1"};
+    static const char *const row_projection_columns[] = {"id", "row_in", "row_not_in"};
+    static const char *const row_projection_values[] = {
+        "1", "1", "0", "2", "1", "0", "3", NULL, NULL, "4", NULL, NULL, "5", "1", "0",
+    };
+    static const char *const row_match_ids[] = {"1", "2", "5"};
+    static const char *const row_join_values[] = {"1", "301", "2", "302", "5", "305"};
+    static const char *const row_having_values[] = {"1", "2", "2", "1", "3", "1"};
+    static const char *const row_order_ids[] = {"1", "2", "5", "3", "4"};
+    static const char *const row_inner_clause_columns[] = {"ordered_row_in", "distinct_row_in",
+                                                           "group_row_in"};
+    static const char *const row_inner_clause_values[] = {"1", "1", "1"};
+    static const char *const row_order_warning_column[] = {"row_order_warning"};
+    static const char *const row_warning_column[] = {"row_warn"};
+    static const char *const row_warning_false[] = {"0"};
+    static const char *const row_warning_true[] = {"1"};
+    static const char *const row_scalar_warning_column[] = {"row_scalar_warn"};
+    static const char *const row_metadata_columns[] = {
+        "row_in_result", "row_not_in_result", "row_eq_result", "row_nse_result", "no_table_row_in"};
+    static const struct expected_result_metadata row_metadata[] = {
+        {"row_in_result", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"row_not_in_result", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"row_eq_result", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"row_nse_result", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"no_table_row_in", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -4790,6 +4838,19 @@ static int test_subquery_execution(void)
                             "id INT PRIMARY KEY, outer_id INT NULL, marker INT NULL)",
                             MYLITE_DONE);
     failures += execute_sql(database,
+                            "CREATE TABLE pair_t ("
+                            "a INT NULL, b INT NULL, label VARCHAR(16) NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE join_pair_t ("
+                            "id INT PRIMARY KEY, outer_id INT NULL, marker_a INT NULL, "
+                            "marker_b INT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE warn_pair_t ("
+                            "x VARCHAR(16) NULL, y VARCHAR(16) NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
                             "INSERT INTO outer_in_t VALUES "
                             "(1,1,10,'alpha'),"
                             "(2,1,20,'beta'),"
@@ -4821,6 +4882,29 @@ static int test_subquery_execution(void)
                             "(203,3,30),"
                             "(204,4,NULL),"
                             "(205,5,5)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO pair_t VALUES "
+                            "(10,1,'match10'),"
+                            "(20,1,'match20'),"
+                            "(NULL,2,'null_a'),"
+                            "(30,3,'match30'),"
+                            "(5,NULL,'null_b'),"
+                            "(10,NULL,'null_b_for_10')",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO join_pair_t VALUES "
+                            "(301,1,10,1),"
+                            "(302,2,20,1),"
+                            "(303,3,NULL,2),"
+                            "(304,4,5,NULL),"
+                            "(305,5,30,3)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO warn_pair_t VALUES "
+                            "('1x','2x'),"
+                            "('1','bad'),"
+                            "('9','bad')",
                             MYLITE_DONE);
 
     failures +=
@@ -5152,6 +5236,139 @@ static int test_subquery_execution(void)
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += expect_select_rows(database,
+                                   "SELECT "
+                                   "(1,2) = (SELECT 1,2) AS eq_match, "
+                                   "(1,2) = (SELECT 1,3) AS eq_miss, "
+                                   "(1,NULL) = (SELECT 1,NULL) AS eq_null_tail, "
+                                   "(NULL,2) = (SELECT NULL,2) AS eq_null_head, "
+                                   "(1,2) <> (SELECT 1,3) AS ne_miss, "
+                                   "(1,NULL) <> (SELECT 1,NULL) AS ne_null_tail, "
+                                   "(1,2) < (SELECT 1,3) AS lt_same_head, "
+                                   "(1,4) < (SELECT 2,0) AS lt_next_head, "
+                                   "(2,0) < (SELECT 1,99) AS lt_prev_head, "
+                                   "(1,NULL) < (SELECT 1,3) AS lt_null_tail, "
+                                   "(0,NULL) < (SELECT 1,3) AS lt_early_true, "
+                                   "(2,NULL) < (SELECT 1,3) AS lt_early_false, "
+                                   "ROW(1,2) = (SELECT 1,2) AS row_eq, "
+                                   "(1,2) <=> (SELECT 1,2) AS nse_match, "
+                                   "(1,2) <=> (SELECT 1,3) AS nse_miss, "
+                                   "(1,NULL) <=> (SELECT 1,NULL) AS nse_null_tail, "
+                                   "(NULL,2) <=> (SELECT NULL,2) AS nse_null_head, "
+                                   "(NULL,NULL) <=> (SELECT NULL,NULL) AS nse_all_null, "
+                                   "(1,2) = (SELECT a,b FROM pair_t WHERE a=999) AS empty_eq, "
+                                   "(1,2) <=> (SELECT a,b FROM pair_t WHERE a=999) AS empty_nse",
+                                   row_scalar_columns, 20, row_scalar_values, 1,
+                                   "row scalar subquery truth table");
+    failures += expect_select_rows(database,
+                                   "SELECT "
+                                   "(NULL,2,3) <=> (SELECT NULL,2,3) AS nse_head_null, "
+                                   "(1,NULL,3) <=> (SELECT 1,NULL,3) AS nse_middle_null, "
+                                   "(1,2,NULL) <=> (SELECT 1,2,NULL) AS nse_tail_null, "
+                                   "(NULL,NULL,NULL) <=> (SELECT NULL,NULL,NULL) "
+                                   "AS nse_all_null",
+                                   row_scalar_nse_columns, 4, row_scalar_nse_values, 1,
+                                   "row scalar null-safe multi-column subquery");
+    failures += expect_select_rows(
+        database,
+        "SELECT "
+        "(10,1) IN (SELECT a,b FROM pair_t) AS match_in, "
+        "(10,1) NOT IN (SELECT a,b FROM pair_t) AS match_not_in, "
+        "(7,2) IN (SELECT a,b FROM pair_t) AS unknown_in, "
+        "(7,2) NOT IN (SELECT a,b FROM pair_t) AS unknown_not_in, "
+        "(NULL,2) IN (SELECT a,b FROM pair_t) AS left_null_in, "
+        "(10,NULL) IN (SELECT a,b FROM pair_t) AS left_null2_in, "
+        "(7,9) IN (SELECT a,b FROM pair_t) AS miss_in, "
+        "(7,9) NOT IN (SELECT a,b FROM pair_t) AS miss_not_in, "
+        "(10,1) IN (SELECT a,b FROM pair_t WHERE a=999) AS empty_in, "
+        "(10,1) NOT IN (SELECT a,b FROM pair_t WHERE a=999) AS empty_not_in, "
+        "(NULL,2) IN (SELECT a,b FROM pair_t WHERE a=999) AS null_empty_in, "
+        "(NULL,2) NOT IN (SELECT a,b FROM pair_t WHERE a=999) AS null_empty_not_in",
+        row_in_truth_columns, 12, row_in_truth_values, 1, "row in subquery truth table");
+    failures += expect_select_rows(database,
+                                   "SELECT id, "
+                                   "(val,grp) IN (SELECT a,b FROM pair_t) AS row_in, "
+                                   "(val,grp) NOT IN (SELECT a,b FROM pair_t) AS row_not_in "
+                                   "FROM outer_in_t ORDER BY id",
+                                   row_projection_columns, 3, row_projection_values, 5,
+                                   "row in subquery projection");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM outer_in_t "
+                                   "WHERE (val,grp) IN (SELECT a,b FROM pair_t) ORDER BY id",
+                                   id_column, 1, row_match_ids, 3, "row in subquery where");
+    failures += expect_select_rows(
+        database,
+        "SELECT o.id AS outer_id, j.id AS join_id FROM outer_in_t AS o "
+        "JOIN join_pair_t AS j "
+        "ON j.outer_id=o.id AND (j.marker_a,j.marker_b) IN (SELECT a,b FROM pair_t) "
+        "ORDER BY o.id, j.id",
+        in_join_columns, 2, row_join_values, 3, "row in subquery join on");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT grp, COUNT(*) AS c FROM outer_in_t GROUP BY grp "
+                           "HAVING (grp, COUNT(*)) IN "
+                           "(SELECT b, COUNT(*) FROM pair_t WHERE b IS NOT NULL GROUP BY b) "
+                           "ORDER BY grp",
+                           in_having_columns, 2, row_having_values, 3, "row in subquery having");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM outer_in_t "
+                                   "ORDER BY (val,grp) IN (SELECT a,b FROM pair_t) DESC, id",
+                                   id_column, 1, row_order_ids, 5, "row in subquery hidden order");
+    failures += expect_select_rows(
+        database,
+        "SELECT "
+        "(10,1) IN (SELECT a,b FROM pair_t ORDER BY label DESC) AS ordered_row_in, "
+        "(10,1) IN (SELECT DISTINCT a,b FROM pair_t) AS distinct_row_in, "
+        "(1,2) IN "
+        "(SELECT b, COUNT(*) FROM pair_t WHERE b IS NOT NULL GROUP BY b HAVING COUNT(*) >= 1) "
+        "AS group_row_in",
+        row_inner_clause_columns, 3, row_inner_clause_values, 1, "row in subquery inner clauses");
+    failures += expect_select_rows(
+        database, "SELECT (7,9) IN (SELECT a,b FROM pair_t ORDER BY 1/0) AS row_order_warning",
+        row_order_warning_column, 1, row_warning_false, 1, "row in ignored order warnings");
+    failures += expect_int(mylite_warning_count(database), 0, "row in ignored order warning count");
+    failures +=
+        expect_select_rows(database, "SELECT (1,2) IN (SELECT x,y FROM warn_pair_t) AS row_warn",
+                           row_warning_column, 1, row_warning_true, 1, "row in warning true");
+    failures += expect_int(mylite_warning_count(database), 2, "row in warning true count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "row in warning true code 0");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_truncated_wrong_value, "row in warning true code 1");
+    failures +=
+        expect_select_rows(database, "SELECT (1,3) IN (SELECT x,y FROM warn_pair_t) AS row_warn",
+                           row_warning_column, 1, row_warning_false, 1, "row in warning false");
+    failures += expect_int(mylite_warning_count(database), 3, "row in warning false count");
+    failures += expect_select_rows(
+        database, "SELECT (2,3) IN (SELECT x,y FROM warn_pair_t) AS row_warn", row_warning_column,
+        1, row_warning_false, 1, "row in warning first element false");
+    failures += expect_int(mylite_warning_count(database), 1, "row in first element warning count");
+    failures += expect_select_rows(
+        database, "SELECT (1,3) NOT IN (SELECT x,y FROM warn_pair_t) AS row_warn",
+        row_warning_column, 1, row_warning_true, 1, "row not in warning true");
+    failures += expect_int(mylite_warning_count(database), 3, "row not in warning true count");
+    failures += expect_select_rows(
+        database, "SELECT (1,2) = (SELECT x,y FROM warn_pair_t LIMIT 1) AS row_scalar_warn",
+        row_scalar_warning_column, 1, row_warning_true, 1, "row scalar warning suppression");
+    failures += expect_int(mylite_warning_count(database), 0, "row scalar warning count");
+
+    failures += prepare_sql(database,
+                            "SELECT "
+                            "(val,grp) IN (SELECT a,b FROM pair_t) AS row_in_result, "
+                            "(val,grp) NOT IN (SELECT a,b FROM pair_t) AS row_not_in_result, "
+                            "(val,grp) = (SELECT a,b FROM pair_t WHERE label='match10') "
+                            "AS row_eq_result, "
+                            "(val,grp) <=> (SELECT a,b FROM pair_t WHERE label='match10') "
+                            "AS row_nse_result, "
+                            "(10,1) IN (SELECT a,b FROM pair_t WHERE a=999) AS no_table_row_in "
+                            "FROM outer_in_t LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, row_metadata_columns, 5, "row subquery metadata names");
+    failures += expect_result_metadata(stmt, row_metadata, 5, "row subquery metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "row subquery metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures +=
         expect_prepare_error(database, "SELECT (SELECT val FROM outer_t)", MYLITE_EXEC_ERROR,
                              "Subquery returns more than 1 row", "scalar subquery cardinality");
@@ -5219,11 +5436,45 @@ static int test_subquery_execution(void)
         prepare_sql(database, "SELECT 1 <=> ANY (SELECT n FROM set_in_t WHERE set_name='base')",
                     MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "null-safe quantified subquery rejected");
-    failures += prepare_sql(database,
-                            "SELECT id FROM outer_in_t "
-                            "WHERE ROW(val,grp) IN (SELECT n, n FROM set_in_t)",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "row in subquery deferred");
+    failures +=
+        expect_prepare_error(database, "SELECT (1,2) IN (SELECT a FROM pair_t)", MYLITE_EXEC_ERROR,
+                             "Operand should contain 2 column(s)", "row in subquery column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "row in subquery column count warning code");
+    failures += expect_prepare_error(database, "SELECT (1) IN (SELECT a,b FROM pair_t)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 1 column(s)",
+                                     "scalar row-looking in column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "scalar row-looking in column count warning code");
+    failures +=
+        expect_prepare_error(database, "SELECT (1,2) = (SELECT a,b FROM pair_t)", MYLITE_EXEC_ERROR,
+                             "Subquery returns more than 1 row", "row scalar subquery cardinality");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_subquery_no_1_row,
+                           "row scalar subquery cardinality warning code");
+    failures += expect_prepare_error(database, "SELECT (1,2) = (SELECT a FROM pair_t LIMIT 1)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 2 column(s)",
+                                     "row scalar subquery column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "row scalar subquery column count warning code");
+    failures += expect_prepare_error(database, "SELECT (1,2) IN (SELECT a,b FROM pair_t LIMIT 1)",
+                                     MYLITE_EXEC_ERROR, "LIMIT & IN/ALL/ANY/SOME subquery",
+                                     "row in subquery limit");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
+                           "row in subquery limit warning code");
+    failures +=
+        expect_prepare_error(database, "SELECT (1,2) IN (SELECT missing_col,b FROM pair_t)",
+                             MYLITE_EXEC_ERROR, "Unknown column", "row in subquery unknown column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "row in subquery unknown column warning code");
+    failures += expect_prepare_error(database,
+                                     "SELECT DISTINCT id FROM outer_in_t "
+                                     "ORDER BY (val,grp) IN (SELECT a,b FROM pair_t)",
+                                     MYLITE_EXEC_ERROR,
+                                     "Expression #1 of ORDER BY clause is not in SELECT list",
+                                     "row in distinct hidden order column");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_field_in_order_not_select,
+                   "row in distinct hidden order column warning code");
     failures += prepare_sql(database,
                             "SELECT id FROM outer_in_t "
                             "WHERE val IN (SELECT n FROM set_in_t WHERE n=outer_in_t.val)",
@@ -5241,6 +5492,17 @@ static int test_subquery_execution(void)
     failures += expect_no_stmt_handle(&stmt, "row quantified subquery deferred");
     failures += prepare_sql(database,
                             "SELECT id FROM outer_in_t "
+                            "WHERE (val,grp) IN "
+                            "(SELECT a,b FROM pair_t WHERE b=outer_in_t.grp)",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "correlated row in subquery deferred");
+    failures += prepare_sql(database,
+                            "SELECT id FROM outer_in_t "
+                            "WHERE (val,grp) IN (SELECT a,b FROM pair_t WHERE b=grp)",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unqualified correlated row in subquery deferred");
+    failures += prepare_sql(database,
+                            "SELECT id FROM outer_in_t "
                             "WHERE val > ANY (SELECT n FROM set_in_t WHERE n=outer_in_t.val)",
                             MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "correlated quantified subquery deferred");
@@ -5250,6 +5512,14 @@ static int test_subquery_execution(void)
                             MYLITE_OK, &stmt);
     failures += expect_exec_error(stmt, database, "Unsupported UPDATE clause",
                                   "dml quantified subquery deferred");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "UPDATE outer_in_t SET val = 1 "
+                            "WHERE (val,grp) IN (SELECT a,b FROM pair_t)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Unsupported UPDATE clause",
+                                  "dml row in subquery deferred");
     mylite_finalize(stmt);
     stmt = NULL;
 

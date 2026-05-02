@@ -4182,6 +4182,19 @@ static int test_subquery_expression_syntax(void)
                             "row in subquery inner select");
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("SELECT id FROM outer_t WHERE (val, grp) NOT IN (SELECT a, b FROM pair_t);",
+                  MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    row = child_at(predicate, 0U);
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_NOT_IN, "row not in subquery operator");
+    failures += expect_node(row, MYLITE_SQL_AST_ROW_CONSTRUCTOR, "row not in constructor");
+    failures += expect_child_count(row, 2U, "row not in constructor arity");
+    failures += expect_node(child_at(predicate, 1U), MYLITE_SQL_AST_SELECT_STATEMENT,
+                            "row not in subquery inner select");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT id FROM outer_t WHERE ROW(val, grp) = "
                           "(SELECT a, b FROM pair_t WHERE a = 10);",
                           MYLITE_SQL_PARSE_OK, &result);
@@ -4194,6 +4207,19 @@ static int test_subquery_expression_syntax(void)
     failures += expect_child_count(row, 2U, "ROW row constructor arity");
     failures += expect_node(expression, MYLITE_SQL_AST_SUBQUERY_EXPRESSION,
                             "row scalar comparison subquery");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE (val, grp) < "
+                          "(SELECT a, b FROM pair_t WHERE a = 10);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    row = child_at(predicate, 0U);
+    expression = child_at(predicate, 1U);
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_LESS, "row scalar less operator");
+    failures += expect_node(row, MYLITE_SQL_AST_ROW_CONSTRUCTOR, "row less constructor");
+    failures += expect_child_count(row, 2U, "row less constructor arity");
+    failures += expect_node(expression, MYLITE_SQL_AST_SUBQUERY_EXPRESSION, "row less subquery");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT id FROM outer_t JOIN inner_t i ON EXISTS (SELECT 1);",

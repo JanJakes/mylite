@@ -224,6 +224,10 @@ static int eval_in(enum mylite_sql_ast_operator operator_kind,
                    const struct mylite_expression_eval_context *context,
                    struct mylite_expression_warnings *warnings,
                    struct mylite_expression_value *out_value);
+static bool binary_expression_is_row_subquery(const struct mylite_sql_ast_node *node);
+static bool binary_expression_is_row_scalar_subquery(const struct mylite_sql_ast_node *node);
+static bool
+row_subquery_comparison_operator_is_supported(enum mylite_sql_ast_operator operator_kind);
 static int eval_quantified_comparison(const struct mylite_sql_ast_node *node,
                                       const struct mylite_expression_eval_context *context,
                                       struct mylite_expression_warnings *warnings,
@@ -306,6 +310,8 @@ static int append_unsigned_complement_warning(struct mylite_expression_warnings 
 static char *copy_span_text(const char *text, size_t length);
 static char *decode_string_literal(const struct mylite_sql_ast_node *node);
 static bool decode_string_escape(char escaped, char *out_character);
+static const struct mylite_sql_ast_node *
+unwrap_parenthesized_node(const struct mylite_sql_ast_node *node);
 static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_node *node,
                                                   size_t index);
 static size_t child_count(const struct mylite_sql_ast_node *node);
@@ -665,6 +671,12 @@ static int eval_binary(const struct mylite_sql_ast_node *node,
     struct mylite_expression_value right = {0};
     int status = 0;
 
+    if (binary_expression_is_row_subquery(node)) {
+        return context == NULL || context->eval_row_subquery == NULL
+                   ? -1
+                   : context->eval_row_subquery(context->user_data, node, context, warnings,
+                                                out_value);
+    }
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_IN ||
         node->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_IN) {
         return eval_in(node->operator_kind, node, context, warnings, out_value);
@@ -2037,6 +2049,86 @@ static int eval_in(enum mylite_sql_ast_operator operator_kind,
     return 0;
 }
 
+static bool binary_expression_is_row_subquery(const struct mylite_sql_ast_node *node)
+{
+    const struct mylite_sql_ast_node *left = unwrap_parenthesized_node(child_at(node, 0U));
+    const struct mylite_sql_ast_node *right = unwrap_parenthesized_node(child_at(node, 1U));
+
+    if (node == NULL || node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION || left == NULL ||
+        left->kind != MYLITE_SQL_AST_ROW_CONSTRUCTOR || right == NULL) {
+        return false;
+    }
+    if ((node->operator_kind == MYLITE_SQL_AST_OPERATOR_IN ||
+         node->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_IN) &&
+        right->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return true;
+    }
+    return binary_expression_is_row_scalar_subquery(node);
+}
+
+static bool binary_expression_is_row_scalar_subquery(const struct mylite_sql_ast_node *node)
+{
+    const struct mylite_sql_ast_node *left = unwrap_parenthesized_node(child_at(node, 0U));
+    const struct mylite_sql_ast_node *right = unwrap_parenthesized_node(child_at(node, 1U));
+
+    if (node == NULL || node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION || left == NULL ||
+        left->kind != MYLITE_SQL_AST_ROW_CONSTRUCTOR || right == NULL ||
+        right->kind != MYLITE_SQL_AST_SUBQUERY_EXPRESSION) {
+        return false;
+    }
+    return row_subquery_comparison_operator_is_supported(node->operator_kind);
+}
+
+static bool
+row_subquery_comparison_operator_is_supported(enum mylite_sql_ast_operator operator_kind)
+{
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return true;
+    case MYLITE_SQL_AST_OPERATOR_NONE:
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_LEFT:
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT:
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_BETWEEN:
+    case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_IN:
+    case MYLITE_SQL_AST_OPERATOR_NOT_IN:
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+        break;
+    }
+    return false;
+}
+
 static int eval_quantified_comparison(const struct mylite_sql_ast_node *node,
                                       const struct mylite_expression_eval_context *context,
                                       struct mylite_expression_warnings *warnings,
@@ -3003,6 +3095,15 @@ static bool decode_string_escape(char escaped, char *out_character)
     default:
         return false;
     }
+}
+
+static const struct mylite_sql_ast_node *
+unwrap_parenthesized_node(const struct mylite_sql_ast_node *node)
+{
+    while (node != NULL && node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        node = child_at(node, 0U);
+    }
+    return node;
 }
 
 static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_node *node,

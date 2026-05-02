@@ -4,7 +4,9 @@
 
 Task 29 specifies MySQL-compatible subquery grammar, binding, diagnostics, and
 runtime behavior for the query and expression surfaces that MyLite already
-executes. It starts subquery work; it does not mark subqueries implemented.
+executes. It now tracks the implemented scalar, `EXISTS`, scalar `IN`,
+quantified-comparison, row scalar-comparison, and row `IN` / `NOT IN` slices,
+as well as the remaining deferred subquery surfaces.
 
 In scope for the feature design:
 
@@ -22,7 +24,7 @@ In scope for the feature design:
   `GROUP BY`, `HAVING`, inner join, outer join, and `DISTINCT` surfaces
 - a scoped implementation plan for the next feature phase
 
-The next implementation phase should make these executable first:
+The first executable phases cover:
 
 - subqueries inside `SELECT` statements over the existing supported row sources
 - scalar subqueries in the projection list, `WHERE`, `ON`, `HAVING`, and
@@ -834,18 +836,23 @@ Add focused tests for each currently supported outer surface:
 Task 29 has the first executable slice implemented. MyLite executes
 uncorrelated scalar subqueries, uncorrelated `EXISTS` / `NOT EXISTS`
 subqueries, uncorrelated scalar `IN` / `NOT IN` subqueries, and uncorrelated
-scalar `ANY` / `SOME` / `ALL` quantified comparisons in no-table scalar
-`SELECT` and the currently supported table-backed `SELECT` expression contexts:
-projection, `WHERE`, join `ON`, `HAVING`, and `ORDER BY`.
+scalar `ANY` / `SOME` / `ALL` quantified comparisons, plus uncorrelated row
+scalar subquery comparisons and row `IN` / `NOT IN` subqueries in no-table
+scalar `SELECT` and the currently supported table-backed `SELECT` expression
+contexts: projection, `WHERE`, join `ON`, `HAVING`, and `ORDER BY`.
 
 This slice includes empty scalar-subquery results as `NULL`, one-row value
 return, scalar error 1241 for multi-column operands, scalar error 1242 for
 multi-row operands, scalar `IN` / `NOT IN` error 1235 for inner `LIMIT`,
 quantified-comparison error 1235 for inner `LIMIT`, warning propagation,
 first-slice result descriptors, and `EXISTS` checks that do not evaluate the
-subquery select list.
+subquery select list. The row slice also includes tuple-width error 1241 with
+the consumer's expected width, row scalar multi-row error 1242, row scalar empty
+results as `NULL`, row `IN` / `NOT IN` error 1235 for inner `LIMIT`, row tuple
+`NULL` truth semantics, conversion warnings, nullable boolean metadata for
+nullable row predicates, and `NOT_NULL` metadata for null-safe row scalar
+comparisons.
 
 The remaining Task 29 surfaces are deferred: correlated subqueries, row
-subqueries, row `IN` / `NOT IN`, row quantified comparisons, DML subquery
-execution, derived-table row sources, CTE/set-operation subqueries, and
-optimizer behavior.
+quantified comparisons, DML subquery execution, derived-table row sources,
+CTE/set-operation subqueries, and optimizer behavior.

@@ -2893,9 +2893,9 @@ static int expect_create_table_options(const char *sql,
 static int expect_alter_table_view(void) {
   const char *sql =
       "ALTER TABLE db1.t1 ADD COLUMN IF NOT EXISTS c INT NOT NULL, "
-      "DROP COLUMN IF EXISTS old_c, CHANGE COLUMN old_name new_name "
-      "VARCHAR(20), RENAME COLUMN c TO c2, RENAME INDEX old_i TO new_i, "
-      "ALGORITHM=INPLACE, LOCK=NONE";
+      "ADD UNIQUE KEY ux (c), DROP COLUMN IF EXISTS old_c, CHANGE COLUMN "
+      "old_name new_name VARCHAR(20), RENAME COLUMN c TO c2, RENAME INDEX "
+      "old_i TO new_i, ALGORITHM=INPLACE, LOCK=NONE";
   MyliteParseResult result;
   MyliteAst *ast = NULL;
   MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
@@ -2911,18 +2911,26 @@ static int expect_alter_table_view(void) {
   const MyliteAstAlterTable *view = mylite_ast_alter_table_view(ast, 0);
   const MyliteAstAlterTableSpec *add =
       mylite_ast_alter_table_view_spec_at(view, 0);
-  const MyliteAstAlterTableSpec *drop =
+  const MyliteAstAlterTableSpec *add_key =
       mylite_ast_alter_table_view_spec_at(view, 1);
-  const MyliteAstAlterTableSpec *change =
+  const MyliteAstAlterTableSpec *drop =
       mylite_ast_alter_table_view_spec_at(view, 2);
-  const MyliteAstAlterTableSpec *rename_column =
+  const MyliteAstAlterTableSpec *change =
       mylite_ast_alter_table_view_spec_at(view, 3);
-  const MyliteAstAlterTableSpec *rename_index =
+  const MyliteAstAlterTableSpec *rename_column =
       mylite_ast_alter_table_view_spec_at(view, 4);
-  const MyliteAstAlterTableSpec *algorithm =
+  const MyliteAstAlterTableSpec *rename_index =
       mylite_ast_alter_table_view_spec_at(view, 5);
-  const MyliteAstAlterTableSpec *lock =
+  const MyliteAstAlterTableSpec *algorithm =
       mylite_ast_alter_table_view_spec_at(view, 6);
+  const MyliteAstAlterTableSpec *lock =
+      mylite_ast_alter_table_view_spec_at(view, 7);
+  const MyliteAstCreateTableColumn *add_column =
+      mylite_ast_alter_table_spec_view_column(add);
+  const MyliteAstCreateTableKey *add_constraint =
+      mylite_ast_alter_table_spec_view_key(add_key);
+  const MyliteAstCreateTableColumn *change_column =
+      mylite_ast_alter_table_spec_view_column(change);
   int failed = 0;
   if (view == NULL || mylite_ast_alter_table_view_node(view) == NULL ||
       !value_matches_when_expected(
@@ -2931,15 +2939,31 @@ static int expect_alter_table_view(void) {
       !value_matches_when_expected(
           mylite_ast_alter_table_view_name_value(view),
           mylite_ast_alter_table_view_name_value_length(view), "t1") ||
-      mylite_ast_alter_table_view_spec_count(view) != 7 ||
+      mylite_ast_alter_table_view_spec_count(view) != 8 ||
       mylite_ast_alter_table_view_option_count(view) != 0 ||
       add == NULL ||
       mylite_ast_alter_table_spec_view_kind(add) !=
           MYLITE_ALTER_TABLE_SPEC_ADD_COLUMN ||
+      add_column == NULL ||
+      mylite_ast_create_table_column_view_type_kind(add_column) !=
+          MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT ||
+      mylite_ast_create_table_column_view_nullability(add_column) !=
+          MYLITE_CREATE_TABLE_COLUMN_NULLABILITY_NOT_NULL ||
       !mylite_ast_alter_table_spec_view_has_if_not_exists(add) ||
       !value_matches_when_expected(
           mylite_ast_alter_table_spec_view_name_value(add),
           mylite_ast_alter_table_spec_view_name_value_length(add), "c") ||
+      add_key == NULL ||
+      mylite_ast_alter_table_spec_view_kind(add_key) !=
+          MYLITE_ALTER_TABLE_SPEC_ADD_CONSTRAINT ||
+      add_constraint == NULL ||
+      mylite_ast_create_table_key_view_kind(add_constraint) !=
+          MYLITE_CREATE_TABLE_KEY_UNIQUE ||
+      !value_matches_when_expected(
+          mylite_ast_create_table_key_view_name_value(add_constraint),
+          mylite_ast_create_table_key_view_name_value_length(add_constraint),
+          "ux") ||
+      mylite_ast_create_table_key_view_column_count(add_constraint) != 1 ||
       drop == NULL ||
       mylite_ast_alter_table_spec_view_kind(drop) !=
           MYLITE_ALTER_TABLE_SPEC_DROP_COLUMN ||
@@ -2950,6 +2974,11 @@ static int expect_alter_table_view(void) {
       change == NULL ||
       mylite_ast_alter_table_spec_view_kind(change) !=
           MYLITE_ALTER_TABLE_SPEC_CHANGE_COLUMN ||
+      change_column == NULL ||
+      mylite_ast_create_table_column_view_type_kind(change_column) !=
+          MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARCHAR ||
+      !mylite_ast_create_table_column_view_type_has_length(change_column) ||
+      mylite_ast_create_table_column_view_type_length(change_column) != 20 ||
       !value_matches_when_expected(
           mylite_ast_alter_table_spec_view_name_value(change),
           mylite_ast_alter_table_spec_view_name_value_length(change),

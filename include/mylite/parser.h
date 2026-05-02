@@ -502,6 +502,10 @@ const MyliteAstCreateTableOption *mylite_ast_alter_table_view_option_at(
     const MyliteAstAlterTable *alter_table, size_t option_index);
 const MyliteAstNode *mylite_ast_alter_table_spec_view_node(
     const MyliteAstAlterTableSpec *spec);
+const MyliteAstCreateTableColumn *mylite_ast_alter_table_spec_view_column(
+    const MyliteAstAlterTableSpec *spec);
+const MyliteAstCreateTableKey *mylite_ast_alter_table_spec_view_key(
+    const MyliteAstAlterTableSpec *spec);
 MyliteAlterTableSpecKind mylite_ast_alter_table_spec_view_kind(
     const MyliteAstAlterTableSpec *spec);
 size_t mylite_ast_alter_table_spec_view_start(

@@ -280,6 +280,8 @@ struct MyliteAstCreateTable {
 
 struct MyliteAstAlterTableSpec {
   const MyliteAstNode *node;
+  MyliteAstCreateTableColumn column;
+  MyliteAstCreateTableKey key;
   MyliteAlterTableSpecKind kind;
   size_t start;
   size_t end;
@@ -303,6 +305,8 @@ struct MyliteAstAlterTableSpec {
   size_t table_name_value_length;
   int has_if_exists;
   int has_if_not_exists;
+  int has_column;
+  int has_key;
 };
 
 struct MyliteAstAlterTable {
@@ -446,6 +450,12 @@ static void mylite_ast_fill_alter_table_specs(MyliteAst *ast,
 static int mylite_ast_fill_alter_table_spec(MyliteAst *ast,
                                             MyliteAstAlterTableSpec *spec,
                                             const MyliteAstNode *node);
+static int mylite_ast_set_alter_table_spec_payload(
+    MyliteAst *ast, MyliteAstAlterTableSpec *spec, const MyliteAstNode *node);
+static int mylite_ast_set_alter_table_spec_column(
+    MyliteAst *ast, MyliteAstAlterTableSpec *spec, const MyliteAstNode *node);
+static int mylite_ast_set_alter_table_spec_key(
+    MyliteAst *ast, MyliteAstAlterTableSpec *spec, const MyliteAstNode *node);
 static MyliteAlterTableSpecKind mylite_ast_classify_alter_table_spec(
     const MyliteAstNode *node);
 static void mylite_ast_set_alter_table_spec_spans(
@@ -1794,6 +1804,16 @@ const MyliteAstCreateTableOption *mylite_ast_alter_table_view_option_at(
 const MyliteAstNode *mylite_ast_alter_table_spec_view_node(
     const MyliteAstAlterTableSpec *spec) {
   return spec == NULL ? NULL : spec->node;
+}
+
+const MyliteAstCreateTableColumn *mylite_ast_alter_table_spec_view_column(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL || !spec->has_column ? NULL : &spec->column;
+}
+
+const MyliteAstCreateTableKey *mylite_ast_alter_table_spec_view_key(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL || !spec->has_key ? NULL : &spec->key;
 }
 
 MyliteAlterTableSpecKind mylite_ast_alter_table_spec_view_kind(
@@ -5658,7 +5678,86 @@ static int mylite_ast_fill_alter_table_spec(MyliteAst *ast,
   spec->has_if_exists = if_exists != NULL && if_exists->has_span;
   spec->has_if_not_exists = if_not_exists != NULL && if_not_exists->has_span;
   mylite_ast_set_alter_table_spec_spans(spec, node);
-  return mylite_ast_set_alter_table_spec_values(ast, spec);
+  return mylite_ast_set_alter_table_spec_values(ast, spec) &&
+         mylite_ast_set_alter_table_spec_payload(ast, spec, node);
+}
+
+static int mylite_ast_set_alter_table_spec_payload(
+    MyliteAst *ast, MyliteAstAlterTableSpec *spec, const MyliteAstNode *node) {
+  if (spec == NULL || node == NULL) {
+    return 1;
+  }
+  switch (spec->kind) {
+    case MYLITE_ALTER_TABLE_SPEC_ADD_COLUMN:
+    case MYLITE_ALTER_TABLE_SPEC_MODIFY_COLUMN:
+    case MYLITE_ALTER_TABLE_SPEC_CHANGE_COLUMN:
+      return mylite_ast_set_alter_table_spec_column(ast, spec, node);
+    case MYLITE_ALTER_TABLE_SPEC_ADD_CONSTRAINT:
+      return mylite_ast_set_alter_table_spec_key(ast, spec, node);
+    case MYLITE_ALTER_TABLE_SPEC_UNKNOWN:
+    case MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS:
+    case MYLITE_ALTER_TABLE_SPEC_CONVERT_CHARACTER_SET:
+    case MYLITE_ALTER_TABLE_SPEC_ADD_TABLE_ELEMENTS:
+    case MYLITE_ALTER_TABLE_SPEC_ADD_PARTITION:
+    case MYLITE_ALTER_TABLE_SPEC_DROP_COLUMN:
+    case MYLITE_ALTER_TABLE_SPEC_DROP_PRIMARY_KEY:
+    case MYLITE_ALTER_TABLE_SPEC_DROP_INDEX:
+    case MYLITE_ALTER_TABLE_SPEC_DROP_FOREIGN_KEY:
+    case MYLITE_ALTER_TABLE_SPEC_DROP_CHECK:
+    case MYLITE_ALTER_TABLE_SPEC_DROP_PARTITION:
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_SET_DEFAULT:
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_DROP_DEFAULT:
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_VISIBILITY:
+    case MYLITE_ALTER_TABLE_SPEC_RENAME_COLUMN:
+    case MYLITE_ALTER_TABLE_SPEC_RENAME_TABLE:
+    case MYLITE_ALTER_TABLE_SPEC_RENAME_INDEX:
+    case MYLITE_ALTER_TABLE_SPEC_ORDER_BY:
+    case MYLITE_ALTER_TABLE_SPEC_DISABLE_KEYS:
+    case MYLITE_ALTER_TABLE_SPEC_ENABLE_KEYS:
+    case MYLITE_ALTER_TABLE_SPEC_LOCK:
+    case MYLITE_ALTER_TABLE_SPEC_ALGORITHM:
+    case MYLITE_ALTER_TABLE_SPEC_FORCE:
+    case MYLITE_ALTER_TABLE_SPEC_VALIDATION:
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_CHECK:
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_INDEX_VISIBILITY:
+    case MYLITE_ALTER_TABLE_SPEC_TABLESPACE:
+    case MYLITE_ALTER_TABLE_SPEC_PARTITION:
+    case MYLITE_ALTER_TABLE_SPEC_SECONDARY_LOAD:
+    case MYLITE_ALTER_TABLE_SPEC_SECONDARY_UNLOAD:
+      return 1;
+  }
+  return 1;
+}
+
+static int mylite_ast_set_alter_table_spec_column(
+    MyliteAst *ast, MyliteAstAlterTableSpec *spec, const MyliteAstNode *node) {
+  const MyliteAstNode *column_def =
+      mylite_ast_find_first_symbol(node, "nt_column_def");
+  if (column_def == NULL) {
+    return 1;
+  }
+  if (!mylite_ast_fill_create_table_column(ast, &spec->column, column_def)) {
+    return 0;
+  }
+  spec->has_column = 1;
+  return 1;
+}
+
+static int mylite_ast_set_alter_table_spec_key(
+    MyliteAst *ast, MyliteAstAlterTableSpec *spec, const MyliteAstNode *node) {
+  const MyliteAstNode *constraint =
+      mylite_ast_find_first_symbol(node, "nt_constraint_with_columnar_index");
+  if (constraint == NULL) {
+    constraint = mylite_ast_find_first_symbol(node, "nt_constraint");
+  }
+  if (constraint == NULL) {
+    return 1;
+  }
+  if (!mylite_ast_fill_create_table_key(ast, &spec->key, constraint)) {
+    return 0;
+  }
+  spec->has_key = 1;
+  return 1;
 }
 
 static MyliteAlterTableSpecKind mylite_ast_classify_alter_table_spec(

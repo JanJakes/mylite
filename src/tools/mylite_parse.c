@@ -205,15 +205,20 @@ static void dump_statements(const MyliteAst *ast) {
            j < mylite_ast_alter_table_view_spec_count(alter_table); j++) {
         const MyliteAstAlterTableSpec *spec =
             mylite_ast_alter_table_view_spec_at(alter_table, j);
+        const MyliteAstCreateTableColumn *column =
+            mylite_ast_alter_table_spec_view_column(spec);
+        const MyliteAstCreateTableKey *key =
+            mylite_ast_alter_table_spec_view_key(spec);
         printf("    alter_spec[%zu] kind=%s span=%zu..%zu if_exists=%d "
-               "if_not_exists=%d name=",
+               "if_not_exists=%d column=%d key=%d name=",
                j,
                mylite_alter_table_spec_kind_name(
                    mylite_ast_alter_table_spec_view_kind(spec)),
                mylite_ast_alter_table_spec_view_start(spec),
                mylite_ast_alter_table_spec_view_end(spec),
                mylite_ast_alter_table_spec_view_has_if_exists(spec),
-               mylite_ast_alter_table_spec_view_has_if_not_exists(spec));
+               mylite_ast_alter_table_spec_view_has_if_not_exists(spec),
+               column != NULL, key != NULL);
         const char *spec_name =
             mylite_ast_alter_table_spec_view_name_value(spec);
         size_t spec_name_length =
@@ -250,6 +255,31 @@ static void dump_statements(const MyliteAst *ast) {
           fputs("none", stdout);
         } else {
           print_escaped_bytes(spec_table, spec_table_length);
+        }
+        if (column != NULL) {
+          fputs(" column_name=", stdout);
+          const char *column_name =
+              mylite_ast_create_table_column_view_name_value(column);
+          size_t column_name_length =
+              mylite_ast_create_table_column_view_name_value_length(column);
+          if (column_name == NULL) {
+            fputs("none", stdout);
+          } else {
+            print_escaped_bytes(column_name, column_name_length);
+          }
+        }
+        if (key != NULL) {
+          printf(" key_kind=%s key_name=",
+                 mylite_create_table_key_kind_name(
+                     mylite_ast_create_table_key_view_kind(key)));
+          const char *key_name = mylite_ast_create_table_key_view_name_value(key);
+          size_t key_name_length =
+              mylite_ast_create_table_key_view_name_value_length(key);
+          if (key_name == NULL) {
+            fputs("none", stdout);
+          } else {
+            print_escaped_bytes(key_name, key_name_length);
+          }
         }
         fputc('\n', stdout);
       }

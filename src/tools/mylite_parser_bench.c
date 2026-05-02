@@ -123,6 +123,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t alter_table_named_specs = 0;
   size_t alter_table_secondary_named_specs = 0;
   size_t alter_table_renamed_tables = 0;
+  size_t alter_table_column_payloads = 0;
+  size_t alter_table_column_known_types = 0;
+  size_t alter_table_key_payloads = 0;
+  size_t alter_table_key_columns = 0;
   size_t alter_table_options = 0;
   size_t alter_table_if_exists = 0;
   size_t alter_table_if_not_exists = 0;
@@ -496,6 +500,22 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                     NULL) {
                   alter_table_renamed_tables++;
                 }
+                const MyliteAstCreateTableColumn *column =
+                    mylite_ast_alter_table_spec_view_column(spec);
+                if (column != NULL) {
+                  alter_table_column_payloads++;
+                  if (mylite_ast_create_table_column_view_type_kind(column) !=
+                      MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN) {
+                    alter_table_column_known_types++;
+                  }
+                }
+                const MyliteAstCreateTableKey *key =
+                    mylite_ast_alter_table_spec_view_key(spec);
+                if (key != NULL) {
+                  alter_table_key_payloads++;
+                  alter_table_key_columns +=
+                      mylite_ast_create_table_key_view_column_count(key);
+                }
                 if (mylite_ast_alter_table_spec_view_has_if_exists(spec)) {
                   alter_table_if_exists++;
                 }
@@ -768,6 +788,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_alter_table_named_specs=%.2f "
            "avg_alter_table_secondary_named_specs=%.2f "
            "avg_alter_table_renamed_tables=%.2f "
+           "avg_alter_table_column_payloads=%.2f "
+           "avg_alter_table_column_known_types=%.2f "
+           "avg_alter_table_key_payloads=%.2f "
+           "avg_alter_table_key_columns=%.2f "
            "avg_alter_table_options=%.2f "
            "avg_alter_table_if_exists=%.2f "
            "avg_alter_table_if_not_exists=%.2f "
@@ -870,6 +894,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)alter_table_named_specs / (double)parsed,
            (double)alter_table_secondary_named_specs / (double)parsed,
            (double)alter_table_renamed_tables / (double)parsed,
+           (double)alter_table_column_payloads / (double)parsed,
+           (double)alter_table_column_known_types / (double)parsed,
+           (double)alter_table_key_payloads / (double)parsed,
+           (double)alter_table_key_columns / (double)parsed,
            (double)alter_table_options / (double)parsed,
            (double)alter_table_if_exists / (double)parsed,
            (double)alter_table_if_not_exists / (double)parsed,

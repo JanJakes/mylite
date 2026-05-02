@@ -546,6 +546,7 @@ static int token_closes_nested_expression(int token_id);
 static int token_ascii_equal(MyliteToken token, const char *expected);
 static int query_limit_option_token(int token_id, MyliteToken token);
 static int query_limit_number_token(MyliteToken token);
+static int token_is_show_log_position_literal(MyliteToken token);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
                                    MyliteParseResult *result) {
@@ -11251,6 +11252,26 @@ void mylite_parser_require_limit_option(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, token, "invalid LIMIT option");
 }
 
+void mylite_parser_require_unsigned_integer_literal(MyliteParseContext *ctx,
+                                                    MyliteToken token) {
+  unsigned long value;
+
+  if (token_is_plain_unsigned_integer(token, &value)) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid integer literal");
+}
+
+void mylite_parser_require_unsigned_decimal_literal(MyliteParseContext *ctx,
+                                                    MyliteToken token) {
+  if (token_is_show_log_position_literal(token)) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid numeric literal");
+}
+
 void mylite_parser_require_text_string_literal(MyliteParseContext *ctx,
                                                MyliteToken token) {
   if (!token_is_quoted_hex_or_bit_literal(token)) {
@@ -15173,6 +15194,51 @@ static int query_limit_number_token(MyliteToken token) {
   }
 
   return 1;
+}
+
+static int token_is_show_log_position_literal(MyliteToken token) {
+  size_t i = 0;
+  int digits = 0;
+
+  if (token.length == 0 || token.start[0] == '+' || token.start[0] == '-' ||
+      token_is_hex_literal(token, 0) || token_is_binary_literal(token, 0)) {
+    return 0;
+  }
+
+  while (i < token.length && ascii_is_digit(token.start[i])) {
+    i++;
+    digits = 1;
+  }
+
+  if (i < token.length && token.start[i] == '.') {
+    i++;
+    while (i < token.length && ascii_is_digit(token.start[i])) {
+      i++;
+      digits = 1;
+    }
+  }
+
+  if (!digits) {
+    return 0;
+  }
+
+  if (i < token.length && (token.start[i] == 'e' || token.start[i] == 'E')) {
+    int exponent_digits = 0;
+    i++;
+    if (i < token.length &&
+        (token.start[i] == '+' || token.start[i] == '-')) {
+      i++;
+    }
+    while (i < token.length && ascii_is_digit(token.start[i])) {
+      i++;
+      exponent_digits = 1;
+    }
+    if (!exponent_digits) {
+      return 0;
+    }
+  }
+
+  return i == token.length;
 }
 
 static int dml_literal_token(int token_id, MyliteToken token) {

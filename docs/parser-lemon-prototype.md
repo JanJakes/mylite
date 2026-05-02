@@ -437,14 +437,15 @@ token sink:
 - `SHOW INDEX`/`INDEXES`/`KEYS` uses MySQL's narrower parser shape with
   optional `EXTENDED` and `WHERE`, excluding `FULL` and `LIKE`.
 - `SHOW BINLOG EVENTS` and `SHOW RELAYLOG EVENTS` recognize optional
-  text-string log names, numeric `FROM` positions, and integer-or-identifier
-  `LIMIT` tails; relay-log events also recognize MySQL channel clauses.
+  text-string log names, unsigned decimal/exponent `FROM` positions, and
+  integer-or-identifier `LIMIT` tails; relay-log events also recognize MySQL
+  channel clauses.
 - `SHOW BINARY LOG STATUS` is the strict MySQL 8.4 binary-log status form;
   removed `SHOW MASTER STATUS` syntax is permissive-corpus-only.
 - `SHOW BINARY LOGS` is the strict MySQL 8.4 binary-log listing form; removed
   `SHOW MASTER LOGS` syntax is permissive-corpus-only.
-- `SHOW PROFILE` recognizes profile type lists, numeric `FOR QUERY` ids, and
-  integer-or-identifier `LIMIT` tails.
+- `SHOW PROFILE` recognizes profile type lists, unsigned-integer `FOR QUERY`
+  ids, and integer-or-identifier `LIMIT` tails.
 - `SHOW WARNINGS` and `SHOW ERRORS` recognize integer-or-identifier `LIMIT`
   tails while rejecting non-integer numeric literals.
 - `SET ROLE` and `SET DEFAULT ROLE` recognize MySQL role specifiers and account

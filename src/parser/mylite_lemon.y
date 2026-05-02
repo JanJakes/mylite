@@ -2907,9 +2907,15 @@ show_log_file_tail ::= IN text_string_literal.
 show_log_from_tail ::= .
 show_log_from_tail ::= FROM show_log_position.
 
-show_log_position ::= BOOLEAN_NUMBER.
-show_log_position ::= FACTOR_NUMBER.
-show_log_position ::= NUMBER_LITERAL.
+show_log_position ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_decimal_literal(ctx, A);
+}
+show_log_position ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_decimal_literal(ctx, A);
+}
+show_log_position ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_decimal_literal(ctx, A);
+}
 
 show_routine_status_kind ::= FUNCTION.
 show_routine_status_kind ::= PROCEDURE.
@@ -2937,9 +2943,15 @@ show_profile_type ::= SWAPS.
 show_profile_for_tail ::= .
 show_profile_for_tail ::= FOR QUERY show_profile_query_id.
 
-show_profile_query_id ::= BOOLEAN_NUMBER.
-show_profile_query_id ::= FACTOR_NUMBER.
-show_profile_query_id ::= NUMBER_LITERAL.
+show_profile_query_id ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
+show_profile_query_id ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
+show_profile_query_id ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
 
 show_parse_tree_query ::= SELECT select_tail.
 show_parse_tree_query ::= WITH with_recursive_tail with_cte_list with_query_body.

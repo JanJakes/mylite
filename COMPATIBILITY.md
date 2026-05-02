@@ -71,9 +71,9 @@ descriptor/value views, and compact table-option/key/column summaries. It also
 builds semantic parser views for `CREATE TABLE`, `CREATE DATABASE`, `CREATE
 VIEW`, `ALTER TABLE`, `CREATE INDEX`, `DROP DATABASE`, `DROP INDEX`, `DROP
 TABLE`, `DROP VIEW`, `RENAME TABLE`, `TRUNCATE TABLE`, `SET`, `USE`,
-`PREPARE`, `EXECUTE`, and `DEALLOCATE` that expose opaque descriptor handles
-for the next typed AST layer. The `CREATE DATABASE` view currently covers
-decoded database targets, `IF NOT EXISTS`,
+`PREPARE`, `EXECUTE`, `DEALLOCATE`, and transaction-control statements that
+expose opaque descriptor handles for the next typed AST layer. The `CREATE
+DATABASE` view currently covers decoded database targets, `IF NOT EXISTS`,
 `DATABASE`/`SCHEMA` keyword choice, database-option descriptors, and
 charset/collation/encryption summaries. The `CREATE VIEW` view currently covers
 decoded view targets, `OR REPLACE`, algorithm, SQL security, check-option kind,
@@ -84,7 +84,9 @@ anchors, `SET NAMES` extended collation spans, and first-pass expression
 summaries for assignment values. The `USE` view currently covers the decoded
 default-database target. The prepared-statement views currently cover decoded
 statement handles, `PREPARE` source kind and decoded source value, ordered
-`EXECUTE ... USING` user variables, and `DEALLOCATE`/`DROP PREPARE` mode. The
+`EXECUTE ... USING` user variables, and `DEALLOCATE`/`DROP PREPARE` mode.
+Transaction-control views currently cover begin form, access mode, consistency
+modifiers, completion modifiers, `WORK`, and decoded savepoint names. The
 `ALTER TABLE` view currently covers decoded target tables, ordered coarse
 operation specs,
 operation names, nested rename/exchange table targets, reused table-option
@@ -187,13 +189,13 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `START TRANSACTION` | ❌ | top | Transaction start modifiers including READ WRITE, READ ONLY, and WITH CONSISTENT SNAPSHOT. |  |
-| `BEGIN` / `BEGIN WORK` | ❌ | top | Transaction begin statement distinct from compound BEGIN ... END. |  |
-| `COMMIT` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. |  |
-| `ROLLBACK` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. |  |
-| `SAVEPOINT` | ❌ | top | Nested savepoint creation and replacement semantics. |  |
-| `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. |  |
-| `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. |  |
+| `START TRANSACTION` | ❌ | top | Transaction start modifiers including READ WRITE, READ ONLY, and WITH CONSISTENT SNAPSHOT. | Parser view exposes begin form, access mode, consistent snapshot, causal consistency, and TiDB pessimistic/optimistic markers. |
+| `BEGIN` / `BEGIN WORK` | ❌ | top | Transaction begin statement distinct from compound BEGIN ... END. | Parser view exposes begin form and `WORK` marker. |
+| `COMMIT` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. | Parser view exposes `WORK`, chain/no-chain, and release/no-release modifiers. |
+| `ROLLBACK` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. | Parser view exposes `WORK`, completion modifiers, optional savepoint keyword, and decoded savepoint target. |
+| `SAVEPOINT` | ❌ | top | Nested savepoint creation and replacement semantics. | Parser view exposes decoded savepoint name. |
+| `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. | Parser view exposes decoded savepoint name and whether `SAVEPOINT` was explicit. |
+| `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. | Parser view exposes decoded savepoint name. |
 | `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/next-transaction scope. | Parser view exposes transaction-characteristic assignments and scope. |
 | `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. |  |
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. |  |

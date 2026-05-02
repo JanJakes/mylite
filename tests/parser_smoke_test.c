@@ -198,6 +198,7 @@ static int expect_prepared_statement_views(void);
 static int expect_rename_table_view(void);
 static int expect_set_statement_view(void);
 static int expect_truncate_table_view(void);
+static int expect_transaction_statement_views(void);
 static int expect_use_database_view(void);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
@@ -798,6 +799,7 @@ int main(void) {
   failures += expect_rename_table_view();
   failures += expect_set_statement_view();
   failures += expect_truncate_table_view();
+  failures += expect_transaction_statement_views();
   failures += expect_use_database_view();
   {
     const ExpectedCreateTableColumn columns[] = {
@@ -3877,6 +3879,190 @@ static int expect_truncate_table_view(void) {
   }
 
   mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_transaction_statement_views(void) {
+  int failed = 0;
+  {
+    const char *sql = "START TRANSACTION READ ONLY, WITH CONSISTENT SNAPSHOT";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "START TRANSACTION view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstTransactionStatement *view =
+        mylite_ast_transaction_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_transaction_statement_view_node(view) == NULL ||
+        mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_TRANSACTION ||
+        mylite_ast_transaction_statement_view_kind(view) !=
+            MYLITE_TRANSACTION_STATEMENT_BEGIN ||
+        mylite_ast_transaction_statement_view_begin_form(view) !=
+            MYLITE_TRANSACTION_BEGIN_FORM_START_TRANSACTION ||
+        mylite_ast_transaction_statement_view_access_mode(view) !=
+            MYLITE_TRANSACTION_ACCESS_READ_ONLY ||
+        !mylite_ast_transaction_statement_view_has_consistent_snapshot(view) ||
+        mylite_ast_transaction_statement_view_has_causal_consistency(view) ||
+        mylite_ast_transaction_statement_view_has_work_keyword(view)) {
+      fprintf(stderr, "START TRANSACTION view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  {
+    const char *sql = "BEGIN WORK";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "BEGIN WORK view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstTransactionStatement *view =
+        mylite_ast_transaction_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_transaction_statement_view_kind(view) !=
+            MYLITE_TRANSACTION_STATEMENT_BEGIN ||
+        mylite_ast_transaction_statement_view_begin_form(view) !=
+            MYLITE_TRANSACTION_BEGIN_FORM_BEGIN ||
+        !mylite_ast_transaction_statement_view_has_work_keyword(view)) {
+      fprintf(stderr, "BEGIN WORK view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  {
+    const char *sql = "COMMIT WORK AND NO CHAIN RELEASE";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "COMMIT view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstTransactionStatement *view =
+        mylite_ast_transaction_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_transaction_statement_view_kind(view) !=
+            MYLITE_TRANSACTION_STATEMENT_COMMIT ||
+        !mylite_ast_transaction_statement_view_has_work_keyword(view) ||
+        mylite_ast_transaction_statement_view_has_chain(view) ||
+        !mylite_ast_transaction_statement_view_has_no_chain(view) ||
+        !mylite_ast_transaction_statement_view_has_release(view) ||
+        mylite_ast_transaction_statement_view_has_no_release(view)) {
+      fprintf(stderr, "COMMIT view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  {
+    const char *sql = "ROLLBACK WORK TO SAVEPOINT `s``x`";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "ROLLBACK TO SAVEPOINT view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstTransactionStatement *view =
+        mylite_ast_transaction_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_transaction_statement_view_kind(view) !=
+            MYLITE_TRANSACTION_STATEMENT_ROLLBACK ||
+        !mylite_ast_transaction_statement_view_has_work_keyword(view) ||
+        !mylite_ast_transaction_statement_view_has_savepoint_keyword(view) ||
+        !span_matches(
+            sql,
+            mylite_ast_transaction_statement_view_savepoint_name_start(view),
+            mylite_ast_transaction_statement_view_savepoint_name_end(view),
+            "`s``x`") ||
+        !value_matches_when_expected(
+            mylite_ast_transaction_statement_view_savepoint_name_value(view),
+            mylite_ast_transaction_statement_view_savepoint_name_value_length(
+                view),
+            "s`x")) {
+      fprintf(stderr, "ROLLBACK TO SAVEPOINT view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  {
+    const char *sql = "SAVEPOINT save_1";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "SAVEPOINT view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstTransactionStatement *view =
+        mylite_ast_transaction_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_transaction_statement_view_kind(view) !=
+            MYLITE_TRANSACTION_STATEMENT_SAVEPOINT ||
+        !mylite_ast_transaction_statement_view_has_savepoint_keyword(view) ||
+        !value_matches_when_expected(
+            mylite_ast_transaction_statement_view_savepoint_name_value(view),
+            mylite_ast_transaction_statement_view_savepoint_name_value_length(
+                view),
+            "save_1")) {
+      fprintf(stderr, "SAVEPOINT view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  {
+    const char *sql = "RELEASE SAVEPOINT save_1";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "RELEASE SAVEPOINT view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstTransactionStatement *view =
+        mylite_ast_transaction_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_transaction_statement_view_kind(view) !=
+            MYLITE_TRANSACTION_STATEMENT_RELEASE_SAVEPOINT ||
+        !mylite_ast_transaction_statement_view_has_savepoint_keyword(view) ||
+        !value_matches_when_expected(
+            mylite_ast_transaction_statement_view_savepoint_name_value(view),
+            mylite_ast_transaction_statement_view_savepoint_name_value_length(
+                view),
+            "save_1")) {
+      fprintf(stderr, "RELEASE SAVEPOINT view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
   return failed;
 }
 

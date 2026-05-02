@@ -542,6 +542,28 @@ struct MyliteAstDeallocateStatement {
   size_t name_value_length;
 };
 
+struct MyliteAstTransactionStatement {
+  const MyliteAstNode *node;
+  MyliteTransactionStatementKind kind;
+  MyliteTransactionBeginForm begin_form;
+  MyliteTransactionBeginMode begin_mode;
+  MyliteTransactionAccessMode access_mode;
+  size_t start;
+  size_t end;
+  size_t savepoint_name_start;
+  size_t savepoint_name_end;
+  const char *savepoint_name_value;
+  size_t savepoint_name_value_length;
+  int has_consistent_snapshot;
+  int has_causal_consistency;
+  int has_work_keyword;
+  int has_chain;
+  int has_no_chain;
+  int has_release;
+  int has_no_release;
+  int has_savepoint_keyword;
+};
+
 typedef struct MyliteAstStatement {
   const MyliteAstNode *node;
   const char *symbol_name;
@@ -569,6 +591,7 @@ typedef struct MyliteAstStatement {
   MyliteAstRenameTable *rename_table;
   MyliteAstSetStatement *set_statement;
   MyliteAstTruncateTable *truncate_table;
+  MyliteAstTransactionStatement *transaction_statement;
   MyliteAstUseDatabase *use_database;
   MyliteStatementTargetKind target_kind;
   size_t start;
@@ -761,6 +784,20 @@ static int mylite_ast_set_prepared_statement_name_value(
 static int mylite_ast_set_user_variable_name_value(
     MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
     size_t *name_end, const char **name_value, size_t *name_value_length);
+static int mylite_ast_set_transaction_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload);
+static MyliteTransactionStatementKind mylite_ast_classify_transaction_statement(
+    const char *symbol_name);
+static void mylite_ast_set_transaction_begin_details(
+    MyliteAstTransactionStatement *transaction_statement,
+    const MyliteAstNode *node);
+static void mylite_ast_set_transaction_completion_details(
+    MyliteAstTransactionStatement *transaction_statement,
+    const MyliteAstNode *node);
+static int mylite_ast_set_transaction_savepoint_name(
+    MyliteAst *ast, MyliteAstTransactionStatement *transaction_statement,
+    const MyliteAstNode *node);
 static int mylite_ast_set_set_statement_view(MyliteAst *ast,
                                              MyliteAstStatement *statement,
                                              const MyliteAstNode *payload);
@@ -2011,6 +2048,64 @@ const char *mylite_deallocate_statement_mode_name(
   return "unknown";
 }
 
+const char *mylite_transaction_statement_kind_name(
+    MyliteTransactionStatementKind kind) {
+  switch (kind) {
+    case MYLITE_TRANSACTION_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_TRANSACTION_STATEMENT_BEGIN:
+      return "begin";
+    case MYLITE_TRANSACTION_STATEMENT_COMMIT:
+      return "commit";
+    case MYLITE_TRANSACTION_STATEMENT_ROLLBACK:
+      return "rollback";
+    case MYLITE_TRANSACTION_STATEMENT_SAVEPOINT:
+      return "savepoint";
+    case MYLITE_TRANSACTION_STATEMENT_RELEASE_SAVEPOINT:
+      return "release_savepoint";
+  }
+  return "unknown";
+}
+
+const char *mylite_transaction_begin_form_name(
+    MyliteTransactionBeginForm form) {
+  switch (form) {
+    case MYLITE_TRANSACTION_BEGIN_FORM_UNKNOWN:
+      return "unknown";
+    case MYLITE_TRANSACTION_BEGIN_FORM_BEGIN:
+      return "begin";
+    case MYLITE_TRANSACTION_BEGIN_FORM_START_TRANSACTION:
+      return "start_transaction";
+  }
+  return "unknown";
+}
+
+const char *mylite_transaction_begin_mode_name(
+    MyliteTransactionBeginMode mode) {
+  switch (mode) {
+    case MYLITE_TRANSACTION_BEGIN_MODE_UNSPECIFIED:
+      return "unspecified";
+    case MYLITE_TRANSACTION_BEGIN_MODE_PESSIMISTIC:
+      return "pessimistic";
+    case MYLITE_TRANSACTION_BEGIN_MODE_OPTIMISTIC:
+      return "optimistic";
+  }
+  return "unspecified";
+}
+
+const char *mylite_transaction_access_mode_name(
+    MyliteTransactionAccessMode mode) {
+  switch (mode) {
+    case MYLITE_TRANSACTION_ACCESS_UNSPECIFIED:
+      return "unspecified";
+    case MYLITE_TRANSACTION_ACCESS_READ_WRITE:
+      return "read_write";
+    case MYLITE_TRANSACTION_ACCESS_READ_ONLY:
+      return "read_only";
+  }
+  return "unspecified";
+}
+
 const char *mylite_alter_table_spec_kind_name(MyliteAlterTableSpecKind kind) {
   switch (kind) {
     case MYLITE_ALTER_TABLE_SPEC_UNKNOWN:
@@ -2402,6 +2497,13 @@ const MyliteAstTruncateTable *mylite_ast_truncate_table_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->truncate_table;
+}
+
+const MyliteAstTransactionStatement *mylite_ast_transaction_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->transaction_statement;
 }
 
 const MyliteAstUseDatabase *mylite_ast_use_database_view(
@@ -3713,6 +3815,115 @@ size_t mylite_ast_deallocate_statement_view_name_value_length(
     const MyliteAstDeallocateStatement *deallocate_statement) {
   return deallocate_statement == NULL ? 0
                                       : deallocate_statement->name_value_length;
+}
+
+const MyliteAstNode *mylite_ast_transaction_statement_view_node(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement == NULL ? NULL : transaction_statement->node;
+}
+
+size_t mylite_ast_transaction_statement_view_start(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement == NULL ? 0 : transaction_statement->start;
+}
+
+size_t mylite_ast_transaction_statement_view_end(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement == NULL ? 0 : transaction_statement->end;
+}
+
+MyliteTransactionStatementKind mylite_ast_transaction_statement_view_kind(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement == NULL ? MYLITE_TRANSACTION_STATEMENT_UNKNOWN
+                                       : transaction_statement->kind;
+}
+
+MyliteTransactionBeginForm mylite_ast_transaction_statement_view_begin_form(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement == NULL ? MYLITE_TRANSACTION_BEGIN_FORM_UNKNOWN
+                                       : transaction_statement->begin_form;
+}
+
+MyliteTransactionBeginMode mylite_ast_transaction_statement_view_begin_mode(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement == NULL
+             ? MYLITE_TRANSACTION_BEGIN_MODE_UNSPECIFIED
+             : transaction_statement->begin_mode;
+}
+
+MyliteTransactionAccessMode mylite_ast_transaction_statement_view_access_mode(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement == NULL ? MYLITE_TRANSACTION_ACCESS_UNSPECIFIED
+                                       : transaction_statement->access_mode;
+}
+
+int mylite_ast_transaction_statement_view_has_consistent_snapshot(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement != NULL &&
+         transaction_statement->has_consistent_snapshot;
+}
+
+int mylite_ast_transaction_statement_view_has_causal_consistency(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement != NULL &&
+         transaction_statement->has_causal_consistency;
+}
+
+int mylite_ast_transaction_statement_view_has_work_keyword(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement != NULL && transaction_statement->has_work_keyword;
+}
+
+int mylite_ast_transaction_statement_view_has_chain(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement != NULL && transaction_statement->has_chain;
+}
+
+int mylite_ast_transaction_statement_view_has_no_chain(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement != NULL && transaction_statement->has_no_chain;
+}
+
+int mylite_ast_transaction_statement_view_has_release(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement != NULL && transaction_statement->has_release;
+}
+
+int mylite_ast_transaction_statement_view_has_no_release(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement != NULL && transaction_statement->has_no_release;
+}
+
+int mylite_ast_transaction_statement_view_has_savepoint_keyword(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement != NULL &&
+         transaction_statement->has_savepoint_keyword;
+}
+
+size_t mylite_ast_transaction_statement_view_savepoint_name_start(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement == NULL ? 0
+                                       : transaction_statement->savepoint_name_start;
+}
+
+size_t mylite_ast_transaction_statement_view_savepoint_name_end(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement == NULL ? 0
+                                       : transaction_statement->savepoint_name_end;
+}
+
+const char *mylite_ast_transaction_statement_view_savepoint_name_value(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement == NULL
+             ? NULL
+             : transaction_statement->savepoint_name_value;
+}
+
+size_t mylite_ast_transaction_statement_view_savepoint_name_value_length(
+    const MyliteAstTransactionStatement *transaction_statement) {
+  return transaction_statement == NULL
+             ? 0
+             : transaction_statement->savepoint_name_value_length;
 }
 
 const MyliteAstNode *mylite_ast_expression_view_node(
@@ -7149,6 +7360,9 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   if (strcmp(statement->symbol_name, "nt_truncate_table_stmt") == 0) {
     return mylite_ast_set_truncate_table_view(ast, statement, payload);
   }
+  if (statement->kind == MYLITE_STATEMENT_TRANSACTION) {
+    return mylite_ast_set_transaction_statement_view(ast, statement, payload);
+  }
   if (strcmp(statement->symbol_name, "nt_use_stmt") == 0) {
     return mylite_ast_set_use_database_view(ast, statement, payload);
   }
@@ -8565,6 +8779,167 @@ static int mylite_ast_set_user_variable_name_value(
   }
   return mylite_ast_copy_source_span(ast, start, token->end, name_value,
                                      name_value_length);
+}
+
+static int mylite_ast_set_transaction_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstTransactionStatement *transaction_statement =
+      mylite_ast_alloc(ast, sizeof(*transaction_statement));
+  if (transaction_statement == NULL) {
+    return 0;
+  }
+  transaction_statement->node = payload == NULL ? statement->node : payload;
+  transaction_statement->start =
+      mylite_ast_node_start(transaction_statement->node);
+  transaction_statement->end = mylite_ast_node_end(transaction_statement->node);
+  transaction_statement->kind =
+      mylite_ast_classify_transaction_statement(statement->symbol_name);
+  transaction_statement->has_work_keyword =
+      mylite_ast_find_first_token(transaction_statement->node,
+                                  MYLITE_TOK_WORK) != NULL;
+  transaction_statement->has_savepoint_keyword =
+      mylite_ast_find_first_token(transaction_statement->node,
+                                  MYLITE_TOK_SAVEPOINT) != NULL;
+
+  if (transaction_statement->kind == MYLITE_TRANSACTION_STATEMENT_BEGIN) {
+    mylite_ast_set_transaction_begin_details(transaction_statement,
+                                             transaction_statement->node);
+  }
+  if (transaction_statement->kind == MYLITE_TRANSACTION_STATEMENT_COMMIT ||
+      transaction_statement->kind == MYLITE_TRANSACTION_STATEMENT_ROLLBACK) {
+    mylite_ast_set_transaction_completion_details(transaction_statement,
+                                                  transaction_statement->node);
+  }
+  if ((transaction_statement->kind == MYLITE_TRANSACTION_STATEMENT_ROLLBACK ||
+       transaction_statement->kind == MYLITE_TRANSACTION_STATEMENT_SAVEPOINT ||
+       transaction_statement->kind ==
+           MYLITE_TRANSACTION_STATEMENT_RELEASE_SAVEPOINT) &&
+      !mylite_ast_set_transaction_savepoint_name(
+          ast, transaction_statement, transaction_statement->node)) {
+    return 0;
+  }
+
+  statement->transaction_statement = transaction_statement;
+  return 1;
+}
+
+static MyliteTransactionStatementKind mylite_ast_classify_transaction_statement(
+    const char *symbol_name) {
+  if (symbol_name == NULL) {
+    return MYLITE_TRANSACTION_STATEMENT_UNKNOWN;
+  }
+  if (strcmp(symbol_name, "nt_begin_transaction_stmt") == 0) {
+    return MYLITE_TRANSACTION_STATEMENT_BEGIN;
+  }
+  if (strcmp(symbol_name, "nt_commit_stmt") == 0) {
+    return MYLITE_TRANSACTION_STATEMENT_COMMIT;
+  }
+  if (strcmp(symbol_name, "nt_rollback_stmt") == 0) {
+    return MYLITE_TRANSACTION_STATEMENT_ROLLBACK;
+  }
+  if (strcmp(symbol_name, "nt_savepoint_stmt") == 0) {
+    return MYLITE_TRANSACTION_STATEMENT_SAVEPOINT;
+  }
+  if (strcmp(symbol_name, "nt_release_savepoint_stmt") == 0) {
+    return MYLITE_TRANSACTION_STATEMENT_RELEASE_SAVEPOINT;
+  }
+  return MYLITE_TRANSACTION_STATEMENT_UNKNOWN;
+}
+
+static void mylite_ast_set_transaction_begin_details(
+    MyliteAstTransactionStatement *transaction_statement,
+    const MyliteAstNode *node) {
+  if (transaction_statement == NULL || node == NULL) {
+    return;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_START) != NULL) {
+    transaction_statement->begin_form =
+        MYLITE_TRANSACTION_BEGIN_FORM_START_TRANSACTION;
+  } else if (mylite_ast_find_first_token(node, MYLITE_TOK_BEGIN) != NULL) {
+    transaction_statement->begin_form = MYLITE_TRANSACTION_BEGIN_FORM_BEGIN;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_PESSIMISTIC) != NULL) {
+    transaction_statement->begin_mode =
+        MYLITE_TRANSACTION_BEGIN_MODE_PESSIMISTIC;
+  } else if (mylite_ast_find_first_token(node, MYLITE_TOK_OPTIMISTIC) != NULL) {
+    transaction_statement->begin_mode =
+        MYLITE_TRANSACTION_BEGIN_MODE_OPTIMISTIC;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_READ) != NULL &&
+      mylite_ast_find_first_token(node, MYLITE_TOK_WRITE) != NULL) {
+    transaction_statement->access_mode =
+        MYLITE_TRANSACTION_ACCESS_READ_WRITE;
+  } else if (mylite_ast_find_first_token(node, MYLITE_TOK_READ) != NULL &&
+             mylite_ast_find_first_token(node, MYLITE_TOK_ONLY) != NULL) {
+    transaction_statement->access_mode =
+        MYLITE_TRANSACTION_ACCESS_READ_ONLY;
+  }
+  transaction_statement->has_consistent_snapshot =
+      mylite_ast_find_first_token(node, MYLITE_TOK_CONSISTENT) != NULL &&
+      mylite_ast_find_first_token(node, MYLITE_TOK_SNAPSHOT) != NULL;
+  transaction_statement->has_causal_consistency =
+      mylite_ast_find_first_token(node, MYLITE_TOK_CAUSAL) != NULL &&
+      mylite_ast_find_first_token(node, MYLITE_TOK_CONSISTENCY) != NULL;
+}
+
+static void mylite_ast_set_transaction_completion_details(
+    MyliteAstTransactionStatement *transaction_statement,
+    const MyliteAstNode *node) {
+  if (transaction_statement == NULL || node == NULL) {
+    return;
+  }
+  const MyliteAstNode *completion = mylite_ast_find_first_symbol(
+      node, "nt_completion_type_within_transaction");
+  if (completion == NULL) {
+    return;
+  }
+  for (size_t i = 0; i < completion->child_count; i++) {
+    const MyliteAstNode *child = completion->children[i];
+    if (child == NULL || child->kind != MYLITE_AST_NODE_TOKEN) {
+      continue;
+    }
+    int previous_is_no = i > 0 && completion->children[i - 1] != NULL &&
+                         completion->children[i - 1]->kind ==
+                             MYLITE_AST_NODE_TOKEN &&
+                         completion->children[i - 1]->token == MYLITE_TOK_NO;
+    if (child->token == MYLITE_TOK_CHAIN) {
+      if (previous_is_no) {
+        transaction_statement->has_no_chain = 1;
+      } else {
+        transaction_statement->has_chain = 1;
+      }
+    } else if (child->token == MYLITE_TOK_RELEASE) {
+      if (previous_is_no) {
+        transaction_statement->has_no_release = 1;
+      } else {
+        transaction_statement->has_release = 1;
+      }
+    }
+  }
+}
+
+static int mylite_ast_set_transaction_savepoint_name(
+    MyliteAst *ast, MyliteAstTransactionStatement *transaction_statement,
+    const MyliteAstNode *node) {
+  if (ast == NULL || transaction_statement == NULL || node == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *name = mylite_ast_find_first_symbol(node,
+                                                           "nt_identifier");
+  if (name == NULL) {
+    return 1;
+  }
+  transaction_statement->savepoint_name_start = mylite_ast_node_start(name);
+  transaction_statement->savepoint_name_end = mylite_ast_node_end(name);
+  return mylite_ast_decode_identifier(
+      ast, transaction_statement->savepoint_name_start,
+      transaction_statement->savepoint_name_end,
+      &transaction_statement->savepoint_name_value,
+      &transaction_statement->savepoint_name_value_length);
 }
 
 static int mylite_ast_set_set_statement_view(MyliteAst *ast,

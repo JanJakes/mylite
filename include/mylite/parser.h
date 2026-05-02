@@ -49,6 +49,7 @@ typedef struct MyliteAstRenameTable MyliteAstRenameTable;
 typedef struct MyliteAstSetAssignment MyliteAstSetAssignment;
 typedef struct MyliteAstSetStatement MyliteAstSetStatement;
 typedef struct MyliteAstTruncateTable MyliteAstTruncateTable;
+typedef struct MyliteAstTransactionStatement MyliteAstTransactionStatement;
 typedef struct MyliteAstUseDatabase MyliteAstUseDatabase;
 typedef struct MyliteAstCreateView MyliteAstCreateView;
 typedef struct MyliteAstDropView MyliteAstDropView;
@@ -457,6 +458,33 @@ typedef enum MyliteDeallocateStatementMode {
   MYLITE_DEALLOCATE_STATEMENT_MODE_DROP
 } MyliteDeallocateStatementMode;
 
+typedef enum MyliteTransactionStatementKind {
+  MYLITE_TRANSACTION_STATEMENT_UNKNOWN = 0,
+  MYLITE_TRANSACTION_STATEMENT_BEGIN,
+  MYLITE_TRANSACTION_STATEMENT_COMMIT,
+  MYLITE_TRANSACTION_STATEMENT_ROLLBACK,
+  MYLITE_TRANSACTION_STATEMENT_SAVEPOINT,
+  MYLITE_TRANSACTION_STATEMENT_RELEASE_SAVEPOINT
+} MyliteTransactionStatementKind;
+
+typedef enum MyliteTransactionBeginForm {
+  MYLITE_TRANSACTION_BEGIN_FORM_UNKNOWN = 0,
+  MYLITE_TRANSACTION_BEGIN_FORM_BEGIN,
+  MYLITE_TRANSACTION_BEGIN_FORM_START_TRANSACTION
+} MyliteTransactionBeginForm;
+
+typedef enum MyliteTransactionBeginMode {
+  MYLITE_TRANSACTION_BEGIN_MODE_UNSPECIFIED = 0,
+  MYLITE_TRANSACTION_BEGIN_MODE_PESSIMISTIC,
+  MYLITE_TRANSACTION_BEGIN_MODE_OPTIMISTIC
+} MyliteTransactionBeginMode;
+
+typedef enum MyliteTransactionAccessMode {
+  MYLITE_TRANSACTION_ACCESS_UNSPECIFIED = 0,
+  MYLITE_TRANSACTION_ACCESS_READ_WRITE,
+  MYLITE_TRANSACTION_ACCESS_READ_ONLY
+} MyliteTransactionAccessMode;
+
 typedef enum MyliteAlterTableSpecKind {
   MYLITE_ALTER_TABLE_SPEC_UNKNOWN = 0,
   MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS,
@@ -555,6 +583,14 @@ const char *mylite_prepare_statement_source_kind_name(
     MylitePrepareStatementSourceKind kind);
 const char *mylite_deallocate_statement_mode_name(
     MyliteDeallocateStatementMode mode);
+const char *mylite_transaction_statement_kind_name(
+    MyliteTransactionStatementKind kind);
+const char *mylite_transaction_begin_form_name(
+    MyliteTransactionBeginForm form);
+const char *mylite_transaction_begin_mode_name(
+    MyliteTransactionBeginMode mode);
+const char *mylite_transaction_access_mode_name(
+    MyliteTransactionAccessMode mode);
 const char *mylite_alter_table_spec_kind_name(MyliteAlterTableSpecKind kind);
 
 void mylite_ast_free(MyliteAst *ast);
@@ -643,6 +679,8 @@ const MyliteAstRenameTable *mylite_ast_rename_table_view(
 const MyliteAstSetStatement *mylite_ast_set_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstTruncateTable *mylite_ast_truncate_table_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstTransactionStatement *mylite_ast_transaction_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstUseDatabase *mylite_ast_use_database_view(
     const MyliteAst *ast, size_t statement_index);
@@ -1105,6 +1143,44 @@ const char *mylite_ast_deallocate_statement_view_name_value(
     const MyliteAstDeallocateStatement *deallocate_statement);
 size_t mylite_ast_deallocate_statement_view_name_value_length(
     const MyliteAstDeallocateStatement *deallocate_statement);
+const MyliteAstNode *mylite_ast_transaction_statement_view_node(
+    const MyliteAstTransactionStatement *transaction_statement);
+size_t mylite_ast_transaction_statement_view_start(
+    const MyliteAstTransactionStatement *transaction_statement);
+size_t mylite_ast_transaction_statement_view_end(
+    const MyliteAstTransactionStatement *transaction_statement);
+MyliteTransactionStatementKind mylite_ast_transaction_statement_view_kind(
+    const MyliteAstTransactionStatement *transaction_statement);
+MyliteTransactionBeginForm mylite_ast_transaction_statement_view_begin_form(
+    const MyliteAstTransactionStatement *transaction_statement);
+MyliteTransactionBeginMode mylite_ast_transaction_statement_view_begin_mode(
+    const MyliteAstTransactionStatement *transaction_statement);
+MyliteTransactionAccessMode mylite_ast_transaction_statement_view_access_mode(
+    const MyliteAstTransactionStatement *transaction_statement);
+int mylite_ast_transaction_statement_view_has_consistent_snapshot(
+    const MyliteAstTransactionStatement *transaction_statement);
+int mylite_ast_transaction_statement_view_has_causal_consistency(
+    const MyliteAstTransactionStatement *transaction_statement);
+int mylite_ast_transaction_statement_view_has_work_keyword(
+    const MyliteAstTransactionStatement *transaction_statement);
+int mylite_ast_transaction_statement_view_has_chain(
+    const MyliteAstTransactionStatement *transaction_statement);
+int mylite_ast_transaction_statement_view_has_no_chain(
+    const MyliteAstTransactionStatement *transaction_statement);
+int mylite_ast_transaction_statement_view_has_release(
+    const MyliteAstTransactionStatement *transaction_statement);
+int mylite_ast_transaction_statement_view_has_no_release(
+    const MyliteAstTransactionStatement *transaction_statement);
+int mylite_ast_transaction_statement_view_has_savepoint_keyword(
+    const MyliteAstTransactionStatement *transaction_statement);
+size_t mylite_ast_transaction_statement_view_savepoint_name_start(
+    const MyliteAstTransactionStatement *transaction_statement);
+size_t mylite_ast_transaction_statement_view_savepoint_name_end(
+    const MyliteAstTransactionStatement *transaction_statement);
+const char *mylite_ast_transaction_statement_view_savepoint_name_value(
+    const MyliteAstTransactionStatement *transaction_statement);
+size_t mylite_ast_transaction_statement_view_savepoint_name_value_length(
+    const MyliteAstTransactionStatement *transaction_statement);
 const MyliteAstNode *mylite_ast_expression_view_node(
     const MyliteAstExpression *expression);
 MyliteExpressionKind mylite_ast_expression_view_kind(

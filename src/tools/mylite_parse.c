@@ -142,6 +142,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_set_statement_view(ast, i);
     const MyliteAstTruncateTable *truncate_table =
         mylite_ast_truncate_table_view(ast, i);
+    const MyliteAstTransactionStatement *transaction_statement =
+        mylite_ast_transaction_statement_view(ast, i);
     const MyliteAstUseDatabase *use_database =
         mylite_ast_use_database_view(ast, i);
     printf("statement[%zu] kind=%s symbol=%s span=%zu..%zu targets=%zu "
@@ -800,6 +802,62 @@ static void dump_statements(const MyliteAst *ast) {
         fputs("none", stdout);
       } else {
         print_escaped_bytes(table_name, table_name_length);
+      }
+      fputc('\n', stdout);
+    }
+    if (transaction_statement != NULL) {
+      printf("  transaction_statement span=%zu..%zu kind=%s begin_form=%s "
+             "begin_mode=%s access=%s consistent_snapshot=%d "
+             "causal_consistency=%d work=%d chain=%d no_chain=%d "
+             "release=%d no_release=%d savepoint_keyword=%d "
+             "savepoint=%zu..%zu savepoint_len=%zu savepoint=",
+             mylite_ast_transaction_statement_view_start(
+                 transaction_statement),
+             mylite_ast_transaction_statement_view_end(transaction_statement),
+             mylite_transaction_statement_kind_name(
+                 mylite_ast_transaction_statement_view_kind(
+                     transaction_statement)),
+             mylite_transaction_begin_form_name(
+                 mylite_ast_transaction_statement_view_begin_form(
+                     transaction_statement)),
+             mylite_transaction_begin_mode_name(
+                 mylite_ast_transaction_statement_view_begin_mode(
+                     transaction_statement)),
+             mylite_transaction_access_mode_name(
+                 mylite_ast_transaction_statement_view_access_mode(
+                     transaction_statement)),
+             mylite_ast_transaction_statement_view_has_consistent_snapshot(
+                 transaction_statement),
+             mylite_ast_transaction_statement_view_has_causal_consistency(
+                 transaction_statement),
+             mylite_ast_transaction_statement_view_has_work_keyword(
+                 transaction_statement),
+             mylite_ast_transaction_statement_view_has_chain(
+                 transaction_statement),
+             mylite_ast_transaction_statement_view_has_no_chain(
+                 transaction_statement),
+             mylite_ast_transaction_statement_view_has_release(
+                 transaction_statement),
+             mylite_ast_transaction_statement_view_has_no_release(
+                 transaction_statement),
+             mylite_ast_transaction_statement_view_has_savepoint_keyword(
+                 transaction_statement),
+             mylite_ast_transaction_statement_view_savepoint_name_start(
+                 transaction_statement),
+             mylite_ast_transaction_statement_view_savepoint_name_end(
+                 transaction_statement),
+             mylite_ast_transaction_statement_view_savepoint_name_value_length(
+                 transaction_statement));
+      const char *savepoint =
+          mylite_ast_transaction_statement_view_savepoint_name_value(
+              transaction_statement);
+      size_t savepoint_length =
+          mylite_ast_transaction_statement_view_savepoint_name_value_length(
+              transaction_statement);
+      if (savepoint == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(savepoint, savepoint_length);
       }
       fputc('\n', stdout);
     }

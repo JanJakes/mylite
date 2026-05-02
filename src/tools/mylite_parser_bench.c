@@ -206,6 +206,17 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t truncate_table_views = 0;
   size_t truncate_table_name_values = 0;
   size_t truncate_table_table_keywords = 0;
+  size_t transaction_statement_views = 0;
+  size_t transaction_statement_begins = 0;
+  size_t transaction_statement_commits = 0;
+  size_t transaction_statement_rollbacks = 0;
+  size_t transaction_statement_savepoints = 0;
+  size_t transaction_statement_release_savepoints = 0;
+  size_t transaction_statement_work_keywords = 0;
+  size_t transaction_statement_access_modes = 0;
+  size_t transaction_statement_consistent_snapshots = 0;
+  size_t transaction_statement_completion_modifiers = 0;
+  size_t transaction_statement_savepoint_names = 0;
   size_t use_database_views = 0;
   size_t use_database_name_values = 0;
   size_t columns = 0;
@@ -918,6 +929,58 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 truncate_table_table_keywords++;
               }
             }
+            const MyliteAstTransactionStatement *transaction_statement =
+                mylite_ast_transaction_statement_view(ast, i);
+            if (transaction_statement != NULL) {
+              transaction_statement_views++;
+              switch (mylite_ast_transaction_statement_view_kind(
+                  transaction_statement)) {
+                case MYLITE_TRANSACTION_STATEMENT_BEGIN:
+                  transaction_statement_begins++;
+                  break;
+                case MYLITE_TRANSACTION_STATEMENT_COMMIT:
+                  transaction_statement_commits++;
+                  break;
+                case MYLITE_TRANSACTION_STATEMENT_ROLLBACK:
+                  transaction_statement_rollbacks++;
+                  break;
+                case MYLITE_TRANSACTION_STATEMENT_SAVEPOINT:
+                  transaction_statement_savepoints++;
+                  break;
+                case MYLITE_TRANSACTION_STATEMENT_RELEASE_SAVEPOINT:
+                  transaction_statement_release_savepoints++;
+                  break;
+                case MYLITE_TRANSACTION_STATEMENT_UNKNOWN:
+                  break;
+              }
+              if (mylite_ast_transaction_statement_view_has_work_keyword(
+                      transaction_statement)) {
+                transaction_statement_work_keywords++;
+              }
+              if (mylite_ast_transaction_statement_view_access_mode(
+                      transaction_statement) !=
+                  MYLITE_TRANSACTION_ACCESS_UNSPECIFIED) {
+                transaction_statement_access_modes++;
+              }
+              if (mylite_ast_transaction_statement_view_has_consistent_snapshot(
+                      transaction_statement)) {
+                transaction_statement_consistent_snapshots++;
+              }
+              if (mylite_ast_transaction_statement_view_has_chain(
+                      transaction_statement) ||
+                  mylite_ast_transaction_statement_view_has_no_chain(
+                      transaction_statement) ||
+                  mylite_ast_transaction_statement_view_has_release(
+                      transaction_statement) ||
+                  mylite_ast_transaction_statement_view_has_no_release(
+                      transaction_statement)) {
+                transaction_statement_completion_modifiers++;
+              }
+              if (mylite_ast_transaction_statement_view_savepoint_name_value(
+                      transaction_statement) != NULL) {
+                transaction_statement_savepoint_names++;
+              }
+            }
             const MyliteAstUseDatabase *use_database =
                 mylite_ast_use_database_view(ast, i);
             if (use_database != NULL) {
@@ -1227,6 +1290,17 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_truncate_table_views=%.2f "
            "avg_truncate_table_name_values=%.2f "
            "avg_truncate_table_table_keywords=%.2f "
+           "avg_transaction_statement_views=%.2f "
+           "avg_transaction_statement_begins=%.2f "
+           "avg_transaction_statement_commits=%.2f "
+           "avg_transaction_statement_rollbacks=%.2f "
+           "avg_transaction_statement_savepoints=%.2f "
+           "avg_transaction_statement_release_savepoints=%.2f "
+           "avg_transaction_statement_work_keywords=%.2f "
+           "avg_transaction_statement_access_modes=%.2f "
+           "avg_transaction_statement_consistent_snapshots=%.2f "
+           "avg_transaction_statement_completion_modifiers=%.2f "
+           "avg_transaction_statement_savepoint_names=%.2f "
            "avg_use_database_views=%.2f "
            "avg_use_database_name_values=%.2f "
            "avg_key_constraint_name_values=%.2f avg_key_name_values=%.2f "
@@ -1405,6 +1479,19 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)truncate_table_views / (double)parsed,
            (double)truncate_table_name_values / (double)parsed,
            (double)truncate_table_table_keywords / (double)parsed,
+           (double)transaction_statement_views / (double)parsed,
+           (double)transaction_statement_begins / (double)parsed,
+           (double)transaction_statement_commits / (double)parsed,
+           (double)transaction_statement_rollbacks / (double)parsed,
+           (double)transaction_statement_savepoints / (double)parsed,
+           (double)transaction_statement_release_savepoints / (double)parsed,
+           (double)transaction_statement_work_keywords / (double)parsed,
+           (double)transaction_statement_access_modes / (double)parsed,
+           (double)transaction_statement_consistent_snapshots /
+               (double)parsed,
+           (double)transaction_statement_completion_modifiers /
+               (double)parsed,
+           (double)transaction_statement_savepoint_names / (double)parsed,
            (double)use_database_views / (double)parsed,
            (double)use_database_name_values / (double)parsed,
            (double)key_constraint_name_values / (double)parsed,

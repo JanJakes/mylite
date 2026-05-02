@@ -71,6 +71,8 @@ expression nodes.
 - `PREPARE`, `EXECUTE`, and `DEALLOCATE` statements expose typed decoded
   prepared-statement handles, source descriptors, ordered `USING` user-variable
   descriptors, and deallocate/drop mode.
+- Transaction-control statements expose begin form, access mode, consistency
+  modifiers, `WORK`, completion modifiers, and decoded savepoint names.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
   still cover the full current corpus.
 - The AST is opaque in the public API and freed with `mylite_ast_free()`.
@@ -141,6 +143,9 @@ expression nodes.
   `USING` user variables
 - typed `DEALLOCATE` descriptors with decoded statement name and
   `DEALLOCATE`/`DROP PREPARE` mode
+- typed transaction-control descriptors with statement kind, begin form,
+  TiDB begin mode, access mode, consistency modifiers, `WORK`, completion
+  modifiers, savepoint-keyword marker, and decoded savepoint name
 - typed view-column descriptors with name spans and decoded identifier values
 - typed `ALTER TABLE` descriptors with decoded target table, ordered operation
   spec handles, coarse operation kind, `IF EXISTS` / `IF NOT EXISTS` flags,
@@ -321,6 +326,16 @@ the decoded statement handle and mode. These are parser-level descriptors only;
 they do not yet validate parameter marker rules, maintain the per-connection
 prepared-statement registry, or execute prepared statements.
 
+Transaction-control views cover `BEGIN`, `START TRANSACTION`, `COMMIT`,
+`ROLLBACK`, `SAVEPOINT`, and `RELEASE SAVEPOINT`. `BEGIN`/`START TRANSACTION`
+records the begin form, optional TiDB pessimistic/optimistic markers, MySQL
+access mode, `WITH CONSISTENT SNAPSHOT`, and TiDB causal-consistency syntax.
+`COMMIT` and `ROLLBACK` record `WORK` plus chain/no-chain and
+release/no-release completion modifiers. Savepoint statements and rollback to
+savepoint record decoded savepoint names and whether the `SAVEPOINT` keyword
+was explicit. These descriptors do not yet implement transaction state,
+implicit commits, savepoint stack behavior, or diagnostics.
+
 For development inspection:
 
 ```sh
@@ -357,6 +372,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.9277
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=23.597245 qps=294700 mbps=22.41 avg_us=3.393 avg_nodes=74.5 avg_ast_bytes=10257.2 avg_prepare_statement_views=0.02 avg_prepare_statement_name_values=0.02 avg_prepare_statement_string_sources=0.02 avg_prepare_statement_user_variable_sources=0.00 avg_prepare_statement_source_values=0.02 avg_execute_statement_views=0.01 avg_execute_statement_name_values=0.01 avg_execute_statement_using_variables=0.01 avg_execute_statement_using_variable_name_values=0.01 avg_deallocate_statement_views=0.00 avg_deallocate_statement_name_values=0.00 avg_deallocate_statement_modes=0.00
 ```
 
+Latest transaction-control view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.895676 qps=500451 mbps=38.06 avg_us=1.998
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=23.614253 qps=294487 mbps=22.40 avg_us=3.396 avg_nodes=74.5 avg_ast_bytes=10258.4 avg_transaction_statement_views=0.00 avg_transaction_statement_begins=0.00 avg_transaction_statement_commits=0.00 avg_transaction_statement_rollbacks=0.00 avg_transaction_statement_savepoints=0.00 avg_transaction_statement_release_savepoints=0.00 avg_transaction_statement_work_keywords=0.00 avg_transaction_statement_access_modes=0.00 avg_transaction_statement_consistent_snapshots=0.00 avg_transaction_statement_completion_modifiers=0.00 avg_transaction_statement_savepoint_names=0.00
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -367,7 +389,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 222K on disk, 131,346 bytes text/data/other
+parser support object: 227K on disk, 134,046 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.3M on disk
 mylite-parse: 1.1M on disk

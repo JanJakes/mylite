@@ -95,6 +95,33 @@ This task should not mark any deferred function family as supported. Unsupported
 function calls should fail deterministically with a MySQL-compatible diagnostic
 when possible.
 
+## Current implementation checkpoint
+
+The first Task 24 runtime slice implements the pure deterministic subset needed
+by common scalar expressions:
+
+- string functions: `CONCAT`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`,
+  `CHARACTER_LENGTH`, `LOWER`, `LCASE`, `UPPER`, `UCASE`, `LEFT`, `RIGHT`,
+  and `REPLACE`
+- numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`, and
+  `PI`
+- conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and
+  `ISNULL`
+
+These functions are implemented in no-table scalar `SELECT`, one-table
+`SELECT` projection, `WHERE`, and `ORDER BY` expressions, and the existing
+single-table `UPDATE` and `DELETE` expression paths. The checkpoint includes
+runtime tests for scalar rows, NULL propagation, UTF-8 length handling, zero and
+negative `LEFT`/`RIGHT` counts, `MOD(..., 0)` warnings, table projection,
+filters, ordering, update assignment expressions, delete predicates, unsupported
+functions, unsupported arity, and selected result metadata.
+
+This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
+`INSERT ... SET` function expressions, temporal functions, information
+functions, aggregate/window functions, JSON, regular expressions, spatial,
+full-text, encryption, loadable functions, or exact MySQL error-code reporting
+for unsupported functions and argument-count mismatches.
+
 ## Sources
 
 - MySQL 8.4 Reference Manual, Built-In Function and Operator Reference:

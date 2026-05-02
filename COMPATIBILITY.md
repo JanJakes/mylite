@@ -127,12 +127,12 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. |  |
-| `SELECT` | 🟡 | top | Full query expression surface; see section 2. | Table-backed SELECT core is implemented for one user base table, selected-schema and schema-qualified resolution, direct column references, supported Task 16 projection expressions, projection aliases, `*`, qualified wildcards, invisible-column wildcard omission, duplicate output labels, statement-owned label/schema/table/origin metadata, deterministic diagnostics, single-table `WHERE` predicate evaluation over the Task 16 expression subset, Task 18 `ORDER BY` / `LIMIT` / `OFFSET` execution, and Task 23 result descriptors. No-table scalar `SELECT` expressions are implemented for the Task 16 operator subset. Joins, grouping, distinct, functions, optimizer pushdown, exhaustive expression metadata, and protocol metadata remain deferred. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md), [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md), [WHERE clause spec](docs/specs/where-clause/specs.md), [ORDER BY, LIMIT, and OFFSET spec](docs/specs/order-limit-offset/specs.md), and [result metadata and expression labels spec](docs/specs/result-metadata-expression-labels/specs.md). |
+| `SELECT` | 🟡 | top | Full query expression surface; see section 2. | Table-backed SELECT core is implemented for one user base table, selected-schema and schema-qualified resolution, direct column references, supported Task 16 projection expressions, Task 24 pure scalar function expressions, projection aliases, `*`, qualified wildcards, invisible-column wildcard omission, duplicate output labels, statement-owned label/schema/table/origin metadata, deterministic diagnostics, single-table `WHERE` predicate evaluation over the supported expression subset, Task 18 `ORDER BY` / `LIMIT` / `OFFSET` execution, and Task 23 result descriptors. No-table scalar `SELECT` expressions are implemented for the Task 16 operator subset and the Task 24 pure scalar function subset. Joins, grouping, distinct, remaining function families, optimizer pushdown, exhaustive expression metadata, and protocol metadata remain deferred. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md), [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md), [WHERE clause spec](docs/specs/where-clause/specs.md), [ORDER BY, LIMIT, and OFFSET spec](docs/specs/order-limit-offset/specs.md), [result metadata and expression labels spec](docs/specs/result-metadata-expression-labels/specs.md), and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `SELECT ... INTO var_list` | ❌ | high | User/local variable assignment semantics. |  |
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. |  |
 | `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. |  |
 | `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. |  |
-| `UPDATE` (single-table) | 🟡 | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. | Executable for one user base table created by the supported `CREATE TABLE` subset, including selected-schema and schema-qualified target resolution, aliases, source-order assignments, repeated targets, `DEFAULT`, `WHERE`, `ORDER BY`, `LIMIT row_count`, changed-row affected counts, no-op updates, deterministic diagnostics, atomic rollback, primary/unique conflict checks, order-sensitive key updates, nullable/default handling, required-column errors, and explicit `AUTO_INCREMENT` sequence advancement without changing last insert id. `LOW_PRIORITY`, `IGNORE`, partitions, generated-column execution, automatic `ON UPDATE`, broad type conversion and SQL-mode warning behavior, functions, and multi-table forms remain deferred. See [single-table UPDATE spec](docs/specs/update-single-table/specs.md). |
+| `UPDATE` (single-table) | 🟡 | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. | Executable for one user base table created by the supported `CREATE TABLE` subset, including selected-schema and schema-qualified target resolution, aliases, source-order assignments, repeated targets, `DEFAULT`, `WHERE`, `ORDER BY`, `LIMIT row_count`, Task 24 pure scalar function expressions, changed-row affected counts, no-op updates, deterministic diagnostics, atomic rollback, primary/unique conflict checks, order-sensitive key updates, nullable/default handling, required-column errors, and explicit `AUTO_INCREMENT` sequence advancement without changing last insert id. `LOW_PRIORITY`, `IGNORE`, partitions, generated-column execution, automatic `ON UPDATE`, broad type conversion and SQL-mode warning behavior, remaining function families, and multi-table forms remain deferred. See [single-table UPDATE spec](docs/specs/update-single-table/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. |  |
 | `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. |  |
 
@@ -297,19 +297,19 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Query expression grammar | ❌ | top | Parenthesized query expressions, query terms, and query primary rules. |  |
 | `WITH` common table expressions | ❌ | high | Non-recursive CTEs, column lists, name shadowing, and scope. |  |
 | `WITH RECURSIVE` | ❌ | high | Recursive CTE execution, cycle behavior, limits, and type inference. |  |
-| Projection list | 🟡 | top | Expression aliases, wildcard expansion, qualified wildcards, duplicate names, and metadata. | Implemented for direct column-reference projection aliases, supported Task 16 table-backed projection expressions and literals, duplicate output labels, `*`, `table.*`, `schema.table.*`, and alias-qualified wildcards over one base table, with public label/schema/table/origin accessors and Task 23 type, flag, length, decimals, charset, and nullability descriptors. Joins, aggregates, functions, subqueries, and set-operation projection merging remain deferred. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md), [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md), and [result metadata and expression labels spec](docs/specs/result-metadata-expression-labels/specs.md). |
+| Projection list | 🟡 | top | Expression aliases, wildcard expansion, qualified wildcards, duplicate names, and metadata. | Implemented for direct column-reference projection aliases, supported Task 16 table-backed projection expressions and literals, Task 24 pure scalar function expressions, duplicate output labels, `*`, `table.*`, `schema.table.*`, and alias-qualified wildcards over one base table, with public label/schema/table/origin accessors and Task 23 type, flag, length, decimals, charset, and nullability descriptors. Joins, aggregates, remaining function families, subqueries, and set-operation projection merging remain deferred. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md), [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md), [result metadata and expression labels spec](docs/specs/result-metadata-expression-labels/specs.md), and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | Table references | 🟡 | top | Base tables, aliases, schema qualifiers, derived tables, table functions, and parentheses. | Implemented for one user base table with selected-schema or schema-qualified resolution and optional `AS`/bare table aliases. Joins, derived tables, table functions, partitions, index hints, and parenthesized table references remain deferred. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md). |
 | Inner joins | ❌ | top | JOIN, INNER JOIN, CROSS JOIN, comma join, ON, and USING. |  |
 | Outer joins | ❌ | top | LEFT/RIGHT OUTER JOIN null-extension and predicate placement. |  |
 | Natural joins | ❌ | high | NATURAL INNER/LEFT/RIGHT JOIN column matching and metadata. |  |
 | `STRAIGHT_JOIN` | ❌ | medium | Join-order forcing syntax and optimizer interaction. |  |
 | Lateral derived tables | ❌ | medium | LATERAL derived table correlation rules. |  |
-| `WHERE` | 🟡 | top | Predicate semantics, type conversion, three-valued logic, and short-circuit-sensitive warnings. | Implemented for one user base table in table-backed `SELECT`, over the Task 16 expression subset, with MyLite-owned row scanning, predicate name resolution, three-valued filtering, conversion and division warnings, invalid `ESCAPE` diagnostics, warning lifecycle, and projection metadata preservation. Joins, `UPDATE`/`DELETE` predicates, `HAVING`, `ON`, subqueries, functions, broad collations, no-table/`DUAL` predicates, information-schema filters, optimizer pushdown, and index use remain deferred. See [WHERE clause spec](docs/specs/where-clause/specs.md) and [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `WHERE` | 🟡 | top | Predicate semantics, type conversion, three-valued logic, and short-circuit-sensitive warnings. | Implemented for one user base table in table-backed `SELECT`, over the Task 16 expression subset and Task 24 pure scalar function subset, with MyLite-owned row scanning, predicate name resolution, three-valued filtering, conversion and division warnings, invalid `ESCAPE` diagnostics, warning lifecycle, and projection metadata preservation. Single-table `UPDATE` and `DELETE` predicates use the same pure scalar function subset. Joins, `HAVING`, `ON`, subqueries, remaining function families, broad collations, no-table/`DUAL` predicates, information-schema filters, optimizer pushdown, and index use remain deferred. See [WHERE clause spec](docs/specs/where-clause/specs.md), [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md), and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `GROUP BY` | ❌ | top | Grouping expression semantics, ordinals, aliases, functional-dependence handling, and ONLY_FULL_GROUP_BY. |  |
 | `WITH ROLLUP` | ❌ | medium | Super-aggregate rows and GROUPING() behavior. |  |
 | `HAVING` | ❌ | top | Post-group predicate semantics and alias resolution. |  |
 | Window definitions | ❌ | high | WINDOW clause, named windows, inheritance, partitioning, ordering, frames, and MySQL restrictions. |  |
-| `ORDER BY` | 🟡 | top | Expression, alias, ordinal, collation, ASC/DESC, and filesort metadata behavior. | Implemented for one-table `SELECT` after optional `WHERE`, with MyLite-owned sorting, multiple keys, `ASC`/`DESC`, `NULL` ordering, unqualified alias-before-column lookup, qualified table-column lookup, duplicate-alias ambiguity diagnostics, one-based ordinals, hidden supported sort expressions, warning preservation before `LIMIT`, and projection metadata preservation. Joins, grouped queries, set operations, no-table/`DUAL` ordering, full collation fidelity, functions, and broader expression metadata remain deferred. See [ORDER BY, LIMIT, and OFFSET spec](docs/specs/order-limit-offset/specs.md). |
+| `ORDER BY` | 🟡 | top | Expression, alias, ordinal, collation, ASC/DESC, and filesort metadata behavior. | Implemented for one-table `SELECT` after optional `WHERE`, with MyLite-owned sorting, multiple keys, `ASC`/`DESC`, `NULL` ordering, unqualified alias-before-column lookup, qualified table-column lookup, duplicate-alias ambiguity diagnostics, one-based ordinals, hidden supported sort expressions including Task 24 pure scalar functions, warning preservation before `LIMIT`, and projection metadata preservation. Joins, grouped queries, set operations, no-table/`DUAL` ordering, full collation fidelity, remaining function families, and broader expression metadata remain deferred. See [ORDER BY, LIMIT, and OFFSET spec](docs/specs/order-limit-offset/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `LIMIT` / `OFFSET` | 🟡 | top | Row limiting, prepared markers, integer conversion, and error cases. | Implemented for one-table `SELECT` as literal `LIMIT row_count`, `LIMIT offset,row_count`, and `LIMIT row_count OFFSET offset`, with normalized offset/count AST, unsigned 64-bit literal validation, syntax errors for negative/decimal/string/`NULL`/expression/overflow bounds and direct `LIMIT ?`, `LIMIT 0` metadata preservation, and read-only `SELECT` side effects. Prepared-statement parameter markers and use outside the single-table `SELECT` subset remain deferred. See [ORDER BY, LIMIT, and OFFSET spec](docs/specs/order-limit-offset/specs.md). |
 | `DISTINCT` / `DISTINCTROW` | ❌ | top | Duplicate elimination semantics and metadata. |  |
 | `UNION` | ❌ | high | ALL/DISTINCT semantics, column names/types, ordering, limits, and parentheses. |  |
@@ -326,8 +326,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `PARTITION` selection | ❌ | low | Explicit partition selection syntax and errors. |  |
 | Locking clauses | ❌ | high | FOR UPDATE, FOR SHARE, OF table list, NOWAIT, and SKIP LOCKED. |  |
 | SELECT modifiers | ❌ | top | ALL, HIGH_PRIORITY, SQL_SMALL_RESULT, SQL_BIG_RESULT, SQL_BUFFER_RESULT, SQL_CALC_FOUND_ROWS, and STRAIGHT_JOIN. |  |
-| Expression metadata | 🟡 | top | Column type, length, decimals, flags, charset, collation, nullability, and origin metadata. | Implemented for current scalar `SELECT` output and one-table `SELECT` projections: base columns, aliases, duplicate labels, wildcards, invisible-column wildcard omission, supported Task 16 literals and operators, and hidden `ORDER BY` keys that do not change visible metadata. The public C API exposes MySQL-style field type, flags, declared length, max length placeholder, decimals, charset id, nullability, schema, table, origin table, and origin column metadata. Joins, derived tables, aggregates, functions, prepared-statement metadata, protocol packets, materialized `max_length`, and exhaustive collation coercion remain deferred. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md), [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md), and [result metadata and expression labels spec](docs/specs/result-metadata-expression-labels/specs.md). |
-| Scalar built-in functions | ❌ | top | Common string, numeric, temporal, conditional, comparison, and information scalar functions with MySQL-compatible type conversion, warnings, errors, metadata, and statement/session state. | Task 24 is specified but not implemented. The initial implementation scope is bounded to common scalar functions usable in existing expression call sites, including `SELECT`, `WHERE`, `ORDER BY`, `INSERT`, `UPDATE`, and `DELETE`; aggregates, JSON, regex, spatial, full-text, encryption, loadable, and server-administration functions remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
+| Expression metadata | 🟡 | top | Column type, length, decimals, flags, charset, collation, nullability, and origin metadata. | Implemented for current scalar `SELECT` output and one-table `SELECT` projections: base columns, aliases, duplicate labels, wildcards, invisible-column wildcard omission, supported Task 16 literals and operators, Task 24 pure scalar function descriptors, and hidden `ORDER BY` keys that do not change visible metadata. The public C API exposes MySQL-style field type, flags, declared length, max length placeholder, decimals, charset id, nullability, schema, table, origin table, and origin column metadata. Joins, derived tables, aggregates, remaining function families, prepared-statement metadata, protocol packets, materialized `max_length`, and exhaustive collation coercion remain deferred. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md), [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md), [result metadata and expression labels spec](docs/specs/result-metadata-expression-labels/specs.md), and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
+| Scalar built-in functions | 🟡 | top | Common string, numeric, temporal, conditional, comparison, and information scalar functions with MySQL-compatible type conversion, warnings, errors, metadata, and statement/session state. | Task 24 now implements the first pure deterministic scalar subset: `CONCAT`, `LENGTH`/`OCTET_LENGTH`, `CHAR_LENGTH`/`CHARACTER_LENGTH`, `LOWER`/`LCASE`, `UPPER`/`UCASE`, `LEFT`, `RIGHT`, `REPLACE`, `ABS`, `SIGN`, `FLOOR`, `CEIL`/`CEILING`, `MOD`, `PI`, `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and `ISNULL`. They work in no-table `SELECT`, one-table `SELECT` projection/`WHERE`/`ORDER BY`, and supported single-table `UPDATE`/`DELETE` expression paths, with runtime tests for result rows, NULLs, warnings, metadata, table predicates/order, and DML predicates/assignments. Exact MySQL error codes for unsupported functions/arity, broad type/collation coercion, `INSERT` expression paths, temporal/info functions, aggregates, JSON, regex, spatial, full-text, encryption, loadable, and server-administration functions remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 
 ## 3. DDL detail surface
 
@@ -568,7 +568,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `=` (assignment) | ❌ | top | Assign a value as part of `SET` or an `UPDATE` assignment. |  |
 | `=` (comparison) | 🟡 | top | Equal operator | Implemented for no-table scalar `SELECT` comparisons. Assignment `=` remains separate; row expression contexts outside single-table SELECT `WHERE`, full metadata, functions, casts, row constructors, and subqueries remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `^` | 🟡 | top | Bitwise XOR | Implemented for no-table scalar `SELECT` expressions through MyLite expression evaluation, with parser/AST support and runtime tests for Task 16 verified cases. Row expression contexts outside single-table SELECT `WHERE`, full metadata, SQL-mode variants, complete collation behavior, functions, casts, row constructors, and subqueries remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
-| `ABS()` | ❌ | high | Return the absolute value |  |
+| `ABS()` | 🟡 | high | Return the absolute value | Implemented in the Task 24 pure scalar function subset for existing scalar expression call sites. Exact overflow diagnostics and full decimal metadata remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `ACOS()` | ❌ | medium | Return the arc cosine |  |
 | `ADDDATE()` | ❌ | top | Add time values (intervals) to a date value |  |
 | `ADDTIME()` | ❌ | medium | Add time |  |
@@ -603,17 +603,17 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `CAN_ACCESS_VIEW()` | ❌ | low | Internal use only |  |
 | `CASE` | ❌ | top | Case operator |  |
 | `CAST()` | ❌ | top | Cast a value as a certain type |  |
-| `CEIL()` | ❌ | high | Return the smallest integer value not less than the argument |  |
-| `CEILING()` | ❌ | high | Return the smallest integer value not less than the argument |  |
+| `CEIL()` | 🟡 | high | Return the smallest integer value not less than the argument | Implemented in the Task 24 pure scalar function subset for existing scalar expression call sites. Full type coercion edge cases remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
+| `CEILING()` | 🟡 | high | Return the smallest integer value not less than the argument | Implemented as a `CEIL()` synonym in the Task 24 pure scalar function subset. Full type coercion edge cases remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `CHAR()` | ❌ | high | Return the character for each integer passed |  |
-| `CHAR_LENGTH()` | ❌ | top | Return number of characters in argument |  |
-| `CHARACTER_LENGTH()` | ❌ | top | Synonym for CHAR_LENGTH() |  |
+| `CHAR_LENGTH()` | 🟡 | top | Return number of characters in argument | Implemented in the Task 24 pure scalar function subset with UTF-8 character counting for current text values. Full charset/collation semantics remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
+| `CHARACTER_LENGTH()` | 🟡 | top | Synonym for CHAR_LENGTH() | Implemented as a `CHAR_LENGTH()` synonym in the Task 24 pure scalar function subset. Full charset/collation semantics remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `CHARSET()` | ❌ | high | Return the character set of the argument |  |
-| `COALESCE()` | ❌ | top | Return the first non-NULL argument |  |
+| `COALESCE()` | 🟡 | top | Return the first non-NULL argument | Implemented in the Task 24 pure scalar function subset with short-circuit evaluation. Full type aggregation metadata remains deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `COERCIBILITY()` | ❌ | high | Return the collation coercibility value of the string argument |  |
 | `COLLATION()` | ❌ | high | Return the collation of the string argument |  |
 | `COMPRESS()` | ❌ | medium | Return result as a binary string |  |
-| `CONCAT()` | ❌ | top | Return concatenated string |  |
+| `CONCAT()` | 🟡 | top | Return concatenated string | Implemented in the Task 24 pure scalar function subset, including NULL propagation and result metadata for covered cases. Full collation/coercibility and exact arity diagnostics remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `CONCAT_WS()` | ❌ | top | Return concatenate with separator |  |
 | `CONNECTION_ID()` | ❌ | high | Return the connection ID (thread ID) for the connection |  |
 | `CONV()` | ❌ | high | Convert numbers between different number bases |  |
@@ -656,7 +656,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `FIELD()` | ❌ | high | Index (position) of first argument in subsequent arguments |  |
 | `FIND_IN_SET()` | ❌ | high | Index (position) of first argument within second argument |  |
 | `FIRST_VALUE()` | ❌ | medium | Value of argument from first row of window frame |  |
-| `FLOOR()` | ❌ | high | Return the largest integer value not greater than the argument |  |
+| `FLOOR()` | 🟡 | high | Return the largest integer value not greater than the argument | Implemented in the Task 24 pure scalar function subset for existing scalar expression call sites. Full type coercion edge cases remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `FORMAT()` | ❌ | high | Return a number formatted to specified number of decimal places |  |
 | `FORMAT_BYTES()` | ❌ | medium | Convert byte count to value with units |  |
 | `FORMAT_PICO_TIME()` | ❌ | medium | Convert time in picoseconds to value with units |  |
@@ -687,8 +687,8 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `HEX()` | ❌ | high | Hexadecimal representation of decimal or string value |  |
 | `HOUR()` | ❌ | high | Extract the hour |  |
 | `ICU_VERSION()` | ❌ | medium | ICU library version |  |
-| `IF()` | ❌ | top | If/else construct |  |
-| `IFNULL()` | ❌ | top | Null if/else construct |  |
+| `IF()` | 🟡 | top | If/else construct | Implemented in the Task 24 pure scalar function subset with three-argument syntax and branch short-circuit evaluation. Full type aggregation metadata remains deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
+| `IFNULL()` | 🟡 | top | Null if/else construct | Implemented in the Task 24 pure scalar function subset with fallback short-circuit evaluation. Full type aggregation metadata remains deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `IN()` | 🟡 | top | Whether a value is within a set of values | Implemented for no-table scalar `SELECT` expressions through MyLite expression evaluation, with parser/AST support and runtime tests for Task 16 verified cases. Row expression contexts outside single-table SELECT `WHERE`, full metadata, SQL-mode variants, complete collation behavior, functions, casts, row constructors, and subqueries remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `INET_ATON()` | ❌ | high | Return the numeric value of an IP address |  |
 | `INET_NTOA()` | ❌ | high | Return the IP address from a numeric value |  |
@@ -722,7 +722,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `IS NULL` | 🟡 | top | NULL value test | Implemented for no-table scalar `SELECT` expressions through MyLite expression evaluation, with parser/AST support and runtime tests for Task 16 verified cases. Row expression contexts outside single-table SELECT `WHERE`, full metadata, SQL-mode variants, complete collation behavior, functions, casts, row constructors, and subqueries remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `IS_USED_LOCK()` | ❌ | high | Whether the named lock is in use; return connection identifier if true |  |
 | `IS_UUID()` | ❌ | medium | Whether argument is a valid UUID |  |
-| `ISNULL()` | ❌ | top | Test whether the argument is NULL |  |
+| `ISNULL()` | 🟡 | top | Test whether the argument is NULL | Implemented in the Task 24 pure scalar function subset for existing scalar expression call sites. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `JSON_ARRAY()` | ❌ | high | Create JSON array |  |
 | `JSON_ARRAY_APPEND()` | ❌ | medium | Append data to JSON document |  |
 | `JSON_ARRAY_INSERT()` | ❌ | medium | Insert into JSON array |  |
@@ -759,11 +759,11 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `LAST_DAY` | ❌ | high | Return the last day of the month for the argument |  |
 | `LAST_INSERT_ID()` | ❌ | top | Value of the AUTOINCREMENT column for the last INSERT |  |
 | `LAST_VALUE()` | ❌ | medium | Value of argument from last row of window frame |  |
-| `LCASE()` | ❌ | top | Synonym for LOWER() |  |
+| `LCASE()` | 🟡 | top | Synonym for LOWER() | Implemented as a `LOWER()` synonym in the Task 24 pure scalar function subset. Non-ASCII case folding remains deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `LEAD()` | ❌ | medium | Value of argument from row leading current row within partition |  |
 | `LEAST()` | ❌ | medium | Return the smallest argument |  |
-| `LEFT()` | ❌ | high | Return the leftmost number of characters as specified |  |
-| `LENGTH()` | ❌ | top | Return the length of a string in bytes |  |
+| `LEFT()` | 🟡 | high | Return the leftmost number of characters as specified | Implemented in the Task 24 pure scalar function subset, including zero/negative counts and UTF-8 character offsets. Full charset/collation semantics remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
+| `LENGTH()` | 🟡 | top | Return the length of a string in bytes | Implemented in the Task 24 pure scalar function subset. Full charset/collation semantics remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `LIKE` | 🟡 | top | Simple pattern matching | Implemented for no-table scalar `SELECT` expressions through MyLite expression evaluation, with parser/AST support and runtime tests for Task 16 verified cases. Row expression contexts outside single-table SELECT `WHERE`, full metadata, SQL-mode variants, complete collation behavior, functions, casts, row constructors, and subqueries remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `LineString()` | ❌ | medium | Construct LineString from Point values |  |
 | `LN()` | ❌ | medium | Return the natural logarithm of the argument |  |
@@ -774,7 +774,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `LOG()` | ❌ | medium | Return the natural logarithm of the first argument |  |
 | `LOG10()` | ❌ | medium | Return the base-10 logarithm of the argument |  |
 | `LOG2()` | ❌ | medium | Return the base-2 logarithm of the argument |  |
-| `LOWER()` | ❌ | top | Return the argument in lowercase |  |
+| `LOWER()` | 🟡 | top | Return the argument in lowercase | Implemented in the Task 24 pure scalar function subset with ASCII case mapping. Non-ASCII case folding remains deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `LPAD()` | ❌ | medium | Return the string argument, left-padded with the specified string |  |
 | `LTRIM()` | ❌ | top | Remove leading spaces |  |
 | `MAKE_SET()` | ❌ | high | Return a set of comma-separated strings that have the corresponding bit in bits set |  |
@@ -798,7 +798,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `MID()` | ❌ | top | Return a substring starting from the specified position |  |
 | `MIN()` | ❌ | top | Return the minimum value |  |
 | `MINUTE()` | ❌ | high | Return the minute from the argument |  |
-| `MOD()` | 🟡 | top | Return the remainder | Implemented for no-table scalar `SELECT` expressions through MyLite expression evaluation, with parser/AST support and runtime tests for Task 16 verified cases. Row expression contexts outside single-table SELECT `WHERE`, full metadata, SQL-mode variants, complete collation behavior, functions, casts, row constructors, and subqueries remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `MOD()` | 🟡 | top | Return the remainder | Implemented as an operator in Task 16 and as a function in the Task 24 pure scalar function subset, including division-by-zero warning behavior in covered scalar results. Full type coercion edge cases remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `MONTH()` | ❌ | high | Return the month from the date passed |  |
 | `MONTHNAME()` | ❌ | medium | Return the name of the month |  |
 | `MultiLineString()` | ❌ | medium | Contruct MultiLineString from LineString values |  |
@@ -814,15 +814,15 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `NOW()` | ❌ | top | Return the current date and time |  |
 | `NTH_VALUE()` | ❌ | medium | Value of argument from N-th row of window frame |  |
 | `NTILE()` | ❌ | medium | Bucket number of current row within its partition. |  |
-| `NULLIF()` | ❌ | top | Return NULL if expr1 = expr2 |  |
+| `NULLIF()` | 🟡 | top | Return NULL if expr1 = expr2 | Implemented in the Task 24 pure scalar function subset for existing scalar expression call sites. Full type aggregation metadata and MySQL's repeated-evaluation edge behavior remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `OCT()` | ❌ | high | Return a string containing octal representation of a number |  |
-| `OCTET_LENGTH()` | ❌ | top | Synonym for LENGTH() |  |
+| `OCTET_LENGTH()` | 🟡 | top | Synonym for LENGTH() | Implemented as a `LENGTH()` synonym in the Task 24 pure scalar function subset. Full charset/collation semantics remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `OR, \|\|` | 🟡 | top | Logical OR | Implemented for no-table scalar `SELECT` expressions through MyLite expression evaluation, with parser/AST support and runtime tests for Task 16 verified cases. Row expression contexts outside single-table SELECT `WHERE`, full metadata, SQL-mode variants, complete collation behavior, functions, casts, row constructors, and subqueries remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `ORD()` | ❌ | medium | Return character code for leftmost character of the argument |  |
 | `PERCENT_RANK()` | ❌ | medium | Percentage rank value |  |
 | `PERIOD_ADD()` | ❌ | medium | Add a period to a year-month |  |
 | `PERIOD_DIFF()` | ❌ | medium | Return the number of months between periods |  |
-| `PI()` | ❌ | medium | Return the value of pi |  |
+| `PI()` | 🟡 | medium | Return the value of pi | Implemented in the Task 24 pure scalar function subset with MySQL-compatible display text and metadata for covered scalar results. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `Point()` | ❌ | medium | Construct Point from coordinates |  |
 | `Polygon()` | ❌ | medium | Construct Polygon from LineString arguments |  |
 | `POSITION()` | ❌ | high | Synonym for LOCATE() |  |
@@ -844,9 +844,9 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `RELEASE_ALL_LOCKS()` | ❌ | high | Release all current named locks |  |
 | `RELEASE_LOCK()` | ❌ | high | Release the named lock |  |
 | `REPEAT()` | ❌ | high | Repeat a string the specified number of times |  |
-| `REPLACE()` | ❌ | top | Replace occurrences of a specified string |  |
+| `REPLACE()` | 🟡 | top | Replace occurrences of a specified string | Implemented in the Task 24 pure scalar function subset, including NULL propagation and empty search-string behavior. Full collation-sensitive matching remains deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `REVERSE()` | ❌ | high | Reverse the characters in a string |  |
-| `RIGHT()` | ❌ | high | Return the specified rightmost number of characters |  |
+| `RIGHT()` | 🟡 | high | Return the specified rightmost number of characters | Implemented in the Task 24 pure scalar function subset, including zero/negative counts and UTF-8 character offsets. Full charset/collation semantics remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `RLIKE` | ❌ | high | Whether string matches regular expression |  |
 | `ROLES_GRAPHML()` | ❌ | low | Return a GraphML document representing memory role subgraphs |  |
 | `ROUND()` | ❌ | high | Round the argument |  |
@@ -860,7 +860,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `SESSION_USER()` | ❌ | high | Synonym for USER() |  |
 | `SHA1(), SHA()` | ❌ | high | Calculate an SHA-1 160-bit checksum |  |
 | `SHA2()` | ❌ | high | Calculate an SHA-2 checksum |  |
-| `SIGN()` | ❌ | medium | Return the sign of the argument |  |
+| `SIGN()` | 🟡 | medium | Return the sign of the argument | Implemented in the Task 24 pure scalar function subset for existing scalar expression call sites. Full type coercion edge cases remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `SIN()` | ❌ | medium | Return the sine of the argument |  |
 | `SLEEP()` | ❌ | low | Sleep for a number of seconds |  |
 | `SOUNDEX()` | ❌ | medium | Return a soundex string |  |
@@ -973,13 +973,13 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `TO_SECONDS()` | ❌ | high | Return the date or datetime argument converted to seconds since Year 0 |  |
 | `TRIM()` | ❌ | top | Remove leading and trailing spaces |  |
 | `TRUNCATE()` | ❌ | medium | Truncate to specified number of decimal places |  |
-| `UCASE()` | ❌ | top | Synonym for UPPER() |  |
+| `UCASE()` | 🟡 | top | Synonym for UPPER() | Implemented as an `UPPER()` synonym in the Task 24 pure scalar function subset. Non-ASCII case folding remains deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `UNCOMPRESS()` | ❌ | medium | Uncompress a string compressed |  |
 | `UNCOMPRESSED_LENGTH()` | ❌ | medium | Return the length of a string before compression |  |
 | `UNHEX()` | ❌ | high | Return a string containing hex representation of a number |  |
 | `UNIX_TIMESTAMP()` | ❌ | top | Return a Unix timestamp |  |
 | `UpdateXML()` | ❌ | low | Return replaced XML fragment |  |
-| `UPPER()` | ❌ | top | Convert to uppercase |  |
+| `UPPER()` | 🟡 | top | Convert to uppercase | Implemented in the Task 24 pure scalar function subset with ASCII case mapping. Non-ASCII case folding remains deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `USER()` | ❌ | high | The user name and host name provided by the client |  |
 | `UTC_DATE()` | ❌ | high | Return the current UTC date |  |
 | `UTC_TIME()` | ❌ | high | Return the current UTC time |  |

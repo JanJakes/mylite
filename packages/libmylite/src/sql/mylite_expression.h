@@ -64,5 +64,6 @@ int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *v
 int mylite_expression_value_truth(const struct mylite_expression_value *value,
                                   struct mylite_expression_warnings *warnings, int *out_truth);
 bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *expression);
+bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_node *expression);
 
 #endif

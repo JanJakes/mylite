@@ -85,6 +85,10 @@ static const unsigned int mylite_mysql_not_fixed_decimals = 31U;
 static const uint64_t mylite_mysql_decimal_divide_display_length = 7U;
 static const unsigned int mylite_mysql_decimal_divide_scale = 4U;
 static const uint64_t mylite_mysql_double_display_length = 22U;
+static const uint64_t mylite_mysql_length_function_display_length = 10U;
+static const uint64_t mylite_mysql_integer_function_display_length = 21U;
+static const uint64_t mylite_mysql_pi_function_display_length = 8U;
+static const unsigned int mylite_mysql_pi_function_scale = 6U;
 static const uint64_t mylite_mysql_unsigned_longlong_display_length = 20U;
 static const uint64_t mylite_mysql_tinyint_unsigned_display_length = 3U;
 static const uint64_t mylite_mysql_tinyint_signed_display_length = 4U;
@@ -919,6 +923,20 @@ static int infer_ternary_expression_descriptor(mylite_db *database,
                                                const struct mylite_sql_ast_node *expression,
                                                const struct mylite_expression_value *value,
                                                struct mylite_field_descriptor *out_descriptor);
+static int infer_function_expression_descriptor(mylite_db *database,
+                                                const struct mylite_select_plan *plan,
+                                                const struct mylite_sql_ast_node *expression,
+                                                const struct mylite_expression_value *value,
+                                                struct mylite_field_descriptor *out_descriptor);
+static int infer_function_arguments_nullable(mylite_db *database,
+                                             const struct mylite_select_plan *plan,
+                                             const struct mylite_sql_ast_node *arguments,
+                                             bool *out_nullable);
+static bool function_name_has_text_result(const struct mylite_sql_ast_node *name);
+static bool function_name_has_length_result(const struct mylite_sql_ast_node *name);
+static bool function_name_has_integer_result(const struct mylite_sql_ast_node *name);
+static bool function_name_matches_any(const struct mylite_sql_ast_node *name,
+                                      const char *const *candidates, size_t candidate_count);
 static struct mylite_field_descriptor
 expression_value_descriptor(const struct mylite_expression_value *value);
 static struct mylite_field_descriptor boolean_expression_descriptor(bool nullable);
@@ -999,6 +1017,9 @@ static int bind_select_where_clause(mylite_db *database,
 static int bind_select_predicate_expression(mylite_db *database,
                                             const struct mylite_sql_ast_node *expression,
                                             const struct mylite_select_plan *plan);
+static int bind_select_function_arguments(mylite_db *database,
+                                          const struct mylite_sql_ast_node *expression,
+                                          const struct mylite_select_plan *plan);
 static int bind_select_projection_expression(mylite_db *database,
                                              const struct mylite_sql_ast_node *expression,
                                              const struct mylite_select_plan *plan);
@@ -1209,6 +1230,7 @@ static int evaluate_update_assignment_value(mylite_stmt *stmt,
                                             size_t target_column,
                                             const struct mylite_sql_ast_node *expression,
                                             struct mylite_expression_value *out_value);
+static int promote_update_expression_warnings(mylite_stmt *stmt, size_t warning_start);
 static int resolve_update_default_value(mylite_stmt *stmt,
                                         const struct mylite_insert_table_column *column,
                                         struct mylite_expression_value *out_value);
@@ -1794,6 +1816,7 @@ static int set_connection_released_error(mylite_db *database);
 static int set_read_only_transaction_error(mylite_db *database);
 static int set_savepoint_does_not_exist_error(mylite_db *database, const char *name);
 static bool is_valid_encryption_value(const char *value);
+static bool ascii_span_equal_ci(struct mylite_sql_source_span span, const char *text);
 static bool ascii_case_equal(const char *left, const char *right);
 static char *copy_identifier_span(const struct mylite_sql_ast_node *node);
 static char *copy_normalized_savepoint_name(const char *name);
@@ -3179,6 +3202,7 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
         return infer_ternary_expression_descriptor(database, plan, node, value, out_descriptor);
     case MYLITE_SQL_AST_FUNCTION_CALL:
+        return infer_function_expression_descriptor(database, plan, node, value, out_descriptor);
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
     case MYLITE_SQL_AST_SCRIPT:
@@ -3583,6 +3607,152 @@ static int infer_ternary_expression_descriptor(mylite_db *database,
 
     *out_descriptor = expression_value_descriptor(value);
     return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_function_expression_descriptor(mylite_db *database,
+                                                const struct mylite_select_plan *plan,
+                                                const struct mylite_sql_ast_node *expression,
+                                                const struct mylite_expression_value *value,
+                                                struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    bool nullable = false;
+    bool result_nullable = false;
+    int status = MYLITE_OK;
+
+    if (!mylite_expression_is_supported_function_call(expression)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    status = infer_function_arguments_nullable(database, plan, arguments, &nullable);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    result_nullable = nullable;
+    if (value != NULL) {
+        result_nullable = value->kind == MYLITE_EXPRESSION_VALUE_NULL;
+    }
+
+    if (function_name_has_text_result(name)) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = 0U,
+            .length = value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT
+                          ? expression_string_length(database, value, NULL)
+                          : mylite_mysql_text_length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = field_descriptor_connection_charset_id(database),
+            .nullable = result_nullable,
+        };
+        field_descriptor_set_nullable(out_descriptor, result_nullable);
+        return MYLITE_OK;
+    }
+    if (function_name_has_length_result(name)) {
+        *out_descriptor = signed_longlong_expression_descriptor(result_nullable);
+        out_descriptor->length = mylite_mysql_length_function_display_length;
+        return MYLITE_OK;
+    }
+    if (name != NULL && ascii_span_equal_ci(name->span, "ISNULL")) {
+        *out_descriptor = signed_longlong_expression_descriptor(false);
+        out_descriptor->length = 1U;
+        return MYLITE_OK;
+    }
+    if (name != NULL && ascii_span_equal_ci(name->span, "ABS")) {
+        *out_descriptor = signed_longlong_expression_descriptor(result_nullable);
+        if (value != NULL && value->kind != MYLITE_EXPRESSION_VALUE_NULL) {
+            *out_descriptor = expression_value_descriptor(value);
+            field_descriptor_set_nullable(out_descriptor, result_nullable);
+        }
+        return MYLITE_OK;
+    }
+    if (function_name_has_integer_result(name)) {
+        *out_descriptor = signed_longlong_expression_descriptor(result_nullable);
+        out_descriptor->length = mylite_mysql_integer_function_display_length;
+        return MYLITE_OK;
+    }
+    if (name != NULL && ascii_span_equal_ci(name->span, "MOD")) {
+        *out_descriptor = signed_longlong_expression_descriptor(true);
+        return MYLITE_OK;
+    }
+    if (name != NULL && ascii_span_equal_ci(name->span, "PI")) {
+        (void)value;
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_DOUBLE,
+            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_pi_function_display_length,
+            .decimals = mylite_mysql_pi_function_scale,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = false,
+        };
+        return MYLITE_OK;
+    }
+
+    *out_descriptor = expression_value_descriptor(value);
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_function_arguments_nullable(mylite_db *database,
+                                             const struct mylite_select_plan *plan,
+                                             const struct mylite_sql_ast_node *arguments,
+                                             bool *out_nullable)
+{
+    bool nullable = false;
+
+    for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                     : arguments->first_child;
+         child != NULL; child = child->next_sibling) {
+        struct mylite_field_descriptor child_descriptor = field_descriptor_defaults();
+        int status = infer_expression_descriptor(database, plan, child, NULL, &child_descriptor);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (expression_descriptor_is_nullable(&child_descriptor)) {
+            nullable = true;
+        }
+    }
+    *out_nullable = nullable;
+    return MYLITE_OK;
+}
+
+static bool function_name_has_text_result(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"CONCAT", "LOWER",  "LCASE",  "UPPER",
+                                        "UCASE",  "LEFT",   "RIGHT",  "REPLACE",
+                                        "IF",     "IFNULL", "NULLIF", "COALESCE"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_has_length_result(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"LENGTH", "OCTET_LENGTH", "CHAR_LENGTH",
+                                        "CHARACTER_LENGTH"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_has_integer_result(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"SIGN", "FLOOR", "CEIL", "CEILING"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_matches_any(const struct mylite_sql_ast_node *name,
+                                      const char *const *candidates, size_t candidate_count)
+{
+    if (name == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < candidate_count; ++index) {
+        if (ascii_span_equal_ci(name->span, candidates[index])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static struct mylite_field_descriptor
@@ -4645,6 +4815,7 @@ static int bind_select_predicate_expression(mylite_db *database,
         }
         return MYLITE_OK;
     case MYLITE_SQL_AST_FUNCTION_CALL:
+        return bind_select_function_arguments(database, expression, plan);
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -4721,6 +4892,28 @@ static int bind_select_predicate_expression(mylite_db *database,
     }
 
     return set_select_unsupported_where_error(database);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_select_function_arguments(mylite_db *database,
+                                          const struct mylite_sql_ast_node *expression,
+                                          const struct mylite_select_plan *plan)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+
+    if (!mylite_expression_is_supported_function_call(expression)) {
+        return set_select_unsupported_where_error(database);
+    }
+    for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                     : arguments->first_child;
+         child != NULL; child = child->next_sibling) {
+        int status = bind_select_predicate_expression(database, child, plan);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int bind_select_projection_expression(mylite_db *database,
@@ -4906,7 +5099,23 @@ static int bind_select_order_expression(mylite_db *database,
             }
         }
         return MYLITE_OK;
-    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_CALL: {
+        const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+
+        if (!mylite_expression_is_supported_function_call(expression)) {
+            return set_select_unsupported_order_error(database);
+        }
+        for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                         : arguments->first_child;
+             child != NULL; child = child->next_sibling) {
+            int status = bind_select_order_expression(database, child, plan);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+        return MYLITE_OK;
+    }
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -7388,7 +7597,23 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
             }
         }
         return MYLITE_OK;
-    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_CALL: {
+        const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+
+        if (!mylite_expression_is_supported_function_call(expression)) {
+            return set_update_unsupported_expression_error(stmt->database, clause_context);
+        }
+        for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                         : arguments->first_child;
+             child != NULL; child = child->next_sibling) {
+            int status = bind_update_predicate_expression(stmt, table, child, clause_context);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+        return MYLITE_OK;
+    }
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_DEFAULT:
     case MYLITE_SQL_AST_SCRIPT:
@@ -7661,6 +7886,7 @@ static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_se
         .resolve_identifier = resolve_update_expression_identifier,
     };
     struct mylite_expression_value value = {0};
+    size_t warning_start = stmt->database->warnings.count;
     int truth = -1;
     int status = 0;
 
@@ -7677,6 +7903,10 @@ static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_se
     mylite_expression_value_deinit(&value);
     if (status != 0) {
         return set_where_predicate_eval_error(stmt);
+    }
+    status = promote_update_expression_warnings(stmt, warning_start);
+    if (status != MYLITE_OK) {
+        return status;
     }
 
     *out_matches = truth == 1;
@@ -7722,10 +7952,14 @@ static int evaluate_update_order_key(mylite_stmt *stmt, const struct mylite_sele
         .user_data = &user_context,
         .resolve_identifier = resolve_update_expression_identifier,
     };
+    size_t warning_start = stmt->database->warnings.count;
     int status = mylite_expression_eval_with_context(order_key->expression, &context,
                                                      &stmt->database->warnings, out_value);
 
-    return status == 0 ? MYLITE_OK : set_update_unsupported_clause_error(stmt->database);
+    if (status != 0) {
+        return set_update_unsupported_clause_error(stmt->database);
+    }
+    return promote_update_expression_warnings(stmt, warning_start);
 }
 
 static int append_update_row(mylite_stmt *stmt, struct mylite_update_rowset *rowset,
@@ -8056,15 +8290,34 @@ static int evaluate_update_assignment_value(mylite_stmt *stmt,
     if (expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT) {
         status = resolve_update_default_value(stmt, column, out_value);
     } else {
+        size_t warning_start = stmt->database->warnings.count;
+
         status = mylite_expression_eval_with_context(expression, &context,
                                                      &stmt->database->warnings, out_value) == 0
                      ? MYLITE_OK
                      : set_update_unsupported_assignment_error(stmt->database);
+        if (status == MYLITE_OK) {
+            status = promote_update_expression_warnings(stmt, warning_start);
+        }
     }
     if (status == MYLITE_OK) {
         status = validate_update_assignment_value(stmt, column, out_value);
     }
     return status;
+}
+
+static int promote_update_expression_warnings(mylite_stmt *stmt, size_t warning_start)
+{
+    mylite_db *database = stmt->database;
+
+    if (warning_start >= database->warnings.count) {
+        return MYLITE_OK;
+    }
+
+    const struct mylite_expression_warning *warning = &database->warnings.items[warning_start];
+    int status = set_error_message(database, warning->message);
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int resolve_update_default_value(mylite_stmt *stmt,
@@ -8753,7 +9006,23 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
             }
         }
         return MYLITE_OK;
-    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_CALL: {
+        const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+
+        if (!mylite_expression_is_supported_function_call(expression)) {
+            return set_delete_unsupported_clause_error(stmt->database);
+        }
+        for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                         : arguments->first_child;
+             child != NULL; child = child->next_sibling) {
+            int status = bind_delete_predicate_expression(stmt, table, child, clause_context);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+        return MYLITE_OK;
+    }
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_DEFAULT:
     case MYLITE_SQL_AST_SCRIPT:
@@ -15034,6 +15303,30 @@ static bool is_valid_encryption_value(const char *value)
         return true;
     }
     return false;
+}
+
+static bool ascii_span_equal_ci(struct mylite_sql_source_span span, const char *text)
+{
+    size_t text_length = text == NULL ? 0U : strlen(text);
+
+    if (span.text == NULL || text == NULL || span.length != text_length) {
+        return false;
+    }
+    for (size_t index = 0U; index < span.length; ++index) {
+        unsigned char left_byte = (unsigned char)span.text[index];
+        unsigned char right_byte = (unsigned char)text[index];
+
+        if (left_byte >= 'A' && left_byte <= 'Z') {
+            left_byte = (unsigned char)(left_byte - 'A' + 'a');
+        }
+        if (right_byte >= 'A' && right_byte <= 'Z') {
+            right_byte = (unsigned char)(right_byte - 'A' + 'a');
+        }
+        if (left_byte != right_byte) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool ascii_case_equal(const char *left, const char *right)

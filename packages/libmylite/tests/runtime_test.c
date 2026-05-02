@@ -130,6 +130,7 @@ struct expected_result_metadata {
 static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
+static int test_scalar_builtin_functions_execution(void);
 static int test_schema_lifecycle(void);
 static int test_character_set_collation_foundation(void);
 static int test_core_metadata_catalog(void);
@@ -236,6 +237,7 @@ int main(void)
     failures += test_select_integer_literal();
     failures += test_select_integer_literal_with_semicolon();
     failures += test_expression_operator_foundation();
+    failures += test_scalar_builtin_functions_execution();
     failures += test_schema_lifecycle();
     failures += test_character_set_collation_foundation();
     failures += test_core_metadata_catalog();
@@ -836,6 +838,215 @@ static int test_expression_operator_foundation(void)
     failures += expect_no_stmt_handle(&stmt, "empty in list");
     failures += prepare_sql(database, "SELECT ROW(1,2) IN ((1,2))", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "row in deferred");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_scalar_builtin_functions_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const scalar_columns[] = {
+        "concat_text", "concat_null",    "byte_len",     "char_len", "lower_text", "upper_text",
+        "left_text",   "right_text",     "replace_text", "abs_int",  "sign_neg",   "floor_num",
+        "ceil_num",    "ceiling_num",    "mod_num",      "pi_value", "if_false",   "ifnull_value",
+        "nullif_null", "coalesce_value", "isnull_value",
+    };
+    static const struct expected_result_metadata metadata[] = {
+        {"concat_text", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"byte_len", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"pi_value", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_DOUBLE, 6U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"isnull_value", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+    };
+    static const char *const edge_columns[] = {
+        "left_zero", "left_negative", "right_zero", "right_negative", "replace_empty",
+        "octets",    "characters",    "lcase_text", "ucase_text",
+    };
+    static const char *const edge_values[] = {"", "", "", "", "abc", "6", "2", "abc", "ABC"};
+    static const char *const projection_columns[] = {"id", "title"};
+    static const char *const projection_values[] = {"1", "Alpha", "2", "Beta"};
+    static const char *const id_column[] = {"id"};
+    static const char *const n_column[] = {"n"};
+    static const char *const id_2[] = {"2"};
+    static const char *const id_3[] = {"3"};
+    static const char *const n_1[] = {"1"};
+    static const char *const id_s_n_columns[] = {"id", "s", "n"};
+    static const char *const updated_values[] = {"2", "beta", "2"};
+    static const char *const all_id_values[] = {"1", "2", "3"};
+    static const char *const remaining_values[] = {"1", "2"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open scalar functions database");
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_task24_functions "
+                            "DEFAULT CHARACTER SET utf8mb4",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_task24_functions", MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT CONCAT('a','b') AS concat_text, "
+                            "CONCAT('a',NULL,'b') AS concat_null, "
+                            "LENGTH('\xE6\xB5\xB7\xE8\xB1\x9A') AS byte_len, "
+                            "CHAR_LENGTH('\xE6\xB5\xB7\xE8\xB1\x9A') AS char_len, "
+                            "LOWER('AbC') AS lower_text, UPPER('AbC') AS upper_text, "
+                            "LEFT('abcdef',2) AS left_text, RIGHT('abcdef',3) AS right_text, "
+                            "REPLACE('banana','na','NA') AS replace_text, ABS(-12) AS abs_int, "
+                            "SIGN(-12.5) AS sign_neg, FLOOR(-1.2) AS floor_num, "
+                            "CEIL(-1.2) AS ceil_num, CEILING(1.2) AS ceiling_num, "
+                            "MOD(7,3) AS mod_num, PI() AS pi_value, "
+                            "IF(0,'yes','no') AS if_false, "
+                            "IFNULL(NULL,'fallback') AS ifnull_value, "
+                            "NULLIF('a','a') AS nullif_null, "
+                            "COALESCE(NULL,NULL,'x') AS coalesce_value, "
+                            "ISNULL(NULL) AS isnull_value",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, scalar_columns,
+                                    (int)(sizeof(scalar_columns) / sizeof(scalar_columns[0])),
+                                    "scalar function columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "scalar function row");
+    failures += expect_string(mylite_column_text(stmt, 0), "ab", "concat text");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "concat null");
+    failures += expect_string(mylite_column_text(stmt, 2), "6", "length utf8 bytes");
+    failures += expect_string(mylite_column_text(stmt, 3), "2", "char length utf8");
+    failures += expect_string(mylite_column_text(stmt, 4), "abc", "lower text");
+    failures += expect_string(mylite_column_text(stmt, 5), "ABC", "upper text");
+    failures += expect_string(mylite_column_text(stmt, 6), "ab", "left text");
+    failures += expect_string(mylite_column_text(stmt, 7), "def", "right text");
+    failures += expect_string(mylite_column_text(stmt, 8), "baNANA", "replace text");
+    failures += expect_string(mylite_column_text(stmt, 9), "12", "abs int");
+    failures += expect_string(mylite_column_text(stmt, 10), "-1", "sign negative");
+    failures += expect_string(mylite_column_text(stmt, 11), "-2", "floor negative");
+    failures += expect_string(mylite_column_text(stmt, 12), "-1", "ceil negative");
+    failures += expect_string(mylite_column_text(stmt, 13), "2", "ceiling positive");
+    failures += expect_string(mylite_column_text(stmt, 14), "1", "mod function");
+    failures += expect_string(mylite_column_text(stmt, 15), "3.141593", "pi function");
+    failures += expect_string(mylite_column_text(stmt, 16), "no", "if false branch");
+    failures += expect_string(mylite_column_text(stmt, 17), "fallback", "ifnull fallback");
+    failures += expect_null_text(mylite_column_text(stmt, 18), "nullif equal");
+    failures += expect_string(mylite_column_text(stmt, 19), "x", "coalesce first nonnull");
+    failures += expect_string(mylite_column_text(stmt, 20), "1", "isnull null");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "scalar function done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT CONCAT('a','b') AS concat_text, "
+                            "LENGTH('abc') AS byte_len, PI() AS pi_value, "
+                            "ISNULL(NULL) AS isnull_value",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "scalar function metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "scalar metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "scalar metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT LEFT('abcdef',0) AS left_zero, "
+                           "LEFT('abcdef',-1) AS left_negative, "
+                           "RIGHT('abcdef',0) AS right_zero, "
+                           "RIGHT('abcdef',-1) AS right_negative, "
+                           "REPLACE('abc','','x') AS replace_empty, "
+                           "OCTET_LENGTH('\xE6\xB5\xB7\xE8\xB1\x9A') AS octets, "
+                           "CHARACTER_LENGTH('\xE6\xB5\xB7\xE8\xB1\x9A') AS characters, "
+                           "LCASE('AbC') AS lcase_text, UCASE('AbC') AS ucase_text",
+                           edge_columns, (int)(sizeof(edge_columns) / sizeof(edge_columns[0])),
+                           edge_values, 1, "scalar function edge values");
+
+    failures += prepare_sql(database, "SELECT MOD(7,0) AS mod_zero", MYLITE_OK, &stmt);
+    failures += expect_int(mylite_warning_count(database), 0, "mod zero warning before step");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "mod zero row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "mod zero result");
+    failures += expect_int(mylite_warning_count(database), 1, "mod zero warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "mod zero warning code");
+    failures += expect_string(mylite_warning_message(database, 0), "Division by 0",
+                              "mod zero warning message");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "mod zero done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE t ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "s VARCHAR(20), "
+                            "n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO t (s,n) VALUES "
+                            "('alpha',1),('Beta',-2),(NULL,NULL)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, CONCAT(UPPER(LEFT(s,1)), "
+                                   "RIGHT(s,LENGTH(s)-1)) AS title "
+                                   "FROM t WHERE ISNULL(s)=0 ORDER BY LOWER(s)",
+                                   projection_columns, 2, projection_values, 2,
+                                   "table function projection");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE ABS(n)=2", id_column, 1, id_2,
+                                   1, "table function where");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY COALESCE(n,0), id LIMIT 1",
+                                   id_column, 1, id_2, 1, "table function order");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE COALESCE(n,0)=0", id_column, 1,
+                                   id_3, 1, "coalesce where null row");
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE t SET s = CONCAT(LOWER(LEFT(s,1)), RIGHT(s,LENGTH(s)-1)), n = ABS(n) "
+        "WHERE id = 2",
+        1, "update function assignment");
+    failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 2", id_s_n_columns,
+                                   3, updated_values, 1, "updated function values");
+
+    failures += prepare_sql(database, "UPDATE t SET n = 5 WHERE MOD(7,0)", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update function warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Division by 0",
+                                "update function warning error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT n FROM t WHERE id = 1", n_column, 1, n_1, 1,
+                                   "update warning predicate unchanged");
+
+    failures += prepare_sql(database, "UPDATE t SET n = MOD(7,0) WHERE id = 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "update assignment function warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Division by 0",
+                                "update assignment function warning error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT n FROM t WHERE id = 1", n_column, 1, n_1, 1,
+                                   "update warning assignment unchanged");
+
+    failures += prepare_sql(database, "DELETE FROM t WHERE MOD(7,0)", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete function warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Division by 0",
+                                "delete function warning error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
+                                   all_id_values, 3, "delete warning predicate unchanged");
+
+    failures += execute_sql_expect_done_affected(database, "DELETE FROM t WHERE ISNULL(s)", 1,
+                                                 "delete function predicate");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
+                                   remaining_values, 2, "delete function remaining rows");
+
+    failures += prepare_sql(database, "SELECT SIN(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported scalar function");
+    failures += prepare_sql(database, "SELECT CONCAT()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported concat arity");
+    failures += prepare_sql(database, "SELECT PI(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported pi arity");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

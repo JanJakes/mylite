@@ -38,6 +38,7 @@ typedef struct MyliteAstDatabaseOption MyliteAstDatabaseOption;
 typedef struct MyliteAstDropDatabase MyliteAstDropDatabase;
 typedef struct MyliteAstDropIndex MyliteAstDropIndex;
 typedef struct MyliteAstDropTable MyliteAstDropTable;
+typedef struct MyliteAstExpression MyliteAstExpression;
 typedef struct MyliteAstNode MyliteAstNode;
 typedef struct MyliteAstRenameTable MyliteAstRenameTable;
 typedef struct MyliteAstSetAssignment MyliteAstSetAssignment;
@@ -52,6 +53,28 @@ typedef enum MyliteAstNodeKind {
   MYLITE_AST_NODE_RULE = 1,
   MYLITE_AST_NODE_TOKEN = 2
 } MyliteAstNodeKind;
+
+typedef enum MyliteExpressionKind {
+  MYLITE_EXPRESSION_UNKNOWN = 0,
+  MYLITE_EXPRESSION_RAW,
+  MYLITE_EXPRESSION_LITERAL,
+  MYLITE_EXPRESSION_IDENTIFIER,
+  MYLITE_EXPRESSION_VARIABLE,
+  MYLITE_EXPRESSION_FUNCTION_CALL,
+  MYLITE_EXPRESSION_DEFAULT
+} MyliteExpressionKind;
+
+typedef enum MyliteExpressionLiteralKind {
+  MYLITE_EXPRESSION_LITERAL_NONE = 0,
+  MYLITE_EXPRESSION_LITERAL_STRING,
+  MYLITE_EXPRESSION_LITERAL_UNSIGNED_INTEGER,
+  MYLITE_EXPRESSION_LITERAL_FLOAT,
+  MYLITE_EXPRESSION_LITERAL_HEX,
+  MYLITE_EXPRESSION_LITERAL_BIT,
+  MYLITE_EXPRESSION_LITERAL_NULL,
+  MYLITE_EXPRESSION_LITERAL_TRUE,
+  MYLITE_EXPRESSION_LITERAL_FALSE
+} MyliteExpressionLiteralKind;
 
 typedef enum MyliteStatementKind {
   MYLITE_STATEMENT_UNKNOWN = 0,
@@ -461,6 +484,9 @@ const char *mylite_parse_status_name(MyliteParseStatus status);
 const char *mylite_statement_kind_name(MyliteStatementKind kind);
 const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
 const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
+const char *mylite_expression_kind_name(MyliteExpressionKind kind);
+const char *mylite_expression_literal_kind_name(
+    MyliteExpressionLiteralKind kind);
 const char *mylite_create_table_column_type_family_name(
     MyliteCreateTableColumnTypeFamily family);
 const char *mylite_create_table_column_type_kind_name(
@@ -964,6 +990,8 @@ size_t mylite_ast_set_assignment_view_name_value_length(
     const MyliteAstSetAssignment *assignment);
 const MyliteAstNode *mylite_ast_set_assignment_view_value_node(
     const MyliteAstSetAssignment *assignment);
+const MyliteAstExpression *mylite_ast_set_assignment_view_value_expression(
+    const MyliteAstSetAssignment *assignment);
 size_t mylite_ast_set_assignment_view_value_start(
     const MyliteAstSetAssignment *assignment);
 size_t mylite_ast_set_assignment_view_value_end(
@@ -974,6 +1002,26 @@ size_t mylite_ast_set_assignment_view_extend_value_start(
     const MyliteAstSetAssignment *assignment);
 size_t mylite_ast_set_assignment_view_extend_value_end(
     const MyliteAstSetAssignment *assignment);
+const MyliteAstNode *mylite_ast_expression_view_node(
+    const MyliteAstExpression *expression);
+MyliteExpressionKind mylite_ast_expression_view_kind(
+    const MyliteAstExpression *expression);
+MyliteExpressionLiteralKind mylite_ast_expression_view_literal_kind(
+    const MyliteAstExpression *expression);
+size_t mylite_ast_expression_view_start(const MyliteAstExpression *expression);
+size_t mylite_ast_expression_view_end(const MyliteAstExpression *expression);
+size_t mylite_ast_expression_view_value_start(
+    const MyliteAstExpression *expression);
+size_t mylite_ast_expression_view_value_end(
+    const MyliteAstExpression *expression);
+const char *mylite_ast_expression_view_value(
+    const MyliteAstExpression *expression);
+size_t mylite_ast_expression_view_value_length(
+    const MyliteAstExpression *expression);
+int mylite_ast_expression_view_has_unsigned_integer(
+    const MyliteAstExpression *expression);
+unsigned long long mylite_ast_expression_view_unsigned_integer_value(
+    const MyliteAstExpression *expression);
 const MyliteAstNode *mylite_ast_drop_index_view_node(
     const MyliteAstDropIndex *drop_index);
 size_t mylite_ast_drop_index_view_start(

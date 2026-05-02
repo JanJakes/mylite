@@ -3561,6 +3561,14 @@ static int expect_set_statement_view(void) {
       view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 2);
   const MyliteAstSetAssignment *charset_assignment =
       view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 3);
+  const MyliteAstExpression *system_expression =
+      mylite_ast_set_assignment_view_value_expression(system_assignment);
+  const MyliteAstExpression *user_expression =
+      mylite_ast_set_assignment_view_value_expression(user_assignment);
+  const MyliteAstExpression *names_expression =
+      mylite_ast_set_assignment_view_value_expression(names_assignment);
+  const MyliteAstExpression *charset_expression =
+      mylite_ast_set_assignment_view_value_expression(charset_assignment);
   int failed = 0;
   if (view == NULL || mylite_ast_set_statement_view_node(view) == NULL ||
       mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_SET ||
@@ -3584,6 +3592,12 @@ static int expect_set_statement_view(void) {
                     mylite_ast_set_assignment_view_value_end(
                         system_assignment),
                     "CONCAT(@@sql_mode, ',ANSI')") ||
+      system_expression == NULL ||
+      mylite_ast_expression_view_kind(system_expression) !=
+          MYLITE_EXPRESSION_FUNCTION_CALL ||
+      !value_matches_when_expected(
+          mylite_ast_expression_view_value(system_expression),
+          mylite_ast_expression_view_value_length(system_expression), "CONCAT") ||
       user_assignment == NULL ||
       mylite_ast_set_assignment_view_kind(user_assignment) !=
           MYLITE_SET_ASSIGNMENT_USER_VARIABLE ||
@@ -3596,6 +3610,13 @@ static int expect_set_statement_view(void) {
       !span_matches(sql, mylite_ast_set_assignment_view_value_start(user_assignment),
                     mylite_ast_set_assignment_view_value_end(user_assignment),
                     "1") ||
+      user_expression == NULL ||
+      mylite_ast_expression_view_kind(user_expression) !=
+          MYLITE_EXPRESSION_LITERAL ||
+      mylite_ast_expression_view_literal_kind(user_expression) !=
+          MYLITE_EXPRESSION_LITERAL_UNSIGNED_INTEGER ||
+      !mylite_ast_expression_view_has_unsigned_integer(user_expression) ||
+      mylite_ast_expression_view_unsigned_integer_value(user_expression) != 1 ||
       names_assignment == NULL ||
       mylite_ast_set_assignment_view_kind(names_assignment) !=
           MYLITE_SET_ASSIGNMENT_NAMES ||
@@ -3612,6 +3633,12 @@ static int expect_set_statement_view(void) {
                     mylite_ast_set_assignment_view_extend_value_end(
                         names_assignment),
                     "utf8mb4_unicode_ci") ||
+      names_expression == NULL ||
+      mylite_ast_expression_view_kind(names_expression) !=
+          MYLITE_EXPRESSION_IDENTIFIER ||
+      !value_matches_when_expected(
+          mylite_ast_expression_view_value(names_expression),
+          mylite_ast_expression_view_value_length(names_expression), "utf8mb4") ||
       charset_assignment == NULL ||
       mylite_ast_set_assignment_view_kind(charset_assignment) !=
           MYLITE_SET_ASSIGNMENT_CHARACTER_SET ||
@@ -3624,7 +3651,14 @@ static int expect_set_statement_view(void) {
                         charset_assignment),
                     mylite_ast_set_assignment_view_value_end(
                         charset_assignment),
-                    "DEFAULT")) {
+                    "DEFAULT") ||
+      charset_expression == NULL ||
+      mylite_ast_expression_view_kind(charset_expression) !=
+          MYLITE_EXPRESSION_DEFAULT ||
+      !value_matches_when_expected(
+          mylite_ast_expression_view_value(charset_expression),
+          mylite_ast_expression_view_value_length(charset_expression),
+          "DEFAULT")) {
     fprintf(stderr, "SET statement view failed: %s\n", sql);
     failed = 1;
   }

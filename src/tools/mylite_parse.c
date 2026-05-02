@@ -625,6 +625,30 @@ static void dump_statements(const MyliteAst *ast) {
         } else {
           print_escaped_bytes(name, name_length);
         }
+        const MyliteAstExpression *expression =
+            mylite_ast_set_assignment_view_value_expression(assignment);
+        if (expression != NULL) {
+          printf(" expr=%s literal=%s expr_span=%zu..%zu expr_value=%zu..%zu "
+                 "expr_value_len=%zu expr_value=",
+                 mylite_expression_kind_name(
+                     mylite_ast_expression_view_kind(expression)),
+                 mylite_expression_literal_kind_name(
+                     mylite_ast_expression_view_literal_kind(expression)),
+                 mylite_ast_expression_view_start(expression),
+                 mylite_ast_expression_view_end(expression),
+                 mylite_ast_expression_view_value_start(expression),
+                 mylite_ast_expression_view_value_end(expression),
+                 mylite_ast_expression_view_value_length(expression));
+          const char *expression_value =
+              mylite_ast_expression_view_value(expression);
+          size_t expression_value_length =
+              mylite_ast_expression_view_value_length(expression);
+          if (expression_value == NULL) {
+            fputs("none", stdout);
+          } else {
+            print_escaped_bytes(expression_value, expression_value_length);
+          }
+        }
         fputc('\n', stdout);
       }
     }

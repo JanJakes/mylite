@@ -427,10 +427,25 @@ struct MyliteAstDropView {
   int has_if_exists;
 };
 
+struct MyliteAstExpression {
+  const MyliteAstNode *node;
+  MyliteExpressionKind kind;
+  MyliteExpressionLiteralKind literal_kind;
+  size_t start;
+  size_t end;
+  size_t value_start;
+  size_t value_end;
+  const char *value;
+  size_t value_length;
+  unsigned long long unsigned_integer_value;
+  int has_unsigned_integer_value;
+};
+
 struct MyliteAstSetAssignment {
   const MyliteAstNode *node;
   const MyliteAstNode *value_node;
   const MyliteAstNode *extend_value_node;
+  MyliteAstExpression value_expression;
   MyliteSetAssignmentKind kind;
   MyliteSetVariableScope scope;
   MyliteSetAssignmentOperator operator_kind;
@@ -670,6 +685,21 @@ static int mylite_ast_set_set_statement_view(MyliteAst *ast,
 static int mylite_ast_set_set_assignments(MyliteAst *ast,
                                           MyliteAstSetStatement *set_statement,
                                           const MyliteAstNode *payload);
+static int mylite_ast_set_expression_summary(MyliteAst *ast,
+                                             MyliteAstExpression *expression,
+                                             const MyliteAstNode *node);
+static const MyliteAstNode *mylite_ast_expression_payload(
+    const MyliteAstNode *node);
+static MyliteExpressionKind mylite_ast_classify_expression(
+    const MyliteAstNode *node);
+static MyliteExpressionLiteralKind mylite_ast_expression_literal_kind(
+    const MyliteAstNode *node);
+static const MyliteAstNode *mylite_ast_expression_value_node(
+    const MyliteAstNode *node, MyliteExpressionKind kind,
+    MyliteExpressionLiteralKind literal_kind);
+static int mylite_ast_set_expression_value(MyliteAst *ast,
+                                           MyliteAstExpression *expression,
+                                           const MyliteAstNode *value_node);
 static size_t mylite_ast_count_set_assignments(const MyliteAstNode *node);
 static void mylite_ast_fill_set_assignments(
     MyliteAst *ast, MyliteAstSetStatement *set_statement,
@@ -1210,6 +1240,51 @@ const char *mylite_statement_target_role_name(MyliteStatementTargetRole role) {
       return "destination";
   }
   return "unknown";
+}
+
+const char *mylite_expression_kind_name(MyliteExpressionKind kind) {
+  switch (kind) {
+    case MYLITE_EXPRESSION_UNKNOWN:
+      return "unknown";
+    case MYLITE_EXPRESSION_RAW:
+      return "raw";
+    case MYLITE_EXPRESSION_LITERAL:
+      return "literal";
+    case MYLITE_EXPRESSION_IDENTIFIER:
+      return "identifier";
+    case MYLITE_EXPRESSION_VARIABLE:
+      return "variable";
+    case MYLITE_EXPRESSION_FUNCTION_CALL:
+      return "function_call";
+    case MYLITE_EXPRESSION_DEFAULT:
+      return "default";
+  }
+  return "unknown";
+}
+
+const char *mylite_expression_literal_kind_name(
+    MyliteExpressionLiteralKind kind) {
+  switch (kind) {
+    case MYLITE_EXPRESSION_LITERAL_NONE:
+      return "none";
+    case MYLITE_EXPRESSION_LITERAL_STRING:
+      return "string";
+    case MYLITE_EXPRESSION_LITERAL_UNSIGNED_INTEGER:
+      return "unsigned_integer";
+    case MYLITE_EXPRESSION_LITERAL_FLOAT:
+      return "float";
+    case MYLITE_EXPRESSION_LITERAL_HEX:
+      return "hex";
+    case MYLITE_EXPRESSION_LITERAL_BIT:
+      return "bit";
+    case MYLITE_EXPRESSION_LITERAL_NULL:
+      return "null";
+    case MYLITE_EXPRESSION_LITERAL_TRUE:
+      return "true";
+    case MYLITE_EXPRESSION_LITERAL_FALSE:
+      return "false";
+  }
+  return "none";
 }
 
 const char *mylite_create_table_column_type_family_name(
@@ -3285,6 +3360,13 @@ const MyliteAstNode *mylite_ast_set_assignment_view_value_node(
   return assignment == NULL ? NULL : assignment->value_node;
 }
 
+const MyliteAstExpression *mylite_ast_set_assignment_view_value_expression(
+    const MyliteAstSetAssignment *assignment) {
+  return assignment == NULL || assignment->value_expression.node == NULL
+             ? NULL
+             : &assignment->value_expression;
+}
+
 size_t mylite_ast_set_assignment_view_value_start(
     const MyliteAstSetAssignment *assignment) {
   return assignment == NULL ? 0 : assignment->value_start;
@@ -3308,6 +3390,60 @@ size_t mylite_ast_set_assignment_view_extend_value_start(
 size_t mylite_ast_set_assignment_view_extend_value_end(
     const MyliteAstSetAssignment *assignment) {
   return assignment == NULL ? 0 : assignment->extend_value_end;
+}
+
+const MyliteAstNode *mylite_ast_expression_view_node(
+    const MyliteAstExpression *expression) {
+  return expression == NULL ? NULL : expression->node;
+}
+
+MyliteExpressionKind mylite_ast_expression_view_kind(
+    const MyliteAstExpression *expression) {
+  return expression == NULL ? MYLITE_EXPRESSION_UNKNOWN : expression->kind;
+}
+
+MyliteExpressionLiteralKind mylite_ast_expression_view_literal_kind(
+    const MyliteAstExpression *expression) {
+  return expression == NULL ? MYLITE_EXPRESSION_LITERAL_NONE
+                            : expression->literal_kind;
+}
+
+size_t mylite_ast_expression_view_start(const MyliteAstExpression *expression) {
+  return expression == NULL ? 0 : expression->start;
+}
+
+size_t mylite_ast_expression_view_end(const MyliteAstExpression *expression) {
+  return expression == NULL ? 0 : expression->end;
+}
+
+size_t mylite_ast_expression_view_value_start(
+    const MyliteAstExpression *expression) {
+  return expression == NULL ? 0 : expression->value_start;
+}
+
+size_t mylite_ast_expression_view_value_end(
+    const MyliteAstExpression *expression) {
+  return expression == NULL ? 0 : expression->value_end;
+}
+
+const char *mylite_ast_expression_view_value(
+    const MyliteAstExpression *expression) {
+  return expression == NULL ? NULL : expression->value;
+}
+
+size_t mylite_ast_expression_view_value_length(
+    const MyliteAstExpression *expression) {
+  return expression == NULL ? 0 : expression->value_length;
+}
+
+int mylite_ast_expression_view_has_unsigned_integer(
+    const MyliteAstExpression *expression) {
+  return expression != NULL && expression->has_unsigned_integer_value;
+}
+
+unsigned long long mylite_ast_expression_view_unsigned_integer_value(
+    const MyliteAstExpression *expression) {
+  return expression == NULL ? 0 : expression->unsigned_integer_value;
 }
 
 const MyliteAstNode *mylite_ast_drop_index_view_node(
@@ -7862,6 +7998,246 @@ static int mylite_ast_set_set_assignments(MyliteAst *ast,
   return ok && index == set_statement->assignment_count;
 }
 
+static int mylite_ast_set_expression_summary(MyliteAst *ast,
+                                             MyliteAstExpression *expression,
+                                             const MyliteAstNode *node) {
+  if (ast == NULL || expression == NULL || node == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *payload = mylite_ast_expression_payload(node);
+  expression->node = payload == NULL ? node : payload;
+  expression->start = mylite_ast_node_start(expression->node);
+  expression->end = mylite_ast_node_end(expression->node);
+  expression->kind = mylite_ast_classify_expression(expression->node);
+  expression->literal_kind =
+      expression->kind == MYLITE_EXPRESSION_LITERAL
+          ? mylite_ast_expression_literal_kind(expression->node)
+          : MYLITE_EXPRESSION_LITERAL_NONE;
+  const MyliteAstNode *value_node =
+      mylite_ast_expression_value_node(expression->node, expression->kind,
+                                       expression->literal_kind);
+  return mylite_ast_set_expression_value(ast, expression, value_node);
+}
+
+static const MyliteAstNode *mylite_ast_expression_payload(
+    const MyliteAstNode *node) {
+  const MyliteAstNode *current = node;
+  while (current != NULL && current->kind == MYLITE_AST_NODE_RULE &&
+         current->child_count == 1 && current->symbol_name != NULL) {
+    static const char *const wrappers[] = {
+        "nt_set_expr",
+        "nt_expr_or_default",
+        "nt_expression",
+        "nt_bool_pri",
+        "nt_predicate_expr",
+        "nt_bit_expr",
+        "nt_simple_expr",
+        "nt_literal",
+        "nt_string_literal",
+        "nt_charset_name_or_default",
+        "nt_charset_name",
+        "nt_string_name",
+    };
+    if (!symbol_is_one_of(current->symbol_name, wrappers,
+                          sizeof(wrappers) / sizeof(wrappers[0]))) {
+      break;
+    }
+    current = current->children[0];
+  }
+  return current;
+}
+
+static MyliteExpressionKind mylite_ast_classify_expression(
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return MYLITE_EXPRESSION_UNKNOWN;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_DEFAULT_KWD) != NULL) {
+    return MYLITE_EXPRESSION_DEFAULT;
+  }
+  if (mylite_ast_find_first_symbol(node, "nt_function_call_generic") != NULL ||
+      mylite_ast_find_first_symbol(node, "nt_function_call_keyword") != NULL ||
+      mylite_ast_find_first_symbol(node, "nt_function_call_nonkeyword") !=
+          NULL) {
+    return MYLITE_EXPRESSION_FUNCTION_CALL;
+  }
+  if (mylite_ast_expression_literal_kind(node) !=
+      MYLITE_EXPRESSION_LITERAL_NONE) {
+    return MYLITE_EXPRESSION_LITERAL;
+  }
+  if (mylite_ast_find_first_symbol(node, "nt_variable") != NULL ||
+      mylite_ast_find_first_symbol(node, "nt_system_variable") != NULL ||
+      mylite_ast_find_first_symbol(node, "nt_user_variable") != NULL ||
+      mylite_ast_find_first_token(node, MYLITE_TOK_DOUBLE_AT_IDENTIFIER) !=
+          NULL ||
+      mylite_ast_find_first_token(node, MYLITE_TOK_SINGLE_AT_IDENTIFIER) !=
+          NULL) {
+    return MYLITE_EXPRESSION_VARIABLE;
+  }
+  if (node->symbol_name != NULL &&
+      (strcmp(node->symbol_name, "nt_identifier") == 0 ||
+       strcmp(node->symbol_name, "nt_column_name") == 0)) {
+    return MYLITE_EXPRESSION_IDENTIFIER;
+  }
+  if (node->kind == MYLITE_AST_NODE_TOKEN && node->token == MYLITE_TOK_IDENTIFIER) {
+    return MYLITE_EXPRESSION_IDENTIFIER;
+  }
+  return MYLITE_EXPRESSION_RAW;
+}
+
+static MyliteExpressionLiteralKind mylite_ast_expression_literal_kind(
+    const MyliteAstNode *node) {
+  const MyliteAstNode *literal = mylite_ast_expression_payload(node);
+  if (literal == NULL) {
+    return MYLITE_EXPRESSION_LITERAL_NONE;
+  }
+  if (literal->kind == MYLITE_AST_NODE_TOKEN) {
+    switch (literal->token) {
+      case MYLITE_TOK_STRING_LIT:
+        return MYLITE_EXPRESSION_LITERAL_STRING;
+      case MYLITE_TOK_INT_LIT:
+      case MYLITE_TOK_NUMBER:
+        return MYLITE_EXPRESSION_LITERAL_UNSIGNED_INTEGER;
+      case MYLITE_TOK_FLOAT_LIT:
+        return MYLITE_EXPRESSION_LITERAL_FLOAT;
+      case MYLITE_TOK_HEX_LIT:
+        return MYLITE_EXPRESSION_LITERAL_HEX;
+      case MYLITE_TOK_BIT_LIT:
+        return MYLITE_EXPRESSION_LITERAL_BIT;
+      case MYLITE_TOK_NULL:
+        return MYLITE_EXPRESSION_LITERAL_NULL;
+      case MYLITE_TOK_TRUE_KWD:
+        return MYLITE_EXPRESSION_LITERAL_TRUE;
+      case MYLITE_TOK_FALSE_KWD:
+        return MYLITE_EXPRESSION_LITERAL_FALSE;
+      default:
+        break;
+    }
+  }
+  const MyliteAstNode *token = mylite_ast_find_first_token(literal,
+                                                           MYLITE_TOK_STRING_LIT);
+  if (token != NULL) {
+    return MYLITE_EXPRESSION_LITERAL_STRING;
+  }
+  token = mylite_ast_find_first_token(literal, MYLITE_TOK_INT_LIT);
+  if (token != NULL) {
+    return MYLITE_EXPRESSION_LITERAL_UNSIGNED_INTEGER;
+  }
+  token = mylite_ast_find_first_token(literal, MYLITE_TOK_NUMBER);
+  if (token != NULL) {
+    return MYLITE_EXPRESSION_LITERAL_UNSIGNED_INTEGER;
+  }
+  token = mylite_ast_find_first_token(literal, MYLITE_TOK_FLOAT_LIT);
+  if (token != NULL) {
+    return MYLITE_EXPRESSION_LITERAL_FLOAT;
+  }
+  token = mylite_ast_find_first_token(literal, MYLITE_TOK_HEX_LIT);
+  if (token != NULL) {
+    return MYLITE_EXPRESSION_LITERAL_HEX;
+  }
+  token = mylite_ast_find_first_token(literal, MYLITE_TOK_BIT_LIT);
+  if (token != NULL) {
+    return MYLITE_EXPRESSION_LITERAL_BIT;
+  }
+  token = mylite_ast_find_first_token(literal, MYLITE_TOK_NULL);
+  if (token != NULL) {
+    return MYLITE_EXPRESSION_LITERAL_NULL;
+  }
+  token = mylite_ast_find_first_token(literal, MYLITE_TOK_TRUE_KWD);
+  if (token != NULL) {
+    return MYLITE_EXPRESSION_LITERAL_TRUE;
+  }
+  token = mylite_ast_find_first_token(literal, MYLITE_TOK_FALSE_KWD);
+  if (token != NULL) {
+    return MYLITE_EXPRESSION_LITERAL_FALSE;
+  }
+  return MYLITE_EXPRESSION_LITERAL_NONE;
+}
+
+static const MyliteAstNode *mylite_ast_expression_value_node(
+    const MyliteAstNode *node, MyliteExpressionKind kind,
+    MyliteExpressionLiteralKind literal_kind) {
+  if (node == NULL) {
+    return NULL;
+  }
+  if (kind == MYLITE_EXPRESSION_LITERAL) {
+    switch (literal_kind) {
+      case MYLITE_EXPRESSION_LITERAL_STRING:
+        return mylite_ast_find_first_token(node, MYLITE_TOK_STRING_LIT);
+      case MYLITE_EXPRESSION_LITERAL_UNSIGNED_INTEGER:
+        {
+          const MyliteAstNode *value =
+              mylite_ast_find_first_token(node, MYLITE_TOK_INT_LIT);
+          return value == NULL ? mylite_ast_find_first_token(node,
+                                                             MYLITE_TOK_NUMBER)
+                               : value;
+        }
+      case MYLITE_EXPRESSION_LITERAL_FLOAT:
+        return mylite_ast_find_first_token(node, MYLITE_TOK_FLOAT_LIT);
+      case MYLITE_EXPRESSION_LITERAL_HEX:
+        return mylite_ast_find_first_token(node, MYLITE_TOK_HEX_LIT);
+      case MYLITE_EXPRESSION_LITERAL_BIT:
+        return mylite_ast_find_first_token(node, MYLITE_TOK_BIT_LIT);
+      case MYLITE_EXPRESSION_LITERAL_NULL:
+        return mylite_ast_find_first_token(node, MYLITE_TOK_NULL);
+      case MYLITE_EXPRESSION_LITERAL_TRUE:
+        return mylite_ast_find_first_token(node, MYLITE_TOK_TRUE_KWD);
+      case MYLITE_EXPRESSION_LITERAL_FALSE:
+        return mylite_ast_find_first_token(node, MYLITE_TOK_FALSE_KWD);
+      case MYLITE_EXPRESSION_LITERAL_NONE:
+        break;
+    }
+  }
+  if (kind == MYLITE_EXPRESSION_DEFAULT) {
+    return mylite_ast_find_first_token(node, MYLITE_TOK_DEFAULT_KWD);
+  }
+  if (kind == MYLITE_EXPRESSION_FUNCTION_CALL ||
+      kind == MYLITE_EXPRESSION_IDENTIFIER) {
+    return mylite_ast_find_first_token(node, MYLITE_TOK_IDENTIFIER);
+  }
+  if (kind == MYLITE_EXPRESSION_VARIABLE) {
+    const MyliteAstNode *value =
+        mylite_ast_find_first_token(node, MYLITE_TOK_DOUBLE_AT_IDENTIFIER);
+    return value == NULL ? mylite_ast_find_first_token(
+                               node, MYLITE_TOK_SINGLE_AT_IDENTIFIER)
+                         : value;
+  }
+  return NULL;
+}
+
+static int mylite_ast_set_expression_value(MyliteAst *ast,
+                                           MyliteAstExpression *expression,
+                                           const MyliteAstNode *value_node) {
+  if (ast == NULL || expression == NULL || value_node == NULL ||
+      !value_node->has_span) {
+    return 1;
+  }
+  expression->value_start = mylite_ast_node_start(value_node);
+  expression->value_end = mylite_ast_node_end(value_node);
+  if (expression->literal_kind == MYLITE_EXPRESSION_LITERAL_STRING) {
+    return mylite_ast_decode_sql_string_literal(
+        ast, expression->value_start, expression->value_end,
+        &expression->value, &expression->value_length);
+  }
+  if (expression->kind == MYLITE_EXPRESSION_IDENTIFIER ||
+      expression->kind == MYLITE_EXPRESSION_FUNCTION_CALL) {
+    return mylite_ast_decode_identifier(ast, expression->value_start,
+                                        expression->value_end,
+                                        &expression->value,
+                                        &expression->value_length);
+  }
+  if (expression->literal_kind ==
+      MYLITE_EXPRESSION_LITERAL_UNSIGNED_INTEGER) {
+    expression->has_unsigned_integer_value = mylite_ast_parse_unsigned_integer_value(
+        ast->source, expression->value_start, expression->value_end,
+        &expression->unsigned_integer_value);
+  }
+  return mylite_ast_copy_source_span(ast, expression->value_start,
+                                     expression->value_end,
+                                     &expression->value,
+                                     &expression->value_length);
+}
+
 static size_t mylite_ast_count_set_assignments(const MyliteAstNode *node) {
   if (node == NULL) {
     return 0;
@@ -7956,6 +8332,10 @@ static int mylite_ast_fill_set_variable_assignment(
   if (assignment->value_node != NULL) {
     assignment->value_start = mylite_ast_node_start(assignment->value_node);
     assignment->value_end = mylite_ast_node_end(assignment->value_node);
+    if (!mylite_ast_set_expression_summary(ast, &assignment->value_expression,
+                                           assignment->value_node)) {
+      return 0;
+    }
   }
 
   assignment->extend_value_node = mylite_ast_set_names_extend_value_node(node);
@@ -7971,7 +8351,6 @@ static int mylite_ast_fill_set_variable_assignment(
 static int mylite_ast_fill_transaction_characteristic_assignment(
     MyliteAst *ast, MyliteAstSetStatement *set_statement,
     MyliteAstSetAssignment *assignment, const MyliteAstNode *node) {
-  (void)ast;
   assignment->kind = MYLITE_SET_ASSIGNMENT_TRANSACTION_CHARACTERISTIC;
   assignment->scope = mylite_ast_set_statement_scope(set_statement->node);
   assignment->operator_kind = MYLITE_SET_ASSIGNMENT_OPERATOR_NONE;
@@ -8009,6 +8388,10 @@ static int mylite_ast_fill_transaction_characteristic_assignment(
   if (assignment->value_node != NULL) {
     assignment->value_start = mylite_ast_node_start(assignment->value_node);
     assignment->value_end = mylite_ast_node_end(assignment->value_node);
+    if (!mylite_ast_set_expression_summary(ast, &assignment->value_expression,
+                                           assignment->value_node)) {
+      return 0;
+    }
   }
   return 1;
 }
@@ -8036,6 +8419,10 @@ static int mylite_ast_fill_config_assignment(MyliteAst *ast,
   if (assignment->value_node != NULL) {
     assignment->value_start = mylite_ast_node_start(assignment->value_node);
     assignment->value_end = mylite_ast_node_end(assignment->value_node);
+    if (!mylite_ast_set_expression_summary(ast, &assignment->value_expression,
+                                           assignment->value_node)) {
+      return 0;
+    }
   }
   return 1;
 }

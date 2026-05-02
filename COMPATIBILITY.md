@@ -79,9 +79,10 @@ decoded view targets, `OR REPLACE`, algorithm, SQL security, check-option kind,
 optional definer spans, explicit column descriptors, and the query CST anchor.
 The `SET` view currently covers statement form, ordered assignments, assignment
 kind, variable scope, assignment operator, decoded assignment names, value CST
-anchors, and `SET NAMES` extended collation spans. The `USE` view currently
-covers the decoded default-database target. The `ALTER TABLE` view currently
-covers decoded target tables, ordered coarse operation specs,
+anchors, `SET NAMES` extended collation spans, and first-pass expression
+summaries for assignment values. The `USE` view currently covers the decoded
+default-database target. The `ALTER TABLE` view currently covers decoded target
+tables, ordered coarse operation specs,
 operation names, nested rename/exchange table targets, reused table-option
 handles, and reused column/key descriptor payloads for single-column
 add/modify/change specs and add-constraint/index specs, including multi-item
@@ -264,7 +265,7 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. |  |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. |  |
 | `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. |  |
-| `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser view exposes statement form, assignment kind/scope/operator, decoded names, and value CST anchors. |
+| `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser view exposes statement form, assignment kind/scope/operator, decoded names, value CST anchors, and first-pass expression summaries. |
 | `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser view exposes the character-set assignment and value anchor. |
 | `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser view exposes charset value and optional collation value spans. |
 | `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. |  |

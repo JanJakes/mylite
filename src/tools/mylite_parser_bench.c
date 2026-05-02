@@ -178,6 +178,12 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t set_assignment_name_values = 0;
   size_t set_assignment_scopes = 0;
   size_t set_assignment_value_nodes = 0;
+  size_t set_assignment_value_expressions = 0;
+  size_t set_assignment_expression_values = 0;
+  size_t set_assignment_expression_unsigned_integers = 0;
+  size_t set_assignment_expression_literals = 0;
+  size_t set_assignment_expression_function_calls = 0;
+  size_t set_assignment_expression_defaults = 0;
   size_t set_assignment_extend_value_nodes = 0;
   size_t set_assignment_system_variables = 0;
   size_t set_assignment_user_variables = 0;
@@ -764,6 +770,34 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                     NULL) {
                   set_assignment_value_nodes++;
                 }
+                const MyliteAstExpression *expression =
+                    mylite_ast_set_assignment_view_value_expression(assignment);
+                if (expression != NULL) {
+                  set_assignment_value_expressions++;
+                  if (mylite_ast_expression_view_value(expression) != NULL) {
+                    set_assignment_expression_values++;
+                  }
+                  if (mylite_ast_expression_view_has_unsigned_integer(
+                          expression)) {
+                    set_assignment_expression_unsigned_integers++;
+                  }
+                  switch (mylite_ast_expression_view_kind(expression)) {
+                    case MYLITE_EXPRESSION_LITERAL:
+                      set_assignment_expression_literals++;
+                      break;
+                    case MYLITE_EXPRESSION_FUNCTION_CALL:
+                      set_assignment_expression_function_calls++;
+                      break;
+                    case MYLITE_EXPRESSION_DEFAULT:
+                      set_assignment_expression_defaults++;
+                      break;
+                    case MYLITE_EXPRESSION_UNKNOWN:
+                    case MYLITE_EXPRESSION_RAW:
+                    case MYLITE_EXPRESSION_IDENTIFIER:
+                    case MYLITE_EXPRESSION_VARIABLE:
+                      break;
+                  }
+                }
                 if (mylite_ast_set_assignment_view_extend_value_node(
                         assignment) != NULL) {
                   set_assignment_extend_value_nodes++;
@@ -1092,6 +1126,12 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_set_assignment_name_values=%.2f "
            "avg_set_assignment_scopes=%.2f "
            "avg_set_assignment_value_nodes=%.2f "
+           "avg_set_assignment_value_expressions=%.2f "
+           "avg_set_assignment_expression_values=%.2f "
+           "avg_set_assignment_expression_unsigned_integers=%.2f "
+           "avg_set_assignment_expression_literals=%.2f "
+           "avg_set_assignment_expression_function_calls=%.2f "
+           "avg_set_assignment_expression_defaults=%.2f "
            "avg_set_assignment_extend_value_nodes=%.2f "
            "avg_set_assignment_system_variables=%.2f "
            "avg_set_assignment_user_variables=%.2f "
@@ -1248,6 +1288,13 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)set_assignment_name_values / (double)parsed,
            (double)set_assignment_scopes / (double)parsed,
            (double)set_assignment_value_nodes / (double)parsed,
+           (double)set_assignment_value_expressions / (double)parsed,
+           (double)set_assignment_expression_values / (double)parsed,
+           (double)set_assignment_expression_unsigned_integers /
+               (double)parsed,
+           (double)set_assignment_expression_literals / (double)parsed,
+           (double)set_assignment_expression_function_calls / (double)parsed,
+           (double)set_assignment_expression_defaults / (double)parsed,
            (double)set_assignment_extend_value_nodes / (double)parsed,
            (double)set_assignment_system_variables / (double)parsed,
            (double)set_assignment_user_variables / (double)parsed,

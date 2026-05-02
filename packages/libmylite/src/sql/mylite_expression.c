@@ -605,6 +605,12 @@ static int eval_node(const struct mylite_sql_ast_node *node,
             return context->eval_aggregate(context->user_data, node, out_value);
         }
         return -1;
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+        if (context != NULL && context->eval_subquery != NULL) {
+            return context->eval_subquery(context->user_data, node, warnings, out_value);
+        }
+        return -1;
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return eval_function_call(node, context, warnings, out_value);
     default:

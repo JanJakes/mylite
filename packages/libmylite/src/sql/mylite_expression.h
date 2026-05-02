@@ -43,12 +43,17 @@ typedef int (*mylite_expression_eval_constant_fn)(void *user_data,
 typedef int (*mylite_expression_eval_aggregate_fn)(void *user_data,
                                                    const struct mylite_sql_ast_node *aggregate,
                                                    struct mylite_expression_value *out_value);
+typedef int (*mylite_expression_eval_subquery_fn)(void *user_data,
+                                                  const struct mylite_sql_ast_node *subquery,
+                                                  struct mylite_expression_warnings *warnings,
+                                                  struct mylite_expression_value *out_value);
 
 struct mylite_expression_eval_context {
     void *user_data;
     mylite_expression_resolve_identifier_fn resolve_identifier;
     mylite_expression_eval_constant_fn eval_constant;
     mylite_expression_eval_aggregate_fn eval_aggregate;
+    mylite_expression_eval_subquery_fn eval_subquery;
 };
 
 void mylite_expression_value_deinit(struct mylite_expression_value *value);

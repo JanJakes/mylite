@@ -825,7 +825,18 @@ Add focused tests for each currently supported outer surface:
 
 ## Compatibility Status
 
-Task 29 is started with this specification only. MyLite still rejects or
-defers subqueries at runtime until the implementation phase adds parser/AST
-support, query-block binding, execution, diagnostics, metadata, compatibility
-tests, and review.
+Task 29 has the first executable slice implemented. MyLite executes
+uncorrelated scalar subqueries and uncorrelated `EXISTS` / `NOT EXISTS`
+subqueries in no-table scalar `SELECT` and the currently supported
+table-backed `SELECT` expression contexts: projection, `WHERE`, join `ON`,
+`HAVING`, and `ORDER BY`.
+
+This slice includes empty scalar-subquery results as `NULL`, one-row value
+return, scalar error 1241 for multi-column operands, scalar error 1242 for
+multi-row operands, warning propagation, first-slice result descriptors, and
+`EXISTS` checks that do not evaluate the subquery select list.
+
+The remaining Task 29 surfaces are deferred: correlated subqueries, row
+subqueries, scalar and row `IN` / `NOT IN`, quantified `ANY` / `SOME` / `ALL`,
+DML subquery execution, derived-table row sources, CTE/set-operation
+subqueries, and optimizer behavior.

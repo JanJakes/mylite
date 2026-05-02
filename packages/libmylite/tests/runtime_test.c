@@ -76,6 +76,8 @@ enum {
     mysql_warning_wrong_usage = 1221,
     mysql_warning_unknown = 1105,
     mysql_warning_incorrect_escape_arguments = 1210,
+    mysql_warning_operand_columns = 1241,
+    mysql_warning_subquery_no_1_row = 1242,
     mysql_warning_truncated_wrong_value = 1292,
     mysql_warning_savepoint_does_not_exist = 1305,
     mysql_warning_division_by_zero = 1365,
@@ -156,6 +158,7 @@ static int test_select_table_core_execution(void);
 static int test_inner_join_execution(void);
 static int test_outer_join_execution(void);
 static int test_select_distinct_execution(void);
+static int test_subquery_execution(void);
 static int test_select_where_execution(void);
 static int test_select_order_limit_offset_execution(void);
 static int test_result_metadata_expression_labels_execution(void);
@@ -269,6 +272,7 @@ int main(void)
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
     failures += test_select_distinct_execution();
+    failures += test_subquery_execution();
     failures += test_select_where_execution();
     failures += test_select_order_limit_offset_execution();
     failures += test_result_metadata_expression_labels_execution();
@@ -857,10 +861,13 @@ static int test_expression_operator_foundation(void)
     failures += expect_no_stmt_handle(&stmt, "empty in list");
     failures += prepare_sql(database, "SELECT ROW(1,2) IN ((1,2))", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "row in deferred");
-    failures += prepare_sql(database, "SELECT (SELECT 1)", MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "scalar subquery deferred");
-    failures += prepare_sql(database, "SELECT EXISTS (SELECT 1)", MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "exists subquery deferred");
+    failures += prepare_sql(database, "SELECT (SELECT 1), EXISTS (SELECT 1)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "simple subquery row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "simple scalar subquery");
+    failures += expect_string(mylite_column_text(stmt, 1), "1", "simple exists subquery");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "simple subquery done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += prepare_sql(database, "SELECT 1 = ANY (SELECT 1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "quantified subquery deferred");
 
@@ -4640,6 +4647,168 @@ static int test_select_distinct_execution(void)
                    "distinct alias shadowed order warning code");
 
     mylite_close(database);
+    return failures;
+}
+
+static int test_subquery_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const scalar_columns[] = {"one", "missing", "exists_one", "not_missing"};
+    static const char *const scalar_values[] = {"1", NULL, "1", "1"};
+    static const char *const first_val_column[] = {"first_val"};
+    static const char *const first_val_value[] = {"10"};
+    static const char *const id_txt_columns[] = {"id", "first_txt"};
+    static const char *const id_txt_values[] = {"1", "alpha", "2", "alpha", "3", "alpha"};
+    static const char *const id_column[] = {"id"};
+    static const char *const all_ids[] = {"1", "2", "3"};
+    static const char *const second_id[] = {"2"};
+    static const char *const desc_ids[] = {"3", "2"};
+    static const char *const join_columns[] = {"id", "tag"};
+    static const char *const join_values[] = {"1", "one", "2", "two"};
+    static const char *const count_column[] = {"c"};
+    static const char *const count_value[] = {"3"};
+    static const char *const exists_warning_columns[] = {
+        "safe_exists", "safe_table_exists", "safe_distinct_exists", "safe_order_exists"};
+    static const char *const exists_warning_values[] = {"1", "1", "1", "1"};
+    static const char *const exists_limit_column[] = {"exists_limit_zero"};
+    static const char *const exists_limit_value[] = {"0"};
+    static const char *const scalar_warning_column[] = {"div_null"};
+    static const char *const scalar_warning_value[] = {NULL};
+    static const struct expected_result_metadata metadata[] = {
+        {"sub_val", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"has_one", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open subquery database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_task29_subquery", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_task29_subquery", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE outer_t ("
+                            "id INT PRIMARY KEY, val INT NULL, txt VARCHAR(10) NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE other_t (id INT PRIMARY KEY, outer_id INT, tag "
+                            "VARCHAR(10))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO outer_t VALUES "
+                            "(1,10,'alpha'),(2,20,'beta'),(3,NULL,NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(
+        database, "INSERT INTO other_t VALUES (10,1,'one'),(20,2,'two'),(30,99,'x')", MYLITE_DONE);
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT (SELECT 1) AS one, "
+                           "(SELECT val FROM outer_t WHERE id=99) AS missing, "
+                           "EXISTS (SELECT 1) AS exists_one, "
+                           "NOT EXISTS (SELECT 1 FROM outer_t WHERE id=99) AS not_missing",
+                           scalar_columns, 4, scalar_values, 1, "scalar and exists subqueries");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT (SELECT val FROM outer_t ORDER BY id LIMIT 1) "
+                           "AS first_val",
+                           first_val_column, 1, first_val_value, 1, "scalar subquery order limit");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, (SELECT txt FROM outer_t WHERE id=1) AS first_txt "
+                           "FROM outer_t ORDER BY id",
+                           id_txt_columns, 2, id_txt_values, 3, "scalar subquery projection");
+    failures += expect_select_rows(database, "SELECT id FROM outer_t WHERE (SELECT 1) ORDER BY id",
+                                   id_column, 1, all_ids, 3, "scalar subquery where true");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM outer_t WHERE (SELECT NULL) ORDER BY id",
+                           id_column, 1, NULL, 0, "scalar subquery where null");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM outer_t WHERE val = (SELECT 20) ORDER BY id",
+                           id_column, 1, second_id, 1, "scalar subquery comparison");
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM outer_t WHERE EXISTS (SELECT 1 FROM outer_t WHERE id=2) ORDER BY id",
+        id_column, 1, all_ids, 3, "exists subquery where true");
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM outer_t WHERE EXISTS (SELECT 1 FROM outer_t WHERE id=99) ORDER BY id",
+        id_column, 1, NULL, 0, "exists subquery where false");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM outer_t ORDER BY (SELECT 1), id DESC LIMIT 2",
+                           id_column, 1, desc_ids, 2, "scalar subquery order");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT o.id, x.tag FROM outer_t AS o JOIN other_t AS x "
+                           "ON EXISTS (SELECT 1 FROM outer_t WHERE id=1) AND o.id = x.outer_id "
+                           "ORDER BY o.id",
+                           join_columns, 2, join_values, 2, "exists subquery join on");
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(*) AS c FROM outer_t "
+                                   "HAVING EXISTS (SELECT 1 FROM outer_t WHERE id=1)",
+                                   count_column, 1, count_value, 1, "exists subquery having");
+    failures += expect_select_rows(database,
+                                   "SELECT EXISTS (SELECT 1/0) AS safe_exists, "
+                                   "EXISTS (SELECT 1/0 FROM outer_t) AS safe_table_exists, "
+                                   "EXISTS (SELECT DISTINCT 1/0 FROM outer_t) "
+                                   "AS safe_distinct_exists, "
+                                   "EXISTS (SELECT 1/0 FROM outer_t ORDER BY 1/0) "
+                                   "AS safe_order_exists",
+                                   exists_warning_columns, 4, exists_warning_values, 1,
+                                   "exists select list not evaluated");
+    failures += expect_int(mylite_warning_count(database), 0, "exists warning count");
+    failures += expect_select_rows(database,
+                                   "SELECT EXISTS (SELECT 1 FROM outer_t LIMIT 0) "
+                                   "AS exists_limit_zero",
+                                   exists_limit_column, 1, exists_limit_value, 1,
+                                   "exists respects subquery limit zero");
+    failures += expect_select_rows(
+        database, "SELECT (SELECT 1/0 FROM outer_t WHERE id=1) AS div_null", scalar_warning_column,
+        1, scalar_warning_value, 1, "scalar subquery warning propagation");
+    failures += expect_int(mylite_warning_count(database), 1, "scalar subquery warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "scalar subquery warning code");
+
+    failures += prepare_sql(database,
+                            "SELECT (SELECT val FROM outer_t WHERE id=1) AS sub_val, "
+                            "EXISTS (SELECT 1 FROM outer_t WHERE id=1) AS has_one "
+                            "FROM outer_t LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, metadata, 2, "subquery metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "subquery metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_prepare_error(database, "SELECT (SELECT val FROM outer_t)", MYLITE_EXEC_ERROR,
+                             "Subquery returns more than 1 row", "scalar subquery cardinality");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_subquery_no_1_row,
+                           "scalar subquery cardinality warning code");
+    failures += expect_prepare_error(database, "SELECT (SELECT val, txt FROM outer_t WHERE id=1)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 1 column(s)",
+                                     "scalar subquery column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "scalar subquery column count warning code");
+
+    failures += prepare_sql(database,
+                            "SELECT id, (SELECT val FROM outer_t) AS too_many "
+                            "FROM outer_t ORDER BY id",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Subquery returns more than 1 row",
+                                  "table scalar subquery cardinality");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_subquery_no_1_row,
+                           "table scalar subquery cardinality warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT 1 IN (SELECT 1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "in subquery deferred");
+    failures += prepare_sql(database, "SELECT 1 = ALL (SELECT 1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "all subquery deferred");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

@@ -44,7 +44,8 @@ level application surfaces.
 17. [x] `WHERE`: predicate evaluation, three-valued logic, conversion warnings,
        and name resolution. Spec: [WHERE clause](../where-clause/specs.md).
 18. [ ] `ORDER BY`, `LIMIT`, and `OFFSET`: aliases, ordinals, collations,
-       integer conversion, prepared markers, and error cases.
+       integer conversion, prepared markers, and error cases. Spec:
+       [ORDER BY, LIMIT, and OFFSET](../order-limit-offset/specs.md).
 19. [ ] Single-table `UPDATE`: assignment order, expressions, `WHERE`,
        `ORDER BY`, `LIMIT`, generated/default columns, affected rows, and
        warnings.

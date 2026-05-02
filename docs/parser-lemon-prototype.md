@@ -217,7 +217,8 @@ token sink:
   scalar comma lists, validate temporal precision lists for `DEFAULT`/`ON
   UPDATE` functions, reject stray attribute parentheses, and
   column-level `REFERENCES` clauses validate optional referenced column-list
-  envelopes plus referential-action tails. Trailing table options
+  envelopes plus referential-action tails, duplicate `MATCH`/`ON UPDATE`/`ON
+  DELETE` rejection, and MySQL's `MATCH`-before-actions order. Trailing table options
   must start with known MySQL table-option keywords and validate selected value
   domains, including numeric options, string-literal options, closed
   `INSERT_METHOD`, closed `ROW_FORMAT`, storage values, `UNION` lists, and
@@ -277,7 +278,9 @@ token sink:
   rejection, and storage modifier context and repetition checks, index key-part prefix lengths,
   `ASC`/`DESC` tails, and index option values including closed index
   `USING`/`TYPE` values. `ADD FOREIGN KEY` child/reference column-list
-  envelopes and referential-action tails are also validated, and `ADD CHECK`
+  envelopes and referential-action tails are also validated, including duplicate
+  `MATCH`/`ON UPDATE`/`ON DELETE` rejection and MySQL's
+  `MATCH`-before-actions order, and `ADD CHECK`
   requires a non-empty parenthesized expression body plus a valid
   `ENFORCED`/`NOT ENFORCED` tail when present.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;

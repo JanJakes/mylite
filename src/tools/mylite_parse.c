@@ -143,7 +143,14 @@ static void dump_statements(const MyliteAst *ast) {
     }
     for (size_t j = 0; j < column_count; j++) {
       printf("  column[%zu] family=%s flags=0x%x span=%zu..%zu name=%zu..%zu "
-             "type=%zu..%zu options=%zu..%zu\n",
+             "type=%zu..%zu type_name=%zu..%zu type_params=%zu..%zu "
+             "type_attrs=%zu..%zu options=%zu..%zu default=%zu..%zu "
+             "default_value=%zu..%zu on_update=%zu..%zu "
+             "on_update_value=%zu..%zu generated=%zu..%zu "
+             "generated_expr=%zu..%zu generated_storage=%zu..%zu "
+             "comment=%zu..%zu comment_value=%zu..%zu check=%zu..%zu "
+             "check_expr=%zu..%zu check_enforced=%s:%zu..%zu "
+             "reference=%zu..%zu\n",
              j,
              mylite_create_table_column_type_family_name(
                  mylite_ast_create_table_column_type_family(ast, i, j)),
@@ -154,8 +161,42 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_table_column_name_end(ast, i, j),
              mylite_ast_create_table_column_type_start(ast, i, j),
              mylite_ast_create_table_column_type_end(ast, i, j),
+             mylite_ast_create_table_column_type_name_start(ast, i, j),
+             mylite_ast_create_table_column_type_name_end(ast, i, j),
+             mylite_ast_create_table_column_type_parameters_start(ast, i, j),
+             mylite_ast_create_table_column_type_parameters_end(ast, i, j),
+             mylite_ast_create_table_column_type_attributes_start(ast, i, j),
+             mylite_ast_create_table_column_type_attributes_end(ast, i, j),
              mylite_ast_create_table_column_options_start(ast, i, j),
-             mylite_ast_create_table_column_options_end(ast, i, j));
+             mylite_ast_create_table_column_options_end(ast, i, j),
+             mylite_ast_create_table_column_default_start(ast, i, j),
+             mylite_ast_create_table_column_default_end(ast, i, j),
+             mylite_ast_create_table_column_default_value_start(ast, i, j),
+             mylite_ast_create_table_column_default_value_end(ast, i, j),
+             mylite_ast_create_table_column_on_update_start(ast, i, j),
+             mylite_ast_create_table_column_on_update_end(ast, i, j),
+             mylite_ast_create_table_column_on_update_value_start(ast, i, j),
+             mylite_ast_create_table_column_on_update_value_end(ast, i, j),
+             mylite_ast_create_table_column_generated_start(ast, i, j),
+             mylite_ast_create_table_column_generated_end(ast, i, j),
+             mylite_ast_create_table_column_generated_expression_start(ast, i, j),
+             mylite_ast_create_table_column_generated_expression_end(ast, i, j),
+             mylite_ast_create_table_column_generated_storage_start(ast, i, j),
+             mylite_ast_create_table_column_generated_storage_end(ast, i, j),
+             mylite_ast_create_table_column_comment_start(ast, i, j),
+             mylite_ast_create_table_column_comment_end(ast, i, j),
+             mylite_ast_create_table_column_comment_value_start(ast, i, j),
+             mylite_ast_create_table_column_comment_value_end(ast, i, j),
+             mylite_ast_create_table_column_check_start(ast, i, j),
+             mylite_ast_create_table_column_check_end(ast, i, j),
+             mylite_ast_create_table_column_check_expression_start(ast, i, j),
+             mylite_ast_create_table_column_check_expression_end(ast, i, j),
+             mylite_create_table_check_enforcement_name(
+                 mylite_ast_create_table_column_check_enforcement(ast, i, j)),
+             mylite_ast_create_table_column_check_enforcement_start(ast, i, j),
+             mylite_ast_create_table_column_check_enforcement_end(ast, i, j),
+             mylite_ast_create_table_column_reference_start(ast, i, j),
+             mylite_ast_create_table_column_reference_end(ast, i, j));
     }
     for (size_t j = 0; j < key_count; j++) {
       size_t column_count_for_key =

@@ -351,10 +351,10 @@ WordPress MySQL server query corpus with
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| Column definition grammar | ❌ | top | Type, nullability, defaults, visibility, comments, storage, format, references, and constraints. |  |
+| Column definition grammar | ❌ | top | Type, nullability, defaults, visibility, comments, storage, format, references, and constraints. | Parser prototype accepts corpus coverage and exposes source spans for column type names, parameters, type attributes, defaults, `ON UPDATE`, generated columns, comments, inline checks, and inline references. Semantic metadata construction is not implemented yet. |
 | Silent column specification changes | ❌ | high | MySQL automatic rewrites of column specifications and SHOW CREATE output. |  |
-| Default expressions | ❌ | top | Literal and expression defaults, CURRENT_TIMESTAMP variants, and error cases. |  |
-| Generated columns | ❌ | high | Virtual/stored generated columns, dependencies, indexes, and metadata. |  |
+| Default expressions | ❌ | top | Literal and expression defaults, CURRENT_TIMESTAMP variants, and error cases. | Parser exposes default clause/value spans for column definitions; semantic expression AST, validation, metadata, and runtime behavior are not implemented yet. |
+| Generated columns | ❌ | high | Virtual/stored generated columns, dependencies, indexes, and metadata. | Parser exposes generated clause, expression, and storage-mode spans for column definitions, including `AS (...)` without explicit `GENERATED ALWAYS`; semantic dependency and runtime behavior are not implemented yet. |
 | Invisible columns | ❌ | medium | Implicit column lists, SELECT * behavior, and metadata flags. |  |
 | Generated invisible primary keys | ❌ | low | MySQL-generated invisible primary key behavior, metadata, and dump/replication interactions. |  |
 | AUTO_INCREMENT columns | ❌ | top | Allocation, persistence, lock modes, explicit values, and overflow behavior. |  |

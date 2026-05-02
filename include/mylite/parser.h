@@ -279,12 +279,94 @@ size_t mylite_ast_create_table_column_type_start(const MyliteAst *ast,
 size_t mylite_ast_create_table_column_type_end(const MyliteAst *ast,
                                                size_t statement_index,
                                                size_t column_index);
+size_t mylite_ast_create_table_column_type_name_start(const MyliteAst *ast,
+                                                      size_t statement_index,
+                                                      size_t column_index);
+size_t mylite_ast_create_table_column_type_name_end(const MyliteAst *ast,
+                                                    size_t statement_index,
+                                                    size_t column_index);
+size_t mylite_ast_create_table_column_type_parameters_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_parameters_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_attributes_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_attributes_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
 size_t mylite_ast_create_table_column_options_start(const MyliteAst *ast,
                                                     size_t statement_index,
                                                     size_t column_index);
 size_t mylite_ast_create_table_column_options_end(const MyliteAst *ast,
                                                   size_t statement_index,
                                                   size_t column_index);
+size_t mylite_ast_create_table_column_default_start(const MyliteAst *ast,
+                                                    size_t statement_index,
+                                                    size_t column_index);
+size_t mylite_ast_create_table_column_default_end(const MyliteAst *ast,
+                                                  size_t statement_index,
+                                                  size_t column_index);
+size_t mylite_ast_create_table_column_default_value_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_default_value_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_on_update_start(const MyliteAst *ast,
+                                                      size_t statement_index,
+                                                      size_t column_index);
+size_t mylite_ast_create_table_column_on_update_end(const MyliteAst *ast,
+                                                    size_t statement_index,
+                                                    size_t column_index);
+size_t mylite_ast_create_table_column_on_update_value_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_on_update_value_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_generated_start(const MyliteAst *ast,
+                                                      size_t statement_index,
+                                                      size_t column_index);
+size_t mylite_ast_create_table_column_generated_end(const MyliteAst *ast,
+                                                    size_t statement_index,
+                                                    size_t column_index);
+size_t mylite_ast_create_table_column_generated_expression_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_generated_expression_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_generated_storage_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_generated_storage_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_comment_start(const MyliteAst *ast,
+                                                    size_t statement_index,
+                                                    size_t column_index);
+size_t mylite_ast_create_table_column_comment_end(const MyliteAst *ast,
+                                                  size_t statement_index,
+                                                  size_t column_index);
+size_t mylite_ast_create_table_column_comment_value_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_comment_value_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_check_start(const MyliteAst *ast,
+                                                  size_t statement_index,
+                                                  size_t column_index);
+size_t mylite_ast_create_table_column_check_end(const MyliteAst *ast,
+                                                size_t statement_index,
+                                                size_t column_index);
+size_t mylite_ast_create_table_column_check_expression_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_check_expression_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+MyliteCreateTableCheckEnforcement
+mylite_ast_create_table_column_check_enforcement(const MyliteAst *ast,
+                                                 size_t statement_index,
+                                                 size_t column_index);
+size_t mylite_ast_create_table_column_check_enforcement_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_check_enforcement_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_reference_start(const MyliteAst *ast,
+                                                      size_t statement_index,
+                                                      size_t column_index);
+size_t mylite_ast_create_table_column_reference_end(const MyliteAst *ast,
+                                                    size_t statement_index,
+                                                    size_t column_index);
 MyliteCreateTableColumnTypeFamily mylite_ast_create_table_column_type_family(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
 unsigned int mylite_ast_create_table_column_flags(const MyliteAst *ast,

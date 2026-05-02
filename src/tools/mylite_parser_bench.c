@@ -59,6 +59,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t statements = 0;
   size_t targets = 0;
   size_t columns = 0;
+  size_t column_defaults = 0;
+  size_t column_on_updates = 0;
+  size_t column_generated = 0;
+  size_t column_checks = 0;
+  size_t column_references = 0;
   size_t keys = 0;
   size_t key_columns = 0;
   size_t key_options = 0;
@@ -82,6 +87,24 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
             columns += mylite_ast_create_table_column_count(ast, i);
             keys += mylite_ast_create_table_key_count(ast, i);
             options += mylite_ast_create_table_option_count(ast, i);
+            for (size_t j = 0; j < mylite_ast_create_table_column_count(ast, i);
+                 j++) {
+              if (mylite_ast_create_table_column_default_end(ast, i, j) != 0) {
+                column_defaults++;
+              }
+              if (mylite_ast_create_table_column_on_update_end(ast, i, j) != 0) {
+                column_on_updates++;
+              }
+              if (mylite_ast_create_table_column_generated_end(ast, i, j) != 0) {
+                column_generated++;
+              }
+              if (mylite_ast_create_table_column_check_end(ast, i, j) != 0) {
+                column_checks++;
+              }
+              if (mylite_ast_create_table_column_reference_end(ast, i, j) != 0) {
+                column_references++;
+              }
+            }
             for (size_t j = 0; j < mylite_ast_create_table_key_count(ast, i); j++) {
               key_columns += mylite_ast_create_table_key_column_count(ast, i, j);
               key_columns +=
@@ -121,6 +144,14 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)columns / (double)parsed, (double)keys / (double)parsed,
            (double)key_columns / (double)parsed,
            (double)key_options / (double)parsed, (double)options / (double)parsed);
+    printf(" avg_column_defaults=%.2f avg_column_on_updates=%.2f "
+           "avg_column_generated=%.2f avg_column_checks=%.2f "
+           "avg_column_references=%.2f",
+           (double)column_defaults / (double)parsed,
+           (double)column_on_updates / (double)parsed,
+           (double)column_generated / (double)parsed,
+           (double)column_checks / (double)parsed,
+           (double)column_references / (double)parsed);
   }
   printf("\n");
 

@@ -18,6 +18,23 @@ typedef struct ExpectedCreateTableColumn {
   const char *options;
   MyliteCreateTableColumnTypeFamily type_family;
   unsigned int flags;
+  const char *type_name;
+  const char *type_parameters;
+  const char *type_attributes;
+  const char *default_span;
+  const char *default_value;
+  const char *on_update;
+  const char *on_update_value;
+  const char *generated;
+  const char *generated_expression;
+  const char *generated_storage;
+  const char *comment;
+  const char *comment_value;
+  const char *check_span;
+  const char *check_expression;
+  MyliteCreateTableCheckEnforcement check_enforcement;
+  const char *check_enforcement_span;
+  const char *reference;
 } ExpectedCreateTableColumn;
 
 typedef struct ExpectedCreateTableKeyPart {
@@ -100,6 +117,8 @@ static int expect_create_table_options(const char *sql,
                                        size_t option_count);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
+static int span_matches_when_expected(const char *sql, size_t start, size_t end,
+                                      const char *expected);
 
 int main(void) {
   int failures = 0;
@@ -733,6 +752,131 @@ int main(void) {
         columns, sizeof(columns) / sizeof(columns[0]));
   }
   {
+    const ExpectedCreateTableColumn columns[] = {
+        {.definition = "d DECIMAL(10,2) UNSIGNED ZEROFILL",
+         .name = "d",
+         .type = "DECIMAL(10,2) UNSIGNED ZEROFILL",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
+         .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_UNSIGNED |
+                  MYLITE_CREATE_TABLE_COLUMN_FLAG_ZEROFILL,
+         .type_name = "DECIMAL",
+         .type_parameters = "(10,2)",
+         .type_attributes = "UNSIGNED ZEROFILL"},
+        {.definition = "e ENUM('a','b') DEFAULT 'a'",
+         .name = "e",
+         .type = "ENUM('a','b')",
+         .options = "DEFAULT 'a'",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_ENUM,
+         .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_DEFAULT,
+         .type_name = "ENUM",
+         .type_parameters = "('a','b')",
+         .default_span = "DEFAULT 'a'",
+         .default_value = "'a'"},
+        {.definition = "v VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin COMMENT 'x'",
+         .name = "v",
+         .type = "VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin",
+         .options = "COMMENT 'x'",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
+         .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_CHARACTER_SET |
+                  MYLITE_CREATE_TABLE_COLUMN_FLAG_COLLATE |
+                  MYLITE_CREATE_TABLE_COLUMN_FLAG_COMMENT,
+         .type_name = "VARCHAR",
+         .type_parameters = "(50)",
+         .type_attributes = "CHARACTER SET utf8mb4 COLLATE utf8mb4_bin",
+         .comment = "COMMENT 'x'",
+         .comment_value = "'x'"},
+        {.definition = "n NATIONAL VARCHAR(10)",
+         .name = "n",
+         .type = "NATIONAL VARCHAR(10)",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
+         .type_name = "NATIONAL VARCHAR",
+         .type_parameters = "(10)"},
+        {.definition = "b LONG VARBINARY",
+         .name = "b",
+         .type = "LONG VARBINARY",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
+         .type_name = "LONG VARBINARY"}};
+    failures += expect_create_table_columns(
+        "CREATE TABLE t (d DECIMAL(10,2) UNSIGNED ZEROFILL, "
+        "e ENUM('a','b') DEFAULT 'a', "
+        "v VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin COMMENT 'x', "
+        "n NATIONAL VARCHAR(10), b LONG VARBINARY)",
+        columns, sizeof(columns) / sizeof(columns[0]));
+  }
+  {
+    const ExpectedCreateTableColumn columns[] = {
+        {.definition = "a INT DEFAULT 1",
+         .name = "a",
+         .type = "INT",
+         .options = "DEFAULT 1",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
+         .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_DEFAULT,
+         .type_name = "INT",
+         .default_span = "DEFAULT 1",
+         .default_value = "1"},
+        {.definition = "ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+         .name = "ts",
+         .type = "TIMESTAMP",
+         .options = "DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_TEMPORAL,
+         .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_DEFAULT |
+                  MYLITE_CREATE_TABLE_COLUMN_FLAG_ON_UPDATE,
+         .type_name = "TIMESTAMP",
+         .default_span = "DEFAULT CURRENT_TIMESTAMP",
+         .default_value = "CURRENT_TIMESTAMP",
+         .on_update = "ON UPDATE CURRENT_TIMESTAMP",
+         .on_update_value = "CURRENT_TIMESTAMP"},
+        {.definition = "g INT GENERATED ALWAYS AS (a + 1) STORED",
+         .name = "g",
+         .type = "INT",
+         .options = "GENERATED ALWAYS AS (a + 1) STORED",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
+         .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_GENERATED |
+                  MYLITE_CREATE_TABLE_COLUMN_FLAG_STORED,
+         .type_name = "INT",
+         .generated = "GENERATED ALWAYS AS (a + 1) STORED",
+         .generated_expression = "a + 1",
+         .generated_storage = "STORED"},
+        {.definition = "h INT AS (a + 2) VIRTUAL",
+         .name = "h",
+         .type = "INT",
+         .options = "AS (a + 2) VIRTUAL",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
+         .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_GENERATED |
+                  MYLITE_CREATE_TABLE_COLUMN_FLAG_VIRTUAL,
+         .type_name = "INT",
+         .generated = "AS (a + 2) VIRTUAL",
+         .generated_expression = "a + 2",
+         .generated_storage = "VIRTUAL"},
+        {.definition = "r INT REFERENCES parent(id)",
+         .name = "r",
+         .type = "INT",
+         .options = "REFERENCES parent(id)",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
+         .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_REFERENCES,
+         .type_name = "INT",
+         .reference = "REFERENCES parent(id)"},
+        {.definition = "c INT CHECK (c > 0) NOT ENFORCED",
+         .name = "c",
+         .type = "INT",
+         .options = "CHECK (c > 0) NOT ENFORCED",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
+         .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_CHECK,
+         .type_name = "INT",
+         .check_span = "CHECK (c > 0) NOT ENFORCED",
+         .check_expression = "c > 0",
+         .check_enforcement =
+             MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_NOT_ENFORCED,
+         .check_enforcement_span = "NOT ENFORCED"}};
+    failures += expect_create_table_columns(
+        "CREATE TABLE t (a INT DEFAULT 1, "
+        "ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
+        "g INT GENERATED ALWAYS AS (a + 1) STORED, "
+        "h INT AS (a + 2) VIRTUAL, r INT REFERENCES parent(id), "
+        "c INT CHECK (c > 0) NOT ENFORCED)",
+        columns, sizeof(columns) / sizeof(columns[0]));
+  }
+  {
     const ExpectedCreateTableKeyPart pk_columns[] = {{"id", "id"}};
     const ExpectedCreateTableKeyPart slug_columns[] = {{"slug", "slug"}};
     const ExpectedCreateTableKeyPart id_slug_columns[] = {{"id", "id"},
@@ -1184,10 +1328,88 @@ static int expect_create_table_columns(const char *sql,
                       columns[i].options) ||
         mylite_ast_create_table_column_type_family(ast, 0, i) !=
             columns[i].type_family ||
-        mylite_ast_create_table_column_flags(ast, 0, i) != columns[i].flags) {
+        mylite_ast_create_table_column_flags(ast, 0, i) != columns[i].flags ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_name_start(ast, 0, i),
+            mylite_ast_create_table_column_type_name_end(ast, 0, i),
+            columns[i].type_name) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_parameters_start(ast, 0, i),
+            mylite_ast_create_table_column_type_parameters_end(ast, 0, i),
+            columns[i].type_parameters) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_attributes_start(ast, 0, i),
+            mylite_ast_create_table_column_type_attributes_end(ast, 0, i),
+            columns[i].type_attributes) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_default_start(ast, 0, i),
+            mylite_ast_create_table_column_default_end(ast, 0, i),
+            columns[i].default_span) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_default_value_start(ast, 0, i),
+            mylite_ast_create_table_column_default_value_end(ast, 0, i),
+            columns[i].default_value) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_on_update_start(ast, 0, i),
+            mylite_ast_create_table_column_on_update_end(ast, 0, i),
+            columns[i].on_update) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_on_update_value_start(ast, 0, i),
+            mylite_ast_create_table_column_on_update_value_end(ast, 0, i),
+            columns[i].on_update_value) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_generated_start(ast, 0, i),
+            mylite_ast_create_table_column_generated_end(ast, 0, i),
+            columns[i].generated) ||
+        !span_matches_when_expected(
+            sql,
+            mylite_ast_create_table_column_generated_expression_start(ast, 0, i),
+            mylite_ast_create_table_column_generated_expression_end(ast, 0, i),
+            columns[i].generated_expression) ||
+        !span_matches_when_expected(
+            sql,
+            mylite_ast_create_table_column_generated_storage_start(ast, 0, i),
+            mylite_ast_create_table_column_generated_storage_end(ast, 0, i),
+            columns[i].generated_storage) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_comment_start(ast, 0, i),
+            mylite_ast_create_table_column_comment_end(ast, 0, i),
+            columns[i].comment) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_comment_value_start(ast, 0, i),
+            mylite_ast_create_table_column_comment_value_end(ast, 0, i),
+            columns[i].comment_value) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_check_start(ast, 0, i),
+            mylite_ast_create_table_column_check_end(ast, 0, i),
+            columns[i].check_span) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_check_expression_start(ast, 0, i),
+            mylite_ast_create_table_column_check_expression_end(ast, 0, i),
+            columns[i].check_expression) ||
+        (columns[i].check_enforcement !=
+             MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_UNSPECIFIED &&
+         mylite_ast_create_table_column_check_enforcement(ast, 0, i) !=
+             columns[i].check_enforcement) ||
+        !span_matches_when_expected(
+            sql,
+            mylite_ast_create_table_column_check_enforcement_start(ast, 0, i),
+            mylite_ast_create_table_column_check_enforcement_end(ast, 0, i),
+            columns[i].check_enforcement_span) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_reference_start(ast, 0, i),
+            mylite_ast_create_table_column_reference_end(ast, 0, i),
+            columns[i].reference)) {
       fprintf(stderr,
               "CREATE TABLE column[%zu] failed: %s\ndef=%zu..%zu name=%zu..%zu "
-              "type=%zu..%zu options=%zu..%zu family=%s flags=0x%x\n",
+              "type=%zu..%zu options=%zu..%zu family=%s flags=0x%x\n"
+              "type_name=%zu..%zu type_params=%zu..%zu type_attrs=%zu..%zu "
+              "default=%zu..%zu default_value=%zu..%zu on_update=%zu..%zu "
+              "on_update_value=%zu..%zu generated=%zu..%zu "
+              "generated_expr=%zu..%zu generated_storage=%zu..%zu "
+              "comment=%zu..%zu comment_value=%zu..%zu check=%zu..%zu "
+              "check_expr=%zu..%zu check_enforced=%s:%zu..%zu "
+              "reference=%zu..%zu\n",
               i, sql, mylite_ast_create_table_column_start(ast, 0, i),
               mylite_ast_create_table_column_end(ast, 0, i),
               mylite_ast_create_table_column_name_start(ast, 0, i),
@@ -1198,7 +1420,41 @@ static int expect_create_table_columns(const char *sql,
               mylite_ast_create_table_column_options_end(ast, 0, i),
               mylite_create_table_column_type_family_name(
                   mylite_ast_create_table_column_type_family(ast, 0, i)),
-              mylite_ast_create_table_column_flags(ast, 0, i));
+              mylite_ast_create_table_column_flags(ast, 0, i),
+              mylite_ast_create_table_column_type_name_start(ast, 0, i),
+              mylite_ast_create_table_column_type_name_end(ast, 0, i),
+              mylite_ast_create_table_column_type_parameters_start(ast, 0, i),
+              mylite_ast_create_table_column_type_parameters_end(ast, 0, i),
+              mylite_ast_create_table_column_type_attributes_start(ast, 0, i),
+              mylite_ast_create_table_column_type_attributes_end(ast, 0, i),
+              mylite_ast_create_table_column_default_start(ast, 0, i),
+              mylite_ast_create_table_column_default_end(ast, 0, i),
+              mylite_ast_create_table_column_default_value_start(ast, 0, i),
+              mylite_ast_create_table_column_default_value_end(ast, 0, i),
+              mylite_ast_create_table_column_on_update_start(ast, 0, i),
+              mylite_ast_create_table_column_on_update_end(ast, 0, i),
+              mylite_ast_create_table_column_on_update_value_start(ast, 0, i),
+              mylite_ast_create_table_column_on_update_value_end(ast, 0, i),
+              mylite_ast_create_table_column_generated_start(ast, 0, i),
+              mylite_ast_create_table_column_generated_end(ast, 0, i),
+              mylite_ast_create_table_column_generated_expression_start(ast, 0, i),
+              mylite_ast_create_table_column_generated_expression_end(ast, 0, i),
+              mylite_ast_create_table_column_generated_storage_start(ast, 0, i),
+              mylite_ast_create_table_column_generated_storage_end(ast, 0, i),
+              mylite_ast_create_table_column_comment_start(ast, 0, i),
+              mylite_ast_create_table_column_comment_end(ast, 0, i),
+              mylite_ast_create_table_column_comment_value_start(ast, 0, i),
+              mylite_ast_create_table_column_comment_value_end(ast, 0, i),
+              mylite_ast_create_table_column_check_start(ast, 0, i),
+              mylite_ast_create_table_column_check_end(ast, 0, i),
+              mylite_ast_create_table_column_check_expression_start(ast, 0, i),
+              mylite_ast_create_table_column_check_expression_end(ast, 0, i),
+              mylite_create_table_check_enforcement_name(
+                  mylite_ast_create_table_column_check_enforcement(ast, 0, i)),
+              mylite_ast_create_table_column_check_enforcement_start(ast, 0, i),
+              mylite_ast_create_table_column_check_enforcement_end(ast, 0, i),
+              mylite_ast_create_table_column_reference_start(ast, 0, i),
+              mylite_ast_create_table_column_reference_end(ast, 0, i));
       failed = 1;
     }
   }
@@ -1616,6 +1872,11 @@ static int span_matches(const char *sql, size_t start, size_t end,
   size_t expected_length = strlen(expected);
   return end >= start && end - start == expected_length &&
          strncmp(sql + start, expected, expected_length) == 0;
+}
+
+static int span_matches_when_expected(const char *sql, size_t start, size_t end,
+                                      const char *expected) {
+  return expected == NULL || span_matches(sql, start, end, expected);
 }
 
 static int expect_ast_statements(const char *sql, size_t count,

@@ -62,7 +62,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
 | `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. |  |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. |  |
-| `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. |  |
+| `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. | Task 35 column operations are specified for `ADD`, `DROP`, `RENAME COLUMN`, `CHANGE`, and `MODIFY`, including defaults, visibility, positioning, metadata rewrites, physical table rewrites, dependency checks, atomicity, affected rows, and first-slice boundaries. Implementation is pending. See [ALTER TABLE column operations spec](docs/specs/alter-table-column-operations/specs.md). |
 | `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. |  |
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. |  |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |
@@ -371,11 +371,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `ADD COLUMN` | ❌ | top | Positioning, FIRST/AFTER, multiple columns, generated/invisible/default handling. |  |
-| `DROP COLUMN` | ❌ | top | Dependency checks, generated columns, indexes, constraints, and errors. |  |
-| `RENAME COLUMN` | ❌ | top | Metadata rewrite and dependency updates. |  |
-| `CHANGE COLUMN` | ❌ | top | Rename plus type/attribute change semantics. |  |
-| `MODIFY COLUMN` | ❌ | top | Type/attribute change without rename. |  |
+| `ADD COLUMN` | ❌ | top | Positioning, FIRST/AFTER, multiple columns, generated/invisible/default handling. | Specified; implementation pending. The first executable slice should support ordinary column definitions over the existing executable type/attribute subset, default backfill, visibility checks, metadata rewrites, physical table rewrite, and statement atomicity, while deferring new inline key/constraint creation to Task 36. See [ALTER TABLE column operations spec](docs/specs/alter-table-column-operations/specs.md). |
+| `DROP COLUMN` | ❌ | top | Dependency checks, generated columns, indexes, constraints, and errors. | Specified; implementation pending. The target behavior includes dropping stored values, dense ordinal rewrites, index key-part cleanup, duplicate-index warnings after rewrites, auto-increment cleanup, and future dependency hooks for generated columns, constraints, triggers, and foreign keys. See [ALTER TABLE column operations spec](docs/specs/alter-table-column-operations/specs.md). |
+| `RENAME COLUMN` | ❌ | top | Metadata rewrite and dependency updates. | Specified; implementation pending. The target behavior preserves non-name column metadata and stored values while updating column and index metadata, with generated-column and foreign-key dependency behavior documented for future catalogs. See [ALTER TABLE column operations spec](docs/specs/alter-table-column-operations/specs.md). |
+| `CHANGE COLUMN` | ❌ | top | Rename plus type/attribute change semantics. | Specified; implementation pending. The target behavior treats the replacement definition as complete, performs value conversion and optional repositioning, updates index metadata, and rolls back atomically on validation or copy failure. See [ALTER TABLE column operations spec](docs/specs/alter-table-column-operations/specs.md). |
+| `MODIFY COLUMN` | ❌ | top | Type/attribute change without rename. | Specified; implementation pending. The target behavior treats the replacement definition as complete, supports optional repositioning, visibility changes, metadata/storage rewrites, and MySQL-compatible diagnostics for missing columns and invalid final definitions. See [ALTER TABLE column operations spec](docs/specs/alter-table-column-operations/specs.md). |
 | `ALTER COLUMN SET DEFAULT` | ❌ | top | Default mutation semantics. |  |
 | `ALTER COLUMN DROP DEFAULT` | ❌ | top | Default removal semantics. |  |
 | `ALTER COLUMN SET VISIBLE` / `SET INVISIBLE` | ❌ | medium | Column visibility changes and restrictions. |  |

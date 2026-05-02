@@ -112,6 +112,8 @@ level application surfaces.
        [standalone CREATE INDEX and DROP INDEX](../create-drop-index/specs.md).
 35. [ ] `ALTER TABLE` column operations: `ADD`, `DROP`, `RENAME`, `CHANGE`,
        `MODIFY`, defaults, positioning, validation, and metadata rewrite.
+       Started; spec:
+       [ALTER TABLE column operations](../alter-table-column-operations/specs.md).
 36. [ ] `ALTER TABLE` key and constraint operations: primary, unique, index,
        check, and foreign-key add/drop/rename/toggle behavior.
 37. [ ] `RENAME TABLE` and `ALTER TABLE ... RENAME TO`: atomic multi-table

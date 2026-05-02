@@ -152,6 +152,7 @@ static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_select_table_core_execution(void);
 static int test_inner_join_execution(void);
+static int test_outer_join_execution(void);
 static int test_select_where_execution(void);
 static int test_select_order_limit_offset_execution(void);
 static int test_result_metadata_expression_labels_execution(void);
@@ -263,6 +264,7 @@ int main(void)
     failures += test_insert_set_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
+    failures += test_outer_join_execution();
     failures += test_select_where_execution();
     failures += test_select_order_limit_offset_execution();
     failures += test_result_metadata_expression_labels_execution();
@@ -4172,6 +4174,262 @@ static int test_inner_join_execution(void)
     return failures;
 }
 
+static int test_outer_join_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const outer_columns[] = {"left_id", "right_id", "label"};
+    static const char *const left_join_values[] = {"1", "10", "right-a", "2", "20", "right-b",
+                                                   "2", "21", "right-c", "3", NULL, NULL};
+    static const char *const right_columns[] = {"left_id", "nullable", "right_id"};
+    static const char *const right_join_values[] = {"1",  NULL, "10", "2",  "5",  "20", "2", "5",
+                                                    "21", NULL, NULL, "40", NULL, NULL, "50"};
+    static const char *const id_pair_columns[] = {"left_id", "right_id"};
+    static const char *const left_on_filter_values[] = {"1", "10", "2", NULL, "3", NULL};
+    static const char *const left_where_filter_values[] = {"1", "10"};
+    static const char *const right_on_filter_values[] = {"1",  "10", NULL, "20", NULL,
+                                                         "21", NULL, "40", NULL, "50"};
+    static const char *const right_where_filter_values[] = {"1", "10"};
+    static const char *const using_columns[] = {"shared", "left_shared", "right_shared", "left_id",
+                                                "right_id"};
+    static const char *const left_using_values[] = {"100", "100", "100", "1", "10",
+                                                    "200", "200", "200", "2", "21",
+                                                    "300", "300", NULL,  "3", NULL};
+    static const char *const right_using_values[] = {
+        "100", "100", "100", "1",  "10",  "999", NULL, "999", NULL, "20", "200", "200", "200",
+        "2",   "21",  "400", NULL, "400", NULL,  "40", NULL,  NULL, NULL, NULL,  "50"};
+    static const char *const left_using_star_columns[] = {"shared", "id",      "label", "nullable",
+                                                          "id",     "left_id", "label", "flag"};
+    static const char *const right_using_star_columns[] = {"shared", "id", "left_id", "label",
+                                                           "flag",   "id", "label",   "nullable"};
+    static const char *const right_using_multi_star_columns[] = {
+        "id", "shared", "left_id", "label", "flag", "label", "nullable"};
+    static const char *const count_column[] = {"c"};
+    static const char *const duplicate_left_using_count[] = {"3"};
+    static const char *const left_outer_count[] = {"4"};
+    static const char *const right_outer_count[] = {"5"};
+    static const char *const warning_count[] = {"2"};
+    static const struct expected_result_metadata left_metadata[] = {
+        {"lid", "mylite_outer_join", "l", "mylite_outer_join", "left_t", "id", 11U,
+         MYLITE_FIELD_TYPE_LONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_PART_KEY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+        {"rid", "mylite_outer_join", "r", "mylite_outer_join", "right_t", "id", 11U,
+         MYLITE_FIELD_TYPE_LONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_PART_KEY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata right_metadata[] = {
+        {"lid", "mylite_outer_join", "l", "mylite_outer_join", "left_t", "id", 11U,
+         MYLITE_FIELD_TYPE_LONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_PART_KEY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"rid", "mylite_outer_join", "r", "mylite_outer_join", "right_t", "id", 11U,
+         MYLITE_FIELD_TYPE_LONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_PART_KEY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+    };
+    static const struct expected_result_metadata right_using_metadata[] = {
+        {"shared", "mylite_outer_join", "r", "mylite_outer_join", "right_t", "shared", 11U,
+         MYLITE_FIELD_TYPE_LONG, 0U, 63U, MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open outer database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_outer_join", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_outer_join", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE left_t ("
+                            "id INT PRIMARY KEY, shared INT, label VARCHAR(20) NOT NULL, "
+                            "nullable INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE right_t ("
+                            "id INT PRIMARY KEY, left_id INT, shared INT, "
+                            "label VARCHAR(20) NOT NULL, flag INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE warn_l (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE warn_r (s VARCHAR(10))", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO left_t VALUES "
+                            "(1,100,'left-one',NULL),"
+                            "(2,200,'left-two',5),"
+                            "(3,300,'left-three',NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO right_t VALUES "
+                            "(10,1,100,'right-a',NULL),"
+                            "(20,2,999,'right-b',5),"
+                            "(21,2,200,'right-c',NULL),"
+                            "(40,4,400,'right-orphan',5),"
+                            "(50,NULL,NULL,'right-null',NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO warn_l VALUES (1),(2)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO warn_r VALUES ('bad'),('2x')", MYLITE_DONE);
+
+    failures += expect_select_rows(database,
+                                   "SELECT l.id AS left_id, r.id AS right_id, r.label "
+                                   "FROM left_t AS l LEFT JOIN right_t AS r "
+                                   "ON l.id = r.left_id ORDER BY l.id, r.id",
+                                   outer_columns, 3, left_join_values, 4, "left join rows");
+    failures += expect_select_rows(database,
+                                   "SELECT l.id AS left_id, l.nullable, r.id AS right_id "
+                                   "FROM left_t AS l RIGHT JOIN right_t AS r "
+                                   "ON l.id = r.left_id ORDER BY r.id, l.id",
+                                   right_columns, 3, right_join_values, 5, "right join rows");
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(*) AS c FROM left_t LEFT OUTER JOIN right_t "
+                                   "ON left_t.id = right_t.left_id",
+                                   count_column, 1, left_outer_count, 1, "left outer count");
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(*) AS c FROM left_t RIGHT OUTER JOIN right_t "
+                                   "ON left_t.id = right_t.left_id",
+                                   count_column, 1, right_outer_count, 1, "right outer count");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT l.id AS left_id, r.id AS right_id "
+                           "FROM left_t AS l LEFT JOIN right_t AS r "
+                           "ON l.id = r.left_id AND r.id < 20 ORDER BY l.id, r.id",
+                           id_pair_columns, 2, left_on_filter_values, 3, "left join on filter");
+    failures += expect_select_rows(database,
+                                   "SELECT l.id AS left_id, r.id AS right_id "
+                                   "FROM left_t AS l LEFT JOIN right_t AS r "
+                                   "ON l.id = r.left_id WHERE r.id < 20 ORDER BY l.id, r.id",
+                                   id_pair_columns, 2, left_where_filter_values, 1,
+                                   "left join where filter");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT l.id AS left_id, r.id AS right_id "
+                           "FROM left_t AS l RIGHT JOIN right_t AS r "
+                           "ON l.id = r.left_id AND l.id < 2 ORDER BY r.id, l.id",
+                           id_pair_columns, 2, right_on_filter_values, 5, "right join on filter");
+    failures += expect_select_rows(database,
+                                   "SELECT l.id AS left_id, r.id AS right_id "
+                                   "FROM left_t AS l RIGHT JOIN right_t AS r "
+                                   "ON l.id = r.left_id WHERE l.id < 2 ORDER BY r.id, l.id",
+                                   id_pair_columns, 2, right_where_filter_values, 1,
+                                   "right join where filter");
+    failures += expect_select_rows(database,
+                                   "SELECT shared, l.shared AS left_shared, "
+                                   "r.shared AS right_shared, l.id AS left_id, r.id AS right_id "
+                                   "FROM left_t AS l LEFT JOIN right_t AS r USING (shared) "
+                                   "ORDER BY l.id, r.id",
+                                   using_columns, 5, left_using_values, 3, "left join using rows");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT shared, l.shared AS left_shared, "
+                           "r.shared AS right_shared, l.id AS left_id, r.id AS right_id "
+                           "FROM left_t AS l RIGHT JOIN right_t AS r USING (shared) "
+                           "ORDER BY r.id",
+                           using_columns, 5, right_using_values, 5, "right join using rows");
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(*) AS c FROM left_t LEFT JOIN right_t "
+                                   "USING (shared, shared)",
+                                   count_column, 1, duplicate_left_using_count, 1,
+                                   "left join duplicate using count");
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(*) AS c FROM left_t RIGHT JOIN right_t "
+                                   "USING (shared, shared)",
+                                   count_column, 1, right_outer_count, 1,
+                                   "right join duplicate using count");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT * FROM left_t LEFT JOIN right_t "
+                           "USING (shared) LIMIT 0",
+                           left_using_star_columns, 8, NULL, 0, "left join using wildcard columns");
+    failures += expect_select_rows(database,
+                                   "SELECT * FROM left_t RIGHT JOIN right_t "
+                                   "USING (shared) LIMIT 0",
+                                   right_using_star_columns, 8, NULL, 0,
+                                   "right join using wildcard columns");
+    failures += expect_select_rows(database,
+                                   "SELECT * FROM left_t RIGHT JOIN right_t "
+                                   "USING (shared, id) LIMIT 0",
+                                   right_using_multi_star_columns, 7, NULL, 0,
+                                   "right join multi using wildcard columns");
+    failures += expect_select_rows(
+        database, "SELECT COUNT(*) AS c FROM warn_l LEFT JOIN warn_r ON warn_r.s = 1", count_column,
+        1, warning_count, 1, "left join warning count rows");
+    failures += expect_int(mylite_warning_count(database), 2, "left join warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "left join warning code 0");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_truncated_wrong_value, "left join warning code 1");
+
+    failures += prepare_sql(database,
+                            "SELECT l.id AS lid, r.id AS rid "
+                            "FROM left_t AS l LEFT JOIN right_t AS r "
+                            "ON l.id = r.left_id LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, left_metadata, 2, "left join nullable metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "left join metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT l.id AS lid, r.id AS rid "
+                            "FROM left_t AS l RIGHT JOIN right_t AS r "
+                            "ON l.id = r.left_id LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, right_metadata, 2, "right join nullable metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "right join metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT shared FROM left_t AS l RIGHT JOIN right_t AS r "
+                            "USING (shared) LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, right_using_metadata, 1, "right join using metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "right join using metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT * FROM left_t LEFT JOIN right_t", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "left join missing condition parse error");
+    failures += expect_prepare_error(database,
+                                     "SELECT id FROM left_t LEFT JOIN right_t "
+                                     "ON left_t.id = right_t.left_id",
+                                     MYLITE_EXEC_ERROR, "Column 'id' in field list is ambiguous",
+                                     "left join ambiguous field");
+    failures += expect_prepare_error(database,
+                                     "SELECT l.id FROM left_t AS l LEFT JOIN right_t AS r "
+                                     "ON left_t.id = r.left_id",
+                                     MYLITE_EXEC_ERROR, "Unknown column 'left_t.id' in 'on clause'",
+                                     "left join alias hides base table in on");
+    failures += expect_prepare_error(database,
+                                     "SELECT * FROM left_t AS same LEFT JOIN right_t AS same "
+                                     "ON same.id = same.left_id",
+                                     MYLITE_EXEC_ERROR, "Not unique table/alias: 'same'",
+                                     "left join duplicate alias");
+    failures +=
+        expect_prepare_error(database,
+                             "SELECT * FROM left_t LEFT JOIN right_t "
+                             "USING (missing_col)",
+                             MYLITE_EXEC_ERROR, "Unknown column 'missing_col' in 'from clause'",
+                             "left join missing using column");
+    failures += expect_prepare_error(database,
+                                     "SELECT l.id FROM left_t AS l, right_t AS r "
+                                     "LEFT JOIN left_t AS p ON l.id = p.id",
+                                     MYLITE_EXEC_ERROR, "Unknown column 'l.id' in 'on clause'",
+                                     "left join comma precedence on scope");
+    failures +=
+        expect_prepare_error(database,
+                             "SELECT left_t.id, COUNT(*) "
+                             "FROM left_t LEFT JOIN right_t ON left_t.id = right_t.left_id "
+                             "GROUP BY left_t.id",
+                             MYLITE_EXEC_ERROR, "Unsupported GROUP BY or HAVING over joined tables",
+                             "left join grouped query deferred");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
 static int test_select_where_execution(void)
 {
     static const char *const id_column[] = {"id"};
@@ -5871,7 +6129,11 @@ static int expect_select_rows(mylite_db *database, const char *sql, const char *
         for (int column = 0; column < column_count; ++column) {
             const char *expected = values[(row * column_count) + column];
 
-            failures += expect_string(mylite_column_text(stmt, column), expected, context);
+            if (expected == NULL) {
+                failures += expect_null_text(mylite_column_text(stmt, column), context);
+            } else {
+                failures += expect_string(mylite_column_text(stmt, column), expected, context);
+            }
         }
     }
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, context);

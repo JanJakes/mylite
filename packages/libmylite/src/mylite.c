@@ -483,15 +483,24 @@ struct mylite_select_table_range {
     size_t table_count;
 };
 
+struct mylite_select_join_step {
+    enum mylite_sql_ast_join_type join_type;
+    struct mylite_select_table_range left_range;
+    struct mylite_select_table_range right_range;
+    struct mylite_select_table_range joined_range;
+};
+
 struct mylite_select_join_stack_entry {
     const struct mylite_sql_ast_node *right;
     const struct mylite_sql_ast_node *condition;
+    enum mylite_sql_ast_join_type join_type;
 };
 
 struct mylite_select_join_using_column {
     char *name;
     size_t left_column_index;
     size_t right_column_index;
+    size_t coalesced_column_index;
     size_t first_table;
     size_t table_count;
 };
@@ -503,6 +512,12 @@ struct mylite_select_join_using_request {
     size_t left_table_count;
     size_t right_first_table;
     size_t right_table_count;
+    enum mylite_sql_ast_join_type join_type;
+};
+
+struct mylite_select_column_sequence {
+    size_t *column_indexes;
+    size_t column_count;
 };
 
 enum mylite_select_output_kind {
@@ -574,6 +589,8 @@ struct mylite_select_plan {
     size_t column_count;
     struct mylite_select_table_range *from_ranges;
     size_t from_range_count;
+    struct mylite_select_join_step *join_steps;
+    size_t join_step_count;
     struct mylite_select_output_column *outputs;
     size_t output_count;
     struct mylite_select_order_key *order_keys;
@@ -647,14 +664,27 @@ struct mylite_table_select_row {
     struct mylite_expression_value *values;
     struct mylite_expression_value *order_values;
     struct mylite_expression_value *aggregate_values;
+    size_t *source_row_indexes;
     size_t value_count;
     size_t order_value_count;
     size_t aggregate_value_count;
+    size_t source_row_index_count;
 };
 
 struct mylite_table_select_table_rowset {
     struct mylite_table_select_row *rows;
     size_t row_count;
+};
+
+struct mylite_select_join_match_tracking {
+    bool left_matched;
+    bool *right_matched;
+};
+
+struct mylite_select_join_row_pair {
+    const struct mylite_table_select_row *left;
+    const struct mylite_table_select_row *right;
+    size_t right_index;
 };
 
 struct mylite_table_select_join_scan_frame {
@@ -1057,6 +1087,9 @@ static int prepare_table_select_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           const char *sql, size_t sql_length,
                                           mylite_stmt **out_stmt);
+static int prepare_table_select_sqlite_statement(mylite_db *database,
+                                                 const struct mylite_select_plan *plan,
+                                                 mylite_stmt **out_stmt);
 static bool select_plan_requires_custom_runtime(const struct mylite_select_plan *plan,
                                                 const struct mylite_sql_ast_node *where_clause,
                                                 const struct mylite_sql_ast_node *group_by_clause,
@@ -1246,7 +1279,8 @@ static int copy_select_join_expression(mylite_db *database, const struct mylite_
 static int add_select_join_stack_entry(mylite_db *database,
                                        struct mylite_select_join_stack_entry **entries,
                                        size_t *entry_count, const struct mylite_sql_ast_node *right,
-                                       const struct mylite_sql_ast_node *condition);
+                                       const struct mylite_sql_ast_node *condition,
+                                       enum mylite_sql_ast_join_type join_type);
 static int copy_select_join_right_operand(mylite_db *database,
                                           const struct mylite_select_join_stack_entry *entry,
                                           struct mylite_select_plan *plan,
@@ -1256,6 +1290,14 @@ static int apply_select_join_condition(mylite_db *database,
                                        struct mylite_select_plan *plan,
                                        struct mylite_select_table_range left_range,
                                        struct mylite_select_table_range right_range);
+static int add_select_join_step(mylite_db *database, struct mylite_select_plan *plan,
+                                enum mylite_sql_ast_join_type join_type,
+                                struct mylite_select_table_range left_range,
+                                struct mylite_select_table_range right_range,
+                                struct mylite_select_table_range joined_range);
+static void apply_select_outer_join_nullability(struct mylite_select_plan *plan);
+static void mark_select_range_nullable(struct mylite_select_plan *plan,
+                                       struct mylite_select_table_range range);
 static int add_select_plan_table(mylite_db *database, struct mylite_select_plan *plan,
                                  struct mylite_select_table *table, size_t *out_table_index);
 static int add_select_join_predicate(mylite_db *database, struct mylite_select_plan *plan,
@@ -1264,7 +1306,8 @@ static int add_select_join_predicate(mylite_db *database, struct mylite_select_p
 static int add_select_using_request(mylite_db *database, struct mylite_select_plan *plan,
                                     const struct mylite_sql_ast_node *condition,
                                     size_t left_first_table, size_t left_table_count,
-                                    size_t right_first_table, size_t right_table_count);
+                                    size_t right_first_table, size_t right_table_count,
+                                    enum mylite_sql_ast_join_type join_type);
 static int add_select_using_request_name(mylite_db *database,
                                          struct mylite_select_join_using_request *request,
                                          const struct mylite_sql_ast_node *column);
@@ -1292,8 +1335,8 @@ static int resolve_select_using_request_column(mylite_db *database,
 static int set_select_unknown_from_column_error(mylite_db *database, const char *name);
 static int add_select_using_column(mylite_db *database, struct mylite_select_plan *plan,
                                    const char *name, size_t left_column_index,
-                                   size_t right_column_index, size_t first_table,
-                                   size_t table_count);
+                                   size_t right_column_index, size_t coalesced_column_index,
+                                   size_t first_table, size_t table_count);
 static bool select_using_column_name_seen(const struct mylite_select_join_using_request *request,
                                           const char *name);
 static bool select_column_extra_is_visible(const char *extra);
@@ -1414,6 +1457,45 @@ static int append_select_all_wildcard_outputs(mylite_db *database, struct mylite
 static int append_select_range_wildcard_outputs(mylite_db *database,
                                                 struct mylite_select_plan *plan,
                                                 struct mylite_select_table_range range);
+static int build_select_range_column_sequence(mylite_db *database,
+                                              const struct mylite_select_plan *plan,
+                                              struct mylite_select_table_range range,
+                                              struct mylite_select_column_sequence *sequence);
+static int append_select_table_visible_columns_to_sequence(
+    mylite_db *database, const struct mylite_select_plan *plan, size_t table_index,
+    struct mylite_select_column_sequence *sequence);
+static int apply_select_join_step_to_column_sequence(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_select_join_step *step, struct mylite_select_column_sequence *sequence);
+static int
+append_select_using_columns_to_sequence(mylite_db *database, const struct mylite_select_plan *plan,
+                                        const struct mylite_select_join_step *step,
+                                        bool right_preserved,
+                                        const struct mylite_select_column_sequence *source,
+                                        struct mylite_select_column_sequence *out_sequence);
+static int append_select_right_using_columns_to_sequence(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_select_join_step *step, struct mylite_select_column_sequence *out_sequence);
+static int append_select_left_using_columns_to_sequence(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_select_join_step *step, const struct mylite_select_column_sequence *source,
+    struct mylite_select_column_sequence *out_sequence);
+static int append_select_non_using_columns_to_sequence(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_select_column_sequence *source, const struct mylite_select_join_step *step,
+    struct mylite_select_column_sequence *out_sequence);
+static int append_select_table_non_using_columns_to_sequence(
+    mylite_db *database, const struct mylite_select_plan *plan, size_t table_index,
+    const struct mylite_select_join_step *step, struct mylite_select_column_sequence *out_sequence);
+static int append_select_column_to_sequence(mylite_db *database,
+                                            struct mylite_select_column_sequence *sequence,
+                                            size_t column_index);
+static bool select_column_index_is_step_using_column(const struct mylite_select_plan *plan,
+                                                     const struct mylite_select_join_step *step,
+                                                     size_t column_index);
+static bool select_join_step_is_in_range(const struct mylite_select_join_step *step,
+                                         struct mylite_select_table_range range);
+static void select_column_sequence_deinit(struct mylite_select_column_sequence *sequence);
 static int append_select_table_wildcard_outputs(mylite_db *database,
                                                 struct mylite_select_plan *plan,
                                                 size_t table_index);
@@ -1494,10 +1576,6 @@ select_using_column_range_is_in_range(const struct mylite_select_join_using_colu
 static bool select_column_index_is_using_column_in_range(const struct mylite_select_plan *plan,
                                                          size_t column_index,
                                                          struct mylite_select_table_range range);
-static bool
-select_column_index_is_using_left_column_in_range(const struct mylite_select_plan *plan,
-                                                  size_t column_index,
-                                                  struct mylite_select_table_range range);
 static int resolve_select_order_reference(mylite_db *database,
                                           const struct mylite_select_plan *plan,
                                           const struct mylite_sql_ast_node *expression,
@@ -1823,6 +1901,8 @@ static int materialize_table_select_result(mylite_stmt *stmt);
 static int materialize_ordered_table_select_result(mylite_stmt *stmt);
 static int materialize_unordered_table_select_result(mylite_stmt *stmt);
 static int materialize_joined_table_select_result(mylite_stmt *stmt);
+static bool select_plan_has_outer_join(const struct mylite_select_plan *plan);
+static int materialize_outer_joined_table_select_result(mylite_stmt *stmt);
 static int load_table_select_join_rowsets(mylite_stmt *stmt,
                                           struct mylite_table_select_table_rowset *rowsets);
 static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
@@ -1835,6 +1915,81 @@ static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *sc
 static int scan_joined_table_select_rows(mylite_stmt *stmt,
                                          struct mylite_table_select_join_materialize_state *state,
                                          struct mylite_table_select_row *row);
+static int
+scan_outer_joined_table_select_rows(mylite_stmt *stmt,
+                                    struct mylite_table_select_join_materialize_state *state);
+static int materialize_select_from_range_rowset(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    struct mylite_select_table_range range, struct mylite_table_select_table_rowset *out_rowset);
+static int materialize_select_base_range_rowset(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    struct mylite_select_table_range range, struct mylite_table_select_table_rowset *out_rowset);
+static int apply_select_join_step_to_rowset(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_select_join_step *step, struct mylite_table_select_table_rowset *rowset);
+static int append_select_join_step_matches(mylite_stmt *stmt,
+                                           struct mylite_table_select_join_materialize_state *state,
+                                           const struct mylite_select_join_step *step,
+                                           const struct mylite_table_select_table_rowset *left,
+                                           bool *right_matched,
+                                           struct mylite_table_select_table_rowset *out_rowset);
+static int append_select_join_step_left_matches(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_select_join_step *step, const struct mylite_table_select_row *left_row,
+    const struct mylite_table_select_table_rowset *right,
+    struct mylite_select_join_match_tracking *tracking,
+    struct mylite_table_select_table_rowset *out_rowset);
+static int append_select_join_step_match(mylite_stmt *stmt,
+                                         struct mylite_table_select_join_materialize_state *state,
+                                         const struct mylite_select_join_step *step,
+                                         const struct mylite_select_join_row_pair *rows,
+                                         bool *out_matches,
+                                         struct mylite_table_select_table_rowset *out_rowset);
+static int
+append_select_null_extended_left_row(mylite_stmt *stmt,
+                                     const struct mylite_table_select_row *left_row,
+                                     struct mylite_table_select_table_rowset *out_rowset);
+static int append_select_null_extended_right_rows(
+    mylite_stmt *stmt, const struct mylite_select_join_step *step,
+    const struct mylite_table_select_table_rowset *right, const bool *right_matched,
+    struct mylite_table_select_table_rowset *out_rowset);
+static int
+append_select_null_extended_right_row(mylite_stmt *stmt, const struct mylite_select_join_step *step,
+                                      const struct mylite_table_select_row *right_row,
+                                      size_t right_row_index,
+                                      struct mylite_table_select_table_rowset *out_rowset);
+static int append_empty_joined_table_select_row(mylite_stmt *stmt,
+                                                struct mylite_table_select_table_rowset *rowset,
+                                                struct mylite_table_select_row **out_row);
+static int append_table_select_row_copy_to_rowset(mylite_stmt *stmt,
+                                                  struct mylite_table_select_table_rowset *rowset,
+                                                  const struct mylite_table_select_row *row);
+static int append_table_select_row_to_rowset(mylite_stmt *stmt,
+                                             struct mylite_table_select_table_rowset *rowset,
+                                             struct mylite_table_select_row *row);
+static int copy_select_base_table_row_values(mylite_db *database,
+                                             struct mylite_table_select_row *row,
+                                             const struct mylite_select_table *table,
+                                             size_t table_index,
+                                             const struct mylite_table_select_row *source,
+                                             size_t source_row_index);
+static int copy_select_row_range_values(struct mylite_table_select_row *target,
+                                        const struct mylite_table_select_row *source,
+                                        struct mylite_select_table_range range,
+                                        const struct mylite_select_plan *plan);
+static void table_select_table_rowset_deinit(struct mylite_table_select_table_rowset *rowset);
+static int process_outer_joined_table_range_rows(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_table_select_table_rowset *range_rowsets, size_t range_count);
+static int
+process_outer_joined_table_range_row(mylite_stmt *stmt,
+                                     struct mylite_table_select_join_materialize_state *state,
+                                     const struct mylite_table_select_table_rowset *range_rowsets,
+                                     const size_t *row_indexes, size_t range_count);
+static int evaluate_table_select_join_step_conditions(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_table_select_row *row, const struct mylite_select_join_step *step,
+    bool *out_matches);
 static int advance_joined_table_select_scan(
     mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
     struct mylite_table_select_join_scan_state *scan, bool *out_finished);
@@ -1886,14 +2041,26 @@ static int lookup_table_select_join_condition_cache(
     const struct mylite_table_select_join_condition_cache *cache,
     const struct mylite_table_select_join_scan_state *scan, struct mylite_select_table_range range,
     struct mylite_table_select_join_condition_cache_lookup *out_lookup);
+static int lookup_table_select_join_condition_cache_row(
+    const struct mylite_table_select_join_condition_cache *cache,
+    const struct mylite_table_select_row *row, struct mylite_select_table_range range,
+    struct mylite_table_select_join_condition_cache_lookup *out_lookup);
 static int
 store_table_select_join_condition_cache(mylite_stmt *stmt,
                                         struct mylite_table_select_join_condition_cache *cache,
                                         const struct mylite_table_select_join_scan_state *scan,
                                         struct mylite_select_table_range range, bool matches);
+static int
+store_table_select_join_condition_cache_row(mylite_stmt *stmt,
+                                            struct mylite_table_select_join_condition_cache *cache,
+                                            const struct mylite_table_select_row *row,
+                                            struct mylite_select_table_range range, bool matches);
 static bool table_select_join_cache_row_indexes_match(
     const struct mylite_table_select_join_condition_cache_entry *entry,
     const struct mylite_table_select_join_scan_state *scan);
+static bool table_select_join_cache_row_source_indexes_match(
+    const struct mylite_table_select_join_condition_cache_entry *entry,
+    const struct mylite_table_select_row *row);
 static int evaluate_table_select_using_stage_conditions(mylite_stmt *stmt,
                                                         const struct mylite_table_select_row *row,
                                                         size_t available_table_count,
@@ -3725,7 +3892,6 @@ static int prepare_table_select_statement(mylite_db *database,
     };
     bool custom_runtime = false;
     struct mylite_select_plan plan = {0};
-    char *sqlite_sql = NULL;
     int status = MYLITE_OK;
 
     if (from_clause == NULL || (from_clause->kind != MYLITE_SQL_AST_FROM_TABLE &&
@@ -3739,6 +3905,9 @@ static int prepare_table_select_statement(mylite_db *database,
     }
     if (status == MYLITE_OK) {
         status = load_select_plan_columns(database, &plan);
+    }
+    if (status == MYLITE_OK) {
+        apply_select_outer_join_nullability(&plan);
     }
     if (status == MYLITE_OK) {
         status = resolve_select_using_requests(database, &plan);
@@ -3765,25 +3934,34 @@ static int prepare_table_select_statement(mylite_db *database,
                                                        &plan, out_stmt);
     }
     if (status == MYLITE_OK && !custom_runtime) {
-        sqlite_sql = build_select_physical_sql(database, &plan);
-        if (sqlite_sql == NULL) {
-            (void)set_error_message(database, "out of memory");
-            status = MYLITE_NOMEM;
-        }
+        status = prepare_table_select_sqlite_statement(database, &plan, out_stmt);
     }
-    if (status == MYLITE_OK && !custom_runtime) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+
+    select_plan_deinit(&plan);
+    return status;
+}
+
+static int prepare_table_select_sqlite_statement(mylite_db *database,
+                                                 const struct mylite_select_plan *plan,
+                                                 mylite_stmt **out_stmt)
+{
+    char *sqlite_sql = build_select_physical_sql(database, plan);
+    int status = MYLITE_OK;
+
+    if (sqlite_sql == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
     }
-    if (status == MYLITE_OK && !custom_runtime) {
-        status = attach_select_result_metadata(*out_stmt, &plan);
+
+    status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+    if (status == MYLITE_OK) {
+        status = attach_select_result_metadata(*out_stmt, plan);
         if (status != MYLITE_OK) {
             mylite_finalize(*out_stmt);
             *out_stmt = NULL;
         }
     }
-
     sqlite3_free(sqlite_sql);
-    select_plan_deinit(&plan);
     return status;
 }
 
@@ -5921,8 +6099,9 @@ static int copy_select_join_expression(mylite_db *database, const struct mylite_
     int status = MYLITE_OK;
 
     while (leftmost != NULL && leftmost->kind == MYLITE_SQL_AST_JOIN_EXPRESSION) {
-        status = add_select_join_stack_entry(database, &entries, &entry_count,
-                                             child_at(leftmost, 1U), child_at(leftmost, 2U));
+        status =
+            add_select_join_stack_entry(database, &entries, &entry_count, child_at(leftmost, 1U),
+                                        child_at(leftmost, 2U), leftmost->join_type);
         if (status != MYLITE_OK) {
             free(entries);
             return status;
@@ -5942,7 +6121,8 @@ static int copy_select_join_expression(mylite_db *database, const struct mylite_
 static int add_select_join_stack_entry(mylite_db *database,
                                        struct mylite_select_join_stack_entry **entries,
                                        size_t *entry_count, const struct mylite_sql_ast_node *right,
-                                       const struct mylite_sql_ast_node *condition)
+                                       const struct mylite_sql_ast_node *condition,
+                                       enum mylite_sql_ast_join_type join_type)
 {
     struct mylite_select_join_stack_entry *new_entries = NULL;
 
@@ -5958,6 +6138,7 @@ static int add_select_join_stack_entry(mylite_db *database,
     (*entries)[(*entry_count)++] = (struct mylite_select_join_stack_entry){
         .right = right,
         .condition = condition,
+        .join_type = join_type,
     };
     return MYLITE_OK;
 }
@@ -5968,6 +6149,7 @@ static int copy_select_join_right_operand(mylite_db *database,
                                           struct mylite_select_table_range *left_range)
 {
     struct mylite_select_table_range right_range = {0};
+    struct mylite_select_table_range joined_range = {0};
     int status = copy_select_base_table_reference_node(database, entry->right, plan, &right_range);
 
     if (status != MYLITE_OK) {
@@ -5975,7 +6157,15 @@ static int copy_select_join_right_operand(mylite_db *database,
     }
     status = apply_select_join_condition(database, entry, plan, *left_range, right_range);
     if (status == MYLITE_OK) {
-        left_range->table_count += right_range.table_count;
+        joined_range = (struct mylite_select_table_range){
+            .first_table = left_range->first_table,
+            .table_count = left_range->table_count + right_range.table_count,
+        };
+        status = add_select_join_step(database, plan, entry->join_type, *left_range, right_range,
+                                      joined_range);
+    }
+    if (status == MYLITE_OK) {
+        *left_range = joined_range;
     }
     return status;
 }
@@ -5999,9 +6189,62 @@ static int apply_select_join_condition(mylite_db *database,
     if (condition->join_condition_type == MYLITE_SQL_AST_JOIN_CONDITION_USING) {
         return add_select_using_request(database, plan, condition, left_range.first_table,
                                         left_range.table_count, right_range.first_table,
-                                        right_range.table_count);
+                                        right_range.table_count, entry->join_type);
     }
     return MYLITE_UNSUPPORTED;
+}
+
+static int add_select_join_step(mylite_db *database, struct mylite_select_plan *plan,
+                                enum mylite_sql_ast_join_type join_type,
+                                struct mylite_select_table_range left_range,
+                                struct mylite_select_table_range right_range,
+                                struct mylite_select_table_range joined_range)
+{
+    struct mylite_select_join_step *steps =
+        realloc(plan->join_steps, (plan->join_step_count + 1U) * sizeof(*plan->join_steps));
+
+    if (steps == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    plan->join_steps = steps;
+    plan->join_steps[plan->join_step_count++] = (struct mylite_select_join_step){
+        .join_type = join_type,
+        .left_range = left_range,
+        .right_range = right_range,
+        .joined_range = joined_range,
+    };
+    return MYLITE_OK;
+}
+
+static void apply_select_outer_join_nullability(struct mylite_select_plan *plan)
+{
+    for (size_t index = 0U; index < plan->join_step_count; ++index) {
+        const struct mylite_select_join_step *step = &plan->join_steps[index];
+
+        if (step->join_type == MYLITE_SQL_AST_JOIN_LEFT) {
+            mark_select_range_nullable(plan, step->right_range);
+        } else if (step->join_type == MYLITE_SQL_AST_JOIN_RIGHT) {
+            mark_select_range_nullable(plan, step->left_range);
+        }
+    }
+}
+
+static void mark_select_range_nullable(struct mylite_select_plan *plan,
+                                       struct mylite_select_table_range range)
+{
+    size_t last_table = range.first_table + range.table_count;
+
+    for (size_t table_index = range.first_table; table_index < last_table; ++table_index) {
+        struct mylite_select_table *table = select_plan_table(plan, table_index);
+
+        if (table == NULL) {
+            continue;
+        }
+        for (size_t column_index = 0U; column_index < table->column_count; ++column_index) {
+            field_descriptor_set_nullable(&table->columns[column_index].descriptor, true);
+        }
+    }
 }
 
 static int add_select_plan_table(mylite_db *database, struct mylite_select_plan *plan,
@@ -6048,7 +6291,8 @@ static int add_select_join_predicate(mylite_db *database, struct mylite_select_p
 static int add_select_using_request(mylite_db *database, struct mylite_select_plan *plan,
                                     const struct mylite_sql_ast_node *condition,
                                     size_t left_first_table, size_t left_table_count,
-                                    size_t right_first_table, size_t right_table_count)
+                                    size_t right_first_table, size_t right_table_count,
+                                    enum mylite_sql_ast_join_type join_type)
 {
     const struct mylite_sql_ast_node *columns = child_at(condition, 0U);
     struct mylite_select_join_using_request request = {
@@ -6056,6 +6300,7 @@ static int add_select_using_request(mylite_db *database, struct mylite_select_pl
         .left_table_count = left_table_count,
         .right_first_table = right_first_table,
         .right_table_count = right_table_count,
+        .join_type = join_type,
     };
     struct mylite_select_join_using_request *requests = NULL;
 
@@ -6359,6 +6604,7 @@ static int resolve_select_using_request_name(mylite_db *database, struct mylite_
     };
     size_t left_column = select_plan_column_count(plan);
     size_t right_column = select_plan_column_count(plan);
+    size_t coalesced_column = 0U;
     int status =
         resolve_select_using_request_column(database, plan, name, left_range, &left_column);
 
@@ -6369,8 +6615,9 @@ static int resolve_select_using_request_name(mylite_db *database, struct mylite_
     if (status != MYLITE_OK) {
         return status;
     }
+    coalesced_column = request->join_type == MYLITE_SQL_AST_JOIN_RIGHT ? right_column : left_column;
     return add_select_using_column(database, plan, name, left_column, right_column,
-                                   request->left_first_table,
+                                   coalesced_column, request->left_first_table,
                                    request->left_table_count + request->right_table_count);
 }
 
@@ -6417,8 +6664,8 @@ static int set_select_unknown_from_column_error(mylite_db *database, const char 
 
 static int add_select_using_column(mylite_db *database, struct mylite_select_plan *plan,
                                    const char *name, size_t left_column_index,
-                                   size_t right_column_index, size_t first_table,
-                                   size_t table_count)
+                                   size_t right_column_index, size_t coalesced_column_index,
+                                   size_t first_table, size_t table_count)
 {
     struct mylite_select_join_using_column *columns = NULL;
     char *name_copy = copy_span_text(name, strlen(name));
@@ -6439,6 +6686,7 @@ static int add_select_using_column(mylite_db *database, struct mylite_select_pla
         .name = name_copy,
         .left_column_index = left_column_index,
         .right_column_index = right_column_index,
+        .coalesced_column_index = coalesced_column_index,
         .first_table = first_table,
         .table_count = table_count,
     };
@@ -7926,44 +8174,273 @@ static int append_select_range_wildcard_outputs(mylite_db *database,
                                                 struct mylite_select_plan *plan,
                                                 struct mylite_select_table_range range)
 {
-    size_t last_table = range.first_table + range.table_count;
+    struct mylite_select_column_sequence sequence = {0};
+    int status = build_select_range_column_sequence(database, plan, range, &sequence);
 
-    for (size_t table_index = range.first_table; table_index < last_table; ++table_index) {
-        const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
+    for (size_t index = 0U; status == MYLITE_OK && index < sequence.column_count; ++index) {
+        status = append_select_plan_column_output(database, plan, sequence.column_indexes[index]);
+    }
 
-        if (table == NULL) {
-            return MYLITE_UNSUPPORTED;
+    select_column_sequence_deinit(&sequence);
+    return status;
+}
+
+static int build_select_range_column_sequence(mylite_db *database,
+                                              const struct mylite_select_plan *plan,
+                                              struct mylite_select_table_range range,
+                                              struct mylite_select_column_sequence *sequence)
+{
+    if (range.table_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    int status = append_select_table_visible_columns_to_sequence(database, plan, range.first_table,
+                                                                 sequence);
+
+    for (size_t index = 0U; status == MYLITE_OK && index < plan->join_step_count; ++index) {
+        if (!select_join_step_is_in_range(&plan->join_steps[index], range)) {
+            continue;
         }
+        status = apply_select_join_step_to_column_sequence(database, plan, &plan->join_steps[index],
+                                                           sequence);
+    }
+    return status;
+}
 
-        for (size_t index = 0U; index < table->column_count; ++index) {
-            const size_t column_index = table->first_column_index + index;
-            int status = MYLITE_OK;
+static int append_select_table_visible_columns_to_sequence(
+    mylite_db *database, const struct mylite_select_plan *plan, size_t table_index,
+    struct mylite_select_column_sequence *sequence)
+{
+    const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
 
-            if (!table->columns[index].visible ||
-                !select_column_index_is_using_left_column_in_range(plan, column_index, range)) {
-                continue;
-            }
-            status = append_select_plan_column_output(database, plan, column_index);
-            if (status != MYLITE_OK) {
-                return status;
-            }
+    if (table == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        if (!table->columns[index].visible) {
+            continue;
         }
+        int status =
+            append_select_column_to_sequence(database, sequence, table->first_column_index + index);
 
-        for (size_t index = 0U; index < table->column_count; ++index) {
-            const size_t column_index = table->first_column_index + index;
-            int status = MYLITE_OK;
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
 
-            if (!table->columns[index].visible ||
-                select_column_index_is_using_column_in_range(plan, column_index, range)) {
-                continue;
-            }
-            status = append_select_plan_column_output(database, plan, column_index);
-            if (status != MYLITE_OK) {
-                return status;
+static int apply_select_join_step_to_column_sequence(mylite_db *database,
+                                                     const struct mylite_select_plan *plan,
+                                                     const struct mylite_select_join_step *step,
+                                                     struct mylite_select_column_sequence *sequence)
+{
+    bool has_using_columns = false;
+    bool right_preserved = step->join_type == MYLITE_SQL_AST_JOIN_RIGHT;
+    struct mylite_select_column_sequence next = {0};
+    int status = MYLITE_OK;
+
+    for (size_t index = 0U; index < plan->using_column_count; ++index) {
+        if (plan->using_columns[index].first_table == step->joined_range.first_table &&
+            plan->using_columns[index].table_count == step->joined_range.table_count) {
+            has_using_columns = true;
+            break;
+        }
+    }
+    if (!has_using_columns) {
+        return append_select_table_visible_columns_to_sequence(
+            database, plan, step->right_range.first_table, sequence);
+    }
+
+    status = append_select_using_columns_to_sequence(database, plan, step, right_preserved,
+                                                     sequence, &next);
+    if (status == MYLITE_OK && right_preserved) {
+        status = append_select_table_non_using_columns_to_sequence(
+            database, plan, step->right_range.first_table, step, &next);
+    }
+    if (status == MYLITE_OK) {
+        status = append_select_non_using_columns_to_sequence(database, plan, sequence, step, &next);
+    }
+    if (status == MYLITE_OK && !right_preserved) {
+        status = append_select_table_non_using_columns_to_sequence(
+            database, plan, step->right_range.first_table, step, &next);
+    }
+    if (status != MYLITE_OK) {
+        select_column_sequence_deinit(&next);
+        return status;
+    }
+
+    select_column_sequence_deinit(sequence);
+    *sequence = next;
+    return MYLITE_OK;
+}
+
+static int
+append_select_using_columns_to_sequence(mylite_db *database, const struct mylite_select_plan *plan,
+                                        const struct mylite_select_join_step *step,
+                                        bool right_preserved,
+                                        const struct mylite_select_column_sequence *source,
+                                        struct mylite_select_column_sequence *out_sequence)
+{
+    if (right_preserved) {
+        return append_select_right_using_columns_to_sequence(database, plan, step, out_sequence);
+    }
+    return append_select_left_using_columns_to_sequence(database, plan, step, source, out_sequence);
+}
+
+static int append_select_right_using_columns_to_sequence(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_select_join_step *step, struct mylite_select_column_sequence *out_sequence)
+{
+    const struct mylite_select_table *table =
+        select_plan_table_const(plan, step->right_range.first_table);
+
+    if (table == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    for (size_t table_column = 0U; table_column < table->column_count; ++table_column) {
+        size_t column_index = table->first_column_index + table_column;
+
+        for (size_t using_index = 0U; using_index < plan->using_column_count; ++using_index) {
+            const struct mylite_select_join_using_column *using_column =
+                &plan->using_columns[using_index];
+
+            if (using_column->first_table == step->joined_range.first_table &&
+                using_column->table_count == step->joined_range.table_count &&
+                using_column->right_column_index == column_index) {
+                int status = append_select_column_to_sequence(database, out_sequence,
+                                                              using_column->coalesced_column_index);
+
+                if (status != MYLITE_OK) {
+                    return status;
+                }
             }
         }
     }
     return MYLITE_OK;
+}
+
+static int append_select_left_using_columns_to_sequence(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_select_join_step *step, const struct mylite_select_column_sequence *source,
+    struct mylite_select_column_sequence *out_sequence)
+{
+    for (size_t source_index = 0U; source_index < source->column_count; ++source_index) {
+        size_t column_index = source->column_indexes[source_index];
+
+        for (size_t using_index = 0U; using_index < plan->using_column_count; ++using_index) {
+            const struct mylite_select_join_using_column *using_column =
+                &plan->using_columns[using_index];
+
+            if (using_column->first_table == step->joined_range.first_table &&
+                using_column->table_count == step->joined_range.table_count &&
+                using_column->coalesced_column_index == column_index) {
+                int status = append_select_column_to_sequence(database, out_sequence, column_index);
+
+                if (status != MYLITE_OK) {
+                    return status;
+                }
+            }
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int append_select_non_using_columns_to_sequence(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_select_column_sequence *source, const struct mylite_select_join_step *step,
+    struct mylite_select_column_sequence *out_sequence)
+{
+    for (size_t index = 0U; index < source->column_count; ++index) {
+        size_t column_index = source->column_indexes[index];
+
+        if (select_column_index_is_step_using_column(plan, step, column_index)) {
+            continue;
+        }
+        int status = append_select_column_to_sequence(database, out_sequence, column_index);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int append_select_table_non_using_columns_to_sequence(
+    mylite_db *database, const struct mylite_select_plan *plan, size_t table_index,
+    const struct mylite_select_join_step *step, struct mylite_select_column_sequence *out_sequence)
+{
+    const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
+
+    if (table == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        size_t column_index = table->first_column_index + index;
+
+        if (!table->columns[index].visible ||
+            select_column_index_is_step_using_column(plan, step, column_index)) {
+            continue;
+        }
+        int status = append_select_column_to_sequence(database, out_sequence, column_index);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int append_select_column_to_sequence(mylite_db *database,
+                                            struct mylite_select_column_sequence *sequence,
+                                            size_t column_index)
+{
+    size_t *columns =
+        realloc(sequence->column_indexes, (sequence->column_count + 1U) * sizeof(*columns));
+
+    if (columns == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    sequence->column_indexes = columns;
+    sequence->column_indexes[sequence->column_count++] = column_index;
+    return MYLITE_OK;
+}
+
+static bool select_column_index_is_step_using_column(const struct mylite_select_plan *plan,
+                                                     const struct mylite_select_join_step *step,
+                                                     size_t column_index)
+{
+    for (size_t index = 0U; index < plan->using_column_count; ++index) {
+        const struct mylite_select_join_using_column *column = &plan->using_columns[index];
+
+        if (column->first_table == step->joined_range.first_table &&
+            column->table_count == step->joined_range.table_count &&
+            (column->left_column_index == column_index ||
+             column->right_column_index == column_index ||
+             column->coalesced_column_index == column_index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool select_join_step_is_in_range(const struct mylite_select_join_step *step,
+                                         struct mylite_select_table_range range)
+{
+    size_t range_end = range.first_table + range.table_count;
+    size_t step_end = step->joined_range.first_table + step->joined_range.table_count;
+
+    return (step->joined_range.first_table >= range.first_table && step_end <= range_end) != 0;
+}
+
+static void select_column_sequence_deinit(struct mylite_select_column_sequence *sequence)
+{
+    if (sequence == NULL) {
+        return;
+    }
+    free(sequence->column_indexes);
+    *sequence = (struct mylite_select_column_sequence){0};
 }
 
 static int append_select_table_wildcard_outputs(mylite_db *database,
@@ -8465,7 +8942,7 @@ static size_t count_select_plan_column_parts_using_matches(const struct mylite_s
             !select_using_column_range_is_in_range(&plan->using_columns[index], range)) {
             continue;
         }
-        *match_index = plan->using_columns[index].left_column_index;
+        *match_index = plan->using_columns[index].coalesced_column_index;
         ++match_count;
     }
     return match_count;
@@ -8609,22 +9086,6 @@ static bool select_column_index_is_using_column_in_range(const struct mylite_sel
         if (select_using_column_range_is_in_range(column, range) &&
             (column->left_column_index == column_index ||
              column->right_column_index == column_index)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool
-select_column_index_is_using_left_column_in_range(const struct mylite_select_plan *plan,
-                                                  size_t column_index,
-                                                  struct mylite_select_table_range range)
-{
-    for (size_t index = 0U; index < plan->using_column_count; ++index) {
-        const struct mylite_select_join_using_column *column = &plan->using_columns[index];
-
-        if (select_using_column_range_is_in_range(column, range) &&
-            column->left_column_index == column_index) {
             return true;
         }
     }
@@ -13260,6 +13721,10 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
                             stmt->select_plan.has_having) != 0;
     int status = MYLITE_OK;
 
+    if (select_plan_has_outer_join(&stmt->select_plan)) {
+        return materialize_outer_joined_table_select_result(stmt);
+    }
+
     if (!aggregate_query && stmt->select_plan.order_key_count == 0U &&
         stmt->select_plan.limit.has_limit && stmt->select_plan.limit.row_count == 0U) {
         return MYLITE_OK;
@@ -13271,6 +13736,9 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
     }
     if (stmt->select_constant_predicate_evaluated && !stmt->select_constant_predicate_matches) {
         return MYLITE_OK;
+    }
+    if (table_count == 0U) {
+        return MYLITE_UNSUPPORTED;
     }
 
     state.rowsets = calloc(table_count, sizeof(*state.rowsets));
@@ -13313,6 +13781,76 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
     }
     free(state.groups);
     table_select_row_deinit(&row);
+    table_select_join_condition_cache_deinit(&state.condition_cache);
+    table_select_table_rowsets_deinit(state.rowsets, table_count);
+    return status;
+}
+
+static bool select_plan_has_outer_join(const struct mylite_select_plan *plan)
+{
+    for (size_t index = 0U; index < plan->join_step_count; ++index) {
+        enum mylite_sql_ast_join_type join_type = plan->join_steps[index].join_type;
+
+        if (join_type == MYLITE_SQL_AST_JOIN_LEFT || join_type == MYLITE_SQL_AST_JOIN_RIGHT) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
+{
+    size_t table_count = select_plan_table_count(&stmt->select_plan);
+    struct mylite_table_select_join_materialize_state state = {0};
+    bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
+                            stmt->select_plan.has_having) != 0;
+    int status = MYLITE_OK;
+
+    if (!aggregate_query && stmt->select_plan.order_key_count == 0U &&
+        stmt->select_plan.limit.has_limit && stmt->select_plan.limit.row_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    status = evaluate_table_select_constant_predicate(stmt);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (stmt->select_constant_predicate_evaluated && !stmt->select_constant_predicate_matches) {
+        return MYLITE_OK;
+    }
+    if (table_count == 0U) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    state.rowsets = calloc(table_count, sizeof(*state.rowsets));
+    if (state.rowsets == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = load_table_select_join_rowsets(stmt, state.rowsets);
+    if (status == MYLITE_OK) {
+        status = scan_outer_joined_table_select_rows(stmt, &state);
+    }
+
+    if (status == MYLITE_OK && aggregate_query && state.group_count == 0U &&
+        !stmt->select_plan.has_group_by) {
+        status = append_empty_implicit_table_select_group(stmt, &state.groups, &state.group_count);
+    }
+    if (status == MYLITE_OK && aggregate_query) {
+        status = append_finalized_table_select_groups(stmt, state.groups, state.group_count);
+    }
+    if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
+        status = sort_table_select_result_rows(stmt);
+    }
+    if (status == MYLITE_OK && (aggregate_query || stmt->select_plan.order_key_count != 0U)) {
+        status = apply_table_select_limit(stmt);
+    }
+
+    for (size_t index = 0U; index < state.group_count; ++index) {
+        table_select_group_deinit(&state.groups[index]);
+    }
+    free(state.groups);
     table_select_join_condition_cache_deinit(&state.condition_cache);
     table_select_table_rowsets_deinit(state.rowsets, table_count);
     return status;
@@ -13462,6 +14000,540 @@ static int scan_joined_table_select_rows(mylite_stmt *stmt,
 
     clear_joined_table_select_scan_copies(stmt, &scan);
     free(scan.frames);
+    return status;
+}
+
+static int
+scan_outer_joined_table_select_rows(mylite_stmt *stmt,
+                                    struct mylite_table_select_join_materialize_state *state)
+{
+    size_t range_count = stmt->select_plan.from_range_count;
+    struct mylite_table_select_table_rowset *range_rowsets = NULL;
+    int status = MYLITE_OK;
+
+    if (range_count == 0U) {
+        return MYLITE_UNSUPPORTED;
+    }
+    range_rowsets = calloc(range_count, sizeof(*range_rowsets));
+    if (range_rowsets == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t range_index = 0U; status == MYLITE_OK && range_index < range_count; ++range_index) {
+        struct mylite_select_table_range range = stmt->select_plan.from_ranges[range_index];
+
+        status =
+            materialize_select_from_range_rowset(stmt, state, range, &range_rowsets[range_index]);
+    }
+    if (status == MYLITE_OK) {
+        status = process_outer_joined_table_range_rows(stmt, state, range_rowsets, range_count);
+    }
+
+    for (size_t index = 0U; index < range_count; ++index) {
+        table_select_table_rowset_deinit(&range_rowsets[index]);
+    }
+    free(range_rowsets);
+    return status;
+}
+
+static int materialize_select_from_range_rowset(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    struct mylite_select_table_range range, struct mylite_table_select_table_rowset *out_rowset)
+{
+    int status = materialize_select_base_range_rowset(stmt, state, range, out_rowset);
+
+    for (size_t index = 0U; status == MYLITE_OK && index < stmt->select_plan.join_step_count;
+         ++index) {
+        const struct mylite_select_join_step *step = &stmt->select_plan.join_steps[index];
+
+        if (!select_join_step_is_in_range(step, range)) {
+            continue;
+        }
+        status = apply_select_join_step_to_rowset(stmt, state, step, out_rowset);
+    }
+    return status;
+}
+
+static int materialize_select_base_range_rowset(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    struct mylite_select_table_range range, struct mylite_table_select_table_rowset *out_rowset)
+{
+    const struct mylite_select_table *table =
+        select_plan_table_const(&stmt->select_plan, range.first_table);
+
+    if (table == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    for (size_t row_index = 0U; row_index < state->rowsets[range.first_table].row_count;
+         ++row_index) {
+        struct mylite_table_select_row *row = NULL;
+        int status = append_empty_joined_table_select_row(stmt, out_rowset, &row);
+
+        if (status == MYLITE_OK) {
+            status = copy_select_base_table_row_values(
+                stmt->database, row, table, range.first_table,
+                &state->rowsets[range.first_table].rows[row_index], row_index);
+        }
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int apply_select_join_step_to_rowset(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_select_join_step *step, struct mylite_table_select_table_rowset *rowset)
+{
+    const struct mylite_table_select_table_rowset *right =
+        &state->rowsets[step->right_range.first_table];
+    struct mylite_table_select_table_rowset next = {0};
+    bool *right_matched = NULL;
+    int status = MYLITE_OK;
+
+    if (step->join_type == MYLITE_SQL_AST_JOIN_RIGHT && right->row_count != 0U) {
+        right_matched = calloc(right->row_count, sizeof(*right_matched));
+        if (right_matched == NULL) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+
+    status = append_select_join_step_matches(stmt, state, step, rowset, right_matched, &next);
+    if (status == MYLITE_OK && step->join_type == MYLITE_SQL_AST_JOIN_RIGHT) {
+        status = append_select_null_extended_right_rows(stmt, step, right, right_matched, &next);
+    }
+
+    free(right_matched);
+    if (status != MYLITE_OK) {
+        table_select_table_rowset_deinit(&next);
+        return status;
+    }
+    table_select_table_rowset_deinit(rowset);
+    *rowset = next;
+    return MYLITE_OK;
+}
+
+static int append_select_join_step_matches(mylite_stmt *stmt,
+                                           struct mylite_table_select_join_materialize_state *state,
+                                           const struct mylite_select_join_step *step,
+                                           const struct mylite_table_select_table_rowset *left,
+                                           bool *right_matched,
+                                           struct mylite_table_select_table_rowset *out_rowset)
+{
+    const struct mylite_table_select_table_rowset *right =
+        &state->rowsets[step->right_range.first_table];
+
+    for (size_t left_index = 0U; left_index < left->row_count; ++left_index) {
+        struct mylite_select_join_match_tracking tracking = {
+            .left_matched = false,
+            .right_matched = right_matched,
+        };
+        int status = append_select_join_step_left_matches(
+            stmt, state, step, &left->rows[left_index], right, &tracking, out_rowset);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (!tracking.left_matched && step->join_type == MYLITE_SQL_AST_JOIN_LEFT) {
+            status =
+                append_select_null_extended_left_row(stmt, &left->rows[left_index], out_rowset);
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int append_select_join_step_left_matches(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_select_join_step *step, const struct mylite_table_select_row *left_row,
+    const struct mylite_table_select_table_rowset *right,
+    struct mylite_select_join_match_tracking *tracking,
+    struct mylite_table_select_table_rowset *out_rowset)
+{
+    tracking->left_matched = false;
+    for (size_t right_index = 0U; right_index < right->row_count; ++right_index) {
+        struct mylite_select_join_row_pair rows = {
+            .left = left_row,
+            .right = &right->rows[right_index],
+            .right_index = right_index,
+        };
+        bool matches = false;
+        int status = append_select_join_step_match(stmt, state, step, &rows, &matches, out_rowset);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (matches) {
+            tracking->left_matched = true;
+            if (tracking->right_matched != NULL) {
+                tracking->right_matched[right_index] = true;
+            }
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int append_select_join_step_match(mylite_stmt *stmt,
+                                         struct mylite_table_select_join_materialize_state *state,
+                                         const struct mylite_select_join_step *step,
+                                         const struct mylite_select_join_row_pair *rows,
+                                         bool *out_matches,
+                                         struct mylite_table_select_table_rowset *out_rowset)
+{
+    const struct mylite_select_table *right_table =
+        select_plan_table_const(&stmt->select_plan, step->right_range.first_table);
+    struct mylite_table_select_row candidate = {0};
+    int status = table_select_row_copy(rows->left, &candidate);
+
+    *out_matches = false;
+    if (status == MYLITE_NOMEM) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    if (right_table == NULL) {
+        table_select_row_deinit(&candidate);
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = copy_select_base_table_row_values(stmt->database, &candidate, right_table,
+                                               step->right_range.first_table, rows->right,
+                                               rows->right_index);
+    if (status == MYLITE_OK) {
+        status =
+            evaluate_table_select_join_step_conditions(stmt, state, &candidate, step, out_matches);
+    }
+    if (status == MYLITE_OK && *out_matches) {
+        status = append_table_select_row_to_rowset(stmt, out_rowset, &candidate);
+    }
+    table_select_row_deinit(&candidate);
+    return status;
+}
+
+static int append_select_null_extended_left_row(mylite_stmt *stmt,
+                                                const struct mylite_table_select_row *left_row,
+                                                struct mylite_table_select_table_rowset *out_rowset)
+{
+    return append_table_select_row_copy_to_rowset(stmt, out_rowset, left_row);
+}
+
+static int append_select_null_extended_right_rows(
+    mylite_stmt *stmt, const struct mylite_select_join_step *step,
+    const struct mylite_table_select_table_rowset *right, const bool *right_matched,
+    struct mylite_table_select_table_rowset *out_rowset)
+{
+    for (size_t right_index = 0U; right_index < right->row_count; ++right_index) {
+        if (right_matched != NULL && right_matched[right_index]) {
+            continue;
+        }
+        int status = append_select_null_extended_right_row(stmt, step, &right->rows[right_index],
+                                                           right_index, out_rowset);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int
+append_select_null_extended_right_row(mylite_stmt *stmt, const struct mylite_select_join_step *step,
+                                      const struct mylite_table_select_row *right_row,
+                                      size_t right_row_index,
+                                      struct mylite_table_select_table_rowset *out_rowset)
+{
+    const struct mylite_select_table *right_table =
+        select_plan_table_const(&stmt->select_plan, step->right_range.first_table);
+    struct mylite_table_select_row *row = NULL;
+    int status = append_empty_joined_table_select_row(stmt, out_rowset, &row);
+
+    if (status == MYLITE_OK && right_table == NULL) {
+        status = MYLITE_UNSUPPORTED;
+    }
+    if (status == MYLITE_OK) {
+        status = copy_select_base_table_row_values(stmt->database, row, right_table,
+                                                   step->right_range.first_table, right_row,
+                                                   right_row_index);
+    }
+    return status;
+}
+
+static int append_empty_joined_table_select_row(mylite_stmt *stmt,
+                                                struct mylite_table_select_table_rowset *rowset,
+                                                struct mylite_table_select_row **out_row)
+{
+    struct mylite_table_select_row row = {
+        .value_count = select_plan_column_count(&stmt->select_plan),
+        .source_row_index_count = select_plan_table_count(&stmt->select_plan),
+    };
+    int status = MYLITE_OK;
+
+    *out_row = NULL;
+    if (row.value_count != 0U) {
+        row.values = calloc(row.value_count, sizeof(*row.values));
+        if (row.values == NULL) {
+            status = MYLITE_NOMEM;
+        }
+    }
+    if (status == MYLITE_OK && row.source_row_index_count != 0U) {
+        row.source_row_indexes =
+            calloc(row.source_row_index_count, sizeof(*row.source_row_indexes));
+        if (row.source_row_indexes == NULL) {
+            status = MYLITE_NOMEM;
+        }
+    }
+    if (status != MYLITE_OK) {
+        table_select_row_deinit(&row);
+        (void)set_error_message(stmt->database, "out of memory");
+        return status;
+    }
+    for (size_t index = 0U; index < row.source_row_index_count; ++index) {
+        row.source_row_indexes[index] = SIZE_MAX;
+    }
+
+    status = append_table_select_row_to_rowset(stmt, rowset, &row);
+    if (status != MYLITE_OK) {
+        table_select_row_deinit(&row);
+        return status;
+    }
+    *out_row = &rowset->rows[rowset->row_count - 1U];
+    return MYLITE_OK;
+}
+
+static int append_table_select_row_copy_to_rowset(mylite_stmt *stmt,
+                                                  struct mylite_table_select_table_rowset *rowset,
+                                                  const struct mylite_table_select_row *row)
+{
+    struct mylite_table_select_row copy = {0};
+    int status = table_select_row_copy(row, &copy);
+
+    if (status == MYLITE_NOMEM) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = append_table_select_row_to_rowset(stmt, rowset, &copy);
+    if (status != MYLITE_OK) {
+        table_select_row_deinit(&copy);
+    }
+    return status;
+}
+
+static int append_table_select_row_to_rowset(mylite_stmt *stmt,
+                                             struct mylite_table_select_table_rowset *rowset,
+                                             struct mylite_table_select_row *row)
+{
+    struct mylite_table_select_row *rows =
+        realloc(rowset->rows, (rowset->row_count + 1U) * sizeof(*rowset->rows));
+
+    if (rows == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rowset->rows = rows;
+    rowset->rows[rowset->row_count++] = *row;
+    *row = (struct mylite_table_select_row){0};
+    return MYLITE_OK;
+}
+
+static int copy_select_base_table_row_values(mylite_db *database,
+                                             struct mylite_table_select_row *row,
+                                             const struct mylite_select_table *table,
+                                             size_t table_index,
+                                             const struct mylite_table_select_row *source,
+                                             size_t source_row_index)
+{
+    if (table == NULL || row->source_row_index_count <= table_index) {
+        return MYLITE_UNSUPPORTED;
+    }
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        size_t column_index = table->first_column_index + index;
+
+        if (column_index >= row->value_count || index >= source->value_count) {
+            return MYLITE_UNSUPPORTED;
+        }
+        mylite_expression_value_deinit(&row->values[column_index]);
+        if (mylite_expression_value_copy(&source->values[index], &row->values[column_index]) != 0) {
+            (void)set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    row->source_row_indexes[table_index] = source_row_index;
+    return MYLITE_OK;
+}
+
+static int copy_select_row_range_values(struct mylite_table_select_row *target,
+                                        const struct mylite_table_select_row *source,
+                                        struct mylite_select_table_range range,
+                                        const struct mylite_select_plan *plan)
+{
+    size_t last_table = range.first_table + range.table_count;
+
+    for (size_t table_index = range.first_table; table_index < last_table; ++table_index) {
+        const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
+
+        if (table == NULL || table_index >= target->source_row_index_count ||
+            table_index >= source->source_row_index_count) {
+            return MYLITE_UNSUPPORTED;
+        }
+        target->source_row_indexes[table_index] = source->source_row_indexes[table_index];
+        for (size_t column = 0U; column < table->column_count; ++column) {
+            size_t column_index = table->first_column_index + column;
+
+            if (column_index >= target->value_count || column_index >= source->value_count) {
+                return MYLITE_UNSUPPORTED;
+            }
+            mylite_expression_value_deinit(&target->values[column_index]);
+            if (mylite_expression_value_copy(&source->values[column_index],
+                                             &target->values[column_index]) != 0) {
+                return MYLITE_NOMEM;
+            }
+        }
+    }
+    return MYLITE_OK;
+}
+
+static void table_select_table_rowset_deinit(struct mylite_table_select_table_rowset *rowset)
+{
+    if (rowset == NULL) {
+        return;
+    }
+    for (size_t row_index = 0U; row_index < rowset->row_count; ++row_index) {
+        table_select_row_deinit(&rowset->rows[row_index]);
+    }
+    free(rowset->rows);
+    *rowset = (struct mylite_table_select_table_rowset){0};
+}
+
+static int process_outer_joined_table_range_rows(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_table_select_table_rowset *range_rowsets, size_t range_count)
+{
+    size_t *row_indexes = NULL;
+    bool finished = false;
+    int status = MYLITE_OK;
+
+    for (size_t range_index = 0U; range_index < range_count; ++range_index) {
+        if (range_rowsets[range_index].row_count == 0U) {
+            return MYLITE_OK;
+        }
+    }
+
+    row_indexes = calloc(range_count, sizeof(*row_indexes));
+    if (row_indexes == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    while (!finished && !state->stop) {
+        status = process_outer_joined_table_range_row(stmt, state, range_rowsets, row_indexes,
+                                                      range_count);
+        if (status != MYLITE_OK) {
+            break;
+        }
+
+        for (size_t index = range_count; index > 0U; --index) {
+            size_t range_index = index - 1U;
+
+            ++row_indexes[range_index];
+            if (row_indexes[range_index] < range_rowsets[range_index].row_count) {
+                break;
+            }
+            row_indexes[range_index] = 0U;
+            if (range_index == 0U) {
+                finished = true;
+            }
+        }
+    }
+
+    free(row_indexes);
+    return status;
+}
+
+static int
+process_outer_joined_table_range_row(mylite_stmt *stmt,
+                                     struct mylite_table_select_join_materialize_state *state,
+                                     const struct mylite_table_select_table_rowset *range_rowsets,
+                                     const size_t *row_indexes, size_t range_count)
+{
+    struct mylite_table_select_row row = {0};
+    int status = MYLITE_OK;
+
+    row.value_count = select_plan_column_count(&stmt->select_plan);
+    row.source_row_index_count = select_plan_table_count(&stmt->select_plan);
+    if (row.value_count != 0U) {
+        row.values = calloc(row.value_count, sizeof(*row.values));
+        if (row.values == NULL) {
+            status = MYLITE_NOMEM;
+        }
+    }
+    if (status == MYLITE_OK && row.source_row_index_count != 0U) {
+        row.source_row_indexes =
+            calloc(row.source_row_index_count, sizeof(*row.source_row_indexes));
+        if (row.source_row_indexes == NULL) {
+            status = MYLITE_NOMEM;
+        }
+    }
+    if (status != MYLITE_OK) {
+        table_select_row_deinit(&row);
+        (void)set_error_message(stmt->database, "out of memory");
+        return status;
+    }
+    for (size_t index = 0U; index < row.source_row_index_count; ++index) {
+        row.source_row_indexes[index] = SIZE_MAX;
+    }
+
+    for (size_t range_index = 0U; status == MYLITE_OK && range_index < range_count; ++range_index) {
+        struct mylite_select_table_range range = stmt->select_plan.from_ranges[range_index];
+
+        status = copy_select_row_range_values(
+            &row, &range_rowsets[range_index].rows[row_indexes[range_index]], range,
+            &stmt->select_plan);
+    }
+    if (status == MYLITE_OK) {
+        status = process_joined_table_select_full_row(stmt, state, &row);
+    }
+    table_select_row_deinit(&row);
+    return status;
+}
+
+static int evaluate_table_select_join_step_conditions(
+    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_table_select_row *row, const struct mylite_select_join_step *step,
+    bool *out_matches)
+{
+    size_t available_table_count = step->joined_range.first_table + step->joined_range.table_count;
+    struct mylite_select_table_range cache_range = {0};
+    struct mylite_table_select_join_condition_cache_lookup lookup = {
+        .found = false,
+        .matches = false,
+    };
+    int status = MYLITE_OK;
+
+    if (!select_join_stage_cache_range(stmt->database, &stmt->select_plan, available_table_count,
+                                       &cache_range)) {
+        return evaluate_table_select_join_stage_conditions_uncached(
+            stmt, row, available_table_count, out_matches);
+    }
+
+    status = lookup_table_select_join_condition_cache_row(&state->condition_cache, row, cache_range,
+                                                          &lookup);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (lookup.found) {
+        *out_matches = lookup.matches;
+        return MYLITE_OK;
+    }
+
+    status = evaluate_table_select_join_stage_conditions_uncached(stmt, row, available_table_count,
+                                                                  out_matches);
+    if (status == MYLITE_OK) {
+        status = store_table_select_join_condition_cache_row(stmt, &state->condition_cache, row,
+                                                             cache_range, *out_matches);
+    }
     return status;
 }
 
@@ -13839,6 +14911,33 @@ static int lookup_table_select_join_condition_cache(
     return MYLITE_OK;
 }
 
+static int lookup_table_select_join_condition_cache_row(
+    const struct mylite_table_select_join_condition_cache *cache,
+    const struct mylite_table_select_row *row, struct mylite_select_table_range range,
+    struct mylite_table_select_join_condition_cache_lookup *out_lookup)
+{
+    *out_lookup = (struct mylite_table_select_join_condition_cache_lookup){
+        .found = false,
+        .matches = false,
+    };
+    if (row == NULL || range.first_table > row->source_row_index_count ||
+        range.table_count > row->source_row_index_count - range.first_table) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    for (size_t index = 0U; index < cache->entry_count; ++index) {
+        const struct mylite_table_select_join_condition_cache_entry *entry = &cache->entries[index];
+
+        if (entry->first_table == range.first_table && entry->table_count == range.table_count &&
+            table_select_join_cache_row_source_indexes_match(entry, row)) {
+            out_lookup->found = true;
+            out_lookup->matches = entry->matches;
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_OK;
+}
+
 static int
 store_table_select_join_condition_cache(mylite_stmt *stmt,
                                         struct mylite_table_select_join_condition_cache *cache,
@@ -13878,12 +14977,61 @@ store_table_select_join_condition_cache(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
+static int store_table_select_join_condition_cache_row(
+    mylite_stmt *stmt, struct mylite_table_select_join_condition_cache *cache,
+    const struct mylite_table_select_row *row, struct mylite_select_table_range range, bool matches)
+{
+    struct mylite_table_select_join_condition_cache_entry entry = {
+        .first_table = range.first_table,
+        .table_count = range.table_count,
+        .matches = matches,
+    };
+    struct mylite_table_select_join_condition_cache_entry *entries = NULL;
+
+    if (row == NULL || range.first_table > row->source_row_index_count ||
+        range.table_count > row->source_row_index_count - range.first_table) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (range.table_count != 0U) {
+        entry.row_indexes = calloc(range.table_count, sizeof(*entry.row_indexes));
+    }
+    if (entry.row_indexes == NULL && range.table_count != 0U) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < range.table_count; ++index) {
+        entry.row_indexes[index] = row->source_row_indexes[range.first_table + index];
+    }
+
+    entries = realloc(cache->entries, (cache->entry_count + 1U) * sizeof(*cache->entries));
+    if (entries == NULL) {
+        free(entry.row_indexes);
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    cache->entries = entries;
+    cache->entries[cache->entry_count++] = entry;
+    return MYLITE_OK;
+}
+
 static bool table_select_join_cache_row_indexes_match(
     const struct mylite_table_select_join_condition_cache_entry *entry,
     const struct mylite_table_select_join_scan_state *scan)
 {
     for (size_t index = 0U; index < entry->table_count; ++index) {
         if (entry->row_indexes[index] != scan->frames[entry->first_table + index].row_index) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool table_select_join_cache_row_source_indexes_match(
+    const struct mylite_table_select_join_condition_cache_entry *entry,
+    const struct mylite_table_select_row *row)
+{
+    for (size_t index = 0U; index < entry->table_count; ++index) {
+        if (entry->row_indexes[index] != row->source_row_indexes[entry->first_table + index]) {
             return false;
         }
     }
@@ -14283,6 +15431,7 @@ static int table_select_row_copy(const struct mylite_table_select_row *row,
     out_row->value_count = row->value_count;
     out_row->order_value_count = row->order_value_count;
     out_row->aggregate_value_count = row->aggregate_value_count;
+    out_row->source_row_index_count = row->source_row_index_count;
 
     if (out_row->value_count != 0U) {
         out_row->values = calloc(out_row->value_count, sizeof(*out_row->values));
@@ -14304,6 +15453,16 @@ static int table_select_row_copy(const struct mylite_table_select_row *row,
             table_select_row_deinit(out_row);
             return MYLITE_NOMEM;
         }
+    }
+    if (out_row->source_row_index_count != 0U) {
+        out_row->source_row_indexes =
+            calloc(out_row->source_row_index_count, sizeof(*out_row->source_row_indexes));
+        if (out_row->source_row_indexes == NULL) {
+            table_select_row_deinit(out_row);
+            return MYLITE_NOMEM;
+        }
+        memcpy(out_row->source_row_indexes, row->source_row_indexes,
+               out_row->source_row_index_count * sizeof(*out_row->source_row_indexes));
     }
 
     for (size_t index = 0U; index < out_row->value_count; ++index) {
@@ -21489,6 +22648,7 @@ static void table_select_row_deinit(struct mylite_table_select_row *row)
     free(row->values);
     free(row->order_values);
     free(row->aggregate_values);
+    free(row->source_row_indexes);
     *row = (struct mylite_table_select_row){0};
 }
 
@@ -21537,6 +22697,7 @@ static void select_plan_deinit(struct mylite_select_plan *plan)
     }
     free(plan->tables);
     free(plan->from_ranges);
+    free(plan->join_steps);
     for (size_t index = 0U; index < plan->output_count; ++index) {
         select_output_column_deinit(&plan->outputs[index]);
     }

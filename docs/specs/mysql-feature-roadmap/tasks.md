@@ -71,8 +71,8 @@ level application surfaces.
 26. [x] Inner joins and comma joins: join precedence, aliases, `ON`, `USING`,
        name resolution, and result metadata. Spec:
        [inner joins](../inner-joins/specs.md).
-27. [ ] Outer joins: `LEFT`/`RIGHT` joins, null extension, predicate placement,
-       and metadata. Started; spec: [outer joins](../outer-joins/specs.md).
+27. [x] Outer joins: `LEFT`/`RIGHT` joins, null extension, predicate placement,
+       and metadata. Spec: [outer joins](../outer-joins/specs.md).
 28. [ ] `DISTINCT` and `DISTINCTROW`: duplicate elimination, collation,
        metadata, and interaction with ordering/limits.
 29. [ ] Subqueries: scalar, row, `EXISTS`, `IN`, quantified comparisons,

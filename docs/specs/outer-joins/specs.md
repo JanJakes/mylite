@@ -720,6 +720,15 @@ behavior for at least the following cases:
 
 ## Compatibility status
 
-Task 27 is specified and ready for implementation. Compatibility remains
-unsupported until parser, analyzer, runtime, metadata, warning, and regression
-tests land for the base-table slice above.
+Task 27 is implemented for the base-table `SELECT` slice described above. The
+implementation extends the Task 26 table-reference tree with `LEFT` and
+`RIGHT` join types, requires `ON` or `USING` for outer joins in the grammar,
+adds a MyLite-owned outer-join row-source path with null extension, preserves
+`ON` before null extension and `WHERE` after it, applies preserved-side
+`USING` coalescing, adjusts result metadata nullability for null-extended
+sides, and includes runtime tests for rows, metadata, warnings, diagnostics,
+ordering, limits, and aggregate counts.
+
+Compatibility remains partial for the explicitly deferred surfaces above:
+natural joins, parenthesized table references, derived tables, index hints,
+optimizer behavior, and grouped joined queries.

@@ -198,8 +198,8 @@ token sink:
   elements while preserving nested token bodies for column and constraint
   definitions, and validate table-level index key-part prefix lengths plus
   `ASC`/`DESC` tails and closed `USING`/`TYPE` values plus table-level
-  foreign-key child/reference column-list envelopes and referential-action
-  tails. Column and table `CHECK` constraints validate parenthesized expression
+  foreign-key child lists, referenced table names, optional parent column-list
+  envelopes, and referential-action tails. Column and table `CHECK` constraints validate parenthesized expression
   bodies for dangling operators and scalar comma lists, and `CHECK` constraints
   validate `ENFORCED`/`NOT ENFORCED` tails while allowing later column
   attributes where MySQL permits them. Column definitions require a known MySQL
@@ -277,9 +277,9 @@ token sink:
   validation, repeated `COLLATE` rejection, `DEFAULT` charset/collation value
   rejection, and storage modifier context and repetition checks, index key-part prefix lengths,
   `ASC`/`DESC` tails, and index option values including closed index
-  `USING`/`TYPE` values. `ADD FOREIGN KEY` child/reference column-list
-  envelopes and referential-action tails are also validated, including duplicate
-  `MATCH`/`ON UPDATE`/`ON DELETE` rejection and MySQL's
+  `USING`/`TYPE` values. `ADD FOREIGN KEY` child lists, referenced table names,
+  optional parent column-list envelopes, and referential-action tails are also
+  validated, including duplicate `MATCH`/`ON UPDATE`/`ON DELETE` rejection and MySQL's
   `MATCH`-before-actions order, and `ADD CHECK`
   requires a non-empty parenthesized expression body plus a valid
   `ENFORCED`/`NOT ENFORCED` tail when present.

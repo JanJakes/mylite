@@ -5834,7 +5834,9 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
     CREATE_TABLE_FK_AFTER_FOREIGN,
     CREATE_TABLE_FK_BEFORE_CHILD_LIST,
     CREATE_TABLE_FK_FIND_REFERENCES,
-    CREATE_TABLE_FK_FIND_PARENT_LIST,
+    CREATE_TABLE_FK_AFTER_REFERENCES,
+    CREATE_TABLE_FK_AFTER_PARENT_TABLE,
+    CREATE_TABLE_FK_AFTER_PARENT_TABLE_DOT,
     CREATE_TABLE_FK_AFTER_PARENT_LIST,
     CREATE_TABLE_FK_AFTER_MATCH,
     CREATE_TABLE_FK_AFTER_ON,
@@ -6140,7 +6142,8 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
 
     if (foreign_state != CREATE_TABLE_FK_NONE) {
       if (token_id == ML_COMMA || token_id == ML_RP) {
-        if (foreign_state != CREATE_TABLE_FK_AFTER_PARENT_LIST) {
+        if (foreign_state != CREATE_TABLE_FK_AFTER_PARENT_TABLE &&
+            foreign_state != CREATE_TABLE_FK_AFTER_PARENT_LIST) {
           mylite_parser_reject(ctx, pending_token,
                                "incomplete CREATE TABLE foreign key");
           return;
@@ -6183,13 +6186,38 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
 
       if (foreign_state == CREATE_TABLE_FK_FIND_REFERENCES) {
         if (token_ascii_equal(token, "references")) {
-          foreign_state = CREATE_TABLE_FK_FIND_PARENT_LIST;
+          foreign_state = CREATE_TABLE_FK_AFTER_REFERENCES;
           pending_token = token;
         }
         continue;
       }
 
-      if (foreign_state == CREATE_TABLE_FK_FIND_PARENT_LIST) {
+      if (foreign_state == CREATE_TABLE_FK_AFTER_REFERENCES) {
+        if (!dml_row_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete CREATE TABLE foreign key");
+          return;
+        }
+        foreign_state = CREATE_TABLE_FK_AFTER_PARENT_TABLE;
+        continue;
+      }
+
+      if (foreign_state == CREATE_TABLE_FK_AFTER_PARENT_TABLE_DOT) {
+        if (!dml_row_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete CREATE TABLE foreign key");
+          return;
+        }
+        foreign_state = CREATE_TABLE_FK_AFTER_PARENT_TABLE;
+        continue;
+      }
+
+      if (foreign_state == CREATE_TABLE_FK_AFTER_PARENT_TABLE) {
+        if (token_id == ML_DOT) {
+          foreign_state = CREATE_TABLE_FK_AFTER_PARENT_TABLE_DOT;
+          pending_token = token;
+          continue;
+        }
         if (token_id == ML_LP) {
           if (!validate_parenthesized_identifier_list(
                   ctx, &lexer, token,
@@ -6197,11 +6225,12 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
             return;
           }
           foreign_state = CREATE_TABLE_FK_AFTER_PARENT_LIST;
+          continue;
         }
-        continue;
       }
 
-      if (foreign_state == CREATE_TABLE_FK_AFTER_PARENT_LIST) {
+      if (foreign_state == CREATE_TABLE_FK_AFTER_PARENT_TABLE ||
+          foreign_state == CREATE_TABLE_FK_AFTER_PARENT_LIST) {
         if (token_ascii_equal(token, "match")) {
           if ((foreign_tail_flags &
                (REFERENCE_TAIL_FLAG_MATCH | REFERENCE_TAIL_FLAG_ON_UPDATE |
@@ -6617,6 +6646,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
   }
 
   if (foreign_state != CREATE_TABLE_FK_NONE &&
+      foreign_state != CREATE_TABLE_FK_AFTER_PARENT_TABLE &&
       foreign_state != CREATE_TABLE_FK_AFTER_PARENT_LIST) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE TABLE foreign key");
@@ -6883,7 +6913,9 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
     ALTER_FK_AFTER_FOREIGN,
     ALTER_FK_BEFORE_CHILD_LIST,
     ALTER_FK_FIND_REFERENCES,
-    ALTER_FK_FIND_PARENT_LIST,
+    ALTER_FK_AFTER_REFERENCES,
+    ALTER_FK_AFTER_PARENT_TABLE,
+    ALTER_FK_AFTER_PARENT_TABLE_DOT,
     ALTER_FK_AFTER_PARENT_LIST,
     ALTER_FK_AFTER_MATCH,
     ALTER_FK_AFTER_ON,
@@ -7184,7 +7216,8 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
 
     if (add_foreign_state != ALTER_FK_NONE) {
       if (token_id == ML_COMMA || token_id == ML_SEMI) {
-        if (add_foreign_state != ALTER_FK_AFTER_PARENT_LIST) {
+        if (add_foreign_state != ALTER_FK_AFTER_PARENT_TABLE &&
+            add_foreign_state != ALTER_FK_AFTER_PARENT_LIST) {
           mylite_parser_reject(ctx, pending_token,
                                "incomplete ALTER TABLE foreign key");
           return;
@@ -7226,13 +7259,38 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
 
       if (add_foreign_state == ALTER_FK_FIND_REFERENCES) {
         if (token_ascii_equal(token, "references")) {
-          add_foreign_state = ALTER_FK_FIND_PARENT_LIST;
+          add_foreign_state = ALTER_FK_AFTER_REFERENCES;
           pending_token = token;
         }
         continue;
       }
 
-      if (add_foreign_state == ALTER_FK_FIND_PARENT_LIST) {
+      if (add_foreign_state == ALTER_FK_AFTER_REFERENCES) {
+        if (!dml_row_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete ALTER TABLE foreign key");
+          return;
+        }
+        add_foreign_state = ALTER_FK_AFTER_PARENT_TABLE;
+        continue;
+      }
+
+      if (add_foreign_state == ALTER_FK_AFTER_PARENT_TABLE_DOT) {
+        if (!dml_row_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete ALTER TABLE foreign key");
+          return;
+        }
+        add_foreign_state = ALTER_FK_AFTER_PARENT_TABLE;
+        continue;
+      }
+
+      if (add_foreign_state == ALTER_FK_AFTER_PARENT_TABLE) {
+        if (token_id == ML_DOT) {
+          add_foreign_state = ALTER_FK_AFTER_PARENT_TABLE_DOT;
+          pending_token = token;
+          continue;
+        }
         if (token_id == ML_LP) {
           if (!validate_parenthesized_identifier_list(
                   ctx, &lexer, token,
@@ -7240,11 +7298,12 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
             return;
           }
           add_foreign_state = ALTER_FK_AFTER_PARENT_LIST;
+          continue;
         }
-        continue;
       }
 
-      if (add_foreign_state == ALTER_FK_AFTER_PARENT_LIST) {
+      if (add_foreign_state == ALTER_FK_AFTER_PARENT_TABLE ||
+          add_foreign_state == ALTER_FK_AFTER_PARENT_LIST) {
         if (token_ascii_equal(token, "match")) {
           if ((add_foreign_tail_flags &
                (REFERENCE_TAIL_FLAG_MATCH | REFERENCE_TAIL_FLAG_ON_UPDATE |
@@ -8012,6 +8071,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   }
 
   if (add_foreign_state != ALTER_FK_NONE &&
+      add_foreign_state != ALTER_FK_AFTER_PARENT_TABLE &&
       add_foreign_state != ALTER_FK_AFTER_PARENT_LIST) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete ALTER TABLE foreign key");

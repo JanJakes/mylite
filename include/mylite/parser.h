@@ -22,6 +22,7 @@ typedef struct MyliteParseResult {
 } MyliteParseResult;
 
 typedef struct MyliteAst MyliteAst;
+typedef struct MyliteAstCreateIndex MyliteAstCreateIndex;
 typedef struct MyliteAstCreateTable MyliteAstCreateTable;
 typedef struct MyliteAstCreateTableColumn MyliteAstCreateTableColumn;
 typedef struct MyliteAstCreateTableColumnTypeElement
@@ -30,7 +31,9 @@ typedef struct MyliteAstCreateTableKey MyliteAstCreateTableKey;
 typedef struct MyliteAstCreateTableKeyPart MyliteAstCreateTableKeyPart;
 typedef struct MyliteAstCreateTableKeyOption MyliteAstCreateTableKeyOption;
 typedef struct MyliteAstCreateTableOption MyliteAstCreateTableOption;
+typedef struct MyliteAstDropTable MyliteAstDropTable;
 typedef struct MyliteAstNode MyliteAstNode;
+typedef struct MyliteAstRenameTable MyliteAstRenameTable;
 
 typedef enum MyliteAstNodeKind {
   MYLITE_AST_NODE_RULE = 1,
@@ -423,6 +426,12 @@ size_t mylite_ast_statement_target_name_value_length_at(
     const MyliteAst *ast, size_t statement_index, size_t target_index);
 const MyliteAstCreateTable *mylite_ast_create_table_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstCreateIndex *mylite_ast_create_index_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstDropTable *mylite_ast_drop_table_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstRenameTable *mylite_ast_rename_table_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstNode *mylite_ast_create_table_view_node(
     const MyliteAstCreateTable *create_table);
 size_t mylite_ast_create_table_view_start(
@@ -492,6 +501,100 @@ const MyliteAstCreateTableKey *mylite_ast_create_table_view_key_at(
     const MyliteAstCreateTable *create_table, size_t key_index);
 const MyliteAstCreateTableOption *mylite_ast_create_table_view_option_at(
     const MyliteAstCreateTable *create_table, size_t option_index);
+const MyliteAstNode *mylite_ast_create_index_view_node(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_start(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_end(
+    const MyliteAstCreateIndex *create_index);
+MyliteCreateTableKeyKind mylite_ast_create_index_view_key_kind(
+    const MyliteAstCreateIndex *create_index);
+MyliteCreateTableIndexType mylite_ast_create_index_view_index_type_kind(
+    const MyliteAstCreateIndex *create_index);
+MyliteCreateTableKeyVisibility mylite_ast_create_index_view_visibility(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_name_start(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_name_end(
+    const MyliteAstCreateIndex *create_index);
+const char *mylite_ast_create_index_view_name_value(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_name_value_length(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_table_start(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_table_end(
+    const MyliteAstCreateIndex *create_index);
+const char *mylite_ast_create_index_view_table_schema_value(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_table_schema_value_length(
+    const MyliteAstCreateIndex *create_index);
+const char *mylite_ast_create_index_view_table_name_value(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_table_name_value_length(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_column_count(
+    const MyliteAstCreateIndex *create_index);
+const MyliteAstCreateTableKeyPart *mylite_ast_create_index_view_column_at(
+    const MyliteAstCreateIndex *create_index, size_t column_index);
+size_t mylite_ast_create_index_view_option_count(
+    const MyliteAstCreateIndex *create_index);
+const MyliteAstCreateTableKeyOption *mylite_ast_create_index_view_option_at(
+    const MyliteAstCreateIndex *create_index, size_t option_index);
+const char *mylite_ast_create_index_view_comment_value(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_comment_value_length(
+    const MyliteAstCreateIndex *create_index);
+const char *mylite_ast_create_index_view_parser_value(
+    const MyliteAstCreateIndex *create_index);
+size_t mylite_ast_create_index_view_parser_value_length(
+    const MyliteAstCreateIndex *create_index);
+int mylite_ast_create_index_view_has_key_block_size_value(
+    const MyliteAstCreateIndex *create_index);
+unsigned long long mylite_ast_create_index_view_key_block_size_value(
+    const MyliteAstCreateIndex *create_index);
+const MyliteAstNode *mylite_ast_drop_table_view_node(
+    const MyliteAstDropTable *drop_table);
+size_t mylite_ast_drop_table_view_start(const MyliteAstDropTable *drop_table);
+size_t mylite_ast_drop_table_view_end(const MyliteAstDropTable *drop_table);
+int mylite_ast_drop_table_view_is_temporary(
+    const MyliteAstDropTable *drop_table);
+int mylite_ast_drop_table_view_has_if_exists(
+    const MyliteAstDropTable *drop_table);
+size_t mylite_ast_drop_table_view_table_count(
+    const MyliteAstDropTable *drop_table);
+const char *mylite_ast_drop_table_view_table_schema_value_at(
+    const MyliteAstDropTable *drop_table, size_t table_index);
+size_t mylite_ast_drop_table_view_table_schema_value_length_at(
+    const MyliteAstDropTable *drop_table, size_t table_index);
+const char *mylite_ast_drop_table_view_table_name_value_at(
+    const MyliteAstDropTable *drop_table, size_t table_index);
+size_t mylite_ast_drop_table_view_table_name_value_length_at(
+    const MyliteAstDropTable *drop_table, size_t table_index);
+const MyliteAstNode *mylite_ast_rename_table_view_node(
+    const MyliteAstRenameTable *rename_table);
+size_t mylite_ast_rename_table_view_start(
+    const MyliteAstRenameTable *rename_table);
+size_t mylite_ast_rename_table_view_end(
+    const MyliteAstRenameTable *rename_table);
+size_t mylite_ast_rename_table_view_pair_count(
+    const MyliteAstRenameTable *rename_table);
+const char *mylite_ast_rename_table_view_source_schema_value_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index);
+size_t mylite_ast_rename_table_view_source_schema_value_length_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index);
+const char *mylite_ast_rename_table_view_source_name_value_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index);
+size_t mylite_ast_rename_table_view_source_name_value_length_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index);
+const char *mylite_ast_rename_table_view_destination_schema_value_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index);
+size_t mylite_ast_rename_table_view_destination_schema_value_length_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index);
+const char *mylite_ast_rename_table_view_destination_name_value_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index);
+size_t mylite_ast_rename_table_view_destination_name_value_length_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index);
 size_t mylite_ast_create_table_column_view_start(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_end(

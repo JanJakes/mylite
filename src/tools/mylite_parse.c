@@ -117,6 +117,11 @@ static void dump_statements(const MyliteAst *ast) {
     size_t option_count = mylite_ast_create_table_option_count(ast, i);
     const MyliteAstCreateTable *create_table =
         mylite_ast_create_table_view(ast, i);
+    const MyliteAstCreateIndex *create_index =
+        mylite_ast_create_index_view(ast, i);
+    const MyliteAstDropTable *drop_table = mylite_ast_drop_table_view(ast, i);
+    const MyliteAstRenameTable *rename_table =
+        mylite_ast_rename_table_view(ast, i);
     printf("statement[%zu] kind=%s symbol=%s span=%zu..%zu targets=%zu "
            "columns=%zu keys=%zu options=%zu target=%s:%zu..%zu "
            "schema=%zu..%zu name=%zu..%zu\n",
@@ -209,6 +214,66 @@ static void dump_statements(const MyliteAst *ast) {
       }
       fputc('\n', stdout);
       dump_create_table_view_handles(create_table);
+    }
+    if (create_index != NULL) {
+      printf("  create_index span=%zu..%zu kind=%s index_type=%s "
+             "visibility=%s columns=%zu options=%zu name_len=%zu table=",
+             mylite_ast_create_index_view_start(create_index),
+             mylite_ast_create_index_view_end(create_index),
+             mylite_create_table_key_kind_name(
+                 mylite_ast_create_index_view_key_kind(create_index)),
+             mylite_create_table_index_type_name(
+                 mylite_ast_create_index_view_index_type_kind(create_index)),
+             mylite_create_table_key_visibility_name(
+                 mylite_ast_create_index_view_visibility(create_index)),
+             mylite_ast_create_index_view_column_count(create_index),
+             mylite_ast_create_index_view_option_count(create_index),
+             mylite_ast_create_index_view_name_value_length(create_index));
+      const char *table_schema =
+          mylite_ast_create_index_view_table_schema_value(create_index);
+      size_t table_schema_length =
+          mylite_ast_create_index_view_table_schema_value_length(create_index);
+      if (table_schema != NULL) {
+        print_escaped_bytes(table_schema, table_schema_length);
+        fputc('.', stdout);
+      }
+      const char *table_name =
+          mylite_ast_create_index_view_table_name_value(create_index);
+      size_t table_name_length =
+          mylite_ast_create_index_view_table_name_value_length(create_index);
+      if (table_name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(table_name, table_name_length);
+      }
+      fputs(" comment=", stdout);
+      const char *comment =
+          mylite_ast_create_index_view_comment_value(create_index);
+      size_t comment_length =
+          mylite_ast_create_index_view_comment_value_length(create_index);
+      if (comment == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(comment, comment_length);
+      }
+      printf(" key_block_size=%d:%llu\n",
+             mylite_ast_create_index_view_has_key_block_size_value(
+                 create_index),
+             mylite_ast_create_index_view_key_block_size_value(create_index));
+    }
+    if (drop_table != NULL) {
+      printf("  drop_table span=%zu..%zu temporary=%d if_exists=%d tables=%zu\n",
+             mylite_ast_drop_table_view_start(drop_table),
+             mylite_ast_drop_table_view_end(drop_table),
+             mylite_ast_drop_table_view_is_temporary(drop_table),
+             mylite_ast_drop_table_view_has_if_exists(drop_table),
+             mylite_ast_drop_table_view_table_count(drop_table));
+    }
+    if (rename_table != NULL) {
+      printf("  rename_table span=%zu..%zu pairs=%zu\n",
+             mylite_ast_rename_table_view_start(rename_table),
+             mylite_ast_rename_table_view_end(rename_table),
+             mylite_ast_rename_table_view_pair_count(rename_table));
     }
     for (size_t j = 0; j < column_count; j++) {
       const MyliteAstCreateTableColumn *column_view =

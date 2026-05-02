@@ -278,6 +278,32 @@ struct MyliteAstCreateTable {
   const MyliteAstCreateTableOption *auto_increment_option;
 };
 
+struct MyliteAstCreateIndex {
+  const MyliteAstNode *node;
+  const MyliteAstStatementTarget *target;
+  MyliteAstCreateTableKey key;
+  size_t start;
+  size_t end;
+};
+
+struct MyliteAstDropTable {
+  const MyliteAstNode *node;
+  const MyliteAstStatementTarget *targets;
+  size_t target_count;
+  size_t start;
+  size_t end;
+  int is_temporary;
+  int has_if_exists;
+};
+
+struct MyliteAstRenameTable {
+  const MyliteAstNode *node;
+  const MyliteAstStatementTarget *targets;
+  size_t target_count;
+  size_t start;
+  size_t end;
+};
+
 typedef struct MyliteAstStatement {
   const MyliteAstNode *node;
   const char *symbol_name;
@@ -291,6 +317,9 @@ typedef struct MyliteAstStatement {
   MyliteAstCreateTableOption *create_table_options;
   size_t create_table_option_count;
   MyliteAstCreateTable *create_table;
+  MyliteAstCreateIndex *create_index;
+  MyliteAstDropTable *drop_table;
+  MyliteAstRenameTable *rename_table;
   MyliteStatementTargetKind target_kind;
   size_t start;
   size_t end;
@@ -365,6 +394,18 @@ static void mylite_ast_set_create_table_option_summary(
     MyliteAstCreateTable *create_table);
 static const MyliteAstStatementTarget *mylite_ast_create_table_target(
     const MyliteAstStatement *statement);
+static int mylite_ast_set_create_index_view(MyliteAst *ast,
+                                            MyliteAstStatement *statement,
+                                            const MyliteAstNode *payload);
+static int mylite_ast_set_create_index_key(MyliteAst *ast,
+                                           MyliteAstCreateTableKey *key,
+                                           const MyliteAstNode *payload);
+static int mylite_ast_set_drop_table_view(MyliteAst *ast,
+                                          MyliteAstStatement *statement,
+                                          const MyliteAstNode *payload);
+static int mylite_ast_set_rename_table_view(MyliteAst *ast,
+                                            MyliteAstStatement *statement,
+                                            const MyliteAstNode *payload);
 static MyliteStatementTargetKind mylite_ast_target_kind_for_statement(
     MyliteStatementKind kind, const char *symbol_name);
 static int mylite_ast_collect_statement_targets(MyliteAst *ast,
@@ -1493,6 +1534,27 @@ const MyliteAstCreateTable *mylite_ast_create_table_view(
   return statement == NULL ? NULL : statement->create_table;
 }
 
+const MyliteAstCreateIndex *mylite_ast_create_index_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->create_index;
+}
+
+const MyliteAstDropTable *mylite_ast_drop_table_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->drop_table;
+}
+
+const MyliteAstRenameTable *mylite_ast_rename_table_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->rename_table;
+}
+
 const MyliteAstNode *mylite_ast_create_table_view_node(
     const MyliteAstCreateTable *create_table) {
   return create_table == NULL ? NULL : create_table->node;
@@ -1691,6 +1753,303 @@ const MyliteAstCreateTableOption *mylite_ast_create_table_view_option_at(
     return NULL;
   }
   return &create_table->options[option_index];
+}
+
+const MyliteAstNode *mylite_ast_create_index_view_node(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? NULL : create_index->node;
+}
+
+size_t mylite_ast_create_index_view_start(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? 0 : create_index->start;
+}
+
+size_t mylite_ast_create_index_view_end(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? 0 : create_index->end;
+}
+
+MyliteCreateTableKeyKind mylite_ast_create_index_view_key_kind(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? MYLITE_CREATE_TABLE_KEY_UNKNOWN
+                              : create_index->key.kind;
+}
+
+MyliteCreateTableIndexType mylite_ast_create_index_view_index_type_kind(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? MYLITE_CREATE_TABLE_INDEX_TYPE_UNSPECIFIED
+                              : create_index->key.index_type_kind;
+}
+
+MyliteCreateTableKeyVisibility mylite_ast_create_index_view_visibility(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? MYLITE_CREATE_TABLE_KEY_VISIBILITY_UNSPECIFIED
+                              : create_index->key.visibility;
+}
+
+size_t mylite_ast_create_index_view_name_start(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? 0 : create_index->key.name_start;
+}
+
+size_t mylite_ast_create_index_view_name_end(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? 0 : create_index->key.name_end;
+}
+
+const char *mylite_ast_create_index_view_name_value(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? NULL : create_index->key.name_value;
+}
+
+size_t mylite_ast_create_index_view_name_value_length(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? 0 : create_index->key.name_value_length;
+}
+
+size_t mylite_ast_create_index_view_table_start(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL || create_index->target == NULL
+             ? 0
+             : create_index->target->start;
+}
+
+size_t mylite_ast_create_index_view_table_end(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL || create_index->target == NULL
+             ? 0
+             : create_index->target->end;
+}
+
+const char *mylite_ast_create_index_view_table_schema_value(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL || create_index->target == NULL
+             ? NULL
+             : create_index->target->schema_value;
+}
+
+size_t mylite_ast_create_index_view_table_schema_value_length(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL || create_index->target == NULL
+             ? 0
+             : create_index->target->schema_value_length;
+}
+
+const char *mylite_ast_create_index_view_table_name_value(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL || create_index->target == NULL
+             ? NULL
+             : create_index->target->name_value;
+}
+
+size_t mylite_ast_create_index_view_table_name_value_length(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL || create_index->target == NULL
+             ? 0
+             : create_index->target->name_value_length;
+}
+
+size_t mylite_ast_create_index_view_column_count(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? 0 : create_index->key.column_count;
+}
+
+const MyliteAstCreateTableKeyPart *mylite_ast_create_index_view_column_at(
+    const MyliteAstCreateIndex *create_index, size_t column_index) {
+  if (create_index == NULL || column_index >= create_index->key.column_count) {
+    return NULL;
+  }
+  return &create_index->key.columns[column_index];
+}
+
+size_t mylite_ast_create_index_view_option_count(
+    const MyliteAstCreateIndex *create_index) {
+  return create_index == NULL ? 0 : create_index->key.option_count;
+}
+
+const MyliteAstCreateTableKeyOption *mylite_ast_create_index_view_option_at(
+    const MyliteAstCreateIndex *create_index, size_t option_index) {
+  if (create_index == NULL || option_index >= create_index->key.option_count) {
+    return NULL;
+  }
+  return &create_index->key.options[option_index];
+}
+
+const char *mylite_ast_create_index_view_comment_value(
+    const MyliteAstCreateIndex *create_index) {
+  return mylite_ast_create_table_key_view_comment_value(
+      create_index == NULL ? NULL : &create_index->key);
+}
+
+size_t mylite_ast_create_index_view_comment_value_length(
+    const MyliteAstCreateIndex *create_index) {
+  return mylite_ast_create_table_key_view_comment_value_length(
+      create_index == NULL ? NULL : &create_index->key);
+}
+
+const char *mylite_ast_create_index_view_parser_value(
+    const MyliteAstCreateIndex *create_index) {
+  return mylite_ast_create_table_key_view_parser_value(
+      create_index == NULL ? NULL : &create_index->key);
+}
+
+size_t mylite_ast_create_index_view_parser_value_length(
+    const MyliteAstCreateIndex *create_index) {
+  return mylite_ast_create_table_key_view_parser_value_length(
+      create_index == NULL ? NULL : &create_index->key);
+}
+
+int mylite_ast_create_index_view_has_key_block_size_value(
+    const MyliteAstCreateIndex *create_index) {
+  return mylite_ast_create_table_key_view_has_key_block_size_value(
+      create_index == NULL ? NULL : &create_index->key);
+}
+
+unsigned long long mylite_ast_create_index_view_key_block_size_value(
+    const MyliteAstCreateIndex *create_index) {
+  return mylite_ast_create_table_key_view_key_block_size_value(
+      create_index == NULL ? NULL : &create_index->key);
+}
+
+const MyliteAstNode *mylite_ast_drop_table_view_node(
+    const MyliteAstDropTable *drop_table) {
+  return drop_table == NULL ? NULL : drop_table->node;
+}
+
+size_t mylite_ast_drop_table_view_start(const MyliteAstDropTable *drop_table) {
+  return drop_table == NULL ? 0 : drop_table->start;
+}
+
+size_t mylite_ast_drop_table_view_end(const MyliteAstDropTable *drop_table) {
+  return drop_table == NULL ? 0 : drop_table->end;
+}
+
+int mylite_ast_drop_table_view_is_temporary(
+    const MyliteAstDropTable *drop_table) {
+  return drop_table != NULL && drop_table->is_temporary;
+}
+
+int mylite_ast_drop_table_view_has_if_exists(
+    const MyliteAstDropTable *drop_table) {
+  return drop_table != NULL && drop_table->has_if_exists;
+}
+
+size_t mylite_ast_drop_table_view_table_count(
+    const MyliteAstDropTable *drop_table) {
+  return drop_table == NULL ? 0 : drop_table->target_count;
+}
+
+const char *mylite_ast_drop_table_view_table_schema_value_at(
+    const MyliteAstDropTable *drop_table, size_t table_index) {
+  return drop_table == NULL || table_index >= drop_table->target_count
+             ? NULL
+             : drop_table->targets[table_index].schema_value;
+}
+
+size_t mylite_ast_drop_table_view_table_schema_value_length_at(
+    const MyliteAstDropTable *drop_table, size_t table_index) {
+  return drop_table == NULL || table_index >= drop_table->target_count
+             ? 0
+             : drop_table->targets[table_index].schema_value_length;
+}
+
+const char *mylite_ast_drop_table_view_table_name_value_at(
+    const MyliteAstDropTable *drop_table, size_t table_index) {
+  return drop_table == NULL || table_index >= drop_table->target_count
+             ? NULL
+             : drop_table->targets[table_index].name_value;
+}
+
+size_t mylite_ast_drop_table_view_table_name_value_length_at(
+    const MyliteAstDropTable *drop_table, size_t table_index) {
+  return drop_table == NULL || table_index >= drop_table->target_count
+             ? 0
+             : drop_table->targets[table_index].name_value_length;
+}
+
+const MyliteAstNode *mylite_ast_rename_table_view_node(
+    const MyliteAstRenameTable *rename_table) {
+  return rename_table == NULL ? NULL : rename_table->node;
+}
+
+size_t mylite_ast_rename_table_view_start(
+    const MyliteAstRenameTable *rename_table) {
+  return rename_table == NULL ? 0 : rename_table->start;
+}
+
+size_t mylite_ast_rename_table_view_end(
+    const MyliteAstRenameTable *rename_table) {
+  return rename_table == NULL ? 0 : rename_table->end;
+}
+
+size_t mylite_ast_rename_table_view_pair_count(
+    const MyliteAstRenameTable *rename_table) {
+  return rename_table == NULL ? 0 : rename_table->target_count / 2;
+}
+
+const char *mylite_ast_rename_table_view_source_schema_value_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index) {
+  size_t target_index = pair_index * 2;
+  return rename_table == NULL || target_index >= rename_table->target_count
+             ? NULL
+             : rename_table->targets[target_index].schema_value;
+}
+
+size_t mylite_ast_rename_table_view_source_schema_value_length_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index) {
+  size_t target_index = pair_index * 2;
+  return rename_table == NULL || target_index >= rename_table->target_count
+             ? 0
+             : rename_table->targets[target_index].schema_value_length;
+}
+
+const char *mylite_ast_rename_table_view_source_name_value_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index) {
+  size_t target_index = pair_index * 2;
+  return rename_table == NULL || target_index >= rename_table->target_count
+             ? NULL
+             : rename_table->targets[target_index].name_value;
+}
+
+size_t mylite_ast_rename_table_view_source_name_value_length_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index) {
+  size_t target_index = pair_index * 2;
+  return rename_table == NULL || target_index >= rename_table->target_count
+             ? 0
+             : rename_table->targets[target_index].name_value_length;
+}
+
+const char *mylite_ast_rename_table_view_destination_schema_value_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index) {
+  size_t target_index = pair_index * 2 + 1;
+  return rename_table == NULL || target_index >= rename_table->target_count
+             ? NULL
+             : rename_table->targets[target_index].schema_value;
+}
+
+size_t mylite_ast_rename_table_view_destination_schema_value_length_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index) {
+  size_t target_index = pair_index * 2 + 1;
+  return rename_table == NULL || target_index >= rename_table->target_count
+             ? 0
+             : rename_table->targets[target_index].schema_value_length;
+}
+
+const char *mylite_ast_rename_table_view_destination_name_value_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index) {
+  size_t target_index = pair_index * 2 + 1;
+  return rename_table == NULL || target_index >= rename_table->target_count
+             ? NULL
+             : rename_table->targets[target_index].name_value;
+}
+
+size_t mylite_ast_rename_table_view_destination_name_value_length_at(
+    const MyliteAstRenameTable *rename_table, size_t pair_index) {
+  size_t target_index = pair_index * 2 + 1;
+  return rename_table == NULL || target_index >= rename_table->target_count
+             ? 0
+             : rename_table->targets[target_index].name_value_length;
 }
 
 size_t mylite_ast_create_table_column_view_start(
@@ -4721,6 +5080,15 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
            mylite_ast_collect_create_table_options(ast, statement, payload) &&
            mylite_ast_set_create_table_view(ast, statement, payload);
   }
+  if (strcmp(statement->symbol_name, "nt_create_index_stmt") == 0) {
+    return mylite_ast_set_create_index_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_drop_table_stmt") == 0) {
+    return mylite_ast_set_drop_table_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_rename_table_stmt") == 0) {
+    return mylite_ast_set_rename_table_view(ast, statement, payload);
+  }
   return 1;
 }
 
@@ -4829,6 +5197,116 @@ static const MyliteAstStatementTarget *mylite_ast_create_table_target(
     }
   }
   return NULL;
+}
+
+static int mylite_ast_set_create_index_view(MyliteAst *ast,
+                                            MyliteAstStatement *statement,
+                                            const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+
+  MyliteAstCreateIndex *create_index =
+      mylite_ast_alloc(ast, sizeof(*create_index));
+  if (create_index == NULL) {
+    return 0;
+  }
+  create_index->node = payload == NULL ? statement->node : payload;
+  create_index->start = mylite_ast_node_start(create_index->node);
+  create_index->end = mylite_ast_node_end(create_index->node);
+  if (statement->target_count > 0) {
+    create_index->target = &statement->targets[0];
+  }
+  if (!mylite_ast_set_create_index_key(ast, &create_index->key,
+                                       create_index->node)) {
+    return 0;
+  }
+  statement->create_index = create_index;
+  return 1;
+}
+
+static int mylite_ast_set_create_index_key(MyliteAst *ast,
+                                           MyliteAstCreateTableKey *key,
+                                           const MyliteAstNode *payload) {
+  if (key == NULL || payload == NULL) {
+    return 1;
+  }
+
+  key->kind = mylite_ast_classify_create_table_key(payload);
+  key->start = mylite_ast_node_start(payload);
+  key->end = mylite_ast_node_end(payload);
+
+  const MyliteAstNode *name = mylite_ast_find_first_symbol(payload,
+                                                           "nt_identifier");
+  if (name != NULL && name->has_span) {
+    key->name_start = mylite_ast_node_start(name);
+    key->name_end = mylite_ast_node_end(name);
+    if (!mylite_ast_set_create_table_key_name_values(ast, key)) {
+      return 0;
+    }
+  }
+
+  mylite_ast_set_create_table_key_index_type(key, payload);
+
+  size_t remaining = 0;
+  const MyliteAstNode *parts =
+      mylite_ast_find_nth_symbol(payload, "nt_index_part_specification_list",
+                                 &remaining);
+  if (!mylite_ast_set_create_table_key_parts(ast, key, parts, 0)) {
+    return 0;
+  }
+
+  const MyliteAstNode *options =
+      mylite_ast_find_first_symbol(payload, "nt_index_option_list");
+  if (!mylite_ast_set_create_table_key_options(ast, key, options)) {
+    return 0;
+  }
+  mylite_ast_set_create_table_key_summary(key);
+  return 1;
+}
+
+static int mylite_ast_set_drop_table_view(MyliteAst *ast,
+                                          MyliteAstStatement *statement,
+                                          const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstDropTable *drop_table = mylite_ast_alloc(ast, sizeof(*drop_table));
+  if (drop_table == NULL) {
+    return 0;
+  }
+  drop_table->node = payload == NULL ? statement->node : payload;
+  drop_table->start = mylite_ast_node_start(drop_table->node);
+  drop_table->end = mylite_ast_node_end(drop_table->node);
+  drop_table->targets = statement->targets;
+  drop_table->target_count = statement->target_count;
+  drop_table->is_temporary =
+      mylite_ast_find_first_token(payload, MYLITE_TOK_TEMPORARY) != NULL;
+  const MyliteAstNode *if_exists =
+      mylite_ast_find_first_symbol(payload, "nt_if_exists");
+  drop_table->has_if_exists = if_exists != NULL && if_exists->has_span;
+  statement->drop_table = drop_table;
+  return 1;
+}
+
+static int mylite_ast_set_rename_table_view(MyliteAst *ast,
+                                            MyliteAstStatement *statement,
+                                            const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstRenameTable *rename_table =
+      mylite_ast_alloc(ast, sizeof(*rename_table));
+  if (rename_table == NULL) {
+    return 0;
+  }
+  rename_table->node = payload == NULL ? statement->node : payload;
+  rename_table->start = mylite_ast_node_start(rename_table->node);
+  rename_table->end = mylite_ast_node_end(rename_table->node);
+  rename_table->targets = statement->targets;
+  rename_table->target_count = statement->target_count;
+  statement->rename_table = rename_table;
+  return 1;
 }
 
 static MyliteStatementTargetKind mylite_ast_target_kind_for_statement(

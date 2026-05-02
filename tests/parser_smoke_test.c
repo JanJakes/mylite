@@ -186,6 +186,9 @@ static int expect_create_table_key_options(
 static int expect_create_table_options(const char *sql,
                                        const ExpectedCreateTableOption *options,
                                        size_t option_count);
+static int expect_create_index_view(void);
+static int expect_drop_table_view(void);
+static int expect_rename_table_view(void);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
 static int span_matches_when_expected(const char *sql, size_t start, size_t end,
@@ -773,6 +776,9 @@ int main(void) {
       "COMMENT 'pk' CHECK (id > 0), KEY `k``x` (id(3) DESC) COMMENT "
       "'hello') ENGINE=InnoDB AUTO_INCREMENT=42 COMMENT='table comment'",
       "`db``x`.`t``y`", "`db``x`", "`t``y`", "db`x", "t`y", 1, 1, 3);
+  failures += expect_create_index_view();
+  failures += expect_drop_table_view();
+  failures += expect_rename_table_view();
   {
     const ExpectedCreateTableColumn columns[] = {
         {.definition = "id INT NOT NULL AUTO_INCREMENT",
@@ -2876,6 +2882,165 @@ static int expect_create_table_options(const char *sql,
               mylite_ast_create_table_option_value_end(ast, 0, i));
       failed = 1;
     }
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_create_index_view(void) {
+  const char *sql =
+      "CREATE INDEX `i``x` ON db1.t1 (a, b(3) DESC) USING BTREE COMMENT "
+      "'idx' KEY_BLOCK_SIZE=8 VISIBLE";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "CREATE INDEX view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstCreateIndex *view = mylite_ast_create_index_view(ast, 0);
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_index_view_column_at(view, 1);
+  int failed = 0;
+  if (view == NULL ||
+      mylite_ast_create_index_view_node(view) == NULL ||
+      mylite_ast_create_index_view_key_kind(view) !=
+          MYLITE_CREATE_TABLE_KEY_INDEX ||
+      mylite_ast_create_index_view_index_type_kind(view) !=
+          MYLITE_CREATE_TABLE_INDEX_TYPE_BTREE ||
+      mylite_ast_create_index_view_visibility(view) !=
+          MYLITE_CREATE_TABLE_KEY_VISIBILITY_VISIBLE ||
+      !span_matches(sql, mylite_ast_create_index_view_name_start(view),
+                    mylite_ast_create_index_view_name_end(view), "`i``x`") ||
+      !value_matches_when_expected(
+          mylite_ast_create_index_view_name_value(view),
+          mylite_ast_create_index_view_name_value_length(view), "i`x") ||
+      !value_matches_when_expected(
+          mylite_ast_create_index_view_table_schema_value(view),
+          mylite_ast_create_index_view_table_schema_value_length(view),
+          "db1") ||
+      !value_matches_when_expected(
+          mylite_ast_create_index_view_table_name_value(view),
+          mylite_ast_create_index_view_table_name_value_length(view), "t1") ||
+      mylite_ast_create_index_view_column_count(view) != 2 ||
+      part == NULL ||
+      !value_matches_when_expected(
+          mylite_ast_create_table_key_part_view_name_value(part),
+          mylite_ast_create_table_key_part_view_name_value_length(part), "b") ||
+      !span_matches(sql,
+                    mylite_ast_create_table_key_part_view_prefix_value_start(
+                        part),
+                    mylite_ast_create_table_key_part_view_prefix_value_end(part),
+                    "3") ||
+      mylite_ast_create_table_key_part_view_order(part) !=
+          MYLITE_CREATE_TABLE_KEY_PART_ORDER_DESC ||
+      mylite_ast_create_index_view_option_count(view) != 4 ||
+      !value_matches_when_expected(
+          mylite_ast_create_index_view_comment_value(view),
+          mylite_ast_create_index_view_comment_value_length(view), "idx") ||
+      !mylite_ast_create_index_view_has_key_block_size_value(view) ||
+      mylite_ast_create_index_view_key_block_size_value(view) != 8) {
+    fprintf(stderr, "CREATE INDEX view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_drop_table_view(void) {
+  const char *sql = "DROP TEMPORARY TABLE IF EXISTS db1.t1, t2 RESTRICT";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "DROP TABLE view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstDropTable *view = mylite_ast_drop_table_view(ast, 0);
+  int failed = 0;
+  if (view == NULL || mylite_ast_drop_table_view_node(view) == NULL ||
+      !mylite_ast_drop_table_view_is_temporary(view) ||
+      !mylite_ast_drop_table_view_has_if_exists(view) ||
+      mylite_ast_drop_table_view_table_count(view) != 2 ||
+      !value_matches_when_expected(
+          mylite_ast_drop_table_view_table_schema_value_at(view, 0),
+          mylite_ast_drop_table_view_table_schema_value_length_at(view, 0),
+          "db1") ||
+      !value_matches_when_expected(
+          mylite_ast_drop_table_view_table_name_value_at(view, 0),
+          mylite_ast_drop_table_view_table_name_value_length_at(view, 0),
+          "t1") ||
+      !value_matches_when_expected(
+          mylite_ast_drop_table_view_table_name_value_at(view, 1),
+          mylite_ast_drop_table_view_table_name_value_length_at(view, 1),
+          "t2")) {
+    fprintf(stderr, "DROP TABLE view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_rename_table_view(void) {
+  const char *sql = "RENAME TABLE db1.t1 TO db2.t2, t3 TO t4";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "RENAME TABLE view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstRenameTable *view = mylite_ast_rename_table_view(ast, 0);
+  int failed = 0;
+  if (view == NULL || mylite_ast_rename_table_view_node(view) == NULL ||
+      mylite_ast_rename_table_view_pair_count(view) != 2 ||
+      !value_matches_when_expected(
+          mylite_ast_rename_table_view_source_schema_value_at(view, 0),
+          mylite_ast_rename_table_view_source_schema_value_length_at(view, 0),
+          "db1") ||
+      !value_matches_when_expected(
+          mylite_ast_rename_table_view_source_name_value_at(view, 0),
+          mylite_ast_rename_table_view_source_name_value_length_at(view, 0),
+          "t1") ||
+      !value_matches_when_expected(
+          mylite_ast_rename_table_view_destination_schema_value_at(view, 0),
+          mylite_ast_rename_table_view_destination_schema_value_length_at(view,
+                                                                         0),
+          "db2") ||
+      !value_matches_when_expected(
+          mylite_ast_rename_table_view_destination_name_value_at(view, 0),
+          mylite_ast_rename_table_view_destination_name_value_length_at(view,
+                                                                       0),
+          "t2") ||
+      !value_matches_when_expected(
+          mylite_ast_rename_table_view_source_name_value_at(view, 1),
+          mylite_ast_rename_table_view_source_name_value_length_at(view, 1),
+          "t3") ||
+      !value_matches_when_expected(
+          mylite_ast_rename_table_view_destination_name_value_at(view, 1),
+          mylite_ast_rename_table_view_destination_name_value_length_at(view,
+                                                                       1),
+          "t4")) {
+    fprintf(stderr, "RENAME TABLE view failed: %s\n", sql);
+    failed = 1;
   }
 
   mylite_ast_free(ast);

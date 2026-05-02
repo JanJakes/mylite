@@ -361,7 +361,7 @@ token sink:
   file lists and optional scoped `SET` assignments for installs, while rejecting
   malformed component assignment values and quoted hex/bit component URNs.
 - `ANALYZE TABLE` recognizes table lists and histogram update/drop clauses using
-  the shared identifier grammar for table and column names, with numeric
+  the shared identifier grammar for table and column names, with unsigned-integer
   histogram bucket counts, MySQL 8.4 automatic/manual histogram update modes,
   histogram clauses after table lists, and text-string histogram data with
   quoted hex/bit rejection.

@@ -2289,9 +2289,15 @@ analyze_histogram_update_mode_tail ::= .
 analyze_histogram_update_mode_tail ::= MANUAL UPDATE.
 analyze_histogram_update_mode_tail ::= AUTO UPDATE.
 
-analyze_histogram_bucket_count ::= BOOLEAN_NUMBER.
-analyze_histogram_bucket_count ::= FACTOR_NUMBER.
-analyze_histogram_bucket_count ::= NUMBER_LITERAL.
+analyze_histogram_bucket_count ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
+analyze_histogram_bucket_count ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
+analyze_histogram_bucket_count ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
 
 analyze_buckets_marker ::= BUCKETS.
 

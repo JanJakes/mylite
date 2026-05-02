@@ -14,6 +14,7 @@ typedef struct MyliteLexer {
   int create_scan;
   int in_compound_definition;
   int compound_depth;
+  int resource_group_vcpu_scan;
   MyliteParseResult *result;
 } MyliteLexer;
 

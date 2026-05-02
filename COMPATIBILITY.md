@@ -223,8 +223,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SET DEFAULT ROLE` | ❌ | medium | Default role assignment. | Parser recognizes `NONE`, `ALL`, explicit role lists, and required `TO` account lists. |
 | `SET PASSWORD` | ❌ | medium | Password assignment semantics. | Parser recognizes string-literal and random password assignment, `CURRENT_USER` account references, string-literal `REPLACE`, and `RETAIN CURRENT PASSWORD`. |
 | `SET ROLE` | ❌ | medium | Active-role selection. | Parser recognizes `DEFAULT`, `NONE`, `ALL`, `ALL EXCEPT`, and explicit role lists. |
-| `CREATE RESOURCE GROUP` | ❌ | low | Thread resource group creation syntax. | Parser recognizes `TYPE`, optional numeric VCPU ranges, numeric thread priority, and enable/disable clauses. |
-| `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. | Parser recognizes numeric VCPU ranges, numeric thread priority, enable, and `DISABLE [FORCE]` clauses. |
+| `CREATE RESOURCE GROUP` | ❌ | low | Thread resource group creation syntax. | Parser recognizes `TYPE`, optional numeric VCPU ranges with MySQL's optional comma separators, numeric thread priority, and enable/disable clauses. |
+| `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. | Parser recognizes numeric VCPU ranges with MySQL's optional comma separators, numeric thread priority, enable, and `DISABLE [FORCE]` clauses. |
 | `DROP RESOURCE GROUP` | ❌ | low | Resource group deletion syntax. | Parser recognizes the optional `FORCE` modifier. |
 | `SET RESOURCE GROUP` | ❌ | low | Thread assignment to resource groups. | Parser recognizes optional numeric `FOR` thread-id lists with MySQL's optional comma separators. |
 | `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. | Parser recognizes table lists and single-table histogram update/drop clauses, including numeric histogram bucket counts, automatic/manual histogram update modes, and single-column string-literal histogram data, using the shared identifier grammar for tables and columns. |

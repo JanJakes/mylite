@@ -45,6 +45,7 @@ void mylite_lexer_init(MyliteLexer *lexer, const char *sql, size_t length,
   lexer->create_scan = 0;
   lexer->in_compound_definition = 0;
   lexer->compound_depth = 0;
+  lexer->resource_group_vcpu_scan = 0;
   lexer->result = result;
 }
 
@@ -399,6 +400,8 @@ static int lexer_dollar_quoted_string(MyliteLexer *lexer,
 }
 
 static int lexer_number(MyliteLexer *lexer, MyliteToken *token) {
+  int signed_number = lexer_peek(lexer, 0) == '+' || lexer_peek(lexer, 0) == '-';
+
   if ((lexer_peek(lexer, 0) == '+' || lexer_peek(lexer, 0) == '-') &&
       isdigit(lexer_peek(lexer, 1))) {
     lexer_advance(lexer);
@@ -417,6 +420,9 @@ static int lexer_number(MyliteLexer *lexer, MyliteToken *token) {
   }
 
   token->length = lexer->offset - token->offset;
+  if (signed_number && lexer->resource_group_vcpu_scan) {
+    return ML_SIGNED_NUMBER_LITERAL;
+  }
   if (token->length == 1 &&
       (token->start[0] == '0' || token->start[0] == '1')) {
     return ML_BOOLEAN_NUMBER;
@@ -498,10 +504,18 @@ static int lexer_semicolon(MyliteLexer *lexer, MyliteToken *token) {
 
   lexer->in_compound_definition = 0;
   lexer->create_scan = 0;
+  lexer->resource_group_vcpu_scan = 0;
   return ML_SEMI;
 }
 
 static void lexer_note_token(MyliteLexer *lexer, int token_id) {
+  if (token_id == ML_VCPU) {
+    lexer->resource_group_vcpu_scan = 1;
+  } else if (token_id == ML_THREAD_PRIORITY || token_id == ML_ENABLE ||
+             token_id == ML_DISABLE || token_id == ML_FORCE) {
+    lexer->resource_group_vcpu_scan = 0;
+  }
+
   if (token_id == ML_CREATE) {
     lexer->create_scan = 32;
     return;

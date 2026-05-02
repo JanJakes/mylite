@@ -13066,8 +13066,7 @@ static int column_definition_tail_token(
   }
 
   if (*state == COLUMN_DEFINITION_TAIL_AFTER_COMMENT) {
-    if (token_id != ML_DOUBLE_QUOTED_STRING &&
-        token_id != ML_STRING_LITERAL) {
+    if (!create_table_tail_option_string_token(token_id)) {
       mylite_parser_reject(ctx, *pending_token, message);
       return 0;
     }

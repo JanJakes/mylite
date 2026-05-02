@@ -215,7 +215,8 @@ token sink:
   column heads (`AS (...)` or `GENERATED ALWAYS AS (...)`), require
   generated-column storage modifiers to follow generated expressions, reject
   repeated generated-column storage modifiers and repeated column `COLLATE`
-  clauses, reject `DEFAULT` as a column charset/collation value, validate
+  clauses, accept repeated column `COMMENT` attributes with MySQL string-token
+  variants, reject `DEFAULT` as a column charset/collation value, validate
   parenthesized default/generated expression bodies for dangling operators and
   scalar comma lists, validate temporal precision lists for `DEFAULT`/`ON
   UPDATE` functions, reject stray attribute parentheses, and
@@ -280,8 +281,9 @@ token sink:
   column type starts plus
   MySQL's `DOUBLE PRECISION` modifier placement, column-definition attribute
   starts and selected closed attribute values including generated-column head
-  validation, repeated `COLLATE` rejection, `DEFAULT` charset/collation value
-  rejection, and storage modifier context and repetition checks, index key-part prefix lengths,
+  validation, repeated `COLLATE` rejection, repeated column `COMMENT`
+  attributes, `DEFAULT` charset/collation value rejection, and storage modifier
+  context and repetition checks, index key-part prefix lengths,
   `ASC`/`DESC` tails, and index option values including closed index
   `USING`/`TYPE` values. `ADD FOREIGN KEY` child lists, referenced table names,
   optional parent column-list envelopes, and referential-action tails are also

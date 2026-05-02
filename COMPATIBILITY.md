@@ -818,6 +818,12 @@ tests.
 | `OPTIMIZE TABLE` | 🟡 | Limited persistent and shadowing temporary base-table result-set surface with optional `NO_WRITE_TO_BINLOG` / `LOCAL`, InnoDB-style note plus status rows, multi-target ordering, MySQL-shaped missing-target rows, implicit user-transaction commit, `ROW_COUNT() = -1`, and no warnings; no table rebuild, statistics refresh, free-space recovery, optimizer effects, privileges, or binary logging. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
 | `REPAIR TABLE` | 🟡 | Limited persistent and shadowing temporary base-table result-set surface with optional `NO_WRITE_TO_BINLOG` / `LOCAL` and admitted `QUICK`, `EXTENDED`, and `USE_FRM` options as no-ops, InnoDB-style unsupported-repair note rows, multi-target ordering, MySQL-shaped missing-target rows, implicit user-transaction commit, `ROW_COUNT() = -1`, and no warnings; no physical repair, partition repair, `.frm` handling, privileges, or binary logging. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
 
+### Client APIs
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| PHP `mysqli` extension | 🟡 | `packages/php-ext-mylite` provides a PHP module named `mysqli` backed by embedded MyLite, with object/procedural connection flows, buffered results, field metadata, prepared-statement wrappers, diagnostics, affected rows, insert ids, warnings, and a package-local `mylite` executable. Network-only, TLS, async, process, and exact mysqlnd statistics behavior use embedded-compatible placeholders; prepared statements interpolate PHP-side values until MyLite has a native bind ABI. | [PHP mysqli extension spec](docs/specs/php-mysqli-extension/specs.md) |
+
 ## Detailed Compatibility Tables
 
 These tables track the full MySQL compatibility inventory beyond the baseline

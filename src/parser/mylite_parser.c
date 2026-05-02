@@ -32,6 +32,8 @@ typedef enum ColumnDefinitionTailState {
   COLUMN_DEFINITION_TAIL_AFTER_COLUMN_FORMAT,
   COLUMN_DEFINITION_TAIL_AFTER_STORAGE,
   COLUMN_DEFINITION_TAIL_AFTER_SRID,
+  COLUMN_DEFINITION_TAIL_AFTER_ENGINE_ATTRIBUTE,
+  COLUMN_DEFINITION_TAIL_AFTER_ENGINE_ATTRIBUTE_EQUALS,
   COLUMN_DEFINITION_TAIL_AFTER_AFTER,
   COLUMN_DEFINITION_TAIL_AFTER_ON,
   COLUMN_DEFINITION_TAIL_AFTER_ON_UPDATE,
@@ -332,6 +334,8 @@ static int column_type_varchar_token(int token_id, MyliteToken token);
 static int column_type_varbinary_token(int token_id, MyliteToken token);
 static int column_definition_serial_attribute_token(int token_id,
                                                     MyliteToken token);
+static int column_definition_engine_attribute_token(int token_id);
+static int column_definition_json_attribute_token(int token_id);
 static int column_type_integer_family_token(int token_id, MyliteToken token);
 static int column_type_real_family_token(int token_id, MyliteToken token);
 static int column_type_numeric_family_token(int token_id, MyliteToken token);
@@ -12110,6 +12114,16 @@ static int column_definition_serial_attribute_token(int token_id,
   return token_ascii_equal(token, "serial");
 }
 
+static int column_definition_engine_attribute_token(int token_id) {
+  return token_id == ML_ENGINE_ATTRIBUTE ||
+         token_id == ML_SECONDARY_ENGINE_ATTRIBUTE;
+}
+
+static int column_definition_json_attribute_token(int token_id) {
+  return token_id == ML_DOUBLE_QUOTED_STRING ||
+         token_id == ML_STRING_LITERAL;
+}
+
 static int column_type_integer_family_token(int token_id, MyliteToken token) {
   return token_id == ML_INT || token_id == ML_INTEGER ||
          token_ascii_equal(token, "bigint") ||
@@ -12392,6 +12406,8 @@ static int column_definition_tail_token(
         *state == COLUMN_DEFINITION_TAIL_AFTER_COLUMN_FORMAT ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_STORAGE ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_SRID ||
+        *state == COLUMN_DEFINITION_TAIL_AFTER_ENGINE_ATTRIBUTE ||
+        *state == COLUMN_DEFINITION_TAIL_AFTER_ENGINE_ATTRIBUTE_EQUALS ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_AFTER ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_ON ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_ON_UPDATE ||
@@ -12554,8 +12570,30 @@ static int column_definition_tail_token(
   }
 
   if (*state == COLUMN_DEFINITION_TAIL_AFTER_SRID) {
-    if (token_id != ML_BOOLEAN_NUMBER && token_id != ML_FACTOR_NUMBER &&
-        token_id != ML_NUMBER_LITERAL) {
+    if (!column_type_integer_parameter_token(token_id, token)) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_READY;
+    return 1;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_AFTER_ENGINE_ATTRIBUTE) {
+    if (token_id == ML_EQUALS) {
+      *state = COLUMN_DEFINITION_TAIL_AFTER_ENGINE_ATTRIBUTE_EQUALS;
+      *pending_token = token;
+      return 1;
+    }
+    if (!column_definition_json_attribute_token(token_id)) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_READY;
+    return 1;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_AFTER_ENGINE_ATTRIBUTE_EQUALS) {
+    if (!column_definition_json_attribute_token(token_id)) {
       mylite_parser_reject(ctx, *pending_token, message);
       return 0;
     }
@@ -12882,6 +12920,12 @@ static int column_definition_tail_token(
     return 1;
   }
 
+  if (column_definition_engine_attribute_token(token_id)) {
+    *state = COLUMN_DEFINITION_TAIL_AFTER_ENGINE_ATTRIBUTE;
+    *pending_token = token;
+    return 1;
+  }
+
   if (token_id == ML_AFTER) {
     if (!allow_position) {
       mylite_parser_reject(ctx, token, message);
@@ -13065,6 +13109,7 @@ static int column_definition_attribute_start(int token_id, MyliteToken token,
          token_id == ML_CHARSET || token_id == ML_CHECK ||
          token_id == ML_COLLATE || token_id == ML_COMMENT ||
          token_id == ML_CONSTRAINT || token_id == ML_DEFAULT ||
+         column_definition_engine_attribute_token(token_id) ||
          (allow_position && token_id == ML_FIRST) || token_id == ML_INVISIBLE ||
          token_id == ML_KEY || token_id == ML_NOT || token_id == ML_NULL ||
          token_id == ML_ON || token_id == ML_PRIMARY ||

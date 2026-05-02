@@ -437,7 +437,8 @@ mylite_sql_parser_make_set_character_set_statement(struct mylite_sql_parser_stat
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns)
+    struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns, struct mylite_sql_ast_node *options)
 {
     struct mylite_sql_source_span span = span_from_token(&create_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -448,6 +449,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     if (columns != NULL) {
         span = span_join(span, columns->span);
     }
+    if (options != NULL && options->span.text != NULL) {
+        span = span_join(span, options->span);
+    }
 
     statement = make_node(state, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, span);
     if (statement == NULL) {
@@ -456,7 +460,70 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, columns);
+    mylite_sql_ast_node_append_child(statement, if_not_exists);
+    mylite_sql_ast_node_append_child(statement, options);
     return statement;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_table_option_list(struct mylite_sql_parser_state *state)
+{
+    return make_node(state, MYLITE_SQL_AST_TABLE_OPTION_LIST, (struct mylite_sql_source_span){0});
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_table_option(struct mylite_sql_parser_state *state,
+                                      struct mylite_sql_ast_node *list,
+                                      struct mylite_sql_ast_node *option)
+{
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, option);
+    if (option != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, option->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_option(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token option_token,
+    enum mylite_sql_ast_table_option option_kind, struct mylite_sql_ast_node *value)
+{
+    struct mylite_sql_source_span span = span_from_token(&option_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_table_option(option, option_kind);
+    mylite_sql_ast_node_append_child(option, value);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_comment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_table_string_option_tokens tokens)
+{
+    return mylite_sql_parser_make_table_option(
+        state, tokens.option, MYLITE_SQL_AST_TABLE_OPTION_COMMENT,
+        mylite_sql_parser_make_literal(state, tokens.string, MYLITE_SQL_AST_LITERAL_STRING));
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_auto_increment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_table_integer_option_tokens tokens)
+{
+    return mylite_sql_parser_make_table_option(state, tokens.option,
+                                               MYLITE_SQL_AST_TABLE_OPTION_AUTO_INCREMENT,
+                                               make_checked_integer_literal(state, tokens.integer));
 }
 
 struct mylite_sql_ast_node *
@@ -2031,6 +2098,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"DROP", MYLITE_SQL_PARSE_DROP},
         {"DUAL", MYLITE_SQL_PARSE_DUAL},
         {"DYNAMIC", MYLITE_SQL_PARSE_DYNAMIC},
+        {"ENGINE", MYLITE_SQL_PARSE_ENGINE},
         {"ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_ENGINE_ATTRIBUTE},
         {"ENCRYPTION", MYLITE_SQL_PARSE_ENCRYPTION},
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},

@@ -31,7 +31,7 @@
 %right UPLUS UMINUS.
 %right KEY.
 %fallback IDENTIFIER AUTO_INCREMENT BOOL BOOLEAN BTREE CHARSET COLUMN_FORMAT COMMENT DATE DATETIME
-    DISK DYNAMIC ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR
+    DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR
     NVARCHAR ONLY SECONDARY_ENGINE_ATTRIBUTE SIGNED STORAGE TEXT TIME TIMESTAMP VISIBLE YEAR.
 
 input ::= statement_list(A). {
@@ -151,8 +151,8 @@ set_character_set_statement(A) ::= SET(T) CHARSET DEFAULT(D). {
         state, T, mylite_sql_parser_make_default(state, D));
 }
 
-create_table_statement(A) ::= CREATE(T) TABLE table_name(B) LPAREN table_element_list(C) RPAREN. {
-    A = mylite_sql_parser_make_create_table_statement(state, T, B, C);
+create_table_statement(A) ::= CREATE(T) TABLE opt_if_not_exists(B) table_name(C) LPAREN table_element_list(D) RPAREN table_option_list(E). {
+    A = mylite_sql_parser_make_create_table_statement(state, T, B, C, D, E);
 }
 
 table_element_list(A) ::= table_element(B). {
@@ -877,6 +877,57 @@ index_option(A) ::= SECONDARY_ENGINE_ATTRIBUTE(T) EQ STRING(S). {
             .option = T,
             .string = S,
         }, MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE);
+}
+
+table_option_list(A) ::= . {
+    A = mylite_sql_parser_make_table_option_list(state);
+}
+table_option_list(A) ::= table_option_list(B) table_option(C). {
+    A = mylite_sql_parser_append_table_option(state, B, C);
+}
+
+table_option(A) ::= ENGINE(T) opt_equal identifier(B). {
+    A = mylite_sql_parser_make_table_option(
+        state, T, MYLITE_SQL_AST_TABLE_OPTION_ENGINE, B);
+}
+table_option(A) ::= opt_default CHARACTER(T) SET opt_equal table_option_value(B). {
+    A = mylite_sql_parser_make_table_option(
+        state, T, MYLITE_SQL_AST_TABLE_OPTION_CHARACTER_SET, B);
+}
+table_option(A) ::= opt_default CHARSET(T) opt_equal table_option_value(B). {
+    A = mylite_sql_parser_make_table_option(
+        state, T, MYLITE_SQL_AST_TABLE_OPTION_CHARACTER_SET, B);
+}
+table_option(A) ::= opt_default COLLATE(T) opt_equal table_option_value(B). {
+    A = mylite_sql_parser_make_table_option(
+        state, T, MYLITE_SQL_AST_TABLE_OPTION_COLLATE, B);
+}
+table_option(A) ::= COMMENT(T) opt_equal STRING(S). {
+    A = mylite_sql_parser_make_table_comment_option(
+        state, (struct mylite_sql_parser_table_string_option_tokens){
+            .option = T,
+            .string = S,
+        });
+}
+table_option(A) ::= AUTO_INCREMENT(T) opt_equal INTEGER(V). {
+    A = mylite_sql_parser_make_table_auto_increment_option(
+        state, (struct mylite_sql_parser_table_integer_option_tokens){
+            .option = T,
+            .integer = V,
+        });
+}
+
+table_option_value(A) ::= identifier(B). {
+    A = B;
+}
+table_option_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+table_option_value(A) ::= BINARY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+table_option_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_default(state, T);
 }
 
 column_default_value(A) ::= literal(B). {

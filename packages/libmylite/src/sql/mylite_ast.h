@@ -49,6 +49,8 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_INDEX_OPTION = 38,
     MYLITE_SQL_AST_SECONDARY_INDEX = 39,
     MYLITE_SQL_AST_UNIQUE_INDEX = 40,
+    MYLITE_SQL_AST_TABLE_OPTION_LIST = 41,
+    MYLITE_SQL_AST_TABLE_OPTION = 42,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -167,6 +169,15 @@ enum mylite_sql_ast_index_option {
     MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE = 7,
 };
 
+enum mylite_sql_ast_table_option {
+    MYLITE_SQL_AST_TABLE_OPTION_NONE = 0,
+    MYLITE_SQL_AST_TABLE_OPTION_ENGINE = 1,
+    MYLITE_SQL_AST_TABLE_OPTION_CHARACTER_SET = 2,
+    MYLITE_SQL_AST_TABLE_OPTION_COLLATE = 3,
+    MYLITE_SQL_AST_TABLE_OPTION_COMMENT = 4,
+    MYLITE_SQL_AST_TABLE_OPTION_AUTO_INCREMENT = 5,
+};
+
 struct mylite_sql_ast_node {
     struct mylite_sql_ast_node *first_child;
     struct mylite_sql_ast_node *last_child;
@@ -189,6 +200,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_key_part_order key_part_order;
     enum mylite_sql_ast_index_algorithm index_algorithm;
     enum mylite_sql_ast_index_option index_option;
+    enum mylite_sql_ast_table_option table_option;
     unsigned int column_display_width;
     bool column_type_unsigned;
     bool column_type_signed;
@@ -254,6 +266,8 @@ void mylite_sql_ast_node_set_index_algorithm(struct mylite_sql_ast_node *node,
                                              enum mylite_sql_ast_index_algorithm algorithm);
 void mylite_sql_ast_node_set_index_option(struct mylite_sql_ast_node *node,
                                           enum mylite_sql_ast_index_option option);
+void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
+                                          enum mylite_sql_ast_table_option option);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 

@@ -59,6 +59,16 @@ struct mylite_sql_parser_column_unique_key_attribute_tokens {
     struct mylite_sql_token key_token;
 };
 
+struct mylite_sql_parser_table_string_option_tokens {
+    struct mylite_sql_token option;
+    struct mylite_sql_token string;
+};
+
+struct mylite_sql_parser_table_integer_option_tokens {
+    struct mylite_sql_token option;
+    struct mylite_sql_token integer;
+};
+
 void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
                                       struct mylite_sql_ast_node *root);
 void mylite_sql_parser_state_syntax_error(struct mylite_sql_parser_state *state, int parser_token,
@@ -105,7 +115,23 @@ mylite_sql_parser_make_set_character_set_statement(struct mylite_sql_parser_stat
                                                    struct mylite_sql_ast_node *character_set);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns);
+    struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns, struct mylite_sql_ast_node *options);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_table_option_list(struct mylite_sql_parser_state *state);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_table_option(struct mylite_sql_parser_state *state,
+                                      struct mylite_sql_ast_node *list,
+                                      struct mylite_sql_ast_node *option);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_option(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token option_token,
+    enum mylite_sql_ast_table_option option_kind, struct mylite_sql_ast_node *value);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_comment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_table_string_option_tokens tokens);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_auto_increment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_table_integer_option_tokens tokens);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_column_definition_list(struct mylite_sql_parser_state *state,
                                               struct mylite_sql_ast_node *column);

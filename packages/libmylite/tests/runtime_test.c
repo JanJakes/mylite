@@ -7,6 +7,7 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum {
@@ -28,11 +29,44 @@ enum {
     tables_engine_column = 4,
     tables_version_column = 5,
     tables_rows_column = 7,
+    tables_auto_increment_column = 13,
     tables_collation_column = 17,
     tables_comment_column = 20,
+    columns_name_column = 3,
+    columns_ordinal_column = 4,
+    columns_default_column = 5,
+    columns_nullable_column = 6,
+    columns_data_type_column = 7,
+    columns_character_max_length_column = 8,
+    columns_character_octet_length_column = 9,
+    columns_numeric_precision_column = 10,
+    columns_numeric_scale_column = 11,
+    columns_datetime_precision_column = 12,
+    columns_character_set_column = 13,
+    columns_collation_column = 14,
+    columns_type_column = 15,
+    columns_key_column = 16,
+    columns_extra_column = 17,
+    columns_comment_column = 19,
     columns_table_name_column = 2,
+    statistics_non_unique_column = 3,
+    statistics_index_name_column = 5,
+    statistics_seq_column = 6,
+    statistics_column_name_column = 7,
+    statistics_collation_column = 8,
+    statistics_nullable_column = 12,
+    statistics_index_type_column = 13,
+    statistics_index_comment_column = 15,
+    statistics_visible_column = 16,
     statistics_table_name_column = 2,
     information_schema_table_version = 10,
+    simple_create_table_version = 10,
+    simple_create_auto_increment = 10,
+    simple_create_name_length = 20,
+    simple_create_name_octet_length = 80,
+    simple_create_amount_precision = 10,
+    simple_create_column_count = 6,
+    simple_create_statistics_count = 3,
 };
 
 struct expected_schemata_row {
@@ -40,6 +74,16 @@ struct expected_schemata_row {
     const char *character_set;
     const char *collation;
     const char *encryption;
+};
+
+struct sqlite_table_lookup {
+    const char *path;
+    const char *table_name;
+};
+
+struct expected_table_collation {
+    const char *table_name;
+    const char *collation;
 };
 
 static int test_select_integer_literal(void);
@@ -50,7 +94,8 @@ static int test_core_metadata_catalog(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
-static int test_create_table_column_type_prepare_is_unsupported(void);
+static int test_create_table_base_execution(void);
+static int test_create_table_prepare_has_no_side_effects(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -67,6 +112,12 @@ static int expect_no_information_schema_column_table_name_row(mylite_db *databas
                                                               const char *table_name);
 static int expect_no_information_schema_statistics_table_name_row(mylite_db *database,
                                                                   const char *table_name);
+static int
+expect_information_schema_table_collation(mylite_db *database,
+                                          const struct expected_table_collation *expected);
+static int expect_simple_create_table_row(mylite_db *database);
+static int expect_simple_create_column_rows(mylite_db *database);
+static int expect_simple_create_statistics_rows(mylite_db *database);
 static int expect_empty_information_schema_table(mylite_db *database, const char *sql,
                                                  const char *const *columns, int column_count);
 static int expect_show_database_rows(mylite_db *database, const char *required,
@@ -75,6 +126,8 @@ static int expect_connection_state(mylite_db *database, const char *client, cons
                                    const char *results, const char *collation, const char *context);
 static int expect_column_names(const mylite_stmt *stmt, const char *const *expected, int count,
                                const char *context);
+static char *expected_physical_table_name(const char *schema_name, const char *table_name);
+static int expect_sqlite_table_exists(const struct sqlite_table_lookup *lookup);
 static void remove_runtime_test_files(void);
 static int read_file_at(const char *path, long offset, unsigned char *buffer, size_t size);
 static int exec_sqlite(sqlite3 *database, const char *sql);
@@ -102,7 +155,8 @@ int main(void)
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
-    failures += test_create_table_column_type_prepare_is_unsupported();
+    failures += test_create_table_base_execution();
+    failures += test_create_table_prepare_has_no_side_effects();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -707,7 +761,358 @@ static int test_unsupported_statement(void)
     return failures;
 }
 
-static int test_create_table_column_type_prepare_is_unsupported(void)
+static int test_create_table_base_execution(void)
+{
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+    char *physical_name = NULL;
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &database), MYLITE_OK, "open create table file");
+
+    failures += prepare_sql(database, "CREATE TABLE no_default_table (a INT)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "create table no database");
+    failures += expect_contains(mylite_error_message(database), "No database selected",
+                                "create table no database error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_ct11 DEFAULT CHARSET utf8mb4 "
+                            "COLLATE utf8mb4_bin",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE mylite_ct11.qualified_create (a INT)", MYLITE_DONE);
+    failures += expect_information_schema_table_collation(database,
+                                                          &(const struct expected_table_collation){
+                                                              .table_name = "qualified_create",
+                                                              .collation = "utf8mb4_bin",
+                                                          });
+
+    failures += prepare_sql(database, "CREATE TABLE missing_schema.t (a INT)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "create table missing schema");
+    failures += expect_contains(mylite_error_message(database), "Unknown database",
+                                "create table missing schema error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "t");
+
+    failures += prepare_sql(database, "CREATE TABLE information_schema.should_fail (a INT)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "create table system schema");
+    failures += expect_contains(mylite_error_message(database), "system schema",
+                                "create table system schema error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "should_fail");
+
+    failures += execute_sql(database, "USE mylite_ct11", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE simple_create ("
+                            "id INT, "
+                            "name VARCHAR(20) DEFAULT 'x' COMMENT 'name col', "
+                            "created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                            "updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP "
+                            "ON UPDATE CURRENT_TIMESTAMP, "
+                            "amount DECIMAL(10,2), "
+                            "flag BOOL, "
+                            "PRIMARY KEY (id), "
+                            "UNIQUE KEY uq_name (name), "
+                            "KEY amount_idx (amount)) "
+                            "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin "
+                            "COMMENT='hello table' AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+
+    failures += expect_simple_create_table_row(database);
+    failures += expect_simple_create_column_rows(database);
+    failures += expect_simple_create_statistics_rows(database);
+
+    failures += prepare_sql(database, "CREATE TABLE simple_create (a INT)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate table create");
+    failures +=
+        expect_contains(mylite_error_message(database), "already exists", "duplicate table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        execute_sql(database, "CREATE TABLE IF NOT EXISTS simple_create (a INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE IF NOT EXISTS new_table (a INT)", MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "CREATE TABLE bad_charset (a VARCHAR(4)) "
+                            "DEFAULT CHARSET latin1 COLLATE utf8mb4_bin",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "bad table charset");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "bad_charset");
+
+    failures += prepare_sql(database, "CREATE TABLE bad_columns (a INT, A INT)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate columns");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "bad_columns");
+
+    failures +=
+        prepare_sql(database, "CREATE TABLE bad_index (a INT, b INT, KEY idx (a), KEY IDX (b))",
+                    MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate indexes");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "bad_index");
+
+    failures += prepare_sql(database,
+                            "CREATE TABLE bad_inline_index_collision ("
+                            "a INT UNIQUE, b INT, KEY a (b))",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "inline duplicate index name");
+    failures += expect_contains(mylite_error_message(database), "Duplicate key name",
+                                "inline duplicate index name error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "bad_inline_index_collision");
+
+    failures +=
+        prepare_sql(database, "CREATE TABLE bad_primary (a INT PRIMARY KEY, PRIMARY KEY (a))",
+                    MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate primary key");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "bad_primary");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE inline_indexes ("
+                            "key_alias INT KEY, "
+                            "u INT UNIQUE, uk INT UNIQUE KEY, v INT, KEY (v))",
+                            MYLITE_DONE);
+
+    mylite_close(database);
+    database = NULL;
+
+    physical_name = expected_physical_table_name("mylite_ct11", "simple_create");
+    if (physical_name == NULL) {
+        fprintf(stderr, "out of memory while building expected physical table name\n");
+        failures = 1;
+    } else {
+        struct sqlite_table_lookup lookup = {
+            .path = path,
+            .table_name = physical_name,
+        };
+        failures += expect_sqlite_table_exists(&lookup);
+        free(physical_name);
+    }
+
+    remove_runtime_test_files();
+    return failures;
+}
+
+static int expect_simple_create_table_row(mylite_db *database)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLES", MYLITE_OK, &stmt);
+    int saw_simple_table = 0;
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "tables row");
+        if (strcmp(mylite_column_text(stmt, tables_name_column), "simple_create") != 0) {
+            continue;
+        }
+        saw_simple_table = 1;
+        failures += expect_string(mylite_column_text(stmt, tables_catalog_column), "def",
+                                  "created table catalog");
+        failures += expect_string(mylite_column_text(stmt, tables_schema_column), "mylite_ct11",
+                                  "created table schema");
+        failures += expect_string(mylite_column_text(stmt, tables_type_column), "BASE TABLE",
+                                  "created table type");
+        failures +=
+            expect_string(mylite_column_text(stmt, tables_engine_column), "InnoDB", "engine");
+        failures += expect_int64(mylite_column_int64(stmt, tables_version_column),
+                                 simple_create_table_version, "created table version");
+        failures +=
+            expect_int64(mylite_column_int64(stmt, tables_rows_column), 0, "created table rows");
+        failures += expect_int64(mylite_column_int64(stmt, tables_auto_increment_column),
+                                 simple_create_auto_increment, "created table auto_increment");
+        failures += expect_string(mylite_column_text(stmt, tables_collation_column), "utf8mb4_bin",
+                                  "created table collation");
+        failures += expect_string(mylite_column_text(stmt, tables_comment_column), "hello table",
+                                  "created table comment");
+    }
+    if (saw_simple_table == 0) {
+        fprintf(stderr, "INFORMATION_SCHEMA.TABLES did not include simple_create\n");
+        failures = 1;
+    }
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int
+expect_information_schema_table_collation(mylite_db *database,
+                                          const struct expected_table_collation *expected)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLES", MYLITE_OK, &stmt);
+    int saw_table = 0;
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "tables collation row");
+        if (strcmp(mylite_column_text(stmt, tables_name_column), expected->table_name) != 0) {
+            continue;
+        }
+        saw_table = 1;
+        failures += expect_string(mylite_column_text(stmt, tables_collation_column),
+                                  expected->collation, "table collation");
+    }
+    if (saw_table == 0) {
+        fprintf(stderr, "INFORMATION_SCHEMA.TABLES did not include %s\n", expected->table_name);
+        failures = 1;
+    }
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_simple_create_column_rows(mylite_db *database)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLUMNS", MYLITE_OK, &stmt);
+    int simple_columns = 0;
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *column_name = NULL;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "columns row");
+        if (strcmp(mylite_column_text(stmt, columns_table_name_column), "simple_create") != 0) {
+            continue;
+        }
+        ++simple_columns;
+        column_name = mylite_column_text(stmt, columns_name_column);
+        if (strcmp(column_name, "id") == 0) {
+            failures +=
+                expect_int64(mylite_column_int64(stmt, columns_ordinal_column), 1, "id ordinal");
+            failures += expect_string(mylite_column_text(stmt, columns_nullable_column), "NO",
+                                      "id nullable");
+            failures +=
+                expect_string(mylite_column_text(stmt, columns_key_column), "PRI", "id key");
+        } else if (strcmp(column_name, "name") == 0) {
+            failures += expect_string(mylite_column_text(stmt, columns_default_column), "x",
+                                      "name default");
+            failures += expect_string(mylite_column_text(stmt, columns_data_type_column), "varchar",
+                                      "name data type");
+            failures += expect_int64(mylite_column_int64(stmt, columns_character_max_length_column),
+                                     simple_create_name_length, "name max length");
+            failures +=
+                expect_int64(mylite_column_int64(stmt, columns_character_octet_length_column),
+                             simple_create_name_octet_length, "name octet length");
+            failures += expect_string(mylite_column_text(stmt, columns_character_set_column),
+                                      "utf8mb4", "name charset");
+            failures += expect_string(mylite_column_text(stmt, columns_collation_column),
+                                      "utf8mb4_bin", "name collation");
+            failures +=
+                expect_string(mylite_column_text(stmt, columns_key_column), "UNI", "name key");
+            failures += expect_string(mylite_column_text(stmt, columns_comment_column), "name col",
+                                      "name comment");
+        } else if (strcmp(column_name, "created") == 0) {
+            failures += expect_string(mylite_column_text(stmt, columns_default_column),
+                                      "CURRENT_TIMESTAMP", "created default");
+            failures += expect_int64(mylite_column_int64(stmt, columns_datetime_precision_column),
+                                     0, "created datetime precision");
+            failures += expect_string(mylite_column_text(stmt, columns_extra_column),
+                                      "DEFAULT_GENERATED", "created extra");
+        } else if (strcmp(column_name, "updated") == 0) {
+            failures += expect_string(mylite_column_text(stmt, columns_default_column),
+                                      "CURRENT_TIMESTAMP", "updated default");
+            failures +=
+                expect_string(mylite_column_text(stmt, columns_extra_column),
+                              "DEFAULT_GENERATED on update CURRENT_TIMESTAMP", "updated extra");
+        } else if (strcmp(column_name, "amount") == 0) {
+            failures += expect_int64(mylite_column_int64(stmt, columns_numeric_precision_column),
+                                     simple_create_amount_precision, "amount precision");
+            failures += expect_int64(mylite_column_int64(stmt, columns_numeric_scale_column), 2,
+                                     "amount scale");
+            failures +=
+                expect_string(mylite_column_text(stmt, columns_key_column), "MUL", "amount key");
+        } else if (strcmp(column_name, "flag") == 0) {
+            failures += expect_string(mylite_column_text(stmt, columns_type_column), "tinyint(1)",
+                                      "flag column type");
+        }
+    }
+    if (simple_columns != simple_create_column_count) {
+        fprintf(stderr, "expected %d simple_create columns, saw %d\n", simple_create_column_count,
+                simple_columns);
+        failures = 1;
+    }
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_simple_create_statistics_rows(mylite_db *database)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.STATISTICS", MYLITE_OK, &stmt);
+    int simple_statistics = 0;
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *index_name = NULL;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "statistics row");
+        if (strcmp(mylite_column_text(stmt, statistics_table_name_column), "simple_create") != 0) {
+            continue;
+        }
+        ++simple_statistics;
+        index_name = mylite_column_text(stmt, statistics_index_name_column);
+        failures += expect_string(mylite_column_text(stmt, statistics_index_type_column), "BTREE",
+                                  "statistics index type");
+        failures += expect_string(mylite_column_text(stmt, statistics_visible_column), "YES",
+                                  "statistics visible");
+        if (strcmp(index_name, "PRIMARY") == 0) {
+            failures += expect_int64(mylite_column_int64(stmt, statistics_non_unique_column), 0,
+                                     "primary non unique");
+            failures += expect_string(mylite_column_text(stmt, statistics_nullable_column), "",
+                                      "primary nullable");
+        } else if (strcmp(index_name, "uq_name") == 0) {
+            failures += expect_int64(mylite_column_int64(stmt, statistics_non_unique_column), 0,
+                                     "unique non unique");
+            failures += expect_string(mylite_column_text(stmt, statistics_nullable_column), "YES",
+                                      "unique nullable");
+        } else if (strcmp(index_name, "amount_idx") == 0) {
+            failures += expect_int64(mylite_column_int64(stmt, statistics_non_unique_column), 1,
+                                     "secondary non unique");
+            failures += expect_string(mylite_column_text(stmt, statistics_column_name_column),
+                                      "amount", "secondary column");
+        }
+    }
+    if (simple_statistics != simple_create_statistics_count) {
+        fprintf(stderr, "expected %d simple_create statistics rows, saw %d\n",
+                simple_create_statistics_count, simple_statistics);
+        failures = 1;
+    }
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int test_create_table_prepare_has_no_side_effects(void)
 {
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -720,13 +1125,9 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
                             "f BIGINT UNSIGNED, g BOOL, h BOOLEAN, i INT1, j INT8, "
                             "`select` TINYINT(1), width255 INT(255), "
                             "mixed INT SIGNED UNSIGNED)",
-                            MYLITE_UNSUPPORTED, &stmt);
-    if (stmt != NULL) {
-        fprintf(stderr, "parse-only CREATE TABLE returned a statement handle\n");
-        failures = 1;
-        mylite_finalize(stmt);
-        stmt = NULL;
-    }
+                            MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_no_information_schema_table_name_row(database, "integer_types");
     failures += prepare_sql(database,
                             "CREATE TABLE app.`string_binary_types` ("
@@ -738,13 +1139,9 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
                             "q VARCHAR(4) CHARSET binary, r LONG VARCHAR, "
                             "s LONG VARBINARY, t NCHAR(4), u NVARCHAR(4), "
                             "v CHAR(4) COLLATE binary, w TEXT COLLATE binary)",
-                            MYLITE_UNSUPPORTED, &stmt);
-    if (stmt != NULL) {
-        fprintf(stderr, "parse-only string/binary CREATE TABLE returned a statement handle\n");
-        failures = 1;
-        mylite_finalize(stmt);
-        stmt = NULL;
-    }
+                            MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_no_information_schema_table_name_row(database, "string_binary_types");
     failures += prepare_sql(database,
                             "CREATE TABLE app.`numeric_types` ("
@@ -755,13 +1152,9 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
                             "p FLOAT ZEROFILL SIGNED, q DOUBLE UNSIGNED ZEROFILL SIGNED, "
                             "r FLOAT4(10), s FLOAT4(25), t FLOAT4(10,2), "
                             "u FLOAT8(10,2), v DOUBLE PRECISION(10,2), w REAL(10,2))",
-                            MYLITE_UNSUPPORTED, &stmt);
-    if (stmt != NULL) {
-        fprintf(stderr, "parse-only numeric CREATE TABLE returned a statement handle\n");
-        failures = 1;
-        mylite_finalize(stmt);
-        stmt = NULL;
-    }
+                            MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_no_information_schema_table_name_row(database, "numeric_types");
     failures += prepare_sql(database,
                             "CREATE TABLE app.`temporal_types` ("
@@ -769,13 +1162,9 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
                             "e DATETIME, f DATETIME(0), g DATETIME(6), "
                             "h TIMESTAMP, i TIMESTAMP(0), j TIMESTAMP(6), "
                             "k YEAR, l YEAR(4), m TIME(00), n DATETIME(06), o YEAR(004))",
-                            MYLITE_UNSUPPORTED, &stmt);
-    if (stmt != NULL) {
-        fprintf(stderr, "parse-only temporal CREATE TABLE returned a statement handle\n");
-        failures = 1;
-        mylite_finalize(stmt);
-        stmt = NULL;
-    }
+                            MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_no_information_schema_table_name_row(database, "temporal_types");
     failures += prepare_sql(database,
                             "CREATE TABLE app.`column_attributes` ("
@@ -793,13 +1182,9 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
                             "r INT COLUMN_FORMAT FIXED STORAGE DISK, "
                             "s INT COLUMN_FORMAT DYNAMIC STORAGE MEMORY, "
                             "t INT NULL NOT NULL DEFAULT 1 DEFAULT 2 VISIBLE INVISIBLE)",
-                            MYLITE_UNSUPPORTED, &stmt);
-    if (stmt != NULL) {
-        fprintf(stderr, "parse-only column-attribute CREATE TABLE returned a statement handle\n");
-        failures = 1;
-        mylite_finalize(stmt);
-        stmt = NULL;
-    }
+                            MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_no_information_schema_table_name_row(database, "column_attributes");
     failures += expect_no_information_schema_column_table_name_row(database, "column_attributes");
     failures += prepare_sql(database,
@@ -815,8 +1200,9 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
                             "ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE '', "
                             "CONSTRAINT PRIMARY KEY (shorthand) USING HASH INVISIBLE, "
                             "CONSTRAINT named PRIMARY KEY named_pk (nullable_pk DESC))",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "parse-only primary-key CREATE TABLE");
+                            MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_no_information_schema_table_name_row(database, "primary_key_auto_increment");
     failures +=
         expect_no_information_schema_column_table_name_row(database, "primary_key_auto_increment");
@@ -837,8 +1223,9 @@ static int test_create_table_column_type_prepare_is_unsupported(void)
                             "UNIQUE KEY uq_hash (a) USING HASH USING BTREE, "
                             "CONSTRAINT uq_d UNIQUE KEY unique_d (btree DESC), "
                             "CONSTRAINT UNIQUE uq_a (a))",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "parse-only unique/secondary CREATE TABLE");
+                            MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_no_information_schema_table_name_row(database, "unique_secondary_indexes");
     failures +=
         expect_no_information_schema_column_table_name_row(database, "unique_secondary_indexes");
@@ -1472,6 +1859,62 @@ static int expect_column_names(const mylite_stmt *stmt, const char *const *expec
     for (int index = 0; index < count; ++index) {
         failures += expect_string(mylite_column_name(stmt, index), expected[index], context);
     }
+    return failures;
+}
+
+static char *expected_physical_table_name(const char *schema_name, const char *table_name)
+{
+    static const char prefix[] = "__mylite_user_";
+    static const char separator[] = "__";
+    size_t schema_length = strlen(schema_name);
+    size_t table_length = strlen(table_name);
+    size_t output_length =
+        strlen(prefix) + (schema_length * 2U) + strlen(separator) + (table_length * 2U);
+    char *output = malloc(output_length + 1U);
+    size_t offset = 0U;
+
+    if (output == NULL) {
+        return NULL;
+    }
+
+    memcpy(output + offset, prefix, strlen(prefix));
+    offset += strlen(prefix);
+    for (size_t index = 0U; index < schema_length; ++index) {
+        (void)snprintf(output + offset, 3U, "%02X", (unsigned char)schema_name[index]);
+        offset += 2U;
+    }
+    memcpy(output + offset, separator, strlen(separator));
+    offset += strlen(separator);
+    for (size_t index = 0U; index < table_length; ++index) {
+        (void)snprintf(output + offset, 3U, "%02X", (unsigned char)table_name[index]);
+        offset += 2U;
+    }
+    output[offset] = '\0';
+    return output;
+}
+
+static int expect_sqlite_table_exists(const struct sqlite_table_lookup *lookup)
+{
+    sqlite3 *sqlite = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int failures = expect_sqlite_status(
+        sqlite3_open_v2(lookup->path, &sqlite, SQLITE_OPEN_READONLY, mylite_vfs_name()), SQLITE_OK,
+        "open sqlite for physical table check");
+    int rc = SQLITE_OK;
+
+    if (sqlite == NULL) {
+        return failures + 1;
+    }
+
+    rc = sqlite3_prepare_v2(sqlite, "SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?", -1,
+                            &stmt, NULL);
+    failures += expect_sqlite_status(rc, SQLITE_OK, "prepare physical table check");
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, lookup->table_name, -1, SQLITE_STATIC);
+        failures += expect_sqlite_status(sqlite3_step(stmt), SQLITE_ROW, "physical table exists");
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(sqlite);
     return failures;
 }
 

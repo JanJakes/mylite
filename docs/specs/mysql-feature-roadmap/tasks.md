@@ -29,7 +29,7 @@ level application surfaces.
        allocation, explicit values, metadata, and error cases.
 10. [x] Unique and secondary indexes in `CREATE TABLE`: parse-only key parts,
        prefix lengths, index types, visibility, and comments.
-11. [ ] `CREATE TABLE` base execution: column definitions, constraints, table
+11. [x] `CREATE TABLE` base execution: column definitions, constraints, table
        options, schema qualification, `IF NOT EXISTS`, warnings, and atomicity.
 12. [ ] `DROP TABLE`: multi-table drops, `IF EXISTS`, temporary table handling,
        warning behavior, metadata cleanup, and implicit commit behavior.

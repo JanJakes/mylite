@@ -293,6 +293,16 @@ void mylite_sql_ast_node_set_index_option(struct mylite_sql_ast_node *node,
     node->index_option = option;
 }
 
+void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
+                                          enum mylite_sql_ast_table_option option)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->table_option = option;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -395,6 +405,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "secondary_index";
     case MYLITE_SQL_AST_UNIQUE_INDEX:
         return "unique_index";
+    case MYLITE_SQL_AST_TABLE_OPTION_LIST:
+        return "table_option_list";
+    case MYLITE_SQL_AST_TABLE_OPTION:
+        return "table_option";
     }
 
     return "unknown";

@@ -15,6 +15,7 @@ static int test_create_table_temporal_columns(void);
 static int test_create_table_column_attributes(void);
 static int test_create_table_primary_keys_auto_increment(void);
 static int test_create_table_unique_secondary_indexes(void);
+static int test_create_table_base_execution_syntax(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -55,6 +56,8 @@ static int expect_index_algorithm(const struct mylite_sql_ast_node *node,
                                   const char *context);
 static int expect_index_option(const struct mylite_sql_ast_node *node,
                                enum mylite_sql_ast_index_option expected, const char *context);
+static int expect_table_option(const struct mylite_sql_ast_node *node,
+                               enum mylite_sql_ast_table_option expected, const char *context);
 static int expect_current_timestamp(const struct mylite_sql_ast_node *node, bool has_precision,
                                     uint64_t precision, const char *context);
 
@@ -73,6 +76,7 @@ int main(void)
     failures += test_create_table_column_attributes();
     failures += test_create_table_primary_keys_auto_increment();
     failures += test_create_table_unique_secondary_indexes();
+    failures += test_create_table_base_execution_syntax();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -1927,6 +1931,86 @@ static int test_create_table_unique_secondary_indexes(void)
     return failures;
 }
 
+static int test_create_table_base_execution_syntax(void)
+{
+    enum {
+        expected_option_count = 5,
+        auto_increment_value = 42,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *options = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE TABLE IF NOT EXISTS app.base_options "
+                          "(id INT PRIMARY KEY, name VARCHAR(20), KEY name_idx (name)) "
+                          "ENGINE=InnoDB DEFAULT CHARACTER SET = latin1 "
+                          "COLLATE = latin1_swedish_ci COMMENT = 'comment' "
+                          "AUTO_INCREMENT = 42;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+                            "create table base statement");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "create table qualified name");
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_COLUMN_DEFINITION_LIST,
+                            "create table base elements");
+    failures += expect_node(child_at(statement, 2U), MYLITE_SQL_AST_IF_NOT_EXISTS,
+                            "create table if not exists");
+    options = child_at(statement, 3U);
+    failures += expect_node(options, MYLITE_SQL_AST_TABLE_OPTION_LIST, "table option list");
+    failures += expect_child_count(options, expected_option_count, "table option count");
+    failures += expect_table_option(child_at(options, 0U), MYLITE_SQL_AST_TABLE_OPTION_ENGINE,
+                                    "engine option");
+    failures += expect_span_text(child_at(child_at(options, 0U), 0U), "InnoDB", "engine value");
+    failures += expect_table_option(child_at(options, 1U),
+                                    MYLITE_SQL_AST_TABLE_OPTION_CHARACTER_SET, "charset option");
+    failures += expect_span_text(child_at(child_at(options, 1U), 0U), "latin1", "charset value");
+    failures += expect_table_option(child_at(options, 2U), MYLITE_SQL_AST_TABLE_OPTION_COLLATE,
+                                    "collate option");
+    failures += expect_span_text(child_at(child_at(options, 2U), 0U), "latin1_swedish_ci",
+                                 "collation value");
+    failures += expect_table_option(child_at(options, 3U), MYLITE_SQL_AST_TABLE_OPTION_COMMENT,
+                                    "comment option");
+    failures += expect_literal(child_at(child_at(options, 3U), 0U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "comment value");
+    failures += expect_table_option(
+        child_at(options, 4U), MYLITE_SQL_AST_TABLE_OPTION_AUTO_INCREMENT, "auto increment option");
+    if (child_at(child_at(options, 4U), 0U) != NULL &&
+        child_at(child_at(options, 4U), 0U)->column_length != auto_increment_value) {
+        fprintf(stderr, "table AUTO_INCREMENT option was not recorded as 42\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE charset_short (a INT) DEFAULT CHARSET utf8mb4;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE option_defaults (a INT) DEFAULT CHARSET DEFAULT "
+                          "COLLATE DEFAULT;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_engine_string (a INT) ENGINE='InnoDB';",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_comment_number (a INT) COMMENT = 1;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_auto_increment_string (a INT) AUTO_INCREMENT = '1';",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bad_unknown_option (a INT) ROW_FORMAT = DYNAMIC;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_select_expression_list(void)
 {
     enum { expected_select_item_count = 5 };
@@ -2416,6 +2500,20 @@ static int expect_index_option(const struct mylite_sql_ast_node *node,
         fprintf(stderr, "%s: expected index option %s, got %s\n", context,
                 mylite_sql_ast_index_option_name(expected),
                 mylite_sql_ast_index_option_name(node->index_option));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_table_option(const struct mylite_sql_ast_node *node,
+                               enum mylite_sql_ast_table_option expected, const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_TABLE_OPTION, context);
+
+    if (node != NULL && node->table_option != expected) {
+        fprintf(stderr, "%s: expected table option %d, got %d\n", context, (int)expected,
+                (int)node->table_option);
         failures = 1;
     }
 

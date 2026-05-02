@@ -35,7 +35,7 @@ level application surfaces.
        warning behavior, metadata cleanup, and implicit commit behavior.
 13. [x] `INSERT ... VALUES`: column lists, multi-row values, defaults,
        generated/default columns, affected rows, warnings, and insert ids.
-14. [ ] `INSERT ... SET`: assignment-form insert semantics, defaults, duplicate
+14. [x] `INSERT ... SET`: assignment-form insert semantics, defaults, duplicate
        column diagnostics, affected rows, and insert ids.
 15. [ ] Table-backed `SELECT` core: projection aliases, qualified wildcards,
        base table references, schema qualification, and result metadata.

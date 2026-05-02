@@ -81,6 +81,9 @@ statement(A) ::= drop_table_statement(B). {
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
+statement(A) ::= insert_set_statement(B). {
+    A = B;
+}
 statement(A) ::= show_schemas_statement(B). {
     A = B;
 }
@@ -164,6 +167,9 @@ opt_drop_table_mode(A) ::= CASCADE(T). {
 insert_values_statement(A) ::= INSERT(T) opt_into table_name(B) opt_insert_column_list(C) insert_values_keyword insert_row_list(D). {
     A = mylite_sql_parser_make_insert_values_statement(state, T, B, C, D);
 }
+insert_set_statement(A) ::= INSERT(T) opt_into table_name(B) SET insert_set_assignment_list(C). {
+    A = mylite_sql_parser_make_insert_set_statement(state, T, B, C);
+}
 
 opt_into(A) ::= . {
     A = (struct mylite_sql_token){0};
@@ -228,6 +234,24 @@ insert_value(A) ::= expression(B). {
     A = B;
 }
 insert_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_default(state, T);
+}
+
+insert_set_assignment_list(A) ::= insert_set_assignment(B). {
+    A = mylite_sql_parser_make_insert_set_assignment_list(state, B);
+}
+insert_set_assignment_list(A) ::= insert_set_assignment_list(B) COMMA insert_set_assignment(C). {
+    A = mylite_sql_parser_append_insert_set_assignment(state, B, C);
+}
+
+insert_set_assignment(A) ::= qualified_identifier(B) EQ(T) insert_set_value(C). {
+    A = mylite_sql_parser_make_insert_set_assignment(state, B, T, C);
+}
+
+insert_set_value(A) ::= expression(B). {
+    A = B;
+}
+insert_set_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_default(state, T);
 }
 

@@ -28,6 +28,7 @@ enum mylite_stmt_kind {
     MYLITE_STMT_CREATE_TABLE = 7,
     MYLITE_STMT_DROP_TABLE = 8,
     MYLITE_STMT_INSERT_VALUES = 9,
+    MYLITE_STMT_INSERT_SET = 10,
 };
 
 enum mylite_information_schema_table {
@@ -145,6 +146,9 @@ enum mylite_insert_value_kind {
     MYLITE_INSERT_VALUE_REAL = 4,
     MYLITE_INSERT_VALUE_TEXT = 5,
     MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP = 6,
+    MYLITE_INSERT_VALUE_COLUMN_REFERENCE = 7,
+    MYLITE_INSERT_VALUE_UNARY_EXPRESSION = 8,
+    MYLITE_INSERT_VALUE_BINARY_EXPRESSION = 9,
 };
 
 enum mylite_insert_bound_value_kind {
@@ -154,9 +158,19 @@ enum mylite_insert_bound_value_kind {
     MYLITE_INSERT_BOUND_TEXT = 3,
 };
 
+struct mylite_insert_column_reference {
+    char *schema_name;
+    char *table_name;
+    char *column_name;
+};
+
 struct mylite_insert_value {
     enum mylite_insert_value_kind kind;
+    enum mylite_sql_ast_operator operator_kind;
     char *text;
+    struct mylite_insert_column_reference column_reference;
+    struct mylite_insert_value *left;
+    struct mylite_insert_value *right;
 };
 
 struct mylite_insert_row {
@@ -174,9 +188,20 @@ struct mylite_insert_values_plan {
     size_t row_count;
 };
 
+struct mylite_insert_set_assignment {
+    struct mylite_insert_column_reference target;
+    struct mylite_insert_value value;
+};
+
+struct mylite_insert_set_plan {
+    struct mylite_insert_set_assignment *assignments;
+    size_t assignment_count;
+};
+
 struct mylite_insert_table_column {
     char *name;
     char *default_text;
+    char *data_type;
     char *extra;
     bool nullable;
     bool auto_increment;
@@ -221,6 +246,11 @@ struct mylite_insert_execution_state {
     bool generated_insert_id;
 };
 
+struct mylite_insert_set_row_state {
+    bool *generate_auto_increment;
+    bool *assigned_columns;
+};
+
 struct mylite_connection_charset_request {
     const char *character_set_name;
     const char *collation_name;
@@ -249,6 +279,7 @@ struct mylite_stmt {
     struct mylite_create_table_plan create_table;
     struct mylite_drop_table_plan drop_table;
     struct mylite_insert_values_plan insert_values;
+    struct mylite_insert_set_plan insert_set;
     char *character_set_name;
     char *collation_name;
     int64_t affected_rows;
@@ -462,6 +493,9 @@ static int prepare_drop_table_statement(mylite_db *database,
 static int prepare_insert_values_statement(mylite_db *database,
                                            const struct mylite_sql_ast_node *statement,
                                            mylite_stmt **out_stmt);
+static int prepare_insert_set_statement(mylite_db *database,
+                                        const struct mylite_sql_ast_node *statement,
+                                        mylite_stmt **out_stmt);
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt);
 static int prepare_information_schema_select_statement(mylite_db *database,
                                                        const struct mylite_sql_ast_node *statement,
@@ -481,6 +515,7 @@ static int execute_set_character_set_statement(mylite_stmt *stmt);
 static int execute_create_table_statement(mylite_stmt *stmt);
 static int execute_drop_table_statement(mylite_stmt *stmt);
 static int execute_insert_values_statement(mylite_stmt *stmt);
+static int execute_insert_set_statement(mylite_stmt *stmt);
 static int validate_create_table_plan(mylite_stmt *stmt, const char *schema_name,
                                       struct mylite_schema_default *schema_default);
 static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
@@ -559,6 +594,63 @@ static int resolve_insert_row_values(mylite_stmt *stmt, const struct mylite_inse
                                      const size_t *column_indexes,
                                      struct mylite_insert_execution_state *state, size_t row_index,
                                      struct mylite_insert_bound_value *values);
+static int validate_insert_set_assignments(mylite_stmt *stmt,
+                                           const struct mylite_insert_table *table,
+                                           const char *schema_name, size_t **out_column_indexes);
+static int execute_insert_set_transaction(mylite_stmt *stmt, const char *schema_name,
+                                          const struct mylite_insert_table *table,
+                                          const size_t *column_indexes);
+static int initialize_insert_set_row_values(mylite_stmt *stmt,
+                                            const struct mylite_insert_table *table,
+                                            struct mylite_insert_execution_state *state,
+                                            struct mylite_insert_bound_value *values,
+                                            struct mylite_insert_set_row_state *row_state);
+static int apply_insert_set_assignments(mylite_stmt *stmt, const struct mylite_insert_table *table,
+                                        const size_t *column_indexes,
+                                        struct mylite_insert_bound_value *values,
+                                        struct mylite_insert_set_row_state *row_state);
+static int finish_insert_set_row_values(mylite_stmt *stmt, const struct mylite_insert_table *table,
+                                        struct mylite_insert_execution_state *state,
+                                        struct mylite_insert_bound_value *values,
+                                        const struct mylite_insert_set_row_state *row_state);
+static int evaluate_insert_set_assignment_value(
+    mylite_stmt *stmt, const struct mylite_insert_table *table, size_t target_column,
+    const struct mylite_insert_value *value, const struct mylite_insert_bound_value *values,
+    bool *out_generate_auto_increment, struct mylite_insert_bound_value *out_value);
+static int evaluate_insert_set_expression(mylite_stmt *stmt,
+                                          const struct mylite_insert_table *table,
+                                          const struct mylite_insert_value *value,
+                                          const struct mylite_insert_bound_value *values,
+                                          struct mylite_insert_bound_value *out_value);
+static int evaluate_insert_set_simple_expression(mylite_stmt *stmt,
+                                                 const struct mylite_insert_table *table,
+                                                 const struct mylite_insert_value *value,
+                                                 const struct mylite_insert_bound_value *values,
+                                                 struct mylite_insert_bound_value *out_value);
+static int evaluate_insert_set_column_reference(mylite_stmt *stmt,
+                                                const struct mylite_insert_table *table,
+                                                const struct mylite_insert_column_reference *ref,
+                                                const struct mylite_insert_bound_value *values,
+                                                struct mylite_insert_bound_value *out_value);
+static int evaluate_insert_set_unary_expression(mylite_stmt *stmt,
+                                                const struct mylite_insert_table *table,
+                                                const struct mylite_insert_value *value,
+                                                const struct mylite_insert_bound_value *values,
+                                                struct mylite_insert_bound_value *out_value);
+static int evaluate_insert_set_binary_expression(mylite_stmt *stmt,
+                                                 const struct mylite_insert_table *table,
+                                                 const struct mylite_insert_value *value,
+                                                 const struct mylite_insert_bound_value *values,
+                                                 struct mylite_insert_bound_value *out_value);
+static int copy_insert_bound_value(const struct mylite_insert_bound_value *value,
+                                   struct mylite_insert_bound_value *out_value);
+static bool insert_bound_value_is_numeric(const struct mylite_insert_bound_value *value,
+                                          double *out_value, bool *out_is_integer);
+static int
+resolve_insert_implicit_expression_default(mylite_stmt *stmt,
+                                           const struct mylite_insert_table_column *column,
+                                           struct mylite_insert_bound_value *out_value);
+static int set_insert_set_candidate_auto_value(struct mylite_insert_bound_value *out_value);
 static int resolve_insert_explicit_value(mylite_stmt *stmt,
                                          const struct mylite_insert_table_column *column,
                                          const struct mylite_insert_value *value,
@@ -578,9 +670,17 @@ static int allocate_insert_auto_increment(mylite_stmt *stmt,
 static int reserve_insert_auto_increment(mylite_stmt *stmt,
                                          struct mylite_insert_execution_state *state,
                                          uint64_t first_value);
+static uint64_t insert_statement_row_count(const mylite_stmt *stmt);
 static uint64_t insert_auto_increment_next_value(const struct mylite_insert_execution_state *state);
 static size_t insert_table_column_index(const struct mylite_insert_table *table,
                                         const char *column_name);
+static size_t
+insert_table_column_reference_index(const struct mylite_insert_table *table,
+                                    const char *schema_name, const char *table_name,
+                                    const struct mylite_insert_column_reference *reference);
+static bool
+insert_column_reference_qualifiers_match(const struct mylite_insert_column_reference *reference,
+                                         const char *schema_name, const char *table_name);
 static int bind_insert_row_values(mylite_db *database, sqlite3_stmt *insert,
                                   const struct mylite_insert_bound_value *values,
                                   size_t value_count);
@@ -661,6 +761,8 @@ static int copy_drop_table_statement(const struct mylite_sql_ast_node *statement
                                      mylite_stmt *stmt);
 static int copy_insert_values_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt);
+static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement,
+                                     mylite_stmt *stmt);
 static int copy_create_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_create_table_plan *plan);
 static int copy_drop_table_target(const struct mylite_sql_ast_node *table_name,
@@ -679,10 +781,24 @@ static int copy_insert_row(const struct mylite_sql_ast_node *row,
 static int add_insert_row(struct mylite_insert_values_plan *plan, struct mylite_insert_row row);
 static int copy_insert_value(const struct mylite_sql_ast_node *value_node,
                              struct mylite_insert_value *out_value);
+static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node,
+                                    struct mylite_insert_value *out_value);
+static int copy_insert_column_reference(const struct mylite_sql_ast_node *identifier,
+                                        struct mylite_insert_column_reference *out_reference);
+static int copy_insert_column_reference_parts(const struct mylite_sql_ast_node *identifier,
+                                              char **parts, size_t *part_count);
 static int copy_insert_literal_value(const struct mylite_sql_ast_node *literal,
                                      struct mylite_insert_value *out_value);
 static int copy_insert_unary_value(const struct mylite_sql_ast_node *expression,
                                    struct mylite_insert_value *out_value);
+static int copy_insert_binary_value(const struct mylite_sql_ast_node *expression,
+                                    struct mylite_insert_value *out_value);
+static int copy_insert_set_assignments(const struct mylite_sql_ast_node *assignments,
+                                       struct mylite_insert_set_plan *plan);
+static int copy_insert_set_assignment(const struct mylite_sql_ast_node *assignment,
+                                      struct mylite_insert_set_plan *plan);
+static int add_insert_set_assignment(struct mylite_insert_set_plan *plan,
+                                     struct mylite_insert_set_assignment assignment);
 static int copy_create_table_elements(const struct mylite_sql_ast_node *elements,
                                       struct mylite_create_table_plan *plan);
 static int copy_create_table_column(const struct mylite_sql_ast_node *column_node,
@@ -773,6 +889,8 @@ static char *copy_schema_text_span(const struct mylite_sql_ast_node *node);
 static char *copy_span_text(const char *text, size_t length);
 static bool span_contains_newline(const char *text, size_t length);
 static bool text_contains_word(const char *text, const char *word);
+static bool
+insert_column_uses_numeric_implicit_default(const struct mylite_insert_table_column *column);
 static bool column_default_is_current_timestamp(const char *default_text);
 static bool parse_insert_integer_text(const char *text, int64_t *out_value);
 static bool parse_insert_real_text(const char *text, double *out_value);
@@ -783,8 +901,12 @@ static void create_table_plan_deinit(struct mylite_create_table_plan *plan);
 static void drop_table_plan_deinit(struct mylite_drop_table_plan *plan);
 static void drop_table_target_deinit(struct mylite_drop_table_target *target);
 static void insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
+static void insert_set_plan_deinit(struct mylite_insert_set_plan *plan);
+static void insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment);
+static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference);
 static void insert_row_deinit(struct mylite_insert_row *row);
 static void insert_value_deinit(struct mylite_insert_value *value);
+static void insert_value_child_deinit(struct mylite_insert_value *value);
 static void insert_table_deinit(struct mylite_insert_table *table);
 static void insert_table_column_deinit(struct mylite_insert_table_column *column);
 static void insert_unique_index_deinit(struct mylite_insert_unique_index *index);
@@ -931,6 +1053,7 @@ void mylite_finalize(mylite_stmt *stmt)
     create_table_plan_deinit(&stmt->create_table);
     drop_table_plan_deinit(&stmt->drop_table);
     insert_values_plan_deinit(&stmt->insert_values);
+    insert_set_plan_deinit(&stmt->insert_set);
     free(stmt);
 }
 
@@ -1164,6 +1287,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_drop_table_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
             return prepare_insert_values_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+            return prepare_insert_set_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
             return prepare_show_schemas_statement(database, out_stmt);
         case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -1211,6 +1336,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_INSERT_ROW:
         case MYLITE_SQL_AST_INSERT_ROW_LIST:
         case MYLITE_SQL_AST_INSERT_VALUE_LIST:
+        case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
+        case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
             break;
         }
     }
@@ -1263,6 +1390,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_DEFAULT:
     case MYLITE_SQL_AST_IF_EXISTS:
     case MYLITE_SQL_AST_IF_NOT_EXISTS:
@@ -1290,6 +1418,8 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_ROW:
     case MYLITE_SQL_AST_INSERT_ROW_LIST:
     case MYLITE_SQL_AST_INSERT_VALUE_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
         return MYLITE_UNSUPPORTED;
     }
 
@@ -1330,6 +1460,7 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_IF_EXISTS:
     case MYLITE_SQL_AST_IF_NOT_EXISTS:
     case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
@@ -1357,6 +1488,8 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_ROW:
     case MYLITE_SQL_AST_INSERT_ROW_LIST:
     case MYLITE_SQL_AST_INSERT_VALUE_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
         return MYLITE_UNSUPPORTED;
     }
 
@@ -1382,6 +1515,13 @@ static int prepare_insert_values_statement(mylite_db *database,
                                            mylite_stmt **out_stmt)
 {
     return prepare_custom_statement(database, MYLITE_STMT_INSERT_VALUES, statement, out_stmt);
+}
+
+static int prepare_insert_set_statement(mylite_db *database,
+                                        const struct mylite_sql_ast_node *statement,
+                                        mylite_stmt **out_stmt)
+{
+    return prepare_custom_statement(database, MYLITE_STMT_INSERT_SET, statement, out_stmt);
 }
 
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt)
@@ -1481,6 +1621,9 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     case MYLITE_STMT_INSERT_VALUES:
         status = copy_insert_values_statement(statement, stmt);
         break;
+    case MYLITE_STMT_INSERT_SET:
+        status = copy_insert_set_statement(statement, stmt);
+        break;
     case MYLITE_STMT_SQLITE:
         status = MYLITE_UNSUPPORTED;
         break;
@@ -1550,6 +1693,9 @@ static int execute_custom_statement(mylite_stmt *stmt)
         break;
     case MYLITE_STMT_INSERT_VALUES:
         status = execute_insert_values_statement(stmt);
+        break;
+    case MYLITE_STMT_INSERT_SET:
+        status = execute_insert_set_statement(stmt);
         break;
     case MYLITE_STMT_SQLITE:
         status = MYLITE_MISUSE;
@@ -2380,6 +2526,31 @@ static int execute_insert_values_statement(mylite_stmt *stmt)
     return status;
 }
 
+static int execute_insert_set_statement(mylite_stmt *stmt)
+{
+    const char *schema_name = NULL;
+    struct mylite_insert_table table = {0};
+    size_t *column_indexes = NULL;
+    int status = validate_insert_values_target(stmt, &schema_name);
+
+    stmt->affected_rows = 0;
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    status = load_insert_table(stmt, schema_name, &table);
+    if (status == MYLITE_OK) {
+        status = validate_insert_set_assignments(stmt, &table, schema_name, &column_indexes);
+    }
+    if (status == MYLITE_OK) {
+        status = execute_insert_set_transaction(stmt, schema_name, &table, column_indexes);
+    }
+
+    free(column_indexes);
+    insert_table_deinit(&table);
+    return status;
+}
+
 static int validate_insert_values_target(mylite_stmt *stmt, const char **out_schema_name)
 {
     const char *schema_name = stmt->insert_values.schema_name == NULL
@@ -2480,7 +2651,7 @@ static int load_insert_columns(mylite_stmt *stmt, const char *schema_name,
 {
     sqlite3_stmt *select = NULL;
     static const char sql[] =
-        "SELECT column_name, column_default, is_nullable, extra "
+        "SELECT column_name, column_default, is_nullable, data_type, extra "
         "FROM __mylite_column_catalog WHERE table_schema = ? AND table_name = ? "
         "ORDER BY ordinal_position";
     int rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
@@ -2517,7 +2688,8 @@ static int load_insert_column_from_catalog_row(mylite_stmt *stmt, sqlite3_stmt *
     const char *name = (const char *)sqlite3_column_text(select, 0);
     const char *default_text = (const char *)sqlite3_column_text(select, 1);
     const char *is_nullable = (const char *)sqlite3_column_text(select, 2);
-    const char *extra = (const char *)sqlite3_column_text(select, 3);
+    const char *data_type = (const char *)sqlite3_column_text(select, 3);
+    const char *extra = (const char *)sqlite3_column_text(select, 4);
     struct mylite_insert_table_column column = {0};
     int status = MYLITE_OK;
 
@@ -2528,9 +2700,11 @@ static int load_insert_column_from_catalog_row(mylite_stmt *stmt, sqlite3_stmt *
     if (default_text != NULL) {
         column.default_text = copy_span_text(default_text, strlen(default_text));
     }
+    column.data_type = copy_span_text(data_type == NULL ? "" : data_type,
+                                      data_type == NULL ? 0U : strlen(data_type));
     column.extra = copy_span_text(extra == NULL ? "" : extra, extra == NULL ? 0U : strlen(extra));
     if (column.name == NULL || (default_text != NULL && column.default_text == NULL) ||
-        column.extra == NULL) {
+        column.data_type == NULL || column.extra == NULL) {
         insert_table_column_deinit(&column);
         (void)set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -3010,6 +3184,601 @@ static int resolve_insert_row_values(mylite_stmt *stmt, const struct mylite_inse
     return MYLITE_OK;
 }
 
+static int validate_insert_set_assignments(mylite_stmt *stmt,
+                                           const struct mylite_insert_table *table,
+                                           const char *schema_name, size_t **out_column_indexes)
+{
+    size_t assignment_count = stmt->insert_set.assignment_count;
+    size_t *column_indexes = NULL;
+
+    *out_column_indexes = NULL;
+    if (assignment_count == 0U) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    column_indexes = calloc(assignment_count, sizeof(*column_indexes));
+    if (column_indexes == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t index = 0U; index < assignment_count; ++index) {
+        const struct mylite_insert_column_reference *target =
+            &stmt->insert_set.assignments[index].target;
+        size_t column_index = insert_table_column_reference_index(
+            table, schema_name, stmt->insert_values.table_name, target);
+
+        if (column_index == table->column_count) {
+            int status = set_error_message_parts(stmt->database, "Unknown column '",
+                                                 target->column_name, "' in 'field list'");
+
+            free(column_indexes);
+            return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+        }
+        column_indexes[index] = column_index;
+    }
+
+    for (size_t index = 0U; index < assignment_count; ++index) {
+        for (size_t previous = 0U; previous < index; ++previous) {
+            if (column_indexes[previous] == column_indexes[index]) {
+                int status = set_error_message_parts(
+                    stmt->database, "Column '",
+                    stmt->insert_set.assignments[index].target.column_name, "' specified twice");
+
+                free(column_indexes);
+                return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+            }
+        }
+    }
+
+    *out_column_indexes = column_indexes;
+    return MYLITE_OK;
+}
+
+static int execute_insert_set_transaction(mylite_stmt *stmt, const char *schema_name,
+                                          const struct mylite_insert_table *table,
+                                          const size_t *column_indexes)
+{
+    struct mylite_insert_execution_state state = {
+        .next_auto_increment = table->next_auto_increment,
+    };
+    struct mylite_insert_set_row_state row_state = {0};
+    struct mylite_insert_bound_value *values = NULL;
+    sqlite3_stmt *insert = NULL;
+    char *insert_sql = NULL;
+    int status = MYLITE_OK;
+    int rc = SQLITE_OK;
+
+    if (table->column_count == 0U) {
+        (void)set_error_message(stmt->database, "INSERT target table has no columns");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    status = begin_sqlite_transaction(stmt->database);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    values = calloc(table->column_count, sizeof(*values));
+    row_state.generate_auto_increment =
+        calloc(table->column_count, sizeof(*row_state.generate_auto_increment));
+    row_state.assigned_columns = calloc(table->column_count, sizeof(*row_state.assigned_columns));
+    if (values == NULL || row_state.generate_auto_increment == NULL ||
+        row_state.assigned_columns == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        status = MYLITE_NOMEM;
+        goto cleanup;
+    }
+
+    insert_sql = build_insert_physical_sql(stmt->database, table);
+    if (insert_sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        status = MYLITE_NOMEM;
+        goto cleanup;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, insert_sql, -1, SQLITE_PREPARE_PERSISTENT,
+                            &insert, NULL);
+    sqlite3_free(insert_sql);
+    insert_sql = NULL;
+    if (rc != SQLITE_OK) {
+        status = set_sqlite_error(stmt->database);
+        goto cleanup;
+    }
+
+    status = initialize_insert_set_row_values(stmt, table, &state, values, &row_state);
+    if (status == MYLITE_OK) {
+        status = apply_insert_set_assignments(stmt, table, column_indexes, values, &row_state);
+    }
+    if (status == MYLITE_OK) {
+        status = finish_insert_set_row_values(stmt, table, &state, values, &row_state);
+    }
+    if (status == MYLITE_OK) {
+        status = validate_insert_unique_indexes(stmt, table, values);
+    }
+    if (status == MYLITE_OK) {
+        status = bind_insert_row_values(stmt->database, insert, values, table->column_count);
+    }
+    if (status == MYLITE_OK) {
+        rc = sqlite3_step(insert);
+        if (rc != SQLITE_DONE) {
+            status = set_sqlite_error(stmt->database);
+        }
+    }
+    if (status == MYLITE_OK) {
+        record_insert_row_auto_increment_id(table, values, &state);
+        status = advance_insert_row_auto_increment(table, values, &state);
+    }
+
+cleanup:
+    sqlite3_free(insert_sql);
+    sqlite3_finalize(insert);
+    insert_bound_values_deinit(values, table->column_count);
+    free(row_state.generate_auto_increment);
+    free(row_state.assigned_columns);
+
+    if (status != MYLITE_OK) {
+        return finish_failed_insert_values_transaction(stmt, schema_name, table, &state, status);
+    }
+
+    if (table->has_auto_increment) {
+        status = update_insert_auto_increment(stmt, schema_name,
+                                              insert_auto_increment_next_value(&state));
+    }
+    if (status == MYLITE_OK) {
+        status = commit_sqlite_transaction(stmt->database);
+        if (status == MYLITE_OK) {
+            stmt->affected_rows = 1;
+            if (state.generated_insert_id) {
+                stmt->database->last_insert_id = state.first_insert_id;
+            }
+            return MYLITE_OK;
+        }
+    }
+
+    rollback_sqlite_transaction(stmt->database);
+    return status;
+}
+
+static int initialize_insert_set_row_values(mylite_stmt *stmt,
+                                            const struct mylite_insert_table *table,
+                                            struct mylite_insert_execution_state *state,
+                                            struct mylite_insert_bound_value *values,
+                                            struct mylite_insert_set_row_state *row_state)
+{
+    for (size_t column = 0U; column < table->column_count; ++column) {
+        int status = MYLITE_OK;
+
+        if (table->columns[column].auto_increment) {
+            status = set_insert_set_candidate_auto_value(&values[column]);
+            row_state->generate_auto_increment[column] = true;
+        } else if (table->columns[column].default_text != NULL || table->columns[column].nullable) {
+            status =
+                resolve_insert_default_value(stmt, &table->columns[column], state, &values[column]);
+        } else {
+            status = resolve_insert_implicit_expression_default(stmt, &table->columns[column],
+                                                                &values[column]);
+        }
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int apply_insert_set_assignments(mylite_stmt *stmt, const struct mylite_insert_table *table,
+                                        const size_t *column_indexes,
+                                        struct mylite_insert_bound_value *values,
+                                        struct mylite_insert_set_row_state *row_state)
+{
+    for (size_t index = 0U; index < stmt->insert_set.assignment_count; ++index) {
+        size_t column_index = column_indexes[index];
+        struct mylite_insert_bound_value value = {0};
+        bool generate_auto = false;
+        int status = evaluate_insert_set_assignment_value(
+            stmt, table, column_index, &stmt->insert_set.assignments[index].value, values,
+            &generate_auto, &value);
+
+        if (status != MYLITE_OK) {
+            insert_bound_value_deinit(&value);
+            return status;
+        }
+
+        insert_bound_value_deinit(&values[column_index]);
+        values[column_index] = value;
+        row_state->generate_auto_increment[column_index] = generate_auto;
+        row_state->assigned_columns[column_index] = true;
+    }
+    return MYLITE_OK;
+}
+
+static int finish_insert_set_row_values(mylite_stmt *stmt, const struct mylite_insert_table *table,
+                                        struct mylite_insert_execution_state *state,
+                                        struct mylite_insert_bound_value *values,
+                                        const struct mylite_insert_set_row_state *row_state)
+{
+    for (size_t column = 0U; column < table->column_count; ++column) {
+        const struct mylite_insert_table_column *table_column = &table->columns[column];
+
+        if (!table_column->auto_increment && !table_column->nullable &&
+            table_column->default_text == NULL && !row_state->assigned_columns[column]) {
+            return set_insert_no_default_error(stmt->database, table_column->name);
+        }
+        if (table_column->auto_increment && row_state->generate_auto_increment[column]) {
+            insert_bound_value_deinit(&values[column]);
+            int status = allocate_insert_auto_increment(stmt, state, &values[column]);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+        if (!table_column->auto_increment && !table_column->nullable &&
+            values[column].kind == MYLITE_INSERT_BOUND_NULL) {
+            return set_insert_null_error(stmt->database, table_column->name);
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_insert_set_assignment_value(
+    mylite_stmt *stmt, const struct mylite_insert_table *table, size_t target_column,
+    const struct mylite_insert_value *value, const struct mylite_insert_bound_value *values,
+    bool *out_generate_auto_increment, struct mylite_insert_bound_value *out_value)
+{
+    const struct mylite_insert_table_column *column = &table->columns[target_column];
+    int status = MYLITE_OK;
+
+    *out_generate_auto_increment = false;
+    if (value->kind == MYLITE_INSERT_VALUE_DEFAULT) {
+        if (column->auto_increment) {
+            *out_generate_auto_increment = true;
+            return set_insert_set_candidate_auto_value(out_value);
+        }
+        return resolve_insert_default_value(stmt, column, NULL, out_value);
+    }
+
+    status = evaluate_insert_set_expression(stmt, table, value, values, out_value);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    if (column->auto_increment) {
+        if (out_value->kind == MYLITE_INSERT_BOUND_NULL ||
+            (out_value->kind == MYLITE_INSERT_BOUND_INTEGER && out_value->integer_value == 0)) {
+            insert_bound_value_deinit(out_value);
+            *out_generate_auto_increment = true;
+            return set_insert_set_candidate_auto_value(out_value);
+        }
+        if (out_value->kind != MYLITE_INSERT_BOUND_INTEGER || out_value->integer_value < 0) {
+            insert_bound_value_deinit(out_value);
+            return set_insert_unsupported_expression_error(stmt->database);
+        }
+    } else if (!column->nullable && out_value->kind == MYLITE_INSERT_BOUND_NULL) {
+        insert_bound_value_deinit(out_value);
+        return set_insert_null_error(stmt->database, column->name);
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_insert_set_expression(mylite_stmt *stmt,
+                                          const struct mylite_insert_table *table,
+                                          const struct mylite_insert_value *value,
+                                          const struct mylite_insert_bound_value *values,
+                                          struct mylite_insert_bound_value *out_value)
+{
+    if (value->kind == MYLITE_INSERT_VALUE_UNARY_EXPRESSION) {
+        return evaluate_insert_set_unary_expression(stmt, table, value, values, out_value);
+    }
+    if (value->kind == MYLITE_INSERT_VALUE_BINARY_EXPRESSION) {
+        return evaluate_insert_set_binary_expression(stmt, table, value, values, out_value);
+    }
+    return evaluate_insert_set_simple_expression(stmt, table, value, values, out_value);
+}
+
+static int evaluate_insert_set_unary_expression(mylite_stmt *stmt,
+                                                const struct mylite_insert_table *table,
+                                                const struct mylite_insert_value *value,
+                                                const struct mylite_insert_bound_value *values,
+                                                struct mylite_insert_bound_value *out_value)
+{
+    struct mylite_insert_bound_value operand = {0};
+    double numeric_value = 0.0;
+    bool is_integer = false;
+    int status = evaluate_insert_set_simple_expression(stmt, table, value->left, values, &operand);
+
+    if (status != MYLITE_OK) {
+        insert_bound_value_deinit(&operand);
+        return status;
+    }
+    if (operand.kind == MYLITE_INSERT_BOUND_NULL) {
+        *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
+        insert_bound_value_deinit(&operand);
+        return MYLITE_OK;
+    }
+    if (!insert_bound_value_is_numeric(&operand, &numeric_value, &is_integer)) {
+        insert_bound_value_deinit(&operand);
+        return set_insert_unsupported_expression_error(stmt->database);
+    }
+
+    if (is_integer) {
+        int64_t integer_value = operand.kind == MYLITE_INSERT_BOUND_INTEGER
+                                    ? operand.integer_value
+                                    : (int64_t)numeric_value;
+
+        out_value->kind = MYLITE_INSERT_BOUND_INTEGER;
+        out_value->integer_value = value->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE
+                                       ? -integer_value
+                                       : integer_value;
+    } else {
+        out_value->kind = MYLITE_INSERT_BOUND_REAL;
+        out_value->real_value = value->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE
+                                    ? -numeric_value
+                                    : numeric_value;
+    }
+    insert_bound_value_deinit(&operand);
+    return MYLITE_OK;
+}
+
+static int evaluate_insert_set_binary_expression(mylite_stmt *stmt,
+                                                 const struct mylite_insert_table *table,
+                                                 const struct mylite_insert_value *value,
+                                                 const struct mylite_insert_bound_value *values,
+                                                 struct mylite_insert_bound_value *out_value)
+{
+    struct mylite_insert_bound_value left = {0};
+    struct mylite_insert_bound_value right = {0};
+    double left_number = 0.0;
+    double right_number = 0.0;
+    bool left_is_integer = false;
+    bool right_is_integer = false;
+    int status = evaluate_insert_set_simple_expression(stmt, table, value->left, values, &left);
+
+    if (status == MYLITE_OK) {
+        status = evaluate_insert_set_simple_expression(stmt, table, value->right, values, &right);
+    }
+    if (status != MYLITE_OK) {
+        insert_bound_value_deinit(&left);
+        insert_bound_value_deinit(&right);
+        return status;
+    }
+    if (left.kind == MYLITE_INSERT_BOUND_NULL || right.kind == MYLITE_INSERT_BOUND_NULL) {
+        *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
+        insert_bound_value_deinit(&left);
+        insert_bound_value_deinit(&right);
+        return MYLITE_OK;
+    }
+    if (!insert_bound_value_is_numeric(&left, &left_number, &left_is_integer) ||
+        !insert_bound_value_is_numeric(&right, &right_number, &right_is_integer)) {
+        insert_bound_value_deinit(&left);
+        insert_bound_value_deinit(&right);
+        return set_insert_unsupported_expression_error(stmt->database);
+    }
+
+    if (left_is_integer && right_is_integer &&
+        value->operator_kind != MYLITE_SQL_AST_OPERATOR_DIVIDE) {
+        int64_t left_int =
+            left.kind == MYLITE_INSERT_BOUND_INTEGER ? left.integer_value : (int64_t)left_number;
+        int64_t right_int =
+            right.kind == MYLITE_INSERT_BOUND_INTEGER ? right.integer_value : (int64_t)right_number;
+
+        out_value->kind = MYLITE_INSERT_BOUND_INTEGER;
+        switch (value->operator_kind) {
+        case MYLITE_SQL_AST_OPERATOR_ADD:
+            out_value->integer_value = left_int + right_int;
+            break;
+        case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+            out_value->integer_value = left_int - right_int;
+            break;
+        case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+            out_value->integer_value = left_int * right_int;
+            break;
+        case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+        case MYLITE_SQL_AST_OPERATOR_NONE:
+        case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+        case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+            insert_bound_value_deinit(&left);
+            insert_bound_value_deinit(&right);
+            return set_insert_unsupported_expression_error(stmt->database);
+        }
+    } else {
+        if (value->operator_kind == MYLITE_SQL_AST_OPERATOR_DIVIDE && right_number == 0.0) {
+            insert_bound_value_deinit(&left);
+            insert_bound_value_deinit(&right);
+            return set_insert_unsupported_expression_error(stmt->database);
+        }
+        out_value->kind = MYLITE_INSERT_BOUND_REAL;
+        switch (value->operator_kind) {
+        case MYLITE_SQL_AST_OPERATOR_ADD:
+            out_value->real_value = left_number + right_number;
+            break;
+        case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+            out_value->real_value = left_number - right_number;
+            break;
+        case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+            out_value->real_value = left_number * right_number;
+            break;
+        case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+            out_value->real_value = left_number / right_number;
+            break;
+        case MYLITE_SQL_AST_OPERATOR_NONE:
+        case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+        case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+            insert_bound_value_deinit(&left);
+            insert_bound_value_deinit(&right);
+            return set_insert_unsupported_expression_error(stmt->database);
+        }
+    }
+
+    insert_bound_value_deinit(&left);
+    insert_bound_value_deinit(&right);
+    return MYLITE_OK;
+}
+
+static int evaluate_insert_set_simple_expression(mylite_stmt *stmt,
+                                                 const struct mylite_insert_table *table,
+                                                 const struct mylite_insert_value *value,
+                                                 const struct mylite_insert_bound_value *values,
+                                                 struct mylite_insert_bound_value *out_value)
+{
+    int64_t integer_value = 0;
+    double real_value = 0.0;
+    char *timestamp = NULL;
+
+    switch (value->kind) {
+    case MYLITE_INSERT_VALUE_NULL:
+        *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
+        return MYLITE_OK;
+    case MYLITE_INSERT_VALUE_INTEGER:
+        if (!parse_insert_integer_text(value->text, &integer_value)) {
+            return set_insert_unsupported_expression_error(stmt->database);
+        }
+        *out_value = (struct mylite_insert_bound_value){
+            .kind = MYLITE_INSERT_BOUND_INTEGER,
+            .integer_value = integer_value,
+        };
+        return MYLITE_OK;
+    case MYLITE_INSERT_VALUE_REAL:
+        if (!parse_insert_real_text(value->text, &real_value)) {
+            return set_insert_unsupported_expression_error(stmt->database);
+        }
+        *out_value = (struct mylite_insert_bound_value){
+            .kind = MYLITE_INSERT_BOUND_REAL,
+            .real_value = real_value,
+        };
+        return MYLITE_OK;
+    case MYLITE_INSERT_VALUE_TEXT:
+        out_value->text_value =
+            copy_span_text(value->text, value->text == NULL ? 0U : strlen(value->text));
+        if (out_value->text_value == NULL) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        out_value->kind = MYLITE_INSERT_BOUND_TEXT;
+        return MYLITE_OK;
+    case MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP:
+        timestamp = insert_current_timestamp_text();
+        if (timestamp == NULL) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        *out_value = (struct mylite_insert_bound_value){
+            .kind = MYLITE_INSERT_BOUND_TEXT,
+            .text_value = timestamp,
+        };
+        return MYLITE_OK;
+    case MYLITE_INSERT_VALUE_COLUMN_REFERENCE:
+        return evaluate_insert_set_column_reference(stmt, table, &value->column_reference, values,
+                                                    out_value);
+    case MYLITE_INSERT_VALUE_DEFAULT:
+    case MYLITE_INSERT_VALUE_UNSUPPORTED:
+    case MYLITE_INSERT_VALUE_UNARY_EXPRESSION:
+    case MYLITE_INSERT_VALUE_BINARY_EXPRESSION:
+        return set_insert_unsupported_expression_error(stmt->database);
+    }
+
+    return set_insert_unsupported_expression_error(stmt->database);
+}
+
+static int evaluate_insert_set_column_reference(mylite_stmt *stmt,
+                                                const struct mylite_insert_table *table,
+                                                const struct mylite_insert_column_reference *ref,
+                                                const struct mylite_insert_bound_value *values,
+                                                struct mylite_insert_bound_value *out_value)
+{
+    size_t column_index = insert_table_column_reference_index(
+        table,
+        stmt->insert_values.schema_name == NULL ? stmt->database->selected_schema
+                                                : stmt->insert_values.schema_name,
+        stmt->insert_values.table_name, ref);
+
+    if (column_index == table->column_count) {
+        int status = set_error_message_parts(stmt->database, "Unknown column '", ref->column_name,
+                                             "' in 'field list'");
+
+        return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+    }
+    int status = copy_insert_bound_value(&values[column_index], out_value);
+
+    if (status == MYLITE_NOMEM) {
+        (void)set_error_message(stmt->database, "out of memory");
+    }
+    return status;
+}
+
+static int copy_insert_bound_value(const struct mylite_insert_bound_value *value,
+                                   struct mylite_insert_bound_value *out_value)
+{
+    *out_value = *value;
+    out_value->text_value = NULL;
+    if (value->kind == MYLITE_INSERT_BOUND_TEXT && value->text_value != NULL) {
+        out_value->text_value = copy_span_text(value->text_value, strlen(value->text_value));
+        if (out_value->text_value == NULL) {
+            return MYLITE_NOMEM;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static bool insert_bound_value_is_numeric(const struct mylite_insert_bound_value *value,
+                                          double *out_value, bool *out_is_integer)
+{
+    int64_t integer_value = 0;
+
+    *out_value = 0.0;
+    *out_is_integer = false;
+    if (value->kind == MYLITE_INSERT_BOUND_INTEGER) {
+        *out_value = (double)value->integer_value;
+        *out_is_integer = true;
+        return true;
+    }
+    if (value->kind == MYLITE_INSERT_BOUND_REAL) {
+        *out_value = value->real_value;
+        return true;
+    }
+    if (value->kind == MYLITE_INSERT_BOUND_TEXT &&
+        parse_insert_integer_text(value->text_value, &integer_value)) {
+        *out_value = (double)integer_value;
+        *out_is_integer = true;
+        return true;
+    }
+    if (value->kind == MYLITE_INSERT_BOUND_TEXT &&
+        parse_insert_real_text(value->text_value, out_value)) {
+        return true;
+    }
+    return false;
+}
+
+static int
+resolve_insert_implicit_expression_default(mylite_stmt *stmt,
+                                           const struct mylite_insert_table_column *column,
+                                           struct mylite_insert_bound_value *out_value)
+{
+    if (insert_column_uses_numeric_implicit_default(column)) {
+        *out_value = (struct mylite_insert_bound_value){
+            .kind = MYLITE_INSERT_BOUND_INTEGER,
+            .integer_value = 0,
+        };
+        return MYLITE_OK;
+    }
+
+    out_value->text_value = copy_span_text("", 0U);
+    if (out_value->text_value == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    out_value->kind = MYLITE_INSERT_BOUND_TEXT;
+    return MYLITE_OK;
+}
+
+static int set_insert_set_candidate_auto_value(struct mylite_insert_bound_value *out_value)
+{
+    *out_value = (struct mylite_insert_bound_value){
+        .kind = MYLITE_INSERT_BOUND_INTEGER,
+        .integer_value = 0,
+    };
+    return MYLITE_OK;
+}
+
 static int resolve_insert_explicit_value(mylite_stmt *stmt,
                                          const struct mylite_insert_table_column *column,
                                          const struct mylite_insert_value *value,
@@ -3054,6 +3823,9 @@ static int resolve_insert_explicit_value(mylite_stmt *stmt,
         };
         return MYLITE_OK;
     case MYLITE_INSERT_VALUE_UNSUPPORTED:
+    case MYLITE_INSERT_VALUE_COLUMN_REFERENCE:
+    case MYLITE_INSERT_VALUE_UNARY_EXPRESSION:
+    case MYLITE_INSERT_VALUE_BINARY_EXPRESSION:
         return set_insert_unsupported_expression_error(stmt->database);
     }
 
@@ -3167,7 +3939,7 @@ static int reserve_insert_auto_increment(mylite_stmt *stmt,
                                          struct mylite_insert_execution_state *state,
                                          uint64_t first_value)
 {
-    uint64_t row_count = stmt->insert_values.row_count;
+    uint64_t row_count = insert_statement_row_count(stmt);
 
     if (state->reserved_auto_increment_end != 0U) {
         return MYLITE_OK;
@@ -3178,6 +3950,14 @@ static int reserve_insert_auto_increment(mylite_stmt *stmt,
     }
     state->reserved_auto_increment_end = first_value + row_count;
     return MYLITE_OK;
+}
+
+static uint64_t insert_statement_row_count(const mylite_stmt *stmt)
+{
+    if (stmt->kind == MYLITE_STMT_INSERT_SET) {
+        return 1U;
+    }
+    return (uint64_t)stmt->insert_values.row_count;
 }
 
 static uint64_t insert_auto_increment_next_value(const struct mylite_insert_execution_state *state)
@@ -3197,6 +3977,30 @@ static size_t insert_table_column_index(const struct mylite_insert_table *table,
         }
     }
     return table->column_count;
+}
+
+static size_t
+insert_table_column_reference_index(const struct mylite_insert_table *table,
+                                    const char *schema_name, const char *table_name,
+                                    const struct mylite_insert_column_reference *reference)
+{
+    if (!insert_column_reference_qualifiers_match(reference, schema_name, table_name)) {
+        return table->column_count;
+    }
+    return insert_table_column_index(table, reference->column_name);
+}
+
+static bool
+insert_column_reference_qualifiers_match(const struct mylite_insert_column_reference *reference,
+                                         const char *schema_name, const char *table_name)
+{
+    if (reference->schema_name != NULL && !ascii_case_equal(reference->schema_name, schema_name)) {
+        return false;
+    }
+    if (reference->table_name != NULL && !ascii_case_equal(reference->table_name, table_name)) {
+        return false;
+    }
+    return true;
 }
 
 static int bind_insert_row_values(mylite_db *database, sqlite3_stmt *insert,
@@ -4032,6 +4836,7 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_INSERT_VALUES:
+    case MYLITE_STMT_INSERT_SET:
     case MYLITE_STMT_SQLITE:
         return MYLITE_OK;
     }
@@ -4189,6 +4994,18 @@ static int copy_insert_values_statement(const struct mylite_sql_ast_node *statem
     return status;
 }
 
+static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *assignments = child_at(statement, 1U);
+    int status = copy_insert_table_name(table_name, &stmt->insert_values);
+
+    if (status == MYLITE_OK) {
+        status = copy_insert_set_assignments(assignments, &stmt->insert_set);
+    }
+    return status;
+}
+
 static int copy_insert_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_insert_values_plan *plan)
 {
@@ -4328,10 +5145,25 @@ static int add_insert_row(struct mylite_insert_values_plan *plan, struct mylite_
 static int copy_insert_value(const struct mylite_sql_ast_node *value_node,
                              struct mylite_insert_value *out_value)
 {
+    while (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        value_node = child_at(value_node, 0U);
+    }
     if (value_node == NULL) {
         return MYLITE_UNSUPPORTED;
     }
 
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return copy_insert_unary_value(value_node, out_value);
+    }
+    if (value_node->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return copy_insert_binary_value(value_node, out_value);
+    }
+    return copy_insert_simple_value(value_node, out_value);
+}
+
+static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node,
+                                    struct mylite_insert_value *out_value)
+{
     while (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         value_node = child_at(value_node, 0U);
     }
@@ -4348,8 +5180,12 @@ static int copy_insert_value(const struct mylite_sql_ast_node *value_node,
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         *out_value = (struct mylite_insert_value){.kind = MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP};
         return MYLITE_OK;
+    case MYLITE_SQL_AST_IDENTIFIER:
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+        out_value->kind = MYLITE_INSERT_VALUE_COLUMN_REFERENCE;
+        return copy_insert_column_reference(value_node, &out_value->column_reference);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
-        return copy_insert_unary_value(value_node, out_value);
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_USE_STATEMENT:
@@ -4357,10 +5193,7 @@ static int copy_insert_value(const struct mylite_sql_ast_node *value_node,
     case MYLITE_SQL_AST_SELECT_ITEM:
     case MYLITE_SQL_AST_FROM_DUAL:
     case MYLITE_SQL_AST_FROM_TABLE:
-    case MYLITE_SQL_AST_IDENTIFIER:
-    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
     case MYLITE_SQL_AST_WILDCARD:
-    case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
     case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
@@ -4395,11 +5228,87 @@ static int copy_insert_value(const struct mylite_sql_ast_node *value_node,
     case MYLITE_SQL_AST_INSERT_ROW_LIST:
     case MYLITE_SQL_AST_INSERT_ROW:
     case MYLITE_SQL_AST_INSERT_VALUE_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
         break;
     }
 
     *out_value = (struct mylite_insert_value){.kind = MYLITE_INSERT_VALUE_UNSUPPORTED};
+    return MYLITE_OK;
+}
+
+static int copy_insert_column_reference(const struct mylite_sql_ast_node *identifier,
+                                        struct mylite_insert_column_reference *out_reference)
+{
+    char *parts[3] = {0};
+    size_t part_count = 0U;
+    int status = copy_insert_column_reference_parts(identifier, parts, &part_count);
+
+    if (status != MYLITE_OK) {
+        for (size_t index = 0U; index < part_count; ++index) {
+            free(parts[index]);
+        }
+        return status;
+    }
+
+    if (part_count == 1U) {
+        out_reference->column_name = parts[0];
+        return MYLITE_OK;
+    }
+    if (part_count == 2U) {
+        out_reference->table_name = parts[0];
+        out_reference->column_name = parts[1];
+        return MYLITE_OK;
+    }
+    if (part_count == 3U) {
+        out_reference->schema_name = parts[0];
+        out_reference->table_name = parts[1];
+        out_reference->column_name = parts[2];
+        return MYLITE_OK;
+    }
+
+    return MYLITE_UNSUPPORTED;
+}
+
+static int copy_insert_column_reference_parts(const struct mylite_sql_ast_node *identifier,
+                                              char **parts, size_t *part_count)
+{
+    const struct mylite_sql_ast_node *segments[3] = {0};
+    const struct mylite_sql_ast_node *current = identifier;
+    size_t segment_count = 0U;
+
+    *part_count = 0U;
+    while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (segment_count >= 3U) {
+            return MYLITE_UNSUPPORTED;
+        }
+        segments[segment_count++] = child_at(current, 1U);
+        current = child_at(current, 0U);
+    }
+    if (current == NULL || current->kind != MYLITE_SQL_AST_IDENTIFIER || segment_count >= 3U) {
+        return MYLITE_UNSUPPORTED;
+    }
+    segments[segment_count++] = current;
+
+    for (size_t index = 0U; index < segment_count; ++index) {
+        const struct mylite_sql_ast_node *segment = segments[segment_count - index - 1U];
+
+        if (segment == NULL || segment->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            return MYLITE_UNSUPPORTED;
+        }
+        parts[index] = copy_identifier_span(segment);
+        if (parts[index] == NULL) {
+            for (size_t previous = 0U; previous < index; ++previous) {
+                free(parts[previous]);
+                parts[previous] = NULL;
+            }
+            *part_count = 0U;
+            return MYLITE_NOMEM;
+        }
+        *part_count += 1U;
+    }
     return MYLITE_OK;
 }
 
@@ -4453,8 +5362,13 @@ static int copy_insert_unary_value(const struct mylite_sql_ast_node *expression,
         (operand->literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER &&
          operand->literal_kind != MYLITE_SQL_AST_LITERAL_DECIMAL &&
          operand->literal_kind != MYLITE_SQL_AST_LITERAL_FLOAT)) {
-        *out_value = (struct mylite_insert_value){.kind = MYLITE_INSERT_VALUE_UNSUPPORTED};
-        return MYLITE_OK;
+        out_value->left = calloc(1U, sizeof(*out_value->left));
+        if (out_value->left == NULL) {
+            return MYLITE_NOMEM;
+        }
+        out_value->kind = MYLITE_INSERT_VALUE_UNARY_EXPRESSION;
+        out_value->operator_kind = expression->operator_kind;
+        return copy_insert_simple_value(operand, out_value->left);
     }
 
     out_value->kind = operand->literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER
@@ -4467,6 +5381,82 @@ static int copy_insert_unary_value(const struct mylite_sql_ast_node *expression,
         out_value->text[sign_length + operand->span.length] = '\0';
     }
     return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static int copy_insert_binary_value(const struct mylite_sql_ast_node *expression,
+                                    struct mylite_insert_value *out_value)
+{
+    out_value->left = calloc(1U, sizeof(*out_value->left));
+    out_value->right = calloc(1U, sizeof(*out_value->right));
+    if (out_value->left == NULL || out_value->right == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    out_value->kind = MYLITE_INSERT_VALUE_BINARY_EXPRESSION;
+    out_value->operator_kind = expression->operator_kind;
+
+    int status = copy_insert_simple_value(child_at(expression, 0U), out_value->left);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return copy_insert_simple_value(child_at(expression, 1U), out_value->right);
+}
+
+static int copy_insert_set_assignments(const struct mylite_sql_ast_node *assignments,
+                                       struct mylite_insert_set_plan *plan)
+{
+    if (assignments == NULL || assignments->kind != MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    for (const struct mylite_sql_ast_node *assignment = assignments->first_child;
+         assignment != NULL; assignment = assignment->next_sibling) {
+        int status = copy_insert_set_assignment(assignment, plan);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return plan->assignment_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
+}
+
+static int copy_insert_set_assignment(const struct mylite_sql_ast_node *assignment,
+                                      struct mylite_insert_set_plan *plan)
+{
+    struct mylite_insert_set_assignment insert_assignment = {0};
+    int status = MYLITE_OK;
+
+    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = copy_insert_column_reference(child_at(assignment, 0U), &insert_assignment.target);
+    if (status == MYLITE_OK) {
+        status = copy_insert_value(child_at(assignment, 1U), &insert_assignment.value);
+    }
+    if (status == MYLITE_OK) {
+        status = add_insert_set_assignment(plan, insert_assignment);
+    }
+    if (status != MYLITE_OK) {
+        insert_set_assignment_deinit(&insert_assignment);
+    }
+    return status;
+}
+
+static int add_insert_set_assignment(struct mylite_insert_set_plan *plan,
+                                     struct mylite_insert_set_assignment assignment)
+{
+    struct mylite_insert_set_assignment *assignments =
+        realloc(plan->assignments, (plan->assignment_count + 1U) * sizeof(*plan->assignments));
+
+    if (assignments == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->assignments = assignments;
+    plan->assignments[plan->assignment_count++] = assignment;
+    return MYLITE_OK;
 }
 
 static int add_drop_table_target(struct mylite_drop_table_plan *plan,
@@ -5837,6 +6827,25 @@ static bool text_contains_word(const char *text, const char *word)
     return strstr(text, word) != NULL;
 }
 
+static bool
+insert_column_uses_numeric_implicit_default(const struct mylite_insert_table_column *column)
+{
+    static const char *const numeric_types[] = {
+        "tinyint", "smallint", "mediumint", "int",     "bigint", "decimal",
+        "float",   "double",   "bool",      "boolean", "year",
+    };
+
+    if (column == NULL || column->data_type == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(numeric_types) / sizeof(numeric_types[0]); ++index) {
+        if (ascii_case_equal(column->data_type, numeric_types[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool column_default_is_current_timestamp(const char *default_text)
 {
     const char *start = default_text;
@@ -6048,6 +7057,42 @@ static void insert_values_plan_deinit(struct mylite_insert_values_plan *plan)
     *plan = (struct mylite_insert_values_plan){0};
 }
 
+static void insert_set_plan_deinit(struct mylite_insert_set_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < plan->assignment_count; ++index) {
+        insert_set_assignment_deinit(&plan->assignments[index]);
+    }
+    free(plan->assignments);
+    *plan = (struct mylite_insert_set_plan){0};
+}
+
+static void insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment)
+{
+    if (assignment == NULL) {
+        return;
+    }
+
+    insert_column_reference_deinit(&assignment->target);
+    insert_value_deinit(&assignment->value);
+    *assignment = (struct mylite_insert_set_assignment){0};
+}
+
+static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference)
+{
+    if (reference == NULL) {
+        return;
+    }
+
+    free(reference->schema_name);
+    free(reference->table_name);
+    free(reference->column_name);
+    *reference = (struct mylite_insert_column_reference){0};
+}
+
 static void insert_row_deinit(struct mylite_insert_row *row)
 {
     if (row == NULL) {
@@ -6068,6 +7113,24 @@ static void insert_value_deinit(struct mylite_insert_value *value)
     }
 
     free(value->text);
+    insert_column_reference_deinit(&value->column_reference);
+    insert_value_child_deinit(value->left);
+    insert_value_child_deinit(value->right);
+    free(value->left);
+    free(value->right);
+    *value = (struct mylite_insert_value){0};
+}
+
+static void insert_value_child_deinit(struct mylite_insert_value *value)
+{
+    if (value == NULL) {
+        return;
+    }
+
+    free(value->text);
+    insert_column_reference_deinit(&value->column_reference);
+    free(value->left);
+    free(value->right);
     *value = (struct mylite_insert_value){0};
 }
 
@@ -6097,6 +7160,7 @@ static void insert_table_column_deinit(struct mylite_insert_table_column *column
 
     free(column->name);
     free(column->default_text);
+    free(column->data_type);
     free(column->extra);
     *column = (struct mylite_insert_table_column){0};
 }

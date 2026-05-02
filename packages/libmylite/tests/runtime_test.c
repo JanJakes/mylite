@@ -109,6 +109,7 @@ static int test_create_table_base_execution(void);
 static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
 static int test_insert_values_execution(void);
+static int test_insert_set_execution(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -186,6 +187,7 @@ int main(void)
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
     failures += test_insert_values_execution();
+    failures += test_insert_set_execution();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -2166,6 +2168,391 @@ static int test_insert_values_execution(void)
     free(defaults_physical);
     free(atomic_physical);
     free(expr_physical);
+    mylite_close(database);
+    remove_runtime_test_files();
+    return failures;
+}
+
+static int test_insert_set_execution(void)
+{
+    enum {
+        set_forms_row_count = 2,
+        qualified_set_value = 8,
+        defaults_first_id = 10,
+        defaults_second_id = 11,
+        defaults_nn = 7,
+        assignment_order_late_value = 5,
+        auto_ref_null_id = 3,
+        auto_ref_zero_id = 4,
+        auto_ref_default_id = 5,
+        auto_ref_explicit_id = 20,
+        auto_ref_forward_id = 30,
+        auto_ref_after_explicit_id = 31,
+        duplicate_first_id = 20,
+        duplicate_after_failure_id = 22,
+    };
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    char *forms_physical = NULL;
+    char *qualified_physical = NULL;
+    char *defaults_physical = NULL;
+    char *ao_default_physical = NULL;
+    char *ao_nullable_physical = NULL;
+    char *ao_required_physical = NULL;
+    char *auto_ref_physical = NULL;
+    char *diag_physical = NULL;
+    char *expr_fail_physical = NULL;
+    char *duplicate_physical = NULL;
+    int failures = 0;
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &database), MYLITE_OK, "open insert set file");
+
+    failures += prepare_sql(database, "INSERT INTO no_default_table SET a = 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set no database");
+    failures += expect_contains(mylite_error_message(database), "No database selected",
+                                "insert set no database error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_is14", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_is14", MYLITE_DONE);
+
+    failures += prepare_sql(database, "INSERT INTO missing_schema.t SET a = 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set missing schema");
+    failures += expect_contains(mylite_error_message(database), "Unknown database",
+                                "insert set missing schema error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "INSERT INTO mylite_is14.missing SET a = 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set missing table");
+    failures +=
+        expect_contains(mylite_error_message(database), "Table 'mylite_is14.missing' doesn't exist",
+                        "insert set missing table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "INSERT INTO information_schema.tables SET a = 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set system schema");
+    failures += expect_contains(mylite_error_message(database), "system schema",
+                                "insert set system schema error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database, "CREATE TABLE set_forms (v VARCHAR(20), nn INT NOT NULL DEFAULT 0)", MYLITE_DONE);
+    forms_physical = expected_physical_table_name("mylite_is14", "set_forms");
+    if (forms_physical == NULL) {
+        fprintf(stderr, "out of memory while building set_forms physical table name\n");
+        failures = 1;
+    }
+    failures +=
+        execute_sql(database, "INSERT set_forms SET v = 'without_into', nn = 1", MYLITE_DONE);
+    failures += prepare_sql(database, "INSERT INTO set_forms SET v = 'with_into', nn = 2",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert set with INTO");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "insert set affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (forms_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, forms_physical, "COUNT(*)", "",
+                                                 set_forms_row_count, "insert set form row count");
+        failures += expect_sqlite_physical_text(path, forms_physical, "v", "WHERE nn = 1",
+                                                "without_into", "insert set optional into");
+        failures += expect_sqlite_physical_text(path, forms_physical, "v", "WHERE nn = 2",
+                                                "with_into", "insert set required into");
+    }
+
+    failures += execute_sql(database, "CREATE TABLE qualified_set (v INT)", MYLITE_DONE);
+    qualified_physical = expected_physical_table_name("mylite_is14", "qualified_set");
+    if (qualified_physical == NULL) {
+        fprintf(stderr, "out of memory while building qualified_set physical table name\n");
+        failures = 1;
+    }
+    failures +=
+        execute_sql(database, "INSERT INTO mylite_is14.qualified_set SET v = 8", MYLITE_DONE);
+    if (qualified_physical != NULL) {
+        failures +=
+            expect_sqlite_physical_int64(path, qualified_physical, "v", "", qualified_set_value,
+                                         "insert set schema-qualified target");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE defaults_set ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "must INT NOT NULL, "
+                            "v VARCHAR(10) DEFAULT 'd', "
+                            "nn INT NOT NULL DEFAULT 7, "
+                            "nul INT, "
+                            "ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP) "
+                            "AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    defaults_physical = expected_physical_table_name("mylite_is14", "defaults_set");
+    if (defaults_physical == NULL) {
+        fprintf(stderr, "out of memory while building defaults_set physical table name\n");
+        failures = 1;
+    }
+    failures +=
+        prepare_sql(database,
+                    "INSERT INTO defaults_set SET must = 1, v = DEFAULT, nn = DEFAULT, nul = NULL, "
+                    "ts = CURRENT_TIMESTAMP",
+                    MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert set defaults explicit");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "insert set defaults affected rows");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), defaults_first_id,
+                             "insert set defaults last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "INSERT INTO defaults_set SET must = 2", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), defaults_second_id,
+                             "insert set omitted defaults last insert id");
+    if (defaults_physical != NULL) {
+        failures += expect_sqlite_physical_text(path, defaults_physical, "v", "WHERE must = 1", "d",
+                                                "insert set explicit DEFAULT text");
+        failures += expect_sqlite_physical_int64(path, defaults_physical, "nn", "WHERE must = 1",
+                                                 defaults_nn, "insert set explicit DEFAULT int");
+        failures += expect_sqlite_physical_null(path, defaults_physical, "nul", "WHERE must = 1",
+                                                "insert set explicit NULL");
+        failures += expect_sqlite_physical_not_null(path, defaults_physical, "ts", "WHERE must = 1",
+                                                    "insert set current timestamp");
+        failures += expect_sqlite_physical_text(path, defaults_physical, "v", "WHERE must = 2", "d",
+                                                "insert set omitted text default");
+        failures += expect_sqlite_physical_null(path, defaults_physical, "nul", "WHERE must = 2",
+                                                "insert set omitted nullable");
+    }
+
+    failures += prepare_sql(database, "INSERT INTO defaults_set SET v = 'missing_required'",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set missing required default");
+    failures += expect_contains(mylite_error_message(database), "doesn't have a default value",
+                                "insert set missing required default error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "INSERT INTO defaults_set SET must = NULL", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set null not null");
+    failures += expect_contains(mylite_error_message(database), "cannot be null",
+                                "insert set null not null error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "INSERT INTO defaults_set SET must = DEFAULT", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set default missing");
+    failures += expect_contains(mylite_error_message(database), "doesn't have a default value",
+                                "insert set default missing error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE TABLE ao_default (a INT DEFAULT 3, b INT DEFAULT 4)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE ao_nullable (a INT, b INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE ao_required (a INT NOT NULL, b INT DEFAULT 4)",
+                            MYLITE_DONE);
+    ao_default_physical = expected_physical_table_name("mylite_is14", "ao_default");
+    ao_nullable_physical = expected_physical_table_name("mylite_is14", "ao_nullable");
+    ao_required_physical = expected_physical_table_name("mylite_is14", "ao_required");
+    if (ao_default_physical == NULL || ao_nullable_physical == NULL ||
+        ao_required_physical == NULL) {
+        fprintf(stderr, "out of memory while building assignment-order physical table names\n");
+        failures = 1;
+    }
+    failures += execute_sql(database, "INSERT INTO ao_default SET b = a + 1, a = 5", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ao_nullable SET b = a + 1, a = 5", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ao_required SET b = a + 1, a = 5", MYLITE_DONE);
+    if (ao_default_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, ao_default_physical, "a", "",
+                                                 assignment_order_late_value,
+                                                 "insert set assignment order default a");
+        failures += expect_sqlite_physical_int64(path, ao_default_physical, "b", "", 4,
+                                                 "insert set assignment order default b");
+    }
+    if (ao_nullable_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, ao_nullable_physical, "a", "",
+                                                 assignment_order_late_value,
+                                                 "insert set assignment order nullable a");
+        failures += expect_sqlite_physical_null(path, ao_nullable_physical, "b", "",
+                                                "insert set assignment order nullable b");
+    }
+    if (ao_required_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, ao_required_physical, "a", "",
+                                                 assignment_order_late_value,
+                                                 "insert set assignment order required a");
+        failures += expect_sqlite_physical_int64(path, ao_required_physical, "b", "", 1,
+                                                 "insert set assignment order required b");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE auto_ref ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, a INT) "
+                            "AUTO_INCREMENT=3",
+                            MYLITE_DONE);
+    auto_ref_physical = expected_physical_table_name("mylite_is14", "auto_ref");
+    if (auto_ref_physical == NULL) {
+        fprintf(stderr, "out of memory while building auto_ref physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database, "INSERT INTO auto_ref SET id = NULL, a = id", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), auto_ref_null_id,
+                             "insert set auto null last insert id");
+    failures += execute_sql(database, "INSERT INTO auto_ref SET id = 0, a = id", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), auto_ref_zero_id,
+                             "insert set auto zero last insert id");
+    failures += execute_sql(database, "INSERT INTO auto_ref SET id = DEFAULT, a = id", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), auto_ref_default_id,
+                             "insert set auto default last insert id");
+    failures += execute_sql(database, "INSERT INTO auto_ref SET id = 20, a = id", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), auto_ref_default_id,
+                             "insert set explicit auto leaves last insert id");
+    failures += execute_sql(database, "INSERT INTO auto_ref SET a = id, id = 30", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), auto_ref_default_id,
+                             "insert set forward auto leaves last insert id");
+    failures += execute_sql(database, "INSERT INTO auto_ref SET a = 99", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), auto_ref_after_explicit_id,
+                             "insert set explicit high advances sequence");
+    if (auto_ref_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, auto_ref_physical, "a", "WHERE id = 3", 0,
+                                                 "insert set auto null reference");
+        failures += expect_sqlite_physical_int64(path, auto_ref_physical, "a", "WHERE id = 4", 0,
+                                                 "insert set auto zero reference");
+        failures += expect_sqlite_physical_int64(path, auto_ref_physical, "a", "WHERE id = 5", 0,
+                                                 "insert set auto default reference");
+        failures += expect_sqlite_physical_int64(path, auto_ref_physical, "a", "WHERE id = 20",
+                                                 auto_ref_explicit_id,
+                                                 "insert set explicit auto reference");
+        failures += expect_sqlite_physical_int64(path, auto_ref_physical, "a", "WHERE id = 30", 0,
+                                                 "insert set forward auto reference");
+        failures += expect_sqlite_physical_int64(path, auto_ref_physical, "id", "WHERE a = 99",
+                                                 auto_ref_after_explicit_id,
+                                                 "insert set generated after explicit high");
+    }
+
+    failures += execute_sql(database, "CREATE TABLE diag_set (a INT, b INT)", MYLITE_DONE);
+    diag_physical = expected_physical_table_name("mylite_is14", "diag_set");
+    if (diag_physical == NULL) {
+        fprintf(stderr, "out of memory while building diag_set physical table name\n");
+        failures = 1;
+    }
+    failures +=
+        execute_sql(database, "INSERT INTO diag_set SET diag_set.a = 1, b = 2", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO diag_set SET mylite_is14.diag_set.a = 3", MYLITE_DONE);
+    failures += prepare_sql(database, "INSERT INTO diag_set SET a = 1, A = 2", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set duplicate target");
+    failures += expect_contains(mylite_error_message(database), "specified twice",
+                                "insert set duplicate target error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "INSERT INTO diag_set SET a = 1, `a` = 2", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set quoted duplicate target");
+    failures += expect_contains(mylite_error_message(database), "specified twice",
+                                "insert set quoted duplicate target error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "INSERT INTO diag_set SET missing_col = 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set unknown target");
+    failures += expect_contains(mylite_error_message(database), "Unknown column",
+                                "insert set unknown target error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "INSERT INTO diag_set SET a = 1, A = 2, missing_col = 3",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set unknown beats duplicate");
+    failures += expect_contains(mylite_error_message(database), "Unknown column",
+                                "insert set unknown beats duplicate error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "INSERT INTO diag_set SET other.a = 1", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set mismatched qualifier");
+    failures += expect_contains(mylite_error_message(database), "Unknown column",
+                                "insert set mismatched qualifier error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (diag_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, diag_physical, "COUNT(*)", "", 2,
+                                                 "insert set qualified diagnostics row count");
+    }
+
+    failures += execute_sql(database, "CREATE TABLE quoted_diag (CamelCase INT)", MYLITE_DONE);
+    failures += prepare_sql(database, "INSERT INTO quoted_diag SET CamelCase = 1, `camelcase` = 2",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set quoted case duplicate");
+    failures += expect_contains(mylite_error_message(database), "specified twice",
+                                "insert set quoted case duplicate error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE TABLE expr_fail (a INT, b INT)", MYLITE_DONE);
+    expr_fail_physical = expected_physical_table_name("mylite_is14", "expr_fail");
+    if (expr_fail_physical == NULL) {
+        fprintf(stderr, "out of memory while building expr_fail physical table name\n");
+        failures = 1;
+    }
+    failures += prepare_sql(database, "INSERT INTO expr_fail SET a = 'text' + 1", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set unsupported expression");
+    failures += expect_contains(mylite_error_message(database), "Unsupported INSERT value",
+                                "insert set unsupported expression error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (expr_fail_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, expr_fail_physical, "COUNT(*)", "", 0,
+                                                 "insert set unsupported expression rollback");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE duplicate_set ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, u INT UNIQUE) "
+                            "AUTO_INCREMENT=20",
+                            MYLITE_DONE);
+    duplicate_physical = expected_physical_table_name("mylite_is14", "duplicate_set");
+    if (duplicate_physical == NULL) {
+        fprintf(stderr, "out of memory while building duplicate_set physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database, "INSERT INTO duplicate_set SET u = 1", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), duplicate_first_id,
+                             "insert set duplicate setup last insert id");
+    failures += prepare_sql(database, "INSERT INTO duplicate_set SET u = 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "insert set duplicate consumes sequence");
+    failures += expect_contains(mylite_error_message(database), "Duplicate entry '1'",
+                                "insert set duplicate consumes sequence error");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), duplicate_first_id,
+                             "insert set duplicate leaves last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO duplicate_set SET u = 2", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), duplicate_after_failure_id,
+                             "insert set duplicate consumed next id");
+    if (duplicate_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, duplicate_physical, "COUNT(*)", "", 2,
+                                                 "insert set duplicate rollback row count");
+        failures += expect_sqlite_physical_int64(path, duplicate_physical, "id", "WHERE u = 2",
+                                                 duplicate_after_failure_id,
+                                                 "insert set duplicate consumed sequence");
+    }
+
+    free(forms_physical);
+    free(qualified_physical);
+    free(defaults_physical);
+    free(ao_default_physical);
+    free(ao_nullable_physical);
+    free(ao_required_physical);
+    free(auto_ref_physical);
+    free(diag_physical);
+    free(expr_fail_physical);
+    free(duplicate_physical);
     mylite_close(database);
     remove_runtime_test_files();
     return failures;

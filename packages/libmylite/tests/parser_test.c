@@ -18,6 +18,7 @@ static int test_create_table_unique_secondary_indexes(void);
 static int test_create_table_base_execution_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
+static int test_insert_set_syntax(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -81,6 +82,7 @@ int main(void)
     failures += test_create_table_base_execution_syntax();
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
+    failures += test_insert_set_syntax();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -2177,6 +2179,98 @@ static int test_insert_values_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE a = 1;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_insert_set_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *assignments = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    const struct mylite_sql_ast_node *value = NULL;
+    int failures = 0;
+
+    failures += parse_sql("INSERT app.t SET a = 1, t.b = DEFAULT, app.t.c = a + 1;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignments = child_at(statement, 1U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_SET_STATEMENT, "insert set statement");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "insert set qualified table");
+    failures += expect_node(assignments, MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST,
+                            "insert set assignment list");
+    failures += expect_child_count(assignments, 3U, "insert set assignment count");
+
+    assignment = child_at(assignments, 0U);
+    failures += expect_node(assignment, MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT,
+                            "insert set first assignment");
+    failures += expect_span_text(child_at(assignment, 0U), "a", "insert set first target");
+    failures += expect_literal(child_at(assignment, 1U), MYLITE_SQL_AST_LITERAL_INTEGER,
+                               "insert set first value");
+
+    assignment = child_at(assignments, 1U);
+    failures += expect_node(child_at(assignment, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "insert set table-qualified target");
+    failures += expect_node(child_at(assignment, 1U), MYLITE_SQL_AST_DEFAULT, "insert set DEFAULT");
+
+    assignment = child_at(assignments, 2U);
+    failures += expect_node(child_at(assignment, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "insert set schema-qualified target");
+    value = child_at(assignment, 1U);
+    failures += expect_node(value, MYLITE_SQL_AST_BINARY_EXPRESSION, "insert set arithmetic value");
+    failures += expect_operator(value, MYLITE_SQL_AST_OPERATOR_ADD, "insert set arithmetic op");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t SET `CamelCase` = NULL, b = CURRENT_TIMESTAMP, c = - 4;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignments = child_at(statement, 1U);
+    failures += expect_child_count(assignments, 3U, "insert set scalar assignment count");
+    failures += expect_span_text(child_at(child_at(assignments, 0U), 0U), "`CamelCase`",
+                                 "insert set quoted target");
+    failures += expect_literal(child_at(child_at(assignments, 0U), 1U), MYLITE_SQL_AST_LITERAL_NULL,
+                               "insert set NULL");
+    failures += expect_current_timestamp(child_at(child_at(assignments, 1U), 1U), false, 0U,
+                                         "insert set CURRENT_TIMESTAMP");
+    failures += expect_operator(child_at(child_at(assignments, 2U), 1U),
+                                MYLITE_SQL_AST_OPERATOR_NEGATIVE, "insert set unary value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t SET", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t SET a", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t SET a =", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t SET a = 1,", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT IGNORE INTO t SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT LOW_PRIORITY INTO t SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT DELAYED INTO t SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT INTO t PARTITION (p0) SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t SET a = 1 AS new", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t SET a = 1 ON DUPLICATE KEY UPDATE a = 2",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

@@ -297,14 +297,14 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Query expression grammar | ❌ | top | Parenthesized query expressions, query terms, and query primary rules. |  |
 | `WITH` common table expressions | ❌ | high | Non-recursive CTEs, column lists, name shadowing, and scope. |  |
 | `WITH RECURSIVE` | ❌ | high | Recursive CTE execution, cycle behavior, limits, and type inference. |  |
-| Projection list | 🟡 | top | Expression aliases, wildcard expansion, qualified wildcards, duplicate names, and metadata. | Implemented for direct column-reference projection aliases, duplicate output labels, `*`, `table.*`, `schema.table.*`, and alias-qualified wildcards over one base table, with narrow public label/schema/table/origin metadata accessors. Arbitrary projection expressions and broader result metadata remain deferred. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md). |
+| Projection list | 🟡 | top | Expression aliases, wildcard expansion, qualified wildcards, duplicate names, and metadata. | Implemented for direct column-reference projection aliases, duplicate output labels, `*`, `table.*`, `schema.table.*`, and alias-qualified wildcards over one base table, with narrow public label/schema/table/origin metadata accessors. Task 16 specifies reusable scalar expression parsing/evaluation for future projection expansion, but arbitrary table-backed projection expressions and broader result metadata remain deferred. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md) and [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | Table references | 🟡 | top | Base tables, aliases, schema qualifiers, derived tables, table functions, and parentheses. | Implemented for one user base table with selected-schema or schema-qualified resolution and optional `AS`/bare table aliases. Joins, derived tables, table functions, partitions, index hints, and parenthesized table references remain deferred. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md). |
 | Inner joins | ❌ | top | JOIN, INNER JOIN, CROSS JOIN, comma join, ON, and USING. |  |
 | Outer joins | ❌ | top | LEFT/RIGHT OUTER JOIN null-extension and predicate placement. |  |
 | Natural joins | ❌ | high | NATURAL INNER/LEFT/RIGHT JOIN column matching and metadata. |  |
 | `STRAIGHT_JOIN` | ❌ | medium | Join-order forcing syntax and optimizer interaction. |  |
 | Lateral derived tables | ❌ | medium | LATERAL derived table correlation rules. |  |
-| `WHERE` | ❌ | top | Predicate semantics, type conversion, three-valued logic, and short-circuit-sensitive warnings. |  |
+| `WHERE` | ❌ | top | Predicate semantics, type conversion, three-valued logic, and short-circuit-sensitive warnings. | Task 16 specifies the reusable expression operator foundation that `WHERE` will consume, but row filtering and clause execution remain a separate Task 17 feature. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `GROUP BY` | ❌ | top | Grouping expression semantics, ordinals, aliases, functional-dependence handling, and ONLY_FULL_GROUP_BY. |  |
 | `WITH ROLLUP` | ❌ | medium | Super-aggregate rows and GROUPING() behavior. |  |
 | `HAVING` | ❌ | top | Post-group predicate semantics and alias resolution. |  |
@@ -326,7 +326,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `PARTITION` selection | ❌ | low | Explicit partition selection syntax and errors. |  |
 | Locking clauses | ❌ | high | FOR UPDATE, FOR SHARE, OF table list, NOWAIT, and SKIP LOCKED. |  |
 | SELECT modifiers | ❌ | top | ALL, HIGH_PRIORITY, SQL_SMALL_RESULT, SQL_BIG_RESULT, SQL_BUFFER_RESULT, SQL_CALC_FOUND_ROWS, and STRAIGHT_JOIN. |  |
-| Expression metadata | ❌ | top | Column type, length, decimals, flags, charset, collation, nullability, and origin metadata. | Task 15 exposes MySQL-like output labels through `mylite_column_name()` for base-table column projections and wildcard-expanded columns. Public table/origin metadata accessors and broader expression metadata remain deferred. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md). |
+| Expression metadata | ❌ | top | Column type, length, decimals, flags, charset, collation, nullability, and origin metadata. | Task 15 exposes MySQL-like output labels through `mylite_column_name()` for base-table column projections and wildcard-expanded columns. Task 16 specifies internal metadata expectations for supported scalar operators, but public expression metadata remains deferred to Task 23. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md) and [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 
 ## 3. DDL detail surface
 
@@ -478,7 +478,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | JSON path literals | ❌ | high | Path grammar, quoting, wildcards, ranges, and errors. |  |
 | User variables | ❌ | high | Type retention, coercion, assignment, charset/collation, and result metadata. |  |
 | Local variables | ❌ | medium | Stored-program variable typing, scope, and diagnostics. |  |
-| Type conversion | ❌ | top | Expression, comparison, assignment, insert/update, aggregate, and function argument conversion rules. |  |
+| Type conversion | ❌ | top | Expression, comparison, assignment, insert/update, aggregate, and function argument conversion rules. | Task 16 specifies the first reusable expression conversion subset for scalar operators, including NULL propagation, truthiness, numeric/string comparison conversion warnings, division-by-zero warnings, and unsigned bitwise behavior. Full assignment, aggregate, function, temporal, JSON, range-clipping, and collation coercion rules remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | Collation coercibility | ❌ | top | Coercibility ranks, illegal mix diagnostics, and result collation derivation. |  |
 
 ### 4.1 Character sets
@@ -546,34 +546,34 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 
 | Function or operator | Status | Priority | MySQL behavior to match | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `&` | ❌ | top | Bitwise AND |  |
-| `>` | ❌ | top | Greater than operator |  |
-| `>>` | ❌ | medium | Right shift |  |
-| `>=` | ❌ | top | Greater than or equal operator |  |
-| `<` | ❌ | top | Less than operator |  |
-| `<>, !=` | ❌ | top | Not equal operator |  |
-| `<<` | ❌ | medium | Left shift |  |
-| `<=` | ❌ | top | Less than or equal operator |  |
-| `<=>` | ❌ | top | NULL-safe equal to operator |  |
-| `%, MOD` | ❌ | top | Modulo operator |  |
-| `*` | ❌ | top | Multiplication operator |  |
-| `+` | ❌ | top | Addition operator |  |
-| `-` (binary) | ❌ | top | Minus operator |  |
-| `-` (unary) | ❌ | top | Change the sign of the argument |  |
+| `&` | ❌ | top | Bitwise AND | Specified for Task 16 numeric expression operators; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `>` | ❌ | top | Greater than operator | Specified for Task 16 scalar comparisons; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `>>` | ❌ | medium | Right shift | Specified for Task 16 numeric expression operators; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `>=` | ❌ | top | Greater than or equal operator | Specified for Task 16 scalar comparisons; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `<` | ❌ | top | Less than operator | Specified for Task 16 scalar comparisons; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `<>, !=` | ❌ | top | Not equal operator | Specified for Task 16 scalar comparisons; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `<<` | ❌ | medium | Left shift | Specified for Task 16 numeric expression operators; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `<=` | ❌ | top | Less than or equal operator | Specified for Task 16 scalar comparisons; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `<=>` | ❌ | top | NULL-safe equal to operator | Specified for Task 16 NULL-safe comparison; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `%, MOD` | ❌ | top | Modulo operator | Specified for Task 16 arithmetic, including division-by-zero warnings; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `*` | ❌ | top | Multiplication operator | Specified for Task 16 arithmetic; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `+` | ❌ | top | Addition operator | Specified for Task 16 arithmetic and precedence expansion; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `-` (binary) | ❌ | top | Minus operator | Specified for Task 16 arithmetic and precedence expansion; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `-` (unary) | ❌ | top | Change the sign of the argument | Specified for Task 16 unary expression handling; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `->` | ❌ | high | Return value from JSON column after evaluating path; equivalent to JSON_EXTRACT(). |  |
 | `->>` | ❌ | high | Return value from JSON column after evaluating path and unquoting the result; equivalent to JSON_UNQUOTE(JSON_EXTRACT()). |  |
-| `/` | ❌ | top | Division operator |  |
+| `/` | ❌ | top | Division operator | Specified for Task 16 arithmetic, including decimal result metadata and division-by-zero warnings; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `:=` | ❌ | top | Assign a value |  |
 | `=` (assignment) | ❌ | top | Assign a value as part of `SET` or an `UPDATE` assignment. |  |
-| `=` (comparison) | ❌ | top | Equal operator |  |
-| `^` | ❌ | top | Bitwise XOR |  |
+| `=` (comparison) | ❌ | top | Equal operator | Specified for Task 16 scalar comparisons; implementation and MySQL-runtime tests pending. Assignment `=` remains separate. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `^` | ❌ | top | Bitwise XOR | Specified for Task 16 numeric expression operators and precedence; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `ABS()` | ❌ | high | Return the absolute value |  |
 | `ACOS()` | ❌ | medium | Return the arc cosine |  |
 | `ADDDATE()` | ❌ | top | Add time values (intervals) to a date value |  |
 | `ADDTIME()` | ❌ | medium | Add time |  |
 | `AES_DECRYPT()` | ❌ | medium | Decrypt using AES |  |
 | `AES_ENCRYPT()` | ❌ | medium | Encrypt using AES |  |
-| `AND, &&` | ❌ | top | Logical AND |  |
+| `AND, &&` | ❌ | top | Logical AND | Specified for Task 16 three-valued logical expression evaluation; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `ANY_VALUE()` | ❌ | medium | Suppress ONLY_FULL_GROUP_BY value rejection |  |
 | `ASCII()` | ❌ | high | Return numeric value of left-most character |  |
 | `ASIN()` | ❌ | medium | Return the arc sine |  |
@@ -586,7 +586,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `ATAN2(), ATAN()` | ❌ | medium | Return the arc tangent of the two arguments |  |
 | `AVG()` | ❌ | top | Return the average value of the argument |  |
 | `BENCHMARK()` | ❌ | low | Repeatedly execute an expression |  |
-| `BETWEEN ... AND ...` | ❌ | top | Whether a value is within a range of values |  |
+| `BETWEEN ... AND ...` | ❌ | top | Whether a value is within a range of values | Specified for Task 16 scalar expression lists and NULL behavior; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `BIN()` | ❌ | high | Return a string containing binary representation of a number |  |
 | `BIN_TO_UUID()` | ❌ | high | Convert binary UUID to string |  |
 | `BINARY` | ❌ | medium | Cast a string to a binary string |  |
@@ -645,7 +645,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `DEFAULT()` | ❌ | top | Return the default value for a table column |  |
 | `DEGREES()` | ❌ | medium | Convert radians to degrees |  |
 | `DENSE_RANK()` | ❌ | medium | Rank of current row within its partition, without gaps |  |
-| `DIV` | ❌ | medium | Integer division |  |
+| `DIV` | ❌ | medium | Integer division | Specified for Task 16 arithmetic, including division-by-zero warnings; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `ELT()` | ❌ | high | Return string at index number |  |
 | `EXISTS()` | ❌ | top | Whether the result of a query contains any rows |  |
 | `EXP()` | ❌ | medium | Raise to the power of |  |
@@ -688,7 +688,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `ICU_VERSION()` | ❌ | medium | ICU library version |  |
 | `IF()` | ❌ | top | If/else construct |  |
 | `IFNULL()` | ❌ | top | Null if/else construct |  |
-| `IN()` | ❌ | top | Whether a value is within a set of values |  |
+| `IN()` | ❌ | top | Whether a value is within a set of values | Specified for Task 16 scalar expression-list membership and NULL behavior; subquery and row-constructor forms remain deferred. Implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `INET_ATON()` | ❌ | high | Return the numeric value of an IP address |  |
 | `INET_NTOA()` | ❌ | high | Return the IP address from a numeric value |  |
 | `INSERT()` | ❌ | high | Insert substring at specified position up to specified number of characters |  |
@@ -714,11 +714,11 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `INTERNAL_TABLE_ROWS()` | ❌ | low | Internal use only |  |
 | `INTERNAL_UPDATE_TIME()` | ❌ | low | Internal use only |  |
 | `INTERVAL()` | ❌ | medium | Return the index of the argument that is less than the first argument |  |
-| `IS` | ❌ | top | Test a value against a boolean |  |
+| `IS` | ❌ | top | Test a value against a boolean | Specified for Task 16 NULL, TRUE, FALSE, and UNKNOWN tests; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `IS_FREE_LOCK()` | ❌ | high | Whether the named lock is free |  |
-| `IS NOT` | ❌ | top | Test a value against a boolean |  |
-| `IS NOT NULL` | ❌ | top | NOT NULL value test |  |
-| `IS NULL` | ❌ | top | NULL value test |  |
+| `IS NOT` | ❌ | top | Test a value against a boolean | Specified for Task 16 NULL, TRUE, FALSE, and UNKNOWN tests; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `IS NOT NULL` | ❌ | top | NOT NULL value test | Specified for Task 16 NULL tests; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `IS NULL` | ❌ | top | NULL value test | Specified for Task 16 NULL tests; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `IS_USED_LOCK()` | ❌ | high | Whether the named lock is in use; return connection identifier if true |  |
 | `IS_UUID()` | ❌ | medium | Whether argument is a valid UUID |  |
 | `ISNULL()` | ❌ | top | Test whether the argument is NULL |  |
@@ -763,7 +763,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `LEAST()` | ❌ | medium | Return the smallest argument |  |
 | `LEFT()` | ❌ | high | Return the leftmost number of characters as specified |  |
 | `LENGTH()` | ❌ | top | Return the length of a string in bytes |  |
-| `LIKE` | ❌ | top | Simple pattern matching |  |
+| `LIKE` | ❌ | top | Simple pattern matching | Specified for Task 16 ASCII-compatible default-collation pattern matching with default escaping and optional `ESCAPE`; full collation behavior remains deferred. Implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `LineString()` | ❌ | medium | Construct LineString from Point values |  |
 | `LN()` | ❌ | medium | Return the natural logarithm of the argument |  |
 | `LOAD_FILE()` | ❌ | medium | Load the named file |  |
@@ -804,11 +804,11 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `MultiPoint()` | ❌ | medium | Construct MultiPoint from Point values |  |
 | `MultiPolygon()` | ❌ | medium | Construct MultiPolygon from Polygon values |  |
 | `NAME_CONST()` | ❌ | medium | Cause the column to have the given name |  |
-| `NOT, !` | ❌ | top | Negates value |  |
-| `NOT BETWEEN ... AND ...` | ❌ | top | Whether a value is not within a range of values |  |
+| `NOT, !` | ❌ | top | Negates value | Specified for Task 16 logical operators and default precedence; `HIGH_NOT_PRECEDENCE` mode behavior remains deferred. Implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `NOT BETWEEN ... AND ...` | ❌ | top | Whether a value is not within a range of values | Specified for Task 16 scalar range tests and NULL behavior; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `NOT EXISTS()` | ❌ | top | Whether the result of a query contains no rows |  |
-| `NOT IN()` | ❌ | top | Whether a value is not within a set of values |  |
-| `NOT LIKE` | ❌ | top | Negation of simple pattern matching |  |
+| `NOT IN()` | ❌ | top | Whether a value is not within a set of values | Specified for Task 16 scalar expression-list membership and NULL behavior; subquery and row-constructor forms remain deferred. Implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `NOT LIKE` | ❌ | top | Negation of simple pattern matching | Specified for Task 16 ASCII-compatible default-collation pattern matching with NULL behavior; full collation behavior remains deferred. Implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `NOT REGEXP` | ❌ | high | Negation of REGEXP |  |
 | `NOW()` | ❌ | top | Return the current date and time |  |
 | `NTH_VALUE()` | ❌ | medium | Value of argument from N-th row of window frame |  |
@@ -816,7 +816,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `NULLIF()` | ❌ | top | Return NULL if expr1 = expr2 |  |
 | `OCT()` | ❌ | high | Return a string containing octal representation of a number |  |
 | `OCTET_LENGTH()` | ❌ | top | Synonym for LENGTH() |  |
-| `OR, \|\|` | ❌ | top | Logical OR |  |
+| `OR, \|\|` | ❌ | top | Logical OR | Specified for Task 16 default logical-OR behavior; `PIPES_AS_CONCAT` string concatenation remains deferred. Implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `ORD()` | ❌ | medium | Return character code for leftmost character of the argument |  |
 | `PERCENT_RANK()` | ❌ | medium | Percentage rank value |  |
 | `PERIOD_ADD()` | ❌ | medium | Add a period to a year-month |  |
@@ -997,11 +997,11 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `WEEKDAY()` | ❌ | medium | Return the weekday index |  |
 | `WEEKOFYEAR()` | ❌ | medium | Return the calendar week of the date (1-53) |  |
 | `WEIGHT_STRING()` | ❌ | medium | Return the weight string for a string |  |
-| `XOR` | ❌ | medium | Logical XOR |  |
+| `XOR` | ❌ | medium | Logical XOR | Specified for Task 16 three-valued logical expression evaluation; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `YEAR()` | ❌ | high | Return the year |  |
 | `YEARWEEK()` | ❌ | medium | Return the year and week |  |
-| `\|` | ❌ | medium | Bitwise OR |  |
-| `~` | ❌ | medium | Bitwise inversion |  |
+| `\|` | ❌ | medium | Bitwise OR | Specified for Task 16 numeric expression operators; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `~` | ❌ | medium | Bitwise inversion | Specified for Task 16 numeric expression operators; implementation and MySQL-runtime tests pending. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 
 ## 6. Metadata schemas
 
@@ -1486,8 +1486,8 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `ALLOW_INVALID_DATES` | ❌ | high | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
 | `ANSI` | ❌ | medium | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
 | `ANSI_QUOTES` | ❌ | top | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
-| `ERROR_FOR_DIVISION_BY_ZERO` | ❌ | high | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
-| `HIGH_NOT_PRECEDENCE` | ❌ | medium | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
+| `ERROR_FOR_DIVISION_BY_ZERO` | ❌ | high | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. | Task 16 specifies verified default-mode expression warnings for `/`, `DIV`, `%`, and `MOD`; complete SQL-mode interactions remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
+| `HIGH_NOT_PRECEDENCE` | ❌ | medium | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. | Task 16 specifies default `!` and `NOT` precedence and intentionally defers this mode-sensitive parser behavior. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `IGNORE_SPACE` | ❌ | medium | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
 | `NO_AUTO_VALUE_ON_ZERO` | ❌ | high | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
 | `NO_BACKSLASH_ESCAPES` | ❌ | top | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
@@ -1498,7 +1498,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `NO_ZERO_IN_DATE` | ❌ | high | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
 | `ONLY_FULL_GROUP_BY` | ❌ | top | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
 | `PAD_CHAR_TO_FULL_LENGTH` | ❌ | medium | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
-| `PIPES_AS_CONCAT` | ❌ | high | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
+| `PIPES_AS_CONCAT` | ❌ | high | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. | Task 16 specifies default `||` logical-OR behavior and intentionally defers mode-sensitive string concatenation. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `REAL_AS_FLOAT` | ❌ | high | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
 | `STRICT_ALL_TABLES` | ❌ | medium | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |
 | `STRICT_TRANS_TABLES` | ❌ | top | Implement parser, expression, DDL, DML, conversion, warning, and error behavior affected by this mode. |  |

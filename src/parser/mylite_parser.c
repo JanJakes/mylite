@@ -1587,7 +1587,7 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
       }
     }
     if (into_state == SELECT_INTO_AFTER_OUTFILE) {
-      if (!select_string_literal_token(token_id)) {
+      if (!create_table_tail_option_string_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete SELECT INTO file target");
         return;
@@ -1596,7 +1596,7 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
       continue;
     }
     if (into_state == SELECT_INTO_AFTER_DUMPFILE) {
-      if (!select_string_literal_token(token_id)) {
+      if (!create_table_tail_option_string_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete SELECT INTO file target");
         return;
@@ -2795,8 +2795,7 @@ static void validate_table_statement_from(MyliteParseContext *ctx,
     }
 
     if (state == TABLE_AFTER_INTO_FILE) {
-      if (token_id != ML_DOUBLE_QUOTED_STRING &&
-          token_id != ML_STRING_LITERAL) {
+      if (!create_table_tail_option_string_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete TABLE INTO clause");
         return;

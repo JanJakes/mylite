@@ -29,8 +29,8 @@ token sink:
   validated by C string checks.
 - MySQL 8.4 administration forms such as `SHOW BINARY LOG STATUS` and
   `CLONE INSTANCE ... [DATA DIRECTORY ...] [REQUIRE [NO] SSL]` are recognized
-  structurally, with numeric remote clone ports and string-literal clone
-  passwords and data directories.
+  structurally, with numeric remote clone ports and text-string clone passwords
+  and data directories that reject quoted hex/bit literals.
 - Account-reference forms that permit `CURRENT_USER` or `CURRENT_USER()` now
   have explicit grammar productions.
 - Stored function signatures require empty or comma-separated input parameter
@@ -160,7 +160,7 @@ token sink:
 - `SELECT ... INTO` variable lists reject missing user-variable names, dangling
   commas, and adjacent variable targets.
 - Top-level `SELECT` requires `INTO OUTFILE` and `INTO DUMPFILE` to include
-  the mandatory file-name string.
+  the mandatory text-string file name, rejecting quoted hex/bit literals.
 - Top-level `SELECT ... INTO OUTFILE` validates the basic `CHARACTER SET`,
   `FIELDS`/`COLUMNS`, and `LINES` option tails, and file-output targets reject
   stray suffixes that are not valid following `SELECT` clauses.
@@ -325,15 +325,16 @@ token sink:
 - `TRUNCATE TABLE` recognizes optional `TABLE` and one- or two-part table
   references using the shared identifier grammar.
 - `INSTALL PLUGIN` and `UNINSTALL PLUGIN` recognize plugin names using the
-  shared identifier grammar.
-- `INSTALL COMPONENT` and `UNINSTALL COMPONENT` recognize string-literal
-  component file lists and optional scoped `SET` assignments for installs,
-  while rejecting malformed component assignment values.
+  shared identifier grammar; plugin `SONAME` values reject quoted hex/bit
+  literals.
+- `INSTALL COMPONENT` and `UNINSTALL COMPONENT` recognize text-string component
+  file lists and optional scoped `SET` assignments for installs, while rejecting
+  malformed component assignment values and quoted hex/bit component URNs.
 - `ANALYZE TABLE` recognizes table lists and histogram update/drop clauses using
   the shared identifier grammar for table and column names, with numeric
   histogram bucket counts, MySQL 8.4 automatic/manual histogram update modes,
-  single-table histogram clauses, and single-column string-literal histogram
-  data.
+  single-table histogram clauses, and single-column text-string histogram data
+  with quoted hex/bit rejection.
 - `CHECK TABLE`, `CHECKSUM TABLE`/`TABLES`, `OPTIMIZE TABLE`, and `REPAIR TABLE`
   recognize table lists and their documented parser-level option keywords.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
@@ -341,10 +342,11 @@ token sink:
   and numeric thread-id assignment lists. VCPU range and `SET RESOURCE GROUP
   ... FOR` thread-id lists support MySQL's optional comma separators.
 - `START REPLICA` recognizes `IO_THREAD`/`RELAY_THREAD` and `SQL_THREAD`,
-  `UNTIL`, connection, and channel clauses with string-literal log/GTID/user
-  option values and numeric log-position values. Source/relay log coordinate
-  option lists are accepted in MySQL parser order, and replication channel names
-  use MySQL's string-literal channel grammar. Removed `START SLAVE` and
+  `UNTIL`, connection, and channel clauses with text-string log/GTID/user
+  option values that reject quoted hex/bit literals and numeric log-position
+  values. Source/relay log coordinate option lists are accepted in MySQL parser
+  order, and replication channel names use MySQL's text-string channel grammar.
+  Removed `START SLAVE` and
   `STOP SLAVE` syntax is
   permissive-corpus-only.
 - `SHOW REPLICA STATUS` and `SHOW REPLICAS` recognize the current MySQL 8.4
@@ -352,12 +354,12 @@ token sink:
   permissive-corpus-only.
 - `RESET` recognizes comma-separated MySQL 8.4 reset options, including
   `RESET BINARY LOGS AND GTIDS` with optional numeric `TO` index values and
-  `RESET REPLICA` channel clauses. Removed `RESET MASTER` and `RESET SLAVE`
-  syntax is permissive-corpus-only.
-- `BINLOG` requires a string-literal payload, `PURGE BINARY LOGS ... TO`
-  requires a string-literal log name, and `PURGE BINARY LOGS ... BEFORE`
-  validates expression tails. Removed `PURGE MASTER LOGS` syntax is
-  permissive-corpus-only.
+  `RESET REPLICA` text-string channel clauses. Removed `RESET MASTER` and
+  `RESET SLAVE` syntax is permissive-corpus-only.
+- `BINLOG` requires a text-string payload, `PURGE BINARY LOGS ... TO` requires a
+  text-string log name, and both reject quoted hex/bit literals.
+  `PURGE BINARY LOGS ... BEFORE` validates expression tails. Removed
+  `PURGE MASTER LOGS` syntax is permissive-corpus-only.
 - `KILL` recognizes optional `CONNECTION`/`QUERY` modes, expression-style
   targets including function-call tails, and exact user-variable targets, while
   rejecting extra top-level tokens after the target.
@@ -367,17 +369,20 @@ token sink:
 - `LOCK INSTANCE FOR BACKUP`, `UNLOCK INSTANCE`, and `UNLOCK TABLES` have
   closed statement shapes.
 - `LOAD DATA` and `LOAD XML` recognize file modifiers, duplicate handling,
-  optional `FROM`, `INFILE`/`URL`/`S3` sources, string-literal file names,
+  optional `FROM`, `INFILE`/`URL`/`S3` sources, text-string source names,
   source counts and primary-key-order hints, partition or row-matching clauses,
   character sets, compression, field/line options with non-empty option bodies,
   numeric ignored-row counts, column/user-variable lists, validated
   comma-separated `SET` assignment tails, and bulk-load parallel, memory, and
   algorithm options where they are unambiguous with `SET` assignment tails.
+  Source and compression strings reject quoted hex/bit literals while field and
+  line option strings still allow MySQL's accepted string-literal forms.
   `LOAD DATA` partition names use the shared identifier grammar.
 - `LOAD INDEX INTO CACHE` recognizes MySQL's single-table partition form,
   `ALL`, optional empty or named key/index lists, comma-separated non-partition
   table lists, and `IGNORE LEAVES`.
-- `IMPORT TABLE` recognizes comma-separated string-literal file lists.
+- `IMPORT TABLE` recognizes comma-separated text-string file lists with quoted
+  hex/bit rejection.
 - `EXPLAIN` and `DESCRIBE` recognize table-description forms, explainable
   statement starts including `TABLE` with validated query/DML tails, and
   numeric `FOR CONNECTION` ids with optional `FORMAT` clauses.
@@ -387,21 +392,22 @@ token sink:
   names, typed numeric/boolean option values, string-or-`NULL` option values,
   `IGNORE_SERVER_IDS` lists,
   privilege-check users, fixed primary-key-check enums, GTID assignment values,
-  and optional channel clauses. Removed `CHANGE MASTER TO` syntax is
-  permissive-corpus-only.
-- Replication channel clauses share one identifier grammar across
-  `START`/`STOP`/`RESET`/`SHOW`/`FLUSH` and `CHANGE ... FOR CHANNEL`.
+  and optional channel clauses, rejecting quoted hex/bit literals in text-string
+  option values. Removed `CHANGE MASTER TO` syntax is permissive-corpus-only.
+- Replication channel clauses share one text-string grammar across
+  `START`/`STOP`/`RESET`/`SHOW`/`FLUSH` and `CHANGE ... FOR CHANNEL`, with
+  quoted hex/bit rejection.
 - `SHOW PARSE_TREE` recognizes SELECT and WITH SELECT inputs as a
   debug/development SHOW form.
 - `SHOW ENGINE ... STATUS|LOGS|MUTEX` recognizes engine names using the shared
   identifier grammar plus MySQL's `ALL` engine selector.
-- Shared `SHOW ... LIKE` filters require string-literal patterns, while
+- Shared `SHOW ... LIKE` filters require text-string patterns, while
   `SHOW ... WHERE` rejects adjacent bare operands and dangling operators while
   preserving common MySQL expression forms.
 - `SHOW INDEX`/`INDEXES`/`KEYS` uses MySQL's narrower parser shape with
   optional `EXTENDED` and `WHERE`, excluding `FULL` and `LIKE`.
 - `SHOW BINLOG EVENTS` and `SHOW RELAYLOG EVENTS` recognize optional
-  string-literal log names, numeric `FROM` positions, and numeric or identifier
+  text-string log names, numeric `FROM` positions, and numeric or identifier
   `LIMIT` tails; relay-log events also recognize MySQL channel clauses.
 - `SHOW BINARY LOG STATUS` is the strict MySQL 8.4 binary-log status form;
   removed `SHOW MASTER STATUS` syntax is permissive-corpus-only.
@@ -413,8 +419,9 @@ token sink:
   tails.
 - `SET ROLE` and `SET DEFAULT ROLE` recognize MySQL role specifiers and account
   lists rather than permissive token tails.
-- `SET PASSWORD` recognizes MySQL 8.4 string-literal and random password
-  assignment forms, including replacement and secondary-password clauses.
+- `SET PASSWORD` recognizes MySQL 8.4 text-string and random password
+  assignment forms, including replacement and secondary-password clauses, with
+  quoted hex/bit rejection.
 - `SET TRANSACTION` recognizes GLOBAL/SESSION/LOCAL scope, isolation levels, and
   read access modes in MySQL's one-isolation plus one-access shape.
 - `START TRANSACTION` recognizes comma-separated characteristics and rejects
@@ -444,8 +451,8 @@ token sink:
 - Stored-program `IF`/`ELSEIF`, `WHILE`, `REPEAT ... UNTIL`, `WHEN`, and
   `RETURN` validate expression tails at their statement boundaries.
 - Prepared-statement names and `EXECUTE ... USING` user-variable lists use the
-  shared identifier grammar; `PREPARE ... FROM` accepts string-literal and
-  user-variable sources.
+  shared identifier grammar; `PREPARE ... FROM` accepts text-string and
+  user-variable sources, rejecting quoted hex/bit statement text literals.
 - XA statements recognize one-, two-, and three-part string or hex XIDs with
   numeric `formatID` values.
 - `CACHE INDEX` recognizes table, single-table partition, optional empty or
@@ -490,8 +497,8 @@ token sink:
   lists, table forms, log variants, and channel-qualified relay logs. Removed
   `FLUSH HOSTS` syntax is permissive-corpus-only.
 - `RESTART`, `SHUTDOWN`, and `HELP` recognize their closed parser-level
-  statement shapes, with `HELP` requiring MySQL-compatible string, identifier,
-  or unreserved keyword topics.
+  statement shapes, with `HELP` requiring MySQL-compatible text-string,
+  identifier, or unreserved keyword topics.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,

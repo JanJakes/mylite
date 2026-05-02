@@ -1895,8 +1895,8 @@ load_tail ::= XML load_xml_tail.
 load_tail ::= INDEX INTO CACHE load_index_table_list.
 load_tail ::= INDEX INTO CACHE load_index_partitioned_table_spec.
 
-load_file_tail ::= load_file_priority_tail load_file_from_tail load_file_local_tail load_source_type load_file_name load_source_count_tail load_source_order_tail load_duplicate_tail INTO TABLE cache_table_ref load_data_options.
-load_xml_tail ::= load_file_priority_tail load_file_from_tail load_file_local_tail load_source_type load_file_name load_source_count_tail load_source_order_tail load_duplicate_tail INTO TABLE cache_table_ref load_xml_options.
+load_file_tail ::= load_file_priority_tail load_file_from_tail load_file_local_tail load_source_type load_source_file_name load_source_count_tail load_source_order_tail load_duplicate_tail INTO TABLE cache_table_ref load_data_options.
+load_xml_tail ::= load_file_priority_tail load_file_from_tail load_file_local_tail load_source_type load_source_file_name load_source_count_tail load_source_order_tail load_duplicate_tail INTO TABLE cache_table_ref load_xml_options.
 
 load_file_priority_tail ::= .
 load_file_priority_tail ::= LOW_PRIORITY.
@@ -1911,6 +1911,8 @@ load_file_local_tail ::= LOCAL.
 load_source_type ::= INFILE.
 load_source_type ::= URL.
 load_source_type ::= S3.
+
+load_source_file_name ::= text_string_literal.
 
 load_file_name ::= string_literal.
 
@@ -1944,7 +1946,7 @@ load_character_set_tail ::= .
 load_character_set_tail ::= CHARACTER SET set_charset_name.
 
 load_compression_tail ::= .
-load_compression_tail ::= COMPRESSION diagnostics_equals string_literal.
+load_compression_tail ::= COMPRESSION diagnostics_equals text_string_literal.
 
 load_fields_tail ::= .
 load_fields_tail ::= load_fields_kind load_field_options_nonempty.
@@ -2104,17 +2106,17 @@ start_thread_type ::= SQL_THREAD.
 start_until_tail ::= .
 start_until_tail ::= UNTIL start_until_spec.
 
-start_until_spec ::= SQL_BEFORE_GTIDS start_option_equals string_literal.
-start_until_spec ::= SQL_AFTER_GTIDS start_option_equals string_literal.
+start_until_spec ::= SQL_BEFORE_GTIDS start_option_equals text_string_literal.
+start_until_spec ::= SQL_AFTER_GTIDS start_option_equals text_string_literal.
 start_until_spec ::= start_until_log_options.
 start_until_spec ::= SQL_AFTER_MTS_GAPS.
 
 start_until_log_options ::= start_until_log_option.
 start_until_log_options ::= start_until_log_options import_comma start_until_log_option.
 
-start_until_log_option ::= SOURCE_LOG_FILE start_option_equals string_literal.
+start_until_log_option ::= SOURCE_LOG_FILE start_option_equals text_string_literal.
 start_until_log_option ::= SOURCE_LOG_POS start_option_equals start_log_position_value.
-start_until_log_option ::= RELAY_LOG_FILE start_option_equals string_literal.
+start_until_log_option ::= RELAY_LOG_FILE start_option_equals text_string_literal.
 start_until_log_option ::= RELAY_LOG_POS start_option_equals start_log_position_value.
 
 start_log_position_value ::= BOOLEAN_NUMBER.
@@ -2124,16 +2126,16 @@ start_log_position_value ::= NUMBER_LITERAL.
 start_connection_tail ::= start_user_option start_password_option start_default_auth_option start_plugin_dir_option.
 
 start_user_option ::= .
-start_user_option ::= USER start_option_equals string_literal.
+start_user_option ::= USER start_option_equals text_string_literal.
 
 start_password_option ::= .
-start_password_option ::= PASSWORD start_option_equals string_literal.
+start_password_option ::= PASSWORD start_option_equals text_string_literal.
 
 start_default_auth_option ::= .
-start_default_auth_option ::= DEFAULT_AUTH start_option_equals string_literal.
+start_default_auth_option ::= DEFAULT_AUTH start_option_equals text_string_literal.
 
 start_plugin_dir_option ::= .
-start_plugin_dir_option ::= PLUGIN_DIR start_option_equals string_literal.
+start_plugin_dir_option ::= PLUGIN_DIR start_option_equals text_string_literal.
 
 start_group_replication_tail ::= .
 start_group_replication_tail ::= start_group_replication_options.
@@ -2141,9 +2143,9 @@ start_group_replication_tail ::= start_group_replication_options.
 start_group_replication_options ::= start_group_replication_option.
 start_group_replication_options ::= start_group_replication_options import_comma start_group_replication_option.
 
-start_group_replication_option ::= USER start_option_equals string_literal.
-start_group_replication_option ::= PASSWORD start_option_equals string_literal.
-start_group_replication_option ::= DEFAULT_AUTH start_option_equals string_literal.
+start_group_replication_option ::= USER start_option_equals text_string_literal.
+start_group_replication_option ::= PASSWORD start_option_equals text_string_literal.
+start_group_replication_option ::= DEFAULT_AUTH start_option_equals text_string_literal.
 
 start_option_equals ::= EQUALS.
 
@@ -2249,7 +2251,7 @@ analyze_table_remaining_list ::= cache_table_ref.
 analyze_table_remaining_list ::= analyze_table_remaining_list import_comma cache_table_ref.
 
 analyze_histogram_options ::= UPDATE analyze_histogram_marker ON table_admin_column_list analyze_histogram_bucket_tail analyze_histogram_update_mode_tail.
-analyze_histogram_options ::= UPDATE analyze_histogram_marker ON table_admin_column USING DATA string_literal.
+analyze_histogram_options ::= UPDATE analyze_histogram_marker ON table_admin_column USING DATA text_string_literal.
 analyze_histogram_options ::= DROP analyze_histogram_marker ON table_admin_column_list.
 
 analyze_histogram_marker ::= HISTOGRAM.
@@ -2326,7 +2328,7 @@ plugin_admin_statement ::= UNINSTALL plugin_uninstall_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
 }
 
-plugin_admin_tail ::= PLUGIN plugin_name plugin_soname string_literal.
+plugin_admin_tail ::= PLUGIN plugin_name plugin_soname text_string_literal.
 plugin_admin_tail ::= COMPONENT component_file_list component_install_tail.
 
 plugin_uninstall_tail ::= PLUGIN plugin_name.
@@ -2378,7 +2380,7 @@ component_install_value_inner_token ::= STAR.
 component_file_list ::= component_file.
 component_file_list ::= component_file_list import_comma component_file.
 
-component_file ::= string_literal.
+component_file ::= text_string_literal.
 
 plugin_soname ::= SONAME.
 
@@ -2393,7 +2395,7 @@ import_file_list ::= import_file_list import_comma import_file.
 
 import_comma ::= COMMA.
 
-import_file ::= string_literal.
+import_file ::= text_string_literal.
 
 cache_statement ::= CACHE INDEX cache_table_list IN cache_keycache. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
@@ -2532,7 +2534,7 @@ replication_channel_clause ::= FOR reset_channel replication_channel_name.
 
 reset_channel ::= CHANNEL.
 
-replication_channel_name ::= string_literal.
+replication_channel_name ::= text_string_literal.
 
 purge_statement ::= PURGE purge_log_kind LOGS purge_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
@@ -2551,7 +2553,7 @@ purge_log_kind ::= MASTER(A). {
   mylite_parser_require_permissive(ctx, A);
 }
 
-purge_log_name ::= string_literal.
+purge_log_name ::= text_string_literal.
 
 change_statement ::= CHANGE change_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
@@ -2691,12 +2693,12 @@ change_option_number_value ::= NUMBER_LITERAL.
 
 change_option_boolean_value ::= BOOLEAN_NUMBER.
 
-change_option_string_value ::= string_literal.
+change_option_string_value ::= text_string_literal.
 change_option_string_value ::= NULL.
 
 change_assign_gtids_value ::= LOCAL.
 change_assign_gtids_value ::= OFF.
-change_assign_gtids_value ::= string_literal.
+change_assign_gtids_value ::= text_string_literal.
 
 change_ignore_server_ids_value ::= LP change_ignore_server_ids RP.
 
@@ -2822,7 +2824,7 @@ show_scoped_kind ::= STATUS.
 show_scoped_kind ::= VARIABLES.
 
 show_filter_tail ::= .
-show_filter_tail ::= LIKE string_literal.
+show_filter_tail ::= LIKE text_string_literal.
 show_filter_tail ::= WHERE expression_start statement_tail.
 
 show_database_tail ::= .
@@ -2872,7 +2874,7 @@ show_binlog_events_tail ::= show_log_file_tail show_log_from_tail show_limit_tai
 show_relaylog_events_tail ::= show_log_file_tail show_log_from_tail show_limit_tail show_channel_tail.
 
 show_log_file_tail ::= .
-show_log_file_tail ::= IN string_literal.
+show_log_file_tail ::= IN text_string_literal.
 
 show_log_from_tail ::= .
 show_log_from_tail ::= FROM show_log_position.
@@ -3230,7 +3232,7 @@ binlog_statement ::= BINLOG binlog_payload. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_REPLICATION);
 }
 
-binlog_payload ::= string_literal.
+binlog_payload ::= text_string_literal.
 
 clone_statement ::= CLONE clone_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
@@ -3254,7 +3256,7 @@ clone_port ::= NUMBER_LITERAL.
 
 clone_identified ::= IDENTIFIED.
 
-clone_password ::= string_literal.
+clone_password ::= text_string_literal.
 
 clone_remote_tail ::= clone_data_directory_tail clone_require_ssl_tail.
 
@@ -3272,7 +3274,7 @@ clone_ssl ::= NO SSL.
 
 clone_directory ::= DIRECTORY.
 
-clone_directory_path ::= string_literal.
+clone_directory_path ::= text_string_literal.
 
 flush_statement ::= FLUSH flush_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_ADMIN);
@@ -3700,8 +3702,8 @@ table_limit_value ::= parser_limit_option.
 table_into_tail ::= .
 table_into_tail ::= INTO table_output_target.
 
-table_output_target ::= OUTFILE string_literal load_fields_tail load_lines_tail.
-table_output_target ::= DUMPFILE string_literal.
+table_output_target ::= OUTFILE text_string_literal load_fields_tail load_lines_tail.
+table_output_target ::= DUMPFILE text_string_literal.
 table_output_target ::= table_into_variable_list.
 
 table_into_variable_list ::= table_into_variable.
@@ -3819,7 +3821,7 @@ prepare_statement ::= PREPARE prepared_statement_name FROM prepare_source. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);
 }
 
-prepare_source ::= string_literal.
+prepare_source ::= text_string_literal.
 prepare_source ::= user_variable_name.
 
 execute_statement ::= EXECUTE prepared_statement_name execute_tail. {
@@ -4085,11 +4087,11 @@ set_password_tail ::= set_password_target_tail set_password_auth_option set_pass
 set_password_target_tail ::= .
 set_password_target_tail ::= FOR set_password_target.
 
-set_password_auth_option ::= EQUALS string_literal.
+set_password_auth_option ::= EQUALS text_string_literal.
 set_password_auth_option ::= TO RANDOM.
 
 set_password_replace_tail ::= .
-set_password_replace_tail ::= REPLACE string_literal.
+set_password_replace_tail ::= REPLACE text_string_literal.
 
 set_password_retain_tail ::= .
 set_password_retain_tail ::= RETAIN CURRENT PASSWORD.
@@ -4354,7 +4356,7 @@ help_statement ::= HELP help_topic. {
 }
 
 help_topic ::= cache_name_part.
-help_topic ::= string_literal.
+help_topic ::= text_string_literal.
 help_topic ::= help_topic_keyword.
 
 help_topic_keyword ::= BEGIN.

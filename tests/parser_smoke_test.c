@@ -23,7 +23,20 @@ typedef struct ExpectedCreateTableColumn {
 typedef struct ExpectedCreateTableKeyPart {
   const char *definition;
   const char *name;
+  MyliteCreateTableKeyPartKind kind;
+  const char *expression;
+  const char *prefix;
+  const char *prefix_value;
+  MyliteCreateTableKeyPartOrder order;
+  const char *order_span;
 } ExpectedCreateTableKeyPart;
+
+typedef struct ExpectedCreateTableKeyOption {
+  MyliteCreateTableKeyOptionKind kind;
+  const char *definition;
+  const char *name;
+  const char *value;
+} ExpectedCreateTableKeyOption;
 
 typedef struct ExpectedCreateTableKey {
   MyliteCreateTableKeyKind kind;
@@ -37,6 +50,18 @@ typedef struct ExpectedCreateTableKey {
   const char *referenced_name;
   const ExpectedCreateTableKeyPart *referenced_columns;
   size_t referenced_column_count;
+  const char *index_type;
+  MyliteCreateTableForeignMatchKind foreign_match;
+  const char *foreign_match_span;
+  MyliteCreateTableForeignAction foreign_on_delete;
+  const char *foreign_on_delete_span;
+  MyliteCreateTableForeignAction foreign_on_update;
+  const char *foreign_on_update_span;
+  const char *check_expression;
+  MyliteCreateTableCheckEnforcement check_enforcement;
+  const char *check_enforcement_span;
+  const ExpectedCreateTableKeyOption *options;
+  size_t option_count;
 } ExpectedCreateTableKey;
 
 typedef struct ExpectedCreateTableOption {
@@ -67,6 +92,9 @@ static int expect_create_table_key_parts(
     const char *sql, const MyliteAst *ast, size_t key_index,
     const ExpectedCreateTableKeyPart *parts, size_t part_count,
     int referenced);
+static int expect_create_table_key_options(
+    const char *sql, const MyliteAst *ast, size_t key_index,
+    const ExpectedCreateTableKeyOption *options, size_t option_count);
 static int expect_create_table_options(const char *sql,
                                        const ExpectedCreateTableOption *options,
                                        size_t option_count);
@@ -783,6 +811,90 @@ int main(void) {
         keys, sizeof(keys) / sizeof(keys[0]));
   }
   {
+    const ExpectedCreateTableKeyPart columns[] = {
+        {"a(10) DESC", "a", MYLITE_CREATE_TABLE_KEY_PART_COLUMN, NULL,
+         "(10)", "10", MYLITE_CREATE_TABLE_KEY_PART_ORDER_DESC, "DESC"},
+        {"b ASC", "b", MYLITE_CREATE_TABLE_KEY_PART_COLUMN, NULL, NULL, NULL,
+         MYLITE_CREATE_TABLE_KEY_PART_ORDER_ASC, "ASC"},
+        {"((ABS(b))) DESC", NULL, MYLITE_CREATE_TABLE_KEY_PART_EXPRESSION,
+         "(ABS(b))", NULL, NULL, MYLITE_CREATE_TABLE_KEY_PART_ORDER_DESC,
+         "DESC"}};
+    const ExpectedCreateTableKey keys[] = {{
+        .kind = MYLITE_CREATE_TABLE_KEY_INDEX,
+        .definition = "KEY k (a(10) DESC, b ASC, ((ABS(b))) DESC)",
+        .name = "k",
+        .columns = columns,
+        .column_count = sizeof(columns) / sizeof(columns[0]),
+    }};
+    failures += expect_create_table_keys(
+        "CREATE TABLE t (a VARCHAR(20), b INT, KEY k (a(10) DESC, b ASC, "
+        "((ABS(b))) DESC))",
+        keys, sizeof(keys) / sizeof(keys[0]));
+  }
+  {
+    const ExpectedCreateTableKeyPart columns[] = {{"a", "a"}};
+    const ExpectedCreateTableKeyOption options[] = {
+        {MYLITE_CREATE_TABLE_KEY_OPTION_INDEX_TYPE, "USING BTREE", "USING",
+         "BTREE"},
+        {MYLITE_CREATE_TABLE_KEY_OPTION_COMMENT, "COMMENT 'idx'", "COMMENT",
+         "'idx'"},
+        {MYLITE_CREATE_TABLE_KEY_OPTION_KEY_BLOCK_SIZE, "KEY_BLOCK_SIZE=8",
+         "KEY_BLOCK_SIZE", "8"},
+        {MYLITE_CREATE_TABLE_KEY_OPTION_WITH_PARSER, "WITH PARSER ngram",
+         "WITH PARSER", "ngram"},
+        {MYLITE_CREATE_TABLE_KEY_OPTION_VISIBLE, "VISIBLE", "VISIBLE", NULL}};
+    const ExpectedCreateTableKey keys[] = {{
+        .kind = MYLITE_CREATE_TABLE_KEY_INDEX,
+        .definition =
+            "KEY k (a) USING BTREE COMMENT 'idx' KEY_BLOCK_SIZE=8 WITH PARSER "
+            "ngram VISIBLE",
+        .name = "k",
+        .columns = columns,
+        .column_count = sizeof(columns) / sizeof(columns[0]),
+        .index_type = "USING BTREE",
+        .options = options,
+        .option_count = sizeof(options) / sizeof(options[0]),
+    }};
+    failures += expect_create_table_keys(
+        "CREATE TABLE t (a INT, KEY k (a) USING BTREE COMMENT 'idx' "
+        "KEY_BLOCK_SIZE=8 WITH PARSER ngram VISIBLE)",
+        keys, sizeof(keys) / sizeof(keys[0]));
+  }
+  {
+    const ExpectedCreateTableKeyPart local_columns[] = {{"pid", "pid"}};
+    const ExpectedCreateTableKeyPart referenced_columns[] = {{"id", "id"}};
+    const ExpectedCreateTableKey keys[] = {
+        {.kind = MYLITE_CREATE_TABLE_KEY_FOREIGN,
+         .definition = "CONSTRAINT fk FOREIGN KEY (pid) REFERENCES parent(id) "
+                       "MATCH FULL ON DELETE CASCADE ON UPDATE SET NULL",
+         .constraint_name = "fk",
+         .columns = local_columns,
+         .column_count = sizeof(local_columns) / sizeof(local_columns[0]),
+         .referenced_table = "parent",
+         .referenced_name = "parent",
+         .referenced_columns = referenced_columns,
+         .referenced_column_count =
+             sizeof(referenced_columns) / sizeof(referenced_columns[0]),
+         .foreign_match = MYLITE_CREATE_TABLE_FOREIGN_MATCH_FULL,
+         .foreign_match_span = "MATCH FULL",
+         .foreign_on_delete = MYLITE_CREATE_TABLE_FOREIGN_ACTION_CASCADE,
+         .foreign_on_delete_span = "ON DELETE CASCADE",
+         .foreign_on_update = MYLITE_CREATE_TABLE_FOREIGN_ACTION_SET_NULL,
+         .foreign_on_update_span = "ON UPDATE SET NULL"},
+        {.kind = MYLITE_CREATE_TABLE_KEY_CHECK,
+         .definition = "CONSTRAINT ck CHECK (pid > 0) NOT ENFORCED",
+         .constraint_name = "ck",
+         .check_expression = "pid > 0",
+         .check_enforcement =
+             MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_NOT_ENFORCED,
+         .check_enforcement_span = "NOT ENFORCED"}};
+    failures += expect_create_table_keys(
+        "CREATE TABLE child (pid INT, CONSTRAINT fk FOREIGN KEY (pid) "
+        "REFERENCES parent(id) MATCH FULL ON DELETE CASCADE ON UPDATE SET "
+        "NULL, CONSTRAINT ck CHECK (pid > 0) NOT ENFORCED)",
+        keys, sizeof(keys) / sizeof(keys[0]));
+  }
+  {
     const ExpectedCreateTableOption options[] = {
         {MYLITE_CREATE_TABLE_OPTION_ENGINE, "ENGINE=InnoDB", "ENGINE",
          "InnoDB"},
@@ -1134,6 +1246,11 @@ static int expect_create_table_keys(const char *sql,
         !span_matches(sql, mylite_ast_create_table_key_name_start(ast, 0, i),
                       mylite_ast_create_table_key_name_end(ast, 0, i),
                       keys[i].name) ||
+        (keys[i].index_type != NULL &&
+         !span_matches(sql,
+                       mylite_ast_create_table_key_index_type_start(ast, 0, i),
+                       mylite_ast_create_table_key_index_type_end(ast, 0, i),
+                       keys[i].index_type)) ||
         !span_matches(sql,
                       mylite_ast_create_table_key_referenced_table_start(ast, 0,
                                                                         i),
@@ -1151,11 +1268,64 @@ static int expect_create_table_keys(const char *sql,
                           ast, 0, i),
                       mylite_ast_create_table_key_referenced_table_name_end(
                           ast, 0, i),
-                      keys[i].referenced_name)) {
+                      keys[i].referenced_name) ||
+        (keys[i].foreign_match !=
+             MYLITE_CREATE_TABLE_FOREIGN_MATCH_UNSPECIFIED &&
+         mylite_ast_create_table_key_foreign_match_kind(ast, 0, i) !=
+             keys[i].foreign_match) ||
+        (keys[i].foreign_match_span != NULL &&
+         !span_matches(sql,
+                       mylite_ast_create_table_key_foreign_match_start(ast, 0,
+                                                                      i),
+                       mylite_ast_create_table_key_foreign_match_end(ast, 0, i),
+                       keys[i].foreign_match_span)) ||
+        (keys[i].foreign_on_delete !=
+             MYLITE_CREATE_TABLE_FOREIGN_ACTION_UNSPECIFIED &&
+         mylite_ast_create_table_key_foreign_on_delete_action(ast, 0, i) !=
+             keys[i].foreign_on_delete) ||
+        (keys[i].foreign_on_delete_span != NULL &&
+         !span_matches(sql,
+                       mylite_ast_create_table_key_foreign_on_delete_start(
+                           ast, 0, i),
+                       mylite_ast_create_table_key_foreign_on_delete_end(ast, 0,
+                                                                        i),
+                       keys[i].foreign_on_delete_span)) ||
+        (keys[i].foreign_on_update !=
+             MYLITE_CREATE_TABLE_FOREIGN_ACTION_UNSPECIFIED &&
+         mylite_ast_create_table_key_foreign_on_update_action(ast, 0, i) !=
+             keys[i].foreign_on_update) ||
+        (keys[i].foreign_on_update_span != NULL &&
+         !span_matches(sql,
+                       mylite_ast_create_table_key_foreign_on_update_start(
+                           ast, 0, i),
+                       mylite_ast_create_table_key_foreign_on_update_end(ast, 0,
+                                                                        i),
+                       keys[i].foreign_on_update_span)) ||
+        (keys[i].check_expression != NULL &&
+         !span_matches(sql,
+                       mylite_ast_create_table_key_check_expression_start(ast, 0,
+                                                                        i),
+                       mylite_ast_create_table_key_check_expression_end(ast, 0,
+                                                                      i),
+                       keys[i].check_expression)) ||
+        (keys[i].check_enforcement !=
+             MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_UNSPECIFIED &&
+         mylite_ast_create_table_key_check_enforcement(ast, 0, i) !=
+             keys[i].check_enforcement) ||
+        (keys[i].check_enforcement_span != NULL &&
+         !span_matches(sql,
+                       mylite_ast_create_table_key_check_enforcement_start(
+                           ast, 0, i),
+                       mylite_ast_create_table_key_check_enforcement_end(ast, 0,
+                                                                        i),
+                       keys[i].check_enforcement_span))) {
       fprintf(stderr,
               "CREATE TABLE key[%zu] failed: %s\nkind=%s span=%zu..%zu "
-              "constraint=%zu..%zu name=%zu..%zu ref_table=%zu..%zu "
-              "ref_schema=%zu..%zu ref_name=%zu..%zu\n",
+              "constraint=%zu..%zu name=%zu..%zu index_type=%zu..%zu "
+              "ref_table=%zu..%zu ref_schema=%zu..%zu ref_name=%zu..%zu "
+              "match=%s:%zu..%zu on_delete=%s:%zu..%zu "
+              "on_update=%s:%zu..%zu check_expr=%zu..%zu "
+              "check_enforcement=%s:%zu..%zu\n",
               i, sql,
               mylite_create_table_key_kind_name(
                   mylite_ast_create_table_key_kind(ast, 0, i)),
@@ -1165,6 +1335,8 @@ static int expect_create_table_keys(const char *sql,
               mylite_ast_create_table_key_constraint_name_end(ast, 0, i),
               mylite_ast_create_table_key_name_start(ast, 0, i),
               mylite_ast_create_table_key_name_end(ast, 0, i),
+              mylite_ast_create_table_key_index_type_start(ast, 0, i),
+              mylite_ast_create_table_key_index_type_end(ast, 0, i),
               mylite_ast_create_table_key_referenced_table_start(ast, 0, i),
               mylite_ast_create_table_key_referenced_table_end(ast, 0, i),
               mylite_ast_create_table_key_referenced_table_schema_start(ast, 0,
@@ -1172,7 +1344,27 @@ static int expect_create_table_keys(const char *sql,
               mylite_ast_create_table_key_referenced_table_schema_end(ast, 0,
                                                                      i),
               mylite_ast_create_table_key_referenced_table_name_start(ast, 0, i),
-              mylite_ast_create_table_key_referenced_table_name_end(ast, 0, i));
+              mylite_ast_create_table_key_referenced_table_name_end(ast, 0, i),
+              mylite_create_table_foreign_match_kind_name(
+                  mylite_ast_create_table_key_foreign_match_kind(ast, 0, i)),
+              mylite_ast_create_table_key_foreign_match_start(ast, 0, i),
+              mylite_ast_create_table_key_foreign_match_end(ast, 0, i),
+              mylite_create_table_foreign_action_name(
+                  mylite_ast_create_table_key_foreign_on_delete_action(ast, 0,
+                                                                      i)),
+              mylite_ast_create_table_key_foreign_on_delete_start(ast, 0, i),
+              mylite_ast_create_table_key_foreign_on_delete_end(ast, 0, i),
+              mylite_create_table_foreign_action_name(
+                  mylite_ast_create_table_key_foreign_on_update_action(ast, 0,
+                                                                      i)),
+              mylite_ast_create_table_key_foreign_on_update_start(ast, 0, i),
+              mylite_ast_create_table_key_foreign_on_update_end(ast, 0, i),
+              mylite_ast_create_table_key_check_expression_start(ast, 0, i),
+              mylite_ast_create_table_key_check_expression_end(ast, 0, i),
+              mylite_create_table_check_enforcement_name(
+                  mylite_ast_create_table_key_check_enforcement(ast, 0, i)),
+              mylite_ast_create_table_key_check_enforcement_start(ast, 0, i),
+              mylite_ast_create_table_key_check_enforcement_end(ast, 0, i));
       failed = 1;
     }
 
@@ -1181,6 +1373,8 @@ static int expect_create_table_keys(const char *sql,
     failed += expect_create_table_key_parts(
         sql, ast, i, keys[i].referenced_columns, keys[i].referenced_column_count,
         1);
+    failed += expect_create_table_key_options(sql, ast, i, keys[i].options,
+                                              keys[i].option_count);
   }
 
   mylite_ast_free(ast);
@@ -1226,13 +1420,129 @@ static int expect_create_table_key_parts(
                          ast, 0, key_index, i)
                    : mylite_ast_create_table_key_column_name_end(
                          ast, 0, key_index, i);
+    MyliteCreateTableKeyPartKind kind =
+        referenced ? mylite_ast_create_table_key_referenced_column_kind(
+                         ast, 0, key_index, i)
+                   : mylite_ast_create_table_key_column_kind(ast, 0, key_index,
+                                                             i);
+    size_t expression_start =
+        referenced ? mylite_ast_create_table_key_referenced_column_expression_start(
+                         ast, 0, key_index, i)
+                   : mylite_ast_create_table_key_column_expression_start(
+                         ast, 0, key_index, i);
+    size_t expression_end =
+        referenced ? mylite_ast_create_table_key_referenced_column_expression_end(
+                         ast, 0, key_index, i)
+                   : mylite_ast_create_table_key_column_expression_end(
+                         ast, 0, key_index, i);
+    MyliteCreateTableKeyPartOrder order =
+        referenced ? mylite_ast_create_table_key_referenced_column_order(
+                         ast, 0, key_index, i)
+                   : mylite_ast_create_table_key_column_order(ast, 0, key_index,
+                                                              i);
+    size_t order_start =
+        referenced ? 0
+                   : mylite_ast_create_table_key_column_order_start(
+                         ast, 0, key_index, i);
+    size_t order_end =
+        referenced ? 0
+                   : mylite_ast_create_table_key_column_order_end(
+                         ast, 0, key_index, i);
     if (!span_matches(sql, start, end, parts[i].definition) ||
-        !span_matches(sql, name_start, name_end, parts[i].name)) {
+        !span_matches(sql, name_start, name_end, parts[i].name) ||
+        (parts[i].kind != MYLITE_CREATE_TABLE_KEY_PART_UNKNOWN &&
+         kind != parts[i].kind) ||
+        (parts[i].expression != NULL &&
+         !span_matches(sql, expression_start, expression_end,
+                       parts[i].expression)) ||
+        (!referenced && parts[i].prefix != NULL &&
+         !span_matches(sql,
+                       mylite_ast_create_table_key_column_prefix_start(
+                           ast, 0, key_index, i),
+                       mylite_ast_create_table_key_column_prefix_end(
+                           ast, 0, key_index, i),
+                       parts[i].prefix)) ||
+        (!referenced && parts[i].prefix_value != NULL &&
+         !span_matches(sql,
+                       mylite_ast_create_table_key_column_prefix_value_start(
+                           ast, 0, key_index, i),
+                       mylite_ast_create_table_key_column_prefix_value_end(
+                           ast, 0, key_index, i),
+                       parts[i].prefix_value)) ||
+        (parts[i].order != MYLITE_CREATE_TABLE_KEY_PART_ORDER_UNSPECIFIED &&
+         order != parts[i].order) ||
+        (!referenced && parts[i].order_span != NULL &&
+         !span_matches(sql, order_start, order_end, parts[i].order_span))) {
       fprintf(stderr,
               "CREATE TABLE key[%zu] %s[%zu] failed: %s\nspan=%zu..%zu "
-              "name=%zu..%zu\n",
+              "name=%zu..%zu kind=%s expr=%zu..%zu order=%s:%zu..%zu\n",
               key_index, referenced ? "ref_column" : "column", i, sql, start,
-              end, name_start, name_end);
+              end, name_start, name_end,
+              mylite_create_table_key_part_kind_name(kind), expression_start,
+              expression_end, mylite_create_table_key_part_order_name(order),
+              order_start, order_end);
+      failed = 1;
+    }
+  }
+  return failed;
+}
+
+static int expect_create_table_key_options(
+    const char *sql, const MyliteAst *ast, size_t key_index,
+    const ExpectedCreateTableKeyOption *options, size_t option_count) {
+  if (options == NULL && option_count == 0) {
+    return 0;
+  }
+
+  size_t actual_count =
+      mylite_ast_create_table_key_option_count(ast, 0, key_index);
+  if (actual_count != option_count) {
+    fprintf(stderr,
+            "CREATE TABLE key[%zu] option count failed: %s\nexpected=%zu "
+            "actual=%zu\n",
+            key_index, sql, option_count, actual_count);
+    return 1;
+  }
+
+  int failed = 0;
+  for (size_t i = 0; i < option_count; i++) {
+    if (mylite_ast_create_table_key_option_kind(ast, 0, key_index, i) !=
+            options[i].kind ||
+        !span_matches(sql,
+                      mylite_ast_create_table_key_option_start(ast, 0,
+                                                              key_index, i),
+                      mylite_ast_create_table_key_option_end(ast, 0, key_index,
+                                                            i),
+                      options[i].definition) ||
+        !span_matches(sql,
+                      mylite_ast_create_table_key_option_name_start(
+                          ast, 0, key_index, i),
+                      mylite_ast_create_table_key_option_name_end(
+                          ast, 0, key_index, i),
+                      options[i].name) ||
+        !span_matches(sql,
+                      mylite_ast_create_table_key_option_value_start(
+                          ast, 0, key_index, i),
+                      mylite_ast_create_table_key_option_value_end(
+                          ast, 0, key_index, i),
+                      options[i].value)) {
+      fprintf(stderr,
+              "CREATE TABLE key[%zu] option[%zu] failed: %s\nkind=%s "
+              "span=%zu..%zu name=%zu..%zu value=%zu..%zu\n",
+              key_index, i, sql,
+              mylite_create_table_key_option_kind_name(
+                  mylite_ast_create_table_key_option_kind(ast, 0, key_index,
+                                                          i)),
+              mylite_ast_create_table_key_option_start(ast, 0, key_index, i),
+              mylite_ast_create_table_key_option_end(ast, 0, key_index, i),
+              mylite_ast_create_table_key_option_name_start(ast, 0, key_index,
+                                                            i),
+              mylite_ast_create_table_key_option_name_end(ast, 0, key_index,
+                                                          i),
+              mylite_ast_create_table_key_option_value_start(ast, 0, key_index,
+                                                             i),
+              mylite_ast_create_table_key_option_value_end(ast, 0, key_index,
+                                                           i));
       failed = 1;
     }
   }

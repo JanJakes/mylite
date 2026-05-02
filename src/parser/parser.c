@@ -40,11 +40,31 @@ typedef struct MyliteAstCreateTableColumn {
 } MyliteAstCreateTableColumn;
 
 typedef struct MyliteAstCreateTableKeyPart {
+  MyliteCreateTableKeyPartKind kind;
+  MyliteCreateTableKeyPartOrder order;
   size_t start;
   size_t end;
   size_t name_start;
   size_t name_end;
+  size_t expression_start;
+  size_t expression_end;
+  size_t prefix_start;
+  size_t prefix_end;
+  size_t prefix_value_start;
+  size_t prefix_value_end;
+  size_t order_start;
+  size_t order_end;
 } MyliteAstCreateTableKeyPart;
+
+typedef struct MyliteAstCreateTableKeyOption {
+  MyliteCreateTableKeyOptionKind kind;
+  size_t start;
+  size_t end;
+  size_t name_start;
+  size_t name_end;
+  size_t value_start;
+  size_t value_end;
+} MyliteAstCreateTableKeyOption;
 
 typedef struct MyliteAstCreateTableKey {
   MyliteCreateTableKeyKind kind;
@@ -54,6 +74,8 @@ typedef struct MyliteAstCreateTableKey {
   size_t constraint_name_end;
   size_t name_start;
   size_t name_end;
+  size_t index_type_start;
+  size_t index_type_end;
   MyliteAstCreateTableKeyPart *columns;
   size_t column_count;
   size_t referenced_table_start;
@@ -64,6 +86,22 @@ typedef struct MyliteAstCreateTableKey {
   size_t referenced_table_name_end;
   MyliteAstCreateTableKeyPart *referenced_columns;
   size_t referenced_column_count;
+  MyliteCreateTableForeignMatchKind foreign_match_kind;
+  size_t foreign_match_start;
+  size_t foreign_match_end;
+  MyliteCreateTableForeignAction foreign_on_delete_action;
+  size_t foreign_on_delete_start;
+  size_t foreign_on_delete_end;
+  MyliteCreateTableForeignAction foreign_on_update_action;
+  size_t foreign_on_update_start;
+  size_t foreign_on_update_end;
+  size_t check_expression_start;
+  size_t check_expression_end;
+  MyliteCreateTableCheckEnforcement check_enforcement;
+  size_t check_enforcement_start;
+  size_t check_enforcement_end;
+  MyliteAstCreateTableKeyOption *options;
+  size_t option_count;
 } MyliteAstCreateTableKey;
 
 typedef struct MyliteAstCreateTableOption {
@@ -208,13 +246,26 @@ static MyliteCreateTableKeyKind mylite_ast_classify_create_table_key(
     const MyliteAstNode *constraint_elem);
 static void mylite_ast_set_create_table_key_names(MyliteAstCreateTableKey *key,
                                                   const MyliteAstNode *constraint);
+static void mylite_ast_set_create_table_key_index_type(
+    MyliteAstCreateTableKey *key, const MyliteAstNode *constraint_elem);
 static int mylite_ast_set_create_table_key_reference(
     MyliteAst *ast, MyliteAstCreateTableKey *key,
     const MyliteAstNode *constraint_elem);
+static void mylite_ast_set_create_table_key_check(
+    MyliteAstCreateTableKey *key, const MyliteAstNode *constraint_elem);
+static MyliteCreateTableForeignMatchKind mylite_ast_classify_foreign_match(
+    const MyliteAstNode *node);
+static MyliteCreateTableForeignAction mylite_ast_classify_foreign_action(
+    const MyliteAstNode *node);
+static MyliteCreateTableCheckEnforcement mylite_ast_classify_check_enforcement(
+    const MyliteAstNode *node);
 static int mylite_ast_set_create_table_key_parts(MyliteAst *ast,
                                                  MyliteAstCreateTableKey *key,
                                                  const MyliteAstNode *list,
                                                  int referenced);
+static int mylite_ast_set_create_table_key_options(MyliteAst *ast,
+                                                   MyliteAstCreateTableKey *key,
+                                                   const MyliteAstNode *list);
 static size_t mylite_ast_count_index_part_specs(const MyliteAstNode *node);
 static void mylite_ast_fill_index_part_specs(MyliteAstCreateTableKeyPart *parts,
                                              size_t count,
@@ -222,6 +273,17 @@ static void mylite_ast_fill_index_part_specs(MyliteAstCreateTableKeyPart *parts,
                                              size_t *index);
 static void mylite_ast_fill_key_part(MyliteAstCreateTableKeyPart *part,
                                      const MyliteAstNode *node);
+static size_t mylite_ast_count_index_options(const MyliteAstNode *node);
+static void mylite_ast_fill_index_options(MyliteAstCreateTableKeyOption *options,
+                                          size_t count,
+                                          const MyliteAstNode *node,
+                                          size_t *index);
+static void mylite_ast_fill_key_option(MyliteAstCreateTableKeyOption *option,
+                                       const MyliteAstNode *node);
+static MyliteCreateTableKeyOptionKind mylite_ast_classify_key_option(
+    const MyliteAstNode *node);
+static const MyliteAstNode *mylite_ast_find_key_option_name(
+    const MyliteAstNode *node, MyliteCreateTableKeyOptionKind kind);
 static const MyliteAstNode *mylite_ast_find_nth_symbol(const MyliteAstNode *node,
                                                        const char *symbol_name,
                                                        size_t *remaining);
@@ -259,6 +321,9 @@ static const MyliteAstCreateTableKey *mylite_ast_create_table_key_at(
 static const MyliteAstCreateTableKeyPart *mylite_ast_create_table_key_part_at(
     const MyliteAst *ast, size_t statement_index, size_t key_index,
     size_t column_index, int referenced);
+static const MyliteAstCreateTableKeyOption *mylite_ast_create_table_key_option_at(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t option_index);
 static const MyliteAstCreateTableColumn *mylite_ast_create_table_column_at(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
 static const MyliteAstNode *mylite_ast_find_first_symbol(const MyliteAstNode *node,
@@ -466,6 +531,104 @@ const char *mylite_create_table_key_kind_name(MyliteCreateTableKeyKind kind) {
       return "check";
   }
   return "unknown";
+}
+
+const char *mylite_create_table_key_part_kind_name(
+    MyliteCreateTableKeyPartKind kind) {
+  switch (kind) {
+    case MYLITE_CREATE_TABLE_KEY_PART_UNKNOWN:
+      return "unknown";
+    case MYLITE_CREATE_TABLE_KEY_PART_COLUMN:
+      return "column";
+    case MYLITE_CREATE_TABLE_KEY_PART_EXPRESSION:
+      return "expression";
+  }
+  return "unknown";
+}
+
+const char *mylite_create_table_key_part_order_name(
+    MyliteCreateTableKeyPartOrder order) {
+  switch (order) {
+    case MYLITE_CREATE_TABLE_KEY_PART_ORDER_UNSPECIFIED:
+      return "unspecified";
+    case MYLITE_CREATE_TABLE_KEY_PART_ORDER_ASC:
+      return "asc";
+    case MYLITE_CREATE_TABLE_KEY_PART_ORDER_DESC:
+      return "desc";
+  }
+  return "unspecified";
+}
+
+const char *mylite_create_table_key_option_kind_name(
+    MyliteCreateTableKeyOptionKind kind) {
+  switch (kind) {
+    case MYLITE_CREATE_TABLE_KEY_OPTION_UNKNOWN:
+      return "unknown";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_INDEX_TYPE:
+      return "index_type";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_KEY_BLOCK_SIZE:
+      return "key_block_size";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_COMMENT:
+      return "comment";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_WITH_PARSER:
+      return "with_parser";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_VISIBLE:
+      return "visible";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_INVISIBLE:
+      return "invisible";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_SECONDARY_ENGINE_ATTRIBUTE:
+      return "secondary_engine_attribute";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_WHERE:
+      return "where";
+  }
+  return "unknown";
+}
+
+const char *mylite_create_table_foreign_match_kind_name(
+    MyliteCreateTableForeignMatchKind kind) {
+  switch (kind) {
+    case MYLITE_CREATE_TABLE_FOREIGN_MATCH_UNSPECIFIED:
+      return "unspecified";
+    case MYLITE_CREATE_TABLE_FOREIGN_MATCH_FULL:
+      return "full";
+    case MYLITE_CREATE_TABLE_FOREIGN_MATCH_PARTIAL:
+      return "partial";
+    case MYLITE_CREATE_TABLE_FOREIGN_MATCH_SIMPLE:
+      return "simple";
+  }
+  return "unspecified";
+}
+
+const char *mylite_create_table_foreign_action_name(
+    MyliteCreateTableForeignAction action) {
+  switch (action) {
+    case MYLITE_CREATE_TABLE_FOREIGN_ACTION_UNSPECIFIED:
+      return "unspecified";
+    case MYLITE_CREATE_TABLE_FOREIGN_ACTION_RESTRICT:
+      return "restrict";
+    case MYLITE_CREATE_TABLE_FOREIGN_ACTION_CASCADE:
+      return "cascade";
+    case MYLITE_CREATE_TABLE_FOREIGN_ACTION_SET_NULL:
+      return "set_null";
+    case MYLITE_CREATE_TABLE_FOREIGN_ACTION_NO_ACTION:
+      return "no_action";
+    case MYLITE_CREATE_TABLE_FOREIGN_ACTION_SET_DEFAULT:
+      return "set_default";
+  }
+  return "unspecified";
+}
+
+const char *mylite_create_table_check_enforcement_name(
+    MyliteCreateTableCheckEnforcement enforcement) {
+  switch (enforcement) {
+    case MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_UNSPECIFIED:
+      return "unspecified";
+    case MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_ENFORCED:
+      return "enforced";
+    case MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_NOT_ENFORCED:
+      return "not_enforced";
+  }
+  return "unspecified";
 }
 
 const char *mylite_create_table_option_kind_name(
@@ -836,12 +999,37 @@ size_t mylite_ast_create_table_key_name_end(const MyliteAst *ast,
   return key == NULL ? 0 : key->name_end;
 }
 
+size_t mylite_ast_create_table_key_index_type_start(const MyliteAst *ast,
+                                                    size_t statement_index,
+                                                    size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->index_type_start;
+}
+
+size_t mylite_ast_create_table_key_index_type_end(const MyliteAst *ast,
+                                                  size_t statement_index,
+                                                  size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->index_type_end;
+}
+
 size_t mylite_ast_create_table_key_column_count(const MyliteAst *ast,
                                                 size_t statement_index,
                                                 size_t key_index) {
   const MyliteAstCreateTableKey *key =
       mylite_ast_create_table_key_at(ast, statement_index, key_index);
   return key == NULL ? 0 : key->column_count;
+}
+
+MyliteCreateTableKeyPartKind mylite_ast_create_table_key_column_kind(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? MYLITE_CREATE_TABLE_KEY_PART_UNKNOWN : part->kind;
 }
 
 size_t mylite_ast_create_table_key_column_start(const MyliteAst *ast,
@@ -882,6 +1070,88 @@ size_t mylite_ast_create_table_key_column_name_end(const MyliteAst *ast,
       mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
                                           column_index, 0);
   return part == NULL ? 0 : part->name_end;
+}
+
+size_t mylite_ast_create_table_key_column_expression_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? 0 : part->expression_start;
+}
+
+size_t mylite_ast_create_table_key_column_expression_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? 0 : part->expression_end;
+}
+
+size_t mylite_ast_create_table_key_column_prefix_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? 0 : part->prefix_start;
+}
+
+size_t mylite_ast_create_table_key_column_prefix_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? 0 : part->prefix_end;
+}
+
+size_t mylite_ast_create_table_key_column_prefix_value_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? 0 : part->prefix_value_start;
+}
+
+size_t mylite_ast_create_table_key_column_prefix_value_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? 0 : part->prefix_value_end;
+}
+
+MyliteCreateTableKeyPartOrder mylite_ast_create_table_key_column_order(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? MYLITE_CREATE_TABLE_KEY_PART_ORDER_UNSPECIFIED
+                      : part->order;
+}
+
+size_t mylite_ast_create_table_key_column_order_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? 0 : part->order_start;
+}
+
+size_t mylite_ast_create_table_key_column_order_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? 0 : part->order_end;
 }
 
 size_t mylite_ast_create_table_key_referenced_table_start(const MyliteAst *ast,
@@ -935,6 +1205,15 @@ size_t mylite_ast_create_table_key_referenced_column_count(
   return key == NULL ? 0 : key->referenced_column_count;
 }
 
+MyliteCreateTableKeyPartKind mylite_ast_create_table_key_referenced_column_kind(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 1);
+  return part == NULL ? MYLITE_CREATE_TABLE_KEY_PART_UNKNOWN : part->kind;
+}
+
 size_t mylite_ast_create_table_key_referenced_column_start(
     const MyliteAst *ast, size_t statement_index, size_t key_index,
     size_t column_index) {
@@ -969,6 +1248,227 @@ size_t mylite_ast_create_table_key_referenced_column_name_end(
       mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
                                           column_index, 1);
   return part == NULL ? 0 : part->name_end;
+}
+
+size_t mylite_ast_create_table_key_referenced_column_expression_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 1);
+  return part == NULL ? 0 : part->expression_start;
+}
+
+size_t mylite_ast_create_table_key_referenced_column_expression_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 1);
+  return part == NULL ? 0 : part->expression_end;
+}
+
+MyliteCreateTableKeyPartOrder
+mylite_ast_create_table_key_referenced_column_order(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 1);
+  return part == NULL ? MYLITE_CREATE_TABLE_KEY_PART_ORDER_UNSPECIFIED
+                      : part->order;
+}
+
+MyliteCreateTableForeignMatchKind
+mylite_ast_create_table_key_foreign_match_kind(const MyliteAst *ast,
+                                               size_t statement_index,
+                                               size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? MYLITE_CREATE_TABLE_FOREIGN_MATCH_UNSPECIFIED
+                     : key->foreign_match_kind;
+}
+
+size_t mylite_ast_create_table_key_foreign_match_start(const MyliteAst *ast,
+                                                       size_t statement_index,
+                                                       size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->foreign_match_start;
+}
+
+size_t mylite_ast_create_table_key_foreign_match_end(const MyliteAst *ast,
+                                                     size_t statement_index,
+                                                     size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->foreign_match_end;
+}
+
+MyliteCreateTableForeignAction
+mylite_ast_create_table_key_foreign_on_delete_action(const MyliteAst *ast,
+                                                     size_t statement_index,
+                                                     size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? MYLITE_CREATE_TABLE_FOREIGN_ACTION_UNSPECIFIED
+                     : key->foreign_on_delete_action;
+}
+
+size_t mylite_ast_create_table_key_foreign_on_delete_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->foreign_on_delete_start;
+}
+
+size_t mylite_ast_create_table_key_foreign_on_delete_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->foreign_on_delete_end;
+}
+
+MyliteCreateTableForeignAction
+mylite_ast_create_table_key_foreign_on_update_action(const MyliteAst *ast,
+                                                     size_t statement_index,
+                                                     size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? MYLITE_CREATE_TABLE_FOREIGN_ACTION_UNSPECIFIED
+                     : key->foreign_on_update_action;
+}
+
+size_t mylite_ast_create_table_key_foreign_on_update_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->foreign_on_update_start;
+}
+
+size_t mylite_ast_create_table_key_foreign_on_update_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->foreign_on_update_end;
+}
+
+size_t mylite_ast_create_table_key_check_expression_start(const MyliteAst *ast,
+                                                          size_t statement_index,
+                                                          size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->check_expression_start;
+}
+
+size_t mylite_ast_create_table_key_check_expression_end(const MyliteAst *ast,
+                                                        size_t statement_index,
+                                                        size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->check_expression_end;
+}
+
+MyliteCreateTableCheckEnforcement
+mylite_ast_create_table_key_check_enforcement(const MyliteAst *ast,
+                                              size_t statement_index,
+                                              size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_UNSPECIFIED
+                     : key->check_enforcement;
+}
+
+size_t mylite_ast_create_table_key_check_enforcement_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->check_enforcement_start;
+}
+
+size_t mylite_ast_create_table_key_check_enforcement_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->check_enforcement_end;
+}
+
+size_t mylite_ast_create_table_key_option_count(const MyliteAst *ast,
+                                                size_t statement_index,
+                                                size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->option_count;
+}
+
+MyliteCreateTableKeyOptionKind mylite_ast_create_table_key_option_kind(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t option_index) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_option_at(ast, statement_index, key_index,
+                                            option_index);
+  return option == NULL ? MYLITE_CREATE_TABLE_KEY_OPTION_UNKNOWN
+                        : option->kind;
+}
+
+size_t mylite_ast_create_table_key_option_start(const MyliteAst *ast,
+                                                size_t statement_index,
+                                                size_t key_index,
+                                                size_t option_index) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_option_at(ast, statement_index, key_index,
+                                            option_index);
+  return option == NULL ? 0 : option->start;
+}
+
+size_t mylite_ast_create_table_key_option_end(const MyliteAst *ast,
+                                              size_t statement_index,
+                                              size_t key_index,
+                                              size_t option_index) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_option_at(ast, statement_index, key_index,
+                                            option_index);
+  return option == NULL ? 0 : option->end;
+}
+
+size_t mylite_ast_create_table_key_option_name_start(const MyliteAst *ast,
+                                                     size_t statement_index,
+                                                     size_t key_index,
+                                                     size_t option_index) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_option_at(ast, statement_index, key_index,
+                                            option_index);
+  return option == NULL ? 0 : option->name_start;
+}
+
+size_t mylite_ast_create_table_key_option_name_end(const MyliteAst *ast,
+                                                   size_t statement_index,
+                                                   size_t key_index,
+                                                   size_t option_index) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_option_at(ast, statement_index, key_index,
+                                            option_index);
+  return option == NULL ? 0 : option->name_end;
+}
+
+size_t mylite_ast_create_table_key_option_value_start(const MyliteAst *ast,
+                                                      size_t statement_index,
+                                                      size_t key_index,
+                                                      size_t option_index) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_option_at(ast, statement_index, key_index,
+                                            option_index);
+  return option == NULL ? 0 : option->value_start;
+}
+
+size_t mylite_ast_create_table_key_option_value_end(const MyliteAst *ast,
+                                                    size_t statement_index,
+                                                    size_t key_index,
+                                                    size_t option_index) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_option_at(ast, statement_index, key_index,
+                                            option_index);
+  return option == NULL ? 0 : option->value_end;
 }
 
 size_t mylite_ast_create_table_option_count(const MyliteAst *ast,
@@ -2118,6 +2618,7 @@ static int mylite_ast_fill_create_table_key(MyliteAst *ast,
   key->start = mylite_ast_node_start(constraint);
   key->end = mylite_ast_node_end(constraint);
   mylite_ast_set_create_table_key_names(key, constraint);
+  mylite_ast_set_create_table_key_index_type(key, elem);
 
   if (key->kind != MYLITE_CREATE_TABLE_KEY_CHECK) {
     size_t remaining = 0;
@@ -2128,8 +2629,16 @@ static int mylite_ast_fill_create_table_key(MyliteAst *ast,
       return 0;
     }
   }
+  const MyliteAstNode *index_options =
+      mylite_ast_find_first_symbol(elem, "nt_index_option_list");
+  if (!mylite_ast_set_create_table_key_options(ast, key, index_options)) {
+    return 0;
+  }
   if (key->kind == MYLITE_CREATE_TABLE_KEY_FOREIGN) {
     return mylite_ast_set_create_table_key_reference(ast, key, elem);
+  }
+  if (key->kind == MYLITE_CREATE_TABLE_KEY_CHECK) {
+    mylite_ast_set_create_table_key_check(key, elem);
   }
   return 1;
 }
@@ -2181,6 +2690,16 @@ static void mylite_ast_set_create_table_key_names(MyliteAstCreateTableKey *key,
   }
 }
 
+static void mylite_ast_set_create_table_key_index_type(
+    MyliteAstCreateTableKey *key, const MyliteAstNode *constraint_elem) {
+  const MyliteAstNode *index_type =
+      mylite_ast_find_first_symbol(constraint_elem, "nt_index_type");
+  if (index_type != NULL && index_type->has_span) {
+    key->index_type_start = mylite_ast_node_start(index_type);
+    key->index_type_end = mylite_ast_node_end(index_type);
+  }
+}
+
 static int mylite_ast_set_create_table_key_reference(
     MyliteAst *ast, MyliteAstCreateTableKey *key,
     const MyliteAstNode *constraint_elem) {
@@ -2207,7 +2726,99 @@ static int mylite_ast_set_create_table_key_reference(
   const MyliteAstNode *referenced_parts =
       mylite_ast_find_nth_symbol(constraint_elem, "nt_index_part_specification_list",
                                  &remaining);
-  return mylite_ast_set_create_table_key_parts(ast, key, referenced_parts, 1);
+  if (!mylite_ast_set_create_table_key_parts(ast, key, referenced_parts, 1)) {
+    return 0;
+  }
+
+  const MyliteAstNode *match = mylite_ast_find_first_symbol(refer_def, "nt_match");
+  if (match != NULL && match->has_span) {
+    key->foreign_match_kind = mylite_ast_classify_foreign_match(match);
+    key->foreign_match_start = mylite_ast_node_start(match);
+    key->foreign_match_end = mylite_ast_node_end(match);
+  }
+
+  const MyliteAstNode *on_delete =
+      mylite_ast_find_first_symbol(refer_def, "nt_on_delete");
+  if (on_delete != NULL && on_delete->has_span) {
+    key->foreign_on_delete_action = mylite_ast_classify_foreign_action(on_delete);
+    key->foreign_on_delete_start = mylite_ast_node_start(on_delete);
+    key->foreign_on_delete_end = mylite_ast_node_end(on_delete);
+  }
+
+  const MyliteAstNode *on_update =
+      mylite_ast_find_first_symbol(refer_def, "nt_on_update");
+  if (on_update != NULL && on_update->has_span) {
+    key->foreign_on_update_action = mylite_ast_classify_foreign_action(on_update);
+    key->foreign_on_update_start = mylite_ast_node_start(on_update);
+    key->foreign_on_update_end = mylite_ast_node_end(on_update);
+  }
+  return 1;
+}
+
+static void mylite_ast_set_create_table_key_check(
+    MyliteAstCreateTableKey *key, const MyliteAstNode *constraint_elem) {
+  const MyliteAstNode *expression =
+      mylite_ast_find_first_symbol(constraint_elem, "nt_expression");
+  if (expression != NULL && expression->has_span) {
+    key->check_expression_start = mylite_ast_node_start(expression);
+    key->check_expression_end = mylite_ast_node_end(expression);
+  }
+
+  const MyliteAstNode *enforcement =
+      mylite_ast_find_first_symbol(constraint_elem, "nt_enforced_or_not");
+  if (enforcement != NULL && enforcement->has_span) {
+    key->check_enforcement = mylite_ast_classify_check_enforcement(enforcement);
+    key->check_enforcement_start = mylite_ast_node_start(enforcement);
+    key->check_enforcement_end = mylite_ast_node_end(enforcement);
+  }
+}
+
+static MyliteCreateTableForeignMatchKind mylite_ast_classify_foreign_match(
+    const MyliteAstNode *node) {
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_FULL) != NULL) {
+    return MYLITE_CREATE_TABLE_FOREIGN_MATCH_FULL;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_PARTIAL) != NULL) {
+    return MYLITE_CREATE_TABLE_FOREIGN_MATCH_PARTIAL;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_SIMPLE) != NULL) {
+    return MYLITE_CREATE_TABLE_FOREIGN_MATCH_SIMPLE;
+  }
+  return MYLITE_CREATE_TABLE_FOREIGN_MATCH_UNSPECIFIED;
+}
+
+static MyliteCreateTableForeignAction mylite_ast_classify_foreign_action(
+    const MyliteAstNode *node) {
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_RESTRICT) != NULL) {
+    return MYLITE_CREATE_TABLE_FOREIGN_ACTION_RESTRICT;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_CASCADE) != NULL) {
+    return MYLITE_CREATE_TABLE_FOREIGN_ACTION_CASCADE;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_SET) != NULL &&
+      mylite_ast_find_first_token(node, MYLITE_TOK_NULL) != NULL) {
+    return MYLITE_CREATE_TABLE_FOREIGN_ACTION_SET_NULL;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_NO) != NULL &&
+      mylite_ast_find_first_token(node, MYLITE_TOK_ACTION) != NULL) {
+    return MYLITE_CREATE_TABLE_FOREIGN_ACTION_NO_ACTION;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_SET) != NULL &&
+      mylite_ast_find_first_token(node, MYLITE_TOK_DEFAULT_KWD) != NULL) {
+    return MYLITE_CREATE_TABLE_FOREIGN_ACTION_SET_DEFAULT;
+  }
+  return MYLITE_CREATE_TABLE_FOREIGN_ACTION_UNSPECIFIED;
+}
+
+static MyliteCreateTableCheckEnforcement mylite_ast_classify_check_enforcement(
+    const MyliteAstNode *node) {
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_NOT) != NULL) {
+    return MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_NOT_ENFORCED;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_ENFORCED) != NULL) {
+    return MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_ENFORCED;
+  }
+  return MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_UNSPECIFIED;
 }
 
 static int mylite_ast_set_create_table_key_parts(MyliteAst *ast,
@@ -2237,6 +2848,30 @@ static int mylite_ast_set_create_table_key_parts(MyliteAst *ast,
     key->columns = parts;
     key->column_count = count;
   }
+  return index == count;
+}
+
+static int mylite_ast_set_create_table_key_options(MyliteAst *ast,
+                                                   MyliteAstCreateTableKey *key,
+                                                   const MyliteAstNode *list) {
+  if (list == NULL || !list->has_span) {
+    return 1;
+  }
+  size_t count = mylite_ast_count_index_options(list);
+  if (count == 0) {
+    return 1;
+  }
+
+  MyliteAstCreateTableKeyOption *options =
+      mylite_ast_alloc(ast, count * sizeof(*options));
+  if (options == NULL) {
+    return 0;
+  }
+
+  size_t index = 0;
+  mylite_ast_fill_index_options(options, count, list, &index);
+  key->options = options;
+  key->option_count = count;
   return index == count;
 }
 
@@ -2283,9 +2918,174 @@ static void mylite_ast_fill_key_part(MyliteAstCreateTableKeyPart *part,
   const MyliteAstNode *column_name =
       mylite_ast_find_first_symbol(node, "nt_column_name");
   if (column_name != NULL) {
+    part->kind = MYLITE_CREATE_TABLE_KEY_PART_COLUMN;
     part->name_start = mylite_ast_node_start(column_name);
     part->name_end = mylite_ast_node_end(column_name);
+  } else {
+    const MyliteAstNode *expression =
+        mylite_ast_find_first_symbol(node, "nt_expression");
+    if (expression != NULL && expression->has_span) {
+      part->kind = MYLITE_CREATE_TABLE_KEY_PART_EXPRESSION;
+      part->expression_start = mylite_ast_node_start(expression);
+      part->expression_end = mylite_ast_node_end(expression);
+    }
   }
+
+  const MyliteAstNode *prefix =
+      mylite_ast_find_first_symbol(node, "nt_opt_field_len");
+  if (prefix != NULL && prefix->has_span) {
+    part->prefix_start = mylite_ast_node_start(prefix);
+    part->prefix_end = mylite_ast_node_end(prefix);
+    const MyliteAstNode *value =
+        mylite_ast_find_first_symbol(prefix, "nt_length_num");
+    if (value != NULL && value->has_span) {
+      part->prefix_value_start = mylite_ast_node_start(value);
+      part->prefix_value_end = mylite_ast_node_end(value);
+    }
+  }
+
+  const MyliteAstNode *order = mylite_ast_find_first_symbol(node, "nt_opt_order");
+  if (order != NULL && order->has_span) {
+    part->order_start = mylite_ast_node_start(order);
+    part->order_end = mylite_ast_node_end(order);
+    if (mylite_ast_find_first_token(order, MYLITE_TOK_ASC) != NULL) {
+      part->order = MYLITE_CREATE_TABLE_KEY_PART_ORDER_ASC;
+    } else if (mylite_ast_find_first_token(order, MYLITE_TOK_DESC) != NULL) {
+      part->order = MYLITE_CREATE_TABLE_KEY_PART_ORDER_DESC;
+    }
+  }
+}
+
+static size_t mylite_ast_count_index_options(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_index_option") == 0) {
+    return 1;
+  }
+
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_index_options(node->children[i]);
+  }
+  return count;
+}
+
+static void mylite_ast_fill_index_options(MyliteAstCreateTableKeyOption *options,
+                                          size_t count,
+                                          const MyliteAstNode *node,
+                                          size_t *index) {
+  if (options == NULL || node == NULL || index == NULL || *index >= count) {
+    return;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_index_option") == 0) {
+    mylite_ast_fill_key_option(&options[*index], node);
+    (*index)++;
+    return;
+  }
+
+  for (size_t i = 0; i < node->child_count; i++) {
+    mylite_ast_fill_index_options(options, count, node->children[i], index);
+  }
+}
+
+static void mylite_ast_fill_key_option(MyliteAstCreateTableKeyOption *option,
+                                       const MyliteAstNode *node) {
+  option->kind = mylite_ast_classify_key_option(node);
+  option->start = mylite_ast_node_start(node);
+  option->end = mylite_ast_node_end(node);
+
+  const MyliteAstNode *name = mylite_ast_find_key_option_name(node, option->kind);
+  if (name != NULL) {
+    option->name_start = mylite_ast_node_start(name);
+    option->name_end = mylite_ast_node_end(name);
+  }
+
+  if (option->kind == MYLITE_CREATE_TABLE_KEY_OPTION_WITH_PARSER) {
+    const MyliteAstNode *parser = mylite_ast_find_first_token(node, MYLITE_TOK_PARSER);
+    if (parser != NULL) {
+      option->name_end = mylite_ast_node_end(parser);
+    }
+  }
+
+  if (option->name_end != 0) {
+    mylite_ast_collect_value_span_after(node, option->name_end,
+                                        &option->value_start,
+                                        &option->value_end);
+  }
+}
+
+static MyliteCreateTableKeyOptionKind mylite_ast_classify_key_option(
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return MYLITE_CREATE_TABLE_KEY_OPTION_UNKNOWN;
+  }
+  if (mylite_ast_find_first_symbol(node, "nt_index_type") != NULL) {
+    return MYLITE_CREATE_TABLE_KEY_OPTION_INDEX_TYPE;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_KEY_BLOCK_SIZE) != NULL) {
+    return MYLITE_CREATE_TABLE_KEY_OPTION_KEY_BLOCK_SIZE;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_COMMENT) != NULL) {
+    return MYLITE_CREATE_TABLE_KEY_OPTION_COMMENT;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_WITH) != NULL &&
+      mylite_ast_find_first_token(node, MYLITE_TOK_PARSER) != NULL) {
+    return MYLITE_CREATE_TABLE_KEY_OPTION_WITH_PARSER;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_VISIBLE) != NULL) {
+    return MYLITE_CREATE_TABLE_KEY_OPTION_VISIBLE;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_INVISIBLE) != NULL) {
+    return MYLITE_CREATE_TABLE_KEY_OPTION_INVISIBLE;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_SECONDARY_ENGINE_ATTRIBUTE) !=
+      NULL) {
+    return MYLITE_CREATE_TABLE_KEY_OPTION_SECONDARY_ENGINE_ATTRIBUTE;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_WHERE) != NULL) {
+    return MYLITE_CREATE_TABLE_KEY_OPTION_WHERE;
+  }
+  return MYLITE_CREATE_TABLE_KEY_OPTION_UNKNOWN;
+}
+
+static const MyliteAstNode *mylite_ast_find_key_option_name(
+    const MyliteAstNode *node, MyliteCreateTableKeyOptionKind kind) {
+  if (kind == MYLITE_CREATE_TABLE_KEY_OPTION_INDEX_TYPE) {
+    return mylite_ast_find_first_token(node, MYLITE_TOK_USING);
+  }
+
+  int token = 0;
+  switch (kind) {
+    case MYLITE_CREATE_TABLE_KEY_OPTION_KEY_BLOCK_SIZE:
+      token = MYLITE_TOK_KEY_BLOCK_SIZE;
+      break;
+    case MYLITE_CREATE_TABLE_KEY_OPTION_COMMENT:
+      token = MYLITE_TOK_COMMENT;
+      break;
+    case MYLITE_CREATE_TABLE_KEY_OPTION_WITH_PARSER:
+      token = MYLITE_TOK_WITH;
+      break;
+    case MYLITE_CREATE_TABLE_KEY_OPTION_VISIBLE:
+      token = MYLITE_TOK_VISIBLE;
+      break;
+    case MYLITE_CREATE_TABLE_KEY_OPTION_INVISIBLE:
+      token = MYLITE_TOK_INVISIBLE;
+      break;
+    case MYLITE_CREATE_TABLE_KEY_OPTION_SECONDARY_ENGINE_ATTRIBUTE:
+      token = MYLITE_TOK_SECONDARY_ENGINE_ATTRIBUTE;
+      break;
+    case MYLITE_CREATE_TABLE_KEY_OPTION_WHERE:
+      token = MYLITE_TOK_WHERE;
+      break;
+    case MYLITE_CREATE_TABLE_KEY_OPTION_UNKNOWN:
+    case MYLITE_CREATE_TABLE_KEY_OPTION_INDEX_TYPE:
+      break;
+  }
+  return token == 0 ? mylite_ast_find_first_spanned_child(node)
+                    : mylite_ast_find_first_token(node, token);
 }
 
 static const MyliteAstNode *mylite_ast_find_nth_symbol(const MyliteAstNode *node,
@@ -2820,6 +3620,17 @@ static const MyliteAstCreateTableKeyPart *mylite_ast_create_table_key_part_at(
                : &key->referenced_columns[column_index];
   }
   return column_index >= key->column_count ? NULL : &key->columns[column_index];
+}
+
+static const MyliteAstCreateTableKeyOption *mylite_ast_create_table_key_option_at(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t option_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  if (key == NULL || option_index >= key->option_count) {
+    return NULL;
+  }
+  return &key->options[option_index];
 }
 
 static const MyliteAstCreateTableOption *mylite_ast_create_table_option_at(

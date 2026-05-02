@@ -29,6 +29,9 @@ expression nodes.
 - `CREATE TABLE` statements expose typed table key and constraint descriptors
   for primary keys, secondary indexes, unique indexes, fulltext indexes, spatial
   indexes, foreign keys, and check constraints.
+- Key descriptors include key-part kind, expression, prefix length, ordering,
+  index type/options, foreign-key match/actions, check expression, and check
+  enforcement spans.
 - `CREATE TABLE` statements expose typed table-option descriptors for common
   options such as engine, charset, collation, row format, comment,
   auto-increment, tablespace, storage, directory, and attribute clauses.
@@ -61,7 +64,8 @@ expression nodes.
   options spans, type family, and option flags
 - typed `CREATE TABLE` key descriptors with kind, full constraint/index span,
   constraint name, key name, local key parts, referenced table, referenced
-  schema/name, and referenced key parts
+  schema/name, referenced key parts, index options, foreign actions, and check
+  expression details
 - typed `CREATE TABLE` table-option descriptors with kind, full option span,
   option-name span, and value span
 
@@ -90,8 +94,12 @@ The `CREATE TABLE` key view covers table-level primary keys, indexes, unique
 keys, fulltext keys, spatial keys, foreign keys, and check constraints. It
 preserves both constraint names and key names because MySQL syntax can carry
 both independently, and it records foreign-key referenced table and referenced
-columns. It does not yet classify index options, key-part order/prefix lengths,
-foreign-key match/update/delete actions, check expressions, or generated
+columns. Key parts now distinguish column and functional-expression parts and
+carry prefix length and `ASC`/`DESC` spans. Key options expose index type,
+`KEY_BLOCK_SIZE`, comments, parser, visibility, secondary-engine attributes,
+and `WHERE` spans. Foreign keys expose `MATCH`, `ON DELETE`, and `ON UPDATE`;
+check constraints expose expression and enforcement spans. The view does not
+yet normalize these details into final metadata values or generate missing
 constraint names.
 
 The `CREATE TABLE` table-option view covers the option list after the table
@@ -119,8 +127,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.905476 qps=500098 mbps=38.03 avg_us=2.000
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=21.074947 qps=329970 mbps=25.09 avg_us=3.031 avg_nodes=74.5 avg_ast_bytes=9898.4 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_options=0.04
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.966313 qps=497920 mbps=37.87 avg_us=2.008
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=21.427953 qps=324534 mbps=24.68 avg_us=3.081 avg_nodes=74.5 avg_ast_bytes=9915.6 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -133,10 +141,10 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 70K on disk, 48,856 bytes text/data/other
+parser support object: 83K on disk, 56,579 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.1M on disk
-mylite-parse: 995K on disk
+mylite-parse: 1.0M on disk
 ```
 
 ## Next Work
@@ -144,8 +152,8 @@ mylite-parse: 995K on disk
 - Replace temporary recognizer placeholder roots with real grammar productions
   or explicit typed placeholder statements.
 - Expand `CREATE TABLE` typed descriptors to classify exact data types,
-  defaults, generated expressions, index options, foreign-key actions, check
-  expressions, and normalized table option values.
+  defaults, generated expressions, and normalized constraint/index/table option
+  values.
 - Add typed AST nodes for the next analyzer statement families underneath the
   statement classification and indexed target descriptor layer.
 - Decide whether syntax-only builds should use a separate no-action generated

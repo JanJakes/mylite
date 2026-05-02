@@ -162,9 +162,14 @@ static void dump_statements(const MyliteAst *ast) {
           mylite_ast_create_table_key_column_count(ast, i, j);
       size_t referenced_column_count =
           mylite_ast_create_table_key_referenced_column_count(ast, i, j);
+      size_t key_option_count =
+          mylite_ast_create_table_key_option_count(ast, i, j);
       printf("  key[%zu] kind=%s span=%zu..%zu constraint=%zu..%zu "
-             "name=%zu..%zu columns=%zu ref_table=%zu..%zu "
-             "ref_schema=%zu..%zu ref_name=%zu..%zu ref_columns=%zu\n",
+             "name=%zu..%zu index_type=%zu..%zu columns=%zu "
+             "ref_table=%zu..%zu ref_schema=%zu..%zu ref_name=%zu..%zu "
+             "ref_columns=%zu match=%s:%zu..%zu on_delete=%s:%zu..%zu "
+             "on_update=%s:%zu..%zu check_expr=%zu..%zu "
+             "check_enforced=%s:%zu..%zu key_options=%zu\n",
              j,
              mylite_create_table_key_kind_name(
                  mylite_ast_create_table_key_kind(ast, i, j)),
@@ -174,6 +179,8 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_table_key_constraint_name_end(ast, i, j),
              mylite_ast_create_table_key_name_start(ast, i, j),
              mylite_ast_create_table_key_name_end(ast, i, j),
+             mylite_ast_create_table_key_index_type_start(ast, i, j),
+             mylite_ast_create_table_key_index_type_end(ast, i, j),
              column_count_for_key,
              mylite_ast_create_table_key_referenced_table_start(ast, i, j),
              mylite_ast_create_table_key_referenced_table_end(ast, i, j),
@@ -181,22 +188,83 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_table_key_referenced_table_schema_end(ast, i, j),
              mylite_ast_create_table_key_referenced_table_name_start(ast, i, j),
              mylite_ast_create_table_key_referenced_table_name_end(ast, i, j),
-             referenced_column_count);
+             referenced_column_count,
+             mylite_create_table_foreign_match_kind_name(
+                 mylite_ast_create_table_key_foreign_match_kind(ast, i, j)),
+             mylite_ast_create_table_key_foreign_match_start(ast, i, j),
+             mylite_ast_create_table_key_foreign_match_end(ast, i, j),
+             mylite_create_table_foreign_action_name(
+                 mylite_ast_create_table_key_foreign_on_delete_action(ast, i, j)),
+             mylite_ast_create_table_key_foreign_on_delete_start(ast, i, j),
+             mylite_ast_create_table_key_foreign_on_delete_end(ast, i, j),
+             mylite_create_table_foreign_action_name(
+                 mylite_ast_create_table_key_foreign_on_update_action(ast, i, j)),
+             mylite_ast_create_table_key_foreign_on_update_start(ast, i, j),
+             mylite_ast_create_table_key_foreign_on_update_end(ast, i, j),
+             mylite_ast_create_table_key_check_expression_start(ast, i, j),
+             mylite_ast_create_table_key_check_expression_end(ast, i, j),
+             mylite_create_table_check_enforcement_name(
+                 mylite_ast_create_table_key_check_enforcement(ast, i, j)),
+             mylite_ast_create_table_key_check_enforcement_start(ast, i, j),
+             mylite_ast_create_table_key_check_enforcement_end(ast, i, j),
+             key_option_count);
       for (size_t k = 0; k < column_count_for_key; k++) {
-        printf("    key_column[%zu] span=%zu..%zu name=%zu..%zu\n", k,
+        printf("    key_column[%zu] kind=%s span=%zu..%zu name=%zu..%zu "
+               "expr=%zu..%zu prefix=%zu..%zu prefix_value=%zu..%zu "
+               "order=%s:%zu..%zu\n",
+               k,
+               mylite_create_table_key_part_kind_name(
+                   mylite_ast_create_table_key_column_kind(ast, i, j, k)),
                mylite_ast_create_table_key_column_start(ast, i, j, k),
                mylite_ast_create_table_key_column_end(ast, i, j, k),
                mylite_ast_create_table_key_column_name_start(ast, i, j, k),
-               mylite_ast_create_table_key_column_name_end(ast, i, j, k));
+               mylite_ast_create_table_key_column_name_end(ast, i, j, k),
+               mylite_ast_create_table_key_column_expression_start(ast, i, j, k),
+               mylite_ast_create_table_key_column_expression_end(ast, i, j, k),
+               mylite_ast_create_table_key_column_prefix_start(ast, i, j, k),
+               mylite_ast_create_table_key_column_prefix_end(ast, i, j, k),
+               mylite_ast_create_table_key_column_prefix_value_start(ast, i, j,
+                                                                     k),
+               mylite_ast_create_table_key_column_prefix_value_end(ast, i, j,
+                                                                   k),
+               mylite_create_table_key_part_order_name(
+                   mylite_ast_create_table_key_column_order(ast, i, j, k)),
+               mylite_ast_create_table_key_column_order_start(ast, i, j, k),
+               mylite_ast_create_table_key_column_order_end(ast, i, j, k));
       }
       for (size_t k = 0; k < referenced_column_count; k++) {
-        printf("    ref_column[%zu] span=%zu..%zu name=%zu..%zu\n", k,
+        printf("    ref_column[%zu] kind=%s span=%zu..%zu name=%zu..%zu "
+               "expr=%zu..%zu order=%s\n",
+               k,
+               mylite_create_table_key_part_kind_name(
+                   mylite_ast_create_table_key_referenced_column_kind(ast, i, j,
+                                                                      k)),
                mylite_ast_create_table_key_referenced_column_start(ast, i, j, k),
                mylite_ast_create_table_key_referenced_column_end(ast, i, j, k),
                mylite_ast_create_table_key_referenced_column_name_start(ast, i, j,
                                                                         k),
                mylite_ast_create_table_key_referenced_column_name_end(ast, i, j,
-                                                                      k));
+                                                                      k),
+               mylite_ast_create_table_key_referenced_column_expression_start(
+                   ast, i, j, k),
+               mylite_ast_create_table_key_referenced_column_expression_end(
+                   ast, i, j, k),
+               mylite_create_table_key_part_order_name(
+                   mylite_ast_create_table_key_referenced_column_order(ast, i, j,
+                                                                       k)));
+      }
+      for (size_t k = 0; k < key_option_count; k++) {
+        printf("    key_option[%zu] kind=%s span=%zu..%zu name=%zu..%zu "
+               "value=%zu..%zu\n",
+               k,
+               mylite_create_table_key_option_kind_name(
+                   mylite_ast_create_table_key_option_kind(ast, i, j, k)),
+               mylite_ast_create_table_key_option_start(ast, i, j, k),
+               mylite_ast_create_table_key_option_end(ast, i, j, k),
+               mylite_ast_create_table_key_option_name_start(ast, i, j, k),
+               mylite_ast_create_table_key_option_name_end(ast, i, j, k),
+               mylite_ast_create_table_key_option_value_start(ast, i, j, k),
+               mylite_ast_create_table_key_option_value_end(ast, i, j, k));
       }
     }
     for (size_t j = 0; j < option_count; j++) {

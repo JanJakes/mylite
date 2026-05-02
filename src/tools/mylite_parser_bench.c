@@ -61,6 +61,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t columns = 0;
   size_t keys = 0;
   size_t key_columns = 0;
+  size_t key_options = 0;
   size_t options = 0;
   double start = monotonic_seconds();
   for (int iteration = 0; iteration < iterations; iteration++) {
@@ -85,6 +86,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
               key_columns += mylite_ast_create_table_key_column_count(ast, i, j);
               key_columns +=
                   mylite_ast_create_table_key_referenced_column_count(ast, i, j);
+              key_options += mylite_ast_create_table_key_option_count(ast, i, j);
             }
           }
         }
@@ -113,11 +115,12 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   if (mode == BENCH_AST && parsed > 0) {
     printf(" avg_nodes=%.1f avg_ast_bytes=%.1f avg_statements=%.2f "
            "avg_targets=%.2f avg_columns=%.2f avg_keys=%.2f "
-           "avg_key_columns=%.2f avg_options=%.2f",
+           "avg_key_columns=%.2f avg_key_options=%.2f avg_options=%.2f",
            (double)ast_nodes / (double)parsed, (double)ast_bytes / (double)parsed,
            (double)statements / (double)parsed, (double)targets / (double)parsed,
            (double)columns / (double)parsed, (double)keys / (double)parsed,
-           (double)key_columns / (double)parsed, (double)options / (double)parsed);
+           (double)key_columns / (double)parsed,
+           (double)key_options / (double)parsed, (double)options / (double)parsed);
   }
   printf("\n");
 

@@ -116,6 +116,52 @@ typedef enum MyliteCreateTableKeyKind {
   MYLITE_CREATE_TABLE_KEY_CHECK
 } MyliteCreateTableKeyKind;
 
+typedef enum MyliteCreateTableKeyPartKind {
+  MYLITE_CREATE_TABLE_KEY_PART_UNKNOWN = 0,
+  MYLITE_CREATE_TABLE_KEY_PART_COLUMN,
+  MYLITE_CREATE_TABLE_KEY_PART_EXPRESSION
+} MyliteCreateTableKeyPartKind;
+
+typedef enum MyliteCreateTableKeyPartOrder {
+  MYLITE_CREATE_TABLE_KEY_PART_ORDER_UNSPECIFIED = 0,
+  MYLITE_CREATE_TABLE_KEY_PART_ORDER_ASC,
+  MYLITE_CREATE_TABLE_KEY_PART_ORDER_DESC
+} MyliteCreateTableKeyPartOrder;
+
+typedef enum MyliteCreateTableKeyOptionKind {
+  MYLITE_CREATE_TABLE_KEY_OPTION_UNKNOWN = 0,
+  MYLITE_CREATE_TABLE_KEY_OPTION_INDEX_TYPE,
+  MYLITE_CREATE_TABLE_KEY_OPTION_KEY_BLOCK_SIZE,
+  MYLITE_CREATE_TABLE_KEY_OPTION_COMMENT,
+  MYLITE_CREATE_TABLE_KEY_OPTION_WITH_PARSER,
+  MYLITE_CREATE_TABLE_KEY_OPTION_VISIBLE,
+  MYLITE_CREATE_TABLE_KEY_OPTION_INVISIBLE,
+  MYLITE_CREATE_TABLE_KEY_OPTION_SECONDARY_ENGINE_ATTRIBUTE,
+  MYLITE_CREATE_TABLE_KEY_OPTION_WHERE
+} MyliteCreateTableKeyOptionKind;
+
+typedef enum MyliteCreateTableForeignMatchKind {
+  MYLITE_CREATE_TABLE_FOREIGN_MATCH_UNSPECIFIED = 0,
+  MYLITE_CREATE_TABLE_FOREIGN_MATCH_FULL,
+  MYLITE_CREATE_TABLE_FOREIGN_MATCH_PARTIAL,
+  MYLITE_CREATE_TABLE_FOREIGN_MATCH_SIMPLE
+} MyliteCreateTableForeignMatchKind;
+
+typedef enum MyliteCreateTableForeignAction {
+  MYLITE_CREATE_TABLE_FOREIGN_ACTION_UNSPECIFIED = 0,
+  MYLITE_CREATE_TABLE_FOREIGN_ACTION_RESTRICT,
+  MYLITE_CREATE_TABLE_FOREIGN_ACTION_CASCADE,
+  MYLITE_CREATE_TABLE_FOREIGN_ACTION_SET_NULL,
+  MYLITE_CREATE_TABLE_FOREIGN_ACTION_NO_ACTION,
+  MYLITE_CREATE_TABLE_FOREIGN_ACTION_SET_DEFAULT
+} MyliteCreateTableForeignAction;
+
+typedef enum MyliteCreateTableCheckEnforcement {
+  MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_UNSPECIFIED = 0,
+  MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_ENFORCED,
+  MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_NOT_ENFORCED
+} MyliteCreateTableCheckEnforcement;
+
 typedef enum MyliteCreateTableOptionKind {
   MYLITE_CREATE_TABLE_OPTION_UNKNOWN = 0,
   MYLITE_CREATE_TABLE_OPTION_ENGINE,
@@ -157,6 +203,18 @@ const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
 const char *mylite_create_table_column_type_family_name(
     MyliteCreateTableColumnTypeFamily family);
 const char *mylite_create_table_key_kind_name(MyliteCreateTableKeyKind kind);
+const char *mylite_create_table_key_part_kind_name(
+    MyliteCreateTableKeyPartKind kind);
+const char *mylite_create_table_key_part_order_name(
+    MyliteCreateTableKeyPartOrder order);
+const char *mylite_create_table_key_option_kind_name(
+    MyliteCreateTableKeyOptionKind kind);
+const char *mylite_create_table_foreign_match_kind_name(
+    MyliteCreateTableForeignMatchKind kind);
+const char *mylite_create_table_foreign_action_name(
+    MyliteCreateTableForeignAction action);
+const char *mylite_create_table_check_enforcement_name(
+    MyliteCreateTableCheckEnforcement enforcement);
 const char *mylite_create_table_option_kind_name(
     MyliteCreateTableOptionKind kind);
 
@@ -254,9 +312,18 @@ size_t mylite_ast_create_table_key_name_start(const MyliteAst *ast,
 size_t mylite_ast_create_table_key_name_end(const MyliteAst *ast,
                                             size_t statement_index,
                                             size_t key_index);
+size_t mylite_ast_create_table_key_index_type_start(const MyliteAst *ast,
+                                                    size_t statement_index,
+                                                    size_t key_index);
+size_t mylite_ast_create_table_key_index_type_end(const MyliteAst *ast,
+                                                  size_t statement_index,
+                                                  size_t key_index);
 size_t mylite_ast_create_table_key_column_count(const MyliteAst *ast,
                                                 size_t statement_index,
                                                 size_t key_index);
+MyliteCreateTableKeyPartKind mylite_ast_create_table_key_column_kind(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
 size_t mylite_ast_create_table_key_column_start(const MyliteAst *ast,
                                                 size_t statement_index,
                                                 size_t key_index,
@@ -273,6 +340,33 @@ size_t mylite_ast_create_table_key_column_name_end(const MyliteAst *ast,
                                                    size_t statement_index,
                                                    size_t key_index,
                                                    size_t column_index);
+size_t mylite_ast_create_table_key_column_expression_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_column_expression_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_column_prefix_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_column_prefix_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_column_prefix_value_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_column_prefix_value_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+MyliteCreateTableKeyPartOrder mylite_ast_create_table_key_column_order(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_column_order_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_column_order_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
 size_t mylite_ast_create_table_key_referenced_table_start(const MyliteAst *ast,
                                                           size_t statement_index,
                                                           size_t key_index);
@@ -289,6 +383,9 @@ size_t mylite_ast_create_table_key_referenced_table_name_end(
     const MyliteAst *ast, size_t statement_index, size_t key_index);
 size_t mylite_ast_create_table_key_referenced_column_count(
     const MyliteAst *ast, size_t statement_index, size_t key_index);
+MyliteCreateTableKeyPartKind mylite_ast_create_table_key_referenced_column_kind(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
 size_t mylite_ast_create_table_key_referenced_column_start(
     const MyliteAst *ast, size_t statement_index, size_t key_index,
     size_t column_index);
@@ -301,6 +398,86 @@ size_t mylite_ast_create_table_key_referenced_column_name_start(
 size_t mylite_ast_create_table_key_referenced_column_name_end(
     const MyliteAst *ast, size_t statement_index, size_t key_index,
     size_t column_index);
+size_t mylite_ast_create_table_key_referenced_column_expression_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_referenced_column_expression_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+MyliteCreateTableKeyPartOrder
+mylite_ast_create_table_key_referenced_column_order(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+MyliteCreateTableForeignMatchKind
+mylite_ast_create_table_key_foreign_match_kind(const MyliteAst *ast,
+                                               size_t statement_index,
+                                               size_t key_index);
+size_t mylite_ast_create_table_key_foreign_match_start(const MyliteAst *ast,
+                                                       size_t statement_index,
+                                                       size_t key_index);
+size_t mylite_ast_create_table_key_foreign_match_end(const MyliteAst *ast,
+                                                     size_t statement_index,
+                                                     size_t key_index);
+MyliteCreateTableForeignAction
+mylite_ast_create_table_key_foreign_on_delete_action(const MyliteAst *ast,
+                                                     size_t statement_index,
+                                                     size_t key_index);
+size_t mylite_ast_create_table_key_foreign_on_delete_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_foreign_on_delete_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+MyliteCreateTableForeignAction
+mylite_ast_create_table_key_foreign_on_update_action(const MyliteAst *ast,
+                                                     size_t statement_index,
+                                                     size_t key_index);
+size_t mylite_ast_create_table_key_foreign_on_update_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_foreign_on_update_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_check_expression_start(const MyliteAst *ast,
+                                                          size_t statement_index,
+                                                          size_t key_index);
+size_t mylite_ast_create_table_key_check_expression_end(const MyliteAst *ast,
+                                                        size_t statement_index,
+                                                        size_t key_index);
+MyliteCreateTableCheckEnforcement
+mylite_ast_create_table_key_check_enforcement(const MyliteAst *ast,
+                                              size_t statement_index,
+                                              size_t key_index);
+size_t mylite_ast_create_table_key_check_enforcement_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_check_enforcement_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_option_count(const MyliteAst *ast,
+                                                size_t statement_index,
+                                                size_t key_index);
+MyliteCreateTableKeyOptionKind mylite_ast_create_table_key_option_kind(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t option_index);
+size_t mylite_ast_create_table_key_option_start(const MyliteAst *ast,
+                                                size_t statement_index,
+                                                size_t key_index,
+                                                size_t option_index);
+size_t mylite_ast_create_table_key_option_end(const MyliteAst *ast,
+                                              size_t statement_index,
+                                              size_t key_index,
+                                              size_t option_index);
+size_t mylite_ast_create_table_key_option_name_start(const MyliteAst *ast,
+                                                     size_t statement_index,
+                                                     size_t key_index,
+                                                     size_t option_index);
+size_t mylite_ast_create_table_key_option_name_end(const MyliteAst *ast,
+                                                   size_t statement_index,
+                                                   size_t key_index,
+                                                   size_t option_index);
+size_t mylite_ast_create_table_key_option_value_start(const MyliteAst *ast,
+                                                      size_t statement_index,
+                                                      size_t key_index,
+                                                      size_t option_index);
+size_t mylite_ast_create_table_key_option_value_end(const MyliteAst *ast,
+                                                    size_t statement_index,
+                                                    size_t key_index,
+                                                    size_t option_index);
 size_t mylite_ast_create_table_option_count(const MyliteAst *ast,
                                             size_t statement_index);
 MyliteCreateTableOptionKind mylite_ast_create_table_option_kind(

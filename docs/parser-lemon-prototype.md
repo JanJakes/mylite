@@ -204,7 +204,9 @@ token sink:
   validate `ENFORCED`/`NOT ENFORCED` tails while allowing later column
   attributes where MySQL permits them. Column definitions require a known MySQL
   type-family start, validate common numeric and `ENUM`/`SET` type-parameter
-  lists, accept hex literals in `ENUM`/`SET` values, plus common attribute
+  lists, accept hex literals in `ENUM`/`SET` values, preserve MySQL's
+  `DOUBLE PRECISION` modifier without accepting `PRECISION` after other types,
+  and accept common attribute
   starts and selected closed attribute values, require generated-column storage
   modifiers to follow generated
   expressions, reject repeated generated-column storage modifiers, validate
@@ -266,7 +268,8 @@ token sink:
   attributes, `AUTOEXTEND_SIZE`, `TABLE_CHECKSUM`, `START TRANSACTION`,
   identifier-valued `ALGORITHM`/`LOCK` options, tablespace discard/import
   forms, and validated `ADD`/`CHANGE`/`MODIFY` column type starts plus
-  column-definition attribute starts and selected closed attribute values
+  MySQL's `DOUBLE PRECISION` modifier placement, column-definition attribute
+  starts and selected closed attribute values
   including generated-column storage
   modifier context and repetition checks, index key-part prefix lengths,
   `ASC`/`DESC` tails, and index option values including closed index

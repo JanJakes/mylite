@@ -57,10 +57,11 @@ expression nodes.
   descriptor collections without duplicating those arrays. The view exposes
   opaque handles for navigating those descriptors directly, including nested
   column type elements, key parts, and key options.
-- `CREATE DATABASE`, `ALTER TABLE`, `CREATE INDEX`, `DROP DATABASE`,
-  `DROP INDEX`, `DROP TABLE`, `RENAME TABLE`, and `TRUNCATE TABLE` statements
-  expose semantic DDL views that reuse the same decoded identifier, target,
-  key-part, key-option, table-option, and database-option infrastructure.
+- `CREATE DATABASE`, `CREATE VIEW`, `ALTER TABLE`, `CREATE INDEX`, `DROP
+  DATABASE`, `DROP INDEX`, `DROP TABLE`, `DROP VIEW`, `RENAME TABLE`, and
+  `TRUNCATE TABLE` statements expose semantic DDL views that reuse the same
+  decoded identifier, target, key-part, key-option, table-option, and
+  database-option infrastructure.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
   still cover the full current corpus.
 - The AST is opaque in the public API and freed with `mylite_ast_free()`.
@@ -114,6 +115,10 @@ expression nodes.
 - typed database-option descriptors with kind, full option span, option-name
   span, value span, value kind, decoded string/identifier values, `DEFAULT`
   marker, and raw payload spans for TiDB overlay options
+- typed `CREATE VIEW` descriptors with decoded view target, `OR REPLACE`,
+  algorithm, SQL security, check-option kind, optional definer span, explicit
+  column handles, and a CST anchor/span for the view query
+- typed view-column descriptors with name spans and decoded identifier values
 - typed `ALTER TABLE` descriptors with decoded target table, ordered operation
   spec handles, coarse operation kind, `IF EXISTS` / `IF NOT EXISTS` flags,
   decoded primary and secondary operation names, nested table targets for
@@ -129,6 +134,8 @@ expression nodes.
   and `DATABASE`/`SCHEMA` keyword marker
 - typed `DROP TABLE` descriptors with temporary/`IF EXISTS` flags and decoded
   table target lists
+- typed `DROP VIEW` descriptors with `IF EXISTS`, restrict/cascade mode, and
+  decoded multi-view target lists
 - typed `RENAME TABLE` descriptors with decoded source/destination table pairs
 - typed `TRUNCATE TABLE` descriptors with decoded table target and optional
   `TABLE` keyword marker
@@ -256,17 +263,20 @@ parts, options, and summary metadata. Multi-item `ADD (...)` specs expose
 indexed column and key descriptor arrays in statement order by descriptor type.
 `CREATE DATABASE` exposes the decoded database target, `IF NOT EXISTS`,
 `DATABASE`/`SCHEMA` keyword choice, database-option descriptors, and compact
-charset/collation/encryption summaries. `CREATE INDEX` reuses the table-key
-descriptors for key parts and key options while adding the decoded index name
-and target table. `DROP DATABASE` exposes the decoded database target, `IF
-EXISTS`, and keyword choice. `DROP TABLE` exposes `TEMPORARY`, `IF EXISTS`, and
-all table targets. `DROP INDEX` exposes the decoded index name, target table,
-`IF EXISTS`, and the TiDB hypothetical-index syntax marker. `RENAME TABLE`
-exposes each source/destination pair as decoded target values. `TRUNCATE TABLE`
-exposes the decoded table target and whether the optional `TABLE` keyword was
-present. These views are still parser-level metadata: they do not perform
-existence checks, generate implicit names, validate engine-specific rules, or
-apply runtime effects.
+charset/collation/encryption summaries. `CREATE VIEW` exposes the decoded view
+target, `OR REPLACE`, algorithm, SQL security, check-option kind, optional
+definer span, explicit column descriptors, and the query CST anchor. `CREATE
+INDEX` reuses the table-key descriptors for key parts and key options while
+adding the decoded index name and target table. `DROP DATABASE` exposes the
+decoded database target, `IF EXISTS`, and keyword choice. `DROP TABLE` exposes
+`TEMPORARY`, `IF EXISTS`, and all table targets. `DROP VIEW` exposes `IF
+EXISTS`, restrict/cascade mode, and all view targets. `DROP INDEX` exposes the
+decoded index name, target table, `IF EXISTS`, and the TiDB hypothetical-index
+syntax marker. `RENAME TABLE` exposes each source/destination pair as decoded
+target values. `TRUNCATE TABLE` exposes the decoded table target and whether the
+optional `TABLE` keyword was present. These views are still parser-level
+metadata: they do not perform existence checks, generate implicit names,
+validate engine-specific rules, or apply runtime effects.
 
 For development inspection:
 
@@ -287,8 +297,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.117024 qps=492604 mbps=37.46 avg_us=2.030
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=23.118853 qps=300798 mbps=22.88 avg_us=3.324 avg_nodes=74.5 avg_ast_bytes=10236.7 avg_statements=1.00 avg_targets=0.59 avg_target_schema_values=0.02 avg_target_name_values=0.59 avg_columns=0.29 avg_keys=0.06 avg_create_table_views=0.13 avg_create_table_view_schema_values=0.00 avg_create_table_view_name_values=0.13 avg_create_table_view_summary_engines=0.03 avg_create_table_view_summary_comments=0.00 avg_create_table_view_summary_auto_increments=0.00 avg_create_table_view_columns=0.29 avg_create_table_view_keys=0.06 avg_create_table_view_options=0.04 avg_create_table_view_column_handles=0.29 avg_create_table_view_known_column_types=0.29 avg_create_table_view_column_type_numeric_params=0.11 avg_create_table_view_column_type_element_handles=0.05 avg_create_table_view_column_type_element_values=0.05 avg_create_table_view_column_type_lengths=0.09 avg_create_table_view_column_type_unsigned_attrs=0.01 avg_create_table_view_column_type_charset_values=0.01 avg_create_table_view_column_type_collation_values=0.00 avg_create_table_view_column_option_spans=0.12 avg_create_table_view_column_defaults=0.05 avg_create_table_view_column_default_values=0.05 avg_create_table_view_column_default_unsigned_values=0.00 avg_create_table_view_column_on_update_values=0.00 avg_create_table_view_column_comments=0.00 avg_create_table_view_column_comment_values=0.00 avg_create_table_view_column_checks=0.00 avg_create_table_view_column_nullabilities=0.07 avg_create_table_view_column_generated_storage_kinds=0.00 avg_create_table_view_column_type_nodes=0.29 avg_create_table_view_column_options_nodes=0.12 avg_create_table_view_key_handles=0.06 avg_create_table_view_named_keys=0.02 avg_create_table_view_key_index_types=0.00 avg_create_table_view_key_visibilities=0.00 avg_create_table_view_key_comments=0.00 avg_create_table_view_key_parsers=0.00 avg_create_table_view_key_block_sizes=0.00 avg_create_table_view_key_column_handles=0.09 avg_create_table_view_named_key_columns=0.09 avg_create_table_view_ordered_key_columns=0.00 avg_create_table_view_prefixed_key_columns=0.00 avg_create_table_view_expression_key_columns=0.00 avg_create_table_view_referenced_column_handles=0.00 avg_create_table_view_named_referenced_columns=0.00 avg_create_table_view_key_option_handles=0.00 avg_create_table_view_key_option_values=0.00 avg_create_table_view_key_option_identifier_values=0.00 avg_create_table_view_key_option_string_values=0.00 avg_create_table_view_key_option_unsigned_integer_values=0.00 avg_create_table_view_key_option_index_type_values=0.00 avg_create_table_view_option_handles=0.04 avg_create_table_view_option_values=0.04 avg_create_table_view_option_identifier_values=0.04 avg_create_table_view_option_string_values=0.00 avg_create_table_view_option_unsigned_integer_values=0.00 avg_create_table_view_option_list_values=0.00 avg_alter_table_views=0.03 avg_alter_table_schema_values=0.00 avg_alter_table_name_values=0.03 avg_alter_table_specs=0.04 avg_alter_table_named_specs=0.02 avg_alter_table_secondary_named_specs=0.00 avg_alter_table_renamed_tables=0.00 avg_alter_table_column_payloads=0.01 avg_alter_table_column_known_types=0.01 avg_alter_table_key_payloads=0.01 avg_alter_table_key_columns=0.02 avg_alter_table_options=0.00 avg_alter_table_if_exists=0.00 avg_alter_table_if_not_exists=0.00 avg_create_database_views=0.00 avg_create_database_name_values=0.00 avg_create_database_options=0.00 avg_create_database_option_values=0.00 avg_create_database_charset_values=0.00 avg_create_database_collation_values=0.00 avg_create_database_encryption_values=0.00 avg_create_database_if_not_exists=0.00 avg_create_database_schema_keywords=0.00 avg_create_index_views=0.00 avg_create_index_name_values=0.00 avg_create_index_table_name_values=0.00 avg_create_index_columns=0.00 avg_create_index_options=0.00 avg_create_index_comments=0.00 avg_create_index_key_block_sizes=0.00 avg_drop_database_views=0.00 avg_drop_database_name_values=0.00 avg_drop_database_if_exists=0.00 avg_drop_database_schema_keywords=0.00 avg_drop_index_views=0.00 avg_drop_index_name_values=0.00 avg_drop_index_table_name_values=0.00 avg_drop_index_if_exists=0.00 avg_drop_table_views=0.02 avg_drop_table_tables=0.03 avg_drop_table_if_exists=0.00 avg_rename_table_views=0.00 avg_rename_table_pairs=0.00 avg_truncate_table_views=0.00 avg_truncate_table_name_values=0.00 avg_truncate_table_table_keywords=0.00 avg_key_constraint_name_values=0.00 avg_key_name_values=0.02 avg_key_referenced_table_schema_values=0.00 avg_key_referenced_table_name_values=0.00 avg_key_columns=0.09 avg_key_column_name_values=0.09 avg_key_referenced_column_name_values=0.00 avg_key_options=0.00 avg_options=0.04 avg_column_name_values=0.29 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.963131 qps=498033 mbps=37.88 avg_us=2.008
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=22.845677 qps=304395 mbps=23.15 avg_us=3.285 avg_nodes=74.5 avg_ast_bytes=10246.4 avg_statements=1.00 avg_targets=0.59 avg_target_schema_values=0.02 avg_target_name_values=0.59 avg_columns=0.29 avg_keys=0.06 avg_create_table_views=0.13 avg_create_table_view_schema_values=0.00 avg_create_table_view_name_values=0.13 avg_create_table_view_summary_engines=0.03 avg_create_table_view_summary_comments=0.00 avg_create_table_view_summary_auto_increments=0.00 avg_create_table_view_columns=0.29 avg_create_table_view_keys=0.06 avg_create_table_view_options=0.04 avg_create_table_view_column_handles=0.29 avg_create_table_view_known_column_types=0.29 avg_create_table_view_column_type_numeric_params=0.11 avg_create_table_view_column_type_element_handles=0.05 avg_create_table_view_column_type_element_values=0.05 avg_create_table_view_column_type_lengths=0.09 avg_create_table_view_column_type_unsigned_attrs=0.01 avg_create_table_view_column_type_charset_values=0.01 avg_create_table_view_column_type_collation_values=0.00 avg_create_table_view_column_option_spans=0.12 avg_create_table_view_column_defaults=0.05 avg_create_table_view_column_default_values=0.05 avg_create_table_view_column_default_unsigned_values=0.00 avg_create_table_view_column_on_update_values=0.00 avg_create_table_view_column_comments=0.00 avg_create_table_view_column_comment_values=0.00 avg_create_table_view_column_checks=0.00 avg_create_table_view_column_nullabilities=0.07 avg_create_table_view_column_generated_storage_kinds=0.00 avg_create_table_view_column_type_nodes=0.29 avg_create_table_view_column_options_nodes=0.12 avg_create_table_view_key_handles=0.06 avg_create_table_view_named_keys=0.02 avg_create_table_view_key_index_types=0.00 avg_create_table_view_key_visibilities=0.00 avg_create_table_view_key_comments=0.00 avg_create_table_view_key_parsers=0.00 avg_create_table_view_key_block_sizes=0.00 avg_create_table_view_key_column_handles=0.09 avg_create_table_view_named_key_columns=0.09 avg_create_table_view_ordered_key_columns=0.00 avg_create_table_view_prefixed_key_columns=0.00 avg_create_table_view_expression_key_columns=0.00 avg_create_table_view_referenced_column_handles=0.00 avg_create_table_view_named_referenced_columns=0.00 avg_create_table_view_key_option_handles=0.00 avg_create_table_view_key_option_values=0.00 avg_create_table_view_key_option_identifier_values=0.00 avg_create_table_view_key_option_string_values=0.00 avg_create_table_view_key_option_unsigned_integer_values=0.00 avg_create_table_view_key_option_index_type_values=0.00 avg_create_table_view_option_handles=0.04 avg_create_table_view_option_values=0.04 avg_create_table_view_option_identifier_values=0.04 avg_create_table_view_option_string_values=0.00 avg_create_table_view_option_unsigned_integer_values=0.00 avg_create_table_view_option_list_values=0.00 avg_alter_table_views=0.03 avg_alter_table_schema_values=0.00 avg_alter_table_name_values=0.03 avg_alter_table_specs=0.04 avg_alter_table_named_specs=0.02 avg_alter_table_secondary_named_specs=0.00 avg_alter_table_renamed_tables=0.00 avg_alter_table_column_payloads=0.01 avg_alter_table_column_known_types=0.01 avg_alter_table_key_payloads=0.01 avg_alter_table_key_columns=0.02 avg_alter_table_options=0.00 avg_alter_table_if_exists=0.00 avg_alter_table_if_not_exists=0.00 avg_create_database_views=0.00 avg_create_database_name_values=0.00 avg_create_database_options=0.00 avg_create_database_option_values=0.00 avg_create_database_charset_values=0.00 avg_create_database_collation_values=0.00 avg_create_database_encryption_values=0.00 avg_create_database_if_not_exists=0.00 avg_create_database_schema_keywords=0.00 avg_create_index_views=0.00 avg_create_index_name_values=0.00 avg_create_index_table_name_values=0.00 avg_create_index_columns=0.00 avg_create_index_options=0.00 avg_create_index_comments=0.00 avg_create_index_key_block_sizes=0.00 avg_create_view_views=0.01 avg_create_view_schema_values=0.00 avg_create_view_name_values=0.01 avg_create_view_columns=0.00 avg_create_view_column_values=0.00 avg_create_view_or_replace=0.00 avg_create_view_algorithms=0.00 avg_create_view_sql_securities=0.00 avg_create_view_check_options=0.00 avg_create_view_select_nodes=0.01 avg_drop_database_views=0.00 avg_drop_database_name_values=0.00 avg_drop_database_if_exists=0.00 avg_drop_database_schema_keywords=0.00 avg_drop_index_views=0.00 avg_drop_index_name_values=0.00 avg_drop_index_table_name_values=0.00 avg_drop_index_if_exists=0.00 avg_drop_table_views=0.02 avg_drop_table_tables=0.03 avg_drop_table_if_exists=0.00 avg_drop_view_views=0.00 avg_drop_view_view_targets=0.01 avg_drop_view_if_exists=0.00 avg_drop_view_modes=0.00 avg_rename_table_views=0.00 avg_rename_table_pairs=0.00 avg_truncate_table_views=0.00 avg_truncate_table_name_values=0.00 avg_truncate_table_table_keywords=0.00 avg_key_constraint_name_values=0.00 avg_key_name_values=0.02 avg_key_referenced_table_schema_values=0.00 avg_key_referenced_table_name_values=0.00 avg_key_columns=0.09 avg_key_column_name_values=0.09 avg_key_referenced_column_name_values=0.00 avg_key_options=0.00 avg_options=0.04 avg_column_name_values=0.29 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -301,7 +311,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 183K on disk, 109,785 bytes text/data/other
+parser support object: 192K on disk, 114,295 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.3M on disk
 mylite-parse: 1.1M on disk

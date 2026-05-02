@@ -189,9 +189,11 @@ static int expect_create_table_options(const char *sql,
 static int expect_alter_table_view(void);
 static int expect_create_database_view(void);
 static int expect_create_index_view(void);
+static int expect_create_view_view(void);
 static int expect_drop_database_view(void);
 static int expect_drop_index_view(void);
 static int expect_drop_table_view(void);
+static int expect_drop_view_view(void);
 static int expect_rename_table_view(void);
 static int expect_truncate_table_view(void);
 static int span_matches(const char *sql, size_t start, size_t end,
@@ -784,9 +786,11 @@ int main(void) {
   failures += expect_alter_table_view();
   failures += expect_create_database_view();
   failures += expect_create_index_view();
+  failures += expect_create_view_view();
   failures += expect_drop_database_view();
   failures += expect_drop_index_view();
   failures += expect_drop_table_view();
+  failures += expect_drop_view_view();
   failures += expect_rename_table_view();
   failures += expect_truncate_table_view();
   {
@@ -3309,6 +3313,73 @@ static int expect_create_database_view(void) {
   return failed;
 }
 
+static int expect_create_view_view(void) {
+  const char *sql =
+      "CREATE OR REPLACE ALGORITHM=MERGE DEFINER=`u``x`@`h``x` SQL SECURITY "
+      "INVOKER VIEW db1.v1 (c1, `c``2`) AS SELECT 1 AS c1, 2 AS c2 WITH "
+      "CASCADED CHECK OPTION";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "CREATE VIEW view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstCreateView *view = mylite_ast_create_view_view(ast, 0);
+  const MyliteAstViewColumn *first_column =
+      mylite_ast_create_view_view_column_at(view, 0);
+  const MyliteAstViewColumn *second_column =
+      mylite_ast_create_view_view_column_at(view, 1);
+  int failed = 0;
+  if (view == NULL ||
+      mylite_ast_create_view_view_node(view) == NULL ||
+      !mylite_ast_create_view_view_has_or_replace(view) ||
+      mylite_ast_create_view_view_algorithm(view) !=
+          MYLITE_CREATE_VIEW_ALGORITHM_MERGE ||
+      mylite_ast_create_view_view_sql_security(view) !=
+          MYLITE_VIEW_SQL_SECURITY_INVOKER ||
+      mylite_ast_create_view_view_check_option(view) !=
+          MYLITE_VIEW_CHECK_OPTION_CASCADED ||
+      !value_matches_when_expected(
+          mylite_ast_create_view_view_schema_value(view),
+          mylite_ast_create_view_view_schema_value_length(view), "db1") ||
+      !value_matches_when_expected(
+          mylite_ast_create_view_view_name_value(view),
+          mylite_ast_create_view_view_name_value_length(view), "v1") ||
+      !span_matches(sql, mylite_ast_create_view_view_definer_start(view),
+                    mylite_ast_create_view_view_definer_end(view),
+                    "DEFINER=`u``x`@`h``x`") ||
+      mylite_ast_create_view_view_select_node(view) == NULL ||
+      !span_matches(sql, mylite_ast_create_view_view_select_start(view),
+                    mylite_ast_create_view_view_select_end(view),
+                    "SELECT 1 AS c1, 2 AS c2") ||
+      mylite_ast_create_view_view_column_count(view) != 2 ||
+      first_column == NULL ||
+      !span_matches(sql, mylite_ast_view_column_view_start(first_column),
+                    mylite_ast_view_column_view_end(first_column), "c1") ||
+      !value_matches_when_expected(
+          mylite_ast_view_column_view_name_value(first_column),
+          mylite_ast_view_column_view_name_value_length(first_column), "c1") ||
+      second_column == NULL ||
+      !span_matches(sql, mylite_ast_view_column_view_start(second_column),
+                    mylite_ast_view_column_view_end(second_column),
+                    "`c``2`") ||
+      !value_matches_when_expected(
+          mylite_ast_view_column_view_name_value(second_column),
+          mylite_ast_view_column_view_name_value_length(second_column), "c`2")) {
+    fprintf(stderr, "CREATE VIEW view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
 static int expect_drop_database_view(void) {
   const char *sql = "DROP SCHEMA IF EXISTS `db``x`";
   MyliteParseResult result;
@@ -3335,6 +3406,45 @@ static int expect_drop_database_view(void) {
           mylite_ast_drop_database_view_name_value(view),
           mylite_ast_drop_database_view_name_value_length(view), "db`x")) {
     fprintf(stderr, "DROP DATABASE view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_drop_view_view(void) {
+  const char *sql = "DROP VIEW IF EXISTS db1.v1, v2 RESTRICT";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "DROP VIEW view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstDropView *view = mylite_ast_drop_view_view(ast, 0);
+  int failed = 0;
+  if (view == NULL ||
+      mylite_ast_drop_view_view_node(view) == NULL ||
+      !mylite_ast_drop_view_view_has_if_exists(view) ||
+      mylite_ast_drop_view_view_mode(view) != MYLITE_DROP_VIEW_MODE_RESTRICT ||
+      mylite_ast_drop_view_view_view_count(view) != 2 ||
+      !value_matches_when_expected(
+          mylite_ast_drop_view_view_schema_value_at(view, 0),
+          mylite_ast_drop_view_view_schema_value_length_at(view, 0), "db1") ||
+      !value_matches_when_expected(
+          mylite_ast_drop_view_view_name_value_at(view, 0),
+          mylite_ast_drop_view_view_name_value_length_at(view, 0), "v1") ||
+      mylite_ast_drop_view_view_schema_value_at(view, 1) != NULL ||
+      !value_matches_when_expected(
+          mylite_ast_drop_view_view_name_value_at(view, 1),
+          mylite_ast_drop_view_view_name_value_length_at(view, 1), "v2")) {
+    fprintf(stderr, "DROP VIEW view failed: %s\n", sql);
     failed = 1;
   }
 

@@ -146,6 +146,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_index_options = 0;
   size_t create_index_comments = 0;
   size_t create_index_key_block_sizes = 0;
+  size_t create_view_views = 0;
+  size_t create_view_schema_values = 0;
+  size_t create_view_name_values = 0;
+  size_t create_view_columns = 0;
+  size_t create_view_column_values = 0;
+  size_t create_view_or_replace = 0;
+  size_t create_view_algorithms = 0;
+  size_t create_view_sql_securities = 0;
+  size_t create_view_check_options = 0;
+  size_t create_view_select_nodes = 0;
   size_t drop_database_views = 0;
   size_t drop_database_name_values = 0;
   size_t drop_database_if_exists = 0;
@@ -157,6 +167,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t drop_table_views = 0;
   size_t drop_table_tables = 0;
   size_t drop_table_if_exists = 0;
+  size_t drop_view_views = 0;
+  size_t drop_view_view_targets = 0;
+  size_t drop_view_if_exists = 0;
+  size_t drop_view_modes = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t truncate_table_views = 0;
@@ -615,6 +629,47 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 create_index_key_block_sizes++;
               }
             }
+            const MyliteAstCreateView *create_view =
+                mylite_ast_create_view_view(ast, i);
+            if (create_view != NULL) {
+              create_view_views++;
+              if (mylite_ast_create_view_view_schema_value(create_view) !=
+                  NULL) {
+                create_view_schema_values++;
+              }
+              if (mylite_ast_create_view_view_name_value(create_view) != NULL) {
+                create_view_name_values++;
+              }
+              create_view_columns +=
+                  mylite_ast_create_view_view_column_count(create_view);
+              for (size_t j = 0;
+                   j < mylite_ast_create_view_view_column_count(create_view);
+                   j++) {
+                const MyliteAstViewColumn *column =
+                    mylite_ast_create_view_view_column_at(create_view, j);
+                if (mylite_ast_view_column_view_name_value(column) != NULL) {
+                  create_view_column_values++;
+                }
+              }
+              if (mylite_ast_create_view_view_has_or_replace(create_view)) {
+                create_view_or_replace++;
+              }
+              if (mylite_ast_create_view_view_algorithm(create_view) !=
+                  MYLITE_CREATE_VIEW_ALGORITHM_UNSPECIFIED) {
+                create_view_algorithms++;
+              }
+              if (mylite_ast_create_view_view_sql_security(create_view) !=
+                  MYLITE_VIEW_SQL_SECURITY_UNSPECIFIED) {
+                create_view_sql_securities++;
+              }
+              if (mylite_ast_create_view_view_check_option(create_view) !=
+                  MYLITE_VIEW_CHECK_OPTION_NONE) {
+                create_view_check_options++;
+              }
+              if (mylite_ast_create_view_view_select_node(create_view) != NULL) {
+                create_view_select_nodes++;
+              }
+            }
             const MyliteAstDropIndex *drop_index =
                 mylite_ast_drop_index_view(ast, i);
             if (drop_index != NULL) {
@@ -654,6 +709,20 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                   mylite_ast_drop_table_view_table_count(drop_table);
               if (mylite_ast_drop_table_view_has_if_exists(drop_table)) {
                 drop_table_if_exists++;
+              }
+            }
+            const MyliteAstDropView *drop_view =
+                mylite_ast_drop_view_view(ast, i);
+            if (drop_view != NULL) {
+              drop_view_views++;
+              drop_view_view_targets +=
+                  mylite_ast_drop_view_view_view_count(drop_view);
+              if (mylite_ast_drop_view_view_has_if_exists(drop_view)) {
+                drop_view_if_exists++;
+              }
+              if (mylite_ast_drop_view_view_mode(drop_view) !=
+                  MYLITE_DROP_VIEW_MODE_UNSPECIFIED) {
+                drop_view_modes++;
               }
             }
             const MyliteAstRenameTable *rename_table =
@@ -920,6 +989,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_index_columns=%.2f avg_create_index_options=%.2f "
            "avg_create_index_comments=%.2f "
            "avg_create_index_key_block_sizes=%.2f "
+           "avg_create_view_views=%.2f "
+           "avg_create_view_schema_values=%.2f "
+           "avg_create_view_name_values=%.2f "
+           "avg_create_view_columns=%.2f "
+           "avg_create_view_column_values=%.2f "
+           "avg_create_view_or_replace=%.2f "
+           "avg_create_view_algorithms=%.2f "
+           "avg_create_view_sql_securities=%.2f "
+           "avg_create_view_check_options=%.2f "
+           "avg_create_view_select_nodes=%.2f "
            "avg_drop_database_views=%.2f "
            "avg_drop_database_name_values=%.2f "
            "avg_drop_database_if_exists=%.2f "
@@ -930,6 +1009,8 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_drop_index_if_exists=%.2f "
            "avg_drop_table_views=%.2f avg_drop_table_tables=%.2f "
            "avg_drop_table_if_exists=%.2f "
+           "avg_drop_view_views=%.2f avg_drop_view_view_targets=%.2f "
+           "avg_drop_view_if_exists=%.2f avg_drop_view_modes=%.2f "
            "avg_rename_table_views=%.2f avg_rename_table_pairs=%.2f "
            "avg_truncate_table_views=%.2f "
            "avg_truncate_table_name_values=%.2f "
@@ -1047,6 +1128,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)create_index_options / (double)parsed,
            (double)create_index_comments / (double)parsed,
            (double)create_index_key_block_sizes / (double)parsed,
+           (double)create_view_views / (double)parsed,
+           (double)create_view_schema_values / (double)parsed,
+           (double)create_view_name_values / (double)parsed,
+           (double)create_view_columns / (double)parsed,
+           (double)create_view_column_values / (double)parsed,
+           (double)create_view_or_replace / (double)parsed,
+           (double)create_view_algorithms / (double)parsed,
+           (double)create_view_sql_securities / (double)parsed,
+           (double)create_view_check_options / (double)parsed,
+           (double)create_view_select_nodes / (double)parsed,
            (double)drop_database_views / (double)parsed,
            (double)drop_database_name_values / (double)parsed,
            (double)drop_database_if_exists / (double)parsed,
@@ -1058,6 +1149,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)drop_table_views / (double)parsed,
            (double)drop_table_tables / (double)parsed,
            (double)drop_table_if_exists / (double)parsed,
+           (double)drop_view_views / (double)parsed,
+           (double)drop_view_view_targets / (double)parsed,
+           (double)drop_view_if_exists / (double)parsed,
+           (double)drop_view_modes / (double)parsed,
            (double)rename_table_views / (double)parsed,
            (double)rename_table_pairs / (double)parsed,
            (double)truncate_table_views / (double)parsed,

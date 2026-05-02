@@ -123,10 +123,13 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_create_table_view(ast, i);
     const MyliteAstCreateIndex *create_index =
         mylite_ast_create_index_view(ast, i);
+    const MyliteAstCreateView *create_view =
+        mylite_ast_create_view_view(ast, i);
     const MyliteAstDropDatabase *drop_database =
         mylite_ast_drop_database_view(ast, i);
     const MyliteAstDropIndex *drop_index = mylite_ast_drop_index_view(ast, i);
     const MyliteAstDropTable *drop_table = mylite_ast_drop_table_view(ast, i);
+    const MyliteAstDropView *drop_view = mylite_ast_drop_view_view(ast, i);
     const MyliteAstRenameTable *rename_table =
         mylite_ast_rename_table_view(ast, i);
     const MyliteAstTruncateTable *truncate_table =
@@ -463,6 +466,58 @@ static void dump_statements(const MyliteAst *ast) {
                  create_index),
              mylite_ast_create_index_view_key_block_size_value(create_index));
     }
+    if (create_view != NULL) {
+      printf("  create_view span=%zu..%zu or_replace=%d algorithm=%s "
+             "security=%s check_option=%s columns=%zu select=%zu..%zu "
+             "view=",
+             mylite_ast_create_view_view_start(create_view),
+             mylite_ast_create_view_view_end(create_view),
+             mylite_ast_create_view_view_has_or_replace(create_view),
+             mylite_create_view_algorithm_name(
+                 mylite_ast_create_view_view_algorithm(create_view)),
+             mylite_view_sql_security_name(
+                 mylite_ast_create_view_view_sql_security(create_view)),
+             mylite_view_check_option_name(
+                 mylite_ast_create_view_view_check_option(create_view)),
+             mylite_ast_create_view_view_column_count(create_view),
+             mylite_ast_create_view_view_select_start(create_view),
+             mylite_ast_create_view_view_select_end(create_view));
+      const char *schema =
+          mylite_ast_create_view_view_schema_value(create_view);
+      size_t schema_length =
+          mylite_ast_create_view_view_schema_value_length(create_view);
+      if (schema != NULL) {
+        print_escaped_bytes(schema, schema_length);
+        fputc('.', stdout);
+      }
+      const char *name = mylite_ast_create_view_view_name_value(create_view);
+      size_t name_length =
+          mylite_ast_create_view_view_name_value_length(create_view);
+      if (name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(name, name_length);
+      }
+      fputc('\n', stdout);
+      for (size_t j = 0;
+           j < mylite_ast_create_view_view_column_count(create_view); j++) {
+        const MyliteAstViewColumn *column =
+            mylite_ast_create_view_view_column_at(create_view, j);
+        printf("    view_column[%zu] span=%zu..%zu name_len=%zu name=", j,
+               mylite_ast_view_column_view_start(column),
+               mylite_ast_view_column_view_end(column),
+               mylite_ast_view_column_view_name_value_length(column));
+        const char *column_name = mylite_ast_view_column_view_name_value(column);
+        size_t column_name_length =
+            mylite_ast_view_column_view_name_value_length(column);
+        if (column_name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(column_name, column_name_length);
+        }
+        fputc('\n', stdout);
+      }
+    }
     if (drop_database != NULL) {
       printf("  drop_database span=%zu..%zu if_exists=%d schema_keyword=%d "
              "name_len=%zu name=",
@@ -516,6 +571,15 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_drop_table_view_is_temporary(drop_table),
              mylite_ast_drop_table_view_has_if_exists(drop_table),
              mylite_ast_drop_table_view_table_count(drop_table));
+    }
+    if (drop_view != NULL) {
+      printf("  drop_view span=%zu..%zu if_exists=%d mode=%s views=%zu\n",
+             mylite_ast_drop_view_view_start(drop_view),
+             mylite_ast_drop_view_view_end(drop_view),
+             mylite_ast_drop_view_view_has_if_exists(drop_view),
+             mylite_drop_view_mode_name(
+                 mylite_ast_drop_view_view_mode(drop_view)),
+             mylite_ast_drop_view_view_view_count(drop_view));
     }
     if (rename_table != NULL) {
       printf("  rename_table span=%zu..%zu pairs=%zu\n",

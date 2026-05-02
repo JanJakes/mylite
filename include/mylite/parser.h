@@ -41,6 +41,9 @@ typedef struct MyliteAstDropTable MyliteAstDropTable;
 typedef struct MyliteAstNode MyliteAstNode;
 typedef struct MyliteAstRenameTable MyliteAstRenameTable;
 typedef struct MyliteAstTruncateTable MyliteAstTruncateTable;
+typedef struct MyliteAstCreateView MyliteAstCreateView;
+typedef struct MyliteAstDropView MyliteAstDropView;
+typedef struct MyliteAstViewColumn MyliteAstViewColumn;
 
 typedef enum MyliteAstNodeKind {
   MYLITE_AST_NODE_RULE = 1,
@@ -349,6 +352,31 @@ typedef enum MyliteDatabaseOptionValueKind {
   MYLITE_DATABASE_OPTION_VALUE_DEFAULT
 } MyliteDatabaseOptionValueKind;
 
+typedef enum MyliteCreateViewAlgorithm {
+  MYLITE_CREATE_VIEW_ALGORITHM_UNSPECIFIED = 0,
+  MYLITE_CREATE_VIEW_ALGORITHM_UNDEFINED,
+  MYLITE_CREATE_VIEW_ALGORITHM_MERGE,
+  MYLITE_CREATE_VIEW_ALGORITHM_TEMPTABLE
+} MyliteCreateViewAlgorithm;
+
+typedef enum MyliteViewSqlSecurity {
+  MYLITE_VIEW_SQL_SECURITY_UNSPECIFIED = 0,
+  MYLITE_VIEW_SQL_SECURITY_DEFINER,
+  MYLITE_VIEW_SQL_SECURITY_INVOKER
+} MyliteViewSqlSecurity;
+
+typedef enum MyliteViewCheckOption {
+  MYLITE_VIEW_CHECK_OPTION_NONE = 0,
+  MYLITE_VIEW_CHECK_OPTION_CASCADED,
+  MYLITE_VIEW_CHECK_OPTION_LOCAL
+} MyliteViewCheckOption;
+
+typedef enum MyliteDropViewMode {
+  MYLITE_DROP_VIEW_MODE_UNSPECIFIED = 0,
+  MYLITE_DROP_VIEW_MODE_RESTRICT,
+  MYLITE_DROP_VIEW_MODE_CASCADE
+} MyliteDropViewMode;
+
 typedef enum MyliteAlterTableSpecKind {
   MYLITE_ALTER_TABLE_SPEC_UNKNOWN = 0,
   MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS,
@@ -431,6 +459,10 @@ const char *mylite_create_table_option_value_kind_name(
 const char *mylite_database_option_kind_name(MyliteDatabaseOptionKind kind);
 const char *mylite_database_option_value_kind_name(
     MyliteDatabaseOptionValueKind kind);
+const char *mylite_create_view_algorithm_name(MyliteCreateViewAlgorithm algorithm);
+const char *mylite_view_sql_security_name(MyliteViewSqlSecurity security);
+const char *mylite_view_check_option_name(MyliteViewCheckOption check_option);
+const char *mylite_drop_view_mode_name(MyliteDropViewMode mode);
 const char *mylite_alter_table_spec_kind_name(MyliteAlterTableSpecKind kind);
 
 void mylite_ast_free(MyliteAst *ast);
@@ -498,11 +530,15 @@ const MyliteAstCreateTable *mylite_ast_create_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstCreateIndex *mylite_ast_create_index_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstCreateView *mylite_ast_create_view_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstDropDatabase *mylite_ast_drop_database_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDropIndex *mylite_ast_drop_index_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDropTable *mylite_ast_drop_table_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstDropView *mylite_ast_drop_view_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstRenameTable *mylite_ast_rename_table_view(
     const MyliteAst *ast, size_t statement_index);
@@ -781,6 +817,70 @@ const char *mylite_ast_database_option_view_value(
     const MyliteAstDatabaseOption *option);
 size_t mylite_ast_database_option_view_value_length(
     const MyliteAstDatabaseOption *option);
+const MyliteAstNode *mylite_ast_create_view_view_node(
+    const MyliteAstCreateView *create_view);
+size_t mylite_ast_create_view_view_start(
+    const MyliteAstCreateView *create_view);
+size_t mylite_ast_create_view_view_end(
+    const MyliteAstCreateView *create_view);
+int mylite_ast_create_view_view_has_or_replace(
+    const MyliteAstCreateView *create_view);
+MyliteCreateViewAlgorithm mylite_ast_create_view_view_algorithm(
+    const MyliteAstCreateView *create_view);
+MyliteViewSqlSecurity mylite_ast_create_view_view_sql_security(
+    const MyliteAstCreateView *create_view);
+MyliteViewCheckOption mylite_ast_create_view_view_check_option(
+    const MyliteAstCreateView *create_view);
+size_t mylite_ast_create_view_view_name_start(
+    const MyliteAstCreateView *create_view);
+size_t mylite_ast_create_view_view_name_end(
+    const MyliteAstCreateView *create_view);
+const char *mylite_ast_create_view_view_schema_value(
+    const MyliteAstCreateView *create_view);
+size_t mylite_ast_create_view_view_schema_value_length(
+    const MyliteAstCreateView *create_view);
+const char *mylite_ast_create_view_view_name_value(
+    const MyliteAstCreateView *create_view);
+size_t mylite_ast_create_view_view_name_value_length(
+    const MyliteAstCreateView *create_view);
+size_t mylite_ast_create_view_view_definer_start(
+    const MyliteAstCreateView *create_view);
+size_t mylite_ast_create_view_view_definer_end(
+    const MyliteAstCreateView *create_view);
+const MyliteAstNode *mylite_ast_create_view_view_select_node(
+    const MyliteAstCreateView *create_view);
+size_t mylite_ast_create_view_view_select_start(
+    const MyliteAstCreateView *create_view);
+size_t mylite_ast_create_view_view_select_end(
+    const MyliteAstCreateView *create_view);
+size_t mylite_ast_create_view_view_column_count(
+    const MyliteAstCreateView *create_view);
+const MyliteAstViewColumn *mylite_ast_create_view_view_column_at(
+    const MyliteAstCreateView *create_view, size_t column_index);
+size_t mylite_ast_view_column_view_start(const MyliteAstViewColumn *column);
+size_t mylite_ast_view_column_view_end(const MyliteAstViewColumn *column);
+const char *mylite_ast_view_column_view_name_value(
+    const MyliteAstViewColumn *column);
+size_t mylite_ast_view_column_view_name_value_length(
+    const MyliteAstViewColumn *column);
+const MyliteAstNode *mylite_ast_drop_view_view_node(
+    const MyliteAstDropView *drop_view);
+size_t mylite_ast_drop_view_view_start(const MyliteAstDropView *drop_view);
+size_t mylite_ast_drop_view_view_end(const MyliteAstDropView *drop_view);
+int mylite_ast_drop_view_view_has_if_exists(
+    const MyliteAstDropView *drop_view);
+MyliteDropViewMode mylite_ast_drop_view_view_mode(
+    const MyliteAstDropView *drop_view);
+size_t mylite_ast_drop_view_view_view_count(
+    const MyliteAstDropView *drop_view);
+const char *mylite_ast_drop_view_view_schema_value_at(
+    const MyliteAstDropView *drop_view, size_t view_index);
+size_t mylite_ast_drop_view_view_schema_value_length_at(
+    const MyliteAstDropView *drop_view, size_t view_index);
+const char *mylite_ast_drop_view_view_name_value_at(
+    const MyliteAstDropView *drop_view, size_t view_index);
+size_t mylite_ast_drop_view_view_name_value_length_at(
+    const MyliteAstDropView *drop_view, size_t view_index);
 const MyliteAstNode *mylite_ast_drop_index_view_node(
     const MyliteAstDropIndex *drop_index);
 size_t mylite_ast_drop_index_view_start(

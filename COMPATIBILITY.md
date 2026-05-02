@@ -68,12 +68,15 @@ declared nullability, generated storage, key/constraint-detail with decoded
 identifier names, key-level index type, visibility, decoded key-option values,
 column-detail handles, key-part/key-option handles, table-option
 descriptor/value views, and compact table-option/key/column summaries. It also
-builds semantic parser views for `CREATE TABLE`, `CREATE DATABASE`, `ALTER
-TABLE`, `CREATE INDEX`, `DROP DATABASE`, `DROP INDEX`, `DROP TABLE`, `RENAME
-TABLE`, and `TRUNCATE TABLE` that expose opaque descriptor handles for the next
-typed AST layer. The `CREATE DATABASE` view currently covers decoded database
-targets, `IF NOT EXISTS`, `DATABASE`/`SCHEMA` keyword choice, database-option
-descriptors, and charset/collation/encryption summaries. The `ALTER TABLE` view
+builds semantic parser views for `CREATE TABLE`, `CREATE DATABASE`, `CREATE
+VIEW`, `ALTER TABLE`, `CREATE INDEX`, `DROP DATABASE`, `DROP INDEX`, `DROP
+TABLE`, `DROP VIEW`, `RENAME TABLE`, and `TRUNCATE TABLE` that expose opaque
+descriptor handles for the next typed AST layer. The `CREATE DATABASE` view
+currently covers decoded database targets, `IF NOT EXISTS`, `DATABASE`/`SCHEMA`
+keyword choice, database-option descriptors, and charset/collation/encryption
+summaries. The `CREATE VIEW` view currently covers decoded view targets, `OR
+REPLACE`, algorithm, SQL security, check-option kind, optional definer spans,
+explicit column descriptors, and the query CST anchor. The `ALTER TABLE` view
 currently covers decoded target tables, ordered coarse operation specs,
 operation names, nested rename/exchange table targets, reused table-option
 handles, and reused column/key descriptor payloads for single-column

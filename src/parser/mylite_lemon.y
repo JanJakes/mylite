@@ -3460,11 +3460,15 @@ dml_write_union_tail ::= values_union_option query_parenthesized_body.
 query_parenthesized_body ::= LP dml_write_query_start dml_write_parenthesized_query_tail RP query_parenthesized_tail.
 
 query_parenthesized_tail ::= .
+[INTO]
 query_parenthesized_tail ::= UNION dml_write_union_tail.
 query_parenthesized_tail ::= ORDER BY expression_start statement_tail.
 [INTO]
 query_parenthesized_tail ::= LIMIT ATOM statement_tail.
 [INTO]
+
+query_parenthesized_statement_tail ::= query_parenthesized_tail.
+query_parenthesized_statement_tail ::= INTO table_output_target.
 
 dml_write_duplicate_tail ::= DUPLICATE KEY UPDATE update_assignment_start.
 
@@ -3678,7 +3682,7 @@ with_query_body ::= REPLACE(A) replace_tail. {
 with_query_body ::= UPDATE(A) update_tail. {
   mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_UPDATE);
 }
-with_query_body ::= LP(A) dml_write_query_start dml_write_parenthesized_query_tail RP query_parenthesized_tail. {
+with_query_body ::= LP(A) dml_write_query_start dml_write_parenthesized_query_tail RP query_parenthesized_statement_tail. {
   mylite_parser_validate_parenthesized_statement(ctx, A);
 }
 

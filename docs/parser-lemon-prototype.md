@@ -170,8 +170,9 @@ token sink:
 - Top-level parenthesized query expressions reject stray suffixes after the
   outer `)`, validate `ORDER BY` expression-list tails plus `LIMIT`/`INTO`
   continuations, validate inner `SELECT`/`WITH`/`TABLE`/`VALUES` expression
-  tails, validate `INTO` variable-list tails, and require set-operation tails to
-  start with a query operand whose `SELECT` clause tail is well formed.
+  tails, validate `INTO` variable-list and file-output tails, and require
+  set-operation tails to start with a query operand whose `SELECT` clause tail
+  is well formed.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,
   MySQL's table-scan and indexed-read direction sets, equality/range tuple
   reads, `WHERE`, and numeric or identifier `LIMIT` tails, while rejecting

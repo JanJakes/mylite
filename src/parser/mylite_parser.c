@@ -2848,7 +2848,21 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     PAREN_QUERY_AFTER_LIMIT_FINAL_VALUE,
     PAREN_QUERY_AFTER_INTO,
     PAREN_QUERY_AFTER_INTO_AT,
-    PAREN_QUERY_AFTER_INTO_TARGET
+    PAREN_QUERY_AFTER_INTO_TARGET,
+    PAREN_QUERY_AFTER_OUTFILE,
+    PAREN_QUERY_AFTER_DUMPFILE,
+    PAREN_QUERY_OUTFILE_READY,
+    PAREN_QUERY_DUMPFILE_READY,
+    PAREN_QUERY_AFTER_CHARACTER,
+    PAREN_QUERY_AFTER_CHARSET,
+    PAREN_QUERY_AFTER_FIELDS,
+    PAREN_QUERY_AFTER_FIELD_OPTION,
+    PAREN_QUERY_AFTER_FIELD_BY,
+    PAREN_QUERY_AFTER_OPTIONALLY,
+    PAREN_QUERY_AFTER_OPTIONALLY_ENCLOSED,
+    PAREN_QUERY_AFTER_LINES,
+    PAREN_QUERY_AFTER_LINE_OPTION,
+    PAREN_QUERY_AFTER_LINE_BY
   };
   MyliteLexer lexer;
   MyliteToken token;
@@ -2857,6 +2871,8 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
   int saw_start = 0;
   int depth = 0;
   int state = PAREN_QUERY_IN_BODY;
+  int outfile_fields = 0;
+  int outfile_lines = 0;
   int order_depth = 0;
   MyliteExpressionStack order_expression_stack = {0};
   int order_previous_top_token_id = 0;
@@ -3081,6 +3097,18 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     }
 
     if (state == PAREN_QUERY_AFTER_INTO) {
+      if (token_id == ML_OUTFILE) {
+        state = PAREN_QUERY_AFTER_OUTFILE;
+        outfile_fields = 0;
+        outfile_lines = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_DUMPFILE) {
+        state = PAREN_QUERY_AFTER_DUMPFILE;
+        pending_token = token;
+        continue;
+      }
       if (token_id == ML_AT_SIGN) {
         state = PAREN_QUERY_AFTER_INTO_AT;
         pending_token = token;
@@ -3118,6 +3146,209 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
                            "malformed parenthesized query INTO");
       return;
     }
+
+    if (state == PAREN_QUERY_AFTER_OUTFILE) {
+      if (!create_table_tail_option_string_token(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO file target");
+        return;
+      }
+      state = PAREN_QUERY_OUTFILE_READY;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_DUMPFILE) {
+      if (!create_table_tail_option_string_token(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO file target");
+        return;
+      }
+      state = PAREN_QUERY_DUMPFILE_READY;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_OUTFILE_READY) {
+      if (token_id == ML_CHARACTER) {
+        if (outfile_fields || outfile_lines) {
+          mylite_parser_reject(ctx, token,
+                               "malformed parenthesized query INTO OUTFILE option");
+          return;
+        }
+        state = PAREN_QUERY_AFTER_CHARACTER;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_CHARSET) {
+        if (outfile_fields || outfile_lines) {
+          mylite_parser_reject(ctx, token,
+                               "malformed parenthesized query INTO OUTFILE option");
+          return;
+        }
+        state = PAREN_QUERY_AFTER_CHARSET;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_FIELDS || token_id == ML_COLUMNS) {
+        if (outfile_fields || outfile_lines) {
+          mylite_parser_reject(ctx, token,
+                               "malformed parenthesized query INTO OUTFILE option");
+          return;
+        }
+        outfile_fields = 1;
+        state = PAREN_QUERY_AFTER_FIELDS;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LINES) {
+        if (outfile_lines) {
+          mylite_parser_reject(ctx, token,
+                               "malformed parenthesized query INTO OUTFILE option");
+          return;
+        }
+        outfile_lines = 1;
+        state = PAREN_QUERY_AFTER_LINES;
+        pending_token = token;
+        continue;
+      }
+      if (select_outfile_line_option_start(token_id) && outfile_lines) {
+        state = PAREN_QUERY_AFTER_LINE_OPTION;
+        pending_token = token;
+        continue;
+      }
+      if (select_outfile_field_option_start(token_id)) {
+        if (!outfile_fields || outfile_lines) {
+          mylite_parser_reject(ctx, token,
+                               "malformed parenthesized query INTO OUTFILE option");
+          return;
+        }
+        state = token_id == ML_OPTIONALLY ? PAREN_QUERY_AFTER_OPTIONALLY
+                                          : PAREN_QUERY_AFTER_FIELD_OPTION;
+        pending_token = token;
+        continue;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed parenthesized query INTO OUTFILE option");
+      return;
+    }
+
+    if (state == PAREN_QUERY_DUMPFILE_READY) {
+      if (select_into_output_option_start(token_id)) {
+        mylite_parser_reject(ctx, token,
+                             "malformed parenthesized query INTO DUMPFILE option");
+        return;
+      }
+      mylite_parser_reject(ctx, token,
+                           "malformed parenthesized query INTO DUMPFILE option");
+      return;
+    }
+
+    if (state == PAREN_QUERY_AFTER_CHARACTER) {
+      if (token_id != ML_SET) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO OUTFILE charset");
+        return;
+      }
+      state = PAREN_QUERY_AFTER_CHARSET;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_CHARSET) {
+      if (!select_charset_name_token(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO OUTFILE charset");
+        return;
+      }
+      state = PAREN_QUERY_OUTFILE_READY;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_FIELDS) {
+      if (!select_outfile_field_option_start(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO OUTFILE fields option");
+        return;
+      }
+      state = token_id == ML_OPTIONALLY ? PAREN_QUERY_AFTER_OPTIONALLY
+                                        : PAREN_QUERY_AFTER_FIELD_OPTION;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_FIELD_OPTION) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO OUTFILE fields option");
+        return;
+      }
+      state = PAREN_QUERY_AFTER_FIELD_BY;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_FIELD_BY) {
+      if (!select_string_literal_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO OUTFILE fields option");
+        return;
+      }
+      state = PAREN_QUERY_OUTFILE_READY;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_OPTIONALLY) {
+      if (token_id != ML_ENCLOSED) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO OUTFILE fields option");
+        return;
+      }
+      state = PAREN_QUERY_AFTER_OPTIONALLY_ENCLOSED;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_OPTIONALLY_ENCLOSED) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO OUTFILE fields option");
+        return;
+      }
+      state = PAREN_QUERY_AFTER_FIELD_BY;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_LINES) {
+      if (!select_outfile_line_option_start(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO OUTFILE lines option");
+        return;
+      }
+      state = PAREN_QUERY_AFTER_LINE_OPTION;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_LINE_OPTION) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO OUTFILE lines option");
+        return;
+      }
+      state = PAREN_QUERY_AFTER_LINE_BY;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == PAREN_QUERY_AFTER_LINE_BY) {
+      if (!select_string_literal_token(token_id)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete parenthesized query INTO OUTFILE lines option");
+        return;
+      }
+      state = PAREN_QUERY_OUTFILE_READY;
+      continue;
+    }
   }
 
   if (state == PAREN_QUERY_AFTER_ORDER) {
@@ -3139,6 +3370,26 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
              state == PAREN_QUERY_AFTER_INTO_AT) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete parenthesized query INTO");
+  } else if (state == PAREN_QUERY_AFTER_OUTFILE ||
+             state == PAREN_QUERY_AFTER_DUMPFILE) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete parenthesized query INTO file target");
+  } else if (state == PAREN_QUERY_AFTER_CHARACTER ||
+             state == PAREN_QUERY_AFTER_CHARSET) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete parenthesized query INTO OUTFILE charset");
+  } else if (state == PAREN_QUERY_AFTER_FIELDS ||
+             state == PAREN_QUERY_AFTER_FIELD_OPTION ||
+             state == PAREN_QUERY_AFTER_FIELD_BY ||
+             state == PAREN_QUERY_AFTER_OPTIONALLY ||
+             state == PAREN_QUERY_AFTER_OPTIONALLY_ENCLOSED) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete parenthesized query INTO OUTFILE fields option");
+  } else if (state == PAREN_QUERY_AFTER_LINES ||
+             state == PAREN_QUERY_AFTER_LINE_OPTION ||
+             state == PAREN_QUERY_AFTER_LINE_BY) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete parenthesized query INTO OUTFILE lines option");
   }
 }
 

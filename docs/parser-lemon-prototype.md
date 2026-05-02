@@ -415,7 +415,7 @@ token sink:
   hex/bit rejection.
 - `EXPLAIN` and `DESCRIBE` recognize table-description forms, explainable
   statement starts including `TABLE` with validated query/DML tails, and
-  numeric `FOR CONNECTION` ids with optional `FORMAT` clauses.
+  unsigned integer-or-hex `FOR CONNECTION` ids with optional `FORMAT` clauses.
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
 - `CHANGE REPLICATION SOURCE TO` recognizes documented MySQL 8.4 source option

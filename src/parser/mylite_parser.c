@@ -11272,6 +11272,18 @@ void mylite_parser_require_unsigned_decimal_literal(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, token, "invalid numeric literal");
 }
 
+void mylite_parser_require_unsigned_integer_or_hex_literal(
+    MyliteParseContext *ctx, MyliteToken token) {
+  unsigned long value;
+
+  if (token_is_plain_unsigned_integer(token, &value) ||
+      token_is_hex_literal(token, 0)) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid integer literal");
+}
+
 void mylite_parser_require_text_string_literal(MyliteParseContext *ctx,
                                                MyliteToken token) {
   if (!token_is_quoted_hex_or_bit_literal(token)) {

@@ -3105,9 +3105,15 @@ explain_schema_spec ::= FOR explain_schema_kind cache_name_part.
 explain_schema_kind ::= SCHEMA.
 explain_schema_kind ::= DATABASE.
 
-explain_connection_id ::= BOOLEAN_NUMBER.
-explain_connection_id ::= FACTOR_NUMBER.
-explain_connection_id ::= NUMBER_LITERAL.
+explain_connection_id ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_or_hex_literal(ctx, A);
+}
+explain_connection_id ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_or_hex_literal(ctx, A);
+}
+explain_connection_id ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_integer_or_hex_literal(ctx, A);
+}
 
 explain_analyze_tail ::= ANALYZE explain_analyze_format_tail explain_schema_tail explain_analyze_query_start required_statement_tail.
 

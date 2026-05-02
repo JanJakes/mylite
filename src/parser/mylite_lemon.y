@@ -4355,17 +4355,37 @@ iterate_statement ::= ITERATE stored_program_label_ref. {
 
 stored_program_label_ref ::= cache_name_part.
 
-help_statement ::= HELP help_topic_tail. {
+help_statement ::= HELP help_topic. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
 }
 
-help_topic_tail ::= .
-help_topic_tail ::= help_topic.
+help_topic ::= cache_name_part.
+help_topic ::= string_literal.
+help_topic ::= help_topic_keyword.
 
-help_topic ::= ATOM.
-help_topic ::= LABEL.
-help_topic ::= keyword_not_select_clause.
-help_topic ::= STAR.
+help_topic_keyword ::= BEGIN.
+help_topic_keyword ::= CACHE.
+help_topic_keyword ::= DEALLOCATE.
+help_topic_keyword ::= DO.
+help_topic_keyword ::= FLUSH.
+help_topic_keyword ::= HANDLER.
+help_topic_keyword ::= HELP.
+help_topic_keyword ::= IMPORT.
+help_topic_keyword ::= INSTALL.
+help_topic_keyword ::= LANGUAGE.
+help_topic_keyword ::= NO.
+help_topic_keyword ::= PREPARE.
+help_topic_keyword ::= REPAIR.
+help_topic_keyword ::= RESET.
+help_topic_keyword ::= RESTART.
+help_topic_keyword ::= ROLLBACK.
+help_topic_keyword ::= SAVEPOINT.
+help_topic_keyword ::= SHUTDOWN.
+help_topic_keyword ::= START.
+help_topic_keyword ::= STOP.
+help_topic_keyword ::= TRUNCATE.
+help_topic_keyword ::= UNINSTALL.
+help_topic_keyword ::= XA.
 
 do_statement ::= DO(A) expression_start statement_tail. {
   mylite_parser_validate_do_statement(ctx, A);

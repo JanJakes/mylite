@@ -445,7 +445,8 @@ token sink:
   lists, table forms, log variants, and channel-qualified relay logs. Removed
   `FLUSH HOSTS` syntax is permissive-corpus-only.
 - `RESTART`, `SHUTDOWN`, and `HELP` recognize their closed parser-level
-  statement shapes, including no-topic `HELP`.
+  statement shapes, with `HELP` requiring MySQL-compatible string, identifier,
+  or unreserved keyword topics.
 - A permissive mode accepts extracted corpus fragments that are not standalone
   MySQL statements.
 - The lexer is recoverable for corpus rows that come from MySQL negative tests,

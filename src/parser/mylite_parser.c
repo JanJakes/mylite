@@ -49,6 +49,8 @@ typedef enum ColumnDefinitionTailState {
   COLUMN_DEFINITION_TAIL_REFERENCES_AFTER_NO,
   COLUMN_DEFINITION_TAIL_AFTER_CONSTRAINT,
   COLUMN_DEFINITION_TAIL_AFTER_CONSTRAINT_NAME,
+  COLUMN_DEFINITION_TAIL_AFTER_SERIAL_ATTRIBUTE,
+  COLUMN_DEFINITION_TAIL_AFTER_SERIAL_DEFAULT,
   COLUMN_DEFINITION_TAIL_AFTER_GENERATED,
   COLUMN_DEFINITION_TAIL_AFTER_ALWAYS,
   COLUMN_DEFINITION_TAIL_AFTER_AS
@@ -328,6 +330,8 @@ static int column_type_varying_token(int token_id, MyliteToken token);
 static int column_type_character_token(int token_id, MyliteToken token);
 static int column_type_varchar_token(int token_id, MyliteToken token);
 static int column_type_varbinary_token(int token_id, MyliteToken token);
+static int column_definition_serial_attribute_token(int token_id,
+                                                    MyliteToken token);
 static int column_type_integer_family_token(int token_id, MyliteToken token);
 static int column_type_real_family_token(int token_id, MyliteToken token);
 static int column_type_numeric_family_token(int token_id, MyliteToken token);
@@ -11972,6 +11976,9 @@ static int consume_column_type_tail_token_if_pending(
   }
 
   if (create_table_column_type_start(token_id, token)) {
+    if (column_definition_serial_attribute_token(token_id, token)) {
+      return 1;
+    }
     if (previous_state == COLUMN_TYPE_STATE_LONG) {
       if (column_type_varchar_token(token_id, token)) {
         *modifier_mask = COLUMN_TYPE_MODIFIER_CHARSET;
@@ -12095,6 +12102,12 @@ static int column_type_varchar_token(int token_id, MyliteToken token) {
 static int column_type_varbinary_token(int token_id, MyliteToken token) {
   (void) token_id;
   return token_ascii_equal(token, "varbinary");
+}
+
+static int column_definition_serial_attribute_token(int token_id,
+                                                    MyliteToken token) {
+  (void) token_id;
+  return token_ascii_equal(token, "serial");
 }
 
 static int column_type_integer_family_token(int token_id, MyliteToken token) {
@@ -12386,6 +12399,8 @@ static int column_definition_tail_token(
         *state == COLUMN_DEFINITION_TAIL_AFTER_REFERENCES_TABLE_DOT ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_CONSTRAINT ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_CONSTRAINT_NAME ||
+        *state == COLUMN_DEFINITION_TAIL_AFTER_SERIAL_ATTRIBUTE ||
+        *state == COLUMN_DEFINITION_TAIL_AFTER_SERIAL_DEFAULT ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_GENERATED ||
         *state == COLUMN_DEFINITION_TAIL_AFTER_ALWAYS) {
       mylite_parser_reject(ctx, *pending_token, message);
@@ -12423,11 +12438,6 @@ static int column_definition_tail_token(
   }
 
   if (*state == COLUMN_DEFINITION_TAIL_AFTER_DEFAULT) {
-    if (token_id == ML_VALUE) {
-      *state = COLUMN_DEFINITION_TAIL_AFTER_DEFAULT_VALUE;
-      *pending_token = token;
-      return 1;
-    }
     if (token_id == ML_MINUS || token_is_plus(token)) {
       *state = COLUMN_DEFINITION_TAIL_AFTER_VALUE_SIGN;
       *pending_token = token;
@@ -12756,6 +12766,26 @@ static int column_definition_tail_token(
     *state = COLUMN_DEFINITION_TAIL_READY;
   }
 
+  if (*state == COLUMN_DEFINITION_TAIL_AFTER_SERIAL_ATTRIBUTE) {
+    if (token_id != ML_DEFAULT) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_AFTER_SERIAL_DEFAULT;
+    *pending_token = token;
+    return 1;
+  }
+
+  if (*state == COLUMN_DEFINITION_TAIL_AFTER_SERIAL_DEFAULT) {
+    if (token_id != ML_VALUE) {
+      mylite_parser_reject(ctx, *pending_token, message);
+      return 0;
+    }
+    *state = COLUMN_DEFINITION_TAIL_AFTER_DEFAULT_VALUE;
+    *pending_token = token;
+    return 1;
+  }
+
   if (*state == COLUMN_DEFINITION_TAIL_AFTER_GENERATED) {
     if (token_ascii_equal(token, "always")) {
       *state = COLUMN_DEFINITION_TAIL_AFTER_ALWAYS;
@@ -12876,6 +12906,12 @@ static int column_definition_tail_token(
 
   if (token_id == ML_CONSTRAINT) {
     *state = COLUMN_DEFINITION_TAIL_AFTER_CONSTRAINT;
+    *pending_token = token;
+    return 1;
+  }
+
+  if (column_definition_serial_attribute_token(token_id, token)) {
+    *state = COLUMN_DEFINITION_TAIL_AFTER_SERIAL_ATTRIBUTE;
     *pending_token = token;
     return 1;
   }
@@ -13037,6 +13073,7 @@ static int column_definition_attribute_start(int token_id, MyliteToken token,
          token_ascii_equal(token, "column_format") ||
          token_ascii_equal(token, "generated") ||
          token_ascii_equal(token, "references") ||
+         column_definition_serial_attribute_token(token_id, token) ||
          token_ascii_equal(token, "srid") || token_ascii_equal(token, "stored") ||
          token_ascii_equal(token, "virtual");
 }

@@ -211,6 +211,10 @@ static void dump_statements(const MyliteAst *ast) {
       dump_create_table_view_handles(create_table);
     }
     for (size_t j = 0; j < column_count; j++) {
+      const MyliteAstCreateTableColumn *column_view =
+          create_table == NULL
+              ? NULL
+              : mylite_ast_create_table_view_column_at(create_table, j);
       printf("  column[%zu] family=%s kind=%s storage=%s flags=0x%x "
              "span=%zu..%zu "
              "name=%zu..%zu type=%zu..%zu type_name=%zu..%zu "
@@ -336,6 +340,78 @@ static void dump_statements(const MyliteAst *ast) {
         fputs("none", stdout);
       } else {
         print_escaped_bytes(column_name_value, column_name_value_length);
+      }
+      fputc('\n', stdout);
+      printf("    column[%zu].summary nullability=%s generated_storage=%s "
+             "default_kind=%s default_unsigned=%d:%llu on_update_kind=%s\n",
+             j,
+             mylite_create_table_column_nullability_name(
+                 mylite_ast_create_table_column_view_nullability(column_view)),
+             mylite_create_table_column_generated_storage_name(
+                 mylite_ast_create_table_column_view_generated_storage_kind(
+                     column_view)),
+             mylite_create_table_column_value_kind_name(
+                 mylite_ast_create_table_column_view_default_value_kind(
+                     column_view)),
+             mylite_ast_create_table_column_view_has_default_unsigned_integer(
+                 column_view),
+             mylite_ast_create_table_column_view_default_unsigned_integer_value(
+                 column_view),
+             mylite_create_table_column_value_kind_name(
+                 mylite_ast_create_table_column_view_on_update_value_kind(
+                     column_view)));
+      printf("    column[%zu].values charset=", j);
+      const char *charset_value =
+          mylite_ast_create_table_column_view_type_charset_value(column_view);
+      size_t charset_value_length =
+          mylite_ast_create_table_column_view_type_charset_value_length(
+              column_view);
+      if (charset_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(charset_value, charset_value_length);
+      }
+      fputs(" collation=", stdout);
+      const char *collation_value =
+          mylite_ast_create_table_column_view_type_collation_value(column_view);
+      size_t collation_value_length =
+          mylite_ast_create_table_column_view_type_collation_value_length(
+              column_view);
+      if (collation_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(collation_value, collation_value_length);
+      }
+      fputs(" default=", stdout);
+      const char *default_value =
+          mylite_ast_create_table_column_view_default_value(column_view);
+      size_t default_value_length =
+          mylite_ast_create_table_column_view_default_value_length(column_view);
+      if (default_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(default_value, default_value_length);
+      }
+      fputs(" on_update=", stdout);
+      const char *on_update_value =
+          mylite_ast_create_table_column_view_on_update_value(column_view);
+      size_t on_update_value_length =
+          mylite_ast_create_table_column_view_on_update_value_length(
+              column_view);
+      if (on_update_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(on_update_value, on_update_value_length);
+      }
+      fputs(" comment=", stdout);
+      const char *comment_value =
+          mylite_ast_create_table_column_view_comment_value(column_view);
+      size_t comment_value_length =
+          mylite_ast_create_table_column_view_comment_value_length(column_view);
+      if (comment_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(comment_value, comment_value_length);
       }
       fputc('\n', stdout);
       size_t type_element_count =

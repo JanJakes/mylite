@@ -76,10 +76,18 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_table_view_column_type_element_values = 0;
   size_t create_table_view_column_type_lengths = 0;
   size_t create_table_view_column_type_unsigned_attrs = 0;
+  size_t create_table_view_column_type_charset_values = 0;
+  size_t create_table_view_column_type_collation_values = 0;
   size_t create_table_view_column_option_spans = 0;
   size_t create_table_view_column_defaults = 0;
+  size_t create_table_view_column_default_values = 0;
+  size_t create_table_view_column_default_unsigned_values = 0;
+  size_t create_table_view_column_on_update_values = 0;
   size_t create_table_view_column_comments = 0;
+  size_t create_table_view_column_comment_values = 0;
   size_t create_table_view_column_checks = 0;
+  size_t create_table_view_column_nullabilities = 0;
+  size_t create_table_view_column_generated_storage_kinds = 0;
   size_t create_table_view_column_type_nodes = 0;
   size_t create_table_view_column_options_nodes = 0;
   size_t create_table_view_key_handles = 0;
@@ -227,6 +235,14 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                         column) != 0) {
                   create_table_view_column_type_unsigned_attrs++;
                 }
+                if (mylite_ast_create_table_column_view_type_charset_value(
+                        column) != NULL) {
+                  create_table_view_column_type_charset_values++;
+                }
+                if (mylite_ast_create_table_column_view_type_collation_value(
+                        column) != NULL) {
+                  create_table_view_column_type_collation_values++;
+                }
                 if (mylite_ast_create_table_column_view_options_start(
                         column) !=
                     mylite_ast_create_table_column_view_options_end(column)) {
@@ -237,14 +253,39 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                     mylite_ast_create_table_column_view_default_end(column)) {
                   create_table_view_column_defaults++;
                 }
+                if (mylite_ast_create_table_column_view_default_value_kind(
+                        column) != MYLITE_CREATE_TABLE_COLUMN_VALUE_UNKNOWN) {
+                  create_table_view_column_default_values++;
+                }
+                if (mylite_ast_create_table_column_view_has_default_unsigned_integer(
+                        column)) {
+                  create_table_view_column_default_unsigned_values++;
+                }
+                if (mylite_ast_create_table_column_view_on_update_value_kind(
+                        column) != MYLITE_CREATE_TABLE_COLUMN_VALUE_UNKNOWN) {
+                  create_table_view_column_on_update_values++;
+                }
                 if (mylite_ast_create_table_column_view_comment_start(
                         column) !=
                     mylite_ast_create_table_column_view_comment_end(column)) {
                   create_table_view_column_comments++;
                 }
+                if (mylite_ast_create_table_column_view_comment_value(column) !=
+                    NULL) {
+                  create_table_view_column_comment_values++;
+                }
                 if (mylite_ast_create_table_column_view_check_start(column) !=
                     mylite_ast_create_table_column_view_check_end(column)) {
                   create_table_view_column_checks++;
+                }
+                if (mylite_ast_create_table_column_view_nullability(column) !=
+                    MYLITE_CREATE_TABLE_COLUMN_NULLABILITY_UNSPECIFIED) {
+                  create_table_view_column_nullabilities++;
+                }
+                if (mylite_ast_create_table_column_view_generated_storage_kind(
+                        column) !=
+                    MYLITE_CREATE_TABLE_COLUMN_GENERATED_STORAGE_UNSPECIFIED) {
+                  create_table_view_column_generated_storage_kinds++;
                 }
                 if (mylite_ast_create_table_column_view_type_node(column) !=
                     NULL) {
@@ -525,10 +566,18 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_table_view_column_type_element_values=%.2f "
            "avg_create_table_view_column_type_lengths=%.2f "
            "avg_create_table_view_column_type_unsigned_attrs=%.2f "
+           "avg_create_table_view_column_type_charset_values=%.2f "
+           "avg_create_table_view_column_type_collation_values=%.2f "
            "avg_create_table_view_column_option_spans=%.2f "
            "avg_create_table_view_column_defaults=%.2f "
+           "avg_create_table_view_column_default_values=%.2f "
+           "avg_create_table_view_column_default_unsigned_values=%.2f "
+           "avg_create_table_view_column_on_update_values=%.2f "
            "avg_create_table_view_column_comments=%.2f "
+           "avg_create_table_view_column_comment_values=%.2f "
            "avg_create_table_view_column_checks=%.2f "
+           "avg_create_table_view_column_nullabilities=%.2f "
+           "avg_create_table_view_column_generated_storage_kinds=%.2f "
            "avg_create_table_view_column_type_nodes=%.2f "
            "avg_create_table_view_column_options_nodes=%.2f "
            "avg_create_table_view_key_handles=%.2f "
@@ -578,10 +627,23 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)create_table_view_column_type_lengths / (double)parsed,
            (double)create_table_view_column_type_unsigned_attrs /
                (double)parsed,
+           (double)create_table_view_column_type_charset_values /
+               (double)parsed,
+           (double)create_table_view_column_type_collation_values /
+               (double)parsed,
            (double)create_table_view_column_option_spans / (double)parsed,
            (double)create_table_view_column_defaults / (double)parsed,
+           (double)create_table_view_column_default_values / (double)parsed,
+           (double)create_table_view_column_default_unsigned_values /
+               (double)parsed,
+           (double)create_table_view_column_on_update_values /
+               (double)parsed,
            (double)create_table_view_column_comments / (double)parsed,
+           (double)create_table_view_column_comment_values / (double)parsed,
            (double)create_table_view_column_checks / (double)parsed,
+           (double)create_table_view_column_nullabilities / (double)parsed,
+           (double)create_table_view_column_generated_storage_kinds /
+               (double)parsed,
            (double)create_table_view_column_type_nodes / (double)parsed,
            (double)create_table_view_column_options_nodes / (double)parsed,
            (double)create_table_view_key_handles / (double)parsed,

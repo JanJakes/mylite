@@ -181,6 +181,27 @@ typedef enum MyliteCreateTableColumnFlag {
   MYLITE_CREATE_TABLE_COLUMN_FLAG_COLLATE = 1u << 16
 } MyliteCreateTableColumnFlag;
 
+typedef enum MyliteCreateTableColumnNullability {
+  MYLITE_CREATE_TABLE_COLUMN_NULLABILITY_UNSPECIFIED = 0,
+  MYLITE_CREATE_TABLE_COLUMN_NULLABILITY_NULL,
+  MYLITE_CREATE_TABLE_COLUMN_NULLABILITY_NOT_NULL
+} MyliteCreateTableColumnNullability;
+
+typedef enum MyliteCreateTableColumnGeneratedStorage {
+  MYLITE_CREATE_TABLE_COLUMN_GENERATED_STORAGE_UNSPECIFIED = 0,
+  MYLITE_CREATE_TABLE_COLUMN_GENERATED_STORAGE_VIRTUAL,
+  MYLITE_CREATE_TABLE_COLUMN_GENERATED_STORAGE_STORED
+} MyliteCreateTableColumnGeneratedStorage;
+
+typedef enum MyliteCreateTableColumnValueKind {
+  MYLITE_CREATE_TABLE_COLUMN_VALUE_UNKNOWN = 0,
+  MYLITE_CREATE_TABLE_COLUMN_VALUE_RAW,
+  MYLITE_CREATE_TABLE_COLUMN_VALUE_STRING,
+  MYLITE_CREATE_TABLE_COLUMN_VALUE_UNSIGNED_INTEGER,
+  MYLITE_CREATE_TABLE_COLUMN_VALUE_NULL,
+  MYLITE_CREATE_TABLE_COLUMN_VALUE_CURRENT_TIMESTAMP
+} MyliteCreateTableColumnValueKind;
+
 typedef enum MyliteCreateTableKeyKind {
   MYLITE_CREATE_TABLE_KEY_UNKNOWN = 0,
   MYLITE_CREATE_TABLE_KEY_PRIMARY,
@@ -291,6 +312,12 @@ const char *mylite_create_table_column_type_kind_name(
     MyliteCreateTableColumnTypeKind kind);
 const char *mylite_create_table_column_storage_class_name(
     MyliteCreateTableColumnStorageClass storage_class);
+const char *mylite_create_table_column_nullability_name(
+    MyliteCreateTableColumnNullability nullability);
+const char *mylite_create_table_column_generated_storage_name(
+    MyliteCreateTableColumnGeneratedStorage storage);
+const char *mylite_create_table_column_value_kind_name(
+    MyliteCreateTableColumnValueKind kind);
 const char *mylite_create_table_key_kind_name(MyliteCreateTableKeyKind kind);
 const char *mylite_create_table_key_part_kind_name(
     MyliteCreateTableKeyPartKind kind);
@@ -454,6 +481,12 @@ mylite_ast_create_table_column_view_storage_class(
     const MyliteAstCreateTableColumn *column);
 unsigned int mylite_ast_create_table_column_view_flags(
     const MyliteAstCreateTableColumn *column);
+MyliteCreateTableColumnNullability
+mylite_ast_create_table_column_view_nullability(
+    const MyliteAstCreateTableColumn *column);
+MyliteCreateTableColumnGeneratedStorage
+mylite_ast_create_table_column_view_generated_storage_kind(
+    const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_name_start(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_name_end(
@@ -531,6 +564,10 @@ size_t mylite_ast_create_table_column_view_type_charset_value_start(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_type_charset_value_end(
     const MyliteAstCreateTableColumn *column);
+const char *mylite_ast_create_table_column_view_type_charset_value(
+    const MyliteAstCreateTableColumn *column);
+size_t mylite_ast_create_table_column_view_type_charset_value_length(
+    const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_type_collation_start(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_type_collation_end(
@@ -538,6 +575,10 @@ size_t mylite_ast_create_table_column_view_type_collation_end(
 size_t mylite_ast_create_table_column_view_type_collation_value_start(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_type_collation_value_end(
+    const MyliteAstCreateTableColumn *column);
+const char *mylite_ast_create_table_column_view_type_collation_value(
+    const MyliteAstCreateTableColumn *column);
+size_t mylite_ast_create_table_column_view_type_collation_value_length(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_options_start(
     const MyliteAstCreateTableColumn *column);
@@ -557,6 +598,18 @@ size_t mylite_ast_create_table_column_view_default_value_end(
     const MyliteAstCreateTableColumn *column);
 const MyliteAstNode *mylite_ast_create_table_column_view_default_value_node(
     const MyliteAstCreateTableColumn *column);
+MyliteCreateTableColumnValueKind
+mylite_ast_create_table_column_view_default_value_kind(
+    const MyliteAstCreateTableColumn *column);
+const char *mylite_ast_create_table_column_view_default_value(
+    const MyliteAstCreateTableColumn *column);
+size_t mylite_ast_create_table_column_view_default_value_length(
+    const MyliteAstCreateTableColumn *column);
+int mylite_ast_create_table_column_view_has_default_unsigned_integer(
+    const MyliteAstCreateTableColumn *column);
+unsigned long long
+mylite_ast_create_table_column_view_default_unsigned_integer_value(
+    const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_on_update_start(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_on_update_end(
@@ -569,6 +622,13 @@ size_t mylite_ast_create_table_column_view_on_update_value_end(
     const MyliteAstCreateTableColumn *column);
 const MyliteAstNode *
 mylite_ast_create_table_column_view_on_update_value_node(
+    const MyliteAstCreateTableColumn *column);
+MyliteCreateTableColumnValueKind
+mylite_ast_create_table_column_view_on_update_value_kind(
+    const MyliteAstCreateTableColumn *column);
+const char *mylite_ast_create_table_column_view_on_update_value(
+    const MyliteAstCreateTableColumn *column);
+size_t mylite_ast_create_table_column_view_on_update_value_length(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_generated_start(
     const MyliteAstCreateTableColumn *column);
@@ -599,6 +659,10 @@ const MyliteAstNode *mylite_ast_create_table_column_view_comment_node(
 size_t mylite_ast_create_table_column_view_comment_value_start(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_comment_value_end(
+    const MyliteAstCreateTableColumn *column);
+const char *mylite_ast_create_table_column_view_comment_value(
+    const MyliteAstCreateTableColumn *column);
+size_t mylite_ast_create_table_column_view_comment_value_length(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_check_start(
     const MyliteAstCreateTableColumn *column);

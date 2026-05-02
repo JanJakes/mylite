@@ -70,6 +70,7 @@ enum {
     mysql_warning_ambiguous_column = 1052,
     mysql_warning_unknown_column = 1054,
     mysql_warning_wrong_field_with_group = 1055,
+    mysql_warning_nonunique_table = 1066,
     mysql_warning_invalid_group_function = 1111,
     mysql_warning_mix_group_function_fields = 1140,
     mysql_warning_unknown = 1105,
@@ -150,6 +151,7 @@ static int test_drop_table_base_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_select_table_core_execution(void);
+static int test_inner_join_execution(void);
 static int test_select_where_execution(void);
 static int test_select_order_limit_offset_execution(void);
 static int test_result_metadata_expression_labels_execution(void);
@@ -260,6 +262,7 @@ int main(void)
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_select_table_core_execution();
+    failures += test_inner_join_execution();
     failures += test_select_where_execution();
     failures += test_select_order_limit_offset_execution();
     failures += test_result_metadata_expression_labels_execution();
@@ -3881,6 +3884,291 @@ static int test_select_table_core_execution(void)
     mylite_finalize(stmt);
 
     mylite_close(database);
+    return failures;
+}
+
+static int test_inner_join_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const join_columns[] = {"left_id", "right_id", "label"};
+    static const char *const join_values[] = {"1", "10", "right-a", "1", "11", "right-b"};
+    static const char *const comma_columns[] = {"id", "id"};
+    static const char *const comma_values[] = {"1", "10", "1", "11"};
+    static const char *const star_columns[] = {"id",      "shared", "label", "id",
+                                               "left_id", "shared", "label"};
+    static const char *const star_values[] = {"1", "100", "left-one", "10", "1", "100", "right-a",
+                                              "1", "100", "left-one", "11", "1", "100", "right-b"};
+    static const char *const qualified_star_columns[] = {"id", "shared", "label", "label"};
+    static const char *const qualified_star_values[] = {"1", "100", "left-one", "right-a",
+                                                        "1", "100", "left-one", "right-b"};
+    static const char *const using_star_columns[] = {"shared", "id",      "label",
+                                                     "id",     "left_id", "label"};
+    static const char *const using_star_values[] = {"100", "1", "left-one", "10", "1", "right-a",
+                                                    "100", "1", "left-one", "11", "1", "right-b"};
+    static const char *const using_multi_star_columns[] = {"id", "shared", "label", "left_id",
+                                                           "label"};
+    static const char *const comma_using_star_columns[] = {"id",      "shared", "label", "id",
+                                                           "left_id", "shared", "label", "note"};
+    static const char *const shared_column[] = {"shared"};
+    static const char *const shared_values[] = {"100", "100"};
+    static const char *const left_id_column[] = {"left_id"};
+    static const char *const count_column[] = {"c"};
+    static const char *const cartesian_count[] = {"6"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const chained_columns[] = {"left_id", "right_id", "note"};
+    static const char *const chained_values[] = {"1", "10", "e1", "1", "10", "e2",
+                                                 "1", "11", "e1", "1", "11", "e2"};
+    static const struct expected_column_metadata metadata[] = {
+        {"left_id", "mylite_inner_join", "l", "left_t", "id"},
+        {"label", "mylite_inner_join", "r", "right_t", "label"},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open join database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_inner_join", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_inner_join", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE left_t ("
+                            "id INT PRIMARY KEY, shared INT, label VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE right_t ("
+                            "id INT PRIMARY KEY, left_id INT, shared INT, label VARCHAR(20))",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE extra_t (id INT, note VARCHAR(20))", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO left_t VALUES "
+                            "(1,100,'left-one'),(2,200,'left-two')",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO right_t VALUES "
+                            "(10,1,100,'right-a'),(11,1,100,'right-b'),(20,2,999,'right-c')",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO extra_t VALUES (1,'e1'),(1,'e2'),(2,'e3')", MYLITE_DONE);
+
+    failures += expect_select_rows(database,
+                                   "SELECT l.id AS left_id, r.id AS right_id, r.label "
+                                   "FROM left_t AS l JOIN right_t AS r ON l.id = r.left_id "
+                                   "WHERE r.id < 20 ORDER BY r.id",
+                                   join_columns, 3, join_values, 2, "inner join on rows");
+    failures += expect_select_rows(database,
+                                   "SELECT left_t.id, right_t.id "
+                                   "FROM left_t, right_t "
+                                   "WHERE left_t.id = right_t.left_id AND right_t.id < 20 "
+                                   "ORDER BY right_t.id",
+                                   comma_columns, 2, comma_values, 2, "comma join where rows");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT * FROM left_t JOIN right_t ON left_t.id = right_t.left_id "
+                           "WHERE right_t.id < 20 ORDER BY right_t.id",
+                           star_columns, 7, star_values, 2, "inner join wildcard rows");
+    failures += expect_select_rows(database,
+                                   "SELECT l.*, r.label "
+                                   "FROM left_t AS l INNER JOIN right_t AS r ON l.id = r.left_id "
+                                   "WHERE r.id < 20 ORDER BY r.id",
+                                   qualified_star_columns, 4, qualified_star_values, 2,
+                                   "inner join qualified wildcard rows");
+    failures += expect_select_rows(database,
+                                   "SELECT * FROM left_t JOIN right_t USING (shared) "
+                                   "ORDER BY right_t.id",
+                                   using_star_columns, 6, using_star_values, 2,
+                                   "inner join using wildcard rows");
+    failures += expect_select_rows(database,
+                                   "SELECT * FROM left_t JOIN right_t USING (shared, id) "
+                                   "ORDER BY right_t.id",
+                                   using_multi_star_columns, 5, NULL, 0,
+                                   "inner join multi using wildcard order");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT * FROM left_t AS a, "
+                           "right_t AS r JOIN extra_t AS e USING (id) LIMIT 0",
+                           comma_using_star_columns, 8, NULL, 0, "comma join using wildcard order");
+    failures += expect_select_rows(database,
+                                   "SELECT shared FROM left_t JOIN right_t USING (shared) "
+                                   "ORDER BY right_t.id",
+                                   shared_column, 1, shared_values, 2,
+                                   "inner join using unqualified column");
+    failures += expect_select_rows(database,
+                                   "SELECT l.id AS left_id FROM left_t AS l JOIN right_t AS r "
+                                   "ON NULL ORDER BY l.id",
+                                   left_id_column, 1, NULL, 0, "inner join null on predicate");
+    failures += expect_select_rows(database, "SELECT COUNT(*) AS c FROM left_t CROSS JOIN right_t",
+                                   count_column, 1, cartesian_count, 1, "cross join cartesian");
+    failures +=
+        expect_select_rows(database, "SELECT COUNT(*) AS c FROM left_t JOIN right_t", count_column,
+                           1, cartesian_count, 1, "conditionless inner join cartesian");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT shared FROM left_t JOIN right_t "
+                           "USING (shared, shared) ORDER BY right_t.id",
+                           shared_column, 1, shared_values, 2, "inner join duplicate using column");
+    failures +=
+        expect_prepare_error(database,
+                             "SELECT shared FROM left_t AS l1 JOIN right_t AS r1 USING (shared), "
+                             "left_t AS l2 JOIN right_t AS r2 USING (shared)",
+                             MYLITE_EXEC_ERROR, "Column 'shared' in field list is ambiguous",
+                             "inner join independent using ambiguity");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "inner join using ambiguity warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_ambiguous_column,
+                           "inner join using ambiguity warning code");
+    failures += expect_prepare_error(database,
+                                     "SELECT * FROM left_t AS l JOIN right_t AS r USING (shared) "
+                                     "JOIN extra_t AS e USING (id)",
+                                     MYLITE_EXEC_ERROR, "Column 'id' in from clause is ambiguous",
+                                     "inner join using left operand ambiguity");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "inner join using left operand ambiguity warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_ambiguous_column,
+                           "inner join using left operand ambiguity warning code");
+    failures += expect_select_rows(database,
+                                   "SELECT l.id AS left_id, r.id AS right_id, e.note "
+                                   "FROM left_t AS l JOIN right_t AS r ON l.id = r.left_id "
+                                   "JOIN extra_t AS e ON e.id = l.id "
+                                   "WHERE r.id < 20 ORDER BY r.id, e.note",
+                                   chained_columns, 3, chained_values, 4, "chained inner join");
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(*) AS c "
+                                   "FROM left_t JOIN right_t "
+                                   "ON left_t.id = right_t.left_id AND (right_t.id / 0) "
+                                   "JOIN extra_t ON extra_t.id = left_t.id",
+                                   count_column, 1, zero_count, 1, "staged on warning count rows");
+    failures += expect_int(mylite_warning_count(database), 3, "staged on warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "staged on warning code 0");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_division_by_zero,
+                           "staged on warning code 1");
+    failures += expect_int((int)mylite_warning_code(database, 2), mysql_warning_division_by_zero,
+                           "staged on warning code 2");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT COUNT(*) AS c FROM left_t AS a, "
+                           "right_t AS r JOIN extra_t AS e ON e.id / 0",
+                           count_column, 1, zero_count, 1, "comma-left on warning count rows");
+    failures += expect_int(mylite_warning_count(database), 3, "comma-left on warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "comma-left on warning code 0");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_division_by_zero,
+                           "comma-left on warning code 1");
+    failures += expect_int((int)mylite_warning_code(database, 2), mysql_warning_division_by_zero,
+                           "comma-left on warning code 2");
+
+    failures += prepare_sql(database,
+                            "SELECT l.id AS left_id, r.label "
+                            "FROM left_t AS l JOIN right_t AS r ON l.id = r.left_id LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_metadata(stmt, metadata, 2, "inner join metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "inner join metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_prepare_error(database,
+                                     "SELECT id FROM left_t JOIN right_t "
+                                     "ON left_t.id = right_t.left_id",
+                                     MYLITE_EXEC_ERROR, "Column 'id' in field list is ambiguous",
+                                     "inner join ambiguous column");
+    failures += expect_int(mylite_warning_count(database), 1, "inner join ambiguous warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_ambiguous_column,
+                           "inner join ambiguous warning code");
+    failures +=
+        expect_prepare_error(database,
+                             "SELECT left_t.id FROM left_t AS l JOIN right_t AS r "
+                             "ON l.id = r.left_id",
+                             MYLITE_EXEC_ERROR, "Unknown column 'left_t.id' in 'field list'",
+                             "inner join alias hides base table");
+    failures += expect_int(mylite_warning_count(database), 1, "inner join alias warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "inner join alias warning code");
+    failures += expect_prepare_error(database,
+                                     "SELECT l.id FROM left_t AS l JOIN right_t AS r "
+                                     "ON left_t.id = r.left_id",
+                                     MYLITE_EXEC_ERROR, "Unknown column 'left_t.id' in 'on clause'",
+                                     "inner join alias hides base table in on");
+    failures += expect_int(mylite_warning_count(database), 1, "inner join on alias warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "inner join on alias warning code");
+    failures +=
+        expect_prepare_error(database,
+                             "SELECT l.id FROM left_t AS l JOIN right_t AS r "
+                             "ON l.id = r.left_id WHERE left_t.id = 1",
+                             MYLITE_EXEC_ERROR, "Unknown column 'left_t.id' in 'where clause'",
+                             "inner join alias hides base table in where");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "inner join where alias warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "inner join where alias warning code");
+    failures +=
+        expect_prepare_error(database,
+                             "SELECT l.id FROM left_t AS l JOIN right_t AS r "
+                             "ON l.id = r.left_id ORDER BY left_t.id",
+                             MYLITE_EXEC_ERROR, "Unknown column 'left_t.id' in 'order clause'",
+                             "inner join alias hides base table in order");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "inner join order alias warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "inner join order alias warning code");
+    failures += expect_prepare_error(database, "SELECT * FROM left_t AS same JOIN right_t AS same",
+                                     MYLITE_EXEC_ERROR, "Not unique table/alias: 'same'",
+                                     "inner join duplicate alias");
+    failures += expect_int(mylite_warning_count(database), 1, "inner join duplicate warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_nonunique_table,
+                           "inner join duplicate warning code");
+    failures += expect_prepare_error(
+        database, "SELECT * FROM left_t JOIN right_t USING (missing_col)", MYLITE_EXEC_ERROR,
+        "Unknown column 'missing_col' in 'from clause'", "inner join using missing column");
+    failures += expect_int(mylite_warning_count(database), 1, "inner join using warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "inner join using warning code");
+    failures +=
+        expect_prepare_error(database,
+                             "SELECT l.id FROM left_t AS l JOIN right_t AS r "
+                             "ON missing_col = r.left_id",
+                             MYLITE_EXEC_ERROR, "Unknown column 'missing_col' in 'on clause'",
+                             "inner join on missing column");
+    failures += expect_int(mylite_warning_count(database), 1, "inner join on warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "inner join on warning code");
+    failures += expect_prepare_error(database,
+                                     "SELECT l.id FROM left_t AS l, right_t AS r "
+                                     "JOIN left_t AS p ON l.id = p.id",
+                                     MYLITE_EXEC_ERROR, "Unknown column 'l.id' in 'on clause'",
+                                     "inner join comma precedence on scope");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "inner join precedence warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "inner join precedence warning code");
+    failures += expect_prepare_error(database,
+                                     "SELECT l.id FROM left_t AS l JOIN right_t AS r "
+                                     "ON l.id = r.left_id WHERE id = 1",
+                                     MYLITE_EXEC_ERROR, "Column 'id' in where clause is ambiguous",
+                                     "inner join ambiguous where");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "inner join ambiguous where warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_ambiguous_column,
+                           "inner join ambiguous where warning code");
+    failures += expect_prepare_error(database,
+                                     "SELECT l.label FROM left_t AS l JOIN right_t AS r "
+                                     "ON l.id = r.left_id ORDER BY id",
+                                     MYLITE_EXEC_ERROR, "Column 'id' in order clause is ambiguous",
+                                     "inner join ambiguous order");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "inner join ambiguous order warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_ambiguous_column,
+                           "inner join ambiguous order warning code");
+    failures +=
+        expect_prepare_error(database,
+                             "SELECT left_t.id, COUNT(*) "
+                             "FROM left_t JOIN right_t ON left_t.id = right_t.left_id "
+                             "GROUP BY left_t.id",
+                             MYLITE_EXEC_ERROR, "Unsupported GROUP BY or HAVING over joined tables",
+                             "inner join grouped query deferred");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

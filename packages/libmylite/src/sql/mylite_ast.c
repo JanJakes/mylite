@@ -431,25 +431,6 @@ size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
 {
-    if (kind == MYLITE_SQL_AST_FROM_TABLE_REFERENCES) {
-        return "from_table_references";
-    }
-    if (kind == MYLITE_SQL_AST_TABLE_REFERENCE_LIST) {
-        return "table_reference_list";
-    }
-    if (kind == MYLITE_SQL_AST_JOIN_EXPRESSION) {
-        return "join_expression";
-    }
-    if (kind == MYLITE_SQL_AST_JOIN_CONDITION) {
-        return "join_condition";
-    }
-    if (kind == MYLITE_SQL_AST_USING_COLUMN_LIST) {
-        return "using_column_list";
-    }
-    if (kind == MYLITE_SQL_AST_USING_COLUMN) {
-        return "using_column";
-    }
-
     switch (kind) {
     case MYLITE_SQL_AST_SCRIPT:
         return "script";
@@ -465,6 +446,18 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "from_dual";
     case MYLITE_SQL_AST_FROM_TABLE:
         return "from_table";
+    case MYLITE_SQL_AST_FROM_TABLE_REFERENCES:
+        return "from_table_references";
+    case MYLITE_SQL_AST_TABLE_REFERENCE_LIST:
+        return "table_reference_list";
+    case MYLITE_SQL_AST_JOIN_EXPRESSION:
+        return "join_expression";
+    case MYLITE_SQL_AST_JOIN_CONDITION:
+        return "join_condition";
+    case MYLITE_SQL_AST_USING_COLUMN_LIST:
+        return "using_column_list";
+    case MYLITE_SQL_AST_USING_COLUMN:
+        return "using_column";
     case MYLITE_SQL_AST_IDENTIFIER:
         return "identifier";
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:

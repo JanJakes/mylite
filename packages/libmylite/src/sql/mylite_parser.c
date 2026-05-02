@@ -2932,21 +2932,20 @@ mylite_sql_parser_make_using_column_list(struct mylite_sql_parser_state *state,
 
 struct mylite_sql_ast_node *
 mylite_sql_parser_append_using_column(struct mylite_sql_parser_state *state,
-                                      struct mylite_sql_ast_node *list,
-                                      struct mylite_sql_ast_node *column)
+                                      struct mylite_sql_parser_using_column_append append)
 {
     struct mylite_sql_ast_node *item = NULL;
 
-    if (!is_parse_ok(state) || list == NULL) {
-        return list;
+    if (!is_parse_ok(state) || append.list == NULL) {
+        return append.list;
     }
 
-    item = mylite_sql_parser_make_using_column(state, column);
-    mylite_sql_ast_node_append_child(list, item);
+    item = mylite_sql_parser_make_using_column(state, append.column);
+    mylite_sql_ast_node_append_child(append.list, item);
     if (item != NULL) {
-        mylite_sql_ast_node_set_span(list, span_join(list->span, item->span));
+        mylite_sql_ast_node_set_span(append.list, span_join(append.list->span, item->span));
     }
-    return list;
+    return append.list;
 }
 
 struct mylite_sql_ast_node *

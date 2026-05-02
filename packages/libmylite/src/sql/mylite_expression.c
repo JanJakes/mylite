@@ -440,6 +440,16 @@ int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *v
                : strtoll(value->text_value, NULL, MYLITE_EXPRESSION_DECIMAL_BASE);
 }
 
+int mylite_expression_value_compare(const struct mylite_expression_value *left,
+                                    const struct mylite_expression_value *right,
+                                    struct mylite_expression_warnings *warnings, int *out_compare)
+{
+    if (out_compare == NULL) {
+        return -1;
+    }
+    return compare_values(left, right, warnings, out_compare);
+}
+
 int mylite_expression_value_truth(const struct mylite_expression_value *value,
                                   struct mylite_expression_warnings *warnings, int *out_truth)
 {

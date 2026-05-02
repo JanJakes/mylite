@@ -98,14 +98,13 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_GROUP_ITEM = 87,
     MYLITE_SQL_AST_HAVING_CLAUSE = 88,
     MYLITE_SQL_AST_AGGREGATE_CALL = 89,
+    MYLITE_SQL_AST_FROM_TABLE_REFERENCES = 90,
+    MYLITE_SQL_AST_TABLE_REFERENCE_LIST = 91,
+    MYLITE_SQL_AST_JOIN_EXPRESSION = 92,
+    MYLITE_SQL_AST_JOIN_CONDITION = 93,
+    MYLITE_SQL_AST_USING_COLUMN_LIST = 94,
+    MYLITE_SQL_AST_USING_COLUMN = 95,
 };
-
-#define MYLITE_SQL_AST_FROM_TABLE_REFERENCES ((enum mylite_sql_ast_node_kind)90)
-#define MYLITE_SQL_AST_TABLE_REFERENCE_LIST ((enum mylite_sql_ast_node_kind)91)
-#define MYLITE_SQL_AST_JOIN_EXPRESSION ((enum mylite_sql_ast_node_kind)92)
-#define MYLITE_SQL_AST_JOIN_CONDITION ((enum mylite_sql_ast_node_kind)93)
-#define MYLITE_SQL_AST_USING_COLUMN_LIST ((enum mylite_sql_ast_node_kind)94)
-#define MYLITE_SQL_AST_USING_COLUMN ((enum mylite_sql_ast_node_kind)95)
 
 enum mylite_sql_ast_literal_kind {
     MYLITE_SQL_AST_LITERAL_NONE = 0,

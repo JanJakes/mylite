@@ -96,6 +96,11 @@ struct mylite_sql_parser_join_operator {
     enum mylite_sql_ast_join_type join_type;
 };
 
+struct mylite_sql_parser_using_column_append {
+    struct mylite_sql_ast_node *list;
+    struct mylite_sql_ast_node *column;
+};
+
 void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
                                       struct mylite_sql_ast_node *root);
 void mylite_sql_parser_state_syntax_error(struct mylite_sql_parser_state *state, int parser_token,
@@ -585,8 +590,7 @@ mylite_sql_parser_make_using_column_list(struct mylite_sql_parser_state *state,
                                          struct mylite_sql_ast_node *column);
 struct mylite_sql_ast_node *
 mylite_sql_parser_append_using_column(struct mylite_sql_parser_state *state,
-                                      struct mylite_sql_ast_node *list,
-                                      struct mylite_sql_ast_node *column);
+                                      struct mylite_sql_parser_using_column_append append);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_using_column(struct mylite_sql_parser_state *state,
                                     struct mylite_sql_ast_node *column);

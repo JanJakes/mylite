@@ -67,6 +67,9 @@ int mylite_expression_value_copy(const struct mylite_expression_value *value,
                                  struct mylite_expression_value *out_value);
 char *mylite_expression_value_to_text(const struct mylite_expression_value *value);
 int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *value);
+int mylite_expression_value_compare(const struct mylite_expression_value *left,
+                                    const struct mylite_expression_value *right,
+                                    struct mylite_expression_warnings *warnings, int *out_compare);
 int mylite_expression_value_truth(const struct mylite_expression_value *value,
                                   struct mylite_expression_warnings *warnings, int *out_truth);
 bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *expression);

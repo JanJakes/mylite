@@ -68,8 +68,8 @@ level application surfaces.
 25. [x] Aggregate functions and grouping: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`,
        `GROUP BY`, `HAVING`, aliases, ordinals, and `ONLY_FULL_GROUP_BY`.
        Spec: [aggregate functions and grouping](../aggregate-grouping/specs.md).
-26. [ ] Inner joins and comma joins: join precedence, aliases, `ON`, `USING`,
-       name resolution, and result metadata. Started; spec:
+26. [x] Inner joins and comma joins: join precedence, aliases, `ON`, `USING`,
+       name resolution, and result metadata. Spec:
        [inner joins](../inner-joins/specs.md).
 27. [ ] Outer joins: `LEFT`/`RIGHT` joins, null extension, predicate placement,
        and metadata.

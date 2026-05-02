@@ -50,14 +50,14 @@ Out of scope for the first implementation slice:
 - partitions and index hints
 - optimizer hints and optimizer pushdown
 - join-order optimization beyond preserving MySQL-visible semantics
-- `GROUP BY`, `HAVING`, and aggregate execution over joined row sources
+- full `GROUP BY` and `HAVING` coverage over joined row sources
 - `DISTINCT`, set operations, windows, locking clauses, and `SELECT ... INTO`
 - multi-table `UPDATE` and `DELETE`
 - broad collation edge cases beyond the currently supported scalar expression
   and metadata surface
 
-Task 26 should not mark joins as supported until runtime tests compare MyLite
-against MySQL 8.4.9 for rows, metadata, warnings, errors, and statement side
+Task 26 support is tracked as the executable base-table slice only after
+runtime tests cover rows, metadata, warnings, errors, and statement side
 effects. Parser acceptance alone is not join support.
 
 ## Sources
@@ -804,9 +804,9 @@ lengths, decimals, charsets, nullability, and statement side effects.
 
 - The first slice implements only inner semantics. Outer join syntax and
   execution stay unsupported until Task 27.
-- Comma joins are supported because WordPress and common MySQL applications
-  still use them, but explicit joins should be preferred in new MyLite tests
-  when comma precedence is not the behavior under test.
+- Comma joins are supported because legacy MySQL application SQL still uses
+  them, but explicit joins should be preferred in new MyLite tests when comma
+  precedence is not the behavior under test.
 - Parenthesized table-reference groups are deferred even though MySQL supports
   them. The explicit-join rewrite covers the common precedence workaround for
   the first slice.
@@ -821,20 +821,24 @@ lengths, decimals, charsets, nullability, and statement side effects.
   compatibility envelope and remain a documented risk until collation work is
   wider.
 
-## Implementation handoff
+## Implementation status
 
-1. Add parser and AST support for table-reference trees and join conditions.
-2. Add parser tests before runtime work, especially for comma precedence and
-   deferred syntax.
-3. Extend table binding from one table to an ordered table scope with aliases,
-   duplicate-alias checks, and clause-specific diagnostics.
-4. Implement nested-loop row sources for explicit and comma inner joins.
-5. Add `ON` predicate evaluation with operand-limited scopes.
-6. Add `USING` validation, equality predicates, coalesced output descriptors,
-   and wildcard expansion.
-7. Extend projection, `WHERE`, `ORDER BY`, and `LIMIT` paths to consume joined
-   row bindings.
-8. Add MySQL-runtime comparison tests for rows, errors, warnings, metadata,
-   and side effects.
-9. Update `COMPATIBILITY.md` from started/spec-only to implemented only after
-   the code and tests are complete.
+The Task 26 executable slice implements parser/AST coverage, ordered table
+binding, duplicate alias checks, operand-scoped `ON` diagnostics, nested-loop
+row production over SQLite row sources, `USING` validation and coalesced
+wildcard output, projection/`WHERE`/`ORDER BY`/`LIMIT` integration, aggregate
+scan compatibility for the supported aggregate subset, and runtime tests for
+rows, metadata, warnings, and errors.
+
+The nested-loop runtime loads each base table as a separate row source and
+evaluates explicit join conditions as soon as the right operand is available.
+This preserves MySQL-visible warning counts for staged joins and avoids
+evaluating `ON` predicates against rows from later comma or explicit join
+operands.
+
+Grouped joined queries with `GROUP BY` or `HAVING` return a deterministic
+unsupported diagnostic in this slice. Aggregate calls over joined rows without
+`GROUP BY` or `HAVING`, such as `COUNT(*)`, use the joined row scan.
+
+The deferred surfaces listed above remain intentionally outside this task and
+must not be inferred from the implemented base-table inner join slice.

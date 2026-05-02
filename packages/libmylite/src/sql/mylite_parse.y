@@ -1613,7 +1613,11 @@ using_column_list(A) ::= identifier(B). {
     A = mylite_sql_parser_make_using_column_list(state, B);
 }
 using_column_list(A) ::= using_column_list(B) COMMA identifier(C). {
-    A = mylite_sql_parser_append_using_column(state, B, C);
+    A = mylite_sql_parser_append_using_column(
+        state, (struct mylite_sql_parser_using_column_append){
+            .list = B,
+            .column = C,
+        });
 }
 
 table_factor(A) ::= table_name(B) opt_table_alias(C). {

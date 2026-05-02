@@ -208,12 +208,13 @@ token sink:
   `DOUBLE PRECISION` modifier without accepting `PRECISION` after other types,
   require lengths for `VARCHAR`, `VARBINARY`, `NVARCHAR`, and `CHAR VARYING`
   forms while preserving `LONG VARCHAR`/`LONG VARBINARY`, and accept common
-  attribute starts and selected closed attribute values, require generated-column storage
-  modifiers to follow generated
-  expressions, reject repeated generated-column storage modifiers, validate
-  parenthesized default/generated expression bodies for dangling operators and
-  scalar comma lists, validate temporal precision lists for `DEFAULT`/`ON UPDATE`
-  functions, reject stray attribute parentheses, and
+  attribute starts and selected closed attribute values, validate generated
+  column heads (`AS (...)` or `GENERATED ALWAYS AS (...)`), require
+  generated-column storage modifiers to follow generated expressions, reject
+  repeated generated-column storage modifiers, validate parenthesized
+  default/generated expression bodies for dangling operators and scalar comma
+  lists, validate temporal precision lists for `DEFAULT`/`ON UPDATE` functions,
+  reject stray attribute parentheses, and
   column-level `REFERENCES` clauses validate optional referenced column-list
   envelopes plus referential-action tails. Trailing table options
   must start with known MySQL table-option keywords and validate selected value
@@ -270,9 +271,8 @@ token sink:
   identifier-valued `ALGORITHM`/`LOCK` options, tablespace discard/import
   forms, and validated `ADD`/`CHANGE`/`MODIFY` column type starts plus
   MySQL's `DOUBLE PRECISION` modifier placement, column-definition attribute
-  starts and selected closed attribute values
-  including generated-column storage
-  modifier context and repetition checks, index key-part prefix lengths,
+  starts and selected closed attribute values including generated-column head
+  validation plus storage modifier context and repetition checks, index key-part prefix lengths,
   `ASC`/`DESC` tails, and index option values including closed index
   `USING`/`TYPE` values. `ADD FOREIGN KEY` child/reference column-list
   envelopes and referential-action tails are also validated, and `ADD CHECK`

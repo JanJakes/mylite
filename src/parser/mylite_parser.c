@@ -12825,16 +12825,11 @@ static int column_definition_tail_token(
   }
 
   if (*state == COLUMN_DEFINITION_TAIL_AFTER_GENERATED) {
-    if (token_ascii_equal(token, "always")) {
-      *state = COLUMN_DEFINITION_TAIL_AFTER_ALWAYS;
-      *pending_token = token;
-      return 1;
-    }
-    if (token_id != ML_AS) {
+    if (!token_ascii_equal(token, "always")) {
       mylite_parser_reject(ctx, *pending_token, message);
       return 0;
     }
-    *state = COLUMN_DEFINITION_TAIL_AFTER_AS;
+    *state = COLUMN_DEFINITION_TAIL_AFTER_ALWAYS;
     *pending_token = token;
     return 1;
   }
@@ -12962,12 +12957,6 @@ static int column_definition_tail_token(
 
   if (token_ascii_equal(token, "generated")) {
     *state = COLUMN_DEFINITION_TAIL_AFTER_GENERATED;
-    *pending_token = token;
-    return 1;
-  }
-
-  if (token_ascii_equal(token, "always")) {
-    *state = COLUMN_DEFINITION_TAIL_AFTER_ALWAYS;
     *pending_token = token;
     return 1;
   }
@@ -13114,7 +13103,7 @@ static int column_definition_attribute_start(int token_id, MyliteToken token,
          token_id == ML_KEY || token_id == ML_NOT || token_id == ML_NULL ||
          token_id == ML_ON || token_id == ML_PRIMARY ||
          token_id == ML_STORAGE || token_id == ML_UNIQUE ||
-         token_id == ML_VISIBLE || token_ascii_equal(token, "always") ||
+         token_id == ML_VISIBLE ||
          token_ascii_equal(token, "column_format") ||
          token_ascii_equal(token, "generated") ||
          token_ascii_equal(token, "references") ||

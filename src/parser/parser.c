@@ -211,12 +211,17 @@ struct MyliteAstCreateTableKey {
 
 struct MyliteAstCreateTableOption {
   MyliteCreateTableOptionKind kind;
+  MyliteCreateTableOptionValueKind value_kind;
+  unsigned long long unsigned_integer_value;
+  int has_unsigned_integer_value;
   size_t start;
   size_t end;
   size_t name_start;
   size_t name_end;
   size_t value_start;
   size_t value_end;
+  const char *value;
+  size_t value_length;
 };
 
 struct MyliteAstCreateTable {
@@ -533,17 +538,28 @@ static int mylite_ast_collect_create_table_options(MyliteAst *ast,
                                                    MyliteAstStatement *statement,
                                                    const MyliteAstNode *payload);
 static size_t mylite_ast_count_create_table_options(const MyliteAstNode *node);
-static void mylite_ast_fill_create_table_options(MyliteAstStatement *statement,
-                                                 const MyliteAstNode *node,
-                                                 size_t *index);
-static void mylite_ast_fill_create_table_option(
-    MyliteAstCreateTableOption *option, const MyliteAstNode *node);
+static void mylite_ast_fill_create_table_options(
+    MyliteAst *ast, MyliteAstStatement *statement, const MyliteAstNode *node,
+    size_t *index, int *ok);
+static int mylite_ast_fill_create_table_option(
+    MyliteAst *ast, MyliteAstCreateTableOption *option,
+    const MyliteAstNode *node);
 static MyliteCreateTableOptionKind mylite_ast_classify_create_table_option(
     const MyliteAstNode *node);
 static void mylite_ast_set_create_table_option_name(
     MyliteAstCreateTableOption *option, const MyliteAstNode *node);
 static void mylite_ast_set_create_table_option_value(
     MyliteAstCreateTableOption *option, const MyliteAstNode *node);
+static int mylite_ast_set_create_table_option_value_metadata(
+    MyliteAst *ast, MyliteAstCreateTableOption *option,
+    const MyliteAstNode *node);
+static const MyliteAstNode *mylite_ast_find_create_table_option_value_token(
+    const MyliteAstNode *node, size_t min_start);
+static int mylite_ast_is_unsigned_integer_table_option(
+    MyliteCreateTableOptionKind kind);
+static int mylite_ast_parse_unsigned_integer_value(const char *source,
+                                                   size_t start, size_t end,
+                                                   unsigned long long *value);
 static const MyliteAstNode *mylite_ast_find_create_table_option_name(
     const MyliteAstNode *node, MyliteCreateTableOptionKind kind);
 static const MyliteAstNode *mylite_ast_find_first_direct_spanned_child(
@@ -1075,6 +1091,25 @@ const char *mylite_create_table_option_kind_name(
       return "engine_attribute";
     case MYLITE_CREATE_TABLE_OPTION_SECONDARY_ENGINE_ATTRIBUTE:
       return "secondary_engine_attribute";
+  }
+  return "unknown";
+}
+
+const char *mylite_create_table_option_value_kind_name(
+    MyliteCreateTableOptionValueKind kind) {
+  switch (kind) {
+    case MYLITE_CREATE_TABLE_OPTION_VALUE_UNKNOWN:
+      return "unknown";
+    case MYLITE_CREATE_TABLE_OPTION_VALUE_RAW:
+      return "raw";
+    case MYLITE_CREATE_TABLE_OPTION_VALUE_IDENTIFIER:
+      return "identifier";
+    case MYLITE_CREATE_TABLE_OPTION_VALUE_STRING:
+      return "string";
+    case MYLITE_CREATE_TABLE_OPTION_VALUE_UNSIGNED_INTEGER:
+      return "unsigned_integer";
+    case MYLITE_CREATE_TABLE_OPTION_VALUE_LIST:
+      return "list";
   }
   return "unknown";
 }
@@ -2274,6 +2309,34 @@ size_t mylite_ast_create_table_option_view_value_start(
 size_t mylite_ast_create_table_option_view_value_end(
     const MyliteAstCreateTableOption *option) {
   return option == NULL ? 0 : option->value_end;
+}
+
+MyliteCreateTableOptionValueKind
+mylite_ast_create_table_option_view_value_kind(
+    const MyliteAstCreateTableOption *option) {
+  return option == NULL ? MYLITE_CREATE_TABLE_OPTION_VALUE_UNKNOWN
+                        : option->value_kind;
+}
+
+const char *mylite_ast_create_table_option_view_value(
+    const MyliteAstCreateTableOption *option) {
+  return option == NULL ? NULL : option->value;
+}
+
+size_t mylite_ast_create_table_option_view_value_length(
+    const MyliteAstCreateTableOption *option) {
+  return option == NULL ? 0 : option->value_length;
+}
+
+int mylite_ast_create_table_option_view_has_unsigned_integer(
+    const MyliteAstCreateTableOption *option) {
+  return option != NULL && option->has_unsigned_integer_value;
+}
+
+unsigned long long
+mylite_ast_create_table_option_view_unsigned_integer_value(
+    const MyliteAstCreateTableOption *option) {
+  return option == NULL ? 0 : option->unsigned_integer_value;
 }
 
 size_t mylite_ast_create_table_column_count(const MyliteAst *ast,
@@ -6526,8 +6589,10 @@ static int mylite_ast_collect_create_table_options(
   statement->create_table_option_count = count;
 
   size_t index = 0;
-  mylite_ast_fill_create_table_options(statement, option_list, &index);
-  return index == count;
+  int ok = 1;
+  mylite_ast_fill_create_table_options(ast, statement, option_list, &index,
+                                       &ok);
+  return ok && index == count;
 }
 
 static size_t mylite_ast_count_create_table_options(const MyliteAstNode *node) {
@@ -6546,30 +6611,39 @@ static size_t mylite_ast_count_create_table_options(const MyliteAstNode *node) {
 }
 
 static void mylite_ast_fill_create_table_options(
-    MyliteAstStatement *statement, const MyliteAstNode *node, size_t *index) {
-  if (statement == NULL || node == NULL || index == NULL ||
-      *index >= statement->create_table_option_count) {
+    MyliteAst *ast, MyliteAstStatement *statement, const MyliteAstNode *node,
+    size_t *index, int *ok) {
+  if (statement == NULL || node == NULL || index == NULL || ok == NULL ||
+      !*ok || *index >= statement->create_table_option_count) {
     return;
   }
   if (node->symbol_name != NULL && strcmp(node->symbol_name, "nt_table_option") == 0) {
-    mylite_ast_fill_create_table_option(
-        &statement->create_table_options[*index], node);
-    (*index)++;
+    *ok = mylite_ast_fill_create_table_option(
+        ast, &statement->create_table_options[*index], node);
+    if (*ok) {
+      (*index)++;
+    }
     return;
   }
 
   for (size_t i = 0; i < node->child_count; i++) {
-    mylite_ast_fill_create_table_options(statement, node->children[i], index);
+    mylite_ast_fill_create_table_options(ast, statement, node->children[i],
+                                         index, ok);
+    if (!*ok) {
+      return;
+    }
   }
 }
 
-static void mylite_ast_fill_create_table_option(
-    MyliteAstCreateTableOption *option, const MyliteAstNode *node) {
+static int mylite_ast_fill_create_table_option(
+    MyliteAst *ast, MyliteAstCreateTableOption *option,
+    const MyliteAstNode *node) {
   option->kind = mylite_ast_classify_create_table_option(node);
   option->start = mylite_ast_node_start(node);
   option->end = mylite_ast_node_end(node);
   mylite_ast_set_create_table_option_name(option, node);
   mylite_ast_set_create_table_option_value(option, node);
+  return mylite_ast_set_create_table_option_value_metadata(ast, option, node);
 }
 
 static MyliteCreateTableOptionKind mylite_ast_classify_create_table_option(
@@ -6691,6 +6765,138 @@ static void mylite_ast_set_create_table_option_value(
   mylite_ast_collect_value_span_after(node, option->name_end,
                                       &option->value_start,
                                       &option->value_end);
+}
+
+static int mylite_ast_set_create_table_option_value_metadata(
+    MyliteAst *ast, MyliteAstCreateTableOption *option,
+    const MyliteAstNode *node) {
+  if (ast == NULL || ast->source == NULL || option == NULL ||
+      option->value_start >= option->value_end ||
+      option->value_end > ast->source_length) {
+    return 1;
+  }
+
+  option->value = ast->source + option->value_start;
+  option->value_length = option->value_end - option->value_start;
+  if (option->kind == MYLITE_CREATE_TABLE_OPTION_UNION) {
+    option->value_kind = MYLITE_CREATE_TABLE_OPTION_VALUE_LIST;
+    return 1;
+  }
+
+  const MyliteAstNode *token =
+      mylite_ast_find_create_table_option_value_token(node, option->name_end);
+  if (token == NULL) {
+    option->value_kind = MYLITE_CREATE_TABLE_OPTION_VALUE_RAW;
+    return 1;
+  }
+
+  if (mylite_ast_is_unsigned_integer_table_option(option->kind)) {
+    unsigned long long value = 0;
+    if (mylite_ast_parse_unsigned_integer_value(ast->source,
+                                                option->value_start,
+                                                option->value_end, &value)) {
+      option->value_kind = MYLITE_CREATE_TABLE_OPTION_VALUE_UNSIGNED_INTEGER;
+      option->unsigned_integer_value = value;
+      option->has_unsigned_integer_value = 1;
+      return 1;
+    }
+  }
+
+  if (token->token == MYLITE_TOK_STRING_LIT) {
+    option->value_kind = MYLITE_CREATE_TABLE_OPTION_VALUE_STRING;
+    return mylite_ast_decode_sql_string_literal(ast, token->start, token->end,
+                                                &option->value,
+                                                &option->value_length);
+  }
+
+  if (token->start == option->value_start && token->end == option->value_end) {
+    option->value_kind = MYLITE_CREATE_TABLE_OPTION_VALUE_IDENTIFIER;
+    return mylite_ast_decode_identifier(ast, token->start, token->end,
+                                        &option->value,
+                                        &option->value_length);
+  }
+
+  option->value_kind = MYLITE_CREATE_TABLE_OPTION_VALUE_RAW;
+  return 1;
+}
+
+static const MyliteAstNode *mylite_ast_find_create_table_option_value_token(
+    const MyliteAstNode *node, size_t min_start) {
+  if (node == NULL || !node->has_span || node->end <= min_start) {
+    return NULL;
+  }
+  if (node->kind == MYLITE_AST_NODE_TOKEN) {
+    return node->start >= min_start && node->token != MYLITE_TOK_EQ ? node
+                                                                    : NULL;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    const MyliteAstNode *found =
+        mylite_ast_find_create_table_option_value_token(node->children[i],
+                                                        min_start);
+    if (found != NULL) {
+      return found;
+    }
+  }
+  return NULL;
+}
+
+static int mylite_ast_is_unsigned_integer_table_option(
+    MyliteCreateTableOptionKind kind) {
+  switch (kind) {
+    case MYLITE_CREATE_TABLE_OPTION_AUTO_INCREMENT:
+    case MYLITE_CREATE_TABLE_OPTION_KEY_BLOCK_SIZE:
+    case MYLITE_CREATE_TABLE_OPTION_AUTOEXTEND_SIZE:
+    case MYLITE_CREATE_TABLE_OPTION_AVG_ROW_LENGTH:
+    case MYLITE_CREATE_TABLE_OPTION_MAX_ROWS:
+    case MYLITE_CREATE_TABLE_OPTION_MIN_ROWS:
+    case MYLITE_CREATE_TABLE_OPTION_DELAY_KEY_WRITE:
+      return 1;
+    case MYLITE_CREATE_TABLE_OPTION_UNKNOWN:
+    case MYLITE_CREATE_TABLE_OPTION_ENGINE:
+    case MYLITE_CREATE_TABLE_OPTION_SECONDARY_ENGINE:
+    case MYLITE_CREATE_TABLE_OPTION_CHARSET:
+    case MYLITE_CREATE_TABLE_OPTION_COLLATE:
+    case MYLITE_CREATE_TABLE_OPTION_COMMENT:
+    case MYLITE_CREATE_TABLE_OPTION_ROW_FORMAT:
+    case MYLITE_CREATE_TABLE_OPTION_ENCRYPTION:
+    case MYLITE_CREATE_TABLE_OPTION_STATS_PERSISTENT:
+    case MYLITE_CREATE_TABLE_OPTION_PACK_KEYS:
+    case MYLITE_CREATE_TABLE_OPTION_TABLESPACE:
+    case MYLITE_CREATE_TABLE_OPTION_STORAGE:
+    case MYLITE_CREATE_TABLE_OPTION_COMPRESSION:
+    case MYLITE_CREATE_TABLE_OPTION_CONNECTION:
+    case MYLITE_CREATE_TABLE_OPTION_PASSWORD:
+    case MYLITE_CREATE_TABLE_OPTION_INSERT_METHOD:
+    case MYLITE_CREATE_TABLE_OPTION_DATA_DIRECTORY:
+    case MYLITE_CREATE_TABLE_OPTION_INDEX_DIRECTORY:
+    case MYLITE_CREATE_TABLE_OPTION_UNION:
+    case MYLITE_CREATE_TABLE_OPTION_ENGINE_ATTRIBUTE:
+    case MYLITE_CREATE_TABLE_OPTION_SECONDARY_ENGINE_ATTRIBUTE:
+      return 0;
+  }
+  return 0;
+}
+
+static int mylite_ast_parse_unsigned_integer_value(const char *source,
+                                                   size_t start, size_t end,
+                                                   unsigned long long *value) {
+  if (source == NULL || value == NULL || start >= end) {
+    return 0;
+  }
+  unsigned long long parsed = 0;
+  for (size_t offset = start; offset < end; offset++) {
+    unsigned char ch = (unsigned char)source[offset];
+    if (!isdigit(ch)) {
+      return 0;
+    }
+    unsigned digit = (unsigned)(ch - '0');
+    if (parsed > (ULLONG_MAX - digit) / 10) {
+      return 0;
+    }
+    parsed = parsed * 10 + digit;
+  }
+  *value = parsed;
+  return 1;
 }
 
 static const MyliteAstNode *mylite_ast_find_create_table_option_name(

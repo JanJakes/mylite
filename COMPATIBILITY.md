@@ -64,8 +64,8 @@ optional generic parse tree with typed statement, target, and initial
 parser-level storage-class, decoded column-name, numeric type-parameter,
 semantic type-shape, exact type-attribute span, enum/set element-span/value,
 key/constraint-detail with decoded identifier names, column-detail handles,
-key-part/key-option handles, and table-option descriptor views. It also builds
-an initial semantic `CREATE TABLE` view that anchors the table target and
+key-part/key-option handles, and table-option descriptor/value views. It also
+builds an initial semantic `CREATE TABLE` view that anchors the table target and
 exposes opaque column/type-element/key/key-part/key-option/table-option
 descriptor handles for the next typed AST layer. Column descriptors include CST
 node anchors for the next semantic AST builder, but the parser does not yet

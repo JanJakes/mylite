@@ -269,6 +269,15 @@ typedef enum MyliteCreateTableOptionKind {
   MYLITE_CREATE_TABLE_OPTION_SECONDARY_ENGINE_ATTRIBUTE
 } MyliteCreateTableOptionKind;
 
+typedef enum MyliteCreateTableOptionValueKind {
+  MYLITE_CREATE_TABLE_OPTION_VALUE_UNKNOWN = 0,
+  MYLITE_CREATE_TABLE_OPTION_VALUE_RAW,
+  MYLITE_CREATE_TABLE_OPTION_VALUE_IDENTIFIER,
+  MYLITE_CREATE_TABLE_OPTION_VALUE_STRING,
+  MYLITE_CREATE_TABLE_OPTION_VALUE_UNSIGNED_INTEGER,
+  MYLITE_CREATE_TABLE_OPTION_VALUE_LIST
+} MyliteCreateTableOptionValueKind;
+
 MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result);
 MyliteParseStatus mylite_parse_sql_ast(const char *sql, MyliteAst **ast,
                                        MyliteParseResult *result);
@@ -297,6 +306,8 @@ const char *mylite_create_table_check_enforcement_name(
     MyliteCreateTableCheckEnforcement enforcement);
 const char *mylite_create_table_option_kind_name(
     MyliteCreateTableOptionKind kind);
+const char *mylite_create_table_option_value_kind_name(
+    MyliteCreateTableOptionValueKind kind);
 
 void mylite_ast_free(MyliteAst *ast);
 const MyliteAstNode *mylite_ast_root(const MyliteAst *ast);
@@ -738,6 +749,18 @@ size_t mylite_ast_create_table_option_view_name_end(
 size_t mylite_ast_create_table_option_view_value_start(
     const MyliteAstCreateTableOption *option);
 size_t mylite_ast_create_table_option_view_value_end(
+    const MyliteAstCreateTableOption *option);
+MyliteCreateTableOptionValueKind
+mylite_ast_create_table_option_view_value_kind(
+    const MyliteAstCreateTableOption *option);
+const char *mylite_ast_create_table_option_view_value(
+    const MyliteAstCreateTableOption *option);
+size_t mylite_ast_create_table_option_view_value_length(
+    const MyliteAstCreateTableOption *option);
+int mylite_ast_create_table_option_view_has_unsigned_integer(
+    const MyliteAstCreateTableOption *option);
+unsigned long long
+mylite_ast_create_table_option_view_unsigned_integer_value(
     const MyliteAstCreateTableOption *option);
 size_t mylite_ast_create_table_column_count(const MyliteAst *ast,
                                             size_t statement_index);

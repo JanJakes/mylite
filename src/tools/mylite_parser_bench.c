@@ -90,6 +90,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_table_view_named_referenced_columns = 0;
   size_t create_table_view_key_option_handles = 0;
   size_t create_table_view_option_handles = 0;
+  size_t create_table_view_option_values = 0;
+  size_t create_table_view_option_identifier_values = 0;
+  size_t create_table_view_option_string_values = 0;
+  size_t create_table_view_option_unsigned_integer_values = 0;
+  size_t create_table_view_option_list_values = 0;
   size_t columns = 0;
   size_t column_name_values = 0;
   size_t column_known_types = 0;
@@ -303,9 +308,30 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
               for (size_t k = 0;
                    k < mylite_ast_create_table_view_option_count(create_table);
                    k++) {
-                if (mylite_ast_create_table_view_option_at(create_table, k) !=
-                    NULL) {
+                const MyliteAstCreateTableOption *option =
+                    mylite_ast_create_table_view_option_at(create_table, k);
+                if (option != NULL) {
                   create_table_view_option_handles++;
+                }
+                if (mylite_ast_create_table_option_view_value(option) != NULL) {
+                  create_table_view_option_values++;
+                }
+                switch (mylite_ast_create_table_option_view_value_kind(option)) {
+                  case MYLITE_CREATE_TABLE_OPTION_VALUE_IDENTIFIER:
+                    create_table_view_option_identifier_values++;
+                    break;
+                  case MYLITE_CREATE_TABLE_OPTION_VALUE_STRING:
+                    create_table_view_option_string_values++;
+                    break;
+                  case MYLITE_CREATE_TABLE_OPTION_VALUE_UNSIGNED_INTEGER:
+                    create_table_view_option_unsigned_integer_values++;
+                    break;
+                  case MYLITE_CREATE_TABLE_OPTION_VALUE_LIST:
+                    create_table_view_option_list_values++;
+                    break;
+                  case MYLITE_CREATE_TABLE_OPTION_VALUE_UNKNOWN:
+                  case MYLITE_CREATE_TABLE_OPTION_VALUE_RAW:
+                    break;
                 }
               }
             }
@@ -498,6 +524,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_table_view_named_referenced_columns=%.2f "
            "avg_create_table_view_key_option_handles=%.2f "
            "avg_create_table_view_option_handles=%.2f "
+           "avg_create_table_view_option_values=%.2f "
+           "avg_create_table_view_option_identifier_values=%.2f "
+           "avg_create_table_view_option_string_values=%.2f "
+           "avg_create_table_view_option_unsigned_integer_values=%.2f "
+           "avg_create_table_view_option_list_values=%.2f "
            "avg_key_constraint_name_values=%.2f avg_key_name_values=%.2f "
            "avg_key_referenced_table_schema_values=%.2f "
            "avg_key_referenced_table_name_values=%.2f "
@@ -544,6 +575,13 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)create_table_view_named_referenced_columns / (double)parsed,
            (double)create_table_view_key_option_handles / (double)parsed,
            (double)create_table_view_option_handles / (double)parsed,
+           (double)create_table_view_option_values / (double)parsed,
+           (double)create_table_view_option_identifier_values /
+               (double)parsed,
+           (double)create_table_view_option_string_values / (double)parsed,
+           (double)create_table_view_option_unsigned_integer_values /
+               (double)parsed,
+           (double)create_table_view_option_list_values / (double)parsed,
            (double)key_constraint_name_values / (double)parsed,
            (double)key_name_values / (double)parsed,
            (double)key_referenced_table_schema_values / (double)parsed,

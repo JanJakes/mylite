@@ -796,8 +796,12 @@ static void dump_create_table_view_handles(
        i++) {
     const MyliteAstCreateTableOption *option =
         mylite_ast_create_table_view_option_at(create_table, i);
+    const char *value = mylite_ast_create_table_option_view_value(option);
+    size_t value_length =
+        mylite_ast_create_table_option_view_value_length(option);
     printf("    create_table.option[%zu] kind=%s span=%zu..%zu name=%zu..%zu "
-           "value=%zu..%zu\n",
+           "value=%zu..%zu value_kind=%s unsigned=%d:%llu value_len=%zu "
+           "decoded_value=",
            i,
            mylite_create_table_option_kind_name(
                mylite_ast_create_table_option_view_kind(option)),
@@ -806,7 +810,18 @@ static void dump_create_table_view_handles(
            mylite_ast_create_table_option_view_name_start(option),
            mylite_ast_create_table_option_view_name_end(option),
            mylite_ast_create_table_option_view_value_start(option),
-           mylite_ast_create_table_option_view_value_end(option));
+           mylite_ast_create_table_option_view_value_end(option),
+           mylite_create_table_option_value_kind_name(
+               mylite_ast_create_table_option_view_value_kind(option)),
+           mylite_ast_create_table_option_view_has_unsigned_integer(option),
+           mylite_ast_create_table_option_view_unsigned_integer_value(option),
+           value_length);
+    if (value == NULL) {
+      fputs("none", stdout);
+    } else {
+      print_escaped_bytes(value, value_length);
+    }
+    fputc('\n', stdout);
   }
 }
 

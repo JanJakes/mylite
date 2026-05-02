@@ -268,7 +268,8 @@ mylite_sql_parser_append_statement(struct mylite_sql_parser_state *state,
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token select_token,
     struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause,
-    struct mylite_sql_ast_node *where_clause)
+    struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *limit_clause)
 {
     struct mylite_sql_source_span span = span_from_token(&select_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -282,6 +283,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     if (where_clause != NULL) {
         span = span_join(span, where_clause->span);
     }
+    if (order_by_clause != NULL) {
+        span = span_join(span, order_by_clause->span);
+    }
+    if (limit_clause != NULL) {
+        span = span_join(span, limit_clause->span);
+    }
 
     statement = make_node(state, MYLITE_SQL_AST_SELECT_STATEMENT, span);
     if (statement == NULL) {
@@ -291,6 +298,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     mylite_sql_ast_node_append_child(statement, select_list);
     mylite_sql_ast_node_append_child(statement, from_clause);
     mylite_sql_ast_node_append_child(statement, where_clause);
+    mylite_sql_ast_node_append_child(statement, order_by_clause);
+    mylite_sql_ast_node_append_child(statement, limit_clause);
     return statement;
 }
 
@@ -313,6 +322,138 @@ mylite_sql_parser_make_where_clause(struct mylite_sql_parser_state *state,
 
     mylite_sql_ast_node_append_child(where_clause, expression);
     return where_clause;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token order_token,
+    struct mylite_sql_token by_token, struct mylite_sql_ast_node *items)
+{
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&order_token), span_from_token(&by_token));
+    struct mylite_sql_ast_node *order_by_clause = NULL;
+
+    if (items != NULL) {
+        span = span_join(span, items->span);
+    }
+
+    order_by_clause = make_node(state, MYLITE_SQL_AST_ORDER_BY_CLAUSE, span);
+    if (order_by_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(order_by_clause, items);
+    return order_by_clause;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_order_item_list(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *item)
+{
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_ORDER_ITEM_LIST,
+                  item == NULL ? (struct mylite_sql_source_span){0} : item->span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, item);
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_order_item(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *list,
+                                    struct mylite_sql_ast_node *item)
+{
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, item);
+    if (item != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, item->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_order_item(struct mylite_sql_parser_state *state,
+                                  struct mylite_sql_ast_node *expression,
+                                  struct mylite_sql_token direction_token)
+{
+    enum mylite_sql_ast_key_part_order direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC;
+    struct mylite_sql_source_span span =
+        expression == NULL ? (struct mylite_sql_source_span){0} : expression->span;
+    struct mylite_sql_ast_node *item = NULL;
+
+    if (direction_token.text != NULL) {
+        span = span_join(span, span_from_token(&direction_token));
+        if (token_text_equals(&direction_token, "DESC")) {
+            direction = MYLITE_SQL_AST_KEY_PART_ORDER_DESC;
+        }
+    }
+
+    item = make_node(state, MYLITE_SQL_AST_ORDER_ITEM, span);
+    if (item == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_key_part_order(item, direction);
+    mylite_sql_ast_node_append_child(item, expression);
+    return item;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_limit_clause(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token limit_token,
+    struct mylite_sql_ast_node *offset_bound, struct mylite_sql_ast_node *row_count_bound)
+{
+    struct mylite_sql_source_span span = span_from_token(&limit_token);
+    struct mylite_sql_ast_node *limit_clause = NULL;
+
+    if (offset_bound == NULL) {
+        offset_bound =
+            make_node(state, MYLITE_SQL_AST_LIMIT_BOUND, (struct mylite_sql_source_span){0});
+        if (offset_bound == NULL) {
+            return NULL;
+        }
+        mylite_sql_ast_node_set_limit_bound_value(offset_bound, 0U);
+    }
+    if (row_count_bound != NULL) {
+        span = span_join(span, row_count_bound->span);
+    }
+    if (offset_bound->span.text != NULL) {
+        span = span_join(span, offset_bound->span);
+    }
+
+    limit_clause = make_node(state, MYLITE_SQL_AST_LIMIT_CLAUSE, span);
+    if (limit_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(limit_clause, offset_bound);
+    mylite_sql_ast_node_append_child(limit_clause, row_count_bound);
+    return limit_clause;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_limit_bound(struct mylite_sql_parser_state *state,
+                                   struct mylite_sql_token integer_token)
+{
+    struct mylite_sql_ast_node *bound =
+        make_node(state, MYLITE_SQL_AST_LIMIT_BOUND, span_from_token(&integer_token));
+    uint64_t value = 0U;
+
+    if (bound == NULL) {
+        return NULL;
+    }
+    if (!parse_column_length(bound, &value)) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_INTEGER, integer_token);
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_limit_bound_value(bound, value);
+    return bound;
 }
 
 struct mylite_sql_ast_node *
@@ -2520,6 +2661,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"BOOLEAN", MYLITE_SQL_PARSE_BOOLEAN},
         {"BLOB", MYLITE_SQL_PARSE_BLOB},
         {"BTREE", MYLITE_SQL_PARSE_BTREE},
+        {"BY", MYLITE_SQL_PARSE_BY},
         {"BYTE", MYLITE_SQL_PARSE_BYTE},
         {"CASCADE", MYLITE_SQL_PARSE_CASCADE},
         {"CHAR", MYLITE_SQL_PARSE_CHAR},
@@ -2577,6 +2719,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"LONG", MYLITE_SQL_PARSE_LONG},
         {"LONGTEXT", MYLITE_SQL_PARSE_LONGTEXT},
         {"LIKE", MYLITE_SQL_PARSE_LIKE},
+        {"LIMIT", MYLITE_SQL_PARSE_LIMIT},
         {"MEDIUMINT", MYLITE_SQL_PARSE_MEDIUMINT},
         {"MEDIUMBLOB", MYLITE_SQL_PARSE_MEDIUMBLOB},
         {"MEDIUMTEXT", MYLITE_SQL_PARSE_MEDIUMTEXT},
@@ -2589,10 +2732,12 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"NOT", MYLITE_SQL_PARSE_NOT},
         {"NULL", MYLITE_SQL_PARSE_NULL},
         {"NVARCHAR", MYLITE_SQL_PARSE_NVARCHAR},
+        {"OFFSET", MYLITE_SQL_PARSE_OFFSET},
         {"NUMERIC", MYLITE_SQL_PARSE_NUMERIC},
         {"ON", MYLITE_SQL_PARSE_ON},
         {"ONLY", MYLITE_SQL_PARSE_ONLY},
         {"OR", MYLITE_SQL_PARSE_OR},
+        {"ORDER", MYLITE_SQL_PARSE_ORDER},
         {"PRECISION", MYLITE_SQL_PARSE_PRECISION},
         {"PRIMARY", MYLITE_SQL_PARSE_PRIMARY},
         {"READ", MYLITE_SQL_PARSE_READ},

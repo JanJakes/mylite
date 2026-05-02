@@ -24,6 +24,7 @@ static int test_expression_operator_foundation_syntax(void);
 static int test_information_schema_select(void);
 static int test_select_table_core_syntax(void);
 static int test_select_where_clause_syntax(void);
+static int test_select_order_limit_offset_syntax(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -57,6 +58,11 @@ static int expect_column_storage(const struct mylite_sql_ast_node *node,
                                  enum mylite_sql_ast_column_storage expected, const char *context);
 static int expect_key_part_order(const struct mylite_sql_ast_node *node,
                                  enum mylite_sql_ast_key_part_order expected, const char *context);
+static int expect_order_item_direction(const struct mylite_sql_ast_node *node,
+                                       enum mylite_sql_ast_key_part_order expected,
+                                       const char *context);
+static int expect_limit_bound(const struct mylite_sql_ast_node *node, uint64_t expected,
+                              const char *context);
 static int expect_index_algorithm(const struct mylite_sql_ast_node *node,
                                   enum mylite_sql_ast_index_algorithm expected,
                                   const char *context);
@@ -91,6 +97,7 @@ int main(void)
     failures += test_information_schema_select();
     failures += test_select_table_core_syntax();
     failures += test_select_where_clause_syntax();
+    failures += test_select_order_limit_offset_syntax();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -2533,12 +2540,6 @@ static int test_select_table_core_syntax(void)
     failures += parse_sql("SELECT a, * FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT a FROM t ORDER BY a;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql("SELECT a FROM t LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parse_sql("SELECT a FROM t GROUP BY a;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
@@ -2633,12 +2634,114 @@ static int test_select_where_clause_syntax(void)
         parse_sql("SELECT id FROM t WHERE n IN ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT id FROM t WHERE n = 1 ORDER BY id;",
+    failures += parse_sql("SELECT id FROM t JOIN t AS u WHERE t.id = u.id;",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT id FROM t JOIN t AS u WHERE t.id = u.id;",
+    return failures;
+}
+
+static int test_select_order_limit_offset_syntax(void)
+{
+    enum { where_order_limit_child_count = 5U };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *order_by = NULL;
+    const struct mylite_sql_ast_node *order_items = NULL;
+    const struct mylite_sql_ast_node *limit = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT a FROM t ORDER BY a;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    order_by = child_at(select, 2U);
+    order_items = child_at(order_by, 0U);
+    failures += expect_child_count(select, 3U, "order select child count");
+    failures += expect_node(order_by, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "order clause");
+    failures += expect_span_text(order_by, "ORDER BY a", "order clause span");
+    failures += expect_node(order_items, MYLITE_SQL_AST_ORDER_ITEM_LIST, "order item list");
+    failures += expect_child_count(order_items, 1U, "order item count");
+    failures += expect_span_text(child_at(child_at(order_items, 0U), 0U), "a", "order expression");
+    failures += expect_order_item_direction(
+        child_at(order_items, 0U), MYLITE_SQL_AST_KEY_PART_ORDER_ASC, "default order direction");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t WHERE n = 1 ORDER BY n DESC, a ASC LIMIT 2 OFFSET 1;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    order_by = child_at(select, 3U);
+    order_items = child_at(order_by, 0U);
+    limit = child_at(select, 4U);
+    failures +=
+        expect_child_count(select, where_order_limit_child_count, "where order limit child count");
+    failures +=
+        expect_node(child_at(select, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "where before order");
+    failures += expect_node(order_by, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "order after where");
+    failures += expect_child_count(order_items, 2U, "multiple order item count");
+    failures += expect_order_item_direction(
+        child_at(order_items, 0U), MYLITE_SQL_AST_KEY_PART_ORDER_DESC, "desc order direction");
+    failures += expect_order_item_direction(
+        child_at(order_items, 1U), MYLITE_SQL_AST_KEY_PART_ORDER_ASC, "asc order direction");
+    failures += expect_node(limit, MYLITE_SQL_AST_LIMIT_CLAUSE, "offset keyword limit clause");
+    failures += expect_limit_bound(child_at(limit, 0U), 1U, "offset keyword normalized offset");
+    failures += expect_limit_bound(child_at(limit, 1U), 2U, "offset keyword normalized row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT a FROM t LIMIT 1, 18446744073709551615;", MYLITE_SQL_PARSE_OK, &result);
+    limit = child_at(child_at(result.root, 0U), 2U);
+    failures += expect_node(limit, MYLITE_SQL_AST_LIMIT_CLAUSE, "comma limit clause");
+    failures += expect_limit_bound(child_at(limit, 0U), 1U, "comma limit normalized offset");
+    failures +=
+        expect_limit_bound(child_at(limit, 1U), UINT64_MAX, "comma limit normalized row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t LIMIT 3;", MYLITE_SQL_PARSE_OK, &result);
+    limit = child_at(child_at(result.root, 0U), 2U);
+    failures += expect_limit_bound(child_at(limit, 0U), 0U, "single limit normalized offset");
+    failures += expect_limit_bound(child_at(limit, 1U), 3U, "single limit normalized row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t ORDER BY -1 LIMIT 2;", MYLITE_SQL_PARSE_OK, &result);
+    order_items = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_operator(child_at(child_at(order_items, 0U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_NEGATIVE, "negative order constant");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT a FROM t ORDER BY a NULLS LAST;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t ORDER BY a WHERE n = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t LIMIT -1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t LIMIT 1.5;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t LIMIT '2';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t LIMIT NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t LIMIT 1 + 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t LIMIT 1, -2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT a FROM t LIMIT 2 OFFSET -1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t LIMIT 18446744073709551616;",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t LIMIT ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -3013,6 +3116,40 @@ static int expect_key_part_order(const struct mylite_sql_ast_node *node,
         fprintf(stderr, "%s: expected key part order %s, got %s\n", context,
                 mylite_sql_ast_key_part_order_name(expected),
                 mylite_sql_ast_key_part_order_name(node->key_part_order));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_order_item_direction(const struct mylite_sql_ast_node *node,
+                                       enum mylite_sql_ast_key_part_order expected,
+                                       const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_ORDER_ITEM, context);
+
+    if (node != NULL && node->key_part_order != expected) {
+        fprintf(stderr, "%s: expected order direction %s, got %s\n", context,
+                mylite_sql_ast_key_part_order_name(expected),
+                mylite_sql_ast_key_part_order_name(node->key_part_order));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_limit_bound(const struct mylite_sql_ast_node *node, uint64_t expected,
+                              const char *context)
+{
+    uint64_t actual = 0U;
+    int failures = expect_node(node, MYLITE_SQL_AST_LIMIT_BOUND, context);
+
+    if (node != NULL && node->has_limit_bound_value) {
+        actual = node->limit_bound_value;
+    }
+    if (node != NULL && (!node->has_limit_bound_value || actual != expected)) {
+        fprintf(stderr, "%s: expected limit bound %llu, got %llu\n", context,
+                (unsigned long long)expected, (unsigned long long)actual);
         failures = 1;
     }
 

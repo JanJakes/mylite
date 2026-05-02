@@ -67,6 +67,7 @@ enum {
     simple_create_amount_precision = 10,
     simple_create_column_count = 6,
     simple_create_statistics_count = 3,
+    mysql_warning_ambiguous_column = 1052,
     mysql_warning_unknown_column = 1054,
     mysql_warning_incorrect_escape_arguments = 1210,
     mysql_warning_truncated_wrong_value = 1292,
@@ -125,6 +126,7 @@ static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_select_table_core_execution(void);
 static int test_select_where_execution(void);
+static int test_select_order_limit_offset_execution(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -135,6 +137,8 @@ static int expect_prepare_error(mylite_db *database, const char *sql, int expect
 static int expect_select_rows(mylite_db *database, const char *sql, const char *const *columns,
                               int column_count, const char *const *values, int row_count,
                               const char *context);
+static int expect_select_row_count(mylite_db *database, const char *sql, int row_count,
+                                   const char *context);
 static int expect_information_schema_schemata_row(mylite_db *database,
                                                   const struct expected_schemata_row *expected);
 static int expect_no_information_schema_schemata_row(mylite_db *database, const char *schema_name);
@@ -214,6 +218,7 @@ int main(void)
     failures += test_insert_set_execution();
     failures += test_select_table_core_execution();
     failures += test_select_where_execution();
+    failures += test_select_order_limit_offset_execution();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -3138,6 +3143,228 @@ static int test_select_where_execution(void)
     return failures;
 }
 
+static int test_select_order_limit_offset_execution(void)
+{
+    enum { hidden_order_warning_count = 5 };
+    static const char *const id_column[] = {"id"};
+    static const char *const ids_1_2[] = {"1", "2"};
+    static const char *const ids_2_3[] = {"2", "3"};
+    static const char *const ids_2_4[] = {"2", "4"};
+    static const char *const ids_3_4_5[] = {"3", "4", "5"};
+    static const char *const ids_where_order_limit[] = {"4", "2", "3"};
+    static const char *const ids_expression_order[] = {"2", "3", "1"};
+    static const char *const ids_nulls_asc[] = {"4", "5"};
+    static const char *const ids_nulls_desc[] = {"2", "1"};
+    static const char *const ids_string_order[] = {"2", "3", "1"};
+    static const char *const ids_base_qualified[] = {"4", "5", "1"};
+    static const char *const ids_qualified_alias[] = {"5", "4", "3"};
+    static const char *const id_s_columns[] = {"id", "s"};
+    static const char *const alias_wins_values[] = {
+        "-5", "delta", "-4", "gamma", "-3", "alpha",
+    };
+    static const char *const s_id_columns[] = {"s", "id"};
+    static const char *const ordinal_values[] = {
+        "delta", "5", "gamma", "4", "alpha", "3",
+    };
+    static const char *const sort_key_columns[] = {"Sort_Key", "id"};
+    static const char *const sort_key_values[] = {
+        "20", "2", "10", "1", "10", "3",
+    };
+    static const char *const quoted_sort_key_columns[] = {"sort key", "id"};
+    static const char *const quoted_sort_key_values[] = {
+        "20", "2", "10", "1", "10", "3",
+    };
+    static const char *const string_literal_order_values[] = {
+        "10", "1", "20", "2", "10", "3",
+    };
+    static const char *const x_id_columns[] = {"x", "id"};
+    static const char *const order_expression_alias_values[] = {
+        "20",
+        "2",
+        "10",
+        "1",
+    };
+    static const char *const metadata_columns[] = {"x", "s"};
+    static const struct expected_column_metadata metadata[] = {
+        {"x", "mylite_task18_order", "t", "t", "n"},
+        {"s", "mylite_task18_order", "t", "t", "s"},
+    };
+    static const struct expected_column_metadata id_metadata[] = {
+        {"id", "mylite_task18_order", "t", "t", "id"},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    uint64_t last_insert_id = 0U;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open order database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_task18_order", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE mylite_task18_order.t ("
+                            "id INT PRIMARY KEY, category INT, n INT, s VARCHAR(20), "
+                            "nullable INT NULL, CamelCase INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO mylite_task18_order.t VALUES "
+                            "(1, 2, 10, 'beta', NULL, 100), "
+                            "(2, 1, 20, 'Alpha', 5, 200), "
+                            "(3, 2, 10, 'alpha', NULL, 300), "
+                            "(4, 1, NULL, 'gamma', 0, 400), "
+                            "(5, 3, 1, 'delta', 7, 500)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_task18_order", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE ai (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT) "
+                            "AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ai (v) VALUES (7)", MYLITE_DONE);
+    last_insert_id = mylite_last_insert_id(database);
+
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id LIMIT 2", id_column, 1,
+                                   ids_1_2, 2, "order limit row count");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id LIMIT 1, 2", id_column,
+                                   1, ids_2_3, 2, "comma limit offset");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id LIMIT 2 OFFSET 1",
+                                   id_column, 1, ids_2_3, 2, "keyword limit offset");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM t ORDER BY id LIMIT 2, 18446744073709551615",
+                           id_column, 1, ids_3_4_5, 3, "max unsigned row count limit");
+    failures += expect_select_row_count(database, "SELECT id FROM t LIMIT 2", 2,
+                                        "limit without order row count");
+
+    failures += expect_select_rows(
+        database, "SELECT id FROM t WHERE category IN (1, 2) ORDER BY category, id DESC LIMIT 3",
+        id_column, 1, ids_where_order_limit, 3, "where order limit interaction");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY n + id DESC, id LIMIT 3",
+                                   id_column, 1, ids_expression_order, 3, "expression order keys");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY n ASC, id LIMIT 2",
+                                   id_column, 1, ids_nulls_asc, 2, "null ascending order");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY n DESC, id LIMIT 2",
+                                   id_column, 1, ids_nulls_desc, 2, "null descending order");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY s, id LIMIT 3", id_column,
+                                   1, ids_string_order, 3, "string order tie breaker");
+
+    failures +=
+        expect_select_rows(database, "SELECT -id AS id, s FROM t ORDER BY id LIMIT 3", id_s_columns,
+                           2, alias_wins_values, 3, "order alias wins over column");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY t.n ASC, id LIMIT 3",
+                                   id_column, 1, ids_base_qualified, 3, "qualified order column");
+    failures += expect_select_rows(
+        database, "SELECT n AS Sort_Key, id FROM t ORDER BY sort_key DESC, id LIMIT 3",
+        sort_key_columns, 2, sort_key_values, 3, "case-insensitive order alias");
+    failures += expect_select_rows(
+        database, "SELECT n AS 'sort key', id FROM t ORDER BY `sort key` DESC, id LIMIT 3",
+        quoted_sort_key_columns, 2, quoted_sort_key_values, 3, "quoted order alias");
+    failures += expect_select_rows(
+        database, "SELECT n AS 'sort key', id FROM t ORDER BY 'sort key' DESC, id LIMIT 3",
+        quoted_sort_key_columns, 2, string_literal_order_values, 3, "string literal order key");
+    failures += expect_select_rows(
+        database, "SELECT n AS x, id FROM t ORDER BY x + 1 DESC, id LIMIT 2", x_id_columns, 2,
+        order_expression_alias_values, 2, "order expression alias reference");
+    failures += expect_select_rows(database, "SELECT s, id FROM t ORDER BY 2 DESC LIMIT 3",
+                                   s_id_columns, 2, ordinal_values, 3, "ordinal order key");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY -1, id LIMIT 2", id_column,
+                                   1, ids_1_2, 2, "negative constant order key");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM t AS tt ORDER BY tt.CamelCase DESC LIMIT 3",
+                           id_column, 1, ids_qualified_alias, 3, "qualified alias order key");
+    failures += expect_prepare_error(database, "SELECT id + 1 AS x FROM t ORDER BY id",
+                                     MYLITE_UNSUPPORTED, "Unsupported SELECT projection",
+                                     "unreferenced order projection expression");
+    failures += expect_prepare_error(database, "SELECT 1 FROM t ORDER BY id", MYLITE_UNSUPPORTED,
+                                     "Unsupported SELECT projection",
+                                     "literal projection remains unsupported with order");
+
+    failures += expect_prepare_error(
+        database, "SELECT n AS x, category AS x FROM t ORDER BY x LIMIT 1", MYLITE_EXEC_ERROR,
+        "Column 'x' in order clause is ambiguous", "duplicate order alias");
+    failures += expect_int(mylite_warning_count(database), 1, "duplicate order alias warning");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_ambiguous_column,
+                           "duplicate order alias warning code");
+    failures += expect_prepare_error(
+        database, "SELECT id FROM t ORDER BY missing_col", MYLITE_EXEC_ERROR,
+        "Unknown column 'missing_col' in 'order clause'", "unknown order column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "unknown order column warning code");
+    failures += expect_prepare_error(
+        database, "SELECT id FROM t ORDER BY missing_alias.n", MYLITE_EXEC_ERROR,
+        "Unknown column 'missing_alias.n' in 'order clause'", "unknown order qualifier");
+    failures += expect_prepare_error(database, "SELECT id FROM t AS tt ORDER BY t.n",
+                                     MYLITE_EXEC_ERROR, "Unknown column 't.n' in 'order clause'",
+                                     "order alias hides base qualifier");
+    failures += expect_prepare_error(database, "SELECT n AS x, id FROM t ORDER BY t.x",
+                                     MYLITE_EXEC_ERROR, "Unknown column 't.x' in 'order clause'",
+                                     "qualified order alias rejected");
+    failures += expect_prepare_error(database, "SELECT id FROM t ORDER BY 0", MYLITE_EXEC_ERROR,
+                                     "Unknown column '0' in 'order clause'", "zero order ordinal");
+    failures +=
+        expect_prepare_error(database, "SELECT id FROM t ORDER BY 2", MYLITE_EXEC_ERROR,
+                             "Unknown column '2' in 'order clause'", "out of range order ordinal");
+
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY s + 0, id LIMIT 2",
+                                   id_column, 1, ids_1_2, 2, "hidden order warnings");
+    failures += expect_int(mylite_warning_count(database), hidden_order_warning_count,
+                           "hidden order warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "hidden order warning code");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM t WHERE category = 1 ORDER BY s + 0, id LIMIT 2",
+                                   id_column, 1, ids_2_4, 2, "filtered hidden order warnings");
+    failures += expect_int(mylite_warning_count(database), 2, "filtered hidden warning count");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM t WHERE category = 99 ORDER BY s + 0 LIMIT 2",
+                           id_column, 1, NULL, 0, "empty filtered hidden order warnings");
+    failures += expect_int(mylite_warning_count(database), 0, "empty filtered warning count");
+
+    failures += prepare_sql(
+        database,
+        "SELECT n AS x, s FROM t WHERE category IN (1, 2) ORDER BY nullable DESC, id LIMIT 2",
+        MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, metadata_columns, 2, "hidden order metadata names");
+    failures += expect_column_metadata(stmt, metadata, 2, "hidden order metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "hidden order metadata first row");
+    failures += expect_string(mylite_column_text(stmt, 0), "20", "hidden order metadata first x");
+    failures +=
+        expect_string(mylite_column_text(stmt, 1), "Alpha", "hidden order metadata first s");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "hidden order metadata second row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "hidden order metadata second x");
+    failures +=
+        expect_string(mylite_column_text(stmt, 1), "gamma", "hidden order metadata second s");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hidden order metadata done");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "hidden order affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT id FROM t ORDER BY id LIMIT 0", MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, id_column, 1, "limit zero metadata names");
+    failures += expect_column_metadata(stmt, id_metadata, 1, "limit zero metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "limit zero done");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "limit zero affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT id FROM t LIMIT -1", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "negative limit parse error");
+    failures += prepare_sql(database, "SELECT id FROM t LIMIT 1.5", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "decimal limit parse error");
+    failures += prepare_sql(database, "SELECT id FROM t LIMIT '2'", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "string limit parse error");
+    failures += prepare_sql(database, "SELECT id FROM t LIMIT NULL", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "null limit parse error");
+    failures += prepare_sql(database, "SELECT id FROM t LIMIT 1 + 1", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "expression limit parse error");
+    failures += prepare_sql(database, "SELECT id FROM t LIMIT 18446744073709551616",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "overflow limit parse error");
+    failures += prepare_sql(database, "SELECT id FROM t LIMIT ?", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "parameter limit parse error");
+
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), (int64_t)last_insert_id,
+                             "order last insert id unchanged");
+    mylite_close(database);
+    return failures;
+}
+
 static int test_parse_error(void)
 {
     mylite_db *database = NULL;
@@ -3196,6 +3423,21 @@ static int expect_select_rows(mylite_db *database, const char *sql, const char *
 
             failures += expect_string(mylite_column_text(stmt, column), expected, context);
         }
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, context);
+    failures += expect_int64(mylite_affected_rows(stmt), -1, context);
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_select_row_count(mylite_db *database, const char *sql, int row_count,
+                                   const char *context)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, sql, MYLITE_OK, &stmt);
+
+    for (int row = 0; row < row_count; ++row) {
+        failures += expect_status(mylite_step(stmt), MYLITE_ROW, context);
     }
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, context);
     failures += expect_int64(mylite_affected_rows(stmt), -1, context);

@@ -273,6 +273,16 @@ void mylite_sql_ast_node_set_key_part_order(struct mylite_sql_ast_node *node,
     node->key_part_order = order;
 }
 
+void mylite_sql_ast_node_set_limit_bound_value(struct mylite_sql_ast_node *node, uint64_t value)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->has_limit_bound_value = true;
+    node->limit_bound_value = value;
+}
+
 void mylite_sql_ast_node_set_index_algorithm(struct mylite_sql_ast_node *node,
                                              enum mylite_sql_ast_index_algorithm algorithm)
 {
@@ -462,6 +472,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "expression_list";
     case MYLITE_SQL_AST_WHERE_CLAUSE:
         return "where_clause";
+    case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
+        return "order_by_clause";
+    case MYLITE_SQL_AST_ORDER_ITEM_LIST:
+        return "order_item_list";
+    case MYLITE_SQL_AST_ORDER_ITEM:
+        return "order_item";
+    case MYLITE_SQL_AST_LIMIT_CLAUSE:
+        return "limit_clause";
+    case MYLITE_SQL_AST_LIMIT_BOUND:
+        return "limit_bound";
     }
 
     return "unknown";

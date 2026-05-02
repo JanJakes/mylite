@@ -94,11 +94,32 @@ mylite_sql_parser_append_statement(struct mylite_sql_parser_state *state,
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token select_token,
     struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause,
-    struct mylite_sql_ast_node *where_clause);
+    struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *limit_clause);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_where_clause(struct mylite_sql_parser_state *state,
                                     struct mylite_sql_token where_token,
                                     struct mylite_sql_ast_node *expression);
+struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token order_token,
+    struct mylite_sql_token by_token, struct mylite_sql_ast_node *items);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_order_item_list(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *item);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_order_item(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *list,
+                                    struct mylite_sql_ast_node *item);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_order_item(struct mylite_sql_parser_state *state,
+                                  struct mylite_sql_ast_node *expression,
+                                  struct mylite_sql_token direction_token);
+struct mylite_sql_ast_node *mylite_sql_parser_make_limit_clause(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token limit_token,
+    struct mylite_sql_ast_node *offset_bound, struct mylite_sql_ast_node *row_count_bound);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_limit_bound(struct mylite_sql_parser_state *state,
+                                   struct mylite_sql_token integer_token);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_use_statement(struct mylite_sql_parser_state *state,
                                      struct mylite_sql_token use_token,

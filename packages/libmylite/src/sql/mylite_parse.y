@@ -6,6 +6,7 @@
 %type opt_temporary { struct mylite_sql_token }
 %type opt_drop_table_mode { struct mylite_sql_token }
 %type insert_values_keyword { struct mylite_sql_token }
+%type opt_order_direction { struct mylite_sql_token }
 %type opt_like_escape { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
 
@@ -48,8 +49,8 @@
 %right KEY.
 %fallback IDENTIFIER AUTO_INCREMENT BOOL BOOLEAN BTREE CHARSET COLUMN_FORMAT COMMENT DATE DATETIME
     DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR
-    NVARCHAR ONLY SECONDARY_ENGINE_ATTRIBUTE SIGNED STORAGE TEMPORARY TEXT TIME TIMESTAMP VISIBLE
-    VALUE YEAR.
+    NVARCHAR OFFSET ONLY SECONDARY_ENGINE_ATTRIBUTE SIGNED STORAGE TEMPORARY TEXT TIME TIMESTAMP
+    VISIBLE VALUE YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -1237,31 +1238,31 @@ opt_equal ::= .
 opt_equal ::= EQ.
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {
-    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL);
+    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL);
+        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(C) opt_table_alias(D)
-        opt_where_clause(E). {
+        opt_where_clause(E) opt_order_by_clause(G) opt_limit_clause(H). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, C, D), E);
+        state, T, B, mylite_sql_parser_make_from_table(state, F, C, D), E, G, H);
 }
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL);
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL);
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(C) opt_table_alias(D)
-        opt_where_clause(E). {
+        opt_where_clause(E) opt_order_by_clause(G) opt_limit_clause(H). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, C, D), E);
+        mylite_sql_parser_make_from_table(state, F, C, D), E, G, H);
 }
 
 opt_where_clause(A) ::= . {
@@ -1273,6 +1274,59 @@ opt_where_clause(A) ::= where_clause(B). {
 
 where_clause(A) ::= WHERE(T) expression(B). {
     A = mylite_sql_parser_make_where_clause(state, T, B);
+}
+
+opt_order_by_clause(A) ::= . {
+    A = NULL;
+}
+opt_order_by_clause(A) ::= order_by_clause(B). {
+    A = B;
+}
+
+order_by_clause(A) ::= ORDER(O) BY(B) order_item_list(C). {
+    A = mylite_sql_parser_make_order_by_clause(state, O, B, C);
+}
+
+order_item_list(A) ::= order_item(B). {
+    A = mylite_sql_parser_make_order_item_list(state, B);
+}
+order_item_list(A) ::= order_item_list(B) COMMA order_item(C). {
+    A = mylite_sql_parser_append_order_item(state, B, C);
+}
+
+order_item(A) ::= expression(B) opt_order_direction(C). {
+    A = mylite_sql_parser_make_order_item(state, B, C);
+}
+
+opt_order_direction(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_order_direction(A) ::= ASC(T). {
+    A = T;
+}
+opt_order_direction(A) ::= DESC(T). {
+    A = T;
+}
+
+opt_limit_clause(A) ::= . {
+    A = NULL;
+}
+opt_limit_clause(A) ::= limit_clause(B). {
+    A = B;
+}
+
+limit_clause(A) ::= LIMIT(T) limit_bound(B). {
+    A = mylite_sql_parser_make_limit_clause(state, T, NULL, B);
+}
+limit_clause(A) ::= LIMIT(T) limit_bound(B) COMMA limit_bound(C). {
+    A = mylite_sql_parser_make_limit_clause(state, T, B, C);
+}
+limit_clause(A) ::= LIMIT(T) limit_bound(B) OFFSET limit_bound(C). {
+    A = mylite_sql_parser_make_limit_clause(state, T, C, B);
+}
+
+limit_bound(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_limit_bound(state, T);
 }
 
 table_name(A) ::= qualified_identifier(B). {

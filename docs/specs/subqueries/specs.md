@@ -94,6 +94,7 @@ and MySQL-runtime verified.
   - `docs/specs/subquery-in-predicates/specs.md`
   - `docs/specs/quantified-subquery-comparisons/specs.md`
   - `docs/specs/row-subquery-predicates/specs.md`
+  - `docs/specs/row-quantified-subquery-comparisons/specs.md`
 
 Observed behavior was verified against MySQL 8.4.9 in Docker container
 `mylite-mysql-849`, using:
@@ -266,21 +267,23 @@ Representative results:
 | `SELECT 7 < ANY (SELECT val FROM inner_t WHERE grp IN (2,3))` | `1` |
 | `SELECT 7 < ALL (SELECT val FROM inner_t WHERE grp IN (2,3))` | `NULL` |
 
-MySQL 8.4.9 accepts row `= ANY` and row `= SOME` in the same way it accepts
-row `IN`; other row quantified comparisons observed with multi-column
-subqueries fail with error 1241:
+MySQL 8.4.9 accepts a narrow row quantified alias surface: row `= ANY` and
+row `= SOME` behave like row `IN`, while row `<> ALL` and row `!= ALL` behave
+like row `NOT IN`. Other row quantified comparisons observed with
+multi-column subqueries fail with error 1241:
 
 | SQL | Result |
 | --- | --- |
 | `SELECT id FROM outer_t WHERE (val,grp) = ANY (SELECT a,b FROM pair_t) ORDER BY id` | `1`, `2`, `5` |
 | `SELECT id FROM outer_t WHERE (val,grp) = SOME (SELECT a,b FROM pair_t) ORDER BY id` | `1`, `2`, `5` |
+| `SELECT (7,9) <> ALL (SELECT a,b FROM pair_t)` | `1` |
 | `SELECT id FROM outer_t WHERE (val,grp) > ANY (SELECT a,b FROM pair_t)` | error 1241 / `21000` |
 | `SELECT id FROM outer_t WHERE (val,grp) <> ANY (SELECT a,b FROM pair_t)` | error 1241 / `21000` |
 | `SELECT id FROM outer_t WHERE (val,grp) = ALL (SELECT a,b FROM pair_t)` | error 1241 / `21000` |
 
-The first implementation may defer row `= ANY` / `= SOME` if row `IN` is
-already covered, but it must document the gap explicitly and must not reject
-valid scalar quantified comparisons.
+The row quantified alias follow-up is specified in
+`docs/specs/row-quantified-subquery-comparisons/specs.md`. It is currently
+deferred from runtime execution.
 
 ### Row Subqueries
 
@@ -854,5 +857,7 @@ nullable row predicates, and `NOT_NULL` metadata for null-safe row scalar
 comparisons.
 
 The remaining Task 29 surfaces are deferred: correlated subqueries, row
-quantified comparisons, DML subquery execution, derived-table row sources,
-CTE/set-operation subqueries, and optimizer behavior.
+quantified alias execution, DML subquery execution, derived-table row sources,
+CTE/set-operation subqueries, and optimizer behavior. The row quantified alias
+surface is specified in
+`docs/specs/row-quantified-subquery-comparisons/specs.md`.

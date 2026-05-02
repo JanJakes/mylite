@@ -616,4 +616,6 @@ in no-table scalar `SELECT` and the current table-backed `SELECT` projection,
 
 Row operands, correlation, DML contexts, derived tables, `TABLE`/`VALUES`
 subqueries, CTEs, set operations, null-safe quantified comparison execution,
-and optimizer-specific behavior remain separate features.
+and optimizer-specific behavior remain separate features. The narrow
+MySQL-accepted row alias forms are specified in
+`docs/specs/row-quantified-subquery-comparisons/specs.md`.

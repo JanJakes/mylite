@@ -430,6 +430,8 @@ This row-subquery slice should focus on row scalar comparisons and row
 the row tuple comparison path is stable, or included only if the implementation
 can preserve all row `IN` semantics and diagnostics without broadening support
 to unsupported row quantified operators.
+That follow-up is specified in
+`docs/specs/row-quantified-subquery-comparisons/specs.md`.
 
 ## MyLite Parser and AST Design
 

@@ -16,6 +16,8 @@ expression nodes.
 - The TiDB-to-Lemon parser accepts the WordPress MySQL server query corpus.
 - Syntax-only parsing remains available and does not allocate AST nodes.
 - Token nodes carry byte spans from the original SQL input.
+- AST mode retains a private copy of the SQL input so span-derived metadata can
+  be decoded safely after parsing.
 - Rule nodes carry generated rule IDs, symbol names, children, and aggregate
   spans.
 - Top-level statement views classify each parsed statement and expose stable
@@ -26,8 +28,8 @@ expression nodes.
 - `CREATE TABLE` statements expose typed column descriptors for direct column
   definitions, including definition, name, type, option spans, exact type
   name/parameter/attribute spans, exact type kind, parser-level storage class,
-  selected option detail spans, CST node anchors, coarse type family, and column
-  option flags.
+  numeric type parameters, enum/set element counts, selected option detail
+  spans, CST node anchors, coarse type family, and column option flags.
 - `CREATE TABLE` statements expose typed table key and constraint descriptors
   for primary keys, secondary indexes, unique indexes, fulltext indexes, spatial
   indexes, foreign keys, and check constraints.
@@ -65,8 +67,8 @@ expression nodes.
 - typed `CREATE TABLE` column descriptors with definition, name, type, type
   name, type parameters, type attributes, options, defaults, `ON UPDATE`,
   generated expression/storage, comments, inline check, and inline reference
-  spans, plus CST node anchors, type family, exact type kind, storage class, and
-  option flags
+  spans, plus CST node anchors, type family, exact type kind, storage class,
+  numeric type parameters, enum/set element counts, and option flags
 - typed `CREATE TABLE` key descriptors with kind, full constraint/index span,
   constraint name, key name, local key parts, referenced table, referenced
   schema/name, referenced key parts, index options, foreign actions, and check
@@ -106,13 +108,12 @@ classified as text while `LONG VARBINARY` is classified as blob, matching
 MySQL's compatibility mapping to `MEDIUMTEXT` and `MEDIUMBLOB` documented in
 [Using Data Types from Other Database Engines](https://dev.mysql.com/doc/mysql/en/other-vendor-data-types.html).
 These are still parser-level descriptors, not normalized semantic metadata; the
-next layer must resolve exact MySQL type semantics, parsed length/scale values,
-expression trees, metadata defaults, partitions, and `CREATE TABLE ... SELECT`.
-
-The AST currently stores source byte spans but not a retained copy of the SQL
-buffer or token literal values. Numeric type parameters such as display width,
-precision, scale, and fractional-seconds precision should therefore be added
-after the parser stores source text or token values in a lifetime-safe form.
+column view now decodes unsigned numeric type parameters from the retained SQL
+copy, so `DECIMAL(10,2)`, `VARCHAR(50)`, `DATETIME(6)`, and `VECTOR(3)` expose
+their parsed parameter counts and integer values. `ENUM` and `SET` expose their
+top-level element counts but not yet decoded string values. The next layer must
+resolve exact MySQL type semantics, string literal values, expression trees,
+metadata defaults, partitions, and `CREATE TABLE ... SELECT`.
 
 Column descriptors keep direct CST node anchors for the type node, option list,
 default value, `ON UPDATE` value, generated expression/storage, comment option,
@@ -157,8 +158,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.800257 qps=503911 mbps=38.32 avg_us=1.984
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=21.199000 qps=328039 mbps=24.95 avg_us=3.048 avg_nodes=74.5 avg_ast_bytes=10003.7 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_value_roots=0.06
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.817859 qps=503269 mbps=38.27 avg_us=1.987
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=21.596380 qps=322003 mbps=24.49 avg_us=3.106 avg_nodes=74.5 avg_ast_bytes=10091.7 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_value_roots=0.06
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -171,7 +172,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 100K on disk, 66,096 bytes text/data/other
+parser support object: 101K on disk, 67,172 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.2M on disk
 mylite-parse: 1.0M on disk

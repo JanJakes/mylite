@@ -361,6 +361,13 @@ size_t mylite_ast_create_table_column_type_parameters_start(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
 size_t mylite_ast_create_table_column_type_parameters_end(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_numeric_parameter_count(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+unsigned long long mylite_ast_create_table_column_type_numeric_parameter_at(
+    const MyliteAst *ast, size_t statement_index, size_t column_index,
+    size_t parameter_index);
+size_t mylite_ast_create_table_column_type_element_count(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
 size_t mylite_ast_create_table_column_type_attributes_start(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
 size_t mylite_ast_create_table_column_type_attributes_end(

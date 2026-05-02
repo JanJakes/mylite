@@ -4,6 +4,8 @@
 #include "lexer.h"
 #include "mylite_tidb_parser.h"
 
+#include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +44,9 @@ typedef struct MyliteAstCreateTableColumn {
   size_t type_name_end;
   size_t type_parameters_start;
   size_t type_parameters_end;
+  size_t type_numeric_parameter_count;
+  unsigned long long type_numeric_parameters[2];
+  size_t type_element_count;
   size_t type_attributes_start;
   size_t type_attributes_end;
   size_t options_start;
@@ -202,6 +207,8 @@ struct MyliteAst {
   MyliteAstNode *root;
   MyliteAstChunk *chunks;
   MyliteAstStatement *statements;
+  char *source;
+  size_t source_length;
   size_t node_count;
   size_t statement_count;
   size_t allocated_bytes;
@@ -216,7 +223,7 @@ static MyliteParseStatus parse_sql_common(const char *sql, MyliteParseResult *re
                                           MyliteAst **ast_out, int build_ast);
 static int accepts_parser_shortcut(const char *sql);
 static int accepts_parser_fallback(const char *sql);
-static MyliteAst *mylite_ast_create(void);
+static MyliteAst *mylite_ast_create(const char *source);
 static void *mylite_ast_alloc(MyliteAst *ast, size_t size);
 static MyliteAstNode *mylite_ast_make_node(MyliteParserState *state,
                                            MyliteAstNodeKind kind,
@@ -271,16 +278,25 @@ static int mylite_ast_collect_create_table_keys(MyliteAst *ast,
                                                 MyliteAstStatement *statement,
                                                 const MyliteAstNode *payload);
 static size_t mylite_ast_count_create_table_columns(const MyliteAstNode *node);
-static void mylite_ast_fill_create_table_columns(MyliteAstStatement *statement,
+static void mylite_ast_fill_create_table_columns(MyliteAst *ast,
+                                                 MyliteAstStatement *statement,
                                                  const MyliteAstNode *node,
                                                  size_t *index);
 static void mylite_ast_fill_create_table_column(
-    MyliteAstCreateTableColumn *column, const MyliteAstNode *node);
+    MyliteAst *ast, MyliteAstCreateTableColumn *column,
+    const MyliteAstNode *node);
 static void mylite_ast_set_create_table_column_type_details(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *type);
 static void mylite_ast_set_create_table_column_type_tail_details(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *type_body,
     const MyliteAstNode *type_name);
+static void mylite_ast_set_create_table_column_type_parameter_values(
+    MyliteAst *ast, MyliteAstCreateTableColumn *column);
+static size_t mylite_ast_parse_unsigned_parameters(
+    const char *source, size_t start, size_t end, unsigned long long *values,
+    size_t value_capacity);
+static size_t mylite_ast_count_parenthesized_items(const char *source,
+                                                   size_t start, size_t end);
 static int mylite_ast_is_column_type_name_continuation(const MyliteAstNode *node);
 static int mylite_ast_is_column_type_parameter_child(const MyliteAstNode *node);
 static int mylite_ast_is_column_type_attribute_child(const MyliteAstNode *node);
@@ -923,6 +939,7 @@ void mylite_ast_free(MyliteAst *ast) {
     free(chunk);
     chunk = next;
   }
+  free(ast->source);
   free(ast);
 }
 
@@ -1153,6 +1170,33 @@ size_t mylite_ast_create_table_column_type_parameters_end(
   const MyliteAstCreateTableColumn *column =
       mylite_ast_create_table_column_at(ast, statement_index, column_index);
   return column == NULL ? 0 : column->type_parameters_end;
+}
+
+size_t mylite_ast_create_table_column_type_numeric_parameter_count(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_numeric_parameter_count;
+}
+
+unsigned long long mylite_ast_create_table_column_type_numeric_parameter_at(
+    const MyliteAst *ast, size_t statement_index, size_t column_index,
+    size_t parameter_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  if (column == NULL || parameter_index >= column->type_numeric_parameter_count ||
+      parameter_index >= sizeof(column->type_numeric_parameters) /
+                             sizeof(column->type_numeric_parameters[0])) {
+    return 0;
+  }
+  return column->type_numeric_parameters[parameter_index];
+}
+
+size_t mylite_ast_create_table_column_type_element_count(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_element_count;
 }
 
 size_t mylite_ast_create_table_column_type_attributes_start(
@@ -2170,7 +2214,7 @@ static MyliteParseStatus parse_sql_common(const char *sql, MyliteParseResult *re
 
   MyliteAst *ast = NULL;
   if (build_ast) {
-    ast = mylite_ast_create();
+    ast = mylite_ast_create(sql);
     if (ast == NULL) {
       target->status = MYLITE_PARSE_NO_MEMORY;
       snprintf(target->message, sizeof(target->message), "AST allocation failed");
@@ -2241,7 +2285,7 @@ static MyliteParseStatus parse_sql_common(const char *sql, MyliteParseResult *re
     state.accepted = 1;
     if (build_ast) {
       mylite_ast_free(ast);
-      ast = mylite_ast_create();
+      ast = mylite_ast_create(sql);
       if (ast == NULL) {
         target->status = MYLITE_PARSE_NO_MEMORY;
         snprintf(target->message, sizeof(target->message), "AST allocation failed");
@@ -2298,8 +2342,21 @@ static int accepts_parser_fallback(const char *sql) {
          accepts_set_select_into_before_lock(sql);
 }
 
-static MyliteAst *mylite_ast_create(void) {
+static MyliteAst *mylite_ast_create(const char *source) {
   MyliteAst *ast = calloc(1, sizeof(*ast));
+  if (ast == NULL) {
+    return NULL;
+  }
+  if (source != NULL) {
+    ast->source_length = strlen(source);
+    ast->source = malloc(ast->source_length + 1);
+    if (ast->source == NULL) {
+      free(ast);
+      return NULL;
+    }
+    memcpy(ast->source, source, ast->source_length + 1);
+    ast->allocated_bytes += ast->source_length + 1;
+  }
   return ast;
 }
 
@@ -2912,7 +2969,7 @@ static int mylite_ast_collect_create_table_columns(MyliteAst *ast,
   statement->create_table_column_count = count;
 
   size_t index = 0;
-  mylite_ast_fill_create_table_columns(statement, payload, &index);
+  mylite_ast_fill_create_table_columns(ast, statement, payload, &index);
   return index == count;
 }
 
@@ -2934,7 +2991,8 @@ static size_t mylite_ast_count_create_table_columns(const MyliteAstNode *node) {
   return count;
 }
 
-static void mylite_ast_fill_create_table_columns(MyliteAstStatement *statement,
+static void mylite_ast_fill_create_table_columns(MyliteAst *ast,
+                                                 MyliteAstStatement *statement,
                                                  const MyliteAstNode *node,
                                                  size_t *index) {
   if (statement == NULL || node == NULL || index == NULL ||
@@ -2942,7 +3000,8 @@ static void mylite_ast_fill_create_table_columns(MyliteAstStatement *statement,
     return;
   }
   if (node->symbol_name != NULL && strcmp(node->symbol_name, "nt_column_def") == 0) {
-    mylite_ast_fill_create_table_column(&statement->create_table_columns[*index],
+    mylite_ast_fill_create_table_column(ast,
+                                        &statement->create_table_columns[*index],
                                         node);
     (*index)++;
     return;
@@ -2952,12 +3011,14 @@ static void mylite_ast_fill_create_table_columns(MyliteAstStatement *statement,
   }
 
   for (size_t i = 0; i < node->child_count; i++) {
-    mylite_ast_fill_create_table_columns(statement, node->children[i], index);
+    mylite_ast_fill_create_table_columns(ast, statement, node->children[i],
+                                         index);
   }
 }
 
 static void mylite_ast_fill_create_table_column(
-    MyliteAstCreateTableColumn *column, const MyliteAstNode *node) {
+    MyliteAst *ast, MyliteAstCreateTableColumn *column,
+    const MyliteAstNode *node) {
   column->start = mylite_ast_node_start(node);
   column->end = mylite_ast_node_end(node);
 
@@ -2977,6 +3038,7 @@ static void mylite_ast_fill_create_table_column(
     column->type_start = mylite_ast_node_start(type);
     column->type_end = mylite_ast_node_end(type);
     mylite_ast_set_create_table_column_type_details(column, type);
+    mylite_ast_set_create_table_column_type_parameter_values(ast, column);
   }
 
   const MyliteAstNode *options =
@@ -3052,6 +3114,118 @@ static void mylite_ast_set_create_table_column_type_tail_details(
       in_parenthesized_parameters = 0;
     }
   }
+}
+
+static void mylite_ast_set_create_table_column_type_parameter_values(
+    MyliteAst *ast, MyliteAstCreateTableColumn *column) {
+  if (ast == NULL || column == NULL || ast->source == NULL ||
+      column->type_parameters_start >= column->type_parameters_end ||
+      column->type_parameters_end > ast->source_length) {
+    return;
+  }
+
+  if (column->storage_class == MYLITE_CREATE_TABLE_COLUMN_STORAGE_ENUM ||
+      column->storage_class == MYLITE_CREATE_TABLE_COLUMN_STORAGE_SET) {
+    column->type_element_count = mylite_ast_count_parenthesized_items(
+        ast->source, column->type_parameters_start, column->type_parameters_end);
+    return;
+  }
+
+  column->type_numeric_parameter_count = mylite_ast_parse_unsigned_parameters(
+      ast->source, column->type_parameters_start, column->type_parameters_end,
+      column->type_numeric_parameters,
+      sizeof(column->type_numeric_parameters) /
+          sizeof(column->type_numeric_parameters[0]));
+}
+
+static size_t mylite_ast_parse_unsigned_parameters(
+    const char *source, size_t start, size_t end, unsigned long long *values,
+    size_t value_capacity) {
+  if (source == NULL || values == NULL || value_capacity == 0 || start >= end) {
+    return 0;
+  }
+
+  size_t count = 0;
+  for (size_t offset = start; offset < end;) {
+    unsigned char ch = (unsigned char)source[offset];
+    if (ch >= '0' && ch <= '9') {
+      unsigned long long value = 0;
+      do {
+        unsigned int digit = (unsigned int)(source[offset] - '0');
+        if (value > (ULLONG_MAX - digit) / 10) {
+          value = ULLONG_MAX;
+        } else {
+          value = value * 10 + digit;
+        }
+        offset++;
+      } while (offset < end && source[offset] >= '0' && source[offset] <= '9');
+      if (count < value_capacity) {
+        values[count] = value;
+      }
+      count++;
+      continue;
+    }
+    offset++;
+  }
+  return count;
+}
+
+static size_t mylite_ast_count_parenthesized_items(const char *source,
+                                                   size_t start, size_t end) {
+  if (source == NULL || start >= end) {
+    return 0;
+  }
+
+  size_t count = 0;
+  int depth = 0;
+  int saw_item = 0;
+  const char *cursor = source + start;
+  const char *limit = source + end;
+  while (cursor < limit && *cursor != '\0') {
+    unsigned char ch = (unsigned char)*cursor;
+    if (ch == '\'' || ch == '"' || ch == '`') {
+      if (depth == 1) {
+        saw_item = 1;
+      }
+      skip_sql_quoted(&cursor, ch);
+      if (cursor > limit) {
+        cursor = limit;
+      }
+      continue;
+    }
+    if (ch == '(') {
+      depth++;
+      cursor++;
+      continue;
+    }
+    if (ch == ')') {
+      if (depth == 1) {
+        if (saw_item) {
+          count++;
+        }
+        return count;
+      }
+      if (depth > 0) {
+        depth--;
+      }
+      cursor++;
+      continue;
+    }
+    if (ch == ',' && depth == 1) {
+      if (saw_item) {
+        count++;
+        saw_item = 0;
+      }
+      cursor++;
+      continue;
+    }
+    if (depth == 1 && !isspace(ch)) {
+      saw_item = 1;
+    }
+    cursor++;
+  }
+
+  return count;
 }
 
 static int mylite_ast_is_column_type_name_continuation(const MyliteAstNode *node) {

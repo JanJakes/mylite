@@ -146,7 +146,8 @@ static void dump_statements(const MyliteAst *ast) {
       printf("  column[%zu] family=%s kind=%s storage=%s flags=0x%x "
              "span=%zu..%zu "
              "name=%zu..%zu type=%zu..%zu type_name=%zu..%zu "
-             "type_params=%zu..%zu "
+             "type_params=%zu..%zu type_numeric_params=%zu:%llu,%llu "
+             "type_elements=%zu "
              "type_attrs=%zu..%zu options=%zu..%zu default=%zu..%zu "
              "default_value=%zu..%zu on_update=%zu..%zu "
              "on_update_value=%zu..%zu generated=%zu..%zu "
@@ -174,6 +175,13 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_table_column_type_name_end(ast, i, j),
              mylite_ast_create_table_column_type_parameters_start(ast, i, j),
              mylite_ast_create_table_column_type_parameters_end(ast, i, j),
+             mylite_ast_create_table_column_type_numeric_parameter_count(ast, i,
+                                                                         j),
+             mylite_ast_create_table_column_type_numeric_parameter_at(ast, i, j,
+                                                                      0),
+             mylite_ast_create_table_column_type_numeric_parameter_at(ast, i, j,
+                                                                      1),
+             mylite_ast_create_table_column_type_element_count(ast, i, j),
              mylite_ast_create_table_column_type_attributes_start(ast, i, j),
              mylite_ast_create_table_column_type_attributes_end(ast, i, j),
              mylite_ast_create_table_column_options_start(ast, i, j),

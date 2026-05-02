@@ -3081,27 +3081,7 @@ use_statement ::= USE use_target. {
 use_target ::= ATOM(A). {
   mylite_parser_require_use_target_atom(ctx, A);
 }
-use_target ::= AT_EMPTY.
-use_target ::= AT_EMPTY AT_EMPTY.
-use_target ::= ALTER.
-use_target ::= BY.
-use_target ::= CREATE.
-use_target ::= DELETE.
-use_target ::= DROP.
-use_target ::= FROM.
-use_target ::= GRANT.
-use_target ::= INDEX.
-use_target ::= INSERT.
-use_target ::= LIMIT.
-use_target ::= ORDER.
-use_target ::= ROLE.
-use_target ::= SELECT.
-use_target ::= SET.
-use_target ::= TABLE.
-use_target ::= UPDATE.
-use_target ::= VALUES.
-use_target ::= WHERE.
-use_target ::= WITH.
+use_target ::= help_topic_keyword.
 use_target ::= ACCOUNT.
 use_target ::= CASCADE.
 use_target ::= COMPONENT.
@@ -3122,7 +3102,6 @@ use_target ::= TABLESPACE.
 use_target ::= TRIGGERS.
 use_target ::= USER.
 use_target ::= VARIABLES.
-use_target ::= STAR.
 
 handler_statement ::= HANDLER(A) handler_name handler_operation. {
   mylite_parser_validate_handler_statement(ctx, A);

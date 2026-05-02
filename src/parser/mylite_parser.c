@@ -9572,7 +9572,12 @@ void mylite_parser_require_charset_name_atom(MyliteParseContext *ctx,
 
 void mylite_parser_require_use_target_atom(MyliteParseContext *ctx,
                                            MyliteToken token) {
-  if (token.length > 0 && (token.start[0] == '\'' || token.start[0] == '"')) {
+  if (token.length > 0 && token.start[0] == '"') {
+    mylite_parser_reject(ctx, token, "invalid USE target");
+    return;
+  }
+
+  if (token_is_invalid_identifier_atom(token, 0)) {
     mylite_parser_reject(ctx, token, "invalid USE target");
   }
 }

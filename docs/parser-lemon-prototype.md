@@ -162,7 +162,9 @@ token sink:
   reads, `WHERE`, and numeric or identifier `LIMIT` tails, while rejecting
   malformed tuple expressions, malformed `WHERE` adjacent operands, dangling
   operators, and `LIMIT` suffixes after `READ`.
-- `USE` recognizes one-part schema names using the shared identifier grammar.
+- `USE` recognizes one-part unquoted schema names using the shared identifier
+  grammar and unreserved keyword names while rejecting string, numeric,
+  variable, operator, and reserved-keyword targets.
 - Account and role names use the shared unreserved identifier grammar across
   `CREATE`/`ALTER`/`DROP` account statements.
 - `RENAME USER` reuses the shared account-reference grammar for source and

@@ -137,11 +137,18 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_index_options = 0;
   size_t create_index_comments = 0;
   size_t create_index_key_block_sizes = 0;
+  size_t drop_index_views = 0;
+  size_t drop_index_name_values = 0;
+  size_t drop_index_table_name_values = 0;
+  size_t drop_index_if_exists = 0;
   size_t drop_table_views = 0;
   size_t drop_table_tables = 0;
   size_t drop_table_if_exists = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
+  size_t truncate_table_views = 0;
+  size_t truncate_table_name_values = 0;
+  size_t truncate_table_table_keywords = 0;
   size_t columns = 0;
   size_t column_name_values = 0;
   size_t column_known_types = 0;
@@ -553,6 +560,21 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 create_index_key_block_sizes++;
               }
             }
+            const MyliteAstDropIndex *drop_index =
+                mylite_ast_drop_index_view(ast, i);
+            if (drop_index != NULL) {
+              drop_index_views++;
+              if (mylite_ast_drop_index_view_name_value(drop_index) != NULL) {
+                drop_index_name_values++;
+              }
+              if (mylite_ast_drop_index_view_table_name_value(drop_index) !=
+                  NULL) {
+                drop_index_table_name_values++;
+              }
+              if (mylite_ast_drop_index_view_has_if_exists(drop_index)) {
+                drop_index_if_exists++;
+              }
+            }
             const MyliteAstDropTable *drop_table =
                 mylite_ast_drop_table_view(ast, i);
             if (drop_table != NULL) {
@@ -569,6 +591,19 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
               rename_table_views++;
               rename_table_pairs +=
                   mylite_ast_rename_table_view_pair_count(rename_table);
+            }
+            const MyliteAstTruncateTable *truncate_table =
+                mylite_ast_truncate_table_view(ast, i);
+            if (truncate_table != NULL) {
+              truncate_table_views++;
+              if (mylite_ast_truncate_table_view_name_value(truncate_table) !=
+                  NULL) {
+                truncate_table_name_values++;
+              }
+              if (mylite_ast_truncate_table_view_has_table_keyword(
+                      truncate_table)) {
+                truncate_table_table_keywords++;
+              }
             }
             for (size_t j = 0; j < mylite_ast_create_table_column_count(ast, i);
                  j++) {
@@ -805,9 +840,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_index_columns=%.2f avg_create_index_options=%.2f "
            "avg_create_index_comments=%.2f "
            "avg_create_index_key_block_sizes=%.2f "
+           "avg_drop_index_views=%.2f "
+           "avg_drop_index_name_values=%.2f "
+           "avg_drop_index_table_name_values=%.2f "
+           "avg_drop_index_if_exists=%.2f "
            "avg_drop_table_views=%.2f avg_drop_table_tables=%.2f "
            "avg_drop_table_if_exists=%.2f "
            "avg_rename_table_views=%.2f avg_rename_table_pairs=%.2f "
+           "avg_truncate_table_views=%.2f "
+           "avg_truncate_table_name_values=%.2f "
+           "avg_truncate_table_table_keywords=%.2f "
            "avg_key_constraint_name_values=%.2f avg_key_name_values=%.2f "
            "avg_key_referenced_table_schema_values=%.2f "
            "avg_key_referenced_table_name_values=%.2f "
@@ -912,11 +954,18 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)create_index_options / (double)parsed,
            (double)create_index_comments / (double)parsed,
            (double)create_index_key_block_sizes / (double)parsed,
+           (double)drop_index_views / (double)parsed,
+           (double)drop_index_name_values / (double)parsed,
+           (double)drop_index_table_name_values / (double)parsed,
+           (double)drop_index_if_exists / (double)parsed,
            (double)drop_table_views / (double)parsed,
            (double)drop_table_tables / (double)parsed,
            (double)drop_table_if_exists / (double)parsed,
            (double)rename_table_views / (double)parsed,
            (double)rename_table_pairs / (double)parsed,
+           (double)truncate_table_views / (double)parsed,
+           (double)truncate_table_name_values / (double)parsed,
+           (double)truncate_table_table_keywords / (double)parsed,
            (double)key_constraint_name_values / (double)parsed,
            (double)key_name_values / (double)parsed,
            (double)key_referenced_table_schema_values / (double)parsed,

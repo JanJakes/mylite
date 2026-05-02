@@ -188,8 +188,10 @@ static int expect_create_table_options(const char *sql,
                                        size_t option_count);
 static int expect_alter_table_view(void);
 static int expect_create_index_view(void);
+static int expect_drop_index_view(void);
 static int expect_drop_table_view(void);
 static int expect_rename_table_view(void);
+static int expect_truncate_table_view(void);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
 static int span_matches_when_expected(const char *sql, size_t start, size_t end,
@@ -779,8 +781,10 @@ int main(void) {
       "`db``x`.`t``y`", "`db``x`", "`t``y`", "db`x", "t`y", 1, 1, 3);
   failures += expect_alter_table_view();
   failures += expect_create_index_view();
+  failures += expect_drop_index_view();
   failures += expect_drop_table_view();
   failures += expect_rename_table_view();
+  failures += expect_truncate_table_view();
   {
     const ExpectedCreateTableColumn columns[] = {
         {.definition = "id INT NOT NULL AUTO_INCREMENT",
@@ -3217,6 +3221,45 @@ static int expect_create_index_view(void) {
   return failed;
 }
 
+static int expect_drop_index_view(void) {
+  const char *sql = "DROP INDEX IF EXISTS `i``x` ON db1.t1";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "DROP INDEX view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstDropIndex *view = mylite_ast_drop_index_view(ast, 0);
+  int failed = 0;
+  if (view == NULL || mylite_ast_drop_index_view_node(view) == NULL ||
+      !mylite_ast_drop_index_view_has_if_exists(view) ||
+      mylite_ast_drop_index_view_is_hypothetical(view) ||
+      !span_matches(sql, mylite_ast_drop_index_view_name_start(view),
+                    mylite_ast_drop_index_view_name_end(view), "`i``x`") ||
+      !value_matches_when_expected(
+          mylite_ast_drop_index_view_name_value(view),
+          mylite_ast_drop_index_view_name_value_length(view), "i`x") ||
+      !value_matches_when_expected(
+          mylite_ast_drop_index_view_table_schema_value(view),
+          mylite_ast_drop_index_view_table_schema_value_length(view),
+          "db1") ||
+      !value_matches_when_expected(
+          mylite_ast_drop_index_view_table_name_value(view),
+          mylite_ast_drop_index_view_table_name_value_length(view), "t1")) {
+    fprintf(stderr, "DROP INDEX view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
 static int expect_drop_table_view(void) {
   const char *sql = "DROP TEMPORARY TABLE IF EXISTS db1.t1, t2 RESTRICT";
   MyliteParseResult result;
@@ -3250,6 +3293,39 @@ static int expect_drop_table_view(void) {
           mylite_ast_drop_table_view_table_name_value_length_at(view, 1),
           "t2")) {
     fprintf(stderr, "DROP TABLE view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_truncate_table_view(void) {
+  const char *sql = "TRUNCATE TABLE db1.t1";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "TRUNCATE TABLE view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstTruncateTable *view =
+      mylite_ast_truncate_table_view(ast, 0);
+  int failed = 0;
+  if (view == NULL || mylite_ast_truncate_table_view_node(view) == NULL ||
+      !mylite_ast_truncate_table_view_has_table_keyword(view) ||
+      !value_matches_when_expected(
+          mylite_ast_truncate_table_view_schema_value(view),
+          mylite_ast_truncate_table_view_schema_value_length(view), "db1") ||
+      !value_matches_when_expected(
+          mylite_ast_truncate_table_view_name_value(view),
+          mylite_ast_truncate_table_view_name_value_length(view), "t1")) {
+    fprintf(stderr, "TRUNCATE TABLE view failed: %s\n", sql);
     failed = 1;
   }
 

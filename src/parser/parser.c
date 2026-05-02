@@ -332,6 +332,19 @@ struct MyliteAstCreateIndex {
   size_t end;
 };
 
+struct MyliteAstDropIndex {
+  const MyliteAstNode *node;
+  const MyliteAstStatementTarget *target;
+  const char *name_value;
+  size_t name_value_length;
+  size_t start;
+  size_t end;
+  size_t name_start;
+  size_t name_end;
+  int has_if_exists;
+  int is_hypothetical;
+};
+
 struct MyliteAstDropTable {
   const MyliteAstNode *node;
   const MyliteAstStatementTarget *targets;
@@ -350,6 +363,14 @@ struct MyliteAstRenameTable {
   size_t end;
 };
 
+struct MyliteAstTruncateTable {
+  const MyliteAstNode *node;
+  const MyliteAstStatementTarget *target;
+  size_t start;
+  size_t end;
+  int has_table_keyword;
+};
+
 typedef struct MyliteAstStatement {
   const MyliteAstNode *node;
   const char *symbol_name;
@@ -365,8 +386,10 @@ typedef struct MyliteAstStatement {
   MyliteAstCreateTable *create_table;
   MyliteAstAlterTable *alter_table;
   MyliteAstCreateIndex *create_index;
+  MyliteAstDropIndex *drop_index;
   MyliteAstDropTable *drop_table;
   MyliteAstRenameTable *rename_table;
+  MyliteAstTruncateTable *truncate_table;
   MyliteStatementTargetKind target_kind;
   size_t start;
   size_t end;
@@ -488,12 +511,18 @@ static int mylite_ast_set_create_index_view(MyliteAst *ast,
 static int mylite_ast_set_create_index_key(MyliteAst *ast,
                                            MyliteAstCreateTableKey *key,
                                            const MyliteAstNode *payload);
+static int mylite_ast_set_drop_index_view(MyliteAst *ast,
+                                          MyliteAstStatement *statement,
+                                          const MyliteAstNode *payload);
 static int mylite_ast_set_drop_table_view(MyliteAst *ast,
                                           MyliteAstStatement *statement,
                                           const MyliteAstNode *payload);
 static int mylite_ast_set_rename_table_view(MyliteAst *ast,
                                             MyliteAstStatement *statement,
                                             const MyliteAstNode *payload);
+static int mylite_ast_set_truncate_table_view(MyliteAst *ast,
+                                              MyliteAstStatement *statement,
+                                              const MyliteAstNode *payload);
 static MyliteStatementTargetKind mylite_ast_target_kind_for_statement(
     MyliteStatementKind kind, const char *symbol_name);
 static int mylite_ast_collect_statement_targets(MyliteAst *ast,
@@ -1710,6 +1739,13 @@ const MyliteAstCreateIndex *mylite_ast_create_index_view(
   return statement == NULL ? NULL : statement->create_index;
 }
 
+const MyliteAstDropIndex *mylite_ast_drop_index_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->drop_index;
+}
+
 const MyliteAstDropTable *mylite_ast_drop_table_view(
     const MyliteAst *ast, size_t statement_index) {
   const MyliteAstStatement *statement =
@@ -1722,6 +1758,13 @@ const MyliteAstRenameTable *mylite_ast_rename_table_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->rename_table;
+}
+
+const MyliteAstTruncateTable *mylite_ast_truncate_table_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->truncate_table;
 }
 
 const MyliteAstNode *mylite_ast_alter_table_view_node(
@@ -2300,6 +2343,78 @@ unsigned long long mylite_ast_create_index_view_key_block_size_value(
       create_index == NULL ? NULL : &create_index->key);
 }
 
+const MyliteAstNode *mylite_ast_drop_index_view_node(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index == NULL ? NULL : drop_index->node;
+}
+
+size_t mylite_ast_drop_index_view_start(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index == NULL ? 0 : drop_index->start;
+}
+
+size_t mylite_ast_drop_index_view_end(const MyliteAstDropIndex *drop_index) {
+  return drop_index == NULL ? 0 : drop_index->end;
+}
+
+int mylite_ast_drop_index_view_has_if_exists(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index != NULL && drop_index->has_if_exists;
+}
+
+int mylite_ast_drop_index_view_is_hypothetical(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index != NULL && drop_index->is_hypothetical;
+}
+
+size_t mylite_ast_drop_index_view_name_start(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index == NULL ? 0 : drop_index->name_start;
+}
+
+size_t mylite_ast_drop_index_view_name_end(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index == NULL ? 0 : drop_index->name_end;
+}
+
+const char *mylite_ast_drop_index_view_name_value(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index == NULL ? NULL : drop_index->name_value;
+}
+
+size_t mylite_ast_drop_index_view_name_value_length(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index == NULL ? 0 : drop_index->name_value_length;
+}
+
+const char *mylite_ast_drop_index_view_table_schema_value(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index == NULL || drop_index->target == NULL
+             ? NULL
+             : drop_index->target->schema_value;
+}
+
+size_t mylite_ast_drop_index_view_table_schema_value_length(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index == NULL || drop_index->target == NULL
+             ? 0
+             : drop_index->target->schema_value_length;
+}
+
+const char *mylite_ast_drop_index_view_table_name_value(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index == NULL || drop_index->target == NULL
+             ? NULL
+             : drop_index->target->name_value;
+}
+
+size_t mylite_ast_drop_index_view_table_name_value_length(
+    const MyliteAstDropIndex *drop_index) {
+  return drop_index == NULL || drop_index->target == NULL
+             ? 0
+             : drop_index->target->name_value_length;
+}
+
 const MyliteAstNode *mylite_ast_drop_table_view_node(
     const MyliteAstDropTable *drop_table) {
   return drop_table == NULL ? NULL : drop_table->node;
@@ -2438,6 +2553,54 @@ size_t mylite_ast_rename_table_view_destination_name_value_length_at(
   return rename_table == NULL || target_index >= rename_table->target_count
              ? 0
              : rename_table->targets[target_index].name_value_length;
+}
+
+const MyliteAstNode *mylite_ast_truncate_table_view_node(
+    const MyliteAstTruncateTable *truncate_table) {
+  return truncate_table == NULL ? NULL : truncate_table->node;
+}
+
+size_t mylite_ast_truncate_table_view_start(
+    const MyliteAstTruncateTable *truncate_table) {
+  return truncate_table == NULL ? 0 : truncate_table->start;
+}
+
+size_t mylite_ast_truncate_table_view_end(
+    const MyliteAstTruncateTable *truncate_table) {
+  return truncate_table == NULL ? 0 : truncate_table->end;
+}
+
+int mylite_ast_truncate_table_view_has_table_keyword(
+    const MyliteAstTruncateTable *truncate_table) {
+  return truncate_table != NULL && truncate_table->has_table_keyword;
+}
+
+const char *mylite_ast_truncate_table_view_schema_value(
+    const MyliteAstTruncateTable *truncate_table) {
+  return truncate_table == NULL || truncate_table->target == NULL
+             ? NULL
+             : truncate_table->target->schema_value;
+}
+
+size_t mylite_ast_truncate_table_view_schema_value_length(
+    const MyliteAstTruncateTable *truncate_table) {
+  return truncate_table == NULL || truncate_table->target == NULL
+             ? 0
+             : truncate_table->target->schema_value_length;
+}
+
+const char *mylite_ast_truncate_table_view_name_value(
+    const MyliteAstTruncateTable *truncate_table) {
+  return truncate_table == NULL || truncate_table->target == NULL
+             ? NULL
+             : truncate_table->target->name_value;
+}
+
+size_t mylite_ast_truncate_table_view_name_value_length(
+    const MyliteAstTruncateTable *truncate_table) {
+  return truncate_table == NULL || truncate_table->target == NULL
+             ? 0
+             : truncate_table->target->name_value_length;
 }
 
 size_t mylite_ast_create_table_column_view_start(
@@ -5474,11 +5637,17 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   if (strcmp(statement->symbol_name, "nt_create_index_stmt") == 0) {
     return mylite_ast_set_create_index_view(ast, statement, payload);
   }
+  if (strcmp(statement->symbol_name, "nt_drop_index_stmt") == 0) {
+    return mylite_ast_set_drop_index_view(ast, statement, payload);
+  }
   if (strcmp(statement->symbol_name, "nt_drop_table_stmt") == 0) {
     return mylite_ast_set_drop_table_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_rename_table_stmt") == 0) {
     return mylite_ast_set_rename_table_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_truncate_table_stmt") == 0) {
+    return mylite_ast_set_truncate_table_view(ast, statement, payload);
   }
   return 1;
 }
@@ -6244,6 +6413,47 @@ static int mylite_ast_set_create_index_key(MyliteAst *ast,
   return 1;
 }
 
+static int mylite_ast_set_drop_index_view(MyliteAst *ast,
+                                          MyliteAstStatement *statement,
+                                          const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+
+  MyliteAstDropIndex *drop_index =
+      mylite_ast_alloc(ast, sizeof(*drop_index));
+  if (drop_index == NULL) {
+    return 0;
+  }
+  drop_index->node = payload == NULL ? statement->node : payload;
+  drop_index->start = mylite_ast_node_start(drop_index->node);
+  drop_index->end = mylite_ast_node_end(drop_index->node);
+  if (statement->target_count > 0) {
+    drop_index->target = &statement->targets[0];
+  }
+
+  const MyliteAstNode *name =
+      mylite_ast_find_first_symbol(drop_index->node, "nt_identifier");
+  if (name != NULL && name->has_span) {
+    drop_index->name_start = mylite_ast_node_start(name);
+    drop_index->name_end = mylite_ast_node_end(name);
+    if (!mylite_ast_decode_identifier(ast, drop_index->name_start,
+                                      drop_index->name_end,
+                                      &drop_index->name_value,
+                                      &drop_index->name_value_length)) {
+      return 0;
+    }
+  }
+
+  const MyliteAstNode *if_exists =
+      mylite_ast_find_first_symbol(drop_index->node, "nt_if_exists");
+  drop_index->has_if_exists = if_exists != NULL && if_exists->has_span;
+  drop_index->is_hypothetical =
+      mylite_ast_find_first_token(drop_index->node, MYLITE_TOK_HYPO) != NULL;
+  statement->drop_index = drop_index;
+  return 1;
+}
+
 static int mylite_ast_set_drop_table_view(MyliteAst *ast,
                                           MyliteAstStatement *statement,
                                           const MyliteAstNode *payload) {
@@ -6285,6 +6495,30 @@ static int mylite_ast_set_rename_table_view(MyliteAst *ast,
   rename_table->targets = statement->targets;
   rename_table->target_count = statement->target_count;
   statement->rename_table = rename_table;
+  return 1;
+}
+
+static int mylite_ast_set_truncate_table_view(MyliteAst *ast,
+                                              MyliteAstStatement *statement,
+                                              const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstTruncateTable *truncate_table =
+      mylite_ast_alloc(ast, sizeof(*truncate_table));
+  if (truncate_table == NULL) {
+    return 0;
+  }
+  truncate_table->node = payload == NULL ? statement->node : payload;
+  truncate_table->start = mylite_ast_node_start(truncate_table->node);
+  truncate_table->end = mylite_ast_node_end(truncate_table->node);
+  if (statement->target_count > 0) {
+    truncate_table->target = &statement->targets[0];
+  }
+  truncate_table->has_table_keyword =
+      mylite_ast_find_first_token(truncate_table->node, MYLITE_TOK_TABLE_KWD) !=
+      NULL;
+  statement->truncate_table = truncate_table;
   return 1;
 }
 

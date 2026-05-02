@@ -33,9 +33,11 @@ typedef struct MyliteAstCreateTableKey MyliteAstCreateTableKey;
 typedef struct MyliteAstCreateTableKeyPart MyliteAstCreateTableKeyPart;
 typedef struct MyliteAstCreateTableKeyOption MyliteAstCreateTableKeyOption;
 typedef struct MyliteAstCreateTableOption MyliteAstCreateTableOption;
+typedef struct MyliteAstDropIndex MyliteAstDropIndex;
 typedef struct MyliteAstDropTable MyliteAstDropTable;
 typedef struct MyliteAstNode MyliteAstNode;
 typedef struct MyliteAstRenameTable MyliteAstRenameTable;
+typedef struct MyliteAstTruncateTable MyliteAstTruncateTable;
 
 typedef enum MyliteAstNodeKind {
   MYLITE_AST_NODE_RULE = 1,
@@ -470,9 +472,13 @@ const MyliteAstCreateTable *mylite_ast_create_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstCreateIndex *mylite_ast_create_index_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstDropIndex *mylite_ast_drop_index_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstDropTable *mylite_ast_drop_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstRenameTable *mylite_ast_rename_table_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstTruncateTable *mylite_ast_truncate_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstNode *mylite_ast_alter_table_view_node(
     const MyliteAstAlterTable *alter_table);
@@ -673,6 +679,31 @@ int mylite_ast_create_index_view_has_key_block_size_value(
     const MyliteAstCreateIndex *create_index);
 unsigned long long mylite_ast_create_index_view_key_block_size_value(
     const MyliteAstCreateIndex *create_index);
+const MyliteAstNode *mylite_ast_drop_index_view_node(
+    const MyliteAstDropIndex *drop_index);
+size_t mylite_ast_drop_index_view_start(
+    const MyliteAstDropIndex *drop_index);
+size_t mylite_ast_drop_index_view_end(const MyliteAstDropIndex *drop_index);
+int mylite_ast_drop_index_view_has_if_exists(
+    const MyliteAstDropIndex *drop_index);
+int mylite_ast_drop_index_view_is_hypothetical(
+    const MyliteAstDropIndex *drop_index);
+size_t mylite_ast_drop_index_view_name_start(
+    const MyliteAstDropIndex *drop_index);
+size_t mylite_ast_drop_index_view_name_end(
+    const MyliteAstDropIndex *drop_index);
+const char *mylite_ast_drop_index_view_name_value(
+    const MyliteAstDropIndex *drop_index);
+size_t mylite_ast_drop_index_view_name_value_length(
+    const MyliteAstDropIndex *drop_index);
+const char *mylite_ast_drop_index_view_table_schema_value(
+    const MyliteAstDropIndex *drop_index);
+size_t mylite_ast_drop_index_view_table_schema_value_length(
+    const MyliteAstDropIndex *drop_index);
+const char *mylite_ast_drop_index_view_table_name_value(
+    const MyliteAstDropIndex *drop_index);
+size_t mylite_ast_drop_index_view_table_name_value_length(
+    const MyliteAstDropIndex *drop_index);
 const MyliteAstNode *mylite_ast_drop_table_view_node(
     const MyliteAstDropTable *drop_table);
 size_t mylite_ast_drop_table_view_start(const MyliteAstDropTable *drop_table);
@@ -715,6 +746,22 @@ const char *mylite_ast_rename_table_view_destination_name_value_at(
     const MyliteAstRenameTable *rename_table, size_t pair_index);
 size_t mylite_ast_rename_table_view_destination_name_value_length_at(
     const MyliteAstRenameTable *rename_table, size_t pair_index);
+const MyliteAstNode *mylite_ast_truncate_table_view_node(
+    const MyliteAstTruncateTable *truncate_table);
+size_t mylite_ast_truncate_table_view_start(
+    const MyliteAstTruncateTable *truncate_table);
+size_t mylite_ast_truncate_table_view_end(
+    const MyliteAstTruncateTable *truncate_table);
+int mylite_ast_truncate_table_view_has_table_keyword(
+    const MyliteAstTruncateTable *truncate_table);
+const char *mylite_ast_truncate_table_view_schema_value(
+    const MyliteAstTruncateTable *truncate_table);
+size_t mylite_ast_truncate_table_view_schema_value_length(
+    const MyliteAstTruncateTable *truncate_table);
+const char *mylite_ast_truncate_table_view_name_value(
+    const MyliteAstTruncateTable *truncate_table);
+size_t mylite_ast_truncate_table_view_name_value_length(
+    const MyliteAstTruncateTable *truncate_table);
 size_t mylite_ast_create_table_column_view_start(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_end(

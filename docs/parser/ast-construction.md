@@ -46,8 +46,8 @@ expression nodes.
 - `CREATE TABLE` statements now also build a compact semantic view that anchors
   the decoded table target and the existing column, key, and table-option
   descriptor collections without duplicating those arrays. The view exposes
-  opaque handles for navigating those descriptors directly, including nested key
-  parts and key options.
+  opaque handles for navigating those descriptors directly, including nested
+  column type elements, key parts, and key options.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
   still cover the full current corpus.
 - The AST is opaque in the public API and freed with `mylite_ast_free()`.
@@ -75,7 +75,8 @@ expression nodes.
   span, plus decoded schema/name values
 - a semantic `CREATE TABLE` view with statement span, table target/schema/name
   spans, decoded schema/name values, the `nt_create_table_stmt` CST anchor, and
-  column/key/key-part/key-option/table-option descriptor counts and handles
+  column/type-element/key/key-part/key-option/table-option descriptor counts and
+  handles
 - typed `CREATE TABLE` column descriptors with definition, name, type, type
   name, type parameters, type attributes, options, defaults, `ON UPDATE`,
   generated expression/storage, comments, inline check, and inline reference
@@ -110,11 +111,13 @@ The semantic `CREATE TABLE` view is the first statement-level AST object layered
 on top of the descriptor work. It does not copy column, key, or option
 descriptors; instead it gives the next builder a stable object anchored to
 `nt_create_table_stmt`, with the normalized table name, descriptor counts, and
-opaque descriptor handles. Handle-level accessors expose the core column type,
-storage class, flags, decoded column name, key kind/name/reference/check/action
-spans, key-part prefix/order/name details, key-option spans, and table-option
-kind/value spans needed by the next typed AST pass. This keeps construction
-cheap while separating final DDL AST work from the generic CST.
+opaque descriptor handles. Handle-level accessors expose column type spans,
+numeric parameters, enum/set elements, type attributes, option, default,
+generated, check, and reference spans, CST anchors, decoded column names, key
+kind/name/reference/check/action spans, key-part prefix/order/name details,
+key-option spans, and table-option kind/value spans needed by the next typed AST
+pass. This keeps construction cheap while separating final DDL AST work from the
+generic CST.
 
 The `CREATE TABLE` column view is the first typed statement-specific layer. It
 now classifies the coarse type family (`numeric`, `string`, `temporal`, `json`,
@@ -158,7 +161,9 @@ Column descriptors keep direct CST node anchors for the type node, option list,
 default value, `ON UPDATE` value, generated expression/storage, comment option,
 inline check expression/enforcement, and inline reference. These anchors let the
 next semantic AST builder walk the relevant subtree directly instead of
-searching the whole column definition again.
+searching the whole column definition again. The semantic `CREATE TABLE` view
+now exposes those column details through the column handle, including nested
+type-element handles for `ENUM` and `SET`.
 
 The `CREATE TABLE` key view covers table-level primary keys, indexes, unique
 keys, fulltext keys, spatial keys, foreign keys, and check constraints. It
@@ -203,8 +208,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.485815 qps=480063 mbps=36.51 avg_us=2.083
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=22.797931 qps=305032 mbps=23.20 avg_us=3.278 avg_nodes=74.5 avg_ast_bytes=10164.6 avg_statements=1.00 avg_targets=0.59 avg_target_schema_values=0.02 avg_target_name_values=0.59 avg_columns=0.29 avg_keys=0.06 avg_create_table_views=0.13 avg_create_table_view_schema_values=0.00 avg_create_table_view_name_values=0.13 avg_create_table_view_columns=0.29 avg_create_table_view_keys=0.06 avg_create_table_view_options=0.04 avg_create_table_view_column_handles=0.29 avg_create_table_view_known_column_types=0.29 avg_create_table_view_key_handles=0.06 avg_create_table_view_named_keys=0.02 avg_create_table_view_key_column_handles=0.09 avg_create_table_view_named_key_columns=0.09 avg_create_table_view_ordered_key_columns=0.00 avg_create_table_view_prefixed_key_columns=0.00 avg_create_table_view_expression_key_columns=0.00 avg_create_table_view_referenced_column_handles=0.00 avg_create_table_view_named_referenced_columns=0.00 avg_create_table_view_key_option_handles=0.00 avg_create_table_view_option_handles=0.04 avg_key_constraint_name_values=0.00 avg_key_name_values=0.02 avg_key_referenced_table_schema_values=0.00 avg_key_referenced_table_name_values=0.00 avg_key_columns=0.09 avg_key_column_name_values=0.09 avg_key_referenced_column_name_values=0.00 avg_key_options=0.00 avg_options=0.04 avg_column_name_values=0.29 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.458576 qps=480967 mbps=36.58 avg_us=2.079
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=22.641572 qps=307139 mbps=23.36 avg_us=3.256 avg_nodes=74.5 avg_ast_bytes=10164.6 avg_statements=1.00 avg_targets=0.59 avg_target_schema_values=0.02 avg_target_name_values=0.59 avg_columns=0.29 avg_keys=0.06 avg_create_table_views=0.13 avg_create_table_view_schema_values=0.00 avg_create_table_view_name_values=0.13 avg_create_table_view_columns=0.29 avg_create_table_view_keys=0.06 avg_create_table_view_options=0.04 avg_create_table_view_column_handles=0.29 avg_create_table_view_known_column_types=0.29 avg_create_table_view_column_type_numeric_params=0.11 avg_create_table_view_column_type_element_handles=0.05 avg_create_table_view_column_type_element_values=0.05 avg_create_table_view_column_type_lengths=0.09 avg_create_table_view_column_type_unsigned_attrs=0.01 avg_create_table_view_column_option_spans=0.12 avg_create_table_view_column_defaults=0.05 avg_create_table_view_column_comments=0.00 avg_create_table_view_column_checks=0.00 avg_create_table_view_column_type_nodes=0.29 avg_create_table_view_column_options_nodes=0.12 avg_create_table_view_key_handles=0.06 avg_create_table_view_named_keys=0.02 avg_create_table_view_key_column_handles=0.09 avg_create_table_view_named_key_columns=0.09 avg_create_table_view_ordered_key_columns=0.00 avg_create_table_view_prefixed_key_columns=0.00 avg_create_table_view_expression_key_columns=0.00 avg_create_table_view_referenced_column_handles=0.00 avg_create_table_view_named_referenced_columns=0.00 avg_create_table_view_key_option_handles=0.00 avg_create_table_view_option_handles=0.04 avg_key_constraint_name_values=0.00 avg_key_name_values=0.02 avg_key_referenced_table_schema_values=0.00 avg_key_referenced_table_name_values=0.00 avg_key_columns=0.09 avg_key_column_name_values=0.09 avg_key_referenced_column_name_values=0.00 avg_key_options=0.00 avg_options=0.04 avg_column_name_values=0.29 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -217,7 +222,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 126K on disk, 80,464 bytes text/data/other
+parser support object: 136K on disk, 84,192 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.2M on disk
 mylite-parse: 1.0M on disk

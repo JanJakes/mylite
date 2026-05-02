@@ -575,10 +575,30 @@ static void dump_create_table_view_handles(
         mylite_ast_create_table_column_view_name_value(column);
     size_t name_value_length =
         mylite_ast_create_table_column_view_name_value_length(column);
-    printf("    create_table.column[%zu] span=%zu..%zu family=%s kind=%s "
-           "storage=%s flags=0x%x name_value_len=%zu value=",
+    printf("    create_table.column[%zu] span=%zu..%zu name=%zu..%zu "
+           "type=%zu..%zu type_name=%zu..%zu type_params=%zu..%zu "
+           "numeric_params=%zu type_elements=%zu type_length=%d:%llu "
+           "family=%s kind=%s storage=%s flags=0x%x type_attrs=%zu..%zu "
+           "type_unsigned=%zu..%zu options=%zu..%zu default=%zu..%zu "
+           "default_value=%zu..%zu generated=%zu..%zu generated_expr=%zu..%zu "
+           "comment=%zu..%zu comment_value=%zu..%zu check=%zu..%zu "
+           "check_expr=%zu..%zu check_enforced=%s:%zu..%zu reference=%zu..%zu "
+           "type_node=%s options_node=%s name_value_len=%zu value=",
            i, mylite_ast_create_table_column_view_start(column),
            mylite_ast_create_table_column_view_end(column),
+           mylite_ast_create_table_column_view_name_start(column),
+           mylite_ast_create_table_column_view_name_end(column),
+           mylite_ast_create_table_column_view_type_start(column),
+           mylite_ast_create_table_column_view_type_end(column),
+           mylite_ast_create_table_column_view_type_name_start(column),
+           mylite_ast_create_table_column_view_type_name_end(column),
+           mylite_ast_create_table_column_view_type_parameters_start(column),
+           mylite_ast_create_table_column_view_type_parameters_end(column),
+           mylite_ast_create_table_column_view_type_numeric_parameter_count(
+               column),
+           mylite_ast_create_table_column_view_type_element_count(column),
+           mylite_ast_create_table_column_view_type_has_length(column),
+           mylite_ast_create_table_column_view_type_length(column),
            mylite_create_table_column_type_family_name(
                mylite_ast_create_table_column_view_type_family(column)),
            mylite_create_table_column_type_kind_name(
@@ -586,6 +606,39 @@ static void dump_create_table_view_handles(
            mylite_create_table_column_storage_class_name(
                mylite_ast_create_table_column_view_storage_class(column)),
            mylite_ast_create_table_column_view_flags(column),
+           mylite_ast_create_table_column_view_type_attributes_start(column),
+           mylite_ast_create_table_column_view_type_attributes_end(column),
+           mylite_ast_create_table_column_view_type_unsigned_start(column),
+           mylite_ast_create_table_column_view_type_unsigned_end(column),
+           mylite_ast_create_table_column_view_options_start(column),
+           mylite_ast_create_table_column_view_options_end(column),
+           mylite_ast_create_table_column_view_default_start(column),
+           mylite_ast_create_table_column_view_default_end(column),
+           mylite_ast_create_table_column_view_default_value_start(column),
+           mylite_ast_create_table_column_view_default_value_end(column),
+           mylite_ast_create_table_column_view_generated_start(column),
+           mylite_ast_create_table_column_view_generated_end(column),
+           mylite_ast_create_table_column_view_generated_expression_start(
+               column),
+           mylite_ast_create_table_column_view_generated_expression_end(column),
+           mylite_ast_create_table_column_view_comment_start(column),
+           mylite_ast_create_table_column_view_comment_end(column),
+           mylite_ast_create_table_column_view_comment_value_start(column),
+           mylite_ast_create_table_column_view_comment_value_end(column),
+           mylite_ast_create_table_column_view_check_start(column),
+           mylite_ast_create_table_column_view_check_end(column),
+           mylite_ast_create_table_column_view_check_expression_start(column),
+           mylite_ast_create_table_column_view_check_expression_end(column),
+           mylite_create_table_check_enforcement_name(
+               mylite_ast_create_table_column_view_check_enforcement(column)),
+           mylite_ast_create_table_column_view_check_enforcement_start(column),
+           mylite_ast_create_table_column_view_check_enforcement_end(column),
+           mylite_ast_create_table_column_view_reference_start(column),
+           mylite_ast_create_table_column_view_reference_end(column),
+           node_symbol_or_none(
+               mylite_ast_create_table_column_view_type_node(column)),
+           node_symbol_or_none(
+               mylite_ast_create_table_column_view_options_node(column)),
            name_value_length);
     if (name_value == NULL) {
       fputs("none", stdout);
@@ -593,6 +646,29 @@ static void dump_create_table_view_handles(
       print_escaped_bytes(name_value, name_value_length);
     }
     fputc('\n', stdout);
+    for (size_t j = 0;
+         j < mylite_ast_create_table_column_view_type_element_count(column);
+         j++) {
+      const MyliteAstCreateTableColumnTypeElement *element =
+          mylite_ast_create_table_column_view_type_element_at(column, j);
+      const char *element_value =
+          mylite_ast_create_table_column_type_element_view_value(element);
+      size_t element_value_length =
+          mylite_ast_create_table_column_type_element_view_value_length(
+              element);
+      printf("      create_table.column[%zu].type_element[%zu] span=%zu..%zu "
+             "value_len=%zu value=",
+             i, j,
+             mylite_ast_create_table_column_type_element_view_start(element),
+             mylite_ast_create_table_column_type_element_view_end(element),
+             element_value_length);
+      if (element_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(element_value, element_value_length);
+      }
+      fputc('\n', stdout);
+    }
   }
   for (size_t i = 0; i < mylite_ast_create_table_view_key_count(create_table);
        i++) {

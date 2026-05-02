@@ -747,7 +747,8 @@ int main(void) {
         sizeof(targets) / sizeof(targets[0]));
   }
   failures += expect_create_table_view(
-      "CREATE TABLE `db``x`.`t``y` (id INT, KEY `k``x` (id(3) DESC) COMMENT "
+      "CREATE TABLE `db``x`.`t``y` (id INT(11) UNSIGNED NOT NULL DEFAULT 1 "
+      "COMMENT 'pk' CHECK (id > 0), KEY `k``x` (id(3) DESC) COMMENT "
       "'hello') ENGINE=InnoDB",
       "`db``x`.`t``y`", "`db``x`", "`t``y`", "db`x", "t`y", 1, 1, 1);
   {
@@ -1730,6 +1731,37 @@ static int expect_create_table_view(const char *sql, const char *target,
        (first_column == NULL ||
         mylite_ast_create_table_column_view_type_kind(first_column) !=
             MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT ||
+        mylite_ast_create_table_column_view_type_node(first_column) == NULL ||
+        mylite_ast_create_table_column_view_options_node(first_column) ==
+            NULL ||
+        !mylite_ast_create_table_column_view_type_has_length(first_column) ||
+        mylite_ast_create_table_column_view_type_length(first_column) != 11 ||
+        mylite_ast_create_table_column_view_type_numeric_parameter_count(
+            first_column) != 1 ||
+        mylite_ast_create_table_column_view_type_numeric_parameter_at(
+            first_column, 0) != 11 ||
+        mylite_ast_create_table_column_view_type_unsigned_end(first_column) ==
+            0 ||
+        !span_matches(sql,
+                      mylite_ast_create_table_column_view_type_name_start(
+                          first_column),
+                      mylite_ast_create_table_column_view_type_name_end(
+                          first_column),
+                      "INT") ||
+        !span_matches(sql,
+                      mylite_ast_create_table_column_view_default_value_start(
+                          first_column),
+                      mylite_ast_create_table_column_view_default_value_end(
+                          first_column),
+                      "1") ||
+        !span_matches(sql,
+                      mylite_ast_create_table_column_view_comment_value_start(
+                          first_column),
+                      mylite_ast_create_table_column_view_comment_value_end(
+                          first_column),
+                      "'pk'") ||
+        mylite_ast_create_table_column_view_check_expression_start(
+            first_column) == 0 ||
         !value_matches_when_expected(
             mylite_ast_create_table_column_view_name_value(first_column),
             mylite_ast_create_table_column_view_name_value_length(first_column),

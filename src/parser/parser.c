@@ -39,13 +39,13 @@ typedef enum MyliteAstCreateTableColumnTypeShapeFlag {
   MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_FSP = 1u << 3
 } MyliteAstCreateTableColumnTypeShapeFlag;
 
-typedef struct MyliteAstCreateTableTypeElement {
+struct MyliteAstCreateTableColumnTypeElement {
   const char *value;
   size_t value_length;
   size_t start;
   size_t end;
   int token;
-} MyliteAstCreateTableTypeElement;
+};
 
 struct MyliteAstCreateTableColumn {
   unsigned long long type_length;
@@ -72,7 +72,7 @@ struct MyliteAstCreateTableColumn {
   size_t type_parameters_end;
   size_t type_numeric_parameter_count;
   unsigned long long type_numeric_parameters[2];
-  MyliteAstCreateTableTypeElement *type_elements;
+  MyliteAstCreateTableColumnTypeElement *type_elements;
   size_t type_element_count;
   size_t type_attributes_start;
   size_t type_attributes_end;
@@ -398,7 +398,7 @@ static int mylite_ast_set_create_table_column_type_elements(
 static size_t mylite_ast_count_create_table_column_type_elements(
     const MyliteAstNode *node);
 static void mylite_ast_fill_create_table_column_type_elements(
-    MyliteAstCreateTableTypeElement *elements, const MyliteAstNode *node,
+    MyliteAstCreateTableColumnTypeElement *elements, const MyliteAstNode *node,
     size_t *index);
 static int mylite_ast_set_create_table_column_type_element_values(
     MyliteAst *ast, MyliteAstCreateTableColumn *column);
@@ -568,7 +568,7 @@ static const MyliteAstCreateTableKeyOption *mylite_ast_create_table_key_option_a
     size_t option_index);
 static const MyliteAstCreateTableColumn *mylite_ast_create_table_column_at(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
-static const MyliteAstCreateTableTypeElement *
+static const MyliteAstCreateTableColumnTypeElement *
 mylite_ast_create_table_column_type_element_at(const MyliteAst *ast,
                                                size_t statement_index,
                                                size_t column_index,
@@ -1448,6 +1448,448 @@ unsigned int mylite_ast_create_table_column_view_flags(
   return column == NULL ? 0 : column->flags;
 }
 
+size_t mylite_ast_create_table_column_view_name_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->name_start;
+}
+
+size_t mylite_ast_create_table_column_view_name_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->name_end;
+}
+
+size_t mylite_ast_create_table_column_view_type_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_start;
+}
+
+size_t mylite_ast_create_table_column_view_type_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_end;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_view_type_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->type_node;
+}
+
+size_t mylite_ast_create_table_column_view_type_name_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_name_start;
+}
+
+size_t mylite_ast_create_table_column_view_type_name_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_name_end;
+}
+
+size_t mylite_ast_create_table_column_view_type_parameters_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_parameters_start;
+}
+
+size_t mylite_ast_create_table_column_view_type_parameters_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_parameters_end;
+}
+
+size_t mylite_ast_create_table_column_view_type_numeric_parameter_count(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_numeric_parameter_count;
+}
+
+unsigned long long
+mylite_ast_create_table_column_view_type_numeric_parameter_at(
+    const MyliteAstCreateTableColumn *column, size_t parameter_index) {
+  if (column == NULL ||
+      parameter_index >= column->type_numeric_parameter_count ||
+      parameter_index >= sizeof(column->type_numeric_parameters) /
+                             sizeof(column->type_numeric_parameters[0])) {
+    return 0;
+  }
+  return column->type_numeric_parameters[parameter_index];
+}
+
+size_t mylite_ast_create_table_column_view_type_element_count(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_element_count;
+}
+
+const MyliteAstCreateTableColumnTypeElement *
+mylite_ast_create_table_column_view_type_element_at(
+    const MyliteAstCreateTableColumn *column, size_t element_index) {
+  if (column == NULL || element_index >= column->type_element_count) {
+    return NULL;
+  }
+  return &column->type_elements[element_index];
+}
+
+size_t mylite_ast_create_table_column_type_element_view_start(
+    const MyliteAstCreateTableColumnTypeElement *element) {
+  return element == NULL ? 0 : element->start;
+}
+
+size_t mylite_ast_create_table_column_type_element_view_end(
+    const MyliteAstCreateTableColumnTypeElement *element) {
+  return element == NULL ? 0 : element->end;
+}
+
+const char *mylite_ast_create_table_column_type_element_view_value(
+    const MyliteAstCreateTableColumnTypeElement *element) {
+  return element == NULL ? NULL : element->value;
+}
+
+size_t mylite_ast_create_table_column_type_element_view_value_length(
+    const MyliteAstCreateTableColumnTypeElement *element) {
+  return element == NULL ? 0 : element->value_length;
+}
+
+int mylite_ast_create_table_column_view_type_has_length(
+    const MyliteAstCreateTableColumn *column) {
+  return column != NULL &&
+         (column->type_shape_flags &
+          MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_LENGTH) != 0;
+}
+
+unsigned long long mylite_ast_create_table_column_view_type_length(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_length;
+}
+
+int mylite_ast_create_table_column_view_type_has_precision(
+    const MyliteAstCreateTableColumn *column) {
+  return column != NULL &&
+         (column->type_shape_flags &
+          MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_PRECISION) != 0;
+}
+
+unsigned long long mylite_ast_create_table_column_view_type_precision(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_precision;
+}
+
+int mylite_ast_create_table_column_view_type_has_scale(
+    const MyliteAstCreateTableColumn *column) {
+  return column != NULL &&
+         (column->type_shape_flags &
+          MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_SCALE) != 0;
+}
+
+unsigned long long mylite_ast_create_table_column_view_type_scale(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_scale;
+}
+
+int mylite_ast_create_table_column_view_type_has_fractional_seconds_precision(
+    const MyliteAstCreateTableColumn *column) {
+  return column != NULL &&
+         (column->type_shape_flags &
+          MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_FSP) != 0;
+}
+
+unsigned long long
+mylite_ast_create_table_column_view_type_fractional_seconds_precision(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_fractional_seconds_precision;
+}
+
+size_t mylite_ast_create_table_column_view_type_attributes_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_attributes_start;
+}
+
+size_t mylite_ast_create_table_column_view_type_attributes_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_attributes_end;
+}
+
+size_t mylite_ast_create_table_column_view_type_unsigned_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_unsigned_start;
+}
+
+size_t mylite_ast_create_table_column_view_type_unsigned_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_unsigned_end;
+}
+
+size_t mylite_ast_create_table_column_view_type_zerofill_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_zerofill_start;
+}
+
+size_t mylite_ast_create_table_column_view_type_zerofill_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_zerofill_end;
+}
+
+size_t mylite_ast_create_table_column_view_type_binary_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_binary_start;
+}
+
+size_t mylite_ast_create_table_column_view_type_binary_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_binary_end;
+}
+
+size_t mylite_ast_create_table_column_view_type_charset_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_charset_start;
+}
+
+size_t mylite_ast_create_table_column_view_type_charset_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_charset_end;
+}
+
+size_t mylite_ast_create_table_column_view_type_charset_value_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_charset_value_start;
+}
+
+size_t mylite_ast_create_table_column_view_type_charset_value_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_charset_value_end;
+}
+
+size_t mylite_ast_create_table_column_view_type_collation_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_collation_start;
+}
+
+size_t mylite_ast_create_table_column_view_type_collation_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_collation_end;
+}
+
+size_t mylite_ast_create_table_column_view_type_collation_value_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_collation_value_start;
+}
+
+size_t mylite_ast_create_table_column_view_type_collation_value_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->type_collation_value_end;
+}
+
+size_t mylite_ast_create_table_column_view_options_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->options_start;
+}
+
+size_t mylite_ast_create_table_column_view_options_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->options_end;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_view_options_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->options_node;
+}
+
+size_t mylite_ast_create_table_column_view_default_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->default_start;
+}
+
+size_t mylite_ast_create_table_column_view_default_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->default_end;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_view_default_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->default_node;
+}
+
+size_t mylite_ast_create_table_column_view_default_value_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->default_value_start;
+}
+
+size_t mylite_ast_create_table_column_view_default_value_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->default_value_end;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_view_default_value_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->default_value_node;
+}
+
+size_t mylite_ast_create_table_column_view_on_update_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->on_update_start;
+}
+
+size_t mylite_ast_create_table_column_view_on_update_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->on_update_end;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_view_on_update_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->on_update_node;
+}
+
+size_t mylite_ast_create_table_column_view_on_update_value_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->on_update_value_start;
+}
+
+size_t mylite_ast_create_table_column_view_on_update_value_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->on_update_value_end;
+}
+
+const MyliteAstNode *
+mylite_ast_create_table_column_view_on_update_value_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->on_update_value_node;
+}
+
+size_t mylite_ast_create_table_column_view_generated_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->generated_start;
+}
+
+size_t mylite_ast_create_table_column_view_generated_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->generated_end;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_view_generated_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->generated_node;
+}
+
+size_t mylite_ast_create_table_column_view_generated_expression_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->generated_expression_start;
+}
+
+size_t mylite_ast_create_table_column_view_generated_expression_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->generated_expression_end;
+}
+
+const MyliteAstNode *
+mylite_ast_create_table_column_view_generated_expression_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->generated_expression_node;
+}
+
+size_t mylite_ast_create_table_column_view_generated_storage_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->generated_storage_start;
+}
+
+size_t mylite_ast_create_table_column_view_generated_storage_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->generated_storage_end;
+}
+
+const MyliteAstNode *
+mylite_ast_create_table_column_view_generated_storage_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->generated_storage_node;
+}
+
+size_t mylite_ast_create_table_column_view_comment_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->comment_start;
+}
+
+size_t mylite_ast_create_table_column_view_comment_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->comment_end;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_view_comment_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->comment_node;
+}
+
+size_t mylite_ast_create_table_column_view_comment_value_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->comment_value_start;
+}
+
+size_t mylite_ast_create_table_column_view_comment_value_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->comment_value_end;
+}
+
+size_t mylite_ast_create_table_column_view_check_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->check_start;
+}
+
+size_t mylite_ast_create_table_column_view_check_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->check_end;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_view_check_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->check_node;
+}
+
+size_t mylite_ast_create_table_column_view_check_expression_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->check_expression_start;
+}
+
+size_t mylite_ast_create_table_column_view_check_expression_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->check_expression_end;
+}
+
+const MyliteAstNode *
+mylite_ast_create_table_column_view_check_expression_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->check_expression_node;
+}
+
+MyliteCreateTableCheckEnforcement
+mylite_ast_create_table_column_view_check_enforcement(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_UNSPECIFIED
+                        : column->check_enforcement;
+}
+
+size_t mylite_ast_create_table_column_view_check_enforcement_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->check_enforcement_start;
+}
+
+size_t mylite_ast_create_table_column_view_check_enforcement_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->check_enforcement_end;
+}
+
+const MyliteAstNode *
+mylite_ast_create_table_column_view_check_enforcement_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->check_enforcement_node;
+}
+
+size_t mylite_ast_create_table_column_view_reference_start(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->reference_start;
+}
+
+size_t mylite_ast_create_table_column_view_reference_end(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? 0 : column->reference_end;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_view_reference_node(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL ? NULL : column->reference_node;
+}
+
 MyliteCreateTableKeyKind mylite_ast_create_table_key_view_kind(
     const MyliteAstCreateTableKey *key) {
   return key == NULL ? MYLITE_CREATE_TABLE_KEY_UNKNOWN : key->kind;
@@ -1963,7 +2405,7 @@ size_t mylite_ast_create_table_column_type_element_count(
 size_t mylite_ast_create_table_column_type_element_start(
     const MyliteAst *ast, size_t statement_index, size_t column_index,
     size_t element_index) {
-  const MyliteAstCreateTableTypeElement *element =
+  const MyliteAstCreateTableColumnTypeElement *element =
       mylite_ast_create_table_column_type_element_at(
           ast, statement_index, column_index, element_index);
   return element == NULL ? 0 : element->start;
@@ -1972,7 +2414,7 @@ size_t mylite_ast_create_table_column_type_element_start(
 size_t mylite_ast_create_table_column_type_element_end(
     const MyliteAst *ast, size_t statement_index, size_t column_index,
     size_t element_index) {
-  const MyliteAstCreateTableTypeElement *element =
+  const MyliteAstCreateTableColumnTypeElement *element =
       mylite_ast_create_table_column_type_element_at(
           ast, statement_index, column_index, element_index);
   return element == NULL ? 0 : element->end;
@@ -1981,7 +2423,7 @@ size_t mylite_ast_create_table_column_type_element_end(
 const char *mylite_ast_create_table_column_type_element_value(
     const MyliteAst *ast, size_t statement_index, size_t column_index,
     size_t element_index) {
-  const MyliteAstCreateTableTypeElement *element =
+  const MyliteAstCreateTableColumnTypeElement *element =
       mylite_ast_create_table_column_type_element_at(
           ast, statement_index, column_index, element_index);
   return element == NULL ? NULL : element->value;
@@ -1990,7 +2432,7 @@ const char *mylite_ast_create_table_column_type_element_value(
 size_t mylite_ast_create_table_column_type_element_value_length(
     const MyliteAst *ast, size_t statement_index, size_t column_index,
     size_t element_index) {
-  const MyliteAstCreateTableTypeElement *element =
+  const MyliteAstCreateTableColumnTypeElement *element =
       mylite_ast_create_table_column_type_element_at(
           ast, statement_index, column_index, element_index);
   return element == NULL ? 0 : element->value_length;
@@ -4489,7 +4931,7 @@ static int mylite_ast_set_create_table_column_type_elements(
     return 0;
   }
 
-  MyliteAstCreateTableTypeElement *elements =
+  MyliteAstCreateTableColumnTypeElement *elements =
       mylite_ast_alloc(ast, count * sizeof(*elements));
   if (elements == NULL) {
     return 0;
@@ -4525,7 +4967,7 @@ static size_t mylite_ast_count_create_table_column_type_elements(
 }
 
 static void mylite_ast_fill_create_table_column_type_elements(
-    MyliteAstCreateTableTypeElement *elements, const MyliteAstNode *node,
+    MyliteAstCreateTableColumnTypeElement *elements, const MyliteAstNode *node,
     size_t *index) {
   if (elements == NULL || node == NULL || index == NULL) {
     return;
@@ -4554,7 +4996,7 @@ static int mylite_ast_set_create_table_column_type_element_values(
   }
 
   for (size_t i = 0; i < column->type_element_count; i++) {
-    MyliteAstCreateTableTypeElement *element = &column->type_elements[i];
+    MyliteAstCreateTableColumnTypeElement *element = &column->type_elements[i];
     if (element->token != MYLITE_TOK_STRING_LIT) {
       continue;
     }
@@ -6624,7 +7066,7 @@ static const MyliteAstCreateTableColumn *mylite_ast_create_table_column_at(
   return &statement->create_table_columns[column_index];
 }
 
-static const MyliteAstCreateTableTypeElement *
+static const MyliteAstCreateTableColumnTypeElement *
 mylite_ast_create_table_column_type_element_at(const MyliteAst *ast,
                                                size_t statement_index,
                                                size_t column_index,

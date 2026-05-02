@@ -36,6 +36,7 @@ typedef struct ExpectedCreateTableColumn {
   const char *check_enforcement_span;
   const char *reference;
   MyliteCreateTableColumnTypeKind type_kind;
+  MyliteCreateTableColumnStorageClass storage_class;
   const char *type_node_symbol;
   const char *options_node_symbol;
   const char *default_node_symbol;
@@ -776,6 +777,7 @@ int main(void) {
          .type_parameters = "(10,2)",
          .type_attributes = "UNSIGNED ZEROFILL",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_DECIMAL,
          .type_node_symbol = "nt_type"},
         {.definition = "e ENUM('a','b') DEFAULT 'a'",
          .name = "e",
@@ -788,6 +790,7 @@ int main(void) {
          .default_span = "DEFAULT 'a'",
          .default_value = "'a'",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_ENUM,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_ENUM,
          .type_node_symbol = "nt_type",
          .options_node_symbol = "nt_column_option_list_opt",
          .default_node_symbol = "nt_column_option",
@@ -805,31 +808,42 @@ int main(void) {
          .type_attributes = "CHARACTER SET utf8mb4 COLLATE utf8mb4_bin",
          .comment = "COMMENT 'x'",
          .comment_value = "'x'",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARCHAR},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARCHAR,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_VARIABLE_STRING},
         {.definition = "n NATIONAL VARCHAR(10)",
          .name = "n",
          .type = "NATIONAL VARCHAR(10)",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
          .type_name = "NATIONAL VARCHAR",
          .type_parameters = "(10)",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NVARCHAR},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NVARCHAR,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_VARIABLE_STRING},
         {.definition = "b LONG VARBINARY",
          .name = "b",
          .type = "LONG VARBINARY",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
          .type_name = "LONG VARBINARY",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARBINARY},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARBINARY,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_BLOB},
+        {.definition = "m LONG",
+         .name = "m",
+         .type = "LONG",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
+         .type_name = "LONG",
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEXT},
         {.definition = "l LONG VARCHAR",
          .name = "l",
          .type = "LONG VARCHAR",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
          .type_name = "LONG VARCHAR",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARCHAR}};
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARCHAR,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEXT}};
     failures += expect_create_table_columns(
         "CREATE TABLE t (d DECIMAL(10,2) UNSIGNED ZEROFILL, "
         "e ENUM('a','b') DEFAULT 'a', "
         "v VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin COMMENT 'x', "
-        "n NATIONAL VARCHAR(10), b LONG VARBINARY, l LONG VARCHAR)",
+        "n NATIONAL VARCHAR(10), b LONG VARBINARY, m LONG, l LONG VARCHAR)",
         columns, sizeof(columns) / sizeof(columns[0]));
   }
   {
@@ -838,56 +852,97 @@ int main(void) {
          .name = "ti",
          .type = "TINYINT",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYINT},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYINT,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER},
         {.definition = "i8 INT8",
          .name = "i8",
          .type = "INT8",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIGINT},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIGINT,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER},
         {.definition = "bo BOOLEAN",
          .name = "bo",
          .type = "BOOLEAN",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BOOL},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BOOL,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER},
         {.definition = "f FLOAT8",
          .name = "f",
          .type = "FLOAT8",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DOUBLE},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DOUBLE,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_FLOAT},
         {.definition = "bt BIT(1)",
          .name = "bt",
          .type = "BIT(1)",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIT},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIT,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_BIT},
         {.definition = "bn BINARY(2)",
          .name = "bn",
          .type = "BINARY(2)",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BINARY},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BINARY,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_BINARY_STRING},
         {.definition = "tx MEDIUMTEXT",
          .name = "tx",
          .type = "MEDIUMTEXT",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMTEXT},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMTEXT,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEXT},
         {.definition = "dt DATETIME(6)",
          .name = "dt",
          .type = "DATETIME(6)",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_TEMPORAL,
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DATETIME},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DATETIME,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEMPORAL},
         {.definition = "pt POINT",
          .name = "pt",
          .type = "POINT",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_SPATIAL,
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_POINT},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_POINT,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_SPATIAL},
         {.definition = "gc GEOMETRYCOLLECTION",
          .name = "gc",
          .type = "GEOMETRYCOLLECTION",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_SPATIAL,
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRYCOLLECTION}};
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRYCOLLECTION,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_SPATIAL},
+        {.definition = "ch CHAR(1)",
+         .name = "ch",
+         .type = "CHAR(1)",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_CHAR,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_FIXED_STRING},
+        {.definition = "vb VARBINARY(2)",
+         .name = "vb",
+         .type = "VARBINARY(2)",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARBINARY,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_BINARY_STRING},
+        {.definition = "js JSON",
+         .name = "js",
+         .type = "JSON",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_JSON,
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_JSON,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_JSON},
+        {.definition = "st SET('x')",
+         .name = "st",
+         .type = "SET('x')",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_SET,
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_SET,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_SET},
+        {.definition = "ve VECTOR(3)",
+         .name = "ve",
+         .type = "VECTOR(3)",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VECTOR,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_VECTOR}};
     failures += expect_create_table_columns(
         "CREATE TABLE t (ti TINYINT, i8 INT8, bo BOOLEAN, f FLOAT8, "
         "bt BIT(1), bn BINARY(2), tx MEDIUMTEXT, dt DATETIME(6), "
-        "pt POINT, gc GEOMETRYCOLLECTION)",
+        "pt POINT, gc GEOMETRYCOLLECTION, ch CHAR(1), vb VARBINARY(2), "
+        "js JSON, st SET('x'), ve VECTOR(3))",
         columns, sizeof(columns) / sizeof(columns[0]));
   }
   {
@@ -902,6 +957,7 @@ int main(void) {
          .default_span = "DEFAULT 1",
          .default_value = "1",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER,
          .type_node_symbol = "nt_type",
          .options_node_symbol = "nt_column_option_list_opt",
          .default_node_symbol = "nt_column_option",
@@ -919,6 +975,7 @@ int main(void) {
          .on_update = "ON UPDATE CURRENT_TIMESTAMP",
          .on_update_value = "CURRENT_TIMESTAMP",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TIMESTAMP,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEMPORAL,
          .type_node_symbol = "nt_type",
          .options_node_symbol = "nt_column_option_list_opt",
          .default_value_node_symbol = "nt_default_value_expr",
@@ -935,6 +992,7 @@ int main(void) {
          .generated_expression = "a + 1",
          .generated_storage = "STORED",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER,
          .generated_expression_node_symbol = "nt_expression",
          .generated_storage_node_symbol = "nt_virtual_or_stored"},
         {.definition = "h INT AS (a + 2) VIRTUAL",
@@ -949,6 +1007,7 @@ int main(void) {
          .generated_expression = "a + 2",
          .generated_storage = "VIRTUAL",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER,
          .generated_expression_node_symbol = "nt_expression",
          .generated_storage_node_symbol = "nt_virtual_or_stored"},
         {.definition = "r INT REFERENCES parent(id)",
@@ -960,6 +1019,7 @@ int main(void) {
          .type_name = "INT",
          .reference = "REFERENCES parent(id)",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER,
          .reference_node_symbol = "nt_refer_def"},
         {.definition = "c INT CHECK (c > 0) NOT ENFORCED",
          .name = "c",
@@ -974,6 +1034,7 @@ int main(void) {
              MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_NOT_ENFORCED,
          .check_enforcement_span = "NOT ENFORCED",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER,
          .check_expression_node_symbol = "nt_expression",
          .check_enforcement_node_symbol =
              "nt_enforced_or_not_or_not_null_opt"}};
@@ -1440,6 +1501,9 @@ static int expect_create_table_columns(const char *sql,
         (columns[i].type_kind != MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN &&
          mylite_ast_create_table_column_type_kind(ast, 0, i) !=
              columns[i].type_kind) ||
+        (columns[i].storage_class != MYLITE_CREATE_TABLE_COLUMN_STORAGE_UNKNOWN &&
+         mylite_ast_create_table_column_storage_class(ast, 0, i) !=
+             columns[i].storage_class) ||
         !node_symbol_matches_when_expected(
             mylite_ast_create_table_column_type_node(ast, 0, i),
             columns[i].type_node_symbol) ||
@@ -1544,7 +1608,8 @@ static int expect_create_table_columns(const char *sql,
             columns[i].reference)) {
       fprintf(stderr,
               "CREATE TABLE column[%zu] failed: %s\ndef=%zu..%zu name=%zu..%zu "
-              "type=%zu..%zu options=%zu..%zu family=%s kind=%s flags=0x%x\n"
+              "type=%zu..%zu options=%zu..%zu family=%s kind=%s storage=%s "
+              "flags=0x%x\n"
               "type_name=%zu..%zu type_params=%zu..%zu type_attrs=%zu..%zu "
               "default=%zu..%zu default_value=%zu..%zu on_update=%zu..%zu "
               "on_update_value=%zu..%zu generated=%zu..%zu "
@@ -1564,6 +1629,8 @@ static int expect_create_table_columns(const char *sql,
                   mylite_ast_create_table_column_type_family(ast, 0, i)),
               mylite_create_table_column_type_kind_name(
                   mylite_ast_create_table_column_type_kind(ast, 0, i)),
+              mylite_create_table_column_storage_class_name(
+                  mylite_ast_create_table_column_storage_class(ast, 0, i)),
               mylite_ast_create_table_column_flags(ast, 0, i),
               mylite_ast_create_table_column_type_name_start(ast, 0, i),
               mylite_ast_create_table_column_type_name_end(ast, 0, i),

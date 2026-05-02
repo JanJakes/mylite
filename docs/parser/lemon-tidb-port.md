@@ -55,7 +55,7 @@ python3 tests/run_query_corpus.py \
   --fail-fast
 ```
 
-Current prototype result on May 1, 2026:
+Current prototype result on May 2, 2026:
 
 ```text
 parsed=69541 skipped=36 failed=0

@@ -60,6 +60,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t targets = 0;
   size_t columns = 0;
   size_t column_known_types = 0;
+  size_t column_known_storage_classes = 0;
   size_t column_value_roots = 0;
   size_t column_defaults = 0;
   size_t column_on_updates = 0;
@@ -94,6 +95,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
               if (mylite_ast_create_table_column_type_kind(ast, i, j) !=
                   MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN) {
                 column_known_types++;
+              }
+              if (mylite_ast_create_table_column_storage_class(ast, i, j) !=
+                  MYLITE_CREATE_TABLE_COLUMN_STORAGE_UNKNOWN) {
+                column_known_storage_classes++;
               }
               if (mylite_ast_create_table_column_default_value_node(ast, i, j) !=
                   NULL) {
@@ -169,13 +174,14 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
     printf(" avg_column_defaults=%.2f avg_column_on_updates=%.2f "
            "avg_column_generated=%.2f avg_column_checks=%.2f "
            "avg_column_references=%.2f avg_column_known_types=%.2f "
-           "avg_column_value_roots=%.2f",
+           "avg_column_storage_classes=%.2f avg_column_value_roots=%.2f",
            (double)column_defaults / (double)parsed,
            (double)column_on_updates / (double)parsed,
            (double)column_generated / (double)parsed,
            (double)column_checks / (double)parsed,
            (double)column_references / (double)parsed,
            (double)column_known_types / (double)parsed,
+           (double)column_known_storage_classes / (double)parsed,
            (double)column_value_roots / (double)parsed);
   }
   printf("\n");

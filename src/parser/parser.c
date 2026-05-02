@@ -29,6 +29,7 @@ typedef struct MyliteAstStatementTarget {
 typedef struct MyliteAstCreateTableColumn {
   MyliteCreateTableColumnTypeFamily type_family;
   MyliteCreateTableColumnTypeKind type_kind;
+  MyliteCreateTableColumnStorageClass storage_class;
   unsigned int flags;
   size_t start;
   size_t end;
@@ -303,6 +304,8 @@ static MyliteCreateTableColumnTypeFamily mylite_ast_classify_column_type(
     const MyliteAstNode *type);
 static MyliteCreateTableColumnTypeKind mylite_ast_classify_column_type_kind(
     const MyliteAstNode *type);
+static MyliteCreateTableColumnStorageClass
+mylite_ast_classify_column_storage_class(MyliteCreateTableColumnTypeKind kind);
 static unsigned int mylite_ast_collect_column_flags(const MyliteAstNode *type,
                                                     const MyliteAstNode *options);
 static unsigned int mylite_ast_collect_column_type_flags(const MyliteAstNode *type);
@@ -684,6 +687,45 @@ const char *mylite_create_table_column_type_kind_name(
       return "multipolygon";
     case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRYCOLLECTION:
       return "geometrycollection";
+  }
+  return "unknown";
+}
+
+const char *mylite_create_table_column_storage_class_name(
+    MyliteCreateTableColumnStorageClass storage_class) {
+  switch (storage_class) {
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_UNKNOWN:
+      return "unknown";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER:
+      return "integer";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_DECIMAL:
+      return "decimal";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_FLOAT:
+      return "float";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_BIT:
+      return "bit";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_FIXED_STRING:
+      return "fixed_string";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_VARIABLE_STRING:
+      return "variable_string";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_BINARY_STRING:
+      return "binary_string";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_BLOB:
+      return "blob";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEXT:
+      return "text";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_ENUM:
+      return "enum";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_SET:
+      return "set";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_JSON:
+      return "json";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEMPORAL:
+      return "temporal";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_SPATIAL:
+      return "spatial";
+    case MYLITE_CREATE_TABLE_COLUMN_STORAGE_VECTOR:
+      return "vector";
   }
   return "unknown";
 }
@@ -1459,6 +1501,16 @@ MyliteCreateTableColumnTypeKind mylite_ast_create_table_column_type_kind(
       mylite_ast_create_table_column_at(ast, statement_index, column_index);
   return column == NULL ? MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN
                         : column->type_kind;
+}
+
+MyliteCreateTableColumnStorageClass
+mylite_ast_create_table_column_storage_class(const MyliteAst *ast,
+                                             size_t statement_index,
+                                             size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? MYLITE_CREATE_TABLE_COLUMN_STORAGE_UNKNOWN
+                        : column->storage_class;
 }
 
 unsigned int mylite_ast_create_table_column_flags(const MyliteAst *ast,
@@ -2919,6 +2971,8 @@ static void mylite_ast_fill_create_table_column(
   if (type != NULL) {
     column->type_family = mylite_ast_classify_column_type(type);
     column->type_kind = mylite_ast_classify_column_type_kind(type);
+    column->storage_class =
+        mylite_ast_classify_column_storage_class(column->type_kind);
     column->type_node = type;
     column->type_start = mylite_ast_node_start(type);
     column->type_end = mylite_ast_node_end(type);
@@ -3361,6 +3415,75 @@ static MyliteCreateTableColumnTypeKind mylite_ast_classify_column_type_kind(
       return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRYCOLLECTION;
   }
   return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN;
+}
+
+static MyliteCreateTableColumnStorageClass
+mylite_ast_classify_column_storage_class(MyliteCreateTableColumnTypeKind kind) {
+  switch (kind) {
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_SMALLINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIGINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BOOL:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_DECIMAL;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_FLOAT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_REAL:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DOUBLE:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_FLOAT;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIT:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_BIT;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_CHAR:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NCHAR:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_FIXED_STRING;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARCHAR:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NVARCHAR:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_VARIABLE_STRING;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BINARY:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARBINARY:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_BINARY_STRING;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYBLOB:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BLOB:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMBLOB:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONGBLOB:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARBINARY:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_BLOB;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYTEXT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TEXT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMTEXT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONGTEXT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARCHAR:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEXT;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_ENUM:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_ENUM;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_SET:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_SET;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_JSON:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_JSON;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VECTOR:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_VECTOR;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DATE:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DATETIME:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TIMESTAMP:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TIME:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_YEAR:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEMPORAL;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRY:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_POINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LINESTRING:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_POLYGON:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTIPOINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTILINESTRING:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTIPOLYGON:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRYCOLLECTION:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_SPATIAL;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN:
+      return MYLITE_CREATE_TABLE_COLUMN_STORAGE_UNKNOWN;
+  }
+  return MYLITE_CREATE_TABLE_COLUMN_STORAGE_UNKNOWN;
 }
 
 static unsigned int mylite_ast_collect_column_flags(const MyliteAstNode *type,

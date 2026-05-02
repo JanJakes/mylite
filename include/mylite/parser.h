@@ -133,6 +133,25 @@ typedef enum MyliteCreateTableColumnTypeKind {
   MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRYCOLLECTION
 } MyliteCreateTableColumnTypeKind;
 
+typedef enum MyliteCreateTableColumnStorageClass {
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_UNKNOWN = 0,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_DECIMAL,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_FLOAT,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_BIT,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_FIXED_STRING,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_VARIABLE_STRING,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_BINARY_STRING,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_BLOB,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEXT,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_ENUM,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_SET,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_JSON,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEMPORAL,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_SPATIAL,
+  MYLITE_CREATE_TABLE_COLUMN_STORAGE_VECTOR
+} MyliteCreateTableColumnStorageClass;
+
 typedef enum MyliteCreateTableColumnFlag {
   MYLITE_CREATE_TABLE_COLUMN_FLAG_NONE = 0,
   MYLITE_CREATE_TABLE_COLUMN_FLAG_NOT_NULL = 1u << 0,
@@ -253,6 +272,8 @@ const char *mylite_create_table_column_type_family_name(
     MyliteCreateTableColumnTypeFamily family);
 const char *mylite_create_table_column_type_kind_name(
     MyliteCreateTableColumnTypeKind kind);
+const char *mylite_create_table_column_storage_class_name(
+    MyliteCreateTableColumnStorageClass storage_class);
 const char *mylite_create_table_key_kind_name(MyliteCreateTableKeyKind kind);
 const char *mylite_create_table_key_part_kind_name(
     MyliteCreateTableKeyPartKind kind);
@@ -450,6 +471,10 @@ MyliteCreateTableColumnTypeFamily mylite_ast_create_table_column_type_family(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
 MyliteCreateTableColumnTypeKind mylite_ast_create_table_column_type_kind(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
+MyliteCreateTableColumnStorageClass
+mylite_ast_create_table_column_storage_class(const MyliteAst *ast,
+                                             size_t statement_index,
+                                             size_t column_index);
 unsigned int mylite_ast_create_table_column_flags(const MyliteAst *ast,
                                                   size_t statement_index,
                                                   size_t column_index);

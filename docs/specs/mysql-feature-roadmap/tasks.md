@@ -69,7 +69,8 @@ level application surfaces.
        `GROUP BY`, `HAVING`, aliases, ordinals, and `ONLY_FULL_GROUP_BY`.
        Spec: [aggregate functions and grouping](../aggregate-grouping/specs.md).
 26. [ ] Inner joins and comma joins: join precedence, aliases, `ON`, `USING`,
-       name resolution, and result metadata.
+       name resolution, and result metadata. Started; spec:
+       [inner joins](../inner-joins/specs.md).
 27. [ ] Outer joins: `LEFT`/`RIGHT` joins, null extension, predicate placement,
        and metadata.
 28. [ ] `DISTINCT` and `DISTINCTROW`: duplicate elimination, collation,

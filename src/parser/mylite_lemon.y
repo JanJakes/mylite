@@ -4083,6 +4083,7 @@ set_resource_group_tail ::= FOR set_resource_group_thread_list.
 
 set_resource_group_thread_list ::= set_resource_group_thread.
 set_resource_group_thread_list ::= set_resource_group_thread_list import_comma set_resource_group_thread.
+set_resource_group_thread_list ::= set_resource_group_thread_list set_resource_group_thread.
 
 set_resource_group_thread ::= resource_group_number_value.
 

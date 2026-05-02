@@ -2513,6 +2513,8 @@ def main() -> int:
         ("set default role r1, r2 to u@localhost;", 0, {"statements": "1", "utility": "1"}),
         ("set resource group rg;", 0, {"statements": "1", "utility": "1"}),
         ("set resource group rg for 14,78,4;", 0, {"statements": "1", "utility": "1"}),
+        ("set resource group rg for 14 78 4;", 0, {"statements": "1", "utility": "1"}),
+        ("set resource group rg for 14, 78 4;", 0, {"statements": "1", "utility": "1"}),
         ("set sql_buffer_result = on;", 0, {"statements": "1", "utility": "1"}),
         ("set select;", 1, {}),
         ("set global max_connections;", 1, {}),

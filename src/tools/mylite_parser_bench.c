@@ -67,6 +67,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t column_type_precisions = 0;
   size_t column_type_scales = 0;
   size_t column_type_fsps = 0;
+  size_t column_type_unsigned_attrs = 0;
+  size_t column_type_zerofill_attrs = 0;
+  size_t column_type_binary_attrs = 0;
+  size_t column_type_charsets = 0;
+  size_t column_type_collations = 0;
   size_t column_value_roots = 0;
   size_t column_defaults = 0;
   size_t column_on_updates = 0;
@@ -123,6 +128,26 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
               if (mylite_ast_create_table_column_type_has_fractional_seconds_precision(
                       ast, i, j)) {
                 column_type_fsps++;
+              }
+              if (mylite_ast_create_table_column_type_unsigned_end(ast, i, j) !=
+                  0) {
+                column_type_unsigned_attrs++;
+              }
+              if (mylite_ast_create_table_column_type_zerofill_end(ast, i, j) !=
+                  0) {
+                column_type_zerofill_attrs++;
+              }
+              if (mylite_ast_create_table_column_type_binary_end(ast, i, j) !=
+                  0) {
+                column_type_binary_attrs++;
+              }
+              if (mylite_ast_create_table_column_type_charset_value_end(ast, i,
+                                                                        j) != 0) {
+                column_type_charsets++;
+              }
+              if (mylite_ast_create_table_column_type_collation_value_end(ast, i,
+                                                                          j) != 0) {
+                column_type_collations++;
               }
               if (mylite_ast_create_table_column_default_value_node(ast, i, j) !=
                   NULL) {
@@ -202,7 +227,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_column_type_numeric_params=%.2f "
            "avg_column_type_elements=%.2f avg_column_type_lengths=%.2f "
            "avg_column_type_precisions=%.2f avg_column_type_scales=%.2f "
-           "avg_column_type_fsps=%.2f avg_column_value_roots=%.2f",
+           "avg_column_type_fsps=%.2f avg_column_type_unsigned_attrs=%.2f "
+           "avg_column_type_zerofill_attrs=%.2f "
+           "avg_column_type_binary_attrs=%.2f avg_column_type_charsets=%.2f "
+           "avg_column_type_collations=%.2f avg_column_value_roots=%.2f",
            (double)column_defaults / (double)parsed,
            (double)column_on_updates / (double)parsed,
            (double)column_generated / (double)parsed,
@@ -216,6 +244,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)column_type_precisions / (double)parsed,
            (double)column_type_scales / (double)parsed,
            (double)column_type_fsps / (double)parsed,
+           (double)column_type_unsigned_attrs / (double)parsed,
+           (double)column_type_zerofill_attrs / (double)parsed,
+           (double)column_type_binary_attrs / (double)parsed,
+           (double)column_type_charsets / (double)parsed,
+           (double)column_type_collations / (double)parsed,
            (double)column_value_roots / (double)parsed);
   }
   printf("\n");

@@ -32,6 +32,13 @@ typedef struct ExpectedCreateTableColumn {
   int has_type_fsp;
   unsigned long long type_fsp;
   const char *type_attributes;
+  const char *type_unsigned;
+  const char *type_zerofill;
+  const char *type_binary;
+  const char *type_charset;
+  const char *type_charset_value;
+  const char *type_collation;
+  const char *type_collation_value;
   const char *default_span;
   const char *default_value;
   const char *on_update;
@@ -793,6 +800,8 @@ int main(void) {
          .has_type_scale = 1,
          .type_scale = 2,
          .type_attributes = "UNSIGNED ZEROFILL",
+         .type_unsigned = "UNSIGNED",
+         .type_zerofill = "ZEROFILL",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_DECIMAL,
          .type_node_symbol = "nt_type"},
@@ -828,8 +837,43 @@ int main(void) {
          .has_type_length = 1,
          .type_length = 50,
          .type_attributes = "CHARACTER SET utf8mb4 COLLATE utf8mb4_bin",
+         .type_charset = "CHARACTER SET utf8mb4",
+         .type_charset_value = "utf8mb4",
+         .type_collation = "COLLATE utf8mb4_bin",
+         .type_collation_value = "utf8mb4_bin",
          .comment = "COMMENT 'x'",
          .comment_value = "'x'",
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARCHAR,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_VARIABLE_STRING},
+        {.definition = "x VARCHAR(10) BINARY",
+         .name = "x",
+         .type = "VARCHAR(10) BINARY",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
+         .type_name = "VARCHAR",
+         .type_parameters = "(10)",
+         .type_numeric_parameter_count = 1,
+         .type_numeric_parameters = {10, 0},
+         .has_type_length = 1,
+         .type_length = 10,
+         .type_attributes = "BINARY",
+         .type_binary = "BINARY",
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARCHAR,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_VARIABLE_STRING},
+        {.definition = "y VARCHAR(10) CHARACTER SET utf8mb4 BINARY",
+         .name = "y",
+         .type = "VARCHAR(10) CHARACTER SET utf8mb4 BINARY",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
+         .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_CHARACTER_SET,
+         .type_name = "VARCHAR",
+         .type_parameters = "(10)",
+         .type_numeric_parameter_count = 1,
+         .type_numeric_parameters = {10, 0},
+         .has_type_length = 1,
+         .type_length = 10,
+         .type_attributes = "CHARACTER SET utf8mb4 BINARY",
+         .type_binary = "BINARY",
+         .type_charset = "CHARACTER SET utf8mb4",
+         .type_charset_value = "utf8mb4",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARCHAR,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_VARIABLE_STRING},
         {.definition = "n NATIONAL VARCHAR(10)",
@@ -869,6 +913,8 @@ int main(void) {
         "CREATE TABLE t (d DECIMAL(10,2) UNSIGNED ZEROFILL, "
         "e ENUM('a','b') DEFAULT 'a', "
         "v VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin COMMENT 'x', "
+        "x VARCHAR(10) BINARY, "
+        "y VARCHAR(10) CHARACTER SET utf8mb4 BINARY, "
         "n NATIONAL VARCHAR(10), b LONG VARBINARY, m LONG, l LONG VARCHAR)",
         columns, sizeof(columns) / sizeof(columns[0]));
   }
@@ -1636,6 +1682,36 @@ static int expect_create_table_columns(const char *sql,
             mylite_ast_create_table_column_type_attributes_end(ast, 0, i),
             columns[i].type_attributes) ||
         !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_unsigned_start(ast, 0, i),
+            mylite_ast_create_table_column_type_unsigned_end(ast, 0, i),
+            columns[i].type_unsigned) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_zerofill_start(ast, 0, i),
+            mylite_ast_create_table_column_type_zerofill_end(ast, 0, i),
+            columns[i].type_zerofill) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_binary_start(ast, 0, i),
+            mylite_ast_create_table_column_type_binary_end(ast, 0, i),
+            columns[i].type_binary) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_charset_start(ast, 0, i),
+            mylite_ast_create_table_column_type_charset_end(ast, 0, i),
+            columns[i].type_charset) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_charset_value_start(ast, 0,
+                                                                         i),
+            mylite_ast_create_table_column_type_charset_value_end(ast, 0, i),
+            columns[i].type_charset_value) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_collation_start(ast, 0, i),
+            mylite_ast_create_table_column_type_collation_end(ast, 0, i),
+            columns[i].type_collation) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_collation_value_start(ast, 0,
+                                                                           i),
+            mylite_ast_create_table_column_type_collation_value_end(ast, 0, i),
+            columns[i].type_collation_value) ||
+        !span_matches_when_expected(
             sql, mylite_ast_create_table_column_default_start(ast, 0, i),
             mylite_ast_create_table_column_default_end(ast, 0, i),
             columns[i].default_span) ||
@@ -1702,7 +1778,10 @@ static int expect_create_table_columns(const char *sql,
               "type_numeric_params=%zu:%llu,%llu type_elements=%zu "
               "type_length=%d:%llu type_precision=%d:%llu "
               "type_scale=%d:%llu type_fsp=%d:%llu "
-              "type_attrs=%zu..%zu "
+              "type_attrs=%zu..%zu type_unsigned=%zu..%zu "
+              "type_zerofill=%zu..%zu type_binary=%zu..%zu "
+              "type_charset=%zu..%zu type_charset_value=%zu..%zu "
+              "type_collation=%zu..%zu type_collation_value=%zu..%zu "
               "default=%zu..%zu default_value=%zu..%zu on_update=%zu..%zu "
               "on_update_value=%zu..%zu generated=%zu..%zu "
               "generated_expr=%zu..%zu generated_storage=%zu..%zu "
@@ -1747,6 +1826,20 @@ static int expect_create_table_columns(const char *sql,
                   ast, 0, i),
               mylite_ast_create_table_column_type_attributes_start(ast, 0, i),
               mylite_ast_create_table_column_type_attributes_end(ast, 0, i),
+              mylite_ast_create_table_column_type_unsigned_start(ast, 0, i),
+              mylite_ast_create_table_column_type_unsigned_end(ast, 0, i),
+              mylite_ast_create_table_column_type_zerofill_start(ast, 0, i),
+              mylite_ast_create_table_column_type_zerofill_end(ast, 0, i),
+              mylite_ast_create_table_column_type_binary_start(ast, 0, i),
+              mylite_ast_create_table_column_type_binary_end(ast, 0, i),
+              mylite_ast_create_table_column_type_charset_start(ast, 0, i),
+              mylite_ast_create_table_column_type_charset_end(ast, 0, i),
+              mylite_ast_create_table_column_type_charset_value_start(ast, 0, i),
+              mylite_ast_create_table_column_type_charset_value_end(ast, 0, i),
+              mylite_ast_create_table_column_type_collation_start(ast, 0, i),
+              mylite_ast_create_table_column_type_collation_end(ast, 0, i),
+              mylite_ast_create_table_column_type_collation_value_start(ast, 0, i),
+              mylite_ast_create_table_column_type_collation_value_end(ast, 0, i),
               mylite_ast_create_table_column_default_start(ast, 0, i),
               mylite_ast_create_table_column_default_end(ast, 0, i),
               mylite_ast_create_table_column_default_value_start(ast, 0, i),

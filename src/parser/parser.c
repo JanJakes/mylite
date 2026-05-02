@@ -61,6 +61,20 @@ typedef struct MyliteAstCreateTableColumn {
   size_t type_element_count;
   size_t type_attributes_start;
   size_t type_attributes_end;
+  size_t type_unsigned_start;
+  size_t type_unsigned_end;
+  size_t type_zerofill_start;
+  size_t type_zerofill_end;
+  size_t type_binary_start;
+  size_t type_binary_end;
+  size_t type_charset_start;
+  size_t type_charset_end;
+  size_t type_charset_value_start;
+  size_t type_charset_value_end;
+  size_t type_collation_start;
+  size_t type_collation_end;
+  size_t type_collation_value_start;
+  size_t type_collation_value_end;
   size_t options_start;
   size_t options_end;
   const MyliteAstNode *options_node;
@@ -302,6 +316,20 @@ static void mylite_ast_set_create_table_column_type_details(
 static void mylite_ast_set_create_table_column_type_tail_details(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *type_body,
     const MyliteAstNode *type_name);
+static void mylite_ast_set_create_table_column_type_attribute_details(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *type);
+static void mylite_ast_set_create_table_column_type_unsigned_detail(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *type);
+static void mylite_ast_set_create_table_column_type_zerofill_detail(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *type);
+static void mylite_ast_set_create_table_column_type_charset_details(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *type);
+static void mylite_ast_set_create_table_column_type_binary_detail(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *attribute);
+static void mylite_ast_set_create_table_column_type_charset_detail(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *attribute);
+static void mylite_ast_set_create_table_column_type_collation_detail(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *attribute);
 static void mylite_ast_set_create_table_column_type_parameter_values(
     MyliteAst *ast, MyliteAstCreateTableColumn *column);
 static size_t mylite_ast_parse_unsigned_parameters(
@@ -320,6 +348,12 @@ static void mylite_ast_set_create_table_column_type_fsp(
 static int mylite_ast_is_column_type_name_continuation(const MyliteAstNode *node);
 static int mylite_ast_is_column_type_parameter_child(const MyliteAstNode *node);
 static int mylite_ast_is_column_type_attribute_child(const MyliteAstNode *node);
+static const MyliteAstNode *mylite_ast_find_first_symbol_after(
+    const MyliteAstNode *node, const char *symbol_name, size_t min_start);
+static const MyliteAstNode *mylite_ast_find_first_token_after(
+    const MyliteAstNode *node, int token, size_t min_start);
+static const MyliteAstNode *mylite_ast_direct_child_token(
+    const MyliteAstNode *node, size_t child_index, int token);
 static void mylite_ast_set_create_table_column_option_details(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *options);
 static void mylite_ast_set_create_table_column_option_detail(
@@ -1296,6 +1330,104 @@ size_t mylite_ast_create_table_column_type_attributes_end(
   const MyliteAstCreateTableColumn *column =
       mylite_ast_create_table_column_at(ast, statement_index, column_index);
   return column == NULL ? 0 : column->type_attributes_end;
+}
+
+size_t mylite_ast_create_table_column_type_unsigned_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_unsigned_start;
+}
+
+size_t mylite_ast_create_table_column_type_unsigned_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_unsigned_end;
+}
+
+size_t mylite_ast_create_table_column_type_zerofill_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_zerofill_start;
+}
+
+size_t mylite_ast_create_table_column_type_zerofill_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_zerofill_end;
+}
+
+size_t mylite_ast_create_table_column_type_binary_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_binary_start;
+}
+
+size_t mylite_ast_create_table_column_type_binary_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_binary_end;
+}
+
+size_t mylite_ast_create_table_column_type_charset_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_charset_start;
+}
+
+size_t mylite_ast_create_table_column_type_charset_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_charset_end;
+}
+
+size_t mylite_ast_create_table_column_type_charset_value_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_charset_value_start;
+}
+
+size_t mylite_ast_create_table_column_type_charset_value_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_charset_value_end;
+}
+
+size_t mylite_ast_create_table_column_type_collation_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_collation_start;
+}
+
+size_t mylite_ast_create_table_column_type_collation_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_collation_end;
+}
+
+size_t mylite_ast_create_table_column_type_collation_value_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_collation_value_start;
+}
+
+size_t mylite_ast_create_table_column_type_collation_value_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_collation_value_end;
 }
 
 size_t mylite_ast_create_table_column_options_start(const MyliteAst *ast,
@@ -3123,6 +3255,7 @@ static void mylite_ast_fill_create_table_column(
     column->type_start = mylite_ast_node_start(type);
     column->type_end = mylite_ast_node_end(type);
     mylite_ast_set_create_table_column_type_details(column, type);
+    mylite_ast_set_create_table_column_type_attribute_details(column, type);
     mylite_ast_set_create_table_column_type_parameter_values(ast, column);
   }
 
@@ -3199,6 +3332,147 @@ static void mylite_ast_set_create_table_column_type_tail_details(
       in_parenthesized_parameters = 0;
     }
   }
+}
+
+static void mylite_ast_set_create_table_column_type_attribute_details(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *type) {
+  if (column == NULL || type == NULL) {
+    return;
+  }
+
+  mylite_ast_set_create_table_column_type_unsigned_detail(column, type);
+  mylite_ast_set_create_table_column_type_zerofill_detail(column, type);
+  mylite_ast_set_create_table_column_type_charset_details(column, type);
+}
+
+static void mylite_ast_set_create_table_column_type_unsigned_detail(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *type) {
+  const MyliteAstNode *node = mylite_ast_find_first_token_after(
+      type, MYLITE_TOK_UNSIGNED, column == NULL ? 0 : column->type_name_end);
+  if (column == NULL || node == NULL) {
+    return;
+  }
+
+  column->type_unsigned_start = mylite_ast_node_start(node);
+  column->type_unsigned_end = mylite_ast_node_end(node);
+}
+
+static void mylite_ast_set_create_table_column_type_zerofill_detail(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *type) {
+  const MyliteAstNode *node = mylite_ast_find_first_token_after(
+      type, MYLITE_TOK_ZEROFILL, column == NULL ? 0 : column->type_name_end);
+  if (column == NULL || node == NULL) {
+    return;
+  }
+
+  column->type_zerofill_start = mylite_ast_node_start(node);
+  column->type_zerofill_end = mylite_ast_node_end(node);
+}
+
+static void mylite_ast_set_create_table_column_type_charset_details(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *type) {
+  if (column == NULL || type == NULL) {
+    return;
+  }
+
+  const MyliteAstNode *attribute = mylite_ast_find_first_symbol_after(
+      type, "nt_opt_binary", column->type_name_end);
+  if (attribute == NULL) {
+    attribute = mylite_ast_find_first_symbol_after(
+        type, "nt_opt_charset_with_opt_binary", column->type_name_end);
+  }
+  if (attribute == NULL || !attribute->has_span) {
+    return;
+  }
+
+  mylite_ast_set_create_table_column_type_binary_detail(column, attribute);
+  mylite_ast_set_create_table_column_type_charset_detail(column, attribute);
+  mylite_ast_set_create_table_column_type_collation_detail(column, attribute);
+}
+
+static void mylite_ast_set_create_table_column_type_binary_detail(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *attribute) {
+  if (column == NULL || attribute == NULL) {
+    return;
+  }
+
+  const MyliteAstNode *binary =
+      mylite_ast_direct_child_token(attribute, 0, MYLITE_TOK_BINARY_TYPE);
+  if (binary == NULL) {
+    const MyliteAstNode *bin_mod =
+        mylite_ast_find_first_symbol_after(attribute, "nt_opt_bin_mod",
+                                           column->type_name_end);
+    if (bin_mod != NULL && bin_mod->has_span) {
+      binary = bin_mod;
+    }
+  }
+  if (binary == NULL || !binary->has_span) {
+    return;
+  }
+
+  column->type_binary_start = mylite_ast_node_start(binary);
+  column->type_binary_end = mylite_ast_node_end(binary);
+}
+
+static void mylite_ast_set_create_table_column_type_charset_detail(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *attribute) {
+  if (column == NULL || attribute == NULL) {
+    return;
+  }
+
+  const MyliteAstNode *charset_kw =
+      mylite_ast_find_first_symbol_after(attribute, "nt_charset_kw",
+                                         column->type_name_end);
+  const MyliteAstNode *charset_name =
+      mylite_ast_find_first_symbol_after(attribute, "nt_charset_name",
+                                         column->type_name_end);
+  if (charset_kw != NULL && charset_kw->has_span && charset_name != NULL &&
+      charset_name->has_span) {
+    column->type_charset_start = mylite_ast_node_start(charset_kw);
+    column->type_charset_end = mylite_ast_node_end(charset_name);
+    column->type_charset_value_start = mylite_ast_node_start(charset_name);
+    column->type_charset_value_end = mylite_ast_node_end(charset_name);
+    return;
+  }
+
+  const MyliteAstNode *shortcut =
+      mylite_ast_direct_child_token(attribute, 0, MYLITE_TOK_ASCII);
+  if (shortcut == NULL) {
+    shortcut =
+        mylite_ast_direct_child_token(attribute, 0, MYLITE_TOK_UNICODE_SYM);
+  }
+  if (shortcut == NULL) {
+    shortcut = mylite_ast_direct_child_token(attribute, 0, MYLITE_TOK_BYTE_TYPE);
+  }
+  if (shortcut == NULL || !shortcut->has_span) {
+    return;
+  }
+
+  column->type_charset_start = mylite_ast_node_start(shortcut);
+  column->type_charset_end = mylite_ast_node_end(shortcut);
+  column->type_charset_value_start = mylite_ast_node_start(shortcut);
+  column->type_charset_value_end = mylite_ast_node_end(shortcut);
+}
+
+static void mylite_ast_set_create_table_column_type_collation_detail(
+    MyliteAstCreateTableColumn *column, const MyliteAstNode *attribute) {
+  if (column == NULL || attribute == NULL) {
+    return;
+  }
+
+  const MyliteAstNode *collate = mylite_ast_find_first_token_after(
+      attribute, MYLITE_TOK_COLLATE, column->type_name_end);
+  const MyliteAstNode *collation_name =
+      mylite_ast_find_first_symbol_after(attribute, "nt_collation_name",
+                                         column->type_name_end);
+  if (collate == NULL || collation_name == NULL || !collation_name->has_span) {
+    return;
+  }
+
+  column->type_collation_start = mylite_ast_node_start(collate);
+  column->type_collation_end = mylite_ast_node_end(collation_name);
+  column->type_collation_value_start = mylite_ast_node_start(collation_name);
+  column->type_collation_value_end = mylite_ast_node_end(collation_name);
 }
 
 static void mylite_ast_set_create_table_column_type_parameter_values(
@@ -3456,6 +3730,58 @@ static int mylite_ast_is_column_type_attribute_child(const MyliteAstNode *node) 
   };
   return symbol_is_one_of(node->symbol_name, symbols,
                           sizeof(symbols) / sizeof(symbols[0]));
+}
+
+static const MyliteAstNode *mylite_ast_find_first_symbol_after(
+    const MyliteAstNode *node, const char *symbol_name, size_t min_start) {
+  if (node == NULL || symbol_name == NULL) {
+    return NULL;
+  }
+  if (node->symbol_name != NULL && node->has_span && node->start >= min_start &&
+      strcmp(node->symbol_name, symbol_name) == 0) {
+    return node;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    const MyliteAstNode *found =
+        mylite_ast_find_first_symbol_after(node->children[i], symbol_name,
+                                           min_start);
+    if (found != NULL) {
+      return found;
+    }
+  }
+  return NULL;
+}
+
+static const MyliteAstNode *mylite_ast_find_first_token_after(
+    const MyliteAstNode *node, int token, size_t min_start) {
+  if (node == NULL) {
+    return NULL;
+  }
+  if (node->kind == MYLITE_AST_NODE_TOKEN && node->token == token &&
+      node->has_span && node->start >= min_start) {
+    return node;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    const MyliteAstNode *found =
+        mylite_ast_find_first_token_after(node->children[i], token, min_start);
+    if (found != NULL) {
+      return found;
+    }
+  }
+  return NULL;
+}
+
+static const MyliteAstNode *mylite_ast_direct_child_token(
+    const MyliteAstNode *node, size_t child_index, int token) {
+  if (node == NULL || child_index >= node->child_count) {
+    return NULL;
+  }
+  const MyliteAstNode *child = node->children[child_index];
+  if (child == NULL || child->kind != MYLITE_AST_NODE_TOKEN ||
+      child->token != token) {
+    return NULL;
+  }
+  return child;
 }
 
 static void mylite_ast_set_create_table_column_option_details(

@@ -150,7 +150,11 @@ static void dump_statements(const MyliteAst *ast) {
              "type_elements=%zu "
              "type_length=%d:%llu type_precision=%d:%llu "
              "type_scale=%d:%llu type_fsp=%d:%llu "
-             "type_attrs=%zu..%zu options=%zu..%zu default=%zu..%zu "
+             "type_attrs=%zu..%zu type_unsigned=%zu..%zu "
+             "type_zerofill=%zu..%zu type_binary=%zu..%zu "
+             "type_charset=%zu..%zu type_charset_value=%zu..%zu "
+             "type_collation=%zu..%zu type_collation_value=%zu..%zu "
+             "options=%zu..%zu default=%zu..%zu "
              "default_value=%zu..%zu on_update=%zu..%zu "
              "on_update_value=%zu..%zu generated=%zu..%zu "
              "generated_expr=%zu..%zu generated_storage=%zu..%zu "
@@ -196,6 +200,20 @@ static void dump_statements(const MyliteAst *ast) {
                  ast, i, j),
              mylite_ast_create_table_column_type_attributes_start(ast, i, j),
              mylite_ast_create_table_column_type_attributes_end(ast, i, j),
+             mylite_ast_create_table_column_type_unsigned_start(ast, i, j),
+             mylite_ast_create_table_column_type_unsigned_end(ast, i, j),
+             mylite_ast_create_table_column_type_zerofill_start(ast, i, j),
+             mylite_ast_create_table_column_type_zerofill_end(ast, i, j),
+             mylite_ast_create_table_column_type_binary_start(ast, i, j),
+             mylite_ast_create_table_column_type_binary_end(ast, i, j),
+             mylite_ast_create_table_column_type_charset_start(ast, i, j),
+             mylite_ast_create_table_column_type_charset_end(ast, i, j),
+             mylite_ast_create_table_column_type_charset_value_start(ast, i, j),
+             mylite_ast_create_table_column_type_charset_value_end(ast, i, j),
+             mylite_ast_create_table_column_type_collation_start(ast, i, j),
+             mylite_ast_create_table_column_type_collation_end(ast, i, j),
+             mylite_ast_create_table_column_type_collation_value_start(ast, i, j),
+             mylite_ast_create_table_column_type_collation_value_end(ast, i, j),
              mylite_ast_create_table_column_options_start(ast, i, j),
              mylite_ast_create_table_column_options_end(ast, i, j),
              mylite_ast_create_table_column_default_start(ast, i, j),

@@ -389,6 +389,34 @@ size_t mylite_ast_create_table_column_type_attributes_start(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
 size_t mylite_ast_create_table_column_type_attributes_end(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_unsigned_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_unsigned_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_zerofill_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_zerofill_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_binary_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_binary_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_charset_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_charset_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_charset_value_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_charset_value_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_collation_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_collation_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_collation_value_start(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+size_t mylite_ast_create_table_column_type_collation_value_end(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
 size_t mylite_ast_create_table_column_options_start(const MyliteAst *ast,
                                                     size_t statement_index,
                                                     size_t column_index);

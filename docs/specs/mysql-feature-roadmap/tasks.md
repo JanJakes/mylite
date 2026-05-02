@@ -82,7 +82,7 @@ level application surfaces.
 30. [x] `UNION`: `ALL`/`DISTINCT`, column names/types, ordering, limits,
        parentheses, and metadata.
 31. [ ] `INSERT IGNORE`: duplicate, conversion, and constraint warning-demotion
-       rules.
+       rules. Started; spec: [INSERT IGNORE](../insert-ignore/specs.md).
 32. [ ] `INSERT ... ON DUPLICATE KEY UPDATE`: conflict selection, assignment
        evaluation, affected rows, insert ids, aliases, and warnings.
 33. [ ] `REPLACE`: values, set, and select forms; delete-then-insert semantics;

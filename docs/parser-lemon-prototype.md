@@ -117,6 +117,8 @@ token sink:
   expressions before query clause and statement boundaries.
 - Top-level `SELECT` rejects missing operands for major clause starts such as
   `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `INTO`.
+- Top-level `SELECT` rejects the removed MySQL 8.4 `PROCEDURE ANALYSE`
+  clause shape.
 - Top-level `SELECT` rejects trailing top-level comma separators in select
   lists and major clauses.
 - Top-level `SELECT` rejects missing operands for top-level `JOIN`, `ON`, and

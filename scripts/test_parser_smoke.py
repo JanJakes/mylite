@@ -147,6 +147,8 @@ def main() -> int:
         ("select abs(id) respect nulls over () from t;", 1, {}),
         ("select 1 respect nulls over () from t;", 1, {}),
         ("select 1 qualify;", 1, {}),
+        ("select 1 procedure analyse();", 1, {}),
+        ("select 1 procedure analyse(1, 1);", 1, {}),
         ("select 1 into;", 1, {}),
         ("select 1,;", 1, {}),
         ("select 1 as;", 1, {}),

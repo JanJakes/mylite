@@ -2138,6 +2138,10 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
       pending_token = token;
       continue;
     }
+    if (token_id == ML_PROCEDURE) {
+      mylite_parser_reject(ctx, token, "removed SELECT PROCEDURE clause");
+      return;
+    }
 
     if (select_clause_requires_by(token_id)) {
       if (token_id == ML_GROUP) {

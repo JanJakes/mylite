@@ -68,12 +68,15 @@ declared nullability, generated storage, key/constraint-detail with decoded
 identifier names, key-level index type, visibility, decoded key-option values,
 column-detail handles, key-part/key-option handles, table-option
 descriptor/value views, and compact table-option/key/column summaries. It also
-builds semantic parser views for `CREATE TABLE`, `CREATE INDEX`, `DROP TABLE`,
-and `RENAME TABLE` that expose opaque descriptor handles for the next typed AST
-layer. Column, key, and DDL descriptors include CST node anchors for the next
-semantic AST builder, but the parser does not yet build the final typed MyLite
-AST and does not imply runtime support for the statement rows below. The current
-prototype parses the WordPress MySQL server query corpus with
+builds semantic parser views for `CREATE TABLE`, `ALTER TABLE`, `CREATE INDEX`,
+`DROP TABLE`, and `RENAME TABLE` that expose opaque descriptor handles for the
+next typed AST layer. The `ALTER TABLE` view currently covers decoded target
+tables, ordered coarse operation specs, operation names, nested rename/exchange
+table targets, and reused table-option handles. Column, key, and DDL
+descriptors include CST node anchors for the next semantic AST builder, but the
+parser does not yet build the final typed MyLite AST and does not imply runtime
+support for the statement rows below. The current prototype parses the
+WordPress MySQL server query corpus with
 `parsed=69541 skipped=36 failed=0`. See
 [docs/parser/lemon-tidb-port.md](docs/parser/lemon-tidb-port.md) and
 [docs/parser/ast-construction.md](docs/parser/ast-construction.md).

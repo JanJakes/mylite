@@ -278,6 +278,44 @@ struct MyliteAstCreateTable {
   const MyliteAstCreateTableOption *auto_increment_option;
 };
 
+struct MyliteAstAlterTableSpec {
+  const MyliteAstNode *node;
+  MyliteAlterTableSpecKind kind;
+  size_t start;
+  size_t end;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+  size_t secondary_name_start;
+  size_t secondary_name_end;
+  const char *secondary_name_value;
+  size_t secondary_name_value_length;
+  size_t table_start;
+  size_t table_end;
+  size_t table_schema_start;
+  size_t table_schema_end;
+  const char *table_schema_value;
+  size_t table_schema_value_length;
+  size_t table_name_start;
+  size_t table_name_end;
+  const char *table_name_value;
+  size_t table_name_value_length;
+  int has_if_exists;
+  int has_if_not_exists;
+};
+
+struct MyliteAstAlterTable {
+  const MyliteAstNode *node;
+  const MyliteAstStatementTarget *target;
+  MyliteAstAlterTableSpec *specs;
+  size_t spec_count;
+  MyliteAstCreateTableOption *options;
+  size_t option_count;
+  size_t start;
+  size_t end;
+};
+
 struct MyliteAstCreateIndex {
   const MyliteAstNode *node;
   const MyliteAstStatementTarget *target;
@@ -317,6 +355,7 @@ typedef struct MyliteAstStatement {
   MyliteAstCreateTableOption *create_table_options;
   size_t create_table_option_count;
   MyliteAstCreateTable *create_table;
+  MyliteAstAlterTable *alter_table;
   MyliteAstCreateIndex *create_index;
   MyliteAstDropTable *drop_table;
   MyliteAstRenameTable *rename_table;
@@ -394,6 +433,39 @@ static void mylite_ast_set_create_table_option_summary(
     MyliteAstCreateTable *create_table);
 static const MyliteAstStatementTarget *mylite_ast_create_table_target(
     const MyliteAstStatement *statement);
+static int mylite_ast_set_alter_table_view(MyliteAst *ast,
+                                           MyliteAstStatement *statement,
+                                           const MyliteAstNode *payload);
+static const MyliteAstStatementTarget *mylite_ast_alter_table_target(
+    const MyliteAstStatement *statement);
+static size_t mylite_ast_count_alter_table_specs(const MyliteAstNode *node);
+static void mylite_ast_fill_alter_table_specs(MyliteAst *ast,
+                                              MyliteAstAlterTable *alter_table,
+                                              const MyliteAstNode *node,
+                                              size_t *index, int *ok);
+static int mylite_ast_fill_alter_table_spec(MyliteAst *ast,
+                                            MyliteAstAlterTableSpec *spec,
+                                            const MyliteAstNode *node);
+static MyliteAlterTableSpecKind mylite_ast_classify_alter_table_spec(
+    const MyliteAstNode *node);
+static void mylite_ast_set_alter_table_spec_spans(
+    MyliteAstAlterTableSpec *spec, const MyliteAstNode *node);
+static int mylite_ast_set_alter_table_spec_values(
+    MyliteAst *ast, MyliteAstAlterTableSpec *spec);
+static void mylite_ast_set_alter_table_spec_name(
+    MyliteAstAlterTableSpec *spec, const MyliteAstNode *node);
+static void mylite_ast_set_alter_table_spec_secondary_name(
+    MyliteAstAlterTableSpec *spec, const MyliteAstNode *node);
+static void mylite_ast_set_alter_table_spec_table(
+    MyliteAstAlterTableSpec *spec, const MyliteAstNode *node);
+static const MyliteAstNode *mylite_ast_find_identifier_for_name(
+    const MyliteAstNode *node);
+static int mylite_ast_set_alter_table_options(MyliteAst *ast,
+                                              MyliteAstAlterTable *alter_table,
+                                              const MyliteAstNode *payload);
+static void mylite_ast_fill_alter_table_options(
+    MyliteAst *ast, MyliteAstAlterTable *alter_table,
+    const MyliteAstNode *node, size_t *index, int *ok);
 static int mylite_ast_set_create_index_view(MyliteAst *ast,
                                             MyliteAstStatement *statement,
                                             const MyliteAstNode *payload);
@@ -1313,6 +1385,80 @@ const char *mylite_create_table_option_value_kind_name(
   return "unknown";
 }
 
+const char *mylite_alter_table_spec_kind_name(MyliteAlterTableSpecKind kind) {
+  switch (kind) {
+    case MYLITE_ALTER_TABLE_SPEC_UNKNOWN:
+      return "unknown";
+    case MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS:
+      return "table_options";
+    case MYLITE_ALTER_TABLE_SPEC_CONVERT_CHARACTER_SET:
+      return "convert_character_set";
+    case MYLITE_ALTER_TABLE_SPEC_ADD_COLUMN:
+      return "add_column";
+    case MYLITE_ALTER_TABLE_SPEC_ADD_TABLE_ELEMENTS:
+      return "add_table_elements";
+    case MYLITE_ALTER_TABLE_SPEC_ADD_CONSTRAINT:
+      return "add_constraint";
+    case MYLITE_ALTER_TABLE_SPEC_ADD_PARTITION:
+      return "add_partition";
+    case MYLITE_ALTER_TABLE_SPEC_DROP_COLUMN:
+      return "drop_column";
+    case MYLITE_ALTER_TABLE_SPEC_DROP_PRIMARY_KEY:
+      return "drop_primary_key";
+    case MYLITE_ALTER_TABLE_SPEC_DROP_INDEX:
+      return "drop_index";
+    case MYLITE_ALTER_TABLE_SPEC_DROP_FOREIGN_KEY:
+      return "drop_foreign_key";
+    case MYLITE_ALTER_TABLE_SPEC_DROP_CHECK:
+      return "drop_check";
+    case MYLITE_ALTER_TABLE_SPEC_DROP_PARTITION:
+      return "drop_partition";
+    case MYLITE_ALTER_TABLE_SPEC_MODIFY_COLUMN:
+      return "modify_column";
+    case MYLITE_ALTER_TABLE_SPEC_CHANGE_COLUMN:
+      return "change_column";
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_SET_DEFAULT:
+      return "alter_column_set_default";
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_DROP_DEFAULT:
+      return "alter_column_drop_default";
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_VISIBILITY:
+      return "alter_column_visibility";
+    case MYLITE_ALTER_TABLE_SPEC_RENAME_COLUMN:
+      return "rename_column";
+    case MYLITE_ALTER_TABLE_SPEC_RENAME_TABLE:
+      return "rename_table";
+    case MYLITE_ALTER_TABLE_SPEC_RENAME_INDEX:
+      return "rename_index";
+    case MYLITE_ALTER_TABLE_SPEC_ORDER_BY:
+      return "order_by";
+    case MYLITE_ALTER_TABLE_SPEC_DISABLE_KEYS:
+      return "disable_keys";
+    case MYLITE_ALTER_TABLE_SPEC_ENABLE_KEYS:
+      return "enable_keys";
+    case MYLITE_ALTER_TABLE_SPEC_LOCK:
+      return "lock";
+    case MYLITE_ALTER_TABLE_SPEC_ALGORITHM:
+      return "algorithm";
+    case MYLITE_ALTER_TABLE_SPEC_FORCE:
+      return "force";
+    case MYLITE_ALTER_TABLE_SPEC_VALIDATION:
+      return "validation";
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_CHECK:
+      return "alter_check";
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_INDEX_VISIBILITY:
+      return "alter_index_visibility";
+    case MYLITE_ALTER_TABLE_SPEC_TABLESPACE:
+      return "tablespace";
+    case MYLITE_ALTER_TABLE_SPEC_PARTITION:
+      return "partition";
+    case MYLITE_ALTER_TABLE_SPEC_SECONDARY_LOAD:
+      return "secondary_load";
+    case MYLITE_ALTER_TABLE_SPEC_SECONDARY_UNLOAD:
+      return "secondary_unload";
+  }
+  return "unknown";
+}
+
 void mylite_ast_free(MyliteAst *ast) {
   if (ast == NULL) {
     return;
@@ -1528,6 +1674,13 @@ size_t mylite_ast_statement_target_name_value_length_at(
   return target == NULL ? 0 : target->name_value_length;
 }
 
+const MyliteAstAlterTable *mylite_ast_alter_table_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->alter_table;
+}
+
 const MyliteAstCreateTable *mylite_ast_create_table_view(
     const MyliteAst *ast, size_t statement_index) {
   const MyliteAstStatement *statement = mylite_ast_statement_at(ast, statement_index);
@@ -1553,6 +1706,189 @@ const MyliteAstRenameTable *mylite_ast_rename_table_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->rename_table;
+}
+
+const MyliteAstNode *mylite_ast_alter_table_view_node(
+    const MyliteAstAlterTable *alter_table) {
+  return alter_table == NULL ? NULL : alter_table->node;
+}
+
+size_t mylite_ast_alter_table_view_start(
+    const MyliteAstAlterTable *alter_table) {
+  return alter_table == NULL ? 0 : alter_table->start;
+}
+
+size_t mylite_ast_alter_table_view_end(
+    const MyliteAstAlterTable *alter_table) {
+  return alter_table == NULL ? 0 : alter_table->end;
+}
+
+size_t mylite_ast_alter_table_view_target_start(
+    const MyliteAstAlterTable *alter_table) {
+  return alter_table == NULL || alter_table->target == NULL
+             ? 0
+             : alter_table->target->start;
+}
+
+size_t mylite_ast_alter_table_view_target_end(
+    const MyliteAstAlterTable *alter_table) {
+  return alter_table == NULL || alter_table->target == NULL
+             ? 0
+             : alter_table->target->end;
+}
+
+const char *mylite_ast_alter_table_view_schema_value(
+    const MyliteAstAlterTable *alter_table) {
+  return alter_table == NULL || alter_table->target == NULL
+             ? NULL
+             : alter_table->target->schema_value;
+}
+
+size_t mylite_ast_alter_table_view_schema_value_length(
+    const MyliteAstAlterTable *alter_table) {
+  return alter_table == NULL || alter_table->target == NULL
+             ? 0
+             : alter_table->target->schema_value_length;
+}
+
+const char *mylite_ast_alter_table_view_name_value(
+    const MyliteAstAlterTable *alter_table) {
+  return alter_table == NULL || alter_table->target == NULL
+             ? NULL
+             : alter_table->target->name_value;
+}
+
+size_t mylite_ast_alter_table_view_name_value_length(
+    const MyliteAstAlterTable *alter_table) {
+  return alter_table == NULL || alter_table->target == NULL
+             ? 0
+             : alter_table->target->name_value_length;
+}
+
+size_t mylite_ast_alter_table_view_spec_count(
+    const MyliteAstAlterTable *alter_table) {
+  return alter_table == NULL ? 0 : alter_table->spec_count;
+}
+
+const MyliteAstAlterTableSpec *mylite_ast_alter_table_view_spec_at(
+    const MyliteAstAlterTable *alter_table, size_t spec_index) {
+  if (alter_table == NULL || spec_index >= alter_table->spec_count) {
+    return NULL;
+  }
+  return &alter_table->specs[spec_index];
+}
+
+size_t mylite_ast_alter_table_view_option_count(
+    const MyliteAstAlterTable *alter_table) {
+  return alter_table == NULL ? 0 : alter_table->option_count;
+}
+
+const MyliteAstCreateTableOption *mylite_ast_alter_table_view_option_at(
+    const MyliteAstAlterTable *alter_table, size_t option_index) {
+  if (alter_table == NULL || option_index >= alter_table->option_count) {
+    return NULL;
+  }
+  return &alter_table->options[option_index];
+}
+
+const MyliteAstNode *mylite_ast_alter_table_spec_view_node(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? NULL : spec->node;
+}
+
+MyliteAlterTableSpecKind mylite_ast_alter_table_spec_view_kind(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? MYLITE_ALTER_TABLE_SPEC_UNKNOWN : spec->kind;
+}
+
+size_t mylite_ast_alter_table_spec_view_start(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->start;
+}
+
+size_t mylite_ast_alter_table_spec_view_end(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->end;
+}
+
+int mylite_ast_alter_table_spec_view_has_if_exists(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec != NULL && spec->has_if_exists;
+}
+
+int mylite_ast_alter_table_spec_view_has_if_not_exists(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec != NULL && spec->has_if_not_exists;
+}
+
+size_t mylite_ast_alter_table_spec_view_name_start(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->name_start;
+}
+
+size_t mylite_ast_alter_table_spec_view_name_end(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->name_end;
+}
+
+const char *mylite_ast_alter_table_spec_view_name_value(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? NULL : spec->name_value;
+}
+
+size_t mylite_ast_alter_table_spec_view_name_value_length(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->name_value_length;
+}
+
+size_t mylite_ast_alter_table_spec_view_secondary_name_start(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->secondary_name_start;
+}
+
+size_t mylite_ast_alter_table_spec_view_secondary_name_end(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->secondary_name_end;
+}
+
+const char *mylite_ast_alter_table_spec_view_secondary_name_value(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? NULL : spec->secondary_name_value;
+}
+
+size_t mylite_ast_alter_table_spec_view_secondary_name_value_length(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->secondary_name_value_length;
+}
+
+size_t mylite_ast_alter_table_spec_view_table_start(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->table_start;
+}
+
+size_t mylite_ast_alter_table_spec_view_table_end(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->table_end;
+}
+
+const char *mylite_ast_alter_table_spec_view_table_schema_value(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? NULL : spec->table_schema_value;
+}
+
+size_t mylite_ast_alter_table_spec_view_table_schema_value_length(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->table_schema_value_length;
+}
+
+const char *mylite_ast_alter_table_spec_view_table_name_value(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? NULL : spec->table_name_value;
+}
+
+size_t mylite_ast_alter_table_spec_view_table_name_value_length(
+    const MyliteAstAlterTableSpec *spec) {
+  return spec == NULL ? 0 : spec->table_name_value_length;
 }
 
 const MyliteAstNode *mylite_ast_create_table_view_node(
@@ -5080,6 +5416,9 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
            mylite_ast_collect_create_table_options(ast, statement, payload) &&
            mylite_ast_set_create_table_view(ast, statement, payload);
   }
+  if (strcmp(statement->symbol_name, "nt_alter_table_stmt") == 0) {
+    return mylite_ast_set_alter_table_view(ast, statement, payload);
+  }
   if (strcmp(statement->symbol_name, "nt_create_index_stmt") == 0) {
     return mylite_ast_set_create_index_view(ast, statement, payload);
   }
@@ -5197,6 +5536,464 @@ static const MyliteAstStatementTarget *mylite_ast_create_table_target(
     }
   }
   return NULL;
+}
+
+static int mylite_ast_set_alter_table_view(MyliteAst *ast,
+                                           MyliteAstStatement *statement,
+                                           const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+
+  MyliteAstAlterTable *alter_table =
+      mylite_ast_alloc(ast, sizeof(*alter_table));
+  if (alter_table == NULL) {
+    return 0;
+  }
+  alter_table->node = payload == NULL ? statement->node : payload;
+  alter_table->start = mylite_ast_node_start(alter_table->node);
+  alter_table->end = mylite_ast_node_end(alter_table->node);
+  alter_table->target = mylite_ast_alter_table_target(statement);
+
+  alter_table->spec_count = mylite_ast_count_alter_table_specs(payload);
+  if (alter_table->spec_count > 0) {
+    alter_table->specs =
+        mylite_ast_alloc(ast, alter_table->spec_count * sizeof(*alter_table->specs));
+    if (alter_table->specs == NULL) {
+      return 0;
+    }
+    size_t index = 0;
+    int ok = 1;
+    mylite_ast_fill_alter_table_specs(ast, alter_table, payload, &index, &ok);
+    if (!ok || index != alter_table->spec_count) {
+      return 0;
+    }
+  }
+
+  if (!mylite_ast_set_alter_table_options(ast, alter_table, payload)) {
+    return 0;
+  }
+  statement->alter_table = alter_table;
+  return 1;
+}
+
+static const MyliteAstStatementTarget *mylite_ast_alter_table_target(
+    const MyliteAstStatement *statement) {
+  if (statement == NULL) {
+    return NULL;
+  }
+  for (size_t i = 0; i < statement->target_count; i++) {
+    const MyliteAstStatementTarget *target = &statement->targets[i];
+    if (target->kind == MYLITE_STATEMENT_TARGET_TABLE &&
+        target->role == MYLITE_STATEMENT_TARGET_ROLE_PRIMARY) {
+      return target;
+    }
+  }
+  return NULL;
+}
+
+static size_t mylite_ast_count_alter_table_specs(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_alter_table_spec") == 0) {
+    return 1;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_alter_table_spec_single_opt") == 0) {
+    return node->has_span && node->end > node->start ? 1 : 0;
+  }
+
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_alter_table_specs(node->children[i]);
+  }
+  return count;
+}
+
+static void mylite_ast_fill_alter_table_specs(MyliteAst *ast,
+                                              MyliteAstAlterTable *alter_table,
+                                              const MyliteAstNode *node,
+                                              size_t *index, int *ok) {
+  if (alter_table == NULL || node == NULL || index == NULL || ok == NULL ||
+      !*ok || *index >= alter_table->spec_count) {
+    return;
+  }
+  if (node->symbol_name != NULL &&
+      (strcmp(node->symbol_name, "nt_alter_table_spec") == 0 ||
+       (strcmp(node->symbol_name, "nt_alter_table_spec_single_opt") == 0 &&
+        node->has_span && node->end > node->start))) {
+    *ok = mylite_ast_fill_alter_table_spec(ast, &alter_table->specs[*index],
+                                           node);
+    if (*ok) {
+      (*index)++;
+    }
+    return;
+  }
+
+  for (size_t i = 0; i < node->child_count; i++) {
+    mylite_ast_fill_alter_table_specs(ast, alter_table, node->children[i],
+                                      index, ok);
+    if (!*ok) {
+      return;
+    }
+  }
+}
+
+static int mylite_ast_fill_alter_table_spec(MyliteAst *ast,
+                                            MyliteAstAlterTableSpec *spec,
+                                            const MyliteAstNode *node) {
+  if (spec == NULL || node == NULL) {
+    return 1;
+  }
+  spec->node = node;
+  spec->kind = mylite_ast_classify_alter_table_spec(node);
+  spec->start = mylite_ast_node_start(node);
+  spec->end = mylite_ast_node_end(node);
+  const MyliteAstNode *if_exists =
+      mylite_ast_find_first_symbol(node, "nt_if_exists");
+  const MyliteAstNode *if_not_exists =
+      mylite_ast_find_first_symbol(node, "nt_if_not_exists");
+  spec->has_if_exists = if_exists != NULL && if_exists->has_span;
+  spec->has_if_not_exists = if_not_exists != NULL && if_not_exists->has_span;
+  mylite_ast_set_alter_table_spec_spans(spec, node);
+  return mylite_ast_set_alter_table_spec_values(ast, spec);
+}
+
+static MyliteAlterTableSpecKind mylite_ast_classify_alter_table_spec(
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return MYLITE_ALTER_TABLE_SPEC_UNKNOWN;
+  }
+  int first_token = mylite_ast_first_token(node);
+  switch (first_token) {
+    case MYLITE_TOK_ADD:
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_PARTITION) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_ADD_PARTITION;
+      }
+      if (mylite_ast_find_first_symbol(node, "nt_table_element_list") != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_ADD_TABLE_ELEMENTS;
+      }
+      if (mylite_ast_find_first_symbol(node, "nt_column_def") != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_ADD_COLUMN;
+      }
+      if (mylite_ast_find_first_symbol(node, "nt_constraint_with_columnar_index") !=
+              NULL ||
+          mylite_ast_find_first_symbol(node, "nt_constraint") != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_ADD_CONSTRAINT;
+      }
+      break;
+    case MYLITE_TOK_CONVERT:
+      return MYLITE_ALTER_TABLE_SPEC_CONVERT_CHARACTER_SET;
+    case MYLITE_TOK_DROP:
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_PRIMARY) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_DROP_PRIMARY_KEY;
+      }
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_FOREIGN) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_DROP_FOREIGN_KEY;
+      }
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_CHECK) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_DROP_CHECK;
+      }
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_PARTITION) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_DROP_PARTITION;
+      }
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_KEY) != NULL ||
+          mylite_ast_find_first_token(node, MYLITE_TOK_INDEX) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_DROP_INDEX;
+      }
+      if (mylite_ast_find_first_symbol(node, "nt_column_name") != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_DROP_COLUMN;
+      }
+      break;
+    case MYLITE_TOK_MODIFY:
+      return MYLITE_ALTER_TABLE_SPEC_MODIFY_COLUMN;
+    case MYLITE_TOK_CHANGE:
+      return MYLITE_ALTER_TABLE_SPEC_CHANGE_COLUMN;
+    case MYLITE_TOK_ALTER:
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_INDEX) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_ALTER_INDEX_VISIBILITY;
+      }
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_CHECK) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_ALTER_CHECK;
+      }
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_DEFAULT_KWD) != NULL) {
+        return mylite_ast_find_first_token(node, MYLITE_TOK_DROP) != NULL
+                   ? MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_DROP_DEFAULT
+                   : MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_SET_DEFAULT;
+      }
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_VISIBLE) != NULL ||
+          mylite_ast_find_first_token(node, MYLITE_TOK_INVISIBLE) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_VISIBILITY;
+      }
+      break;
+    case MYLITE_TOK_RENAME:
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_COLUMN) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_RENAME_COLUMN;
+      }
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_KEY) != NULL ||
+          mylite_ast_find_first_token(node, MYLITE_TOK_INDEX) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_RENAME_INDEX;
+      }
+      if (mylite_ast_find_first_symbol(node, "nt_table_name") != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_RENAME_TABLE;
+      }
+      break;
+    case MYLITE_TOK_ORDER:
+      return MYLITE_ALTER_TABLE_SPEC_ORDER_BY;
+    case MYLITE_TOK_DISABLE:
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_KEYS) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_DISABLE_KEYS;
+      }
+      break;
+    case MYLITE_TOK_ENABLE:
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_KEYS) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_ENABLE_KEYS;
+      }
+      break;
+    case MYLITE_TOK_LOCK:
+      return MYLITE_ALTER_TABLE_SPEC_LOCK;
+    case MYLITE_TOK_ALGORITHM:
+      return MYLITE_ALTER_TABLE_SPEC_ALGORITHM;
+    case MYLITE_TOK_FORCE:
+      return MYLITE_ALTER_TABLE_SPEC_FORCE;
+    case MYLITE_TOK_WITH:
+    case MYLITE_TOK_WITHOUT:
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_VALIDATION) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_VALIDATION;
+      }
+      break;
+    case MYLITE_TOK_IMPORT_KWD:
+    case MYLITE_TOK_DISCARD:
+      if (mylite_ast_find_first_token(node, MYLITE_TOK_TABLESPACE) != NULL) {
+        return MYLITE_ALTER_TABLE_SPEC_TABLESPACE;
+      }
+      break;
+    case MYLITE_TOK_PARTITION:
+    case MYLITE_TOK_REMOVE:
+    case MYLITE_TOK_REORGANIZE:
+    case MYLITE_TOK_SPLIT:
+    case MYLITE_TOK_MERGE:
+    case MYLITE_TOK_FIRST:
+    case MYLITE_TOK_LAST:
+    case MYLITE_TOK_COALESCE:
+    case MYLITE_TOK_EXCHANGE:
+    case MYLITE_TOK_TRUNCATE:
+    case MYLITE_TOK_OPTIMIZE:
+    case MYLITE_TOK_REPAIR:
+    case MYLITE_TOK_REBUILD:
+      return MYLITE_ALTER_TABLE_SPEC_PARTITION;
+    case MYLITE_TOK_SECONDARY_LOAD:
+      return MYLITE_ALTER_TABLE_SPEC_SECONDARY_LOAD;
+    case MYLITE_TOK_SECONDARY_UNLOAD:
+      return MYLITE_ALTER_TABLE_SPEC_SECONDARY_UNLOAD;
+  }
+  if (mylite_ast_find_first_symbol(node, "nt_table_option") != NULL) {
+    return MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS;
+  }
+  return MYLITE_ALTER_TABLE_SPEC_UNKNOWN;
+}
+
+static void mylite_ast_set_alter_table_spec_spans(
+    MyliteAstAlterTableSpec *spec, const MyliteAstNode *node) {
+  if (spec == NULL || node == NULL) {
+    return;
+  }
+
+  switch (spec->kind) {
+    case MYLITE_ALTER_TABLE_SPEC_ADD_COLUMN:
+    case MYLITE_ALTER_TABLE_SPEC_MODIFY_COLUMN: {
+      const MyliteAstNode *column_def =
+          mylite_ast_find_first_symbol(node, "nt_column_def");
+      mylite_ast_set_alter_table_spec_name(
+          spec, mylite_ast_find_first_symbol(column_def, "nt_column_name"));
+      break;
+    }
+    case MYLITE_ALTER_TABLE_SPEC_CHANGE_COLUMN: {
+      mylite_ast_set_alter_table_spec_name(
+          spec, mylite_ast_find_first_symbol(node, "nt_column_name"));
+      const MyliteAstNode *column_def =
+          mylite_ast_find_first_symbol(node, "nt_column_def");
+      mylite_ast_set_alter_table_spec_secondary_name(
+          spec, mylite_ast_find_first_symbol(column_def, "nt_column_name"));
+      break;
+    }
+    case MYLITE_ALTER_TABLE_SPEC_DROP_COLUMN:
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_SET_DEFAULT:
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_DROP_DEFAULT:
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_VISIBILITY:
+      mylite_ast_set_alter_table_spec_name(
+          spec, mylite_ast_find_first_symbol(node, "nt_column_name"));
+      break;
+    case MYLITE_ALTER_TABLE_SPEC_RENAME_COLUMN:
+    case MYLITE_ALTER_TABLE_SPEC_RENAME_INDEX: {
+      size_t remaining = 0;
+      mylite_ast_set_alter_table_spec_name(
+          spec, mylite_ast_find_nth_symbol(node, "nt_identifier", &remaining));
+      remaining = 1;
+      mylite_ast_set_alter_table_spec_secondary_name(
+          spec, mylite_ast_find_nth_symbol(node, "nt_identifier", &remaining));
+      break;
+    }
+    case MYLITE_ALTER_TABLE_SPEC_DROP_INDEX:
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_INDEX_VISIBILITY:
+    case MYLITE_ALTER_TABLE_SPEC_ALTER_CHECK:
+    case MYLITE_ALTER_TABLE_SPEC_DROP_CHECK:
+      mylite_ast_set_alter_table_spec_name(
+          spec, mylite_ast_find_first_symbol(node, "nt_identifier"));
+      break;
+    case MYLITE_ALTER_TABLE_SPEC_DROP_FOREIGN_KEY:
+      mylite_ast_set_alter_table_spec_name(
+          spec, mylite_ast_find_first_symbol(node, "nt_symbol"));
+      break;
+    case MYLITE_ALTER_TABLE_SPEC_RENAME_TABLE:
+    case MYLITE_ALTER_TABLE_SPEC_PARTITION:
+      mylite_ast_set_alter_table_spec_table(
+          spec, mylite_ast_find_first_symbol(node, "nt_table_name"));
+      break;
+    case MYLITE_ALTER_TABLE_SPEC_UNKNOWN:
+    case MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS:
+    case MYLITE_ALTER_TABLE_SPEC_CONVERT_CHARACTER_SET:
+    case MYLITE_ALTER_TABLE_SPEC_ADD_TABLE_ELEMENTS:
+    case MYLITE_ALTER_TABLE_SPEC_ADD_CONSTRAINT:
+    case MYLITE_ALTER_TABLE_SPEC_ADD_PARTITION:
+    case MYLITE_ALTER_TABLE_SPEC_DROP_PRIMARY_KEY:
+    case MYLITE_ALTER_TABLE_SPEC_DROP_PARTITION:
+    case MYLITE_ALTER_TABLE_SPEC_ORDER_BY:
+    case MYLITE_ALTER_TABLE_SPEC_DISABLE_KEYS:
+    case MYLITE_ALTER_TABLE_SPEC_ENABLE_KEYS:
+    case MYLITE_ALTER_TABLE_SPEC_LOCK:
+    case MYLITE_ALTER_TABLE_SPEC_ALGORITHM:
+    case MYLITE_ALTER_TABLE_SPEC_FORCE:
+    case MYLITE_ALTER_TABLE_SPEC_VALIDATION:
+    case MYLITE_ALTER_TABLE_SPEC_TABLESPACE:
+    case MYLITE_ALTER_TABLE_SPEC_SECONDARY_LOAD:
+    case MYLITE_ALTER_TABLE_SPEC_SECONDARY_UNLOAD:
+      break;
+  }
+}
+
+static int mylite_ast_set_alter_table_spec_values(
+    MyliteAst *ast, MyliteAstAlterTableSpec *spec) {
+  if (spec == NULL) {
+    return 1;
+  }
+  if (!mylite_ast_decode_identifier(ast, spec->name_start, spec->name_end,
+                                    &spec->name_value,
+                                    &spec->name_value_length)) {
+    return 0;
+  }
+  if (!mylite_ast_decode_identifier(ast, spec->secondary_name_start,
+                                    spec->secondary_name_end,
+                                    &spec->secondary_name_value,
+                                    &spec->secondary_name_value_length)) {
+    return 0;
+  }
+  if (!mylite_ast_decode_identifier(ast, spec->table_schema_start,
+                                    spec->table_schema_end,
+                                    &spec->table_schema_value,
+                                    &spec->table_schema_value_length)) {
+    return 0;
+  }
+  return mylite_ast_decode_identifier(ast, spec->table_name_start,
+                                      spec->table_name_end,
+                                      &spec->table_name_value,
+                                      &spec->table_name_value_length);
+}
+
+static void mylite_ast_set_alter_table_spec_name(
+    MyliteAstAlterTableSpec *spec, const MyliteAstNode *node) {
+  const MyliteAstNode *identifier = mylite_ast_find_identifier_for_name(node);
+  if (spec == NULL || identifier == NULL || !identifier->has_span) {
+    return;
+  }
+  spec->name_start = mylite_ast_node_start(identifier);
+  spec->name_end = mylite_ast_node_end(identifier);
+}
+
+static void mylite_ast_set_alter_table_spec_secondary_name(
+    MyliteAstAlterTableSpec *spec, const MyliteAstNode *node) {
+  const MyliteAstNode *identifier = mylite_ast_find_identifier_for_name(node);
+  if (spec == NULL || identifier == NULL || !identifier->has_span) {
+    return;
+  }
+  spec->secondary_name_start = mylite_ast_node_start(identifier);
+  spec->secondary_name_end = mylite_ast_node_end(identifier);
+}
+
+static void mylite_ast_set_alter_table_spec_table(
+    MyliteAstAlterTableSpec *spec, const MyliteAstNode *node) {
+  if (spec == NULL || node == NULL || !node->has_span) {
+    return;
+  }
+  spec->table_start = mylite_ast_node_start(node);
+  spec->table_end = mylite_ast_node_end(node);
+  mylite_ast_set_table_name_span_parts(node, &spec->table_schema_start,
+                                       &spec->table_schema_end,
+                                       &spec->table_name_start,
+                                       &spec->table_name_end);
+}
+
+static const MyliteAstNode *mylite_ast_find_identifier_for_name(
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return NULL;
+  }
+  if (node->symbol_name != NULL && strcmp(node->symbol_name, "nt_identifier") == 0) {
+    return node;
+  }
+  const MyliteAstNode *identifier =
+      mylite_ast_find_first_symbol(node, "nt_identifier");
+  return identifier != NULL ? identifier : node;
+}
+
+static int mylite_ast_set_alter_table_options(MyliteAst *ast,
+                                              MyliteAstAlterTable *alter_table,
+                                              const MyliteAstNode *payload) {
+  if (ast == NULL || alter_table == NULL || payload == NULL) {
+    return 1;
+  }
+  alter_table->option_count = mylite_ast_count_create_table_options(payload);
+  if (alter_table->option_count == 0) {
+    return 1;
+  }
+  alter_table->options =
+      mylite_ast_alloc(ast, alter_table->option_count * sizeof(*alter_table->options));
+  if (alter_table->options == NULL) {
+    return 0;
+  }
+
+  size_t index = 0;
+  int ok = 1;
+  mylite_ast_fill_alter_table_options(ast, alter_table, payload, &index, &ok);
+  return ok && index == alter_table->option_count;
+}
+
+static void mylite_ast_fill_alter_table_options(
+    MyliteAst *ast, MyliteAstAlterTable *alter_table,
+    const MyliteAstNode *node, size_t *index, int *ok) {
+  if (alter_table == NULL || node == NULL || index == NULL || ok == NULL ||
+      !*ok || *index >= alter_table->option_count) {
+    return;
+  }
+  if (node->symbol_name != NULL && strcmp(node->symbol_name, "nt_table_option") == 0) {
+    *ok = mylite_ast_fill_create_table_option(ast,
+                                              &alter_table->options[*index],
+                                              node);
+    if (*ok) {
+      (*index)++;
+    }
+    return;
+  }
+
+  for (size_t i = 0; i < node->child_count; i++) {
+    mylite_ast_fill_alter_table_options(ast, alter_table, node->children[i],
+                                        index, ok);
+    if (!*ok) {
+      return;
+    }
+  }
 }
 
 static int mylite_ast_set_create_index_view(MyliteAst *ast,

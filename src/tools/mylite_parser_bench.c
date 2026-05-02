@@ -116,6 +116,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_table_view_option_string_values = 0;
   size_t create_table_view_option_unsigned_integer_values = 0;
   size_t create_table_view_option_list_values = 0;
+  size_t alter_table_views = 0;
+  size_t alter_table_schema_values = 0;
+  size_t alter_table_name_values = 0;
+  size_t alter_table_specs = 0;
+  size_t alter_table_named_specs = 0;
+  size_t alter_table_secondary_named_specs = 0;
+  size_t alter_table_renamed_tables = 0;
+  size_t alter_table_options = 0;
+  size_t alter_table_if_exists = 0;
+  size_t alter_table_if_not_exists = 0;
   size_t create_index_views = 0;
   size_t create_index_name_values = 0;
   size_t create_index_table_name_values = 0;
@@ -456,6 +466,44 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 }
               }
             }
+            const MyliteAstAlterTable *alter_table =
+                mylite_ast_alter_table_view(ast, i);
+            if (alter_table != NULL) {
+              alter_table_views++;
+              if (mylite_ast_alter_table_view_schema_value(alter_table) !=
+                  NULL) {
+                alter_table_schema_values++;
+              }
+              if (mylite_ast_alter_table_view_name_value(alter_table) != NULL) {
+                alter_table_name_values++;
+              }
+              alter_table_options +=
+                  mylite_ast_alter_table_view_option_count(alter_table);
+              for (size_t j = 0;
+                   j < mylite_ast_alter_table_view_spec_count(alter_table);
+                   j++) {
+                const MyliteAstAlterTableSpec *spec =
+                    mylite_ast_alter_table_view_spec_at(alter_table, j);
+                alter_table_specs++;
+                if (mylite_ast_alter_table_spec_view_name_value(spec) != NULL) {
+                  alter_table_named_specs++;
+                }
+                if (mylite_ast_alter_table_spec_view_secondary_name_value(
+                        spec) != NULL) {
+                  alter_table_secondary_named_specs++;
+                }
+                if (mylite_ast_alter_table_spec_view_table_name_value(spec) !=
+                    NULL) {
+                  alter_table_renamed_tables++;
+                }
+                if (mylite_ast_alter_table_spec_view_has_if_exists(spec)) {
+                  alter_table_if_exists++;
+                }
+                if (mylite_ast_alter_table_spec_view_has_if_not_exists(spec)) {
+                  alter_table_if_not_exists++;
+                }
+              }
+            }
             const MyliteAstCreateIndex *create_index =
                 mylite_ast_create_index_view(ast, i);
             if (create_index != NULL) {
@@ -713,6 +761,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_table_view_option_string_values=%.2f "
            "avg_create_table_view_option_unsigned_integer_values=%.2f "
            "avg_create_table_view_option_list_values=%.2f "
+           "avg_alter_table_views=%.2f "
+           "avg_alter_table_schema_values=%.2f "
+           "avg_alter_table_name_values=%.2f "
+           "avg_alter_table_specs=%.2f "
+           "avg_alter_table_named_specs=%.2f "
+           "avg_alter_table_secondary_named_specs=%.2f "
+           "avg_alter_table_renamed_tables=%.2f "
+           "avg_alter_table_options=%.2f "
+           "avg_alter_table_if_exists=%.2f "
+           "avg_alter_table_if_not_exists=%.2f "
            "avg_create_index_views=%.2f "
            "avg_create_index_name_values=%.2f "
            "avg_create_index_table_name_values=%.2f "
@@ -805,6 +863,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)create_table_view_option_unsigned_integer_values /
                (double)parsed,
            (double)create_table_view_option_list_values / (double)parsed,
+           (double)alter_table_views / (double)parsed,
+           (double)alter_table_schema_values / (double)parsed,
+           (double)alter_table_name_values / (double)parsed,
+           (double)alter_table_specs / (double)parsed,
+           (double)alter_table_named_specs / (double)parsed,
+           (double)alter_table_secondary_named_specs / (double)parsed,
+           (double)alter_table_renamed_tables / (double)parsed,
+           (double)alter_table_options / (double)parsed,
+           (double)alter_table_if_exists / (double)parsed,
+           (double)alter_table_if_not_exists / (double)parsed,
            (double)create_index_views / (double)parsed,
            (double)create_index_name_values / (double)parsed,
            (double)create_index_table_name_values / (double)parsed,

@@ -186,6 +186,7 @@ static int expect_create_table_key_options(
 static int expect_create_table_options(const char *sql,
                                        const ExpectedCreateTableOption *options,
                                        size_t option_count);
+static int expect_alter_table_view(void);
 static int expect_create_index_view(void);
 static int expect_drop_table_view(void);
 static int expect_rename_table_view(void);
@@ -776,6 +777,7 @@ int main(void) {
       "COMMENT 'pk' CHECK (id > 0), KEY `k``x` (id(3) DESC) COMMENT "
       "'hello') ENGINE=InnoDB AUTO_INCREMENT=42 COMMENT='table comment'",
       "`db``x`.`t``y`", "`db``x`", "`t``y`", "db`x", "t`y", 1, 1, 3);
+  failures += expect_alter_table_view();
   failures += expect_create_index_view();
   failures += expect_drop_table_view();
   failures += expect_rename_table_view();
@@ -2882,6 +2884,178 @@ static int expect_create_table_options(const char *sql,
               mylite_ast_create_table_option_value_end(ast, 0, i));
       failed = 1;
     }
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_alter_table_view(void) {
+  const char *sql =
+      "ALTER TABLE db1.t1 ADD COLUMN IF NOT EXISTS c INT NOT NULL, "
+      "DROP COLUMN IF EXISTS old_c, CHANGE COLUMN old_name new_name "
+      "VARCHAR(20), RENAME COLUMN c TO c2, RENAME INDEX old_i TO new_i, "
+      "ALGORITHM=INPLACE, LOCK=NONE";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "ALTER TABLE view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstAlterTable *view = mylite_ast_alter_table_view(ast, 0);
+  const MyliteAstAlterTableSpec *add =
+      mylite_ast_alter_table_view_spec_at(view, 0);
+  const MyliteAstAlterTableSpec *drop =
+      mylite_ast_alter_table_view_spec_at(view, 1);
+  const MyliteAstAlterTableSpec *change =
+      mylite_ast_alter_table_view_spec_at(view, 2);
+  const MyliteAstAlterTableSpec *rename_column =
+      mylite_ast_alter_table_view_spec_at(view, 3);
+  const MyliteAstAlterTableSpec *rename_index =
+      mylite_ast_alter_table_view_spec_at(view, 4);
+  const MyliteAstAlterTableSpec *algorithm =
+      mylite_ast_alter_table_view_spec_at(view, 5);
+  const MyliteAstAlterTableSpec *lock =
+      mylite_ast_alter_table_view_spec_at(view, 6);
+  int failed = 0;
+  if (view == NULL || mylite_ast_alter_table_view_node(view) == NULL ||
+      !value_matches_when_expected(
+          mylite_ast_alter_table_view_schema_value(view),
+          mylite_ast_alter_table_view_schema_value_length(view), "db1") ||
+      !value_matches_when_expected(
+          mylite_ast_alter_table_view_name_value(view),
+          mylite_ast_alter_table_view_name_value_length(view), "t1") ||
+      mylite_ast_alter_table_view_spec_count(view) != 7 ||
+      mylite_ast_alter_table_view_option_count(view) != 0 ||
+      add == NULL ||
+      mylite_ast_alter_table_spec_view_kind(add) !=
+          MYLITE_ALTER_TABLE_SPEC_ADD_COLUMN ||
+      !mylite_ast_alter_table_spec_view_has_if_not_exists(add) ||
+      !value_matches_when_expected(
+          mylite_ast_alter_table_spec_view_name_value(add),
+          mylite_ast_alter_table_spec_view_name_value_length(add), "c") ||
+      drop == NULL ||
+      mylite_ast_alter_table_spec_view_kind(drop) !=
+          MYLITE_ALTER_TABLE_SPEC_DROP_COLUMN ||
+      !mylite_ast_alter_table_spec_view_has_if_exists(drop) ||
+      !value_matches_when_expected(
+          mylite_ast_alter_table_spec_view_name_value(drop),
+          mylite_ast_alter_table_spec_view_name_value_length(drop), "old_c") ||
+      change == NULL ||
+      mylite_ast_alter_table_spec_view_kind(change) !=
+          MYLITE_ALTER_TABLE_SPEC_CHANGE_COLUMN ||
+      !value_matches_when_expected(
+          mylite_ast_alter_table_spec_view_name_value(change),
+          mylite_ast_alter_table_spec_view_name_value_length(change),
+          "old_name") ||
+      !value_matches_when_expected(
+          mylite_ast_alter_table_spec_view_secondary_name_value(change),
+          mylite_ast_alter_table_spec_view_secondary_name_value_length(change),
+          "new_name") ||
+      rename_column == NULL ||
+      mylite_ast_alter_table_spec_view_kind(rename_column) !=
+          MYLITE_ALTER_TABLE_SPEC_RENAME_COLUMN ||
+      !value_matches_when_expected(
+          mylite_ast_alter_table_spec_view_name_value(rename_column),
+          mylite_ast_alter_table_spec_view_name_value_length(rename_column),
+          "c") ||
+      !value_matches_when_expected(
+          mylite_ast_alter_table_spec_view_secondary_name_value(rename_column),
+          mylite_ast_alter_table_spec_view_secondary_name_value_length(
+              rename_column),
+          "c2") ||
+      rename_index == NULL ||
+      mylite_ast_alter_table_spec_view_kind(rename_index) !=
+          MYLITE_ALTER_TABLE_SPEC_RENAME_INDEX ||
+      !value_matches_when_expected(
+          mylite_ast_alter_table_spec_view_name_value(rename_index),
+          mylite_ast_alter_table_spec_view_name_value_length(rename_index),
+          "old_i") ||
+      !value_matches_when_expected(
+          mylite_ast_alter_table_spec_view_secondary_name_value(rename_index),
+          mylite_ast_alter_table_spec_view_secondary_name_value_length(
+              rename_index),
+          "new_i") ||
+      algorithm == NULL ||
+      mylite_ast_alter_table_spec_view_kind(algorithm) !=
+          MYLITE_ALTER_TABLE_SPEC_ALGORITHM ||
+      lock == NULL ||
+      mylite_ast_alter_table_spec_view_kind(lock) !=
+          MYLITE_ALTER_TABLE_SPEC_LOCK) {
+    fprintf(stderr, "ALTER TABLE view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  if (failed) {
+    return failed;
+  }
+
+  sql = "ALTER TABLE db1.t1 ENGINE=InnoDB, AUTO_INCREMENT=5";
+  ast = NULL;
+  status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "ALTER TABLE options parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  view = mylite_ast_alter_table_view(ast, 0);
+  failed = view == NULL ||
+           mylite_ast_alter_table_view_spec_count(view) != 2 ||
+           mylite_ast_alter_table_view_option_count(view) != 2 ||
+           mylite_ast_alter_table_spec_view_kind(
+               mylite_ast_alter_table_view_spec_at(view, 0)) !=
+               MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS ||
+           mylite_ast_alter_table_spec_view_kind(
+               mylite_ast_alter_table_view_spec_at(view, 1)) !=
+               MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS;
+  if (failed) {
+    fprintf(stderr, "ALTER TABLE options view failed: %s\n", sql);
+  }
+  mylite_ast_free(ast);
+  if (failed) {
+    return failed;
+  }
+
+  sql = "ALTER TABLE db1.t1 RENAME TO db2.t2";
+  ast = NULL;
+  status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "ALTER TABLE rename parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  view = mylite_ast_alter_table_view(ast, 0);
+  const MyliteAstAlterTableSpec *rename =
+      mylite_ast_alter_table_view_spec_at(view, 0);
+  failed = rename == NULL ||
+           mylite_ast_alter_table_spec_view_kind(rename) !=
+               MYLITE_ALTER_TABLE_SPEC_RENAME_TABLE ||
+           !value_matches_when_expected(
+               mylite_ast_alter_table_spec_view_table_schema_value(rename),
+               mylite_ast_alter_table_spec_view_table_schema_value_length(
+                   rename),
+               "db2") ||
+           !value_matches_when_expected(
+               mylite_ast_alter_table_spec_view_table_name_value(rename),
+               mylite_ast_alter_table_spec_view_table_name_value_length(rename),
+               "t2");
+  if (failed) {
+    fprintf(stderr, "ALTER TABLE rename view failed: %s\n", sql);
   }
 
   mylite_ast_free(ast);

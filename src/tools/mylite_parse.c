@@ -115,6 +115,8 @@ static void dump_statements(const MyliteAst *ast) {
     size_t column_count = mylite_ast_create_table_column_count(ast, i);
     size_t key_count = mylite_ast_create_table_key_count(ast, i);
     size_t option_count = mylite_ast_create_table_option_count(ast, i);
+    const MyliteAstAlterTable *alter_table =
+        mylite_ast_alter_table_view(ast, i);
     const MyliteAstCreateTable *create_table =
         mylite_ast_create_table_view(ast, i);
     const MyliteAstCreateIndex *create_index =
@@ -173,6 +175,84 @@ static void dump_statements(const MyliteAst *ast) {
         print_escaped_bytes(name_value, name_value_length);
       }
       fputc('\n', stdout);
+    }
+    if (alter_table != NULL) {
+      printf("  alter_table span=%zu..%zu target=%zu..%zu specs=%zu "
+             "options=%zu table=",
+             mylite_ast_alter_table_view_start(alter_table),
+             mylite_ast_alter_table_view_end(alter_table),
+             mylite_ast_alter_table_view_target_start(alter_table),
+             mylite_ast_alter_table_view_target_end(alter_table),
+             mylite_ast_alter_table_view_spec_count(alter_table),
+             mylite_ast_alter_table_view_option_count(alter_table));
+      const char *schema = mylite_ast_alter_table_view_schema_value(alter_table);
+      size_t schema_length =
+          mylite_ast_alter_table_view_schema_value_length(alter_table);
+      if (schema != NULL) {
+        print_escaped_bytes(schema, schema_length);
+        fputc('.', stdout);
+      }
+      const char *name = mylite_ast_alter_table_view_name_value(alter_table);
+      size_t name_length =
+          mylite_ast_alter_table_view_name_value_length(alter_table);
+      if (name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(name, name_length);
+      }
+      fputc('\n', stdout);
+      for (size_t j = 0;
+           j < mylite_ast_alter_table_view_spec_count(alter_table); j++) {
+        const MyliteAstAlterTableSpec *spec =
+            mylite_ast_alter_table_view_spec_at(alter_table, j);
+        printf("    alter_spec[%zu] kind=%s span=%zu..%zu if_exists=%d "
+               "if_not_exists=%d name=",
+               j,
+               mylite_alter_table_spec_kind_name(
+                   mylite_ast_alter_table_spec_view_kind(spec)),
+               mylite_ast_alter_table_spec_view_start(spec),
+               mylite_ast_alter_table_spec_view_end(spec),
+               mylite_ast_alter_table_spec_view_has_if_exists(spec),
+               mylite_ast_alter_table_spec_view_has_if_not_exists(spec));
+        const char *spec_name =
+            mylite_ast_alter_table_spec_view_name_value(spec);
+        size_t spec_name_length =
+            mylite_ast_alter_table_spec_view_name_value_length(spec);
+        if (spec_name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(spec_name, spec_name_length);
+        }
+        fputs(" secondary=", stdout);
+        const char *secondary =
+            mylite_ast_alter_table_spec_view_secondary_name_value(spec);
+        size_t secondary_length =
+            mylite_ast_alter_table_spec_view_secondary_name_value_length(spec);
+        if (secondary == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(secondary, secondary_length);
+        }
+        fputs(" table=", stdout);
+        const char *spec_schema =
+            mylite_ast_alter_table_spec_view_table_schema_value(spec);
+        size_t spec_schema_length =
+            mylite_ast_alter_table_spec_view_table_schema_value_length(spec);
+        if (spec_schema != NULL) {
+          print_escaped_bytes(spec_schema, spec_schema_length);
+          fputc('.', stdout);
+        }
+        const char *spec_table =
+            mylite_ast_alter_table_spec_view_table_name_value(spec);
+        size_t spec_table_length =
+            mylite_ast_alter_table_spec_view_table_name_value_length(spec);
+        if (spec_table == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(spec_table, spec_table_length);
+        }
+        fputc('\n', stdout);
+      }
     }
     if (create_table != NULL) {
       printf("  create_table span=%zu..%zu target=%zu..%zu "

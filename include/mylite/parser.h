@@ -22,6 +22,8 @@ typedef struct MyliteParseResult {
 } MyliteParseResult;
 
 typedef struct MyliteAst MyliteAst;
+typedef struct MyliteAstAlterTable MyliteAstAlterTable;
+typedef struct MyliteAstAlterTableSpec MyliteAstAlterTableSpec;
 typedef struct MyliteAstCreateIndex MyliteAstCreateIndex;
 typedef struct MyliteAstCreateTable MyliteAstCreateTable;
 typedef struct MyliteAstCreateTableColumn MyliteAstCreateTableColumn;
@@ -324,6 +326,43 @@ typedef enum MyliteCreateTableOptionValueKind {
   MYLITE_CREATE_TABLE_OPTION_VALUE_LIST
 } MyliteCreateTableOptionValueKind;
 
+typedef enum MyliteAlterTableSpecKind {
+  MYLITE_ALTER_TABLE_SPEC_UNKNOWN = 0,
+  MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS,
+  MYLITE_ALTER_TABLE_SPEC_CONVERT_CHARACTER_SET,
+  MYLITE_ALTER_TABLE_SPEC_ADD_COLUMN,
+  MYLITE_ALTER_TABLE_SPEC_ADD_TABLE_ELEMENTS,
+  MYLITE_ALTER_TABLE_SPEC_ADD_CONSTRAINT,
+  MYLITE_ALTER_TABLE_SPEC_ADD_PARTITION,
+  MYLITE_ALTER_TABLE_SPEC_DROP_COLUMN,
+  MYLITE_ALTER_TABLE_SPEC_DROP_PRIMARY_KEY,
+  MYLITE_ALTER_TABLE_SPEC_DROP_INDEX,
+  MYLITE_ALTER_TABLE_SPEC_DROP_FOREIGN_KEY,
+  MYLITE_ALTER_TABLE_SPEC_DROP_CHECK,
+  MYLITE_ALTER_TABLE_SPEC_DROP_PARTITION,
+  MYLITE_ALTER_TABLE_SPEC_MODIFY_COLUMN,
+  MYLITE_ALTER_TABLE_SPEC_CHANGE_COLUMN,
+  MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_SET_DEFAULT,
+  MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_DROP_DEFAULT,
+  MYLITE_ALTER_TABLE_SPEC_ALTER_COLUMN_VISIBILITY,
+  MYLITE_ALTER_TABLE_SPEC_RENAME_COLUMN,
+  MYLITE_ALTER_TABLE_SPEC_RENAME_TABLE,
+  MYLITE_ALTER_TABLE_SPEC_RENAME_INDEX,
+  MYLITE_ALTER_TABLE_SPEC_ORDER_BY,
+  MYLITE_ALTER_TABLE_SPEC_DISABLE_KEYS,
+  MYLITE_ALTER_TABLE_SPEC_ENABLE_KEYS,
+  MYLITE_ALTER_TABLE_SPEC_LOCK,
+  MYLITE_ALTER_TABLE_SPEC_ALGORITHM,
+  MYLITE_ALTER_TABLE_SPEC_FORCE,
+  MYLITE_ALTER_TABLE_SPEC_VALIDATION,
+  MYLITE_ALTER_TABLE_SPEC_ALTER_CHECK,
+  MYLITE_ALTER_TABLE_SPEC_ALTER_INDEX_VISIBILITY,
+  MYLITE_ALTER_TABLE_SPEC_TABLESPACE,
+  MYLITE_ALTER_TABLE_SPEC_PARTITION,
+  MYLITE_ALTER_TABLE_SPEC_SECONDARY_LOAD,
+  MYLITE_ALTER_TABLE_SPEC_SECONDARY_UNLOAD
+} MyliteAlterTableSpecKind;
+
 MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result);
 MyliteParseStatus mylite_parse_sql_ast(const char *sql, MyliteAst **ast,
                                        MyliteParseResult *result);
@@ -366,6 +405,7 @@ const char *mylite_create_table_option_kind_name(
     MyliteCreateTableOptionKind kind);
 const char *mylite_create_table_option_value_kind_name(
     MyliteCreateTableOptionValueKind kind);
+const char *mylite_alter_table_spec_kind_name(MyliteAlterTableSpecKind kind);
 
 void mylite_ast_free(MyliteAst *ast);
 const MyliteAstNode *mylite_ast_root(const MyliteAst *ast);
@@ -424,6 +464,8 @@ const char *mylite_ast_statement_target_name_value_at(
     const MyliteAst *ast, size_t statement_index, size_t target_index);
 size_t mylite_ast_statement_target_name_value_length_at(
     const MyliteAst *ast, size_t statement_index, size_t target_index);
+const MyliteAstAlterTable *mylite_ast_alter_table_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstCreateTable *mylite_ast_create_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstCreateIndex *mylite_ast_create_index_view(
@@ -432,6 +474,72 @@ const MyliteAstDropTable *mylite_ast_drop_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstRenameTable *mylite_ast_rename_table_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstNode *mylite_ast_alter_table_view_node(
+    const MyliteAstAlterTable *alter_table);
+size_t mylite_ast_alter_table_view_start(
+    const MyliteAstAlterTable *alter_table);
+size_t mylite_ast_alter_table_view_end(
+    const MyliteAstAlterTable *alter_table);
+size_t mylite_ast_alter_table_view_target_start(
+    const MyliteAstAlterTable *alter_table);
+size_t mylite_ast_alter_table_view_target_end(
+    const MyliteAstAlterTable *alter_table);
+const char *mylite_ast_alter_table_view_schema_value(
+    const MyliteAstAlterTable *alter_table);
+size_t mylite_ast_alter_table_view_schema_value_length(
+    const MyliteAstAlterTable *alter_table);
+const char *mylite_ast_alter_table_view_name_value(
+    const MyliteAstAlterTable *alter_table);
+size_t mylite_ast_alter_table_view_name_value_length(
+    const MyliteAstAlterTable *alter_table);
+size_t mylite_ast_alter_table_view_spec_count(
+    const MyliteAstAlterTable *alter_table);
+const MyliteAstAlterTableSpec *mylite_ast_alter_table_view_spec_at(
+    const MyliteAstAlterTable *alter_table, size_t spec_index);
+size_t mylite_ast_alter_table_view_option_count(
+    const MyliteAstAlterTable *alter_table);
+const MyliteAstCreateTableOption *mylite_ast_alter_table_view_option_at(
+    const MyliteAstAlterTable *alter_table, size_t option_index);
+const MyliteAstNode *mylite_ast_alter_table_spec_view_node(
+    const MyliteAstAlterTableSpec *spec);
+MyliteAlterTableSpecKind mylite_ast_alter_table_spec_view_kind(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_start(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_end(
+    const MyliteAstAlterTableSpec *spec);
+int mylite_ast_alter_table_spec_view_has_if_exists(
+    const MyliteAstAlterTableSpec *spec);
+int mylite_ast_alter_table_spec_view_has_if_not_exists(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_name_start(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_name_end(
+    const MyliteAstAlterTableSpec *spec);
+const char *mylite_ast_alter_table_spec_view_name_value(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_name_value_length(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_secondary_name_start(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_secondary_name_end(
+    const MyliteAstAlterTableSpec *spec);
+const char *mylite_ast_alter_table_spec_view_secondary_name_value(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_secondary_name_value_length(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_table_start(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_table_end(
+    const MyliteAstAlterTableSpec *spec);
+const char *mylite_ast_alter_table_spec_view_table_schema_value(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_table_schema_value_length(
+    const MyliteAstAlterTableSpec *spec);
+const char *mylite_ast_alter_table_spec_view_table_name_value(
+    const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_table_name_value_length(
+    const MyliteAstAlterTableSpec *spec);
 const MyliteAstNode *mylite_ast_create_table_view_node(
     const MyliteAstCreateTable *create_table);
 size_t mylite_ast_create_table_view_start(

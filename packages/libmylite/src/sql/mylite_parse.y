@@ -1303,7 +1303,7 @@ column_default_value(A) ::= current_timestamp_value(B). {
     A = B;
 }
 column_default_value(A) ::= LPAREN(L) expression(B) RPAREN(R). {
-    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+    A = mylite_sql_parser_make_parenthesized_column_default_expression(state, L, B, R);
 }
 
 current_timestamp_value(A) ::= CURRENT_TIMESTAMP(T). {
@@ -1831,14 +1831,111 @@ unary_expression(A) ::= LOGICAL_NOT(T) unary_expression(B). {
 primary_expression(A) ::= literal(B). {
     A = B;
 }
+primary_expression(A) ::= scalar_function_call(B). {
+    A = B;
+}
 primary_expression(A) ::= qualified_identifier(B). {
     A = B;
 }
 primary_expression(A) ::= current_timestamp_value(B). {
     A = B;
 }
+primary_expression(A) ::= bare_temporal_function(B). {
+    A = B;
+}
 primary_expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+bare_temporal_function(A) ::= CURRENT_DATE(T). {
+    A = mylite_sql_parser_make_bare_function_call(state, T);
+}
+bare_temporal_function(A) ::= CURRENT_TIME(T). {
+    A = mylite_sql_parser_make_bare_function_call(state, T);
+}
+bare_temporal_function(A) ::= LOCALTIME(T). {
+    A = mylite_sql_parser_make_bare_function_call(state, T);
+}
+bare_temporal_function(A) ::= LOCALTIMESTAMP(T). {
+    A = mylite_sql_parser_make_bare_function_call(state, T);
+}
+bare_temporal_function(A) ::= UTC_DATE(T). {
+    A = mylite_sql_parser_make_bare_function_call(state, T);
+}
+bare_temporal_function(A) ::= UTC_TIME(T). {
+    A = mylite_sql_parser_make_bare_function_call(state, T);
+}
+bare_temporal_function(A) ::= UTC_TIMESTAMP(T). {
+    A = mylite_sql_parser_make_bare_function_call(state, T);
+}
+
+scalar_function_call(A) ::= function_name(B) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_function_call(
+        state, B, L, mylite_sql_parser_make_empty_function_argument_list(state, L, R), R);
+}
+scalar_function_call(A) ::= function_name(B) LPAREN(L) function_argument_list(C) RPAREN(R). {
+    A = mylite_sql_parser_make_function_call(state, B, L, C, R);
+}
+scalar_function_call(A) ::= IF(T) LPAREN(L) expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
+    struct mylite_sql_ast_node *arguments =
+        mylite_sql_parser_make_function_argument_list(state, B);
+    arguments = mylite_sql_parser_append_function_argument(state, arguments, C);
+    arguments = mylite_sql_parser_append_function_argument(state, arguments, D);
+    A = mylite_sql_parser_make_function_call(
+        state, mylite_sql_parser_make_identifier(state, T), L, arguments, R);
+}
+
+function_name(A) ::= identifier(B). {
+    A = B;
+}
+function_name(A) ::= CURRENT_DATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= CURRENT_TIME(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= CURRENT_USER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= DATABASE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= LEFT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= LOCALTIME(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= LOCALTIMESTAMP(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= MOD(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= REPLACE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= RIGHT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= SCHEMA(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= UTC_DATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= UTC_TIME(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= UTC_TIMESTAMP(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+function_argument_list(A) ::= expression(B). {
+    A = mylite_sql_parser_make_function_argument_list(state, B);
+}
+function_argument_list(A) ::= function_argument_list(B) COMMA expression(C). {
+    A = mylite_sql_parser_append_function_argument(state, B, C);
 }
 
 literal(A) ::= INTEGER(T). {

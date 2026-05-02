@@ -540,6 +540,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard(struct mylite_sql_pa
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_literal(struct mylite_sql_parser_state *state, struct mylite_sql_token token,
                                enum mylite_sql_ast_literal_kind literal_kind);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_bare_function_call(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_token name_token);
+struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_empty_function_argument_list(struct mylite_sql_parser_state *state,
+                                                    struct mylite_sql_token left_paren,
+                                                    struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_function_argument_list(struct mylite_sql_parser_state *state,
+                                              struct mylite_sql_ast_node *argument);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_function_argument(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *list,
+                                           struct mylite_sql_ast_node *argument);
+struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_column_default_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *expression, struct mylite_sql_token right_paren);
 struct mylite_sql_ast_node *mylite_sql_parser_make_unary_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_token operator_token,
     enum mylite_sql_ast_operator operator_kind, struct mylite_sql_ast_node *operand);

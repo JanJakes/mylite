@@ -25,6 +25,7 @@ static int test_transaction_statement_syntax(void);
 static int test_savepoint_statement_syntax(void);
 static int test_select_expression_list(void);
 static int test_expression_operator_foundation_syntax(void);
+static int test_scalar_function_call_syntax(void);
 static int test_information_schema_select(void);
 static int test_select_table_core_syntax(void);
 static int test_select_where_clause_syntax(void);
@@ -45,6 +46,8 @@ static int expect_child_count(const struct mylite_sql_ast_node *node, size_t exp
                               const char *context);
 static int expect_span_text(const struct mylite_sql_ast_node *node, const char *expected,
                             const char *context);
+static int expect_function_call(const struct mylite_sql_ast_node *node, const char *expected_name,
+                                size_t expected_arg_count, const char *context);
 static int expect_literal(const struct mylite_sql_ast_node *node,
                           enum mylite_sql_ast_literal_kind expected, const char *context);
 static int expect_operator(const struct mylite_sql_ast_node *node,
@@ -109,6 +112,7 @@ int main(void)
     failures += test_savepoint_statement_syntax();
     failures += test_select_expression_list();
     failures += test_expression_operator_foundation_syntax();
+    failures += test_scalar_function_call_syntax();
     failures += test_information_schema_select();
     failures += test_select_table_core_syntax();
     failures += test_select_where_clause_syntax();
@@ -2317,6 +2321,7 @@ static int test_update_single_table_syntax(void)
     const struct mylite_sql_ast_node *order_by = NULL;
     const struct mylite_sql_ast_node *order_items = NULL;
     const struct mylite_sql_ast_node *limit = NULL;
+    const struct mylite_sql_ast_node *value = NULL;
     int failures = 0;
 
     failures += parse_sql("UPDATE t SET a = 1", MYLITE_SQL_PARSE_OK, &result);
@@ -2421,8 +2426,12 @@ static int test_update_single_table_syntax(void)
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("UPDATE t SET a = LAST_INSERT_ID(a + 1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("UPDATE t SET a = LAST_INSERT_ID(a + 1)", MYLITE_SQL_PARSE_OK, &result);
+    assignment = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    value = child_at(assignment, 1U);
+    failures += expect_function_call(value, "LAST_INSERT_ID", 1U, "update LAST_INSERT_ID call");
+    failures += expect_operator(child_at(child_at(value, 1U), 0U), MYLITE_SQL_AST_OPERATOR_ADD,
+                                "update LAST_INSERT_ID argument");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("UPDATE t SET a = 1 WHERE id = 1 LIMIT 1 ORDER BY id",
@@ -2959,6 +2968,126 @@ static int test_expression_operator_foundation_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT 1 IN ()", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_scalar_function_call_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    enum {
+        expected_select_item_count = 9,
+        coalesce_nested_arg_index = 2,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *item = NULL;
+    const struct mylite_sql_ast_node *call = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT CONCAT('a','b') AS joined, PI() pi_value, "
+                          "COALESCE(NULL, 1, CONCAT('x','y')), DATABASE(), SCHEMA(), IF(1, 2, 3), "
+                          "LEFT('abc', 1), RIGHT('abc', 1), REPLACE('a','a','b') FROM DUAL;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, expected_select_item_count, "function select list");
+
+    item = child_at(select_list, 0U);
+    call = child_at(item, 0U);
+    failures += expect_function_call(call, "CONCAT", 2U, "CONCAT call");
+    failures += expect_span_text(call, "CONCAT('a','b')", "CONCAT call span");
+    failures += expect_span_text(child_at(item, 1U), "joined", "CONCAT alias");
+
+    item = child_at(select_list, 1U);
+    call = child_at(item, 0U);
+    failures += expect_function_call(call, "PI", 0U, "PI call");
+    failures += expect_span_text(child_at(item, 1U), "pi_value", "PI bare alias");
+
+    call = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_function_call(call, "COALESCE", 3U, "COALESCE call");
+    arguments = child_at(call, 1U);
+    failures += expect_function_call(child_at(arguments, coalesce_nested_arg_index), "CONCAT", 2U,
+                                     "nested CONCAT call");
+
+    failures += expect_function_call(child_at(child_at(select_list, 3U), 0U), "DATABASE", 0U,
+                                     "DATABASE call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 4U), 0U), "SCHEMA", 0U, "SCHEMA call");
+    failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "IF", 3U, "IF call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 6U), 0U), "LEFT", 2U, "LEFT call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 7U), 0U), "RIGHT", 2U, "RIGHT call");
+    failures += expect_function_call(child_at(child_at(select_list, 8U), 0U), "REPLACE", 3U,
+                                     "REPLACE call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CONCAT ('a','b') AS spaced, LEFT('abc', 1) 'left alias';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    item = child_at(select_list, 0U);
+    failures += expect_function_call(child_at(item, 0U), "CONCAT", 2U, "spaced CONCAT call");
+    failures += expect_span_text(child_at(item, 0U), "CONCAT ('a','b')", "spaced CONCAT span");
+    item = child_at(select_list, 1U);
+    failures += expect_function_call(child_at(item, 0U), "LEFT", 2U, "string aliased LEFT call");
+    failures += expect_span_text(child_at(item, 1U), "'left alias'", "string function alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CURRENT_USER(), CURRENT_DATE(), CURRENT_TIME(), LOCALTIME(), "
+                          "LOCALTIMESTAMP(), UTC_DATE(), UTC_TIME(), UTC_TIMESTAMP(), MOD(7,3);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_function_call(child_at(child_at(select_list, 0U), 0U), "CURRENT_USER", 0U,
+                                     "CURRENT_USER call");
+    failures += expect_function_call(child_at(child_at(select_list, 1U), 0U), "CURRENT_DATE", 0U,
+                                     "CURRENT_DATE call");
+    failures += expect_function_call(child_at(child_at(select_list, 2U), 0U), "CURRENT_TIME", 0U,
+                                     "CURRENT_TIME call");
+    failures += expect_function_call(child_at(child_at(select_list, 3U), 0U), "LOCALTIME", 0U,
+                                     "LOCALTIME call");
+    failures += expect_function_call(child_at(child_at(select_list, 4U), 0U), "LOCALTIMESTAMP", 0U,
+                                     "LOCALTIMESTAMP call");
+    failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "UTC_DATE", 0U,
+                                     "UTC_DATE call");
+    failures += expect_function_call(child_at(child_at(select_list, 6U), 0U), "UTC_TIME", 0U,
+                                     "UTC_TIME call");
+    failures += expect_function_call(child_at(child_at(select_list, 7U), 0U), "UTC_TIMESTAMP", 0U,
+                                     "UTC_TIMESTAMP call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 8U), 0U), "MOD", 2U, "MOD call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CURRENT_DATE, CURRENT_TIME, LOCALTIME, LOCALTIMESTAMP, "
+                          "UTC_DATE, UTC_TIME, UTC_TIMESTAMP;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_function_call(child_at(child_at(select_list, 0U), 0U), "CURRENT_DATE", 0U,
+                                     "bare CURRENT_DATE call");
+    failures += expect_function_call(child_at(child_at(select_list, 1U), 0U), "CURRENT_TIME", 0U,
+                                     "bare CURRENT_TIME call");
+    failures += expect_function_call(child_at(child_at(select_list, 2U), 0U), "LOCALTIME", 0U,
+                                     "bare LOCALTIME call");
+    failures += expect_function_call(child_at(child_at(select_list, 3U), 0U), "LOCALTIMESTAMP", 0U,
+                                     "bare LOCALTIMESTAMP call");
+    failures += expect_function_call(child_at(child_at(select_list, 4U), 0U), "UTC_DATE", 0U,
+                                     "bare UTC_DATE call");
+    failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "UTC_TIME", 0U,
+                                     "bare UTC_TIME call");
+    failures += expect_function_call(child_at(child_at(select_list, 6U), 0U), "UTC_TIMESTAMP", 0U,
+                                     "bare UTC_TIMESTAMP call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT IF(1,2)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT POSITION('a' IN 'abc')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT TRIM(LEADING 'x' FROM 'xx')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)
@@ -3531,6 +3660,27 @@ static int expect_span_text(const struct mylite_sql_ast_node *node, const char *
     }
 
     return 0;
+}
+
+static int expect_function_call(const struct mylite_sql_ast_node *node, const char *expected_name,
+                                size_t expected_arg_count, const char *context)
+{
+    const struct mylite_sql_ast_node *name = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = expect_node(node, MYLITE_SQL_AST_FUNCTION_CALL, context);
+
+    if (node == NULL) {
+        return failures;
+    }
+
+    failures += expect_child_count(node, 2U, context);
+    name = child_at(node, 0U);
+    arguments = child_at(node, 1U);
+    failures += expect_node(name, MYLITE_SQL_AST_IDENTIFIER, context);
+    failures += expect_span_text(name, expected_name, context);
+    failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, context);
+    failures += expect_child_count(arguments, expected_arg_count, context);
+    return failures;
 }
 
 static int expect_literal(const struct mylite_sql_ast_node *node,

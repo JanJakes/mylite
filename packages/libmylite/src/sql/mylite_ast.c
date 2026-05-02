@@ -549,6 +549,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "rollback_to_savepoint_statement";
     case MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT:
         return "release_savepoint_statement";
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+        return "function_call";
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
+        return "function_argument_list";
     }
 
     return "unknown";

@@ -2452,6 +2452,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_BINARY_EXPRESSION:
         case MYLITE_SQL_AST_TERNARY_EXPRESSION:
         case MYLITE_SQL_AST_EXPRESSION_LIST:
+        case MYLITE_SQL_AST_FUNCTION_CALL:
+        case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
         case MYLITE_SQL_AST_WHERE_CLAUSE:
         case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
         case MYLITE_SQL_AST_ORDER_ITEM_LIST:
@@ -2544,6 +2546,8 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_ITEM_LIST:
@@ -2633,6 +2637,8 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_ITEM_LIST:
@@ -2886,6 +2892,8 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_ITEM_LIST:
@@ -3170,6 +3178,8 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
         return infer_binary_expression_descriptor(database, plan, node, value, out_descriptor);
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
         return infer_ternary_expression_descriptor(database, plan, node, value, out_descriptor);
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -4634,6 +4644,8 @@ static int bind_select_predicate_expression(mylite_db *database,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_USE_STATEMENT:
@@ -4894,6 +4906,8 @@ static int bind_select_order_expression(mylite_db *database,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_USE_STATEMENT:
@@ -7374,6 +7388,8 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_DEFAULT:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -8737,6 +8753,8 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_DEFAULT:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -12742,6 +12760,8 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_ITEM_LIST:

@@ -219,6 +219,28 @@ typedef struct MyliteAstCreateTableOption {
   size_t value_end;
 } MyliteAstCreateTableOption;
 
+struct MyliteAstCreateTable {
+  const MyliteAstNode *node;
+  size_t start;
+  size_t end;
+  size_t target_start;
+  size_t target_end;
+  size_t schema_start;
+  size_t schema_end;
+  const char *schema_value;
+  size_t schema_value_length;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+  const MyliteAstCreateTableColumn *columns;
+  size_t column_count;
+  const MyliteAstCreateTableKey *keys;
+  size_t key_count;
+  const MyliteAstCreateTableOption *options;
+  size_t option_count;
+};
+
 typedef struct MyliteAstStatement {
   const MyliteAstNode *node;
   const char *symbol_name;
@@ -231,6 +253,7 @@ typedef struct MyliteAstStatement {
   size_t create_table_key_count;
   MyliteAstCreateTableOption *create_table_options;
   size_t create_table_option_count;
+  MyliteAstCreateTable *create_table;
   MyliteStatementTargetKind target_kind;
   size_t start;
   size_t end;
@@ -298,6 +321,11 @@ static int mylite_ast_set_statement_target(MyliteAstStatement *statement,
 static int mylite_ast_set_statement_details(MyliteAst *ast,
                                             MyliteAstStatement *statement,
                                             const MyliteAstNode *payload);
+static int mylite_ast_set_create_table_view(MyliteAst *ast,
+                                            MyliteAstStatement *statement,
+                                            const MyliteAstNode *payload);
+static const MyliteAstStatementTarget *mylite_ast_create_table_target(
+    const MyliteAstStatement *statement);
 static MyliteStatementTargetKind mylite_ast_target_kind_for_statement(
     MyliteStatementKind kind, const char *symbol_name);
 static int mylite_ast_collect_statement_targets(MyliteAst *ast,
@@ -1264,6 +1292,92 @@ size_t mylite_ast_statement_target_name_value_length_at(
   const MyliteAstStatementTarget *target =
       mylite_ast_statement_target_at(ast, statement_index, target_index);
   return target == NULL ? 0 : target->name_value_length;
+}
+
+const MyliteAstCreateTable *mylite_ast_create_table_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement = mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->create_table;
+}
+
+const MyliteAstNode *mylite_ast_create_table_view_node(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? NULL : create_table->node;
+}
+
+size_t mylite_ast_create_table_view_start(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->start;
+}
+
+size_t mylite_ast_create_table_view_end(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->end;
+}
+
+size_t mylite_ast_create_table_view_target_start(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->target_start;
+}
+
+size_t mylite_ast_create_table_view_target_end(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->target_end;
+}
+
+size_t mylite_ast_create_table_view_schema_start(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->schema_start;
+}
+
+size_t mylite_ast_create_table_view_schema_end(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->schema_end;
+}
+
+const char *mylite_ast_create_table_view_schema_value(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? NULL : create_table->schema_value;
+}
+
+size_t mylite_ast_create_table_view_schema_value_length(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->schema_value_length;
+}
+
+size_t mylite_ast_create_table_view_name_start(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->name_start;
+}
+
+size_t mylite_ast_create_table_view_name_end(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->name_end;
+}
+
+const char *mylite_ast_create_table_view_name_value(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? NULL : create_table->name_value;
+}
+
+size_t mylite_ast_create_table_view_name_value_length(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->name_value_length;
+}
+
+size_t mylite_ast_create_table_view_column_count(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->column_count;
+}
+
+size_t mylite_ast_create_table_view_key_count(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->key_count;
+}
+
+size_t mylite_ast_create_table_view_option_count(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? 0 : create_table->option_count;
 }
 
 size_t mylite_ast_create_table_column_count(const MyliteAst *ast,
@@ -3194,9 +3308,65 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   if (strcmp(statement->symbol_name, "nt_create_table_stmt") == 0) {
     return mylite_ast_collect_create_table_columns(ast, statement, payload) &&
            mylite_ast_collect_create_table_keys(ast, statement, payload) &&
-           mylite_ast_collect_create_table_options(ast, statement, payload);
+           mylite_ast_collect_create_table_options(ast, statement, payload) &&
+           mylite_ast_set_create_table_view(ast, statement, payload);
   }
   return 1;
+}
+
+static int mylite_ast_set_create_table_view(MyliteAst *ast,
+                                            MyliteAstStatement *statement,
+                                            const MyliteAstNode *payload) {
+  if (statement == NULL) {
+    return 1;
+  }
+
+  MyliteAstCreateTable *create_table =
+      mylite_ast_alloc(ast, sizeof(*create_table));
+  if (create_table == NULL) {
+    return 0;
+  }
+
+  const MyliteAstStatementTarget *target =
+      mylite_ast_create_table_target(statement);
+  create_table->node = payload == NULL ? statement->node : payload;
+  create_table->start = mylite_ast_node_start(create_table->node);
+  create_table->end = mylite_ast_node_end(create_table->node);
+  if (target != NULL) {
+    create_table->target_start = target->start;
+    create_table->target_end = target->end;
+    create_table->schema_start = target->schema_start;
+    create_table->schema_end = target->schema_end;
+    create_table->schema_value = target->schema_value;
+    create_table->schema_value_length = target->schema_value_length;
+    create_table->name_start = target->name_start;
+    create_table->name_end = target->name_end;
+    create_table->name_value = target->name_value;
+    create_table->name_value_length = target->name_value_length;
+  }
+  create_table->columns = statement->create_table_columns;
+  create_table->column_count = statement->create_table_column_count;
+  create_table->keys = statement->create_table_keys;
+  create_table->key_count = statement->create_table_key_count;
+  create_table->options = statement->create_table_options;
+  create_table->option_count = statement->create_table_option_count;
+  statement->create_table = create_table;
+  return 1;
+}
+
+static const MyliteAstStatementTarget *mylite_ast_create_table_target(
+    const MyliteAstStatement *statement) {
+  if (statement == NULL) {
+    return NULL;
+  }
+  for (size_t i = 0; i < statement->target_count; i++) {
+    const MyliteAstStatementTarget *target = &statement->targets[i];
+    if (target->kind == MYLITE_STATEMENT_TARGET_TABLE &&
+        target->role == MYLITE_STATEMENT_TARGET_ROLE_PRIMARY) {
+      return target;
+    }
+  }
+  return NULL;
 }
 
 static MyliteStatementTargetKind mylite_ast_target_kind_for_statement(

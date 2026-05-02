@@ -60,6 +60,12 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t targets = 0;
   size_t target_schema_values = 0;
   size_t target_name_values = 0;
+  size_t create_table_views = 0;
+  size_t create_table_view_schema_values = 0;
+  size_t create_table_view_name_values = 0;
+  size_t create_table_view_columns = 0;
+  size_t create_table_view_keys = 0;
+  size_t create_table_view_options = 0;
   size_t columns = 0;
   size_t column_name_values = 0;
   size_t column_known_types = 0;
@@ -120,6 +126,25 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
             columns += mylite_ast_create_table_column_count(ast, i);
             keys += mylite_ast_create_table_key_count(ast, i);
             options += mylite_ast_create_table_option_count(ast, i);
+            const MyliteAstCreateTable *create_table =
+                mylite_ast_create_table_view(ast, i);
+            if (create_table != NULL) {
+              create_table_views++;
+              if (mylite_ast_create_table_view_schema_value(create_table) !=
+                  NULL) {
+                create_table_view_schema_values++;
+              }
+              if (mylite_ast_create_table_view_name_value(create_table) !=
+                  NULL) {
+                create_table_view_name_values++;
+              }
+              create_table_view_columns +=
+                  mylite_ast_create_table_view_column_count(create_table);
+              create_table_view_keys +=
+                  mylite_ast_create_table_view_key_count(create_table);
+              create_table_view_options +=
+                  mylite_ast_create_table_view_option_count(create_table);
+            }
             for (size_t j = 0; j < mylite_ast_create_table_column_count(ast, i);
                  j++) {
               if (mylite_ast_create_table_column_name_value(ast, i, j) != NULL) {
@@ -279,6 +304,12 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
     printf(" avg_nodes=%.1f avg_ast_bytes=%.1f avg_statements=%.2f "
            "avg_targets=%.2f avg_target_schema_values=%.2f "
            "avg_target_name_values=%.2f avg_columns=%.2f avg_keys=%.2f "
+           "avg_create_table_views=%.2f "
+           "avg_create_table_view_schema_values=%.2f "
+           "avg_create_table_view_name_values=%.2f "
+           "avg_create_table_view_columns=%.2f "
+           "avg_create_table_view_keys=%.2f "
+           "avg_create_table_view_options=%.2f "
            "avg_key_constraint_name_values=%.2f avg_key_name_values=%.2f "
            "avg_key_referenced_table_schema_values=%.2f "
            "avg_key_referenced_table_name_values=%.2f "
@@ -290,6 +321,12 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)target_schema_values / (double)parsed,
            (double)target_name_values / (double)parsed,
            (double)columns / (double)parsed, (double)keys / (double)parsed,
+           (double)create_table_views / (double)parsed,
+           (double)create_table_view_schema_values / (double)parsed,
+           (double)create_table_view_name_values / (double)parsed,
+           (double)create_table_view_columns / (double)parsed,
+           (double)create_table_view_keys / (double)parsed,
+           (double)create_table_view_options / (double)parsed,
            (double)key_constraint_name_values / (double)parsed,
            (double)key_name_values / (double)parsed,
            (double)key_referenced_table_schema_values / (double)parsed,

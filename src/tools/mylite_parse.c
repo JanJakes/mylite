@@ -113,6 +113,8 @@ static void dump_statements(const MyliteAst *ast) {
     size_t column_count = mylite_ast_create_table_column_count(ast, i);
     size_t key_count = mylite_ast_create_table_key_count(ast, i);
     size_t option_count = mylite_ast_create_table_option_count(ast, i);
+    const MyliteAstCreateTable *create_table =
+        mylite_ast_create_table_view(ast, i);
     printf("statement[%zu] kind=%s symbol=%s span=%zu..%zu targets=%zu "
            "columns=%zu keys=%zu options=%zu target=%s:%zu..%zu "
            "schema=%zu..%zu name=%zu..%zu\n",
@@ -151,6 +153,46 @@ static void dump_statements(const MyliteAst *ast) {
       size_t name_value_length =
           mylite_ast_statement_target_name_value_length_at(ast, i, j);
       printf("    target[%zu].schema_value len=%zu value=", j,
+             schema_value_length);
+      if (schema_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(schema_value, schema_value_length);
+      }
+      printf(" name_value len=%zu value=", name_value_length);
+      if (name_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(name_value, name_value_length);
+      }
+      fputc('\n', stdout);
+    }
+    if (create_table != NULL) {
+      printf("  create_table span=%zu..%zu target=%zu..%zu "
+             "schema=%zu..%zu name=%zu..%zu columns=%zu keys=%zu "
+             "options=%zu node=%s\n",
+             mylite_ast_create_table_view_start(create_table),
+             mylite_ast_create_table_view_end(create_table),
+             mylite_ast_create_table_view_target_start(create_table),
+             mylite_ast_create_table_view_target_end(create_table),
+             mylite_ast_create_table_view_schema_start(create_table),
+             mylite_ast_create_table_view_schema_end(create_table),
+             mylite_ast_create_table_view_name_start(create_table),
+             mylite_ast_create_table_view_name_end(create_table),
+             mylite_ast_create_table_view_column_count(create_table),
+             mylite_ast_create_table_view_key_count(create_table),
+             mylite_ast_create_table_view_option_count(create_table),
+             node_symbol_or_none(
+                 mylite_ast_create_table_view_node(create_table)));
+      const char *schema_value =
+          mylite_ast_create_table_view_schema_value(create_table);
+      size_t schema_value_length =
+          mylite_ast_create_table_view_schema_value_length(create_table);
+      const char *name_value =
+          mylite_ast_create_table_view_name_value(create_table);
+      size_t name_value_length =
+          mylite_ast_create_table_view_name_value_length(create_table);
+      printf("    create_table.schema_value len=%zu value=",
              schema_value_length);
       if (schema_value == NULL) {
         fputs("none", stdout);

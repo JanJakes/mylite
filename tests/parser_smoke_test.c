@@ -142,6 +142,12 @@ static int expect_ast_target(const char *sql, MyliteStatementKind statement_kind
 static int expect_ast_targets(const char *sql, MyliteStatementKind statement_kind,
                               const ExpectedAstTarget *targets,
                               size_t target_count);
+static int expect_create_table_view(const char *sql, const char *target,
+                                    const char *schema, const char *name,
+                                    const char *schema_value,
+                                    const char *name_value,
+                                    size_t column_count, size_t key_count,
+                                    size_t option_count);
 static int expect_create_table_columns(const char *sql,
                                        const ExpectedCreateTableColumn *columns,
                                        size_t column_count);
@@ -740,6 +746,9 @@ int main(void) {
         MYLITE_STATEMENT_UPDATE, targets,
         sizeof(targets) / sizeof(targets[0]));
   }
+  failures += expect_create_table_view(
+      "CREATE TABLE `db``x`.`t``y` (id INT, KEY `k``x` (id)) ENGINE=InnoDB",
+      "`db``x`.`t``y`", "`db``x`", "`t``y`", "db`x", "t`y", 1, 1, 1);
   {
     const ExpectedCreateTableColumn columns[] = {
         {"id INT NOT NULL AUTO_INCREMENT", "id", "INT",
@@ -1647,6 +1656,79 @@ static int expect_ast_targets(const char *sql, MyliteStatementKind statement_kin
               mylite_ast_statement_target_name_value_length_at(ast, 0, i));
       failed = 1;
     }
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_create_table_view(const char *sql, const char *target,
+                                    const char *schema, const char *name,
+                                    const char *schema_value,
+                                    const char *name_value,
+                                    size_t column_count, size_t key_count,
+                                    size_t option_count) {
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "CREATE TABLE view parse failed: %s\nstatus=%s offset=%zu token=%d "
+            "message=%s\n",
+            sql, mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstCreateTable *create_table =
+      mylite_ast_create_table_view(ast, 0);
+  int failed = 0;
+  if (mylite_ast_statement_count(ast) != 1 ||
+      mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_CREATE ||
+      create_table == NULL || mylite_ast_create_table_view_node(create_table) == NULL ||
+      !span_matches(sql, mylite_ast_create_table_view_target_start(create_table),
+                    mylite_ast_create_table_view_target_end(create_table),
+                    target) ||
+      !span_matches(sql, mylite_ast_create_table_view_schema_start(create_table),
+                    mylite_ast_create_table_view_schema_end(create_table),
+                    schema) ||
+      !span_matches(sql, mylite_ast_create_table_view_name_start(create_table),
+                    mylite_ast_create_table_view_name_end(create_table), name) ||
+      !value_matches_when_expected(
+          mylite_ast_create_table_view_schema_value(create_table),
+          mylite_ast_create_table_view_schema_value_length(create_table),
+          schema_value) ||
+      !value_matches_when_expected(
+          mylite_ast_create_table_view_name_value(create_table),
+          mylite_ast_create_table_view_name_value_length(create_table),
+          name_value) ||
+      mylite_ast_create_table_view_column_count(create_table) != column_count ||
+      mylite_ast_create_table_view_key_count(create_table) != key_count ||
+      mylite_ast_create_table_view_option_count(create_table) != option_count) {
+    const MyliteAstNode *view_node =
+        mylite_ast_create_table_view_node(create_table);
+    const char *view_symbol =
+        view_node == NULL ? NULL : mylite_ast_node_symbol_name(view_node);
+    fprintf(stderr,
+            "CREATE TABLE view failed: %s\nspan=%zu..%zu target=%zu..%zu "
+            "schema=%zu..%zu:%zu name=%zu..%zu:%zu columns=%zu keys=%zu "
+            "options=%zu node=%s\n",
+            sql,
+            mylite_ast_create_table_view_start(create_table),
+            mylite_ast_create_table_view_end(create_table),
+            mylite_ast_create_table_view_target_start(create_table),
+            mylite_ast_create_table_view_target_end(create_table),
+            mylite_ast_create_table_view_schema_start(create_table),
+            mylite_ast_create_table_view_schema_end(create_table),
+            mylite_ast_create_table_view_schema_value_length(create_table),
+            mylite_ast_create_table_view_name_start(create_table),
+            mylite_ast_create_table_view_name_end(create_table),
+            mylite_ast_create_table_view_name_value_length(create_table),
+            mylite_ast_create_table_view_column_count(create_table),
+            mylite_ast_create_table_view_key_count(create_table),
+            mylite_ast_create_table_view_option_count(create_table),
+            view_symbol == NULL ? "<none>" : view_symbol);
+    failed = 1;
   }
 
   mylite_ast_free(ast);

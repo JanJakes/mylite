@@ -22,6 +22,7 @@ typedef struct MyliteParseResult {
 } MyliteParseResult;
 
 typedef struct MyliteAst MyliteAst;
+typedef struct MyliteAstCreateTable MyliteAstCreateTable;
 typedef struct MyliteAstNode MyliteAstNode;
 
 typedef enum MyliteAstNodeKind {
@@ -347,6 +348,40 @@ const char *mylite_ast_statement_target_name_value_at(
     const MyliteAst *ast, size_t statement_index, size_t target_index);
 size_t mylite_ast_statement_target_name_value_length_at(
     const MyliteAst *ast, size_t statement_index, size_t target_index);
+const MyliteAstCreateTable *mylite_ast_create_table_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstNode *mylite_ast_create_table_view_node(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_start(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_end(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_target_start(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_target_end(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_schema_start(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_schema_end(
+    const MyliteAstCreateTable *create_table);
+const char *mylite_ast_create_table_view_schema_value(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_schema_value_length(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_name_start(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_name_end(
+    const MyliteAstCreateTable *create_table);
+const char *mylite_ast_create_table_view_name_value(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_name_value_length(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_column_count(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_key_count(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_option_count(
+    const MyliteAstCreateTable *create_table);
 size_t mylite_ast_create_table_column_count(const MyliteAst *ast,
                                             size_t statement_index);
 size_t mylite_ast_create_table_column_start(const MyliteAst *ast,

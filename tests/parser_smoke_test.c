@@ -195,7 +195,9 @@ static int expect_drop_index_view(void);
 static int expect_drop_table_view(void);
 static int expect_drop_view_view(void);
 static int expect_rename_table_view(void);
+static int expect_set_statement_view(void);
 static int expect_truncate_table_view(void);
+static int expect_use_database_view(void);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
 static int span_matches_when_expected(const char *sql, size_t start, size_t end,
@@ -792,7 +794,9 @@ int main(void) {
   failures += expect_drop_table_view();
   failures += expect_drop_view_view();
   failures += expect_rename_table_view();
+  failures += expect_set_statement_view();
   failures += expect_truncate_table_view();
+  failures += expect_use_database_view();
   {
     const ExpectedCreateTableColumn columns[] = {
         {.definition = "id INT NOT NULL AUTO_INCREMENT",
@@ -3531,6 +3535,104 @@ static int expect_drop_table_view(void) {
   return failed;
 }
 
+static int expect_set_statement_view(void) {
+  const char *sql =
+      "SET @@SESSION.sql_mode = CONCAT(@@sql_mode, ',ANSI'), "
+      "@`u``v` := 1, NAMES utf8mb4 COLLATE utf8mb4_unicode_ci, "
+      "CHARACTER SET DEFAULT";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "SET statement view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstSetStatement *view = mylite_ast_set_statement_view(ast, 0);
+  const MyliteAstSetAssignment *system_assignment =
+      view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 0);
+  const MyliteAstSetAssignment *user_assignment =
+      view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 1);
+  const MyliteAstSetAssignment *names_assignment =
+      view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 2);
+  const MyliteAstSetAssignment *charset_assignment =
+      view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 3);
+  int failed = 0;
+  if (view == NULL || mylite_ast_set_statement_view_node(view) == NULL ||
+      mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_SET ||
+      mylite_ast_set_statement_view_form(view) !=
+          MYLITE_SET_STATEMENT_ASSIGNMENTS ||
+      mylite_ast_set_statement_view_assignment_count(view) != 4 ||
+      system_assignment == NULL ||
+      mylite_ast_set_assignment_view_kind(system_assignment) !=
+          MYLITE_SET_ASSIGNMENT_SYSTEM_VARIABLE ||
+      mylite_ast_set_assignment_view_scope(system_assignment) !=
+          MYLITE_SET_VARIABLE_SCOPE_SESSION ||
+      mylite_ast_set_assignment_view_operator(system_assignment) !=
+          MYLITE_SET_ASSIGNMENT_OPERATOR_EQ ||
+      !value_matches_when_expected(
+          mylite_ast_set_assignment_view_name_value(system_assignment),
+          mylite_ast_set_assignment_view_name_value_length(system_assignment),
+          "sql_mode") ||
+      !span_matches(sql,
+                    mylite_ast_set_assignment_view_value_start(
+                        system_assignment),
+                    mylite_ast_set_assignment_view_value_end(
+                        system_assignment),
+                    "CONCAT(@@sql_mode, ',ANSI')") ||
+      user_assignment == NULL ||
+      mylite_ast_set_assignment_view_kind(user_assignment) !=
+          MYLITE_SET_ASSIGNMENT_USER_VARIABLE ||
+      mylite_ast_set_assignment_view_operator(user_assignment) !=
+          MYLITE_SET_ASSIGNMENT_OPERATOR_ASSIGNMENT_EQ ||
+      !value_matches_when_expected(
+          mylite_ast_set_assignment_view_name_value(user_assignment),
+          mylite_ast_set_assignment_view_name_value_length(user_assignment),
+          "u`v") ||
+      !span_matches(sql, mylite_ast_set_assignment_view_value_start(user_assignment),
+                    mylite_ast_set_assignment_view_value_end(user_assignment),
+                    "1") ||
+      names_assignment == NULL ||
+      mylite_ast_set_assignment_view_kind(names_assignment) !=
+          MYLITE_SET_ASSIGNMENT_NAMES ||
+      !value_matches_when_expected(
+          mylite_ast_set_assignment_view_name_value(names_assignment),
+          mylite_ast_set_assignment_view_name_value_length(names_assignment),
+          "names") ||
+      !span_matches(sql, mylite_ast_set_assignment_view_value_start(names_assignment),
+                    mylite_ast_set_assignment_view_value_end(names_assignment),
+                    "utf8mb4") ||
+      !span_matches(sql,
+                    mylite_ast_set_assignment_view_extend_value_start(
+                        names_assignment),
+                    mylite_ast_set_assignment_view_extend_value_end(
+                        names_assignment),
+                    "utf8mb4_unicode_ci") ||
+      charset_assignment == NULL ||
+      mylite_ast_set_assignment_view_kind(charset_assignment) !=
+          MYLITE_SET_ASSIGNMENT_CHARACTER_SET ||
+      !value_matches_when_expected(
+          mylite_ast_set_assignment_view_name_value(charset_assignment),
+          mylite_ast_set_assignment_view_name_value_length(charset_assignment),
+          "character_set") ||
+      !span_matches(sql,
+                    mylite_ast_set_assignment_view_value_start(
+                        charset_assignment),
+                    mylite_ast_set_assignment_view_value_end(
+                        charset_assignment),
+                    "DEFAULT")) {
+    fprintf(stderr, "SET statement view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
 static int expect_truncate_table_view(void) {
   const char *sql = "TRUNCATE TABLE db1.t1";
   MyliteParseResult result;
@@ -3557,6 +3659,40 @@ static int expect_truncate_table_view(void) {
           mylite_ast_truncate_table_view_name_value(view),
           mylite_ast_truncate_table_view_name_value_length(view), "t1")) {
     fprintf(stderr, "TRUNCATE TABLE view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_use_database_view(void) {
+  const char *sql = "USE `db``x`";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "USE database view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstUseDatabase *view = mylite_ast_use_database_view(ast, 0);
+  int failed = 0;
+  if (view == NULL || mylite_ast_use_database_view_node(view) == NULL ||
+      mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_USE ||
+      mylite_ast_statement_target_count(ast, 0) != 1 ||
+      mylite_ast_statement_target_kind(ast, 0) !=
+          MYLITE_STATEMENT_TARGET_DATABASE ||
+      !span_matches(sql, mylite_ast_use_database_view_name_start(view),
+                    mylite_ast_use_database_view_name_end(view), "`db``x`") ||
+      !value_matches_when_expected(
+          mylite_ast_use_database_view_name_value(view),
+          mylite_ast_use_database_view_name_value_length(view), "db`x")) {
+    fprintf(stderr, "USE database view failed: %s\n", sql);
     failed = 1;
   }
 

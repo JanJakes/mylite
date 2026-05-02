@@ -40,7 +40,10 @@ typedef struct MyliteAstDropIndex MyliteAstDropIndex;
 typedef struct MyliteAstDropTable MyliteAstDropTable;
 typedef struct MyliteAstNode MyliteAstNode;
 typedef struct MyliteAstRenameTable MyliteAstRenameTable;
+typedef struct MyliteAstSetAssignment MyliteAstSetAssignment;
+typedef struct MyliteAstSetStatement MyliteAstSetStatement;
 typedef struct MyliteAstTruncateTable MyliteAstTruncateTable;
+typedef struct MyliteAstUseDatabase MyliteAstUseDatabase;
 typedef struct MyliteAstCreateView MyliteAstCreateView;
 typedef struct MyliteAstDropView MyliteAstDropView;
 typedef struct MyliteAstViewColumn MyliteAstViewColumn;
@@ -72,6 +75,7 @@ typedef enum MyliteStatementKind {
   MYLITE_STATEMENT_EXECUTE,
   MYLITE_STATEMENT_DEALLOCATE,
   MYLITE_STATEMENT_TRANSACTION,
+  MYLITE_STATEMENT_USE,
   MYLITE_STATEMENT_LOCK,
   MYLITE_STATEMENT_UTILITY
 } MyliteStatementKind;
@@ -377,6 +381,42 @@ typedef enum MyliteDropViewMode {
   MYLITE_DROP_VIEW_MODE_CASCADE
 } MyliteDropViewMode;
 
+typedef enum MyliteSetStatementForm {
+  MYLITE_SET_STATEMENT_UNKNOWN = 0,
+  MYLITE_SET_STATEMENT_ASSIGNMENTS,
+  MYLITE_SET_STATEMENT_PASSWORD,
+  MYLITE_SET_STATEMENT_TRANSACTION,
+  MYLITE_SET_STATEMENT_CONFIG,
+  MYLITE_SET_STATEMENT_SESSION_STATES,
+  MYLITE_SET_STATEMENT_RESOURCE_GROUP,
+  MYLITE_SET_STATEMENT_ROLE,
+  MYLITE_SET_STATEMENT_DEFAULT_ROLE
+} MyliteSetStatementForm;
+
+typedef enum MyliteSetAssignmentKind {
+  MYLITE_SET_ASSIGNMENT_UNKNOWN = 0,
+  MYLITE_SET_ASSIGNMENT_SYSTEM_VARIABLE,
+  MYLITE_SET_ASSIGNMENT_USER_VARIABLE,
+  MYLITE_SET_ASSIGNMENT_NAMES,
+  MYLITE_SET_ASSIGNMENT_CHARACTER_SET,
+  MYLITE_SET_ASSIGNMENT_TRANSACTION_CHARACTERISTIC,
+  MYLITE_SET_ASSIGNMENT_CONFIG
+} MyliteSetAssignmentKind;
+
+typedef enum MyliteSetVariableScope {
+  MYLITE_SET_VARIABLE_SCOPE_UNSPECIFIED = 0,
+  MYLITE_SET_VARIABLE_SCOPE_GLOBAL,
+  MYLITE_SET_VARIABLE_SCOPE_SESSION,
+  MYLITE_SET_VARIABLE_SCOPE_LOCAL,
+  MYLITE_SET_VARIABLE_SCOPE_INSTANCE
+} MyliteSetVariableScope;
+
+typedef enum MyliteSetAssignmentOperator {
+  MYLITE_SET_ASSIGNMENT_OPERATOR_NONE = 0,
+  MYLITE_SET_ASSIGNMENT_OPERATOR_EQ,
+  MYLITE_SET_ASSIGNMENT_OPERATOR_ASSIGNMENT_EQ
+} MyliteSetAssignmentOperator;
+
 typedef enum MyliteAlterTableSpecKind {
   MYLITE_ALTER_TABLE_SPEC_UNKNOWN = 0,
   MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS,
@@ -463,6 +503,11 @@ const char *mylite_create_view_algorithm_name(MyliteCreateViewAlgorithm algorith
 const char *mylite_view_sql_security_name(MyliteViewSqlSecurity security);
 const char *mylite_view_check_option_name(MyliteViewCheckOption check_option);
 const char *mylite_drop_view_mode_name(MyliteDropViewMode mode);
+const char *mylite_set_statement_form_name(MyliteSetStatementForm form);
+const char *mylite_set_assignment_kind_name(MyliteSetAssignmentKind kind);
+const char *mylite_set_variable_scope_name(MyliteSetVariableScope scope);
+const char *mylite_set_assignment_operator_name(
+    MyliteSetAssignmentOperator operator_kind);
 const char *mylite_alter_table_spec_kind_name(MyliteAlterTableSpecKind kind);
 
 void mylite_ast_free(MyliteAst *ast);
@@ -542,7 +587,11 @@ const MyliteAstDropView *mylite_ast_drop_view_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstRenameTable *mylite_ast_rename_table_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstSetStatement *mylite_ast_set_statement_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstTruncateTable *mylite_ast_truncate_table_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstUseDatabase *mylite_ast_use_database_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstNode *mylite_ast_alter_table_view_node(
     const MyliteAstAlterTable *alter_table);
@@ -881,6 +930,50 @@ const char *mylite_ast_drop_view_view_name_value_at(
     const MyliteAstDropView *drop_view, size_t view_index);
 size_t mylite_ast_drop_view_view_name_value_length_at(
     const MyliteAstDropView *drop_view, size_t view_index);
+const MyliteAstNode *mylite_ast_set_statement_view_node(
+    const MyliteAstSetStatement *set_statement);
+size_t mylite_ast_set_statement_view_start(
+    const MyliteAstSetStatement *set_statement);
+size_t mylite_ast_set_statement_view_end(
+    const MyliteAstSetStatement *set_statement);
+MyliteSetStatementForm mylite_ast_set_statement_view_form(
+    const MyliteAstSetStatement *set_statement);
+size_t mylite_ast_set_statement_view_assignment_count(
+    const MyliteAstSetStatement *set_statement);
+const MyliteAstSetAssignment *mylite_ast_set_statement_view_assignment_at(
+    const MyliteAstSetStatement *set_statement, size_t assignment_index);
+const MyliteAstNode *mylite_ast_set_assignment_view_node(
+    const MyliteAstSetAssignment *assignment);
+MyliteSetAssignmentKind mylite_ast_set_assignment_view_kind(
+    const MyliteAstSetAssignment *assignment);
+MyliteSetVariableScope mylite_ast_set_assignment_view_scope(
+    const MyliteAstSetAssignment *assignment);
+MyliteSetAssignmentOperator mylite_ast_set_assignment_view_operator(
+    const MyliteAstSetAssignment *assignment);
+size_t mylite_ast_set_assignment_view_start(
+    const MyliteAstSetAssignment *assignment);
+size_t mylite_ast_set_assignment_view_end(
+    const MyliteAstSetAssignment *assignment);
+size_t mylite_ast_set_assignment_view_name_start(
+    const MyliteAstSetAssignment *assignment);
+size_t mylite_ast_set_assignment_view_name_end(
+    const MyliteAstSetAssignment *assignment);
+const char *mylite_ast_set_assignment_view_name_value(
+    const MyliteAstSetAssignment *assignment);
+size_t mylite_ast_set_assignment_view_name_value_length(
+    const MyliteAstSetAssignment *assignment);
+const MyliteAstNode *mylite_ast_set_assignment_view_value_node(
+    const MyliteAstSetAssignment *assignment);
+size_t mylite_ast_set_assignment_view_value_start(
+    const MyliteAstSetAssignment *assignment);
+size_t mylite_ast_set_assignment_view_value_end(
+    const MyliteAstSetAssignment *assignment);
+const MyliteAstNode *mylite_ast_set_assignment_view_extend_value_node(
+    const MyliteAstSetAssignment *assignment);
+size_t mylite_ast_set_assignment_view_extend_value_start(
+    const MyliteAstSetAssignment *assignment);
+size_t mylite_ast_set_assignment_view_extend_value_end(
+    const MyliteAstSetAssignment *assignment);
 const MyliteAstNode *mylite_ast_drop_index_view_node(
     const MyliteAstDropIndex *drop_index);
 size_t mylite_ast_drop_index_view_start(
@@ -964,6 +1057,20 @@ const char *mylite_ast_truncate_table_view_name_value(
     const MyliteAstTruncateTable *truncate_table);
 size_t mylite_ast_truncate_table_view_name_value_length(
     const MyliteAstTruncateTable *truncate_table);
+const MyliteAstNode *mylite_ast_use_database_view_node(
+    const MyliteAstUseDatabase *use_database);
+size_t mylite_ast_use_database_view_start(
+    const MyliteAstUseDatabase *use_database);
+size_t mylite_ast_use_database_view_end(
+    const MyliteAstUseDatabase *use_database);
+size_t mylite_ast_use_database_view_name_start(
+    const MyliteAstUseDatabase *use_database);
+size_t mylite_ast_use_database_view_name_end(
+    const MyliteAstUseDatabase *use_database);
+const char *mylite_ast_use_database_view_name_value(
+    const MyliteAstUseDatabase *use_database);
+size_t mylite_ast_use_database_view_name_value_length(
+    const MyliteAstUseDatabase *use_database);
 size_t mylite_ast_create_table_column_view_start(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_end(

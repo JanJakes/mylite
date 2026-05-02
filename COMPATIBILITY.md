@@ -70,14 +70,18 @@ column-detail handles, key-part/key-option handles, table-option
 descriptor/value views, and compact table-option/key/column summaries. It also
 builds semantic parser views for `CREATE TABLE`, `CREATE DATABASE`, `CREATE
 VIEW`, `ALTER TABLE`, `CREATE INDEX`, `DROP DATABASE`, `DROP INDEX`, `DROP
-TABLE`, `DROP VIEW`, `RENAME TABLE`, and `TRUNCATE TABLE` that expose opaque
-descriptor handles for the next typed AST layer. The `CREATE DATABASE` view
-currently covers decoded database targets, `IF NOT EXISTS`, `DATABASE`/`SCHEMA`
-keyword choice, database-option descriptors, and charset/collation/encryption
-summaries. The `CREATE VIEW` view currently covers decoded view targets, `OR
-REPLACE`, algorithm, SQL security, check-option kind, optional definer spans,
-explicit column descriptors, and the query CST anchor. The `ALTER TABLE` view
-currently covers decoded target tables, ordered coarse operation specs,
+TABLE`, `DROP VIEW`, `RENAME TABLE`, `TRUNCATE TABLE`, `SET`, and `USE` that
+expose opaque descriptor handles for the next typed AST layer. The `CREATE
+DATABASE` view currently covers decoded database targets, `IF NOT EXISTS`,
+`DATABASE`/`SCHEMA` keyword choice, database-option descriptors, and
+charset/collation/encryption summaries. The `CREATE VIEW` view currently covers
+decoded view targets, `OR REPLACE`, algorithm, SQL security, check-option kind,
+optional definer spans, explicit column descriptors, and the query CST anchor.
+The `SET` view currently covers statement form, ordered assignments, assignment
+kind, variable scope, assignment operator, decoded assignment names, value CST
+anchors, and `SET NAMES` extended collation spans. The `USE` view currently
+covers the decoded default-database target. The `ALTER TABLE` view currently
+covers decoded target tables, ordered coarse operation specs,
 operation names, nested rename/exchange table targets, reused table-option
 handles, and reused column/key descriptor payloads for single-column
 add/modify/change specs and add-constraint/index specs, including multi-item
@@ -185,7 +189,7 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `SAVEPOINT` | ❌ | top | Nested savepoint creation and replacement semantics. |  |
 | `ROLLBACK TO SAVEPOINT` | ❌ | top | Partial rollback semantics and errors. |  |
 | `RELEASE SAVEPOINT` | ❌ | top | Savepoint release semantics and errors. |  |
-| `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/next-transaction scope. |  |
+| `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/next-transaction scope. | Parser view exposes transaction-characteristic assignments and scope. |
 | `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. |  |
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. |  |
 | `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. |  |
@@ -260,9 +264,9 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. |  |
 | `UNINSTALL PLUGIN` | ❌ | low | Plugin uninstallation syntax and diagnostics. |  |
 | `CLONE` | ❌ | low | Local and remote clone syntax and diagnostics. |  |
-| `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. |  |
-| `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. |  |
-| `SET NAMES` | ❌ | top | Connection character set and collation semantics. |  |
+| `SET` | ❌ | top | Variable assignment, user variables, system variables, persisted variables, names, charset, and transaction forms. | Parser view exposes statement form, assignment kind/scope/operator, decoded names, and value CST anchors. |
+| `SET CHARACTER SET` | ❌ | top | Connection character-set shorthand semantics. | Parser view exposes the character-set assignment and value anchor. |
+| `SET NAMES` | ❌ | top | Connection character set and collation semantics. | Parser view exposes charset value and optional collation value spans. |
 | `CACHE INDEX` | ❌ | low | MyISAM key cache assignment syntax. |  |
 | `FLUSH` | ❌ | medium | FLUSH variants for logs, tables, privileges, status, hosts, optimizer costs, and user resources. |  |
 | `KILL` | ❌ | medium | Connection/query kill syntax and diagnostics. |  |
@@ -274,7 +278,7 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. |  |
 | `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. |  |
 | `HELP` | ❌ | low | Server help lookup result-set semantics. |  |
-| `USE` | ❌ | top | Default schema selection in the embedded single-file model. |  |
+| `USE` | ❌ | top | Default schema selection in the embedded single-file model. | Parser view exposes the decoded default-database target. |
 
 ### 1.5 SHOW Statements
 

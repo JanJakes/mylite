@@ -132,8 +132,12 @@ static void dump_statements(const MyliteAst *ast) {
     const MyliteAstDropView *drop_view = mylite_ast_drop_view_view(ast, i);
     const MyliteAstRenameTable *rename_table =
         mylite_ast_rename_table_view(ast, i);
+    const MyliteAstSetStatement *set_statement =
+        mylite_ast_set_statement_view(ast, i);
     const MyliteAstTruncateTable *truncate_table =
         mylite_ast_truncate_table_view(ast, i);
+    const MyliteAstUseDatabase *use_database =
+        mylite_ast_use_database_view(ast, i);
     printf("statement[%zu] kind=%s symbol=%s span=%zu..%zu targets=%zu "
            "columns=%zu keys=%zu options=%zu target=%s:%zu..%zu "
            "schema=%zu..%zu name=%zu..%zu\n",
@@ -581,6 +585,49 @@ static void dump_statements(const MyliteAst *ast) {
                  mylite_ast_drop_view_view_mode(drop_view)),
              mylite_ast_drop_view_view_view_count(drop_view));
     }
+    if (set_statement != NULL) {
+      printf("  set_statement span=%zu..%zu form=%s assignments=%zu\n",
+             mylite_ast_set_statement_view_start(set_statement),
+             mylite_ast_set_statement_view_end(set_statement),
+             mylite_set_statement_form_name(
+                 mylite_ast_set_statement_view_form(set_statement)),
+             mylite_ast_set_statement_view_assignment_count(set_statement));
+      for (size_t j = 0;
+           j < mylite_ast_set_statement_view_assignment_count(set_statement);
+           j++) {
+        const MyliteAstSetAssignment *assignment =
+            mylite_ast_set_statement_view_assignment_at(set_statement, j);
+        printf("    set_assignment[%zu] kind=%s scope=%s operator=%s "
+               "span=%zu..%zu name=%zu..%zu value=%zu..%zu "
+               "extend_value=%zu..%zu name_len=%zu name=",
+               j,
+               mylite_set_assignment_kind_name(
+                   mylite_ast_set_assignment_view_kind(assignment)),
+               mylite_set_variable_scope_name(
+                   mylite_ast_set_assignment_view_scope(assignment)),
+               mylite_set_assignment_operator_name(
+                   mylite_ast_set_assignment_view_operator(assignment)),
+               mylite_ast_set_assignment_view_start(assignment),
+               mylite_ast_set_assignment_view_end(assignment),
+               mylite_ast_set_assignment_view_name_start(assignment),
+               mylite_ast_set_assignment_view_name_end(assignment),
+               mylite_ast_set_assignment_view_value_start(assignment),
+               mylite_ast_set_assignment_view_value_end(assignment),
+               mylite_ast_set_assignment_view_extend_value_start(assignment),
+               mylite_ast_set_assignment_view_extend_value_end(assignment),
+               mylite_ast_set_assignment_view_name_value_length(assignment));
+        const char *name =
+            mylite_ast_set_assignment_view_name_value(assignment);
+        size_t name_length =
+            mylite_ast_set_assignment_view_name_value_length(assignment);
+        if (name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(name, name_length);
+        }
+        fputc('\n', stdout);
+      }
+    }
     if (rename_table != NULL) {
       printf("  rename_table span=%zu..%zu pairs=%zu\n",
              mylite_ast_rename_table_view_start(rename_table),
@@ -608,6 +655,24 @@ static void dump_statements(const MyliteAst *ast) {
         fputs("none", stdout);
       } else {
         print_escaped_bytes(table_name, table_name_length);
+      }
+      fputc('\n', stdout);
+    }
+    if (use_database != NULL) {
+      printf("  use_database span=%zu..%zu name=%zu..%zu name_len=%zu name=",
+             mylite_ast_use_database_view_start(use_database),
+             mylite_ast_use_database_view_end(use_database),
+             mylite_ast_use_database_view_name_start(use_database),
+             mylite_ast_use_database_view_name_end(use_database),
+             mylite_ast_use_database_view_name_value_length(use_database));
+      const char *database_name =
+          mylite_ast_use_database_view_name_value(use_database);
+      size_t database_name_length =
+          mylite_ast_use_database_view_name_value_length(use_database);
+      if (database_name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(database_name, database_name_length);
       }
       fputc('\n', stdout);
     }

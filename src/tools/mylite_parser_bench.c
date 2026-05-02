@@ -173,9 +173,23 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t drop_view_modes = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
+  size_t set_statement_views = 0;
+  size_t set_statement_assignments = 0;
+  size_t set_assignment_name_values = 0;
+  size_t set_assignment_scopes = 0;
+  size_t set_assignment_value_nodes = 0;
+  size_t set_assignment_extend_value_nodes = 0;
+  size_t set_assignment_system_variables = 0;
+  size_t set_assignment_user_variables = 0;
+  size_t set_assignment_names = 0;
+  size_t set_assignment_character_sets = 0;
+  size_t set_assignment_transaction_characteristics = 0;
+  size_t set_assignment_configs = 0;
   size_t truncate_table_views = 0;
   size_t truncate_table_name_values = 0;
   size_t truncate_table_table_keywords = 0;
+  size_t use_database_views = 0;
+  size_t use_database_name_values = 0;
   size_t columns = 0;
   size_t column_name_values = 0;
   size_t column_known_types = 0;
@@ -725,6 +739,59 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 drop_view_modes++;
               }
             }
+            const MyliteAstSetStatement *set_statement =
+                mylite_ast_set_statement_view(ast, i);
+            if (set_statement != NULL) {
+              set_statement_views++;
+              set_statement_assignments +=
+                  mylite_ast_set_statement_view_assignment_count(
+                      set_statement);
+              for (size_t j = 0;
+                   j < mylite_ast_set_statement_view_assignment_count(
+                           set_statement);
+                   j++) {
+                const MyliteAstSetAssignment *assignment =
+                    mylite_ast_set_statement_view_assignment_at(set_statement, j);
+                if (mylite_ast_set_assignment_view_name_value(assignment) !=
+                    NULL) {
+                  set_assignment_name_values++;
+                }
+                if (mylite_ast_set_assignment_view_scope(assignment) !=
+                    MYLITE_SET_VARIABLE_SCOPE_UNSPECIFIED) {
+                  set_assignment_scopes++;
+                }
+                if (mylite_ast_set_assignment_view_value_node(assignment) !=
+                    NULL) {
+                  set_assignment_value_nodes++;
+                }
+                if (mylite_ast_set_assignment_view_extend_value_node(
+                        assignment) != NULL) {
+                  set_assignment_extend_value_nodes++;
+                }
+                switch (mylite_ast_set_assignment_view_kind(assignment)) {
+                  case MYLITE_SET_ASSIGNMENT_SYSTEM_VARIABLE:
+                    set_assignment_system_variables++;
+                    break;
+                  case MYLITE_SET_ASSIGNMENT_USER_VARIABLE:
+                    set_assignment_user_variables++;
+                    break;
+                  case MYLITE_SET_ASSIGNMENT_NAMES:
+                    set_assignment_names++;
+                    break;
+                  case MYLITE_SET_ASSIGNMENT_CHARACTER_SET:
+                    set_assignment_character_sets++;
+                    break;
+                  case MYLITE_SET_ASSIGNMENT_TRANSACTION_CHARACTERISTIC:
+                    set_assignment_transaction_characteristics++;
+                    break;
+                  case MYLITE_SET_ASSIGNMENT_CONFIG:
+                    set_assignment_configs++;
+                    break;
+                  case MYLITE_SET_ASSIGNMENT_UNKNOWN:
+                    break;
+                }
+              }
+            }
             const MyliteAstRenameTable *rename_table =
                 mylite_ast_rename_table_view(ast, i);
             if (rename_table != NULL) {
@@ -743,6 +810,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
               if (mylite_ast_truncate_table_view_has_table_keyword(
                       truncate_table)) {
                 truncate_table_table_keywords++;
+              }
+            }
+            const MyliteAstUseDatabase *use_database =
+                mylite_ast_use_database_view(ast, i);
+            if (use_database != NULL) {
+              use_database_views++;
+              if (mylite_ast_use_database_view_name_value(use_database) !=
+                  NULL) {
+                use_database_name_values++;
               }
             }
             for (size_t j = 0; j < mylite_ast_create_table_column_count(ast, i);
@@ -1011,10 +1087,24 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_drop_table_if_exists=%.2f "
            "avg_drop_view_views=%.2f avg_drop_view_view_targets=%.2f "
            "avg_drop_view_if_exists=%.2f avg_drop_view_modes=%.2f "
+           "avg_set_statement_views=%.2f "
+           "avg_set_statement_assignments=%.2f "
+           "avg_set_assignment_name_values=%.2f "
+           "avg_set_assignment_scopes=%.2f "
+           "avg_set_assignment_value_nodes=%.2f "
+           "avg_set_assignment_extend_value_nodes=%.2f "
+           "avg_set_assignment_system_variables=%.2f "
+           "avg_set_assignment_user_variables=%.2f "
+           "avg_set_assignment_names=%.2f "
+           "avg_set_assignment_character_sets=%.2f "
+           "avg_set_assignment_transaction_characteristics=%.2f "
+           "avg_set_assignment_configs=%.2f "
            "avg_rename_table_views=%.2f avg_rename_table_pairs=%.2f "
            "avg_truncate_table_views=%.2f "
            "avg_truncate_table_name_values=%.2f "
            "avg_truncate_table_table_keywords=%.2f "
+           "avg_use_database_views=%.2f "
+           "avg_use_database_name_values=%.2f "
            "avg_key_constraint_name_values=%.2f avg_key_name_values=%.2f "
            "avg_key_referenced_table_schema_values=%.2f "
            "avg_key_referenced_table_name_values=%.2f "
@@ -1153,11 +1243,26 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)drop_view_view_targets / (double)parsed,
            (double)drop_view_if_exists / (double)parsed,
            (double)drop_view_modes / (double)parsed,
+           (double)set_statement_views / (double)parsed,
+           (double)set_statement_assignments / (double)parsed,
+           (double)set_assignment_name_values / (double)parsed,
+           (double)set_assignment_scopes / (double)parsed,
+           (double)set_assignment_value_nodes / (double)parsed,
+           (double)set_assignment_extend_value_nodes / (double)parsed,
+           (double)set_assignment_system_variables / (double)parsed,
+           (double)set_assignment_user_variables / (double)parsed,
+           (double)set_assignment_names / (double)parsed,
+           (double)set_assignment_character_sets / (double)parsed,
+           (double)set_assignment_transaction_characteristics /
+               (double)parsed,
+           (double)set_assignment_configs / (double)parsed,
            (double)rename_table_views / (double)parsed,
            (double)rename_table_pairs / (double)parsed,
            (double)truncate_table_views / (double)parsed,
            (double)truncate_table_name_values / (double)parsed,
            (double)truncate_table_table_keywords / (double)parsed,
+           (double)use_database_views / (double)parsed,
+           (double)use_database_name_values / (double)parsed,
            (double)key_constraint_name_values / (double)parsed,
            (double)key_name_values / (double)parsed,
            (double)key_referenced_table_schema_values / (double)parsed,

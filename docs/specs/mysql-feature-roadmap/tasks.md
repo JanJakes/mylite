@@ -79,7 +79,7 @@ level application surfaces.
 29. [ ] Subqueries: scalar, row, `EXISTS`, `IN`, quantified comparisons,
        correlation, cardinality errors, and metadata. Started; spec:
        [subqueries](../subqueries/specs.md).
-30. [ ] `UNION`: `ALL`/`DISTINCT`, column names/types, ordering, limits,
+30. [x] `UNION`: `ALL`/`DISTINCT`, column names/types, ordering, limits,
        parentheses, and metadata.
 31. [ ] `INSERT IGNORE`: duplicate, conversion, and constraint warning-demotion
        rules.

@@ -23,6 +23,11 @@ struct mylite_sql_parser_select_duplicate_mode {
     bool conflict;
 };
 
+struct mylite_sql_parser_union_operator {
+    enum mylite_sql_ast_set_duplicate_mode mode;
+    struct mylite_sql_source_span span;
+};
+
 struct mylite_sql_parser_aggregate_star_tokens {
     struct mylite_sql_token left_paren;
     struct mylite_sql_token star;
@@ -150,6 +155,23 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *group_by_clause,
     struct mylite_sql_ast_node *having_clause, struct mylite_sql_ast_node *order_by_clause,
     struct mylite_sql_ast_node *limit_clause);
+struct mylite_sql_ast_node *mylite_sql_parser_make_query_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *body,
+    struct mylite_sql_ast_node *order_by_clause, struct mylite_sql_ast_node *limit_clause);
+struct mylite_sql_ast_node *mylite_sql_parser_make_query_primary(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *select_statement, struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *mylite_sql_parser_make_union_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
+    struct mylite_sql_parser_union_operator union_operator, struct mylite_sql_ast_node *right);
+struct mylite_sql_parser_union_operator
+mylite_sql_parser_make_default_union_operator(struct mylite_sql_token union_token);
+struct mylite_sql_parser_union_operator
+mylite_sql_parser_make_all_union_operator(struct mylite_sql_token union_token,
+                                          struct mylite_sql_token all_token);
+struct mylite_sql_parser_union_operator
+mylite_sql_parser_make_distinct_union_operator(struct mylite_sql_token union_token,
+                                               struct mylite_sql_token distinct_token);
 struct mylite_sql_parser_select_duplicate_mode
 mylite_sql_parser_make_implicit_select_duplicate_mode(void);
 struct mylite_sql_parser_select_duplicate_mode

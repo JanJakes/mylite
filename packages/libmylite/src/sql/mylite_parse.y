@@ -12,6 +12,7 @@
 %type select_duplicate_mode { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode_list { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode_item { struct mylite_sql_parser_select_duplicate_mode }
+%type union_operator { struct mylite_sql_parser_union_operator }
 %type inner_join_operator { struct mylite_sql_parser_join_operator }
 %type outer_join_operator { struct mylite_sql_parser_join_operator }
 %type subquery { struct mylite_sql_parser_subquery }
@@ -85,6 +86,9 @@ statements(A) ::= statements(B) SEMICOLON statement(C). {
 }
 
 statement(A) ::= select_statement(B). {
+    A = B;
+}
+statement(A) ::= union_query_expression(B). {
     A = B;
 }
 statement(A) ::= use_statement(B). {
@@ -1478,6 +1482,111 @@ select_statement(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F) DUAL(
 select_statement(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F) table_references(C)
         opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_order_by_clause(I)
         opt_limit_clause(J). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
+}
+
+union_query_expression(A) ::= union_expression_body(B) opt_order_by_clause(C) opt_limit_clause(D). {
+    A = mylite_sql_parser_make_query_expression(state, B, C, D);
+}
+
+union_expression_body(A) ::= query_primary(B) union_operator(C) query_primary(D). {
+    A = mylite_sql_parser_make_union_expression(state, B, C, D);
+}
+union_expression_body(A) ::= union_expression_body(B) union_operator(C) query_primary(D). {
+    A = mylite_sql_parser_make_union_expression(state, B, C, D);
+}
+
+query_primary(A) ::= select_union_operand(B). {
+    A = B;
+}
+query_primary(A) ::= parenthesized_query_primary(B). {
+    A = B;
+}
+
+parenthesized_query_primary(A) ::= LPAREN(L) parenthesized_select_union_operand(B) RPAREN(R). {
+    A = mylite_sql_parser_make_query_primary(state, L, B, R);
+}
+parenthesized_query_primary(A) ::= LPAREN(L) parenthesized_query_primary(B) RPAREN(R). {
+    A = mylite_sql_parser_make_query_primary(state, L, B, R);
+}
+
+union_operator(A) ::= UNION(T). {
+    A = mylite_sql_parser_make_default_union_operator(T);
+}
+union_operator(A) ::= UNION(T) ALL(M). {
+    A = mylite_sql_parser_make_all_union_operator(T, M);
+}
+union_operator(A) ::= UNION(T) DISTINCT(M). {
+    A = mylite_sql_parser_make_distinct_union_operator(T, M);
+}
+
+select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL);
+}
+select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B)
+        FROM(F) DUAL(D). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL,
+        NULL);
+}
+select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B)
+        FROM(F) table_references(C) opt_where_clause(E) opt_group_by_clause(G)
+        opt_having_clause(H). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, NULL,
+        NULL);
+}
+select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
+        NULL, NULL);
+}
+select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F) DUAL(D). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
+}
+select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F)
+        table_references(C) opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, NULL, NULL);
+}
+
+parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B)
+        opt_order_by_clause(I) opt_limit_clause(J). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, B, NULL, NULL, NULL, NULL, I, J);
+}
+parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B)
+        FROM(F) DUAL(D) opt_order_by_clause(I) opt_limit_clause(J). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, I, J);
+}
+parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B)
+        FROM(F) table_references(C) opt_where_clause(E) opt_group_by_clause(G)
+        opt_having_clause(H) opt_order_by_clause(I) opt_limit_clause(J). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
+}
+parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S)
+        opt_order_by_clause(I) opt_limit_clause(J). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
+        I, J);
+}
+parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F)
+        DUAL(D) opt_order_by_clause(I) opt_limit_clause(J). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, I, J);
+}
+parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F)
+        table_references(C) opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H)
+        opt_order_by_clause(I) opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);

@@ -354,6 +354,101 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_query_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *body,
+    struct mylite_sql_ast_node *order_by_clause, struct mylite_sql_ast_node *limit_clause)
+{
+    struct mylite_sql_source_span span =
+        body == NULL ? (struct mylite_sql_source_span){0} : body->span;
+    struct mylite_sql_ast_node *expression = NULL;
+
+    if (order_by_clause != NULL) {
+        span = span_join(span, order_by_clause->span);
+    }
+    if (limit_clause != NULL) {
+        span = span_join(span, limit_clause->span);
+    }
+
+    expression = make_node(state, MYLITE_SQL_AST_QUERY_EXPRESSION, span);
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(expression, body);
+    mylite_sql_ast_node_append_child(expression, order_by_clause);
+    mylite_sql_ast_node_append_child(expression, limit_clause);
+    return expression;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_query_primary(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *select_statement, struct mylite_sql_token right_paren)
+{
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&left_paren), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *primary = NULL;
+
+    primary = make_node(state, MYLITE_SQL_AST_QUERY_PRIMARY, span);
+    if (primary == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(primary, select_statement);
+    return primary;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_union_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
+    struct mylite_sql_parser_union_operator union_operator, struct mylite_sql_ast_node *right)
+{
+    struct mylite_sql_source_span span =
+        left == NULL ? union_operator.span : span_join(left->span, union_operator.span);
+    struct mylite_sql_ast_node *expression = NULL;
+
+    if (right != NULL) {
+        span = span_join(span, right->span);
+    }
+
+    expression = make_node(state, MYLITE_SQL_AST_UNION_EXPRESSION, span);
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_set_duplicate_mode(expression, union_operator.mode);
+    mylite_sql_ast_node_append_child(expression, left);
+    mylite_sql_ast_node_append_child(expression, right);
+    return expression;
+}
+
+struct mylite_sql_parser_union_operator
+mylite_sql_parser_make_default_union_operator(struct mylite_sql_token union_token)
+{
+    return (struct mylite_sql_parser_union_operator){
+        .mode = MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT,
+        .span = span_from_token(&union_token),
+    };
+}
+
+struct mylite_sql_parser_union_operator
+mylite_sql_parser_make_all_union_operator(struct mylite_sql_token union_token,
+                                          struct mylite_sql_token all_token)
+{
+    return (struct mylite_sql_parser_union_operator){
+        .mode = MYLITE_SQL_AST_SET_DUPLICATES_ALL,
+        .span = span_join(span_from_token(&union_token), span_from_token(&all_token)),
+    };
+}
+
+struct mylite_sql_parser_union_operator
+mylite_sql_parser_make_distinct_union_operator(struct mylite_sql_token union_token,
+                                               struct mylite_sql_token distinct_token)
+{
+    return (struct mylite_sql_parser_union_operator){
+        .mode = MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT,
+        .span = span_join(span_from_token(&union_token), span_from_token(&distinct_token)),
+    };
+}
+
 struct mylite_sql_parser_select_duplicate_mode
 mylite_sql_parser_make_implicit_select_duplicate_mode(void)
 {
@@ -4126,6 +4221,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"TRANSACTION", MYLITE_SQL_PARSE_TRANSACTION},
         {"TRUE", MYLITE_SQL_PARSE_TRUE},
         {"UNIQUE", MYLITE_SQL_PARSE_UNIQUE},
+        {"UNION", MYLITE_SQL_PARSE_UNION},
         {"UNKNOWN", MYLITE_SQL_PARSE_UNKNOWN},
         {"UNSIGNED", MYLITE_SQL_PARSE_UNSIGNED},
         {"UPDATE", MYLITE_SQL_PARSE_UPDATE},

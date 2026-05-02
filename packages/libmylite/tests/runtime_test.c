@@ -74,11 +74,13 @@ enum {
     mysql_warning_invalid_group_function = 1111,
     mysql_warning_mix_group_function_fields = 1140,
     mysql_warning_wrong_usage = 1221,
+    mysql_warning_wrong_number_of_columns = 1222,
     mysql_warning_not_supported_yet = 1235,
     mysql_warning_unknown = 1105,
     mysql_warning_incorrect_escape_arguments = 1210,
     mysql_warning_operand_columns = 1241,
     mysql_warning_subquery_no_1_row = 1242,
+    mysql_warning_table_name_not_allowed = 1250,
     mysql_warning_truncated_wrong_value = 1292,
     mysql_warning_savepoint_does_not_exist = 1305,
     mysql_warning_division_by_zero = 1365,
@@ -159,6 +161,7 @@ static int test_select_table_core_execution(void);
 static int test_inner_join_execution(void);
 static int test_outer_join_execution(void);
 static int test_select_distinct_execution(void);
+static int test_union_query_expression_execution(void);
 static int test_subquery_execution(void);
 static int test_select_where_execution(void);
 static int test_select_order_limit_offset_execution(void);
@@ -273,6 +276,7 @@ int main(void)
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
     failures += test_select_distinct_execution();
+    failures += test_union_query_expression_execution();
     failures += test_subquery_execution();
     failures += test_select_where_execution();
     failures += test_select_order_limit_offset_execution();
@@ -4654,6 +4658,182 @@ static int test_select_distinct_execution(void)
                    "distinct alias shadowed order warning code");
 
     mylite_close(database);
+    return failures;
+}
+
+static int test_union_query_expression_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const v_column[] = {"v"};
+    static const char *const distinct_null_values[] = {"1", NULL};
+    static const char *const one_two_values[] = {"1", "2"};
+    static const char *const one_one_values[] = {"1", "1"};
+    static const char *const one_value[] = {"1"};
+    static const char *const two_value[] = {"2"};
+    static const char *const two_decimal_value[] = {"2.0000"};
+    static const char *const n_column[] = {"n"};
+    static const char *const local_order_values[] = {NULL, "2"};
+    static const char *const global_limit_values[] = {"2", "2"};
+    static const char *const first_name_column[] = {"first_name"};
+    static const char *const first_name_values[] = {"3", "2"};
+    static const char *const s_column[] = {"s"};
+    static const char *const s_values[] = {"10", "bad"};
+    static const char *const bin_column[] = {"bin_s"};
+    static const char *const bin_values[] = {"A", "a"};
+    static const struct expected_result_metadata metadata[] = {
+        {"alias_n", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"label_s", NULL, NULL, NULL, NULL, NULL, 40U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open union database");
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_union_query DEFAULT CHARACTER SET utf8mb4 "
+                            "COLLATE utf8mb4_0900_ai_ci",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_union_query", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE left_t ("
+                            "id INT PRIMARY KEY, "
+                            "n INT NULL, "
+                            "s VARCHAR(10) COLLATE utf8mb4_0900_ai_ci NULL, "
+                            "bin_s VARCHAR(10) COLLATE utf8mb4_bin NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE right_t ("
+                            "id INT PRIMARY KEY, "
+                            "n INT NULL, "
+                            "s VARCHAR(10) COLLATE utf8mb4_0900_ai_ci NULL, "
+                            "bin_s VARCHAR(10) COLLATE utf8mb4_bin NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO left_t VALUES "
+                            "(1,1,'10','A'), "
+                            "(2,2,'bad','a'), "
+                            "(3,NULL,'30',NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO right_t VALUES "
+                            "(10,2,'BAD','A'), "
+                            "(11,3,'7','a'), "
+                            "(12,NULL,'40',NULL)",
+                            MYLITE_DONE);
+
+    failures += expect_select_rows(database,
+                                   "SELECT 1 AS v UNION SELECT 1 UNION SELECT NULL UNION "
+                                   "SELECT NULL ORDER BY v IS NULL, v",
+                                   v_column, 1, distinct_null_values, 2,
+                                   "union default distinct null collapsing");
+    failures += expect_select_rows(database, "SELECT 1 AS v UNION ALL SELECT 1 ORDER BY v",
+                                   v_column, 1, one_one_values, 2, "union all retains duplicate");
+    failures +=
+        expect_select_rows(database, "SELECT 1 AS v UNION DISTINCT SELECT 1 ORDER BY v", v_column,
+                           1, one_value, 1, "union explicit distinct removes duplicate");
+    failures += expect_select_rows(
+        database, "SELECT 1 AS v UNION ALL SELECT 1 UNION DISTINCT SELECT 1 ORDER BY v", v_column,
+        1, one_value, 1, "union all then distinct left association");
+    failures += expect_select_rows(
+        database, "SELECT 1 AS v UNION DISTINCT SELECT 1 UNION ALL SELECT 1 ORDER BY v", v_column,
+        1, one_one_values, 2, "union distinct then all left association");
+    failures +=
+        expect_select_rows(database, "(SELECT 1 AS v LIMIT 0) UNION ALL SELECT 2 ORDER BY v",
+                           v_column, 1, two_value, 1, "parenthesized scalar operand local limit");
+    failures += expect_select_rows(
+        database, "(SELECT 1/0 AS v LIMIT 0) UNION ALL SELECT 2/1 ORDER BY v", v_column, 1,
+        two_decimal_value, 1, "parenthesized empty operand skips warnings");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "parenthesized empty operand warning count");
+    failures += expect_select_rows(
+        database, "(SELECT 2 AS v ORDER BY v LIMIT 1) UNION ALL SELECT 1 ORDER BY v", v_column, 1,
+        one_two_values, 2, "parenthesized scalar operand local order");
+
+    failures += expect_select_rows(database,
+                                   "(SELECT n FROM left_t ORDER BY n DESC LIMIT 1) UNION ALL "
+                                   "(SELECT n FROM right_t ORDER BY n LIMIT 1) ORDER BY n",
+                                   n_column, 1, local_order_values, 2,
+                                   "parenthesized table operands local order limit");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT n FROM left_t UNION ALL SELECT n FROM right_t "
+                           "ORDER BY n DESC LIMIT 2 OFFSET 1",
+                           n_column, 1, global_limit_values, 2, "union global order limit offset");
+    failures += expect_select_rows(database,
+                                   "SELECT n AS first_name FROM left_t WHERE id IN (1,2) UNION ALL "
+                                   "SELECT n AS later_name FROM right_t WHERE id IN (10,11) "
+                                   "ORDER BY first_name DESC LIMIT 2",
+                                   first_name_column, 1, first_name_values, 2,
+                                   "union first operand output label");
+    failures += expect_select_rows(database,
+                                   "SELECT s FROM left_t WHERE id IN (1,2) UNION "
+                                   "SELECT s FROM right_t WHERE id = 10 ORDER BY s",
+                                   s_column, 1, s_values, 2,
+                                   "union case-insensitive collation distinct rows");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT bin_s FROM left_t WHERE id IN (1,2) UNION "
+                           "SELECT bin_s FROM right_t WHERE id IN (10,11) ORDER BY bin_s",
+                           bin_column, 1, bin_values, 2, "union binary collation distinct rows");
+
+    failures += prepare_sql(database,
+                            "SELECT n AS alias_n, s AS label_s FROM left_t UNION ALL "
+                            "SELECT n, s FROM right_t LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, metadata, 2, "union result metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "union metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT s + 0 AS v FROM left_t WHERE id = 2 UNION ALL "
+                                   "SELECT s + 0 FROM right_t WHERE id = 10 ORDER BY v",
+                                   v_column, 1, (const char *[]){"0.0000", "0.0000"}, 2,
+                                   "union operand warnings rows");
+    failures += expect_int(mylite_warning_count(database), 2, "union operand warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "union operand warning code");
+
+    failures += expect_prepare_error(database, "SELECT 1 UNION SELECT 1, 2", MYLITE_EXEC_ERROR,
+                                     "different number of columns", "union column count error");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_wrong_number_of_columns, "union column count warning");
+    failures += expect_prepare_error(
+        database, "SELECT n FROM left_t UNION ALL SELECT n FROM right_t ORDER BY left_t.n",
+        MYLITE_EXEC_ERROR, "cannot be used in global ORDER clause",
+        "union table-qualified global order");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_table_name_not_allowed, "union table order warning");
+    failures += expect_prepare_error(
+        database, "(SELECT 1 AS v ORDER BY missing LIMIT 0) UNION ALL SELECT 2", MYLITE_EXEC_ERROR,
+        "Unknown column 'missing' in 'order clause'", "union scalar local order unknown column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "union scalar local order warning");
+    failures +=
+        expect_prepare_error(database, "SELECT 1 AS v UNION SELECT 2 ORDER BY 2", MYLITE_EXEC_ERROR,
+                             "Unknown column '2' in 'order clause'", "union ordinal out of range");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "union ordinal warning");
+    failures += expect_prepare_error(database, "SELECT 1 AS x, 2 AS x UNION SELECT 3, 4 ORDER BY x",
+                                     MYLITE_EXEC_ERROR, "Column 'x' in order clause is ambiguous",
+                                     "union ambiguous output label");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_ambiguous_column,
+                           "union ambiguous warning");
+    failures += expect_prepare_error(
+        database,
+        "SELECT n AS first_name FROM left_t UNION ALL SELECT n AS later_name FROM right_t "
+        "ORDER BY later_name",
+        MYLITE_EXEC_ERROR, "Unknown column 'later_name' in 'order clause'",
+        "union later alias rejected");
+    failures += expect_prepare_error(
+        database, "SELECT n AS first_name FROM left_t UNION ALL SELECT n FROM right_t ORDER BY n",
+        MYLITE_EXEC_ERROR, "Unknown column 'n' in 'order clause'",
+        "union first alias hides source name");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

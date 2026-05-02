@@ -369,16 +369,22 @@ query_primary(A) ::= select_query_block(B). {
     A = B;
 }
 
-query_primary(A) ::= LPAREN(L) select_query_block(B)
-                     opt_order_by_clause(O)
-                     opt_limit_clause(N)
-                     RPAREN(R). {
+query_primary(A) ::= parenthesized_query_primary(B). {
+    A = B;
+}
+
+parenthesized_query_primary(A) ::= LPAREN(L) select_query_block(B)
+                                   opt_order_by_clause(O)
+                                   opt_limit_clause(N)
+                                   RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_query_primary(
         state, L, B, O, N, R);
 }
 
-query_primary(A) ::= LPAREN(L) query_expression_body(B) RPAREN(R). {
-    A = mylite_sql_parser_make_parenthesized_query_body(state, L, B, R);
+parenthesized_query_primary(A) ::= LPAREN(L)
+                                   parenthesized_query_primary(B)
+                                   RPAREN(R). {
+    A = mylite_sql_parser_wrap_parenthesized_query_primary(state, L, B, R);
 }
 
 select_query_block(A) ::= SELECT select_duplicate_mode(M)
@@ -414,6 +420,9 @@ query_expression ::= query_expression_body INTO into_target.
 
 /* Deferred derived table query expressions. */
 table_factor ::= LPAREN query_expression RPAREN table_alias.
+
+/* Deferred parenthesized set-operation expressions. */
+query_primary ::= LPAREN query_expression_body RPAREN.
 
 /* Deferred locking clauses. */
 select_query_block ::= SELECT select_item_list FROM table_references locking_clause.

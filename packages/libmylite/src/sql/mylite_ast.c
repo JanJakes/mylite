@@ -430,6 +430,16 @@ void mylite_sql_ast_node_set_select_duplicate_mode(
     node->select_duplicate_conflict_span = spans.conflict;
 }
 
+void mylite_sql_ast_node_set_set_duplicate_mode(struct mylite_sql_ast_node *node,
+                                                enum mylite_sql_ast_set_duplicate_mode mode)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->set_duplicate_mode = mode;
+}
+
 void mylite_sql_ast_node_set_subquery_quantifier(struct mylite_sql_ast_node *node,
                                                  enum mylite_sql_ast_subquery_quantifier quantifier)
 {
@@ -660,6 +670,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "quantified_comparison";
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
         return "row_constructor";
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+        return "query_expression";
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+        return "union_expression";
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
+        return "query_primary";
     }
 
     return "unknown";
@@ -946,6 +962,18 @@ mylite_sql_ast_select_duplicate_mode_name(enum mylite_sql_ast_select_duplicate_m
         return "all";
     case MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT:
         return "distinct";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_set_duplicate_mode_name(enum mylite_sql_ast_set_duplicate_mode mode)
+{
+    switch (mode) {
+    case MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT:
+        return "distinct";
+    case MYLITE_SQL_AST_SET_DUPLICATES_ALL:
+        return "all";
     }
 
     return "unknown";

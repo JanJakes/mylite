@@ -32,15 +32,16 @@ enum mylite_stmt_kind {
     MYLITE_STMT_INSERT_SET = 10,
     MYLITE_STMT_SCALAR_SELECT = 11,
     MYLITE_STMT_TABLE_SELECT = 12,
-    MYLITE_STMT_UPDATE = 13,
-    MYLITE_STMT_DELETE = 14,
-    MYLITE_STMT_START_TRANSACTION = 15,
-    MYLITE_STMT_BEGIN_TRANSACTION = 16,
-    MYLITE_STMT_COMMIT = 17,
-    MYLITE_STMT_ROLLBACK = 18,
-    MYLITE_STMT_SAVEPOINT = 19,
-    MYLITE_STMT_ROLLBACK_TO_SAVEPOINT = 20,
-    MYLITE_STMT_RELEASE_SAVEPOINT = 21,
+    MYLITE_STMT_UNION_QUERY = 13,
+    MYLITE_STMT_UPDATE = 14,
+    MYLITE_STMT_DELETE = 15,
+    MYLITE_STMT_START_TRANSACTION = 16,
+    MYLITE_STMT_BEGIN_TRANSACTION = 17,
+    MYLITE_STMT_COMMIT = 18,
+    MYLITE_STMT_ROLLBACK = 19,
+    MYLITE_STMT_SAVEPOINT = 20,
+    MYLITE_STMT_ROLLBACK_TO_SAVEPOINT = 21,
+    MYLITE_STMT_RELEASE_SAVEPOINT = 22,
 };
 
 enum mylite_information_schema_table {
@@ -65,9 +66,11 @@ enum mylite_mysql_condition_code {
     MYLITE_MYSQL_ER_NO_SUCH_TABLE = 1146,
     MYLITE_MYSQL_ER_WRONG_ARGUMENTS = 1210,
     MYLITE_MYSQL_ER_WRONG_USAGE = 1221,
+    MYLITE_MYSQL_ER_WRONG_NUMBER_OF_COLUMNS_IN_SELECT = 1222,
     MYLITE_MYSQL_ER_NOT_SUPPORTED_YET = 1235,
     MYLITE_MYSQL_ER_OPERAND_COLUMNS = 1241,
     MYLITE_MYSQL_ER_SUBQUERY_NO_1_ROW = 1242,
+    MYLITE_MYSQL_ER_TABLENAME_NOT_ALLOWED_HERE = 1250,
     MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE = 1292,
     MYLITE_MYSQL_ER_SP_DOES_NOT_EXIST = 1305,
     MYLITE_MYSQL_ER_NO_DEFAULT_FOR_FIELD = 1364,
@@ -674,6 +677,7 @@ struct mylite_scalar_result {
     struct mylite_expression_warnings warnings;
     size_t value_count;
     bool has_row;
+    bool row_available;
 };
 
 struct mylite_cached_expression_value {
@@ -796,6 +800,17 @@ struct mylite_table_select_expression_context {
     const struct mylite_table_select_row *row;
     bool order_resolution;
     bool having_resolution;
+};
+
+struct mylite_union_plan {
+    mylite_stmt **operands;
+    enum mylite_sql_ast_set_duplicate_mode *operators;
+    size_t operand_count;
+};
+
+struct mylite_union_expression_context {
+    mylite_stmt *stmt;
+    const struct mylite_table_select_row *row;
 };
 
 struct mylite_in_subquery_scan_context {
@@ -922,6 +937,7 @@ struct mylite_stmt {
     struct mylite_transaction_plan transaction;
     struct mylite_savepoint_plan savepoint;
     struct mylite_select_plan select_plan;
+    struct mylite_union_plan union_plan;
     struct mylite_result_metadata result_metadata;
     struct mylite_scalar_result scalar_result;
     struct mylite_table_select_result select_result;
@@ -1188,6 +1204,79 @@ static int prepare_scalar_select_statement(mylite_db *database,
 static int prepare_select_subquery_statement(mylite_db *database,
                                              const struct mylite_sql_ast_node *statement,
                                              mylite_stmt **out_stmt);
+static int validate_scalar_select_order_by_clause(mylite_db *database,
+                                                  const struct mylite_sql_ast_node *order_by_clause,
+                                                  const struct mylite_result_metadata *metadata);
+static int bind_scalar_select_limit_clause(mylite_stmt *stmt,
+                                           const struct mylite_sql_ast_node *limit_clause);
+static int copy_scalar_select_item(mylite_stmt *stmt, const struct mylite_sql_ast_node *item,
+                                   size_t index);
+static int validate_scalar_select_order_item(mylite_db *database,
+                                             const struct mylite_sql_ast_node *order_item,
+                                             const struct mylite_result_metadata *metadata);
+static int validate_scalar_select_order_expression(mylite_db *database,
+                                                   const struct mylite_sql_ast_node *expression,
+                                                   const struct mylite_result_metadata *metadata);
+static int
+validate_scalar_select_order_function_call(mylite_db *database,
+                                           const struct mylite_sql_ast_node *expression,
+                                           const struct mylite_result_metadata *metadata);
+static int resolve_scalar_select_order_reference(mylite_db *database,
+                                                 const struct mylite_result_metadata *metadata,
+                                                 const struct mylite_sql_ast_node *expression);
+static size_t scalar_result_label_count(const struct mylite_result_metadata *metadata,
+                                        const char *label, size_t *out_index);
+static int prepare_union_query_expression_statement(mylite_db *database,
+                                                    const struct mylite_sql_ast_node *statement,
+                                                    const char *sql, size_t sql_length,
+                                                    mylite_stmt **out_stmt);
+static int validate_union_operand_column_counts(mylite_db *database,
+                                                const struct mylite_union_plan *plan);
+static int bind_union_query_clauses(mylite_db *database,
+                                    const struct mylite_sql_ast_node *statement, const char *sql,
+                                    size_t sql_length, mylite_stmt *stmt);
+static int collect_union_query_operands(mylite_db *database, const struct mylite_sql_ast_node *node,
+                                        struct mylite_union_plan *plan);
+static int append_union_query_operand(mylite_db *database, struct mylite_union_plan *plan,
+                                      mylite_stmt *operand,
+                                      enum mylite_sql_ast_set_duplicate_mode duplicate_mode,
+                                      bool has_operator);
+static int prepare_union_query_operand(mylite_db *database, const struct mylite_sql_ast_node *node,
+                                       mylite_stmt **out_operand);
+static const struct mylite_sql_ast_node *
+unwrap_union_query_primary(const struct mylite_sql_ast_node *node);
+static int attach_union_result_metadata(mylite_stmt *stmt);
+static int initialize_union_output_plan(mylite_stmt *stmt);
+static int add_union_output_column(mylite_db *database, struct mylite_select_plan *plan,
+                                   const char *label);
+static int aggregate_union_result_metadata(mylite_stmt *stmt);
+static void aggregate_union_field_descriptor(mylite_db *database,
+                                             struct mylite_field_descriptor *descriptor,
+                                             const struct mylite_field_descriptor *operand);
+static bool
+union_field_descriptor_has_text_result(const struct mylite_field_descriptor *descriptor);
+static bool
+union_field_descriptor_uses_binary_text(const struct mylite_field_descriptor *descriptor);
+static bool
+union_field_descriptor_has_decimal_result(const struct mylite_field_descriptor *descriptor);
+static bool
+union_field_descriptor_has_double_result(const struct mylite_field_descriptor *descriptor);
+static int bind_union_global_order_by_clause(mylite_db *database,
+                                             const struct mylite_sql_ast_node *order_by_clause,
+                                             struct mylite_select_plan *plan);
+static int bind_union_global_order_item(mylite_db *database,
+                                        const struct mylite_sql_ast_node *order_item,
+                                        struct mylite_select_plan *plan);
+static int bind_union_global_order_expression(mylite_db *database,
+                                              const struct mylite_sql_ast_node *expression,
+                                              struct mylite_select_plan *plan);
+static int bind_union_global_order_function_call(mylite_db *database,
+                                                 const struct mylite_sql_ast_node *expression,
+                                                 struct mylite_select_plan *plan);
+static int resolve_union_order_reference(mylite_db *database, const struct mylite_select_plan *plan,
+                                         const struct mylite_sql_ast_node *expression,
+                                         enum mylite_select_order_key_kind *out_kind,
+                                         size_t *out_index);
 static int attach_select_result_metadata(mylite_stmt *stmt, const struct mylite_select_plan *plan);
 static int copy_select_result_column_metadata(mylite_db *database,
                                               struct mylite_result_column_metadata *metadata,
@@ -1898,6 +1987,8 @@ static int set_select_unsupported_projection_error(mylite_db *database);
 static int set_select_unsupported_where_error(mylite_db *database);
 static int set_select_unsupported_order_error(mylite_db *database);
 static int set_select_unsupported_join_grouping_error(mylite_db *database);
+static int set_union_column_count_error(mylite_db *database);
+static int set_union_global_order_table_error(mylite_db *database, const char *table_name);
 static char *build_select_physical_sql(mylite_db *database, const struct mylite_select_plan *plan);
 static char *build_select_scan_sql(mylite_db *database, const struct mylite_select_plan *plan);
 static int clone_table_select_expressions(mylite_stmt *stmt,
@@ -1964,6 +2055,25 @@ static int finish_transaction_completion(mylite_stmt *stmt,
 static int execute_savepoint_statement(mylite_stmt *stmt);
 static int execute_rollback_to_savepoint_statement(mylite_stmt *stmt);
 static int execute_release_savepoint_statement(mylite_stmt *stmt);
+static int execute_union_query_statement(mylite_stmt *stmt);
+static int materialize_union_query_result(mylite_stmt *stmt);
+static int scan_union_operand(mylite_stmt *stmt, mylite_stmt *operand,
+                              enum mylite_sql_ast_set_duplicate_mode duplicate_mode);
+static int append_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *operand, bool distinct);
+static int execute_union_operand_statement(mylite_stmt *operand);
+static int copy_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *operand,
+                                          struct mylite_table_select_row *out_row);
+static int append_union_distinct_row(mylite_stmt *stmt, struct mylite_table_select_row *row);
+static int deduplicate_union_result_rows(mylite_stmt *stmt);
+static int evaluate_union_order_values(mylite_stmt *stmt, struct mylite_table_select_row *row);
+static int evaluate_union_order_key(mylite_stmt *stmt, const struct mylite_table_select_row *row,
+                                    const struct mylite_select_order_key *order_key,
+                                    struct mylite_expression_value *out_value);
+static int resolve_union_expression_identifier(void *user_data,
+                                               const struct mylite_sql_ast_node *identifier,
+                                               struct mylite_expression_value *out_value);
+static int append_and_clear_union_database_warnings(mylite_db *database,
+                                                    struct mylite_expression_warnings *warnings);
 static int copy_update_target_to_select_table(mylite_stmt *stmt, struct mylite_select_table *table);
 static int bind_update_subset(mylite_stmt *stmt, const struct mylite_select_table *table,
                               struct mylite_update_bound_assignment **out_assignments);
@@ -3194,6 +3304,7 @@ static void table_select_result_deinit(struct mylite_table_select_result *result
 static void table_select_row_deinit(struct mylite_table_select_row *row);
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata);
 static void select_plan_deinit(struct mylite_select_plan *plan);
+static void union_plan_deinit(struct mylite_union_plan *plan);
 static void select_constant_values_deinit(mylite_stmt *stmt);
 static void select_table_deinit(struct mylite_select_table *table);
 static void select_column_deinit(struct mylite_select_column *column);
@@ -3340,6 +3451,7 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
     return status;
 }
 
+// NOLINTNEXTLINE(misc-no-recursion)
 void mylite_finalize(mylite_stmt *stmt)
 {
     if (stmt == NULL) {
@@ -3359,6 +3471,7 @@ void mylite_finalize(mylite_stmt *stmt)
     delete_plan_deinit(&stmt->delete_plan);
     free(stmt->savepoint.name);
     free(stmt->savepoint.normalized_name);
+    union_plan_deinit(&stmt->union_plan);
     select_plan_deinit(&stmt->select_plan);
     result_metadata_deinit(&stmt->result_metadata);
     scalar_result_deinit(&stmt->scalar_result);
@@ -3453,7 +3566,7 @@ int mylite_column_count(const mylite_stmt *stmt)
     if (stmt->kind == MYLITE_STMT_SCALAR_SELECT) {
         return (int)stmt->scalar_result.value_count;
     }
-    if (stmt->kind == MYLITE_STMT_TABLE_SELECT) {
+    if (stmt->kind == MYLITE_STMT_TABLE_SELECT || stmt->kind == MYLITE_STMT_UNION_QUERY) {
         return (int)stmt->result_metadata.column_count;
     }
     if (stmt->sqlite_stmt == NULL) {
@@ -3599,7 +3712,8 @@ int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
 
 const char *mylite_column_text(const mylite_stmt *stmt, int column)
 {
-    if (stmt != NULL && stmt->kind == MYLITE_STMT_TABLE_SELECT &&
+    if (stmt != NULL &&
+        (stmt->kind == MYLITE_STMT_TABLE_SELECT || stmt->kind == MYLITE_STMT_UNION_QUERY) &&
         stmt->select_result.has_current_row) {
         return table_select_current_output_text(stmt, column);
     }
@@ -3780,6 +3894,9 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_transaction_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
             return prepare_show_schemas_statement(database, out_stmt);
+        case MYLITE_SQL_AST_QUERY_EXPRESSION:
+            return prepare_union_query_expression_statement(database, statement, sql, sql_length,
+                                                            out_stmt);
         case MYLITE_SQL_AST_SELECT_STATEMENT:
             status = validate_select_duplicate_mode(database, statement);
             if (status != MYLITE_OK) {
@@ -3877,6 +3994,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_EXISTS_EXPRESSION:
         case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
         case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+        case MYLITE_SQL_AST_UNION_EXPRESSION:
+        case MYLITE_SQL_AST_QUERY_PRIMARY:
             break;
         }
     }
@@ -3940,6 +4059,9 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:
     case MYLITE_SQL_AST_GROUP_ITEM:
@@ -4067,6 +4189,9 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
     case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
@@ -4276,6 +4401,9 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
     case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
@@ -4538,7 +4666,11 @@ static int prepare_scalar_select_statement(mylite_db *database,
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
 
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL)) {
+        find_child_kind(statement, MYLITE_SQL_AST_FROM_TABLE) != NULL ||
+        find_child_kind(statement, MYLITE_SQL_AST_FROM_TABLE_REFERENCES) != NULL ||
+        (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL &&
+         from_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE &&
+         from_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE)) {
         return MYLITE_UNSUPPORTED;
     }
     for (const struct mylite_sql_ast_node *item = select_list->first_child; item != NULL;
@@ -4576,6 +4708,667 @@ static int prepare_select_subquery_statement(mylite_db *database,
         return status;
     }
     return prepare_scalar_select_statement(database, statement, out_stmt);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int prepare_union_query_expression_statement(mylite_db *database,
+                                                    const struct mylite_sql_ast_node *statement,
+                                                    const char *sql, size_t sql_length,
+                                                    mylite_stmt **out_stmt)
+{
+    const struct mylite_sql_ast_node *body = child_at(statement, 0U);
+    mylite_stmt *stmt = NULL;
+    int status = MYLITE_OK;
+
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_QUERY_EXPRESSION || body == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    stmt = calloc(1U, sizeof(*stmt));
+    if (stmt == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    *stmt = (mylite_stmt){
+        .database = database,
+        .kind = MYLITE_STMT_UNION_QUERY,
+        .affected_rows = -1,
+    };
+
+    status = collect_union_query_operands(database, body, &stmt->union_plan);
+    if (status == MYLITE_OK && stmt->union_plan.operand_count < 2U) {
+        status = MYLITE_UNSUPPORTED;
+    }
+    if (status == MYLITE_OK) {
+        status = validate_union_operand_column_counts(database, &stmt->union_plan);
+    }
+    if (status == MYLITE_OK) {
+        status = attach_union_result_metadata(stmt);
+    }
+    if (status == MYLITE_OK) {
+        status = initialize_union_output_plan(stmt);
+    }
+    if (status == MYLITE_OK) {
+        status = bind_union_query_clauses(database, statement, sql, sql_length, stmt);
+    }
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(database, "out of memory");
+        }
+        mylite_finalize(stmt);
+        return status;
+    }
+
+    stmt->preserve_prepare_warnings = database->warnings.count > 0U;
+    *out_stmt = stmt;
+    return MYLITE_OK;
+}
+
+static int validate_union_operand_column_counts(mylite_db *database,
+                                                const struct mylite_union_plan *plan)
+{
+    int column_count = 0;
+
+    if (plan == NULL || plan->operand_count == 0U) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    column_count = mylite_column_count(plan->operands[0]);
+    if (column_count <= 0) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    for (size_t index = 1U; index < plan->operand_count; ++index) {
+        if (mylite_column_count(plan->operands[index]) != column_count) {
+            return set_union_column_count_error(database);
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int bind_union_query_clauses(mylite_db *database,
+                                    const struct mylite_sql_ast_node *statement, const char *sql,
+                                    size_t sql_length, mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *order_by_clause =
+        find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    const struct mylite_sql_ast_node *limit_clause =
+        find_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    int status = MYLITE_OK;
+
+    if (limit_clause != NULL) {
+        status = bind_select_limit_clause(limit_clause, &stmt->select_plan);
+    }
+    if (status == MYLITE_OK && order_by_clause != NULL) {
+        status = bind_union_global_order_by_clause(database, order_by_clause, &stmt->select_plan);
+    }
+    if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
+        stmt->select_sql_text = copy_span_text(sql, sql_length);
+        if (stmt->select_sql_text == NULL) {
+            (void)set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    if (status == MYLITE_OK) {
+        status = clone_table_select_order_expressions(stmt, sql, sql_length);
+    }
+    return status;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int collect_union_query_operands(mylite_db *database, const struct mylite_sql_ast_node *node,
+                                        struct mylite_union_plan *plan)
+{
+    const struct mylite_sql_ast_node *unwrapped = unwrap_union_query_primary(node);
+
+    if (unwrapped == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (unwrapped->kind == MYLITE_SQL_AST_UNION_EXPRESSION) {
+        const struct mylite_sql_ast_node *left = child_at(unwrapped, 0U);
+        const struct mylite_sql_ast_node *right = child_at(unwrapped, 1U);
+        mylite_stmt *right_operand = NULL;
+        int status = collect_union_query_operands(database, left, plan);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        status = prepare_union_query_operand(database, right, &right_operand);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        status = append_union_query_operand(database, plan, right_operand,
+                                            unwrapped->set_duplicate_mode, true);
+        if (status != MYLITE_OK) {
+            mylite_finalize(right_operand);
+        }
+        return status;
+    }
+
+    {
+        mylite_stmt *operand = NULL;
+        int status = prepare_union_query_operand(database, unwrapped, &operand);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        status = append_union_query_operand(database, plan, operand,
+                                            MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT, false);
+        if (status != MYLITE_OK) {
+            mylite_finalize(operand);
+        }
+        return status;
+    }
+}
+
+static int append_union_query_operand(mylite_db *database, struct mylite_union_plan *plan,
+                                      mylite_stmt *operand,
+                                      enum mylite_sql_ast_set_duplicate_mode duplicate_mode,
+                                      bool has_operator)
+{
+    mylite_stmt **operands = NULL;
+
+    if (plan == NULL || operand == NULL || (has_operator && plan->operand_count == 0U)) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    operands = (mylite_stmt **)realloc((void *)plan->operands,
+                                       (plan->operand_count + 1U) * sizeof(*plan->operands));
+    if (operands == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    plan->operands = operands;
+
+    if (has_operator) {
+        enum mylite_sql_ast_set_duplicate_mode *operators =
+            (enum mylite_sql_ast_set_duplicate_mode *)realloc(
+                (void *)plan->operators, plan->operand_count * sizeof(*plan->operators));
+
+        if (operators == NULL) {
+            (void)set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        plan->operators = operators;
+        plan->operators[plan->operand_count - 1U] = duplicate_mode;
+    }
+
+    plan->operands[plan->operand_count++] = operand;
+    return MYLITE_OK;
+}
+
+static int prepare_union_query_operand(mylite_db *database, const struct mylite_sql_ast_node *node,
+                                       mylite_stmt **out_operand)
+{
+    const struct mylite_sql_ast_node *operand = unwrap_union_query_primary(node);
+
+    *out_operand = NULL;
+    if (operand == NULL || operand->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return MYLITE_UNSUPPORTED;
+    }
+    return prepare_select_subquery_statement(database, operand, out_operand);
+}
+
+static const struct mylite_sql_ast_node *
+unwrap_union_query_primary(const struct mylite_sql_ast_node *node)
+{
+    const struct mylite_sql_ast_node *current = node;
+
+    while (current != NULL && current->kind == MYLITE_SQL_AST_QUERY_PRIMARY) {
+        current = child_at(current, 0U);
+    }
+    return current;
+}
+
+static int attach_union_result_metadata(mylite_stmt *stmt)
+{
+    const mylite_stmt *first_operand = NULL;
+    struct mylite_result_metadata metadata = {0};
+    int column_count = 0;
+
+    if (stmt == NULL || stmt->union_plan.operand_count == 0U) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    first_operand = stmt->union_plan.operands[0];
+    column_count = mylite_column_count(first_operand);
+    if (column_count <= 0) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    metadata.columns = calloc((size_t)column_count, sizeof(*metadata.columns));
+    if (metadata.columns == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    metadata.column_count = (size_t)column_count;
+
+    for (size_t index = 0U; index < metadata.column_count; ++index) {
+        const struct mylite_result_column_metadata *source =
+            result_metadata_column(first_operand, (int)index);
+        const char *label = mylite_column_name(first_operand, (int)index);
+        int status =
+            copy_result_metadata_text(stmt->database, &metadata.columns[index].name, label);
+
+        if (status == MYLITE_OK) {
+            metadata.columns[index].descriptor =
+                source == NULL ? field_descriptor_defaults() : source->descriptor;
+        }
+        if (status != MYLITE_OK) {
+            result_metadata_deinit(&metadata);
+            return status;
+        }
+    }
+
+    result_metadata_deinit(&stmt->result_metadata);
+    stmt->result_metadata = metadata;
+    return aggregate_union_result_metadata(stmt);
+}
+
+static int initialize_union_output_plan(mylite_stmt *stmt)
+{
+    if (stmt == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    for (size_t index = 0U; index < stmt->result_metadata.column_count; ++index) {
+        int status = add_union_output_column(stmt->database, &stmt->select_plan,
+                                             stmt->result_metadata.columns[index].name);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return stmt->select_plan.output_count == stmt->result_metadata.column_count ? MYLITE_OK
+                                                                                : MYLITE_NOMEM;
+}
+
+static int add_union_output_column(mylite_db *database, struct mylite_select_plan *plan,
+                                   const char *label)
+{
+    struct mylite_select_output_column output = {
+        .kind = MYLITE_SELECT_OUTPUT_EXPRESSION,
+        .column_index = plan->output_count,
+    };
+
+    output.label = label == NULL ? NULL : copy_span_text(label, strlen(label));
+    if (label != NULL && output.label == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    {
+        int status = add_select_output_column(plan, &output);
+
+        if (status != MYLITE_OK) {
+            select_output_column_deinit(&output);
+            (void)set_error_message(database, "out of memory");
+        }
+        return status;
+    }
+}
+
+static int aggregate_union_result_metadata(mylite_stmt *stmt)
+{
+    for (size_t operand_index = 1U; operand_index < stmt->union_plan.operand_count;
+         ++operand_index) {
+        const mylite_stmt *operand = stmt->union_plan.operands[operand_index];
+
+        for (size_t column_index = 0U; column_index < stmt->result_metadata.column_count;
+             ++column_index) {
+            const struct mylite_result_column_metadata *source =
+                result_metadata_column(operand, (int)column_index);
+            struct mylite_field_descriptor descriptor =
+                source == NULL ? field_descriptor_defaults() : source->descriptor;
+
+            aggregate_union_field_descriptor(
+                stmt->database, &stmt->result_metadata.columns[column_index].descriptor,
+                &descriptor);
+        }
+    }
+    return MYLITE_OK;
+}
+
+static void aggregate_union_field_descriptor(mylite_db *database,
+                                             struct mylite_field_descriptor *descriptor,
+                                             const struct mylite_field_descriptor *operand)
+{
+    bool nullable = false;
+
+    if (descriptor == NULL || operand == NULL) {
+        return;
+    }
+
+    nullable = descriptor->nullable;
+    if (!nullable) {
+        nullable = operand->nullable;
+    }
+    if (descriptor->type == MYLITE_FIELD_TYPE_NULL) {
+        *descriptor = *operand;
+        field_descriptor_set_nullable(descriptor, nullable);
+        return;
+    }
+    if (operand->type == MYLITE_FIELD_TYPE_NULL) {
+        field_descriptor_set_nullable(descriptor, nullable);
+        return;
+    }
+
+    if (union_field_descriptor_has_text_result(descriptor) ||
+        union_field_descriptor_has_text_result(operand)) {
+        bool binary_text = union_field_descriptor_uses_binary_text(descriptor);
+
+        if (!binary_text) {
+            binary_text = union_field_descriptor_uses_binary_text(operand);
+        }
+
+        unsigned int text_flags = 0U;
+
+        if (binary_text) {
+            text_flags = MYLITE_FIELD_FLAG_BINARY;
+        }
+
+        *descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = text_flags,
+            .length = max_u64(descriptor->length, operand->length),
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = field_descriptor_connection_charset_id(database),
+            .nullable = nullable,
+        };
+    } else if (union_field_descriptor_has_double_result(descriptor) ||
+               union_field_descriptor_has_double_result(operand)) {
+        *descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_DOUBLE,
+            .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = max_u64(max_u64(descriptor->length, operand->length),
+                              mylite_mysql_double_display_length),
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = nullable,
+        };
+    } else if (union_field_descriptor_has_decimal_result(descriptor) ||
+               union_field_descriptor_has_decimal_result(operand)) {
+        *descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_NEWDECIMAL,
+            .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = max_u64(descriptor->length, operand->length),
+            .decimals = (unsigned int)max_u64(descriptor->decimals, operand->decimals),
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = nullable,
+        };
+    } else {
+        descriptor->length = max_u64(descriptor->length, operand->length);
+        descriptor->decimals = (unsigned int)max_u64(descriptor->decimals, operand->decimals);
+        descriptor->flags |= operand->flags & MYLITE_FIELD_FLAG_UNSIGNED;
+        descriptor->flags |= MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM;
+        descriptor->charset_id = mylite_mysql_binary_charset_id;
+    }
+
+    field_descriptor_set_nullable(descriptor, nullable);
+}
+
+static bool union_field_descriptor_has_text_result(const struct mylite_field_descriptor *descriptor)
+{
+    if (descriptor == NULL) {
+        return false;
+    }
+    switch (descriptor->type) {
+    case MYLITE_FIELD_TYPE_STRING:
+    case MYLITE_FIELD_TYPE_VAR_STRING:
+    case MYLITE_FIELD_TYPE_BLOB:
+        return (descriptor->flags & MYLITE_FIELD_FLAG_NUM) == 0U;
+    default:
+        return field_descriptor_has_text_result(descriptor);
+    }
+}
+
+static bool
+union_field_descriptor_uses_binary_text(const struct mylite_field_descriptor *descriptor)
+{
+    if (descriptor == NULL) {
+        return false;
+    }
+    switch (descriptor->type) {
+    case MYLITE_FIELD_TYPE_STRING:
+    case MYLITE_FIELD_TYPE_VAR_STRING:
+    case MYLITE_FIELD_TYPE_BLOB:
+        return (descriptor->charset_id == mylite_mysql_binary_charset_id ||
+                descriptor->charset_id == mylite_mysql_utf8mb4_bin_charset_id ||
+                (descriptor->flags & MYLITE_FIELD_FLAG_BINARY) != 0U) != false;
+    default:
+        return false;
+    }
+}
+
+static bool
+union_field_descriptor_has_decimal_result(const struct mylite_field_descriptor *descriptor)
+{
+    return field_descriptor_has_decimal_result(descriptor);
+}
+
+static bool
+union_field_descriptor_has_double_result(const struct mylite_field_descriptor *descriptor)
+{
+    return field_descriptor_has_double_result(descriptor);
+}
+
+static int bind_union_global_order_by_clause(mylite_db *database,
+                                             const struct mylite_sql_ast_node *order_by_clause,
+                                             struct mylite_select_plan *plan)
+{
+    const struct mylite_sql_ast_node *items = child_at(order_by_clause, 0U);
+
+    if (order_by_clause == NULL || order_by_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE ||
+        items == NULL || items->kind != MYLITE_SQL_AST_ORDER_ITEM_LIST) {
+        return set_select_unsupported_order_error(database);
+    }
+
+    for (const struct mylite_sql_ast_node *item = items->first_child; item != NULL;
+         item = item->next_sibling) {
+        int status = bind_union_global_order_item(database, item, plan);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return plan->order_key_count == 0U ? set_select_unsupported_order_error(database) : MYLITE_OK;
+}
+
+static int bind_union_global_order_item(mylite_db *database,
+                                        const struct mylite_sql_ast_node *order_item,
+                                        struct mylite_select_plan *plan)
+{
+    const struct mylite_sql_ast_node *expression = child_at(order_item, 0U);
+    struct mylite_select_order_key order_key = {
+        .kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION,
+        .direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC,
+        .expression = expression,
+    };
+
+    if (order_item == NULL || order_item->kind != MYLITE_SQL_AST_ORDER_ITEM || expression == NULL) {
+        return set_select_unsupported_order_error(database);
+    }
+    if (order_item->key_part_order == MYLITE_SQL_AST_KEY_PART_ORDER_DESC) {
+        order_key.direction = MYLITE_SQL_AST_KEY_PART_ORDER_DESC;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL &&
+        expression->literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        uint64_t ordinal = 0U;
+
+        if (!parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
+            ordinal > plan->output_count) {
+            char *reference = copy_span_text(expression->span.text, expression->span.length);
+            int status = MYLITE_OK;
+
+            if (reference == NULL) {
+                (void)set_error_message(database, "out of memory");
+                return MYLITE_NOMEM;
+            }
+            status = set_select_unknown_order_column_error(database, reference);
+            free(reference);
+            return status;
+        }
+        order_key.kind = MYLITE_SELECT_ORDER_KEY_OUTPUT;
+        order_key.output_index = (size_t)(ordinal - 1U);
+        order_key.expression = NULL;
+        mark_select_output_order_reference(plan, order_key.output_index);
+        return add_select_order_key(plan, &order_key);
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
+        size_t index = 0U;
+        int status = resolve_union_order_reference(database, plan, expression, &kind, &index);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
+            order_key.kind = kind;
+            order_key.output_index = index;
+            order_key.expression = NULL;
+            mark_select_output_order_reference(plan, order_key.output_index);
+            return add_select_order_key(plan, &order_key);
+        }
+    }
+
+    {
+        int status = bind_union_global_order_expression(database, expression, plan);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return add_select_order_key(plan, &order_key);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_union_global_order_expression(mylite_db *database,
+                                              const struct mylite_sql_ast_node *expression,
+                                              struct mylite_select_plan *plan)
+{
+    if (expression == NULL) {
+        return set_select_unsupported_order_error(database);
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_IDENTIFIER:
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
+        enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
+        size_t index = 0U;
+        int status = resolve_union_order_reference(database, plan, expression, &kind, &index);
+
+        if (status == MYLITE_OK && kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
+            mark_select_output_order_reference(plan, index);
+        }
+        return status;
+    }
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+    case MYLITE_SQL_AST_EXPRESSION_LIST:
+    case MYLITE_SQL_AST_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_CASE_WHEN_LIST:
+    case MYLITE_SQL_AST_CASE_WHEN:
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
+        for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
+             child = child->next_sibling) {
+            int status = bind_union_global_order_expression(database, child, plan);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+        return bind_union_global_order_function_call(database, expression, plan);
+    case MYLITE_SQL_AST_AGGREGATE_CALL:
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
+    default:
+        return set_select_unsupported_order_error(database);
+    }
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_union_global_order_function_call(mylite_db *database,
+                                                 const struct mylite_sql_ast_node *expression,
+                                                 struct mylite_select_plan *plan)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+
+    if (!mylite_expression_is_supported_function_call(expression)) {
+        return set_select_unsupported_order_error(database);
+    }
+    for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                     : arguments->first_child;
+         child != NULL; child = child->next_sibling) {
+        int status = bind_union_global_order_expression(database, child, plan);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int resolve_union_order_reference(mylite_db *database, const struct mylite_select_plan *plan,
+                                         const struct mylite_sql_ast_node *expression,
+                                         enum mylite_select_order_key_kind *out_kind,
+                                         size_t *out_index)
+{
+    char *parts[3] = {0};
+    size_t part_count = 0U;
+    int status = copy_select_identifier_parts(expression, parts, &part_count);
+
+    *out_kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
+    *out_index = 0U;
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(database, "out of memory");
+        }
+        return status;
+    }
+
+    if (part_count != 1U) {
+        const char *table_name = part_count == 2U ? parts[0] : parts[1];
+
+        status = set_union_global_order_table_error(database, table_name);
+        goto cleanup;
+    }
+
+    {
+        size_t output_index = 0U;
+        size_t output_matches = select_output_label_count(plan, parts[0], &output_index);
+
+        if (output_matches > 1U) {
+            status = set_select_ambiguous_order_column_error(database, parts[0]);
+            goto cleanup;
+        }
+        if (output_matches == 1U) {
+            *out_kind = MYLITE_SELECT_ORDER_KEY_OUTPUT;
+            *out_index = output_index;
+            goto cleanup;
+        }
+    }
+
+    status = set_select_unknown_order_column_error(database, parts[0]);
+
+cleanup:
+    for (size_t index = 0U; index < part_count && index < 3U; ++index) {
+        free(parts[index]);
+    }
+    return status;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -4724,6 +5517,9 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
         return infer_quantified_subquery_expression_descriptor(database, plan, node,
                                                                out_descriptor);
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
         return MYLITE_UNSUPPORTED;
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
@@ -7648,6 +8444,9 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
         return bind_select_predicate_quantified_subquery_expression(
             database, expression, plan, clause_context, first_table, table_count);
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
         return set_select_unsupported_where_error(database);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return bind_select_predicate_expression_in_clause(database, child_at(expression, 0U), plan,
@@ -8320,6 +9119,9 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
                                                                           plan, clause_context);
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_USE_STATEMENT:
@@ -8850,6 +9652,9 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
         return bind_select_order_quantified_subquery_expression(database, expression, plan);
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
         return set_select_unsupported_order_error(database);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return bind_select_order_expression(database, child_at(expression, 0U), plan);
@@ -9536,6 +10341,9 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
         return select_expression_is_group_invariant(plan, child_at(expression, 0U),
                                                     reference_policy);
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
         return select_expression_children_are_group_invariant(plan, expression->first_child,
                                                               reference_policy);
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
@@ -11592,6 +12400,39 @@ static int set_select_unsupported_join_grouping_error(mylite_db *database)
     return MYLITE_EXEC_ERROR;
 }
 
+static int set_union_column_count_error(mylite_db *database)
+{
+    static const char message[] = "The used SELECT statements have a different number of columns";
+    int status = set_error_message(database, message);
+
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = append_database_warning(database, MYLITE_MYSQL_ER_WRONG_NUMBER_OF_COLUMNS_IN_SELECT,
+                                     message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_union_global_order_table_error(mylite_db *database, const char *table_name)
+{
+    char *message =
+        sqlite3_mprintf("Table '%q' from one of the SELECTs cannot be used in global ORDER clause",
+                        table_name == NULL ? "" : table_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status =
+            append_database_warning(database, MYLITE_MYSQL_ER_TABLENAME_NOT_ALLOWED_HERE, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
 static char *build_select_physical_sql(mylite_db *database, const struct mylite_select_plan *plan)
 {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
@@ -12131,6 +12972,7 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
         status = copy_scalar_select_statement(statement, stmt);
         break;
     case MYLITE_STMT_TABLE_SELECT:
+    case MYLITE_STMT_UNION_QUERY:
     case MYLITE_STMT_SQLITE:
         status = MYLITE_UNSUPPORTED;
         break;
@@ -12173,6 +13015,9 @@ static int execute_custom_statement(mylite_stmt *stmt)
     }
     if (stmt->kind == MYLITE_STMT_TABLE_SELECT) {
         return execute_table_select_statement(stmt);
+    }
+    if (stmt->kind == MYLITE_STMT_UNION_QUERY) {
+        return execute_union_query_statement(stmt);
     }
     if (stmt->executed) {
         return MYLITE_DONE;
@@ -12246,6 +13091,8 @@ static int execute_custom_statement(mylite_stmt *stmt)
         return execute_scalar_select_statement(stmt);
     case MYLITE_STMT_TABLE_SELECT:
         return execute_table_select_statement(stmt);
+    case MYLITE_STMT_UNION_QUERY:
+        return execute_union_query_statement(stmt);
     case MYLITE_STMT_SQLITE:
         status = MYLITE_MISUSE;
         break;
@@ -13513,6 +14360,9 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
         return set_update_unsupported_clause_error(stmt->database);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return bind_update_predicate_expression(stmt, table, child_at(expression, 0U),
@@ -14944,6 +15794,9 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
         return set_delete_unsupported_clause_error(stmt->database);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return bind_delete_predicate_expression(stmt, table, child_at(expression, 0U),
@@ -15350,7 +16203,7 @@ static int set_delete_unsupported_clause_error(mylite_db *database)
 
 static int execute_scalar_select_statement(mylite_stmt *stmt)
 {
-    if (stmt->scalar_result.has_row) {
+    if (!stmt->scalar_result.row_available || stmt->scalar_result.has_row) {
         return MYLITE_DONE;
     }
 
@@ -15388,6 +16241,366 @@ static int execute_table_select_statement(mylite_stmt *stmt)
     }
     ++stmt->select_result.next_row;
     return MYLITE_ROW;
+}
+
+static int execute_union_query_statement(mylite_stmt *stmt)
+{
+    int status = MYLITE_OK;
+
+    stmt->executed = true;
+    stmt->affected_rows = -1;
+
+    status = materialize_union_query_result(stmt);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (stmt->select_result.next_row >= stmt->select_result.row_count) {
+        table_select_current_values_deinit(&stmt->select_result);
+        stmt->select_result.has_current_row = false;
+        return MYLITE_DONE;
+    }
+
+    status =
+        set_table_select_current_row(stmt, &stmt->select_result.rows[stmt->select_result.next_row]);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    ++stmt->select_result.next_row;
+    return MYLITE_ROW;
+}
+
+static int materialize_union_query_result(mylite_stmt *stmt)
+{
+    struct mylite_expression_warnings saved_warnings = {0};
+    struct mylite_expression_warnings accumulated_warnings = {0};
+    int status = MYLITE_OK;
+
+    if (stmt->select_result.materialized) {
+        return MYLITE_OK;
+    }
+
+    saved_warnings = stmt->database->warnings;
+    stmt->database->warnings = (struct mylite_expression_warnings){0};
+
+    for (size_t index = 0U; status == MYLITE_OK && index < stmt->union_plan.operand_count;
+         ++index) {
+        enum mylite_sql_ast_set_duplicate_mode duplicate_mode =
+            index == 0U ? MYLITE_SQL_AST_SET_DUPLICATES_ALL
+                        : stmt->union_plan.operators[index - 1U];
+
+        status = scan_union_operand(stmt, stmt->union_plan.operands[index], duplicate_mode);
+        if (append_and_clear_union_database_warnings(stmt->database, &accumulated_warnings) !=
+            MYLITE_OK) {
+            status = MYLITE_NOMEM;
+        }
+    }
+
+    if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
+        for (size_t index = 0U; status == MYLITE_OK && index < stmt->select_result.row_count;
+             ++index) {
+            status = evaluate_union_order_values(stmt, &stmt->select_result.rows[index]);
+        }
+        if (status == MYLITE_OK) {
+            status = sort_table_select_result_rows(stmt);
+        }
+    }
+    if (status == MYLITE_OK) {
+        status = apply_table_select_limit(stmt);
+    }
+    if (status == MYLITE_OK) {
+        stmt->select_result.materialized = true;
+    }
+
+    if (append_and_clear_union_database_warnings(stmt->database, &accumulated_warnings) !=
+        MYLITE_OK) {
+        status = MYLITE_NOMEM;
+    }
+    stmt->database->warnings = saved_warnings;
+    if (append_subquery_warnings(&stmt->database->warnings, &accumulated_warnings) != MYLITE_OK) {
+        (void)set_error_message(stmt->database, "out of memory");
+        status = MYLITE_NOMEM;
+    }
+    mylite_expression_warnings_deinit(&accumulated_warnings);
+    return status;
+}
+
+static int scan_union_operand(mylite_stmt *stmt, mylite_stmt *operand,
+                              enum mylite_sql_ast_set_duplicate_mode duplicate_mode)
+{
+    bool distinct = duplicate_mode == MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT;
+
+    if (distinct) {
+        int status = deduplicate_union_result_rows(stmt);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+
+    for (;;) {
+        int status = execute_union_operand_statement(operand);
+
+        if (status == MYLITE_DONE) {
+            return MYLITE_OK;
+        }
+        if (status != MYLITE_ROW) {
+            return status;
+        }
+        status = append_union_operand_current_row(stmt, operand, distinct);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+}
+
+static int append_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *operand, bool distinct)
+{
+    struct mylite_table_select_row row = {0};
+    int status = copy_union_operand_current_row(stmt, operand, &row);
+
+    if (status == MYLITE_OK) {
+        if (distinct) {
+            status = append_union_distinct_row(stmt, &row);
+        } else {
+            status = append_table_select_result_row(stmt, &row);
+        }
+    }
+    table_select_row_deinit(&row);
+    return status;
+}
+
+static int execute_union_operand_statement(mylite_stmt *operand)
+{
+    if (operand == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    switch (operand->kind) {
+    case MYLITE_STMT_SQLITE: {
+        int rc = sqlite3_step(operand->sqlite_stmt);
+
+        if (rc == SQLITE_ROW) {
+            return MYLITE_ROW;
+        }
+        if (rc == SQLITE_DONE) {
+            return MYLITE_DONE;
+        }
+        return set_sqlite_error(operand->database);
+    }
+    case MYLITE_STMT_SCALAR_SELECT:
+        return execute_scalar_select_statement(operand);
+    case MYLITE_STMT_TABLE_SELECT:
+        return execute_table_select_statement(operand);
+    case MYLITE_STMT_CREATE_SCHEMA:
+    case MYLITE_STMT_ALTER_SCHEMA:
+    case MYLITE_STMT_DROP_SCHEMA:
+    case MYLITE_STMT_USE_SCHEMA:
+    case MYLITE_STMT_SET_NAMES:
+    case MYLITE_STMT_SET_CHARACTER_SET:
+    case MYLITE_STMT_CREATE_TABLE:
+    case MYLITE_STMT_DROP_TABLE:
+    case MYLITE_STMT_INSERT_VALUES:
+    case MYLITE_STMT_INSERT_SET:
+    case MYLITE_STMT_UNION_QUERY:
+    case MYLITE_STMT_UPDATE:
+    case MYLITE_STMT_DELETE:
+    case MYLITE_STMT_START_TRANSACTION:
+    case MYLITE_STMT_BEGIN_TRANSACTION:
+    case MYLITE_STMT_COMMIT:
+    case MYLITE_STMT_ROLLBACK:
+    case MYLITE_STMT_SAVEPOINT:
+    case MYLITE_STMT_ROLLBACK_TO_SAVEPOINT:
+    case MYLITE_STMT_RELEASE_SAVEPOINT:
+        break;
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+static int copy_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *operand,
+                                          struct mylite_table_select_row *out_row)
+{
+    size_t column_count = stmt->select_plan.output_count;
+
+    *out_row = (struct mylite_table_select_row){0};
+    out_row->output_values = calloc(column_count, sizeof(*out_row->output_values));
+    if (out_row->output_values == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    out_row->output_value_count = column_count;
+
+    for (size_t index = 0U; index < column_count; ++index) {
+        int status =
+            copy_subquery_statement_row_value(operand, index, &out_row->output_values[index]);
+
+        if (status != MYLITE_OK) {
+            if (status == MYLITE_NOMEM) {
+                (void)set_error_message(stmt->database, "out of memory");
+            }
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int append_union_distinct_row(mylite_stmt *stmt, struct mylite_table_select_row *row)
+{
+    if (table_select_distinct_row_exists(stmt, row)) {
+        table_select_row_deinit(row);
+        return MYLITE_OK;
+    }
+    return append_table_select_result_row(stmt, row);
+}
+
+static int deduplicate_union_result_rows(mylite_stmt *stmt)
+{
+    size_t kept = 0U;
+
+    for (size_t index = 0U; index < stmt->select_result.row_count; ++index) {
+        bool duplicate = false;
+
+        for (size_t compare = 0U; compare < kept; ++compare) {
+            if (table_select_output_values_equal(stmt, &stmt->select_result.rows[compare],
+                                                 &stmt->select_result.rows[index])) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (duplicate) {
+            table_select_row_deinit(&stmt->select_result.rows[index]);
+            continue;
+        }
+        if (kept != index) {
+            stmt->select_result.rows[kept] = stmt->select_result.rows[index];
+            stmt->select_result.rows[index] = (struct mylite_table_select_row){0};
+        }
+        ++kept;
+    }
+    stmt->select_result.row_count = kept;
+    return MYLITE_OK;
+}
+
+static int evaluate_union_order_values(mylite_stmt *stmt, struct mylite_table_select_row *row)
+{
+    row->order_values = calloc(stmt->select_plan.order_key_count, sizeof(*row->order_values));
+    if (row->order_values == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    row->order_value_count = stmt->select_plan.order_key_count;
+
+    for (size_t index = 0U; index < stmt->select_plan.order_key_count; ++index) {
+        int status = evaluate_union_order_key(stmt, row, &stmt->select_plan.order_keys[index],
+                                              &row->order_values[index]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_union_order_key(mylite_stmt *stmt, const struct mylite_table_select_row *row,
+                                    const struct mylite_select_order_key *order_key,
+                                    struct mylite_expression_value *out_value)
+{
+    if (order_key->kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
+        if (order_key->output_index >= row->output_value_count ||
+            mylite_expression_value_copy(&row->output_values[order_key->output_index], out_value) !=
+                0) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        return MYLITE_OK;
+    }
+
+    {
+        struct mylite_union_expression_context user_context = {
+            .stmt = stmt,
+            .row = row,
+        };
+        struct mylite_expression_eval_context context = {
+            .user_data = &user_context,
+            .resolve_identifier = resolve_union_expression_identifier,
+        };
+        int status = mylite_expression_eval_with_context(order_key->expression, &context,
+                                                         &stmt->database->warnings, out_value);
+
+        if (status == 0) {
+            return MYLITE_OK;
+        }
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        if (stmt->database->error_message != NULL) {
+            return MYLITE_EXEC_ERROR;
+        }
+    }
+    return set_select_unsupported_order_error(stmt->database);
+}
+
+static int resolve_union_expression_identifier(void *user_data,
+                                               const struct mylite_sql_ast_node *identifier,
+                                               struct mylite_expression_value *out_value)
+{
+    struct mylite_union_expression_context *context = user_data;
+    char *parts[3] = {0};
+    size_t part_count = 0U;
+    int status = MYLITE_OK;
+
+    if (context == NULL || context->stmt == NULL || context->row == NULL) {
+        return -1;
+    }
+
+    status = copy_select_identifier_parts(identifier, parts, &part_count);
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(context->stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        return -1;
+    }
+    if (part_count == 1U) {
+        size_t output_index = 0U;
+        size_t output_matches =
+            select_output_label_count(&context->stmt->select_plan, parts[0], &output_index);
+
+        if (output_matches == 1U && output_index < context->row->output_value_count) {
+            status = mylite_expression_value_copy(&context->row->output_values[output_index],
+                                                  out_value) == 0
+                         ? 0
+                         : MYLITE_NOMEM;
+        } else {
+            status = -1;
+        }
+    } else {
+        status = -1;
+    }
+
+    for (size_t index = 0U; index < part_count && index < 3U; ++index) {
+        free(parts[index]);
+    }
+    if (status == MYLITE_NOMEM) {
+        (void)set_error_message(context->stmt->database, "out of memory");
+    }
+    return status;
+}
+
+static int append_and_clear_union_database_warnings(mylite_db *database,
+                                                    struct mylite_expression_warnings *warnings)
+{
+    struct mylite_expression_warnings current = database->warnings;
+    int status = MYLITE_OK;
+
+    database->warnings = (struct mylite_expression_warnings){0};
+    status = append_subquery_warnings(warnings, &current);
+    mylite_expression_warnings_deinit(&current);
+    if (status != MYLITE_OK) {
+        (void)set_error_message(database, "out of memory");
+    }
+    return status;
 }
 
 static int materialize_table_select_result(mylite_stmt *stmt)
@@ -18338,6 +19551,9 @@ static bool table_select_text_descriptor_is_binary(const struct mylite_field_des
     case MYLITE_FIELD_TYPE_STRING:
     case MYLITE_FIELD_TYPE_VAR_STRING:
     case MYLITE_FIELD_TYPE_BLOB:
+        if ((descriptor->flags & MYLITE_FIELD_FLAG_BINARY) != 0U) {
+            return true;
+        }
         if (descriptor->charset_id == mylite_mysql_binary_charset_id ||
             descriptor->charset_id == mylite_mysql_utf8mb4_bin_charset_id) {
             return true;
@@ -18504,8 +19720,9 @@ static int copy_table_select_row_value(const struct mylite_table_select_row *row
 static const struct mylite_expression_value *
 table_select_current_output_value(const mylite_stmt *stmt, int column)
 {
-    if (stmt == NULL || stmt->kind != MYLITE_STMT_TABLE_SELECT || column < 0 ||
-        (size_t)column >= stmt->select_result.current_value_count ||
+    if (stmt == NULL ||
+        (stmt->kind != MYLITE_STMT_TABLE_SELECT && stmt->kind != MYLITE_STMT_UNION_QUERY) ||
+        column < 0 || (size_t)column >= stmt->select_result.current_value_count ||
         !stmt->select_result.has_current_row) {
         return NULL;
     }
@@ -18514,8 +19731,9 @@ table_select_current_output_value(const mylite_stmt *stmt, int column)
 
 static const char *table_select_current_output_text(const mylite_stmt *stmt, int column)
 {
-    if (stmt == NULL || stmt->kind != MYLITE_STMT_TABLE_SELECT || column < 0 ||
-        (size_t)column >= stmt->select_result.current_value_count ||
+    if (stmt == NULL ||
+        (stmt->kind != MYLITE_STMT_TABLE_SELECT && stmt->kind != MYLITE_STMT_UNION_QUERY) ||
+        column < 0 || (size_t)column >= stmt->select_result.current_value_count ||
         !stmt->select_result.has_current_row) {
         return NULL;
     }
@@ -21251,6 +22469,7 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
     case MYLITE_STMT_RELEASE_SAVEPOINT:
     case MYLITE_STMT_SCALAR_SELECT:
     case MYLITE_STMT_TABLE_SELECT:
+    case MYLITE_STMT_UNION_QUERY:
     case MYLITE_STMT_SQLITE:
         return MYLITE_OK;
     }
@@ -21520,6 +22739,10 @@ static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statem
                                         mylite_stmt *stmt)
 {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *order_by_clause =
+        find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    const struct mylite_sql_ast_node *limit_clause =
+        find_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
     size_t column_count = 0U;
 
     for (const struct mylite_sql_ast_node *item = select_list == NULL ? NULL
@@ -21541,22 +22764,64 @@ static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statem
     stmt->scalar_result.value_count = column_count;
     stmt->result_metadata.column_count = column_count;
     stmt->affected_rows = -1;
+    stmt->scalar_result.row_available = true;
+
+    if (limit_clause != NULL) {
+        int status = bind_scalar_select_limit_clause(stmt, limit_clause);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
 
     size_t index = 0U;
     for (const struct mylite_sql_ast_node *item = select_list->first_child; item != NULL;
          item = item->next_sibling, ++index) {
-        const struct mylite_sql_ast_node *expression = child_at(item, 0U);
-        const struct mylite_sql_ast_node *alias = child_at(item, 1U);
-        int status =
-            evaluate_scalar_select_expression(stmt, expression, &stmt->scalar_result.values[index]);
+        int status = copy_scalar_select_item(stmt, item, index);
 
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    if (order_by_clause != NULL) {
+        return validate_scalar_select_order_by_clause(stmt->database, order_by_clause,
+                                                      &stmt->result_metadata);
+    }
+    return MYLITE_OK;
+}
+
+static int bind_scalar_select_limit_clause(mylite_stmt *stmt,
+                                           const struct mylite_sql_ast_node *limit_clause)
+{
+    int status = bind_select_limit_clause(limit_clause, &stmt->select_plan);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    stmt->scalar_result.row_available = table_select_limit_row_is_kept(
+        &stmt->select_plan.limit, (struct mylite_select_limit_position){
+                                      .matched_row = 0U,
+                                      .kept_count = 0U,
+                                  });
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int copy_scalar_select_item(mylite_stmt *stmt, const struct mylite_sql_ast_node *item,
+                                   size_t index)
+{
+    const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+    const struct mylite_sql_ast_node *alias = child_at(item, 1U);
+    const struct mylite_expression_value *descriptor_value = NULL;
+    int status = MYLITE_OK;
+
+    if (stmt->scalar_result.row_available) {
+        status =
+            evaluate_scalar_select_expression(stmt, expression, &stmt->scalar_result.values[index]);
         if (status != MYLITE_OK) {
             int warning_status = append_scalar_select_warnings_to_database(stmt);
 
-            if (warning_status != MYLITE_OK) {
-                return warning_status;
-            }
-            return status;
+            return warning_status != MYLITE_OK ? warning_status : status;
         }
         stmt->scalar_result.texts[index] =
             mylite_expression_value_to_text(&stmt->scalar_result.values[index]);
@@ -21564,23 +22829,205 @@ static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statem
             stmt->scalar_result.texts[index] == NULL) {
             return MYLITE_NOMEM;
         }
-        if (alias != NULL) {
-            stmt->result_metadata.columns[index].name = copy_select_alias(alias);
-        } else {
-            stmt->result_metadata.columns[index].name =
-                copy_span_text(expression->span.text, expression->span.length);
-        }
-        if (stmt->result_metadata.columns[index].name == NULL) {
-            return MYLITE_NOMEM;
-        }
-        status = infer_scalar_expression_descriptor(
-            stmt->database, expression, &stmt->scalar_result.values[index],
-            &stmt->result_metadata.columns[index].descriptor);
+        descriptor_value = &stmt->scalar_result.values[index];
+    }
+
+    if (alias != NULL) {
+        stmt->result_metadata.columns[index].name = copy_select_alias(alias);
+    } else {
+        stmt->result_metadata.columns[index].name =
+            copy_span_text(expression->span.text, expression->span.length);
+    }
+    if (stmt->result_metadata.columns[index].name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    return infer_scalar_expression_descriptor(stmt->database, expression, descriptor_value,
+                                              &stmt->result_metadata.columns[index].descriptor);
+}
+
+static int validate_scalar_select_order_by_clause(mylite_db *database,
+                                                  const struct mylite_sql_ast_node *order_by_clause,
+                                                  const struct mylite_result_metadata *metadata)
+{
+    const struct mylite_sql_ast_node *items = child_at(order_by_clause, 0U);
+
+    if (order_by_clause == NULL || order_by_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE ||
+        items == NULL || items->kind != MYLITE_SQL_AST_ORDER_ITEM_LIST) {
+        return set_select_unsupported_order_error(database);
+    }
+
+    for (const struct mylite_sql_ast_node *item = items->first_child; item != NULL;
+         item = item->next_sibling) {
+        int status = validate_scalar_select_order_item(database, item, metadata);
+
         if (status != MYLITE_OK) {
             return status;
         }
     }
     return MYLITE_OK;
+}
+
+static int validate_scalar_select_order_item(mylite_db *database,
+                                             const struct mylite_sql_ast_node *order_item,
+                                             const struct mylite_result_metadata *metadata)
+{
+    const struct mylite_sql_ast_node *expression = child_at(order_item, 0U);
+
+    if (order_item == NULL || order_item->kind != MYLITE_SQL_AST_ORDER_ITEM || expression == NULL) {
+        return set_select_unsupported_order_error(database);
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL &&
+        expression->literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        uint64_t ordinal = 0U;
+
+        if (!parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
+            ordinal > metadata->column_count) {
+            char *reference = copy_span_text(expression->span.text, expression->span.length);
+            int status = MYLITE_OK;
+
+            if (reference == NULL) {
+                (void)set_error_message(database, "out of memory");
+                return MYLITE_NOMEM;
+            }
+            status = set_select_unknown_order_column_error(database, reference);
+            free(reference);
+            return status;
+        }
+        return MYLITE_OK;
+    }
+
+    return validate_scalar_select_order_expression(database, expression, metadata);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int validate_scalar_select_order_expression(mylite_db *database,
+                                                   const struct mylite_sql_ast_node *expression,
+                                                   const struct mylite_result_metadata *metadata)
+{
+    if (expression == NULL) {
+        return set_select_unsupported_order_error(database);
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_IDENTIFIER:
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+        return resolve_scalar_select_order_reference(database, metadata, expression);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+    case MYLITE_SQL_AST_EXPRESSION_LIST:
+    case MYLITE_SQL_AST_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_CASE_WHEN_LIST:
+    case MYLITE_SQL_AST_CASE_WHEN:
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
+        for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
+             child = child->next_sibling) {
+            int status = validate_scalar_select_order_expression(database, child, metadata);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+        return validate_scalar_select_order_function_call(database, expression, metadata);
+    case MYLITE_SQL_AST_AGGREGATE_CALL:
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
+    default:
+        return set_select_unsupported_order_error(database);
+    }
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int validate_scalar_select_order_function_call(mylite_db *database,
+                                                      const struct mylite_sql_ast_node *expression,
+                                                      const struct mylite_result_metadata *metadata)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+
+    if (!mylite_expression_is_supported_function_call(expression)) {
+        return set_select_unsupported_order_error(database);
+    }
+    for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                     : arguments->first_child;
+         child != NULL; child = child->next_sibling) {
+        int status = validate_scalar_select_order_expression(database, child, metadata);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int resolve_scalar_select_order_reference(mylite_db *database,
+                                                 const struct mylite_result_metadata *metadata,
+                                                 const struct mylite_sql_ast_node *expression)
+{
+    char *parts[3] = {0};
+    size_t part_count = 0U;
+    int status = copy_select_identifier_parts(expression, parts, &part_count);
+
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(database, "out of memory");
+        }
+        return status;
+    }
+
+    if (part_count != 1U) {
+        const char *table_name = part_count == 2U ? parts[0] : parts[1];
+
+        status = set_select_unknown_table_error(database, table_name);
+        goto cleanup;
+    }
+
+    {
+        size_t output_index = 0U;
+        size_t output_matches = scalar_result_label_count(metadata, parts[0], &output_index);
+
+        (void)output_index;
+        if (output_matches > 1U) {
+            status = set_select_ambiguous_order_column_error(database, parts[0]);
+            goto cleanup;
+        }
+        if (output_matches == 0U) {
+            status = set_select_unknown_order_column_error(database, parts[0]);
+        }
+    }
+
+cleanup:
+    for (size_t index = 0U; index < part_count && index < 3U; ++index) {
+        free(parts[index]);
+    }
+    return status;
+}
+
+static size_t scalar_result_label_count(const struct mylite_result_metadata *metadata,
+                                        const char *label, size_t *out_index)
+{
+    size_t count = 0U;
+
+    *out_index = metadata == NULL ? 0U : metadata->column_count;
+    for (size_t index = 0U; metadata != NULL && index < metadata->column_count; ++index) {
+        if (metadata->columns[index].name != NULL &&
+            ascii_case_equal(metadata->columns[index].name, label)) {
+            if (count == 0U) {
+                *out_index = index;
+            }
+            ++count;
+        }
+    }
+    return count;
 }
 
 static int append_scalar_select_warnings_to_database(mylite_stmt *stmt)
@@ -23469,6 +24916,9 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+    case MYLITE_SQL_AST_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_UNION_EXPRESSION:
+    case MYLITE_SQL_AST_QUERY_PRIMARY:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:
@@ -26571,6 +28021,21 @@ static void select_plan_deinit(struct mylite_select_plan *plan)
     }
     free(plan->using_requests);
     *plan = (struct mylite_select_plan){0};
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static void union_plan_deinit(struct mylite_union_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < plan->operand_count; ++index) {
+        mylite_finalize(plan->operands[index]);
+    }
+    free((void *)plan->operands);
+    free(plan->operators);
+    *plan = (struct mylite_union_plan){0};
 }
 
 static void select_constant_values_deinit(mylite_stmt *stmt)

@@ -221,9 +221,10 @@ token sink:
   DELETE` rejection, and MySQL's `MATCH`-before-actions order. Trailing table options
   must start with known MySQL table-option keywords and validate selected value
   domains, including numeric options, string-literal options, closed
-  `INSERT_METHOD`, closed `ROW_FORMAT`, storage values, `UNION` lists, and
-  `START TRANSACTION`. No-definition and post-definition CTAS forms are
-  recognized explicitly with table/partition options, including
+  `INSERT_METHOD`, closed `ROW_FORMAT`, decimal-versus-size number domains,
+  bounded `STATS_SAMPLE_PAGES`, storage values without equality signs,
+  `UNION` table-name lists, and `START TRANSACTION`. No-definition and
+  post-definition CTAS forms are recognized explicitly with table/partition options, including
   `IGNORE`/`REPLACE` duplicate-handling modifiers, and no-definition
   table-option forms must include a query body. Direct CTAS query bodies validate
   `SELECT` list tails, and parenthesized CTAS query bodies validate their inner
@@ -270,8 +271,10 @@ token sink:
   `INSERT_METHOD` and `ROW_FORMAT` values, string-literal data/index
   directories, string-literal compression/password/connection/engine
   attributes, `AUTOEXTEND_SIZE`, `TABLE_CHECKSUM`, `START TRANSACTION`,
-  identifier-valued `ALGORITHM`/`LOCK` options, tablespace discard/import
-  forms, and validated `ADD`/`CHANGE`/`MODIFY` column type starts plus
+  decimal-versus-size number domains, `STATS_SAMPLE_PAGES` bounds, storage
+  option equality rejection, identifier-valued `ALGORITHM`/`LOCK` options,
+  tablespace discard/import forms, and validated `ADD`/`CHANGE`/`MODIFY`
+  column type starts plus
   MySQL's `DOUBLE PRECISION` modifier placement, column-definition attribute
   starts and selected closed attribute values including generated-column head
   validation, repeated `COLLATE` rejection, `DEFAULT` charset/collation value

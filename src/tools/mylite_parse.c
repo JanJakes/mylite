@@ -15,6 +15,7 @@ static int parse_stdin(OutputMode mode);
 static int parse_file(const char *path, OutputMode mode);
 static int parse_sql_text(const char *sql, const char *label, OutputMode mode);
 static void dump_statements(const MyliteAst *ast);
+static const char *node_symbol_or_none(const MyliteAstNode *node);
 static void dump_ast_node(const MyliteAstNode *node, unsigned depth);
 static char *read_stream(FILE *stream, const char *label);
 
@@ -151,7 +152,9 @@ static void dump_statements(const MyliteAst *ast) {
              "generated_expr=%zu..%zu generated_storage=%zu..%zu "
              "comment=%zu..%zu comment_value=%zu..%zu check=%zu..%zu "
              "check_expr=%zu..%zu check_enforced=%s:%zu..%zu "
-             "reference=%zu..%zu\n",
+             "reference=%zu..%zu type_node=%s options_node=%s "
+             "default_node=%s default_value_node=%s generated_expr_node=%s "
+             "check_expr_node=%s reference_node=%s\n",
              j,
              mylite_create_table_column_type_family_name(
                  mylite_ast_create_table_column_type_family(ast, i, j)),
@@ -199,7 +202,21 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_table_column_check_enforcement_start(ast, i, j),
              mylite_ast_create_table_column_check_enforcement_end(ast, i, j),
              mylite_ast_create_table_column_reference_start(ast, i, j),
-             mylite_ast_create_table_column_reference_end(ast, i, j));
+             mylite_ast_create_table_column_reference_end(ast, i, j),
+             node_symbol_or_none(
+                 mylite_ast_create_table_column_type_node(ast, i, j)),
+             node_symbol_or_none(
+                 mylite_ast_create_table_column_options_node(ast, i, j)),
+             node_symbol_or_none(
+                 mylite_ast_create_table_column_default_node(ast, i, j)),
+             node_symbol_or_none(
+                 mylite_ast_create_table_column_default_value_node(ast, i, j)),
+             node_symbol_or_none(
+                 mylite_ast_create_table_column_generated_expression_node(ast, i, j)),
+             node_symbol_or_none(
+                 mylite_ast_create_table_column_check_expression_node(ast, i, j)),
+             node_symbol_or_none(
+                 mylite_ast_create_table_column_reference_node(ast, i, j)));
     }
     for (size_t j = 0; j < key_count; j++) {
       size_t column_count_for_key =
@@ -325,6 +342,11 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_table_option_value_end(ast, i, j));
     }
   }
+}
+
+static const char *node_symbol_or_none(const MyliteAstNode *node) {
+  const char *symbol = mylite_ast_node_symbol_name(node);
+  return symbol == NULL ? "none" : symbol;
 }
 
 static void dump_ast_node(const MyliteAstNode *node, unsigned depth) {

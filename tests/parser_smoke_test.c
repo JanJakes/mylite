@@ -36,6 +36,16 @@ typedef struct ExpectedCreateTableColumn {
   const char *check_enforcement_span;
   const char *reference;
   MyliteCreateTableColumnTypeKind type_kind;
+  const char *type_node_symbol;
+  const char *options_node_symbol;
+  const char *default_node_symbol;
+  const char *default_value_node_symbol;
+  const char *on_update_value_node_symbol;
+  const char *generated_expression_node_symbol;
+  const char *generated_storage_node_symbol;
+  const char *check_expression_node_symbol;
+  const char *check_enforcement_node_symbol;
+  const char *reference_node_symbol;
 } ExpectedCreateTableColumn;
 
 typedef struct ExpectedCreateTableKeyPart {
@@ -120,6 +130,8 @@ static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
 static int span_matches_when_expected(const char *sql, size_t start, size_t end,
                                       const char *expected);
+static int node_symbol_matches_when_expected(const MyliteAstNode *node,
+                                             const char *expected);
 
 int main(void) {
   int failures = 0;
@@ -763,7 +775,8 @@ int main(void) {
          .type_name = "DECIMAL",
          .type_parameters = "(10,2)",
          .type_attributes = "UNSIGNED ZEROFILL",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL,
+         .type_node_symbol = "nt_type"},
         {.definition = "e ENUM('a','b') DEFAULT 'a'",
          .name = "e",
          .type = "ENUM('a','b')",
@@ -774,7 +787,11 @@ int main(void) {
          .type_parameters = "('a','b')",
          .default_span = "DEFAULT 'a'",
          .default_value = "'a'",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_ENUM},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_ENUM,
+         .type_node_symbol = "nt_type",
+         .options_node_symbol = "nt_column_option_list_opt",
+         .default_node_symbol = "nt_column_option",
+         .default_value_node_symbol = "nt_default_value_expr"},
         {.definition = "v VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin COMMENT 'x'",
          .name = "v",
          .type = "VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin",
@@ -884,7 +901,11 @@ int main(void) {
          .type_name = "INT",
          .default_span = "DEFAULT 1",
          .default_value = "1",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .type_node_symbol = "nt_type",
+         .options_node_symbol = "nt_column_option_list_opt",
+         .default_node_symbol = "nt_column_option",
+         .default_value_node_symbol = "nt_default_value_expr"},
         {.definition = "ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
          .name = "ts",
          .type = "TIMESTAMP",
@@ -897,7 +918,11 @@ int main(void) {
          .default_value = "CURRENT_TIMESTAMP",
          .on_update = "ON UPDATE CURRENT_TIMESTAMP",
          .on_update_value = "CURRENT_TIMESTAMP",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TIMESTAMP},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TIMESTAMP,
+         .type_node_symbol = "nt_type",
+         .options_node_symbol = "nt_column_option_list_opt",
+         .default_value_node_symbol = "nt_default_value_expr",
+         .on_update_value_node_symbol = "nt_now_sym_option_fraction"},
         {.definition = "g INT GENERATED ALWAYS AS (a + 1) STORED",
          .name = "g",
          .type = "INT",
@@ -909,7 +934,9 @@ int main(void) {
          .generated = "GENERATED ALWAYS AS (a + 1) STORED",
          .generated_expression = "a + 1",
          .generated_storage = "STORED",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .generated_expression_node_symbol = "nt_expression",
+         .generated_storage_node_symbol = "nt_virtual_or_stored"},
         {.definition = "h INT AS (a + 2) VIRTUAL",
          .name = "h",
          .type = "INT",
@@ -921,7 +948,9 @@ int main(void) {
          .generated = "AS (a + 2) VIRTUAL",
          .generated_expression = "a + 2",
          .generated_storage = "VIRTUAL",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .generated_expression_node_symbol = "nt_expression",
+         .generated_storage_node_symbol = "nt_virtual_or_stored"},
         {.definition = "r INT REFERENCES parent(id)",
          .name = "r",
          .type = "INT",
@@ -930,7 +959,8 @@ int main(void) {
          .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_REFERENCES,
          .type_name = "INT",
          .reference = "REFERENCES parent(id)",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT},
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .reference_node_symbol = "nt_refer_def"},
         {.definition = "c INT CHECK (c > 0) NOT ENFORCED",
          .name = "c",
          .type = "INT",
@@ -943,7 +973,10 @@ int main(void) {
          .check_enforcement =
              MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_NOT_ENFORCED,
          .check_enforcement_span = "NOT ENFORCED",
-         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT}};
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .check_expression_node_symbol = "nt_expression",
+         .check_enforcement_node_symbol =
+             "nt_enforced_or_not_or_not_null_opt"}};
     failures += expect_create_table_columns(
         "CREATE TABLE t (a INT DEFAULT 1, "
         "ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
@@ -1407,6 +1440,36 @@ static int expect_create_table_columns(const char *sql,
         (columns[i].type_kind != MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN &&
          mylite_ast_create_table_column_type_kind(ast, 0, i) !=
              columns[i].type_kind) ||
+        !node_symbol_matches_when_expected(
+            mylite_ast_create_table_column_type_node(ast, 0, i),
+            columns[i].type_node_symbol) ||
+        !node_symbol_matches_when_expected(
+            mylite_ast_create_table_column_options_node(ast, 0, i),
+            columns[i].options_node_symbol) ||
+        !node_symbol_matches_when_expected(
+            mylite_ast_create_table_column_default_node(ast, 0, i),
+            columns[i].default_node_symbol) ||
+        !node_symbol_matches_when_expected(
+            mylite_ast_create_table_column_default_value_node(ast, 0, i),
+            columns[i].default_value_node_symbol) ||
+        !node_symbol_matches_when_expected(
+            mylite_ast_create_table_column_on_update_value_node(ast, 0, i),
+            columns[i].on_update_value_node_symbol) ||
+        !node_symbol_matches_when_expected(
+            mylite_ast_create_table_column_generated_expression_node(ast, 0, i),
+            columns[i].generated_expression_node_symbol) ||
+        !node_symbol_matches_when_expected(
+            mylite_ast_create_table_column_generated_storage_node(ast, 0, i),
+            columns[i].generated_storage_node_symbol) ||
+        !node_symbol_matches_when_expected(
+            mylite_ast_create_table_column_check_expression_node(ast, 0, i),
+            columns[i].check_expression_node_symbol) ||
+        !node_symbol_matches_when_expected(
+            mylite_ast_create_table_column_check_enforcement_node(ast, 0, i),
+            columns[i].check_enforcement_node_symbol) ||
+        !node_symbol_matches_when_expected(
+            mylite_ast_create_table_column_reference_node(ast, 0, i),
+            columns[i].reference_node_symbol) ||
         mylite_ast_create_table_column_flags(ast, 0, i) != columns[i].flags ||
         !span_matches_when_expected(
             sql, mylite_ast_create_table_column_type_name_start(ast, 0, i),
@@ -1958,6 +2021,15 @@ static int span_matches(const char *sql, size_t start, size_t end,
 static int span_matches_when_expected(const char *sql, size_t start, size_t end,
                                       const char *expected) {
   return expected == NULL || span_matches(sql, start, end, expected);
+}
+
+static int node_symbol_matches_when_expected(const MyliteAstNode *node,
+                                             const char *expected) {
+  if (expected == NULL) {
+    return 1;
+  }
+  const char *actual = mylite_ast_node_symbol_name(node);
+  return actual != NULL && strcmp(actual, expected) == 0;
 }
 
 static int expect_ast_statements(const char *sql, size_t count,

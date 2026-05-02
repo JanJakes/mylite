@@ -36,6 +36,7 @@ typedef struct MyliteAstCreateTableColumn {
   size_t name_end;
   size_t type_start;
   size_t type_end;
+  const MyliteAstNode *type_node;
   size_t type_name_start;
   size_t type_name_end;
   size_t type_parameters_start;
@@ -44,33 +45,46 @@ typedef struct MyliteAstCreateTableColumn {
   size_t type_attributes_end;
   size_t options_start;
   size_t options_end;
+  const MyliteAstNode *options_node;
   size_t default_start;
   size_t default_end;
+  const MyliteAstNode *default_node;
   size_t default_value_start;
   size_t default_value_end;
+  const MyliteAstNode *default_value_node;
   size_t on_update_start;
   size_t on_update_end;
+  const MyliteAstNode *on_update_node;
   size_t on_update_value_start;
   size_t on_update_value_end;
+  const MyliteAstNode *on_update_value_node;
   size_t generated_start;
   size_t generated_end;
+  const MyliteAstNode *generated_node;
   size_t generated_expression_start;
   size_t generated_expression_end;
+  const MyliteAstNode *generated_expression_node;
   size_t generated_storage_start;
   size_t generated_storage_end;
+  const MyliteAstNode *generated_storage_node;
   size_t comment_start;
   size_t comment_end;
+  const MyliteAstNode *comment_node;
   size_t comment_value_start;
   size_t comment_value_end;
   size_t check_start;
   size_t check_end;
+  const MyliteAstNode *check_node;
   size_t check_expression_start;
   size_t check_expression_end;
+  const MyliteAstNode *check_expression_node;
   MyliteCreateTableCheckEnforcement check_enforcement;
   size_t check_enforcement_start;
   size_t check_enforcement_end;
+  const MyliteAstNode *check_enforcement_node;
   size_t reference_start;
   size_t reference_end;
+  const MyliteAstNode *reference_node;
 } MyliteAstCreateTableColumn;
 
 typedef struct MyliteAstCreateTableKeyPart {
@@ -1331,6 +1345,104 @@ size_t mylite_ast_create_table_column_reference_end(const MyliteAst *ast,
   const MyliteAstCreateTableColumn *column =
       mylite_ast_create_table_column_at(ast, statement_index, column_index);
   return column == NULL ? 0 : column->reference_end;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_type_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->type_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_options_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->options_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_default_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->default_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_default_value_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->default_value_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_on_update_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->on_update_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_on_update_value_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->on_update_value_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_generated_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->generated_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_generated_expression_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->generated_expression_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_generated_storage_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->generated_storage_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_comment_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->comment_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_check_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->check_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_check_expression_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->check_expression_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_check_enforcement_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->check_enforcement_node;
+}
+
+const MyliteAstNode *mylite_ast_create_table_column_reference_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->reference_node;
 }
 
 MyliteCreateTableColumnTypeFamily mylite_ast_create_table_column_type_family(
@@ -2807,6 +2919,7 @@ static void mylite_ast_fill_create_table_column(
   if (type != NULL) {
     column->type_family = mylite_ast_classify_column_type(type);
     column->type_kind = mylite_ast_classify_column_type_kind(type);
+    column->type_node = type;
     column->type_start = mylite_ast_node_start(type);
     column->type_end = mylite_ast_node_end(type);
     mylite_ast_set_create_table_column_type_details(column, type);
@@ -2815,6 +2928,7 @@ static void mylite_ast_fill_create_table_column(
   const MyliteAstNode *options =
       mylite_ast_find_first_symbol(node, "nt_column_option_list_opt");
   if (options != NULL && options->has_span) {
+    column->options_node = options;
     column->options_start = mylite_ast_node_start(options);
     column->options_end = mylite_ast_node_end(options);
   }
@@ -2967,12 +3081,14 @@ static void mylite_ast_set_create_table_column_option_detail(
 
 static void mylite_ast_set_create_table_column_default_detail(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *option) {
+  column->default_node = option;
   column->default_start = mylite_ast_node_start(option);
   column->default_end = mylite_ast_node_end(option);
 
   const MyliteAstNode *value =
       mylite_ast_find_first_symbol(option, "nt_default_value_expr");
   if (value != NULL && value->has_span) {
+    column->default_value_node = value;
     column->default_value_start = mylite_ast_node_start(value);
     column->default_value_end = mylite_ast_node_end(value);
   }
@@ -2980,12 +3096,14 @@ static void mylite_ast_set_create_table_column_default_detail(
 
 static void mylite_ast_set_create_table_column_on_update_detail(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *option) {
+  column->on_update_node = option;
   column->on_update_start = mylite_ast_node_start(option);
   column->on_update_end = mylite_ast_node_end(option);
 
   const MyliteAstNode *value =
       mylite_ast_find_first_symbol(option, "nt_now_sym_option_fraction");
   if (value != NULL && value->has_span) {
+    column->on_update_value_node = value;
     column->on_update_value_start = mylite_ast_node_start(value);
     column->on_update_value_end = mylite_ast_node_end(value);
   }
@@ -2993,12 +3111,14 @@ static void mylite_ast_set_create_table_column_on_update_detail(
 
 static void mylite_ast_set_create_table_column_generated_detail(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *option) {
+  column->generated_node = option;
   column->generated_start = mylite_ast_node_start(option);
   column->generated_end = mylite_ast_node_end(option);
 
   const MyliteAstNode *expression =
       mylite_ast_find_first_symbol(option, "nt_expression");
   if (expression != NULL && expression->has_span) {
+    column->generated_expression_node = expression;
     column->generated_expression_start = mylite_ast_node_start(expression);
     column->generated_expression_end = mylite_ast_node_end(expression);
   }
@@ -3006,6 +3126,7 @@ static void mylite_ast_set_create_table_column_generated_detail(
   const MyliteAstNode *storage =
       mylite_ast_find_first_symbol(option, "nt_virtual_or_stored");
   if (storage != NULL && storage->has_span) {
+    column->generated_storage_node = storage;
     column->generated_storage_start = mylite_ast_node_start(storage);
     column->generated_storage_end = mylite_ast_node_end(storage);
   }
@@ -3013,6 +3134,7 @@ static void mylite_ast_set_create_table_column_generated_detail(
 
 static void mylite_ast_set_create_table_column_comment_detail(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *option) {
+  column->comment_node = option;
   column->comment_start = mylite_ast_node_start(option);
   column->comment_end = mylite_ast_node_end(option);
 
@@ -3027,12 +3149,14 @@ static void mylite_ast_set_create_table_column_comment_detail(
 
 static void mylite_ast_set_create_table_column_check_detail(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *option) {
+  column->check_node = option;
   column->check_start = mylite_ast_node_start(option);
   column->check_end = mylite_ast_node_end(option);
 
   const MyliteAstNode *expression =
       mylite_ast_find_first_symbol(option, "nt_expression");
   if (expression != NULL && expression->has_span) {
+    column->check_expression_node = expression;
     column->check_expression_start = mylite_ast_node_start(expression);
     column->check_expression_end = mylite_ast_node_end(expression);
   }
@@ -3048,6 +3172,7 @@ static void mylite_ast_set_create_table_column_check_detail(
   if (enforcement != NULL && enforcement->has_span) {
     column->check_enforcement =
         mylite_ast_classify_check_enforcement(enforcement);
+    column->check_enforcement_node = enforcement;
     column->check_enforcement_start = mylite_ast_node_start(enforcement);
     column->check_enforcement_end = mylite_ast_node_end(enforcement);
   }
@@ -3058,9 +3183,11 @@ static void mylite_ast_set_create_table_column_reference_detail(
   const MyliteAstNode *reference =
       mylite_ast_find_first_symbol(option, "nt_refer_def");
   if (reference != NULL && reference->has_span) {
+    column->reference_node = reference;
     column->reference_start = mylite_ast_node_start(reference);
     column->reference_end = mylite_ast_node_end(reference);
   } else {
+    column->reference_node = option;
     column->reference_start = mylite_ast_node_start(option);
     column->reference_end = mylite_ast_node_end(option);
   }

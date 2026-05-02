@@ -26,7 +26,7 @@ expression nodes.
 - `CREATE TABLE` statements expose typed column descriptors for direct column
   definitions, including definition, name, type, option spans, exact type
   name/parameter/attribute spans, exact type kind, selected option detail spans,
-  coarse type family, and column option flags.
+  CST node anchors, coarse type family, and column option flags.
 - `CREATE TABLE` statements expose typed table key and constraint descriptors
   for primary keys, secondary indexes, unique indexes, fulltext indexes, spatial
   indexes, foreign keys, and check constraints.
@@ -64,7 +64,7 @@ expression nodes.
 - typed `CREATE TABLE` column descriptors with definition, name, type, type
   name, type parameters, type attributes, options, defaults, `ON UPDATE`,
   generated expression/storage, comments, inline check, and inline reference
-  spans, plus type family, exact type kind, and option flags
+  spans, plus CST node anchors, type family, exact type kind, and option flags
 - typed `CREATE TABLE` key descriptors with kind, full constraint/index span,
   constraint name, key name, local key parts, referenced table, referenced
   schema/name, referenced key parts, index options, foreign actions, and check
@@ -100,6 +100,12 @@ tokens, including common aliases such as `INT8`, `FLOAT8`, `NATIONAL VARCHAR`,
 not normalized semantic metadata; the next layer must resolve exact MySQL type
 semantics, expression trees, metadata defaults, partitions, and
 `CREATE TABLE ... SELECT`.
+
+Column descriptors keep direct CST node anchors for the type node, option list,
+default value, `ON UPDATE` value, generated expression/storage, comment option,
+inline check expression/enforcement, and inline reference. These anchors let the
+next semantic AST builder walk the relevant subtree directly instead of
+searching the whole column definition again.
 
 The `CREATE TABLE` key view covers table-level primary keys, indexes, unique
 keys, fulltext keys, spatial keys, foreign keys, and check constraints. It
@@ -138,8 +144,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.931335 qps=499170 mbps=37.96 avg_us=2.003
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=21.267098 qps=326989 mbps=24.87 avg_us=3.058 avg_nodes=74.5 avg_ast_bytes=9974.6 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.085926 qps=493691 mbps=37.55 avg_us=2.026
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=21.858138 qps=318147 mbps=24.20 avg_us=3.143 avg_nodes=74.5 avg_ast_bytes=10003.7 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_value_roots=0.06
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -152,9 +158,9 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 96K on disk, 64,097 bytes text/data/other
+parser support object: 99K on disk, 65,669 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
-libmylite_parser.a: 1.1M on disk
+libmylite_parser.a: 1.2M on disk
 mylite-parse: 1.0M on disk
 ```
 
@@ -163,8 +169,8 @@ mylite-parse: 1.0M on disk
 - Replace temporary recognizer placeholder roots with real grammar productions
   or explicit typed placeholder statements.
 - Build semantic `CREATE TABLE` AST nodes on top of the current column, key, and
-  table-option source spans, starting with data types and default/generated/check
-  expression trees.
+  table-option source spans and CST anchors, starting with data types and
+  default/generated/check expression trees.
 - Normalize constraint, index, and table option descriptor values into MySQL
   metadata-ready structures.
 - Add typed AST nodes for the next analyzer statement families underneath the

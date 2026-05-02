@@ -418,6 +418,34 @@ size_t mylite_ast_create_table_column_reference_start(const MyliteAst *ast,
 size_t mylite_ast_create_table_column_reference_end(const MyliteAst *ast,
                                                     size_t statement_index,
                                                     size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_type_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_options_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_default_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_default_value_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_on_update_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_on_update_value_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_generated_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_generated_expression_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_generated_storage_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_comment_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_check_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_check_expression_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_check_enforcement_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+const MyliteAstNode *mylite_ast_create_table_column_reference_node(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
 MyliteCreateTableColumnTypeFamily mylite_ast_create_table_column_type_family(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
 MyliteCreateTableColumnTypeKind mylite_ast_create_table_column_type_kind(

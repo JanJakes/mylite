@@ -54,10 +54,13 @@ token sink:
   argument lists with nested expression bodies, while rejecting malformed
   argument adjacent operands, dangling operators, and invalid plain
   parenthesized groups at top level and in stored-program body sinks.
-- `DO` recognizes comma-separated expression lists while preserving
-  `DEFAULT(column)` expressions and rejecting dangling separators, dangling
-  operators, malformed nested expression groups, invalid or bare `DEFAULT`
-  values, adjacent top-level operands, and top-level query-clause tails.
+- `DO` recognizes comma-separated expression lists, including MySQL's
+  select-list wildcard forms for the first bare `*` item and qualified
+  `table.*` items, while preserving `DEFAULT(column)` expressions and rejecting
+  dangling separators, dangling operators, malformed nested expression groups,
+  invalid or bare `DEFAULT` values, adjacent top-level operands, misplaced
+  later bare wildcards, wildcard aliases/arithmetic, and top-level query-clause
+  tails.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
   write payloads, and validate `SET` assignment lists including repeated-`SET`
   continuations, malformed top-level assignment value adjacent operands and

@@ -4478,6 +4478,8 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
   int previous_top_token_id = 0;
   int previous_was_operator = 1;
   MyliteToken previous_top_token = start;
+  int seen_item = 0;
+  int item_start;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -4521,6 +4523,7 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
                              "incomplete DO expression list");
         return;
       }
+      seen_item = 1;
       need_expression = 1;
       previous_top_token_id = 0;
       previous_was_operator = 1;
@@ -4529,6 +4532,7 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
       continue;
     }
 
+    item_start = need_expression;
     if (need_expression) {
       if (do_clause_boundary(token_id)) {
         mylite_parser_reject(ctx, pending_token,
@@ -4539,6 +4543,20 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
     } else if (do_clause_boundary(token_id)) {
       mylite_parser_reject(ctx, token, "malformed DO expression list");
       return;
+    }
+
+    if (previous_top_token_id == ML_STAR && !previous_was_operator) {
+      mylite_parser_reject(ctx, token, "malformed DO expression list");
+      return;
+    }
+
+    if (token_id == ML_STAR &&
+        ((item_start && !seen_item) || previous_top_token_id == ML_DOT)) {
+      need_expression = 0;
+      previous_top_token_id = token_id;
+      previous_top_token = token;
+      previous_was_operator = 0;
+      continue;
     }
 
     if (!query_expression_token(

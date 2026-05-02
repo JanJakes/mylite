@@ -4368,12 +4368,15 @@ help_topic_keyword ::= TRUNCATE.
 help_topic_keyword ::= UNINSTALL.
 help_topic_keyword ::= XA.
 
-do_statement ::= DO(A) expression_start statement_tail. {
+do_statement ::= DO(A) do_expression_start statement_tail. {
   mylite_parser_validate_do_statement(ctx, A);
   if (!ctx->failed) {
     mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
   }
 }
+
+do_expression_start ::= expression_start.
+do_expression_start ::= STAR.
 
 expression_start ::= ATOM.
 expression_start ::= LABEL.

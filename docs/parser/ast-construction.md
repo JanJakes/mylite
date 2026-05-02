@@ -29,6 +29,9 @@ expression nodes.
 - `CREATE TABLE` statements expose typed table key and constraint descriptors
   for primary keys, secondary indexes, unique indexes, fulltext indexes, spatial
   indexes, foreign keys, and check constraints.
+- `CREATE TABLE` statements expose typed table-option descriptors for common
+  options such as engine, charset, collation, row format, comment,
+  auto-increment, tablespace, storage, directory, and attribute clauses.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
   still cover the full current corpus.
 - The AST is opaque in the public API and freed with `mylite_ast_free()`.
@@ -59,6 +62,8 @@ expression nodes.
 - typed `CREATE TABLE` key descriptors with kind, full constraint/index span,
   constraint name, key name, local key parts, referenced table, referenced
   schema/name, and referenced key parts
+- typed `CREATE TABLE` table-option descriptors with kind, full option span,
+  option-name span, and value span
 
 The original single-target accessors remain compatibility helpers and mirror
 the first indexed target. The indexed API should be used by new analyzer and
@@ -89,6 +94,12 @@ columns. It does not yet classify index options, key-part order/prefix lengths,
 foreign-key match/update/delete actions, check expressions, or generated
 constraint names.
 
+The `CREATE TABLE` table-option view covers the option list after the table
+element list. It classifies common MySQL table options and exposes the original
+full option text, keyword/name span, and value span. It intentionally does not
+yet normalize values, validate mutually exclusive options, or apply MySQL
+metadata defaults.
+
 For development inspection:
 
 ```sh
@@ -108,8 +119,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.022573 qps=495922 mbps=37.72 avg_us=2.016
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=20.866257 qps=333270 mbps=25.35 avg_us=3.001 avg_nodes=74.5 avg_ast_bytes=9892.5 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.905476 qps=500098 mbps=38.03 avg_us=2.000
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=21.074947 qps=329970 mbps=25.09 avg_us=3.031 avg_nodes=74.5 avg_ast_bytes=9898.4 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_options=0.04
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -122,7 +133,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 64K on disk, 45,259 bytes text/data/other
+parser support object: 70K on disk, 48,856 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.1M on disk
 mylite-parse: 995K on disk
@@ -134,7 +145,7 @@ mylite-parse: 995K on disk
   or explicit typed placeholder statements.
 - Expand `CREATE TABLE` typed descriptors to classify exact data types,
   defaults, generated expressions, index options, foreign-key actions, check
-  expressions, and table options.
+  expressions, and normalized table option values.
 - Add typed AST nodes for the next analyzer statement families underneath the
   statement classification and indexed target descriptor layer.
 - Decide whether syntax-only builds should use a separate no-action generated

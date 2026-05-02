@@ -39,6 +39,13 @@ typedef struct ExpectedCreateTableKey {
   size_t referenced_column_count;
 } ExpectedCreateTableKey;
 
+typedef struct ExpectedCreateTableOption {
+  MyliteCreateTableOptionKind kind;
+  const char *definition;
+  const char *name;
+  const char *value;
+} ExpectedCreateTableOption;
+
 static int expect_parse_ok(const char *sql);
 static int expect_ast_ok(const char *sql, const char *root_symbol);
 static int expect_ast_statements(const char *sql, size_t count,
@@ -60,6 +67,9 @@ static int expect_create_table_key_parts(
     const char *sql, const MyliteAst *ast, size_t key_index,
     const ExpectedCreateTableKeyPart *parts, size_t part_count,
     int referenced);
+static int expect_create_table_options(const char *sql,
+                                       const ExpectedCreateTableOption *options,
+                                       size_t option_count);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
 
@@ -772,6 +782,99 @@ int main(void) {
         "USING BTREE (a, b), CONSTRAINT pk PRIMARY KEY (a))",
         keys, sizeof(keys) / sizeof(keys[0]));
   }
+  {
+    const ExpectedCreateTableOption options[] = {
+        {MYLITE_CREATE_TABLE_OPTION_ENGINE, "ENGINE=InnoDB", "ENGINE",
+         "InnoDB"},
+        {MYLITE_CREATE_TABLE_OPTION_CHARSET, "DEFAULT CHARSET=utf8mb4",
+         "CHARSET", "utf8mb4"},
+        {MYLITE_CREATE_TABLE_OPTION_COLLATE, "COLLATE=utf8mb4_unicode_ci",
+         "COLLATE", "utf8mb4_unicode_ci"},
+        {MYLITE_CREATE_TABLE_OPTION_AUTO_INCREMENT, "AUTO_INCREMENT=10",
+         "AUTO_INCREMENT", "10"},
+        {MYLITE_CREATE_TABLE_OPTION_COMMENT, "COMMENT='hello'", "COMMENT",
+         "'hello'"},
+        {MYLITE_CREATE_TABLE_OPTION_ROW_FORMAT, "ROW_FORMAT=DYNAMIC",
+         "ROW_FORMAT", "DYNAMIC"}};
+    failures += expect_create_table_options(
+        "CREATE TABLE t (id INT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
+        "COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=10 COMMENT='hello' "
+        "ROW_FORMAT=DYNAMIC",
+        options, sizeof(options) / sizeof(options[0]));
+  }
+  {
+    const ExpectedCreateTableOption options[] = {
+        {MYLITE_CREATE_TABLE_OPTION_CHARSET, "CHARACTER SET latin1",
+         "CHARACTER SET", "latin1"},
+        {MYLITE_CREATE_TABLE_OPTION_ENCRYPTION, "ENCRYPTION='Y'",
+         "ENCRYPTION", "'Y'"},
+        {MYLITE_CREATE_TABLE_OPTION_STATS_PERSISTENT, "STATS_PERSISTENT=0",
+         "STATS_PERSISTENT", "0"},
+        {MYLITE_CREATE_TABLE_OPTION_PACK_KEYS, "PACK_KEYS=1", "PACK_KEYS",
+         "1"},
+        {MYLITE_CREATE_TABLE_OPTION_TABLESPACE, "TABLESPACE ts", "TABLESPACE",
+         "ts"},
+        {MYLITE_CREATE_TABLE_OPTION_STORAGE, "STORAGE DISK", "STORAGE",
+         "DISK"}};
+    failures += expect_create_table_options(
+        "CREATE TABLE t (id INT) CHARACTER SET latin1 ENCRYPTION='Y' "
+        "STATS_PERSISTENT=0 PACK_KEYS=1 TABLESPACE ts STORAGE DISK",
+        options, sizeof(options) / sizeof(options[0]));
+  }
+  {
+    const ExpectedCreateTableOption options[] = {
+        {MYLITE_CREATE_TABLE_OPTION_KEY_BLOCK_SIZE, "KEY_BLOCK_SIZE=8",
+         "KEY_BLOCK_SIZE", "8"},
+        {MYLITE_CREATE_TABLE_OPTION_AUTOEXTEND_SIZE, "AUTOEXTEND_SIZE=4M",
+         "AUTOEXTEND_SIZE", "4M"},
+        {MYLITE_CREATE_TABLE_OPTION_AVG_ROW_LENGTH, "AVG_ROW_LENGTH=100",
+         "AVG_ROW_LENGTH", "100"},
+        {MYLITE_CREATE_TABLE_OPTION_MAX_ROWS, "MAX_ROWS=1000", "MAX_ROWS",
+         "1000"},
+        {MYLITE_CREATE_TABLE_OPTION_MIN_ROWS, "MIN_ROWS=1", "MIN_ROWS", "1"},
+        {MYLITE_CREATE_TABLE_OPTION_DELAY_KEY_WRITE, "DELAY_KEY_WRITE=1",
+         "DELAY_KEY_WRITE", "1"}};
+    failures += expect_create_table_options(
+        "CREATE TABLE t (id INT) KEY_BLOCK_SIZE=8 AUTOEXTEND_SIZE=4M "
+        "AVG_ROW_LENGTH=100 MAX_ROWS=1000 MIN_ROWS=1 DELAY_KEY_WRITE=1",
+        options, sizeof(options) / sizeof(options[0]));
+  }
+  {
+    const ExpectedCreateTableOption options[] = {
+        {MYLITE_CREATE_TABLE_OPTION_DATA_DIRECTORY, "DATA DIRECTORY='data'",
+         "DATA DIRECTORY", "'data'"},
+        {MYLITE_CREATE_TABLE_OPTION_INDEX_DIRECTORY, "INDEX DIRECTORY='idx'",
+         "INDEX DIRECTORY", "'idx'"},
+        {MYLITE_CREATE_TABLE_OPTION_SECONDARY_ENGINE, "SECONDARY_ENGINE=NULL",
+         "SECONDARY_ENGINE", "NULL"},
+        {MYLITE_CREATE_TABLE_OPTION_ENGINE_ATTRIBUTE, "ENGINE_ATTRIBUTE='{}'",
+         "ENGINE_ATTRIBUTE", "'{}'"},
+        {MYLITE_CREATE_TABLE_OPTION_SECONDARY_ENGINE_ATTRIBUTE,
+         "SECONDARY_ENGINE_ATTRIBUTE='{}'", "SECONDARY_ENGINE_ATTRIBUTE",
+         "'{}'"}};
+    failures += expect_create_table_options(
+        "CREATE TABLE t (id INT) DATA DIRECTORY='data' INDEX DIRECTORY='idx' "
+        "SECONDARY_ENGINE=NULL ENGINE_ATTRIBUTE='{}' "
+        "SECONDARY_ENGINE_ATTRIBUTE='{}'",
+        options, sizeof(options) / sizeof(options[0]));
+  }
+  {
+    const ExpectedCreateTableOption options[] = {
+        {MYLITE_CREATE_TABLE_OPTION_CONNECTION, "CONNECTION='conn'",
+         "CONNECTION", "'conn'"},
+        {MYLITE_CREATE_TABLE_OPTION_PASSWORD, "PASSWORD='pwd'", "PASSWORD",
+         "'pwd'"},
+        {MYLITE_CREATE_TABLE_OPTION_COMPRESSION, "COMPRESSION='zlib'",
+         "COMPRESSION", "'zlib'"},
+        {MYLITE_CREATE_TABLE_OPTION_INSERT_METHOD, "INSERT_METHOD=LAST",
+         "INSERT_METHOD", "LAST"},
+        {MYLITE_CREATE_TABLE_OPTION_UNION, "UNION=(t1,t2)", "UNION",
+         "(t1,t2)"}};
+    failures += expect_create_table_options(
+        "CREATE TABLE t (id INT) CONNECTION='conn' PASSWORD='pwd' "
+        "COMPRESSION='zlib' INSERT_METHOD=LAST UNION=(t1,t2)",
+        options, sizeof(options) / sizeof(options[0]));
+  }
 
   return failures == 0 ? 0 : 1;
 }
@@ -1133,6 +1236,65 @@ static int expect_create_table_key_parts(
       failed = 1;
     }
   }
+  return failed;
+}
+
+static int expect_create_table_options(const char *sql,
+                                       const ExpectedCreateTableOption *options,
+                                       size_t option_count) {
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "CREATE TABLE option parse failed: %s\nstatus=%s offset=%zu "
+            "token=%d message=%s\n",
+            sql, mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  int failed = 0;
+  if (mylite_ast_statement_count(ast) != 1 ||
+      mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_CREATE ||
+      mylite_ast_create_table_option_count(ast, 0) != option_count) {
+    fprintf(stderr,
+            "CREATE TABLE option header failed: %s\nkind=%s "
+            "option_count=%zu\n",
+            sql, mylite_statement_kind_name(mylite_ast_statement_kind(ast, 0)),
+            mylite_ast_create_table_option_count(ast, 0));
+    failed = 1;
+  }
+
+  size_t actual_count = mylite_ast_create_table_option_count(ast, 0);
+  for (size_t i = 0; i < option_count && i < actual_count; i++) {
+    if (mylite_ast_create_table_option_kind(ast, 0, i) != options[i].kind ||
+        !span_matches(sql, mylite_ast_create_table_option_start(ast, 0, i),
+                      mylite_ast_create_table_option_end(ast, 0, i),
+                      options[i].definition) ||
+        !span_matches(sql, mylite_ast_create_table_option_name_start(ast, 0, i),
+                      mylite_ast_create_table_option_name_end(ast, 0, i),
+                      options[i].name) ||
+        !span_matches(sql, mylite_ast_create_table_option_value_start(ast, 0, i),
+                      mylite_ast_create_table_option_value_end(ast, 0, i),
+                      options[i].value)) {
+      fprintf(stderr,
+              "CREATE TABLE option[%zu] failed: %s\nkind=%s span=%zu..%zu "
+              "name=%zu..%zu value=%zu..%zu\n",
+              i, sql,
+              mylite_create_table_option_kind_name(
+                  mylite_ast_create_table_option_kind(ast, 0, i)),
+              mylite_ast_create_table_option_start(ast, 0, i),
+              mylite_ast_create_table_option_end(ast, 0, i),
+              mylite_ast_create_table_option_name_start(ast, 0, i),
+              mylite_ast_create_table_option_name_end(ast, 0, i),
+              mylite_ast_create_table_option_value_start(ast, 0, i),
+              mylite_ast_create_table_option_value_end(ast, 0, i));
+      failed = 1;
+    }
+  }
+
+  mylite_ast_free(ast);
   return failed;
 }
 

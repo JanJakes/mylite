@@ -110,14 +110,15 @@ static void dump_statements(const MyliteAst *ast) {
     size_t target_count = mylite_ast_statement_target_count(ast, i);
     size_t column_count = mylite_ast_create_table_column_count(ast, i);
     size_t key_count = mylite_ast_create_table_key_count(ast, i);
+    size_t option_count = mylite_ast_create_table_option_count(ast, i);
     printf("statement[%zu] kind=%s symbol=%s span=%zu..%zu targets=%zu "
-           "columns=%zu keys=%zu target=%s:%zu..%zu schema=%zu..%zu "
-           "name=%zu..%zu\n",
+           "columns=%zu keys=%zu options=%zu target=%s:%zu..%zu "
+           "schema=%zu..%zu name=%zu..%zu\n",
            i,
            mylite_statement_kind_name(mylite_ast_statement_kind(ast, i)),
            mylite_ast_statement_symbol_name(ast, i),
            mylite_ast_statement_start(ast, i), mylite_ast_statement_end(ast, i),
-           target_count, column_count, key_count,
+           target_count, column_count, key_count, option_count,
            mylite_statement_target_kind_name(mylite_ast_statement_target_kind(ast, i)),
            mylite_ast_statement_target_start(ast, i),
            mylite_ast_statement_target_end(ast, i),
@@ -197,6 +198,19 @@ static void dump_statements(const MyliteAst *ast) {
                mylite_ast_create_table_key_referenced_column_name_end(ast, i, j,
                                                                       k));
       }
+    }
+    for (size_t j = 0; j < option_count; j++) {
+      printf("  option[%zu] kind=%s span=%zu..%zu name=%zu..%zu "
+             "value=%zu..%zu\n",
+             j,
+             mylite_create_table_option_kind_name(
+                 mylite_ast_create_table_option_kind(ast, i, j)),
+             mylite_ast_create_table_option_start(ast, i, j),
+             mylite_ast_create_table_option_end(ast, i, j),
+             mylite_ast_create_table_option_name_start(ast, i, j),
+             mylite_ast_create_table_option_name_end(ast, i, j),
+             mylite_ast_create_table_option_value_start(ast, i, j),
+             mylite_ast_create_table_option_value_end(ast, i, j));
     }
   }
 }

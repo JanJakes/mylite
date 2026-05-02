@@ -116,6 +116,37 @@ typedef enum MyliteCreateTableKeyKind {
   MYLITE_CREATE_TABLE_KEY_CHECK
 } MyliteCreateTableKeyKind;
 
+typedef enum MyliteCreateTableOptionKind {
+  MYLITE_CREATE_TABLE_OPTION_UNKNOWN = 0,
+  MYLITE_CREATE_TABLE_OPTION_ENGINE,
+  MYLITE_CREATE_TABLE_OPTION_SECONDARY_ENGINE,
+  MYLITE_CREATE_TABLE_OPTION_CHARSET,
+  MYLITE_CREATE_TABLE_OPTION_COLLATE,
+  MYLITE_CREATE_TABLE_OPTION_AUTO_INCREMENT,
+  MYLITE_CREATE_TABLE_OPTION_COMMENT,
+  MYLITE_CREATE_TABLE_OPTION_ROW_FORMAT,
+  MYLITE_CREATE_TABLE_OPTION_KEY_BLOCK_SIZE,
+  MYLITE_CREATE_TABLE_OPTION_AUTOEXTEND_SIZE,
+  MYLITE_CREATE_TABLE_OPTION_AVG_ROW_LENGTH,
+  MYLITE_CREATE_TABLE_OPTION_MAX_ROWS,
+  MYLITE_CREATE_TABLE_OPTION_MIN_ROWS,
+  MYLITE_CREATE_TABLE_OPTION_DELAY_KEY_WRITE,
+  MYLITE_CREATE_TABLE_OPTION_ENCRYPTION,
+  MYLITE_CREATE_TABLE_OPTION_STATS_PERSISTENT,
+  MYLITE_CREATE_TABLE_OPTION_PACK_KEYS,
+  MYLITE_CREATE_TABLE_OPTION_TABLESPACE,
+  MYLITE_CREATE_TABLE_OPTION_STORAGE,
+  MYLITE_CREATE_TABLE_OPTION_COMPRESSION,
+  MYLITE_CREATE_TABLE_OPTION_CONNECTION,
+  MYLITE_CREATE_TABLE_OPTION_PASSWORD,
+  MYLITE_CREATE_TABLE_OPTION_INSERT_METHOD,
+  MYLITE_CREATE_TABLE_OPTION_DATA_DIRECTORY,
+  MYLITE_CREATE_TABLE_OPTION_INDEX_DIRECTORY,
+  MYLITE_CREATE_TABLE_OPTION_UNION,
+  MYLITE_CREATE_TABLE_OPTION_ENGINE_ATTRIBUTE,
+  MYLITE_CREATE_TABLE_OPTION_SECONDARY_ENGINE_ATTRIBUTE
+} MyliteCreateTableOptionKind;
+
 MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result);
 MyliteParseStatus mylite_parse_sql_ast(const char *sql, MyliteAst **ast,
                                        MyliteParseResult *result);
@@ -126,6 +157,8 @@ const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
 const char *mylite_create_table_column_type_family_name(
     MyliteCreateTableColumnTypeFamily family);
 const char *mylite_create_table_key_kind_name(MyliteCreateTableKeyKind kind);
+const char *mylite_create_table_option_kind_name(
+    MyliteCreateTableOptionKind kind);
 
 void mylite_ast_free(MyliteAst *ast);
 const MyliteAstNode *mylite_ast_root(const MyliteAst *ast);
@@ -268,6 +301,28 @@ size_t mylite_ast_create_table_key_referenced_column_name_start(
 size_t mylite_ast_create_table_key_referenced_column_name_end(
     const MyliteAst *ast, size_t statement_index, size_t key_index,
     size_t column_index);
+size_t mylite_ast_create_table_option_count(const MyliteAst *ast,
+                                            size_t statement_index);
+MyliteCreateTableOptionKind mylite_ast_create_table_option_kind(
+    const MyliteAst *ast, size_t statement_index, size_t option_index);
+size_t mylite_ast_create_table_option_start(const MyliteAst *ast,
+                                            size_t statement_index,
+                                            size_t option_index);
+size_t mylite_ast_create_table_option_end(const MyliteAst *ast,
+                                          size_t statement_index,
+                                          size_t option_index);
+size_t mylite_ast_create_table_option_name_start(const MyliteAst *ast,
+                                                 size_t statement_index,
+                                                 size_t option_index);
+size_t mylite_ast_create_table_option_name_end(const MyliteAst *ast,
+                                               size_t statement_index,
+                                               size_t option_index);
+size_t mylite_ast_create_table_option_value_start(const MyliteAst *ast,
+                                                  size_t statement_index,
+                                                  size_t option_index);
+size_t mylite_ast_create_table_option_value_end(const MyliteAst *ast,
+                                                size_t statement_index,
+                                                size_t option_index);
 MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node);
 unsigned mylite_ast_node_rule_id(const MyliteAstNode *node);
 const char *mylite_ast_node_symbol_name(const MyliteAstNode *node);

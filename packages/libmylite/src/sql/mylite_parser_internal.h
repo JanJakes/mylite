@@ -75,6 +75,16 @@ struct mylite_sql_parser_drop_table_tokens {
     struct mylite_sql_token mode;
 };
 
+struct mylite_sql_parser_completion_tokens {
+    struct mylite_sql_token start;
+    struct mylite_sql_token end;
+};
+
+struct mylite_sql_parser_statement_tokens {
+    struct mylite_sql_token start;
+    struct mylite_sql_token end;
+};
+
 void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
                                       struct mylite_sql_ast_node *root);
 void mylite_sql_parser_state_syntax_error(struct mylite_sql_parser_state *state, int parser_token,
@@ -213,6 +223,37 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_delete_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token delete_token,
     struct mylite_sql_ast_node *target, struct mylite_sql_ast_node *where_clause,
     struct mylite_sql_ast_node *order_by_clause, struct mylite_sql_ast_node *limit_clause);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_start_transaction_statement(struct mylite_sql_parser_state *state,
+                                                   struct mylite_sql_token start_token,
+                                                   struct mylite_sql_ast_node *characteristics);
+struct mylite_sql_ast_node *mylite_sql_parser_make_begin_transaction_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_statement_tokens tokens);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_transaction_characteristic_list(struct mylite_sql_parser_state *state,
+                                                       struct mylite_sql_ast_node *characteristic);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_transaction_characteristic(struct mylite_sql_parser_state *state,
+                                                    struct mylite_sql_ast_node *list,
+                                                    struct mylite_sql_ast_node *characteristic);
+struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_access_mode(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token read_token,
+    struct mylite_sql_token end_token, enum mylite_sql_ast_transaction_access_mode access_mode);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_transaction_consistent_snapshot(struct mylite_sql_parser_state *state,
+                                                       struct mylite_sql_token with_token,
+                                                       struct mylite_sql_token snapshot_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_commit_statement(struct mylite_sql_parser_state *state,
+                                        struct mylite_sql_parser_statement_tokens tokens,
+                                        struct mylite_sql_ast_node *completion);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_rollback_statement(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_parser_statement_tokens tokens,
+                                          struct mylite_sql_ast_node *completion);
+struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_completion(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_completion_tokens tokens,
+    enum mylite_sql_ast_transaction_chain chain, enum mylite_sql_ast_transaction_release release);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_delete_target(struct mylite_sql_parser_state *state,
                                      struct mylite_sql_ast_node *table_name,

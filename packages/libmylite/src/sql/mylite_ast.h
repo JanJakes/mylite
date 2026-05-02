@@ -77,6 +77,13 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_DELETE_STATEMENT = 66,
     MYLITE_SQL_AST_DELETE_TARGET = 67,
     MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE = 68,
+    MYLITE_SQL_AST_START_TRANSACTION_STATEMENT = 69,
+    MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT = 70,
+    MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST = 71,
+    MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC = 72,
+    MYLITE_SQL_AST_COMMIT_STATEMENT = 73,
+    MYLITE_SQL_AST_ROLLBACK_STATEMENT = 74,
+    MYLITE_SQL_AST_TRANSACTION_COMPLETION = 75,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -237,6 +244,24 @@ enum mylite_sql_ast_table_option {
     MYLITE_SQL_AST_TABLE_OPTION_AUTO_INCREMENT = 5,
 };
 
+enum mylite_sql_ast_transaction_access_mode {
+    MYLITE_SQL_AST_TRANSACTION_ACCESS_NONE = 0,
+    MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE = 1,
+    MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY = 2,
+};
+
+enum mylite_sql_ast_transaction_chain {
+    MYLITE_SQL_AST_TRANSACTION_CHAIN_DEFAULT = 0,
+    MYLITE_SQL_AST_TRANSACTION_CHAIN_YES = 1,
+    MYLITE_SQL_AST_TRANSACTION_CHAIN_NO = 2,
+};
+
+enum mylite_sql_ast_transaction_release {
+    MYLITE_SQL_AST_TRANSACTION_RELEASE_DEFAULT = 0,
+    MYLITE_SQL_AST_TRANSACTION_RELEASE_YES = 1,
+    MYLITE_SQL_AST_TRANSACTION_RELEASE_NO = 2,
+};
+
 struct mylite_sql_ast_node {
     struct mylite_sql_ast_node *first_child;
     struct mylite_sql_ast_node *last_child;
@@ -261,6 +286,9 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_index_algorithm index_algorithm;
     enum mylite_sql_ast_index_option index_option;
     enum mylite_sql_ast_table_option table_option;
+    enum mylite_sql_ast_transaction_access_mode transaction_access_mode;
+    enum mylite_sql_ast_transaction_chain transaction_chain;
+    enum mylite_sql_ast_transaction_release transaction_release;
     unsigned int column_display_width;
     bool column_type_unsigned;
     bool column_type_signed;
@@ -278,6 +306,7 @@ struct mylite_sql_ast_node {
     bool drop_table_temporary;
     bool drop_table_restrict;
     bool drop_table_cascade;
+    bool transaction_consistent_snapshot;
 };
 
 struct mylite_sql_ast {
@@ -336,6 +365,12 @@ void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
 void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_transaction_access_mode(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_access_mode access_mode);
+void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_transaction_completion(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_chain chain,
+    enum mylite_sql_ast_transaction_release release);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 

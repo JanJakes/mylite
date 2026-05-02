@@ -340,6 +340,37 @@ void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node
     node->drop_table_cascade = true;
 }
 
+void mylite_sql_ast_node_set_transaction_access_mode(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_access_mode access_mode)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->transaction_access_mode = access_mode;
+}
+
+void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->transaction_consistent_snapshot = true;
+}
+
+void mylite_sql_ast_node_set_transaction_completion(struct mylite_sql_ast_node *node,
+                                                    enum mylite_sql_ast_transaction_chain chain,
+                                                    enum mylite_sql_ast_transaction_release release)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->transaction_chain = chain;
+    node->transaction_release = release;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -498,6 +529,20 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "delete_target";
     case MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE:
         return "delete_limit_clause";
+    case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
+        return "start_transaction_statement";
+    case MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT:
+        return "begin_transaction_statement";
+    case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST:
+        return "transaction_characteristic_list";
+    case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC:
+        return "transaction_characteristic";
+    case MYLITE_SQL_AST_COMMIT_STATEMENT:
+        return "commit_statement";
+    case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
+        return "rollback_statement";
+    case MYLITE_SQL_AST_TRANSACTION_COMPLETION:
+        return "transaction_completion";
     }
 
     return "unknown";

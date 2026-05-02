@@ -7,6 +7,7 @@
 %type opt_drop_table_mode { struct mylite_sql_token }
 %type insert_values_keyword { struct mylite_sql_token }
 %type opt_order_direction { struct mylite_sql_token }
+%type opt_work { struct mylite_sql_token }
 %type opt_like_escape { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
 
@@ -47,10 +48,11 @@
 %right UPLUS UMINUS BIT_NOT.
 %right LOGICAL_NOT.
 %right KEY.
-%fallback IDENTIFIER AUTO_INCREMENT BOOL BOOLEAN BTREE CHARSET COLUMN_FORMAT COMMENT DATE DATETIME
-    DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR
-    NVARCHAR OFFSET ONLY SECONDARY_ENGINE_ATTRIBUTE SIGNED STORAGE TEMPORARY TEXT TIME TIMESTAMP
-    VISIBLE VALUE YEAR.
+%fallback IDENTIFIER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLUMN_FORMAT COMMENT
+    COMMIT CONSISTENT DATE DATETIME DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH
+    INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR NO NVARCHAR OFFSET ONLY ROLLBACK
+    SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE TEMPORARY TEXT TIME TIMESTAMP
+    TRANSACTION VISIBLE VALUE WORK YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -101,6 +103,18 @@ statement(A) ::= update_statement(B). {
     A = B;
 }
 statement(A) ::= delete_statement(B). {
+    A = B;
+}
+statement(A) ::= start_transaction_statement(B). {
+    A = B;
+}
+statement(A) ::= begin_transaction_statement(B). {
+    A = B;
+}
+statement(A) ::= commit_statement(B). {
+    A = B;
+}
+statement(A) ::= rollback_statement(B). {
     A = B;
 }
 statement(A) ::= show_schemas_statement(B). {
@@ -336,6 +350,97 @@ opt_delete_limit_clause(A) ::= . {
 }
 opt_delete_limit_clause(A) ::= LIMIT(T) limit_bound(B). {
     A = mylite_sql_parser_make_delete_limit_clause(state, T, B);
+}
+
+start_transaction_statement(A) ::= START(T) TRANSACTION opt_transaction_characteristics(B). {
+    A = mylite_sql_parser_make_start_transaction_statement(state, T, B);
+}
+
+opt_transaction_characteristics(A) ::= . {
+    A = NULL;
+}
+opt_transaction_characteristics(A) ::= transaction_characteristic_list(B). {
+    A = B;
+}
+
+transaction_characteristic_list(A) ::= transaction_characteristic(B). {
+    A = mylite_sql_parser_make_transaction_characteristic_list(state, B);
+}
+transaction_characteristic_list(A) ::= transaction_characteristic_list(B) COMMA transaction_characteristic(C). {
+    A = mylite_sql_parser_append_transaction_characteristic(state, B, C);
+}
+
+transaction_characteristic(A) ::= READ(T) WRITE(W). {
+    A = mylite_sql_parser_make_transaction_access_mode(
+        state, T, W, MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE);
+}
+transaction_characteristic(A) ::= READ(T) ONLY(O). {
+    A = mylite_sql_parser_make_transaction_access_mode(
+        state, T, O, MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY);
+}
+transaction_characteristic(A) ::= WITH(T) CONSISTENT SNAPSHOT(S). {
+    A = mylite_sql_parser_make_transaction_consistent_snapshot(state, T, S);
+}
+
+begin_transaction_statement(A) ::= BEGIN(T) opt_work(W). {
+    A = mylite_sql_parser_make_begin_transaction_statement(
+        state, (struct mylite_sql_parser_statement_tokens){.start = T, .end = W});
+}
+
+commit_statement(A) ::= COMMIT(T) opt_work(W) opt_transaction_completion(C). {
+    A = mylite_sql_parser_make_commit_statement(
+        state, (struct mylite_sql_parser_statement_tokens){.start = T, .end = W}, C);
+}
+
+rollback_statement(A) ::= ROLLBACK(T) opt_work(W) opt_transaction_completion(C). {
+    A = mylite_sql_parser_make_rollback_statement(
+        state, (struct mylite_sql_parser_statement_tokens){.start = T, .end = W}, C);
+}
+
+opt_work(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_work(A) ::= WORK(T). {
+    A = T;
+}
+
+opt_transaction_completion(A) ::= . {
+    A = NULL;
+}
+opt_transaction_completion(A) ::= RELEASE(T). {
+    A = mylite_sql_parser_make_transaction_completion(
+        state, (struct mylite_sql_parser_completion_tokens){.start = T, .end = T},
+        MYLITE_SQL_AST_TRANSACTION_CHAIN_DEFAULT, MYLITE_SQL_AST_TRANSACTION_RELEASE_YES);
+}
+opt_transaction_completion(A) ::= NO(T) RELEASE(R). {
+    A = mylite_sql_parser_make_transaction_completion(
+        state, (struct mylite_sql_parser_completion_tokens){.start = T, .end = R},
+        MYLITE_SQL_AST_TRANSACTION_CHAIN_DEFAULT, MYLITE_SQL_AST_TRANSACTION_RELEASE_NO);
+}
+opt_transaction_completion(A) ::= AND(T) CHAIN(C). {
+    A = mylite_sql_parser_make_transaction_completion(
+        state, (struct mylite_sql_parser_completion_tokens){.start = T, .end = C},
+        MYLITE_SQL_AST_TRANSACTION_CHAIN_YES, MYLITE_SQL_AST_TRANSACTION_RELEASE_DEFAULT);
+}
+opt_transaction_completion(A) ::= AND(T) CHAIN NO RELEASE(R). {
+    A = mylite_sql_parser_make_transaction_completion(
+        state, (struct mylite_sql_parser_completion_tokens){.start = T, .end = R},
+        MYLITE_SQL_AST_TRANSACTION_CHAIN_YES, MYLITE_SQL_AST_TRANSACTION_RELEASE_NO);
+}
+opt_transaction_completion(A) ::= AND(T) NO CHAIN(C). {
+    A = mylite_sql_parser_make_transaction_completion(
+        state, (struct mylite_sql_parser_completion_tokens){.start = T, .end = C},
+        MYLITE_SQL_AST_TRANSACTION_CHAIN_NO, MYLITE_SQL_AST_TRANSACTION_RELEASE_DEFAULT);
+}
+opt_transaction_completion(A) ::= AND(T) NO CHAIN RELEASE(R). {
+    A = mylite_sql_parser_make_transaction_completion(
+        state, (struct mylite_sql_parser_completion_tokens){.start = T, .end = R},
+        MYLITE_SQL_AST_TRANSACTION_CHAIN_NO, MYLITE_SQL_AST_TRANSACTION_RELEASE_YES);
+}
+opt_transaction_completion(A) ::= AND(T) NO CHAIN NO RELEASE(R). {
+    A = mylite_sql_parser_make_transaction_completion(
+        state, (struct mylite_sql_parser_completion_tokens){.start = T, .end = R},
+        MYLITE_SQL_AST_TRANSACTION_CHAIN_NO, MYLITE_SQL_AST_TRANSACTION_RELEASE_NO);
 }
 
 show_schemas_statement(A) ::= SHOW(T) DATABASES(D). {

@@ -129,6 +129,7 @@ static int test_select_where_execution(void);
 static int test_select_order_limit_offset_execution(void);
 static int test_update_single_table_execution(void);
 static int test_delete_single_table_execution(void);
+static int test_transaction_statements_execution(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -136,6 +137,8 @@ static int expect_no_stmt_handle(mylite_stmt **stmt, const char *context);
 static int execute_sql(mylite_db *database, const char *sql, int expected_step_status);
 static int expect_prepare_error(mylite_db *database, const char *sql, int expected_status,
                                 const char *error_fragment, const char *context);
+static int execute_sql_expect_done_affected(mylite_db *database, const char *sql,
+                                            int64_t expected_affected_rows, const char *context);
 static int expect_select_rows(mylite_db *database, const char *sql, const char *const *columns,
                               int column_count, const char *const *values, int row_count,
                               const char *context);
@@ -223,6 +226,7 @@ int main(void)
     failures += test_select_order_limit_offset_execution();
     failures += test_update_single_table_execution();
     failures += test_delete_single_table_execution();
+    failures += test_transaction_statements_execution();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -3858,6 +3862,220 @@ static int test_delete_single_table_execution(void)
     return failures;
 }
 
+static int test_transaction_statements_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open transaction db");
+    failures += execute_sql(database, "CREATE DATABASE tx_db", MYLITE_DONE);
+    failures += execute_sql(database, "USE tx_db", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE tx (id INT PRIMARY KEY, v INT)", MYLITE_DONE);
+
+    failures += execute_sql_expect_done_affected(database, "START TRANSACTION", 0,
+                                                 "start transaction affected rows");
+    failures += execute_sql(database, "INSERT INTO tx VALUES (1, 10)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database, "ROLLBACK", 0, "rollback affected rows");
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 1", 0,
+                                        "rollback removes inserted row");
+
+    failures +=
+        execute_sql_expect_done_affected(database, "BEGIN WORK", 0, "begin work affected rows");
+    failures += execute_sql(database, "INSERT INTO tx VALUES (2, 20)", MYLITE_DONE);
+    failures +=
+        execute_sql_expect_done_affected(database, "COMMIT WORK", 0, "commit work affected rows");
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 2", 1,
+                                        "commit preserves inserted row");
+
+    failures +=
+        execute_sql_expect_done_affected(database, "COMMIT", 0, "inactive commit affected rows");
+    failures += expect_int(mylite_warning_count(database), 0, "inactive commit warning count");
+    failures += execute_sql_expect_done_affected(database, "ROLLBACK", 0,
+                                                 "inactive rollback affected rows");
+    failures += expect_int(mylite_warning_count(database), 0, "inactive rollback warning count");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (3, 30)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (4, 40)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 3", 1,
+                                        "repeated start commits active transaction");
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 4", 0,
+                                        "rollback removes repeated-start new transaction");
+
+    failures += execute_sql(database, "BEGIN", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (15, 150)", MYLITE_DONE);
+    failures += execute_sql(database, "BEGIN", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (16, 160)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 15", 1,
+                                        "repeated begin commits active transaction");
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 16", 0,
+                                        "rollback removes repeated-begin new transaction");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (5, 50)", MYLITE_DONE);
+    failures += execute_sql(database, "COMMIT AND CHAIN", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (6, 60)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 5", 1,
+                                        "commit chain preserves pre-chain row");
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 6", 0,
+                                        "commit chain rolls back post-chain row");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (7, 70)", MYLITE_DONE);
+    failures += execute_sql(database, "COMMIT AND NO CHAIN", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (8, 80)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 7", 1,
+                                        "commit no chain preserves committed row");
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 8", 1,
+                                        "commit no chain resumes autocommit");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (9, 90)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK AND CHAIN", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (10, 100)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 9", 0,
+                                        "rollback chain removes pre-chain row");
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 10", 0,
+                                        "rollback chain rolls back post-chain row");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (11, 110)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK AND NO CHAIN", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (12, 120)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 11", 0,
+                                        "rollback no chain removes active row");
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 12", 1,
+                                        "rollback no chain resumes autocommit");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE tx_ai ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT) "
+                            "AUTO_INCREMENT=30",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_ai (v) VALUES (1),(2)", MYLITE_DONE);
+    failures +=
+        expect_int64((int64_t)mylite_last_insert_id(database), 30, "rollback ai last insert id");
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures +=
+        expect_int64((int64_t)mylite_last_insert_id(database), 30, "rollback keeps last insert id");
+    failures += execute_sql(database, "INSERT INTO tx_ai (v) VALUES (3)", MYLITE_DONE);
+    {
+        static const char *columns[] = {"id", "v"};
+        static const char *values[] = {"32", "3"};
+
+        failures += expect_select_rows(database, "SELECT id, v FROM tx_ai ORDER BY id", columns, 2,
+                                       values, 1, "rollback preserves consumed auto increment");
+    }
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "UPDATE tx_ai SET id = 100 WHERE v = 3", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_ai (v) VALUES (4)", MYLITE_DONE);
+    {
+        static const char *columns[] = {"id", "v"};
+        static const char *values[] = {"32", "3", "101", "4"};
+
+        failures +=
+            expect_select_rows(database, "SELECT id, v FROM tx_ai ORDER BY id", columns, 2, values,
+                               2, "rollback preserves update auto-increment advancement");
+    }
+
+    failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 2", 1,
+                                        "read only transaction allows reads");
+    failures += prepare_sql(database, "INSERT INTO tx VALUES (13, 130)", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "read only transaction rejects insert");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "read only insert affected rows");
+    failures += expect_contains(mylite_error_message(database),
+                                "Cannot execute statement in a READ ONLY transaction",
+                                "read only transaction error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "UPDATE tx SET v = 130 WHERE id = 2", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "read only transaction rejects update");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "read only update affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "DELETE FROM tx WHERE id = 2", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "read only transaction rejects delete");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "read only delete affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 13", 0,
+                                        "read only rejected insert absent");
+    {
+        static const char *columns[] = {"id", "v"};
+        static const char *values[] = {"2", "20"};
+
+        failures += expect_select_rows(database, "SELECT id, v FROM tx WHERE id = 2", columns, 2,
+                                       values, 1, "read only rejected update/delete absent");
+    }
+
+    failures += execute_sql(database, "START TRANSACTION READ WRITE", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (14, 140)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 14", 0,
+                                        "read write insert rolls back");
+
+    failures += execute_sql(database, "START TRANSACTION WITH CONSISTENT SNAPSHOT", MYLITE_DONE);
+    failures += expect_int(mylite_warning_count(database), 0, "consistent snapshot warning count");
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (17, 170)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "INSERT INTO tx VALUES (18, 180), (17, 171)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "explicit transaction rolls back failed statement");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), -1, "failed statement atomicity affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 17", 1,
+                                        "failed statement preserves prior transaction work");
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 18", 0,
+                                        "failed statement savepoint rolls back partial work");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (19, 190)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database, "COMMIT RELEASE", 0,
+                                                 "commit release affected rows");
+    failures += expect_prepare_error(database, "SELECT id FROM tx", MYLITE_EXEC_ERROR, "released",
+                                     "prepare after release");
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open rollback release db");
+    failures += execute_sql(database, "CREATE DATABASE tx_release_db", MYLITE_DONE);
+    failures += execute_sql(database, "USE tx_release_db", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE tx_release (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_release VALUES (1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database, "ROLLBACK RELEASE", 0,
+                                                 "rollback release affected rows");
+    failures += expect_prepare_error(database, "SELECT id FROM tx_release", MYLITE_EXEC_ERROR,
+                                     "released", "prepare after rollback release");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
 static int test_parse_error(void)
 {
     mylite_db *database = NULL;
@@ -3957,6 +4175,21 @@ static int execute_sql(mylite_db *database, const char *sql, int expected_step_s
 
     if (failures == 0) {
         failures += expect_status(mylite_step(stmt), expected_step_status, sql);
+    }
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int execute_sql_expect_done_affected(mylite_db *database, const char *sql,
+                                            int64_t expected_affected_rows, const char *context)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, sql, MYLITE_OK, &stmt);
+
+    if (failures == 0) {
+        failures += expect_int(mylite_column_count(stmt), 0, context);
+        failures += expect_status(mylite_step(stmt), MYLITE_DONE, context);
+        failures += expect_int64(mylite_affected_rows(stmt), expected_affected_rows, context);
     }
     mylite_finalize(stmt);
     return failures;

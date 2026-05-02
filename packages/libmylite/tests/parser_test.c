@@ -21,6 +21,7 @@ static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
 static int test_update_single_table_syntax(void);
 static int test_delete_single_table_syntax(void);
+static int test_transaction_statement_syntax(void);
 static int test_select_expression_list(void);
 static int test_expression_operator_foundation_syntax(void);
 static int test_information_schema_select(void);
@@ -72,6 +73,13 @@ static int expect_index_option(const struct mylite_sql_ast_node *node,
                                enum mylite_sql_ast_index_option expected, const char *context);
 static int expect_table_option(const struct mylite_sql_ast_node *node,
                                enum mylite_sql_ast_table_option expected, const char *context);
+static int expect_transaction_access_mode(const struct mylite_sql_ast_node *node,
+                                          enum mylite_sql_ast_transaction_access_mode expected,
+                                          const char *context);
+static int expect_transaction_completion(const struct mylite_sql_ast_node *node,
+                                         enum mylite_sql_ast_transaction_chain expected_chain,
+                                         enum mylite_sql_ast_transaction_release expected_release,
+                                         const char *context);
 static int expect_current_timestamp(const struct mylite_sql_ast_node *node, bool has_precision,
                                     uint64_t precision, const char *context);
 
@@ -96,6 +104,7 @@ int main(void)
     failures += test_insert_set_syntax();
     failures += test_update_single_table_syntax();
     failures += test_delete_single_table_syntax();
+    failures += test_transaction_statement_syntax();
     failures += test_select_expression_list();
     failures += test_expression_operator_foundation_syntax();
     failures += test_information_schema_select();
@@ -2534,6 +2543,170 @@ static int test_delete_single_table_syntax(void)
     return failures;
 }
 
+static int test_transaction_statement_syntax(void)
+{
+    enum {
+        rollback_work_statement_index = 5,
+        rollback_chain_statement_index = 5,
+        rollback_no_chain_statement_index = 6,
+        rollback_release_statement_index = 2,
+        rollback_no_release_statement_index = 3,
+        rollback_no_chain_release_statement_index = 4,
+        rollback_work_chain_no_release_statement_index = 5,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *characteristics = NULL;
+    const struct mylite_sql_ast_node *completion = NULL;
+    int failures = 0;
+
+    failures += parse_sql("START TRANSACTION READ WRITE, WITH CONSISTENT SNAPSHOT",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    characteristics = child_at(statement, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, "start transaction");
+    failures += expect_child_count(characteristics, 2U, "start characteristics");
+    failures += expect_transaction_access_mode(child_at(characteristics, 0U),
+                                               MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE,
+                                               "read write characteristic");
+    failures +=
+        expect_node(child_at(characteristics, 1U), MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC,
+                    "consistent snapshot characteristic");
+    if (child_at(characteristics, 1U) != NULL &&
+        !child_at(characteristics, 1U)->transaction_consistent_snapshot) {
+        fprintf(stderr, "consistent snapshot characteristic flag was not set\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("START TRANSACTION READ ONLY, READ ONLY", MYLITE_SQL_PARSE_OK, &result);
+    characteristics = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(characteristics, 2U, "duplicate read only characteristics");
+    failures += expect_transaction_access_mode(child_at(characteristics, 0U),
+                                               MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY,
+                                               "first read only characteristic");
+    failures += expect_transaction_access_mode(child_at(characteristics, 1U),
+                                               MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY,
+                                               "second read only characteristic");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE transaction_keyword_names ("
+                          "begin INT, chain INT, commit INT, consistent INT, no INT, "
+                          "rollback INT, snapshot INT, start INT, transaction INT, work INT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("BEGIN; BEGIN WORK; COMMIT; COMMIT WORK; ROLLBACK; ROLLBACK WORK",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(child_at(result.root, 0U), MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT,
+                            "begin transaction");
+    failures += expect_node(child_at(result.root, 1U), MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT,
+                            "begin work transaction");
+    failures +=
+        expect_node(child_at(result.root, 2U), MYLITE_SQL_AST_COMMIT_STATEMENT, "commit statement");
+    failures += expect_node(child_at(result.root, 3U), MYLITE_SQL_AST_COMMIT_STATEMENT,
+                            "commit work statement");
+    failures += expect_node(child_at(result.root, 4U), MYLITE_SQL_AST_ROLLBACK_STATEMENT,
+                            "rollback statement");
+    failures += expect_node(child_at(result.root, rollback_work_statement_index),
+                            MYLITE_SQL_AST_ROLLBACK_STATEMENT, "rollback work statement");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("COMMIT AND CHAIN; COMMIT AND CHAIN NO RELEASE; "
+                          "COMMIT AND NO CHAIN RELEASE; COMMIT RELEASE; COMMIT NO RELEASE; "
+                          "ROLLBACK AND CHAIN; ROLLBACK AND NO CHAIN NO RELEASE",
+                          MYLITE_SQL_PARSE_OK, &result);
+    completion = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_YES,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_DEFAULT,
+                                              "commit chain completion");
+    completion = child_at(child_at(result.root, 1U), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_YES,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_NO,
+                                              "commit chain no release completion");
+    completion = child_at(child_at(result.root, 2U), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_NO,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_YES,
+                                              "commit no chain release completion");
+    completion = child_at(child_at(result.root, 3U), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_DEFAULT,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_YES,
+                                              "commit release completion");
+    completion = child_at(child_at(result.root, 4U), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_DEFAULT,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_NO,
+                                              "commit no release completion");
+    completion = child_at(child_at(result.root, rollback_chain_statement_index), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_YES,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_DEFAULT,
+                                              "rollback chain completion");
+    completion = child_at(child_at(result.root, rollback_no_chain_statement_index), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_NO,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_NO,
+                                              "rollback no chain no release completion");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("COMMIT AND NO CHAIN; COMMIT AND NO CHAIN NO RELEASE; "
+                          "ROLLBACK RELEASE; ROLLBACK NO RELEASE; "
+                          "ROLLBACK AND NO CHAIN RELEASE; ROLLBACK WORK AND CHAIN NO RELEASE",
+                          MYLITE_SQL_PARSE_OK, &result);
+    completion = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_NO,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_DEFAULT,
+                                              "commit no chain completion");
+    completion = child_at(child_at(result.root, 1U), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_NO,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_NO,
+                                              "commit no chain no release completion");
+    completion = child_at(child_at(result.root, rollback_release_statement_index), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_DEFAULT,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_YES,
+                                              "rollback release completion");
+    completion = child_at(child_at(result.root, rollback_no_release_statement_index), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_DEFAULT,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_NO,
+                                              "rollback no release completion");
+    completion = child_at(child_at(result.root, rollback_no_chain_release_statement_index), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_NO,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_YES,
+                                              "rollback no chain release completion");
+    completion =
+        child_at(child_at(result.root, rollback_work_chain_no_release_statement_index), 0U);
+    failures += expect_transaction_completion(completion, MYLITE_SQL_AST_TRANSACTION_CHAIN_YES,
+                                              MYLITE_SQL_AST_TRANSACTION_RELEASE_NO,
+                                              "rollback work chain no release completion");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("START TRANSACTION READ WRITE, READ ONLY", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("START TRANSACTION READ ONLY READ WRITE", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("START TRANSACTION WITH CONSISTENT SNAPSHOT READ ONLY",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("BEGIN READ ONLY", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("BEGIN WORK READ ONLY", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("COMMIT CHAIN", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("COMMIT AND", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("COMMIT AND NO", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("COMMIT AND CHAIN RELEASE", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("COMMIT AND CHAIN AND RELEASE", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("ROLLBACK AND CHAIN RELEASE", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_select_expression_list(void)
 {
     enum { expected_select_item_count = 5 };
@@ -3438,6 +3611,42 @@ static int expect_table_option(const struct mylite_sql_ast_node *node,
     if (node != NULL && node->table_option != expected) {
         fprintf(stderr, "%s: expected table option %d, got %d\n", context, (int)expected,
                 (int)node->table_option);
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_transaction_access_mode(const struct mylite_sql_ast_node *node,
+                                          enum mylite_sql_ast_transaction_access_mode expected,
+                                          const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC, context);
+
+    if (node != NULL && node->transaction_access_mode != expected) {
+        fprintf(stderr, "%s: expected transaction access mode %d, got %d\n", context, (int)expected,
+                (int)node->transaction_access_mode);
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_transaction_completion(const struct mylite_sql_ast_node *node,
+                                         enum mylite_sql_ast_transaction_chain expected_chain,
+                                         enum mylite_sql_ast_transaction_release expected_release,
+                                         const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_TRANSACTION_COMPLETION, context);
+
+    if (node != NULL && node->transaction_chain != expected_chain) {
+        fprintf(stderr, "%s: expected transaction chain %d, got %d\n", context, (int)expected_chain,
+                (int)node->transaction_chain);
+        failures = 1;
+    }
+    if (node != NULL && node->transaction_release != expected_release) {
+        fprintf(stderr, "%s: expected transaction release %d, got %d\n", context,
+                (int)expected_release, (int)node->transaction_release);
         failures = 1;
     }
 

@@ -52,8 +52,9 @@ level application surfaces.
 20. [x] Single-table `DELETE`: aliases, `WHERE`, `ORDER BY`, `LIMIT`,
        affected rows, and warnings. Spec:
        [single-table DELETE](../delete-single-table/specs.md).
-21. [ ] Transaction statements: `START TRANSACTION`, `BEGIN`, `COMMIT`,
+21. [x] Transaction statements: `START TRANSACTION`, `BEGIN`, `COMMIT`,
        `ROLLBACK`, access modes, chaining, release options, and diagnostics.
+       Spec: [transaction statements](../transaction-statements/specs.md).
 22. [ ] Savepoints: `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`,
        `RELEASE SAVEPOINT`, replacement, nesting, and error behavior.
 23. [ ] Result metadata and expression labels: type, length, flags, origin

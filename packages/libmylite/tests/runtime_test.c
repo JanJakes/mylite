@@ -81,6 +81,17 @@ struct sqlite_table_lookup {
     const char *table_name;
 };
 
+struct sqlite_physical_value_expectation {
+    const char *path;
+    const char *physical_name;
+    const char *expression;
+    const char *tail;
+    int expected_type;
+    int64_t expected_int;
+    const char *expected_text;
+    const char *context;
+};
+
 struct expected_table_collation {
     const char *table_name;
     const char *collation;
@@ -97,6 +108,7 @@ static int test_unsupported_statement(void);
 static int test_create_table_base_execution(void);
 static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
+static int test_insert_values_execution(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -130,6 +142,19 @@ static int expect_column_names(const mylite_stmt *stmt, const char *const *expec
 static char *expected_physical_table_name(const char *schema_name, const char *table_name);
 static int expect_sqlite_table_exists(const struct sqlite_table_lookup *lookup);
 static int expect_sqlite_table_missing(const struct sqlite_table_lookup *lookup);
+static int expect_sqlite_physical_int64(const char *path, const char *physical_name,
+                                        const char *expression, const char *tail, int64_t expected,
+                                        const char *context);
+static int expect_sqlite_physical_text(const char *path, const char *physical_name,
+                                       const char *expression, const char *tail,
+                                       const char *expected, const char *context);
+static int expect_sqlite_physical_null(const char *path, const char *physical_name,
+                                       const char *expression, const char *tail,
+                                       const char *context);
+static int expect_sqlite_physical_not_null(const char *path, const char *physical_name,
+                                           const char *expression, const char *tail,
+                                           const char *context);
+static int expect_sqlite_physical_value(const struct sqlite_physical_value_expectation *expected);
 static void remove_runtime_test_files(void);
 static int read_file_at(const char *path, long offset, unsigned char *buffer, size_t size);
 static int exec_sqlite(sqlite3 *database, const char *sql);
@@ -160,6 +185,7 @@ int main(void)
     failures += test_create_table_base_execution();
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
+    failures += test_insert_values_execution();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -1673,6 +1699,478 @@ static int test_drop_table_base_execution(void)
     return failures;
 }
 
+static int test_insert_values_execution(void)
+{
+    enum {
+        insert_forms_row_count = 5,
+        ai_first_insert_id = 10,
+        ai_default_value_insert_id = 12,
+        ai_empty_column_insert_id = 13,
+        ai_default_row_insert_id = 14,
+        ai_inserted_row_count = 5,
+        ai_default_column_n = 7,
+        ai_failed_first_insert_id = 10,
+        ai_failed_after_rollback_id = 12,
+        ai_failed_pending_next_id = 23,
+        ai_reserved_generated_id = 21,
+        ai_reserved_after_statement_id = 23,
+        explicit_auto_after_duplicate_id = 7,
+        explicit_auto_after_explicit_id = 9,
+        explicit_auto_generated_after_explicit_v = 60,
+        defaults_explicit_default_nd = 9,
+    };
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    char *forms_physical = NULL;
+    char *unique_physical = NULL;
+    char *ai_physical = NULL;
+    char *failed_ai_physical = NULL;
+    char *failed_pending_ai_physical = NULL;
+    char *reserve_ai_physical = NULL;
+    char *explicit_physical = NULL;
+    char *defaults_physical = NULL;
+    char *atomic_physical = NULL;
+    char *expr_physical = NULL;
+    int failures = 0;
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &database), MYLITE_OK, "open insert file");
+
+    failures += prepare_sql(database, "INSERT INTO no_default_table VALUES (1)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert no database");
+    failures += expect_contains(mylite_error_message(database), "No database selected",
+                                "insert no database error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "CREATE DATABASE mylite_iv13", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "create insert schema");
+    failures += expect_int64(mylite_affected_rows(stmt), 0, "create schema affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "USE mylite_iv13", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "use insert schema");
+    failures += expect_int64(mylite_affected_rows(stmt), 0, "use schema affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "INSERT INTO missing_schema.t VALUES (1)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert missing schema");
+    failures += expect_contains(mylite_error_message(database), "Unknown database",
+                                "insert missing schema error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "INSERT INTO mylite_iv13.missing VALUES (1)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert missing table");
+    failures +=
+        expect_contains(mylite_error_message(database), "Table 'mylite_iv13.missing' doesn't exist",
+                        "insert missing table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "INSERT INTO information_schema.tables VALUES ()", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert system schema");
+    failures +=
+        expect_contains(mylite_error_message(database), "system schema", "insert system error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        execute_sql(database, "CREATE TABLE insert_forms (a INT, b VARCHAR(10))", MYLITE_DONE);
+    forms_physical = expected_physical_table_name("mylite_iv13", "insert_forms");
+    if (forms_physical == NULL) {
+        fprintf(stderr, "out of memory while building insert_forms physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database, "INSERT insert_forms VALUE (1, 'one')", MYLITE_DONE);
+    failures += execute_sql(
+        database, "INSERT INTO insert_forms VALUES ROW(2, 'two'), ROW(3, 'three')", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO insert_forms VALUES ()", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO insert_forms () VALUES ()", MYLITE_DONE);
+    failures += prepare_sql(database, "INSERT INTO insert_forms () VALUES (4)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "explicit empty insert list wrong count");
+    failures += expect_contains(mylite_error_message(database),
+                                "Column count doesn't match value count at row 1",
+                                "explicit empty insert list wrong count error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (forms_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, forms_physical, "COUNT(*)", "",
+                                                 insert_forms_row_count, "insert form row count");
+        failures += expect_sqlite_physical_text(path, forms_physical, "b", "WHERE a = 3", "three",
+                                                "ROW constructor insert value");
+        failures +=
+            expect_sqlite_physical_null(path, forms_physical, "a", "WHERE a IS NULL AND b IS NULL",
+                                        "default row without column list");
+    }
+
+    failures +=
+        execute_sql(database, "CREATE TABLE unique_insert (a INT UNIQUE, b INT)", MYLITE_DONE);
+    unique_physical = expected_physical_table_name("mylite_iv13", "unique_insert");
+    if (unique_physical == NULL) {
+        fprintf(stderr, "out of memory while building unique_insert physical table name\n");
+        failures = 1;
+    }
+    failures +=
+        execute_sql(database, "INSERT INTO unique_insert VALUES (NULL,1),(NULL,2)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "INSERT INTO unique_insert VALUES (5,3),(5,4)", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "intra statement unique duplicate");
+    failures += expect_contains(mylite_error_message(database), "Duplicate entry '5'",
+                                "intra statement unique duplicate error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (unique_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, unique_physical, "COUNT(*)", "", 2,
+                                                 "unique duplicate rollback count");
+    }
+    failures += execute_sql(database, "INSERT INTO unique_insert VALUES (5,3)", MYLITE_DONE);
+    failures += prepare_sql(database, "INSERT INTO unique_insert VALUES (5,4)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "existing unique duplicate");
+    failures += expect_contains(mylite_error_message(database), "Duplicate entry '5'",
+                                "existing unique duplicate error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ai ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "v VARCHAR(10) DEFAULT 'd', "
+                            "n INT NOT NULL DEFAULT 7, "
+                            "nullable INT, "
+                            "ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP) "
+                            "AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    ai_physical = expected_physical_table_name("mylite_iv13", "ai");
+    if (ai_physical == NULL) {
+        fprintf(stderr, "out of memory while building ai physical table name\n");
+        failures = 1;
+    }
+
+    failures += prepare_sql(database, "INSERT INTO ai (v) VALUES ('a'), ('b')", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert ai implicit values");
+    failures += expect_int64(mylite_affected_rows(stmt), 2, "insert ai affected rows");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), ai_first_insert_id,
+                             "insert ai last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "INSERT INTO ai VALUES "
+                            "(DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT)",
+                            MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), ai_default_value_insert_id,
+                             "insert ai default value last insert id");
+    failures += execute_sql(database, "INSERT INTO ai () VALUES ()", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), ai_empty_column_insert_id,
+                             "insert ai empty column last insert id");
+    failures += execute_sql(database, "INSERT INTO ai VALUES ()", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), ai_default_row_insert_id,
+                             "insert ai default row last insert id");
+
+    if (ai_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, ai_physical, "COUNT(*)", "",
+                                                 ai_inserted_row_count, "ai inserted row count");
+        failures += expect_sqlite_physical_int64(path, ai_physical, "id", "WHERE v = 'a'",
+                                                 ai_first_insert_id, "ai first implicit id");
+        failures += expect_sqlite_physical_int64(path, ai_physical, "n", "WHERE id = 10",
+                                                 ai_default_column_n, "ai first default n");
+        failures += expect_sqlite_physical_null(path, ai_physical, "nullable", "WHERE id = 10",
+                                                "ai nullable default");
+        failures += expect_sqlite_physical_not_null(path, ai_physical, "ts", "WHERE id = 10",
+                                                    "ai timestamp default");
+        failures += expect_sqlite_physical_text(path, ai_physical, "v", "WHERE id = 12", "d",
+                                                "ai DEFAULT text value");
+        failures +=
+            expect_sqlite_physical_int64(path, ai_physical, "id", "WHERE id = 14",
+                                         ai_default_row_insert_id, "ai empty row generated id");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ai_failed_sequence ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, u INT UNIQUE) "
+                            "AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    failed_ai_physical = expected_physical_table_name("mylite_iv13", "ai_failed_sequence");
+    if (failed_ai_physical == NULL) {
+        fprintf(stderr, "out of memory while building ai_failed_sequence physical table name\n");
+        failures = 1;
+    }
+    failures += prepare_sql(database, "INSERT INTO ai_failed_sequence VALUES (NULL,1),(NULL,1)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "failed auto-increment duplicate insert");
+    failures += expect_contains(mylite_error_message(database), "Duplicate entry '1'",
+                                "failed auto-increment duplicate error");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), ai_failed_first_insert_id,
+                             "failed auto-increment first insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (failed_ai_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, failed_ai_physical, "COUNT(*)", "", 0,
+                                                 "failed auto-increment rollback count");
+    }
+    failures +=
+        execute_sql(database, "INSERT INTO ai_failed_sequence VALUES (NULL,2)", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), ai_failed_after_rollback_id,
+                             "failed auto-increment next insert id");
+    if (failed_ai_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, failed_ai_physical, "id", "WHERE u = 2",
+                                                 ai_failed_after_rollback_id,
+                                                 "failed auto-increment consumed ids");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ai_failed_pending ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, u INT UNIQUE) "
+                            "AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    failed_pending_ai_physical = expected_physical_table_name("mylite_iv13", "ai_failed_pending");
+    if (failed_pending_ai_physical == NULL) {
+        fprintf(stderr, "out of memory while building ai_failed_pending physical table name\n");
+        failures = 1;
+    }
+    failures += prepare_sql(database, "INSERT INTO ai_failed_pending VALUES (20,1),(NULL,1)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "failed pending auto-increment duplicate insert");
+    failures += expect_contains(mylite_error_message(database), "Duplicate entry '1'",
+                                "failed pending auto-increment duplicate error");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), ai_failed_after_rollback_id,
+                             "failed pending auto-increment leaves last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (failed_pending_ai_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, failed_pending_ai_physical, "COUNT(*)", "",
+                                                 0, "failed pending auto-increment rollback count");
+    }
+    failures += execute_sql(database, "INSERT INTO ai_failed_pending VALUES (NULL,2)", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), ai_failed_pending_next_id,
+                             "failed pending auto-increment next insert id");
+    if (failed_pending_ai_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, failed_pending_ai_physical, "id",
+                                                 "WHERE u = 2", ai_failed_pending_next_id,
+                                                 "failed pending auto-increment consumed ids");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ai_reserve ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, u INT UNIQUE) "
+                            "AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    reserve_ai_physical = expected_physical_table_name("mylite_iv13", "ai_reserve");
+    if (reserve_ai_physical == NULL) {
+        fprintf(stderr, "out of memory while building ai_reserve physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database, "INSERT INTO ai_reserve VALUES (20,1),(NULL,2)", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), ai_reserved_generated_id,
+                             "reserved auto-increment generated id");
+    failures += execute_sql(database, "INSERT INTO ai_reserve VALUES (NULL,3)", MYLITE_DONE);
+    if (reserve_ai_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, reserve_ai_physical, "id", "WHERE u = 2",
+                                                 ai_reserved_generated_id,
+                                                 "reserved auto-increment generated row");
+        failures += expect_sqlite_physical_int64(path, reserve_ai_physical, "id", "WHERE u = 3",
+                                                 ai_reserved_after_statement_id,
+                                                 "reserved auto-increment next row");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ai_explicit ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT) "
+                            "AUTO_INCREMENT=3",
+                            MYLITE_DONE);
+    explicit_physical = expected_physical_table_name("mylite_iv13", "ai_explicit");
+    if (explicit_physical == NULL) {
+        fprintf(stderr, "out of memory while building ai_explicit physical table name\n");
+        failures = 1;
+    }
+    failures += prepare_sql(database,
+                            "INSERT INTO ai_explicit VALUES "
+                            "(NULL,10),(0,20),(5,50),(NULL,60)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert explicit auto mix");
+    failures += expect_int64(mylite_affected_rows(stmt), 4, "explicit auto affected rows");
+    failures +=
+        expect_int64((int64_t)mylite_last_insert_id(database), 3, "explicit auto last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (explicit_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, explicit_physical, "COUNT(*)", "", 4,
+                                                 "explicit auto row count");
+        failures += expect_sqlite_physical_int64(path, explicit_physical, "v", "WHERE id = 6",
+                                                 explicit_auto_generated_after_explicit_v,
+                                                 "explicit auto generated after explicit");
+    }
+
+    failures += prepare_sql(database, "INSERT INTO ai_explicit VALUES (4, 40)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate primary insert");
+    failures += expect_contains(mylite_error_message(database), "Duplicate entry '4'",
+                                "duplicate primary error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO ai_explicit VALUES (NULL,70)", MYLITE_DONE);
+    if (explicit_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, explicit_physical, "id", "WHERE v = 70",
+                                                 explicit_auto_after_duplicate_id,
+                                                 "explicit auto next after duplicate");
+    }
+    failures += execute_sql(database, "INSERT INTO ai_explicit VALUES (8,80)", MYLITE_DONE);
+    failures +=
+        expect_int64((int64_t)mylite_last_insert_id(database), explicit_auto_after_duplicate_id,
+                     "explicit auto value leaves last insert id");
+    failures += execute_sql(database, "INSERT INTO ai_explicit VALUES (NULL,90)", MYLITE_DONE);
+    failures +=
+        expect_int64((int64_t)mylite_last_insert_id(database), explicit_auto_after_explicit_id,
+                     "explicit auto value advances sequence");
+    if (explicit_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, explicit_physical, "id", "WHERE v = 90",
+                                                 explicit_auto_after_explicit_id,
+                                                 "explicit auto next after explicit");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE defaults ("
+                            "nn INT NOT NULL, nd INT NOT NULL DEFAULT 9, "
+                            "nul INT, txt VARCHAR(10) DEFAULT 'hello')",
+                            MYLITE_DONE);
+    defaults_physical = expected_physical_table_name("mylite_iv13", "defaults");
+    if (defaults_physical == NULL) {
+        fprintf(stderr, "out of memory while building defaults physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database,
+                            "INSERT INTO defaults (nn, nd, nul, txt) "
+                            "VALUES (1, DEFAULT, DEFAULT, DEFAULT)",
+                            MYLITE_DONE);
+    if (defaults_physical != NULL) {
+        failures +=
+            expect_sqlite_physical_int64(path, defaults_physical, "nd", "WHERE nn = 1",
+                                         defaults_explicit_default_nd, "explicit DEFAULT integer");
+        failures += expect_sqlite_physical_null(path, defaults_physical, "nul", "WHERE nn = 1",
+                                                "explicit DEFAULT nullable");
+        failures += expect_sqlite_physical_text(path, defaults_physical, "txt", "WHERE nn = 1",
+                                                "hello", "explicit DEFAULT string");
+    }
+    failures += execute_sql(database, "INSERT INTO defaults (NN, TXT, ND) VALUES (2, 'case', + 3)",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO defaults (nn, nd) VALUES (- 2, + 4)", MYLITE_DONE);
+    if (defaults_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, defaults_physical, "nd", "WHERE nn = 2", 3,
+                                                 "case-insensitive column list");
+        failures += expect_sqlite_physical_text(path, defaults_physical, "txt", "WHERE nn = 2",
+                                                "case", "case-insensitive column text");
+        failures += expect_sqlite_physical_int64(path, defaults_physical, "nd", "WHERE nn = -2", 4,
+                                                 "spaced unary insert value");
+    }
+
+    failures +=
+        prepare_sql(database, "INSERT INTO defaults (nd) VALUES (DEFAULT)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "missing not null default");
+    failures += expect_contains(mylite_error_message(database), "doesn't have a default value",
+                                "missing not null default error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "INSERT INTO defaults (nn) VALUES (NULL)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "explicit null not null");
+    failures +=
+        expect_contains(mylite_error_message(database), "cannot be null", "explicit null error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "INSERT INTO defaults (nn, NN) VALUES (1, 2)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate insert column");
+    failures += expect_contains(mylite_error_message(database), "specified twice",
+                                "duplicate insert column error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "INSERT INTO defaults (missing_col) VALUES (1)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "unknown insert column");
+    failures += expect_contains(mylite_error_message(database), "Unknown column",
+                                "unknown insert column error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "INSERT INTO defaults VALUES (1, 2)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "wrong insert value count");
+    failures += expect_contains(mylite_error_message(database),
+                                "Column count doesn't match value count at row 1",
+                                "wrong insert count error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        execute_sql(database, "CREATE TABLE atomic_insert (a INT NOT NULL, b INT)", MYLITE_DONE);
+    atomic_physical = expected_physical_table_name("mylite_iv13", "atomic_insert");
+    if (atomic_physical == NULL) {
+        fprintf(stderr, "out of memory while building atomic physical table name\n");
+        failures = 1;
+    }
+    failures +=
+        prepare_sql(database, "INSERT INTO atomic_insert VALUES (1,1),(NULL,2)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "atomic insert null error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (atomic_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, atomic_physical, "COUNT(*)", "", 0,
+                                                 "atomic insert rollback row count");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE expr_defaults ("
+                            "a INT DEFAULT (1 + 2), "
+                            "b TIMESTAMP DEFAULT (CURRENT_TIMESTAMP))",
+                            MYLITE_DONE);
+    expr_physical = expected_physical_table_name("mylite_iv13", "expr_defaults");
+    if (expr_physical == NULL) {
+        fprintf(stderr, "out of memory while building expr_defaults physical table name\n");
+        failures = 1;
+    }
+    failures +=
+        execute_sql(database, "INSERT INTO expr_defaults (a, b) VALUES (1, DEFAULT)", MYLITE_DONE);
+    failures += prepare_sql(database, "INSERT INTO expr_defaults VALUES (DEFAULT, DEFAULT)",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "unsupported generated default insert");
+    failures += expect_contains(mylite_error_message(database), "Unsupported generated default",
+                                "unsupported generated default error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (expr_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, expr_physical, "COUNT(*)", "", 1,
+                                                 "generated default rollback row count");
+        failures += expect_sqlite_physical_not_null(path, expr_physical, "b", "WHERE a = 1",
+                                                    "parenthesized current timestamp default");
+    }
+
+    free(forms_physical);
+    free(unique_physical);
+    free(ai_physical);
+    free(failed_ai_physical);
+    free(failed_pending_ai_physical);
+    free(reserve_ai_physical);
+    free(explicit_physical);
+    free(defaults_physical);
+    free(atomic_physical);
+    free(expr_physical);
+    mylite_close(database);
+    remove_runtime_test_files();
+    return failures;
+}
+
 static int test_parse_error(void)
 {
     mylite_db *database = NULL;
@@ -2130,6 +2628,117 @@ static int expect_sqlite_table_missing(const struct sqlite_table_lookup *lookup)
     }
     sqlite3_finalize(stmt);
     sqlite3_close(sqlite);
+    return failures;
+}
+
+static int expect_sqlite_physical_int64(const char *path, const char *physical_name,
+                                        const char *expression, const char *tail, int64_t expected,
+                                        const char *context)
+{
+    return expect_sqlite_physical_value(&(const struct sqlite_physical_value_expectation){
+        .path = path,
+        .physical_name = physical_name,
+        .expression = expression,
+        .tail = tail,
+        .expected_type = SQLITE_INTEGER,
+        .expected_int = expected,
+        .context = context,
+    });
+}
+
+static int expect_sqlite_physical_text(const char *path, const char *physical_name,
+                                       const char *expression, const char *tail,
+                                       const char *expected, const char *context)
+{
+    return expect_sqlite_physical_value(&(const struct sqlite_physical_value_expectation){
+        .path = path,
+        .physical_name = physical_name,
+        .expression = expression,
+        .tail = tail,
+        .expected_type = SQLITE_TEXT,
+        .expected_text = expected,
+        .context = context,
+    });
+}
+
+static int expect_sqlite_physical_null(const char *path, const char *physical_name,
+                                       const char *expression, const char *tail,
+                                       const char *context)
+{
+    return expect_sqlite_physical_value(&(const struct sqlite_physical_value_expectation){
+        .path = path,
+        .physical_name = physical_name,
+        .expression = expression,
+        .tail = tail,
+        .expected_type = SQLITE_NULL,
+        .context = context,
+    });
+}
+
+static int expect_sqlite_physical_not_null(const char *path, const char *physical_name,
+                                           const char *expression, const char *tail,
+                                           const char *context)
+{
+    return expect_sqlite_physical_value(&(const struct sqlite_physical_value_expectation){
+        .path = path,
+        .physical_name = physical_name,
+        .expression = expression,
+        .tail = tail,
+        .expected_type = -1,
+        .context = context,
+    });
+}
+
+static int expect_sqlite_physical_value(const struct sqlite_physical_value_expectation *expected)
+{
+    sqlite3 *sqlite = NULL;
+    sqlite3_stmt *stmt = NULL;
+    char *sql =
+        sqlite3_mprintf("SELECT %s FROM \"%w\" %s", expected->expression, expected->physical_name,
+                        expected->tail == NULL ? "" : expected->tail);
+    int failures = 0;
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        fprintf(stderr, "%s: out of memory while building sqlite query\n", expected->context);
+        return 1;
+    }
+
+    failures += expect_sqlite_status(
+        sqlite3_open_v2(expected->path, &sqlite, SQLITE_OPEN_READONLY, mylite_vfs_name()),
+        SQLITE_OK, "open sqlite for physical value check");
+    if (sqlite == NULL) {
+        sqlite3_free(sql);
+        return failures + 1;
+    }
+
+    rc = sqlite3_prepare_v2(sqlite, sql, -1, &stmt, NULL);
+    failures += expect_sqlite_status(rc, SQLITE_OK, expected->context);
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_step(stmt);
+        failures += expect_sqlite_status(rc, SQLITE_ROW, expected->context);
+    }
+    if (rc == SQLITE_ROW && expected->expected_type == SQLITE_INTEGER) {
+        failures += expect_int64((int64_t)sqlite3_column_int64(stmt, 0), expected->expected_int,
+                                 expected->context);
+    } else if (rc == SQLITE_ROW && expected->expected_type == SQLITE_TEXT) {
+        failures += expect_string((const char *)sqlite3_column_text(stmt, 0),
+                                  expected->expected_text, expected->context);
+    } else if (rc == SQLITE_ROW && expected->expected_type == SQLITE_NULL) {
+        if (sqlite3_column_type(stmt, 0) != SQLITE_NULL) {
+            fprintf(stderr, "%s: expected sqlite null\n", expected->context);
+            failures = 1;
+        }
+    } else if (rc == SQLITE_ROW && expected->expected_type == -1) {
+        if (sqlite3_column_type(stmt, 0) == SQLITE_NULL) {
+            fprintf(stderr, "%s: expected sqlite non-null value\n", expected->context);
+            failures = 1;
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(sqlite);
+    sqlite3_free(sql);
     return failures;
 }
 

@@ -3,8 +3,10 @@
 %token_type { struct mylite_sql_token }
 %default_type { struct mylite_sql_ast_node * }
 %type opt_column_unique_key { struct mylite_sql_token }
+%type opt_into { struct mylite_sql_token }
 %type opt_temporary { struct mylite_sql_token }
 %type opt_drop_table_mode { struct mylite_sql_token }
+%type insert_values_keyword { struct mylite_sql_token }
 %extra_argument { struct mylite_sql_parser_state *state }
 
 %include {
@@ -35,7 +37,7 @@
 %fallback IDENTIFIER AUTO_INCREMENT BOOL BOOLEAN BTREE CHARSET COLUMN_FORMAT COMMENT DATE DATETIME
     DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR
     NVARCHAR ONLY SECONDARY_ENGINE_ATTRIBUTE SIGNED STORAGE TEMPORARY TEXT TIME TIMESTAMP VISIBLE
-    YEAR.
+    VALUE YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -74,6 +76,9 @@ statement(A) ::= drop_schema_statement(B). {
     A = B;
 }
 statement(A) ::= drop_table_statement(B). {
+    A = B;
+}
+statement(A) ::= insert_values_statement(B). {
     A = B;
 }
 statement(A) ::= show_schemas_statement(B). {
@@ -154,6 +159,76 @@ opt_drop_table_mode(A) ::= RESTRICT(T). {
 }
 opt_drop_table_mode(A) ::= CASCADE(T). {
     A = T;
+}
+
+insert_values_statement(A) ::= INSERT(T) opt_into table_name(B) opt_insert_column_list(C) insert_values_keyword insert_row_list(D). {
+    A = mylite_sql_parser_make_insert_values_statement(state, T, B, C, D);
+}
+
+opt_into(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_into(A) ::= INTO(T). {
+    A = T;
+}
+
+opt_insert_column_list(A) ::= . {
+    A = NULL;
+}
+opt_insert_column_list(A) ::= LPAREN RPAREN. {
+    A = mylite_sql_parser_make_insert_column_list(state, NULL);
+}
+opt_insert_column_list(A) ::= LPAREN insert_column_list(B) RPAREN. {
+    A = B;
+}
+
+insert_column_list(A) ::= identifier(B). {
+    A = mylite_sql_parser_make_insert_column_list(state, B);
+}
+insert_column_list(A) ::= insert_column_list(B) COMMA identifier(C). {
+    A = mylite_sql_parser_append_insert_column(state, B, C);
+}
+
+insert_values_keyword(A) ::= VALUES(T). {
+    A = T;
+}
+insert_values_keyword(A) ::= VALUE(T). {
+    A = T;
+}
+
+insert_row_list(A) ::= insert_row(B). {
+    A = mylite_sql_parser_make_insert_row_list(state, B);
+}
+insert_row_list(A) ::= insert_row_list(B) COMMA insert_row(C). {
+    A = mylite_sql_parser_append_insert_row(state, B, C);
+}
+
+insert_row(A) ::= LPAREN(L) opt_insert_value_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_insert_row(state, L, B, R);
+}
+insert_row(A) ::= ROW(T) LPAREN opt_insert_value_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_insert_row(state, T, B, R);
+}
+
+opt_insert_value_list(A) ::= . {
+    A = NULL;
+}
+opt_insert_value_list(A) ::= insert_value_list(B). {
+    A = B;
+}
+
+insert_value_list(A) ::= insert_value(B). {
+    A = mylite_sql_parser_make_insert_value_list(state, B);
+}
+insert_value_list(A) ::= insert_value_list(B) COMMA insert_value(C). {
+    A = mylite_sql_parser_append_insert_value(state, B, C);
+}
+
+insert_value(A) ::= expression(B). {
+    A = B;
+}
+insert_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_default(state, T);
 }
 
 show_schemas_statement(A) ::= SHOW(T) DATABASES(D). {

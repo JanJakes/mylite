@@ -53,6 +53,8 @@ MYLITE_API int mylite_prepare(mylite_db *database, const char *sql, size_t lengt
                               mylite_stmt **out_stmt);
 MYLITE_API void mylite_finalize(mylite_stmt *stmt);
 MYLITE_API int mylite_step(mylite_stmt *stmt);
+MYLITE_API int64_t mylite_affected_rows(const mylite_stmt *stmt);
+MYLITE_API uint64_t mylite_last_insert_id(const mylite_db *database);
 
 MYLITE_API int mylite_column_count(const mylite_stmt *stmt);
 MYLITE_API const char *mylite_column_name(const mylite_stmt *stmt, int column);

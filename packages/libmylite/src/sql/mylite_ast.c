@@ -440,6 +440,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "drop_table_statement";
     case MYLITE_SQL_AST_TABLE_NAME_LIST:
         return "table_name_list";
+    case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
+        return "insert_values_statement";
+    case MYLITE_SQL_AST_INSERT_COLUMN_LIST:
+        return "insert_column_list";
+    case MYLITE_SQL_AST_INSERT_ROW_LIST:
+        return "insert_row_list";
+    case MYLITE_SQL_AST_INSERT_ROW:
+        return "insert_row";
+    case MYLITE_SQL_AST_INSERT_VALUE_LIST:
+        return "insert_value_list";
     }
 
     return "unknown";

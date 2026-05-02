@@ -33,7 +33,7 @@ level application surfaces.
        options, schema qualification, `IF NOT EXISTS`, warnings, and atomicity.
 12. [x] `DROP TABLE`: multi-table drops, `IF EXISTS`, temporary table handling,
        warning behavior, metadata cleanup, and implicit commit behavior.
-13. [ ] `INSERT ... VALUES`: column lists, multi-row values, defaults,
+13. [x] `INSERT ... VALUES`: column lists, multi-row values, defaults,
        generated/default columns, affected rows, warnings, and insert ids.
 14. [ ] `INSERT ... SET`: assignment-form insert semantics, defaults, duplicate
        column diagnostics, affected rows, and insert ids.

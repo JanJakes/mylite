@@ -118,6 +118,35 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_append_table_name(struct mylite_sql_parser_state *state,
                                     struct mylite_sql_ast_node *list,
                                     struct mylite_sql_ast_node *table_name);
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_values_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token insert_token,
+    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *rows);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_insert_column_list(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_ast_node *column);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_insert_column(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *list,
+                                       struct mylite_sql_ast_node *column);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_insert_row_list(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *row);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_insert_row(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *list,
+                                    struct mylite_sql_ast_node *row);
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row(struct mylite_sql_parser_state *state,
+                                                              struct mylite_sql_token start_token,
+                                                              struct mylite_sql_ast_node *values,
+                                                              struct mylite_sql_token end_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_insert_value_list(struct mylite_sql_parser_state *state,
+                                         struct mylite_sql_ast_node *value);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_insert_value(struct mylite_sql_parser_state *state,
+                                      struct mylite_sql_ast_node *list,
+                                      struct mylite_sql_ast_node *value);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
                                               struct mylite_sql_token show_token,

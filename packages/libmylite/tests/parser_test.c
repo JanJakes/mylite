@@ -17,6 +17,7 @@ static int test_create_table_primary_keys_auto_increment(void);
 static int test_create_table_unique_secondary_indexes(void);
 static int test_create_table_base_execution_syntax(void);
 static int test_drop_table_syntax(void);
+static int test_insert_values_syntax(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -79,6 +80,7 @@ int main(void)
     failures += test_create_table_unique_secondary_indexes();
     failures += test_create_table_base_execution_syntax();
     failures += test_drop_table_syntax();
+    failures += test_insert_values_syntax();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -2078,6 +2080,104 @@ static int test_drop_table_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("DROP TABLE ;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_insert_values_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *rows = NULL;
+    const struct mylite_sql_ast_node *row = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("INSERT app.t VALUES (1, 'a'), (DEFAULT, NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_VALUES_STATEMENT, "insert values statement");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "insert qualified table name");
+    failures += expect_child_count(statement, 2U, "insert without column list children");
+    failures += expect_node(rows, MYLITE_SQL_AST_INSERT_ROW_LIST, "insert row list");
+    failures += expect_child_count(rows, 2U, "insert row list count");
+    row = child_at(rows, 0U);
+    failures += expect_node(row, MYLITE_SQL_AST_INSERT_ROW, "insert first row");
+    failures += expect_child_count(row, 2U, "insert first row value count");
+    failures +=
+        expect_literal(child_at(row, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "insert integer value");
+    failures +=
+        expect_literal(child_at(row, 1U), MYLITE_SQL_AST_LITERAL_STRING, "insert string value");
+    row = child_at(rows, 1U);
+    failures += expect_node(child_at(row, 0U), MYLITE_SQL_AST_DEFAULT, "insert DEFAULT value");
+    failures += expect_literal(child_at(row, 1U), MYLITE_SQL_AST_LITERAL_NULL, "insert NULL value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t (a, `B`) VALUE (DEFAULT, CURRENT_TIMESTAMP);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    rows = child_at(statement, 2U);
+    failures += expect_child_count(statement, 3U, "insert with column list children");
+    failures += expect_node(columns, MYLITE_SQL_AST_INSERT_COLUMN_LIST, "insert column list");
+    failures += expect_child_count(columns, 2U, "insert column count");
+    failures += expect_span_text(child_at(columns, 0U), "a", "insert first column");
+    failures += expect_span_text(child_at(columns, 1U), "`B`", "insert quoted column");
+    row = child_at(rows, 0U);
+    failures += expect_node(child_at(row, 0U), MYLITE_SQL_AST_DEFAULT, "singular VALUE default");
+    failures +=
+        expect_current_timestamp(child_at(row, 1U), false, 0U, "singular VALUE current timestamp");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT t VALUES ROW(1, 2), ROW(3, 4);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 1U);
+    failures += expect_child_count(rows, 2U, "insert ROW constructor count");
+    failures += expect_child_count(child_at(rows, 0U), 2U, "first ROW constructor values");
+    failures += expect_literal(child_at(child_at(rows, 1U), 1U), MYLITE_SQL_AST_LITERAL_INTEGER,
+                               "second ROW constructor value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t () VALUES ();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    rows = child_at(statement, 2U);
+    failures += expect_node(columns, MYLITE_SQL_AST_INSERT_COLUMN_LIST, "empty insert columns");
+    failures += expect_child_count(columns, 0U, "empty insert column count");
+    failures += expect_child_count(child_at(rows, 0U), 0U, "empty insert row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES ();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 1U);
+    failures += expect_child_count(statement, 2U, "default row without column list children");
+    failures += expect_child_count(child_at(rows, 0U), 0U, "default row without column list");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES (1,);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT IGNORE INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT LOW_PRIORITY INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT DELAYED INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE a = 1;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

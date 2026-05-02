@@ -450,6 +450,157 @@ mylite_sql_parser_append_table_name(struct mylite_sql_parser_state *state,
     return list;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_values_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token insert_token,
+    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *rows)
+{
+    struct mylite_sql_source_span span = span_from_token(&insert_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+    if (columns != NULL && columns->span.text != NULL) {
+        span = span_join(span, columns->span);
+    }
+    if (rows != NULL) {
+        span = span_join(span, rows->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_INSERT_VALUES_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, columns);
+    mylite_sql_ast_node_append_child(statement, rows);
+    return statement;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_insert_column_list(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_ast_node *column)
+{
+    struct mylite_sql_source_span span =
+        column == NULL ? (struct mylite_sql_source_span){0} : column->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_INSERT_COLUMN_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(list, column);
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_insert_column(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *list,
+                                       struct mylite_sql_ast_node *column)
+{
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, column);
+    if (column != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, column->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_insert_row_list(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *row)
+{
+    struct mylite_sql_source_span span =
+        row == NULL ? (struct mylite_sql_source_span){0} : row->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_INSERT_ROW_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(list, row);
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_insert_row(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *list,
+                                    struct mylite_sql_ast_node *row)
+{
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, row);
+    if (row != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, row->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row(struct mylite_sql_parser_state *state,
+                                                              struct mylite_sql_token start_token,
+                                                              struct mylite_sql_ast_node *values,
+                                                              struct mylite_sql_token end_token)
+{
+    struct mylite_sql_source_span span = span_from_token(&start_token);
+    struct mylite_sql_ast_node *row = NULL;
+
+    if (values != NULL) {
+        span = span_join(span, values->span);
+    }
+    if (end_token.text != NULL) {
+        span = span_join(span, span_from_token(&end_token));
+    }
+
+    row = make_node(state, MYLITE_SQL_AST_INSERT_ROW, span);
+    if (row == NULL) {
+        return NULL;
+    }
+    if (values != NULL) {
+        for (struct mylite_sql_ast_node *value = values->first_child; value != NULL;) {
+            struct mylite_sql_ast_node *next = value->next_sibling;
+            mylite_sql_ast_node_append_child(row, value);
+            value = next;
+        }
+    }
+    return row;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_insert_value_list(struct mylite_sql_parser_state *state,
+                                         struct mylite_sql_ast_node *value)
+{
+    struct mylite_sql_source_span span =
+        value == NULL ? (struct mylite_sql_source_span){0} : value->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_INSERT_VALUE_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(list, value);
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_insert_value(struct mylite_sql_parser_state *state,
+                                      struct mylite_sql_ast_node *list,
+                                      struct mylite_sql_ast_node *value)
+{
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, value);
+    if (value != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, value->span));
+    }
+    return list;
+}
+
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
                                               struct mylite_sql_token show_token,
@@ -2188,7 +2339,9 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"INT8", MYLITE_SQL_PARSE_INT8},
         {"INTEGER", MYLITE_SQL_PARSE_INTEGERKW},
         {"INDEX", MYLITE_SQL_PARSE_INDEX},
+        {"INSERT", MYLITE_SQL_PARSE_INSERT},
         {"INVISIBLE", MYLITE_SQL_PARSE_INVISIBLE},
+        {"INTO", MYLITE_SQL_PARSE_INTO},
         {"KEY", MYLITE_SQL_PARSE_KEY},
         {"KEY_BLOCK_SIZE", MYLITE_SQL_PARSE_KEY_BLOCK_SIZE},
         {"LONGBLOB", MYLITE_SQL_PARSE_LONGBLOB},
@@ -2213,6 +2366,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"READ", MYLITE_SQL_PARSE_READ},
         {"REAL", MYLITE_SQL_PARSE_REAL},
         {"RESTRICT", MYLITE_SQL_PARSE_RESTRICT},
+        {"ROW", MYLITE_SQL_PARSE_ROW},
         {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
         {"SCHEMAS", MYLITE_SQL_PARSE_SCHEMAS},
         {"SECONDARY_ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_SECONDARY_ENGINE_ATTRIBUTE},
@@ -2237,6 +2391,8 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"USE", MYLITE_SQL_PARSE_USE},
         {"USING", MYLITE_SQL_PARSE_USING},
         {"VARBINARY", MYLITE_SQL_PARSE_VARBINARY},
+        {"VALUE", MYLITE_SQL_PARSE_VALUE},
+        {"VALUES", MYLITE_SQL_PARSE_VALUES},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
         {"VARYING", MYLITE_SQL_PARSE_VARYING},
         {"VISIBLE", MYLITE_SQL_PARSE_VISIBLE},

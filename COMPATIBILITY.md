@@ -62,7 +62,7 @@ grammar plus MyLite MySQL overlay rules. It provides syntax acceptance and an
 optional generic parse tree with typed statement, target, and initial
 `CREATE TABLE` column, exact column type-kind, parser-level storage-class,
 numeric type-parameter, semantic type-shape, exact type-attribute span,
-enum/set element-count, key/constraint-detail, and table-option descriptor
+enum/set element-span, key/constraint-detail, and table-option descriptor
 views. Column descriptors include CST node anchors for the next semantic AST
 builder, but the parser does not yet build the final typed MyLite AST and does
 not imply runtime support for the statement rows below. The current prototype
@@ -355,7 +355,7 @@ WordPress MySQL server query corpus with
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| Column definition grammar | ❌ | top | Type, nullability, defaults, visibility, comments, storage, format, references, and constraints. | Parser prototype accepts corpus coverage and exposes source spans for column type names, parameters, type attributes, defaults, `ON UPDATE`, generated columns, comments, inline checks, and inline references. It also classifies exact column type kind for recognized MySQL type tokens and common aliases and keeps CST node anchors for type/options/value roots. Semantic metadata construction is not implemented yet. |
+| Column definition grammar | ❌ | top | Type, nullability, defaults, visibility, comments, storage, format, references, and constraints. | Parser prototype accepts corpus coverage and exposes source spans for column type names, parameters, enum/set elements, type attributes, defaults, `ON UPDATE`, generated columns, comments, inline checks, and inline references. It also classifies exact column type kind for recognized MySQL type tokens and common aliases and keeps CST node anchors for type/options/value roots. Semantic metadata construction is not implemented yet. |
 | Silent column specification changes | ❌ | high | MySQL automatic rewrites of column specifications and SHOW CREATE output. |  |
 | Default expressions | ❌ | top | Literal and expression defaults, CURRENT_TIMESTAMP variants, and error cases. | Parser exposes default clause/value spans for column definitions; semantic expression AST, validation, metadata, and runtime behavior are not implemented yet. |
 | Generated columns | ❌ | high | Virtual/stored generated columns, dependencies, indexes, and metadata. | Parser exposes generated clause, expression, and storage-mode spans for column definitions, including `AS (...)` without explicit `GENERATED ALWAYS`; semantic dependency and runtime behavior are not implemented yet. |

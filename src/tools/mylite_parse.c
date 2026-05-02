@@ -258,6 +258,13 @@ static void dump_statements(const MyliteAst *ast) {
                  mylite_ast_create_table_column_check_expression_node(ast, i, j)),
              node_symbol_or_none(
                  mylite_ast_create_table_column_reference_node(ast, i, j)));
+      size_t type_element_count =
+          mylite_ast_create_table_column_type_element_count(ast, i, j);
+      for (size_t k = 0; k < type_element_count; k++) {
+        printf("    column[%zu].type_element[%zu] span=%zu..%zu\n", j, k,
+               mylite_ast_create_table_column_type_element_start(ast, i, j, k),
+               mylite_ast_create_table_column_type_element_end(ast, i, j, k));
+      }
     }
     for (size_t j = 0; j < key_count; j++) {
       size_t column_count_for_key =

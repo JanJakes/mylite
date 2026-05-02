@@ -23,6 +23,8 @@ typedef struct ExpectedCreateTableColumn {
   size_t type_numeric_parameter_count;
   unsigned long long type_numeric_parameters[2];
   size_t type_element_count;
+  const char *type_element0;
+  const char *type_element1;
   int has_type_length;
   unsigned long long type_length;
   int has_type_precision;
@@ -805,17 +807,19 @@ int main(void) {
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_DECIMAL,
          .type_node_symbol = "nt_type"},
-        {.definition = "e ENUM('a','b') DEFAULT 'a'",
+        {.definition = "e ENUM('a,b','c''d') DEFAULT 'a,b'",
          .name = "e",
-         .type = "ENUM('a','b')",
-         .options = "DEFAULT 'a'",
+         .type = "ENUM('a,b','c''d')",
+         .options = "DEFAULT 'a,b'",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_ENUM,
          .flags = MYLITE_CREATE_TABLE_COLUMN_FLAG_DEFAULT,
          .type_name = "ENUM",
-         .type_parameters = "('a','b')",
+         .type_parameters = "('a,b','c''d')",
          .type_element_count = 2,
-         .default_span = "DEFAULT 'a'",
-         .default_value = "'a'",
+         .type_element0 = "'a,b'",
+         .type_element1 = "'c''d'",
+         .default_span = "DEFAULT 'a,b'",
+         .default_value = "'a,b'",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_ENUM,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_ENUM,
          .type_node_symbol = "nt_type",
@@ -911,7 +915,7 @@ int main(void) {
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEXT}};
     failures += expect_create_table_columns(
         "CREATE TABLE t (d DECIMAL(10,2) UNSIGNED ZEROFILL, "
-        "e ENUM('a','b') DEFAULT 'a', "
+        "e ENUM('a,b','c''d') DEFAULT 'a,b', "
         "v VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin COMMENT 'x', "
         "x VARCHAR(10) BINARY, "
         "y VARCHAR(10) CHARACTER SET utf8mb4 BINARY, "
@@ -1033,7 +1037,9 @@ int main(void) {
          .type = "SET('x')",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_SET,
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_SET,
+         .type_parameters = "('x')",
          .type_element_count = 1,
+         .type_element0 = "'x'",
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_SET},
         {.definition = "ve VECTOR(3)",
          .name = "ve",
@@ -1660,6 +1666,14 @@ static int expect_create_table_columns(const char *sql,
         (columns[i].type_element_count > 0 &&
          mylite_ast_create_table_column_type_element_count(ast, 0, i) !=
              columns[i].type_element_count) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_element_start(ast, 0, i, 0),
+            mylite_ast_create_table_column_type_element_end(ast, 0, i, 0),
+            columns[i].type_element0) ||
+        !span_matches_when_expected(
+            sql, mylite_ast_create_table_column_type_element_start(ast, 0, i, 1),
+            mylite_ast_create_table_column_type_element_end(ast, 0, i, 1),
+            columns[i].type_element1) ||
         (columns[i].has_type_length &&
          (!mylite_ast_create_table_column_type_has_length(ast, 0, i) ||
           mylite_ast_create_table_column_type_length(ast, 0, i) !=
@@ -1776,6 +1790,7 @@ static int expect_create_table_columns(const char *sql,
               "flags=0x%x\n"
               "type_name=%zu..%zu type_params=%zu..%zu "
               "type_numeric_params=%zu:%llu,%llu type_elements=%zu "
+              "type_element0=%zu..%zu type_element1=%zu..%zu "
               "type_length=%d:%llu type_precision=%d:%llu "
               "type_scale=%d:%llu type_fsp=%d:%llu "
               "type_attrs=%zu..%zu type_unsigned=%zu..%zu "
@@ -1814,6 +1829,10 @@ static int expect_create_table_columns(const char *sql,
               mylite_ast_create_table_column_type_numeric_parameter_at(ast, 0, i,
                                                                        1),
               mylite_ast_create_table_column_type_element_count(ast, 0, i),
+              mylite_ast_create_table_column_type_element_start(ast, 0, i, 0),
+              mylite_ast_create_table_column_type_element_end(ast, 0, i, 0),
+              mylite_ast_create_table_column_type_element_start(ast, 0, i, 1),
+              mylite_ast_create_table_column_type_element_end(ast, 0, i, 1),
               mylite_ast_create_table_column_type_has_length(ast, 0, i),
               mylite_ast_create_table_column_type_length(ast, 0, i),
               mylite_ast_create_table_column_type_has_precision(ast, 0, i),

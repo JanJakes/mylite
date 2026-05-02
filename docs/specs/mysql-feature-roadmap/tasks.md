@@ -74,7 +74,8 @@ level application surfaces.
 27. [x] Outer joins: `LEFT`/`RIGHT` joins, null extension, predicate placement,
        and metadata. Spec: [outer joins](../outer-joins/specs.md).
 28. [ ] `DISTINCT` and `DISTINCTROW`: duplicate elimination, collation,
-       metadata, and interaction with ordering/limits.
+       metadata, and interaction with ordering/limits. Started; spec:
+       [SELECT DISTINCT](../select-distinct/specs.md).
 29. [ ] Subqueries: scalar, row, `EXISTS`, `IN`, quantified comparisons,
        correlation, cardinality errors, and metadata.
 30. [ ] `UNION`: `ALL`/`DISTINCT`, column names/types, ordering, limits,

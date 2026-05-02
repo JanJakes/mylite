@@ -10539,6 +10539,15 @@ void mylite_parser_require_xid_number(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, token, "invalid XA XID literal");
 }
 
+void mylite_parser_require_text_string_literal(MyliteParseContext *ctx,
+                                               MyliteToken token) {
+  if (!token_is_quoted_hex_or_bit_literal(token)) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid string literal");
+}
+
 void mylite_parser_require_quoted_hex_literal(MyliteParseContext *ctx,
                                               MyliteToken token) {
   if (token_is_quoted_hex_literal(token)) {
@@ -12208,8 +12217,9 @@ static int create_table_tail_option_decimal_number_token(int token_id,
 
 static int create_table_tail_option_size_number_token(int token_id,
                                                       MyliteToken token) {
-  return create_table_tail_option_number_token(token_id) &&
-         token_is_unsigned_size_literal(token);
+  return (create_table_tail_option_number_token(token_id) &&
+          token_is_unsigned_size_literal(token)) ||
+         (token_id == ML_STRING_LITERAL && token_is_quoted_hex_literal(token));
 }
 
 static int create_table_tail_option_default_boolean_token(int token_id) {

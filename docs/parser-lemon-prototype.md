@@ -227,7 +227,8 @@ token sink:
   DELETE` rejection, and MySQL's `MATCH`-before-actions order. Trailing table options
   must start with known MySQL table-option keywords and validate selected value
   domains, including numeric options, string-literal options, closed
-  `INSERT_METHOD`, closed `ROW_FORMAT`, decimal-versus-size number domains,
+  `INSERT_METHOD`, closed `ROW_FORMAT`, decimal-versus-size number domains
+  with quoted-hex size values,
   bounded `STATS_SAMPLE_PAGES`, storage values without equality signs,
   `UNION` table-name lists, and `START TRANSACTION`. No-definition and
   post-definition CTAS forms are recognized explicitly with table/partition options, including
@@ -238,12 +239,14 @@ token sink:
   and `LIMIT` suffixes.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
   string-literal file names, documented NDB logfile options with numeric
-  size/nodegroup values, `WAIT`, and optional `ENGINE`/`STORAGE ENGINE`
-  clauses.
+  size/nodegroup values including quoted hex where MySQL accepts it, `WAIT`,
+  and optional `ENGINE`/`STORAGE ENGINE` clauses, while rejecting quoted
+  hex/bit literals in text-string file/comment positions.
 - `CREATE TABLESPACE` and `ALTER TABLESPACE` recognize documented
-  string-literal data files, numeric size, `WAIT`, string-literal encryption,
-  optional-equals engine/storage-engine options, and string-literal attribute
-  clauses. UNDO tablespaces use MySQL's narrower option list: required
+  string-literal data files, numeric size including quoted hex, `WAIT`,
+  string-literal encryption, optional-equals engine/storage-engine options, and
+  string-literal attribute clauses, while rejecting quoted hex/bit literals in
+  text-string positions. UNDO tablespaces use MySQL's narrower option list: required
   string-literal create data files plus optional `ENGINE`/`STORAGE ENGINE`.
   Drop tablespace/logfile tails recognize MySQL option lists including `ENGINE`,
   `STORAGE ENGINE`,

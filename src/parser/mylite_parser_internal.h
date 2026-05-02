@@ -99,6 +99,8 @@ void mylite_parser_require_storage_type(MyliteParseContext *ctx,
                                         MyliteToken token);
 void mylite_parser_require_xid_number(MyliteParseContext *ctx,
                                       MyliteToken token);
+void mylite_parser_require_text_string_literal(MyliteParseContext *ctx,
+                                               MyliteToken token);
 void mylite_parser_require_quoted_hex_literal(MyliteParseContext *ctx,
                                               MyliteToken token);
 void mylite_parser_require_name_atom(MyliteParseContext *ctx,

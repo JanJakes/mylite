@@ -456,7 +456,14 @@ database_collate_option ::= COLLATE drop_index_option_equals_tail set_collation_
 
 database_encryption_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 
-encryption_value ::= string_literal.
+encryption_value ::= text_string_literal.
+
+text_string_literal ::= STRING_LITERAL(A). {
+  mylite_parser_require_text_string_literal(ctx, A);
+}
+text_string_literal ::= SQLSTATE_VALUE.
+text_string_literal ::= ENCRYPTION_VALUE.
+text_string_literal ::= DOUBLE_QUOTED_STRING.
 
 string_literal ::= STRING_LITERAL.
 string_literal ::= SQLSTATE_VALUE.
@@ -958,7 +965,7 @@ create_resource_type_value ::= SYSTEM.
 
 create_logfile_group ::= GROUP.
 
-create_logfile_group_tail ::= create_add create_undofile string_literal create_logfile_group_options_tail.
+create_logfile_group_tail ::= create_add create_undofile text_string_literal create_logfile_group_options_tail.
 
 create_add ::= ADD.
 
@@ -975,9 +982,9 @@ create_logfile_group_option ::= REDO_BUFFER_SIZE drop_index_option_equals_tail t
 create_logfile_group_option ::= NODEGROUP drop_index_option_equals_tail tablespace_number_value.
 create_logfile_group_option ::= tablespace_engine_option.
 create_logfile_group_option ::= WAIT.
-create_logfile_group_option ::= COMMENT drop_index_option_equals_tail string_literal.
+create_logfile_group_option ::= COMMENT drop_index_option_equals_tail text_string_literal.
 
-alter_logfile_group_tail ::= create_add create_undofile string_literal alter_logfile_group_options_tail.
+alter_logfile_group_tail ::= create_add create_undofile text_string_literal alter_logfile_group_options_tail.
 
 alter_logfile_group_options_tail ::= .
 alter_logfile_group_options_tail ::= alter_logfile_group_options_tail alter_logfile_group_option.
@@ -991,7 +998,7 @@ create_tablespace_tail ::= create_tablespace_options_tail.
 create_tablespace_options_tail ::= .
 create_tablespace_options_tail ::= create_tablespace_options_tail create_tablespace_option.
 
-create_tablespace_option ::= create_add create_datafile string_literal.
+create_tablespace_option ::= create_add create_datafile text_string_literal.
 create_tablespace_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= FILE_BLOCK_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
@@ -1001,15 +1008,18 @@ create_tablespace_option ::= INITIAL_SIZE drop_index_option_equals_tail tablespa
 create_tablespace_option ::= MAX_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= NODEGROUP drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= WAIT.
-create_tablespace_option ::= COMMENT drop_index_option_equals_tail string_literal.
+create_tablespace_option ::= COMMENT drop_index_option_equals_tail text_string_literal.
 create_tablespace_option ::= tablespace_engine_option.
-create_tablespace_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
+create_tablespace_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail text_string_literal.
 
-create_undo_tablespace_tail ::= create_add create_datafile string_literal undo_tablespace_options_tail.
+create_undo_tablespace_tail ::= create_add create_datafile text_string_literal undo_tablespace_options_tail.
 
 tablespace_number_value ::= BOOLEAN_NUMBER.
 tablespace_number_value ::= FACTOR_NUMBER.
 tablespace_number_value ::= NUMBER_LITERAL.
+tablespace_number_value ::= STRING_LITERAL(A). {
+  mylite_parser_require_quoted_hex_literal(ctx, A);
+}
 
 create_server_tail ::= create_foreign DATA create_wrapper cache_name_part create_server_options.
 
@@ -1781,12 +1791,12 @@ alter_resource_group_force_tail ::= .
 alter_resource_group_force_tail ::= FORCE.
 
 alter_tablespace_action ::= RENAME TO cache_name_part.
-alter_tablespace_action ::= ADD create_datafile string_literal alter_tablespace_datafile_options_tail.
-alter_tablespace_action ::= DROP create_datafile string_literal alter_tablespace_datafile_options_tail.
+alter_tablespace_action ::= ADD create_datafile text_string_literal alter_tablespace_datafile_options_tail.
+alter_tablespace_action ::= DROP create_datafile text_string_literal alter_tablespace_datafile_options_tail.
 alter_tablespace_action ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
 alter_tablespace_action ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
 alter_tablespace_action ::= tablespace_engine_option.
-alter_tablespace_action ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
+alter_tablespace_action ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail text_string_literal.
 alter_tablespace_action ::= WAIT.
 
 alter_tablespace_datafile_options_tail ::= .

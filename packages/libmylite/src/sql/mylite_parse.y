@@ -1231,9 +1231,9 @@ select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, B, mylite_sql_parser_make_from_dual(state, F, D));
 }
-select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(C). {
+select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(C) opt_table_alias(D). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, C));
+        state, T, B, mylite_sql_parser_make_from_table(state, F, C, D));
 }
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
@@ -1244,13 +1244,27 @@ select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_dual(state, F, D));
 }
-select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(C). {
+select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(C) opt_table_alias(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, C));
+        mylite_sql_parser_make_from_table(state, F, C, D));
 }
 
 table_name(A) ::= qualified_identifier(B). {
+    A = B;
+}
+
+opt_table_alias(A) ::= . {
+    A = NULL;
+}
+opt_table_alias(A) ::= table_alias(B). {
+    A = B;
+}
+opt_table_alias(A) ::= AS table_alias(B). {
+    A = B;
+}
+
+table_alias(A) ::= identifier(B). {
     A = B;
 }
 
@@ -1263,6 +1277,26 @@ select_item_list(A) ::= select_item_list(B) COMMA select_item(C). {
 
 select_item(A) ::= expression(B). {
     A = mylite_sql_parser_make_select_item(state, B);
+}
+select_item(A) ::= expression(B) AS projection_alias(C). {
+    A = mylite_sql_parser_make_aliased_select_item(state, B, C);
+}
+select_item(A) ::= expression(B) projection_alias(C). {
+    A = mylite_sql_parser_make_aliased_select_item(state, B, C);
+}
+select_item(A) ::= qualified_wildcard(B). {
+    A = mylite_sql_parser_make_select_item(state, B);
+}
+
+projection_alias(A) ::= identifier(B). {
+    A = B;
+}
+projection_alias(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+
+qualified_wildcard(A) ::= qualified_identifier(B) DOT STAR(T). {
+    A = mylite_sql_parser_make_qualified_wildcard(state, B, NULL, T);
 }
 
 expression(A) ::= literal(B). {

@@ -37,7 +37,7 @@ level application surfaces.
        generated/default columns, affected rows, warnings, and insert ids.
 14. [x] `INSERT ... SET`: assignment-form insert semantics, defaults, duplicate
        column diagnostics, affected rows, and insert ids.
-15. [ ] Table-backed `SELECT` core: projection aliases, qualified wildcards,
+15. [x] Table-backed `SELECT` core: projection aliases, qualified wildcards,
        base table references, schema qualification, and result metadata.
 16. [ ] Expression operator foundation: comparison, logical, bitwise, `IS NULL`,
        `BETWEEN`, `LIKE`, `IN`, arithmetic, precedence, and type conversion.

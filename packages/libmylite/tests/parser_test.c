@@ -21,6 +21,7 @@ static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
+static int test_select_table_core_syntax(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -85,6 +86,7 @@ int main(void)
     failures += test_insert_set_syntax();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
+    failures += test_select_table_core_syntax();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -2362,6 +2364,96 @@ static int test_information_schema_select(void)
 
     failures += parse_sql("SELECT * FROM INFORMATION_SCHEMA.SCHEMATA WHERE TRUE;",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_table_core_syntax(void)
+{
+    static const size_t aliased_select_item_count = 5U;
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *from_table = NULL;
+    const struct mylite_sql_ast_node *qualified = NULL;
+    const struct mylite_sql_ast_node *item = NULL;
+    const struct mylite_sql_ast_node *wildcard = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT a AS x, b y, c AS `quoted alias`, d AS 'single alias', "
+                          "e 'bare string' FROM app.t AS alias;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_SELECT_STATEMENT, "table select statement");
+    failures +=
+        expect_child_count(select_list, aliased_select_item_count, "aliased select item count");
+    failures +=
+        expect_node(qualified, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "schema-qualified table");
+    failures += expect_span_text(child_at(qualified, 0U), "app", "select table schema");
+    failures += expect_span_text(child_at(qualified, 1U), "t", "select table name");
+    failures += expect_span_text(child_at(from_table, 1U), "alias", "select table alias");
+    failures += expect_span_text(child_at(child_at(select_list, 0U), 1U), "x", "AS alias");
+    failures += expect_span_text(child_at(child_at(select_list, 1U), 1U), "y", "bare alias");
+    failures +=
+        expect_span_text(child_at(child_at(select_list, 2U), 1U), "`quoted alias`", "quoted alias");
+    failures += expect_literal(child_at(child_at(select_list, 3U), 1U),
+                               MYLITE_SQL_AST_LITERAL_STRING, "single quoted alias");
+    failures += expect_literal(child_at(child_at(select_list, 4U), 1U),
+                               MYLITE_SQL_AST_LITERAL_STRING, "bare string alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT `quoted alias`.* FROM t AS `quoted alias`;", MYLITE_SQL_PARSE_OK,
+                          &result);
+    select = child_at(result.root, 0U);
+    wildcard = child_at(child_at(child_at(select, 0U), 0U), 0U);
+    failures += expect_node(wildcard, MYLITE_SQL_AST_WILDCARD, "quoted alias wildcard");
+    failures +=
+        expect_span_text(child_at(wildcard, 0U), "`quoted alias`", "quoted wildcard qualifier");
+    failures += expect_span_text(child_at(child_at(select, 1U), 1U), "`quoted alias`",
+                                 "quoted table alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a, t.*, app.t.* FROM app.t alias;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    failures += expect_child_count(select_list, 3U, "mixed qualified wildcard count");
+    item = child_at(select_list, 1U);
+    wildcard = child_at(item, 0U);
+    failures += expect_node(wildcard, MYLITE_SQL_AST_WILDCARD, "table wildcard");
+    failures += expect_span_text(child_at(wildcard, 0U), "t", "table wildcard qualifier");
+    item = child_at(select_list, 2U);
+    wildcard = child_at(item, 0U);
+    failures += expect_span_text(child_at(wildcard, 0U), "app", "schema wildcard qualifier");
+    failures += expect_span_text(child_at(wildcard, 1U), "t", "schema wildcard table");
+    failures += expect_span_text(child_at(child_at(select, 1U), 1U), "alias", "bare table alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a, * FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t ORDER BY a;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t GROUP BY a;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t JOIN u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT COUNT(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a INTO @x FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

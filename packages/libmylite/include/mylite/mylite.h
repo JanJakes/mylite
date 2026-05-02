@@ -58,6 +58,10 @@ MYLITE_API uint64_t mylite_last_insert_id(const mylite_db *database);
 
 MYLITE_API int mylite_column_count(const mylite_stmt *stmt);
 MYLITE_API const char *mylite_column_name(const mylite_stmt *stmt, int column);
+MYLITE_API const char *mylite_column_schema_name(const mylite_stmt *stmt, int column);
+MYLITE_API const char *mylite_column_table_name(const mylite_stmt *stmt, int column);
+MYLITE_API const char *mylite_column_origin_table_name(const mylite_stmt *stmt, int column);
+MYLITE_API const char *mylite_column_origin_name(const mylite_stmt *stmt, int column);
 MYLITE_API int64_t mylite_column_int64(const mylite_stmt *stmt, int column);
 MYLITE_API const char *mylite_column_text(const mylite_stmt *stmt, int column);
 

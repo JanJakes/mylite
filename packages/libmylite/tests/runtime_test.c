@@ -97,6 +97,14 @@ struct expected_table_collation {
     const char *collation;
 };
 
+struct expected_column_metadata {
+    const char *name;
+    const char *schema_name;
+    const char *table_name;
+    const char *origin_table_name;
+    const char *origin_column_name;
+};
+
 static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_schema_lifecycle(void);
@@ -110,11 +118,17 @@ static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
+static int test_select_table_core_execution(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
 static int expect_no_stmt_handle(mylite_stmt **stmt, const char *context);
 static int execute_sql(mylite_db *database, const char *sql, int expected_step_status);
+static int expect_prepare_error(mylite_db *database, const char *sql, int expected_status,
+                                const char *error_fragment, const char *context);
+static int expect_select_rows(mylite_db *database, const char *sql, const char *const *columns,
+                              int column_count, const char *const *values, int row_count,
+                              const char *context);
 static int expect_information_schema_schemata_row(mylite_db *database,
                                                   const struct expected_schemata_row *expected);
 static int expect_no_information_schema_schemata_row(mylite_db *database, const char *schema_name);
@@ -140,6 +154,9 @@ static int expect_connection_state(mylite_db *database, const char *client, cons
                                    const char *results, const char *collation, const char *context);
 static int expect_column_names(const mylite_stmt *stmt, const char *const *expected, int count,
                                const char *context);
+static int expect_column_metadata(const mylite_stmt *stmt,
+                                  const struct expected_column_metadata *expected, int count,
+                                  const char *context);
 static char *expected_physical_table_name(const char *schema_name, const char *table_name);
 static int expect_sqlite_table_exists(const struct sqlite_table_lookup *lookup);
 static int expect_sqlite_table_missing(const struct sqlite_table_lookup *lookup);
@@ -188,6 +205,7 @@ int main(void)
     failures += test_drop_table_base_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
+    failures += test_select_table_core_execution();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -612,13 +630,8 @@ static int test_core_metadata_catalog(void)
         failures = 1;
         mylite_finalize(stmt);
     }
-    failures += prepare_sql(database, "SELECT * FROM SCHEMATA", MYLITE_UNSUPPORTED, &stmt);
-    if (stmt != NULL) {
-        fprintf(stderr, "unqualified information_schema table returned a statement handle\n");
-        failures = 1;
-        mylite_finalize(stmt);
-        stmt = NULL;
-    }
+    failures += expect_prepare_error(database, "SELECT * FROM SCHEMATA", MYLITE_EXEC_ERROR,
+                                     "No database selected", "unqualified table no database");
     failures +=
         prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.VIEWS", MYLITE_UNSUPPORTED, &stmt);
     if (stmt != NULL) {
@@ -2558,6 +2571,159 @@ static int test_insert_set_execution(void)
     return failures;
 }
 
+static int test_select_table_core_execution(void)
+{
+    static const char *const visible_columns[] = {"a", "b", "CamelCase"};
+    static const char *const visible_values[] = {"1", "one", "7", "2", "two", "8"};
+    static const char *const hidden_columns[] = {"hidden"};
+    static const char *const hidden_values[] = {"99", "88"};
+    static const char *const qualified_columns[] = {"a", "b"};
+    static const char *const qualified_values[] = {"1", "one", "2", "two"};
+    static const char *const alias_columns[] = {"x", "label b", "hidden alias", "cc"};
+    static const char *const alias_values[] = {"1", "one", "99", "7", "2", "two", "88", "8"};
+    static const char *const duplicate_columns[] = {"x", "x"};
+    static const char *const duplicate_values[] = {"1", "one", "2", "two"};
+    static const char *const case_columns[] = {"camelcase", "CAMELCASE", "CamelCase"};
+    static const char *const case_values[] = {"7", "7", "7", "8", "8", "8"};
+    static const char *const mixed_columns[] = {"a", "a", "b", "CamelCase", "hidden"};
+    static const char *const mixed_values[] = {"1", "1", "one", "7", "99",
+                                               "2", "2", "two", "8", "88"};
+    static const struct expected_column_metadata alias_metadata[] = {
+        {"x", "mylite_select15", "alias", "t", "a"},
+        {"a", "mylite_select15", "alias", "t", "a"},
+        {"b", "mylite_select15", "alias", "t", "b"},
+        {"CamelCase", "mylite_select15", "alias", "t", "CamelCase"},
+    };
+    static const struct expected_column_metadata case_metadata[] = {
+        {"camelcase", "mylite_select15", "t", "t", "CamelCase"},
+        {"CAMELCASE", "mylite_select15", "t", "t", "CamelCase"},
+        {"CamelCase", "mylite_select15", "t", "t", "CamelCase"},
+    };
+    static const int mixed_column_count = 5;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    uint64_t last_insert_id = 0U;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open select database");
+
+    failures += expect_prepare_error(database, "SELECT * FROM t", MYLITE_EXEC_ERROR,
+                                     "No database selected", "select no database");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_select15", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE mylite_select15.t ("
+                            "a INT, b VARCHAR(10), hidden INT INVISIBLE, CamelCase INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO mylite_select15.t (a, b, hidden, CamelCase) VALUES "
+                            "(1, 'one', 99, 7), (2, 'two', 88, 8)",
+                            MYLITE_DONE);
+    last_insert_id = mylite_last_insert_id(database);
+
+    failures += expect_select_rows(database, "SELECT * FROM mylite_select15.t", visible_columns, 3,
+                                   visible_values, 2, "schema-qualified select");
+    failures += expect_select_rows(database, "SELECT t.* FROM mylite_select15.t", visible_columns,
+                                   3, visible_values, 2, "table wildcard select");
+
+    failures += execute_sql(database, "USE mylite_select15", MYLITE_DONE);
+    failures += expect_select_rows(database, "SELECT * FROM t", visible_columns, 3, visible_values,
+                                   2, "selected schema select");
+    failures +=
+        expect_select_rows(database, "SELECT mylite_select15.t.a, t.b FROM t", qualified_columns, 2,
+                           qualified_values, 2, "qualified column select");
+    failures +=
+        expect_select_rows(database, "SELECT alias.a, alias.b FROM t AS alias", qualified_columns,
+                           2, qualified_values, 2, "alias-qualified column select");
+    failures += expect_select_rows(database, "SELECT mylite_select15.t.* FROM t", visible_columns,
+                                   3, visible_values, 2, "schema wildcard over selected table");
+    failures += expect_select_rows(database, "SELECT alias.* FROM t AS alias", visible_columns, 3,
+                                   visible_values, 2, "AS alias wildcard select");
+    failures += expect_select_rows(database, "SELECT alias.* FROM t alias", visible_columns, 3,
+                                   visible_values, 2, "bare alias wildcard select");
+    failures += expect_select_rows(database, "SELECT hidden FROM t", hidden_columns, 1,
+                                   hidden_values, 2, "explicit invisible column");
+    failures += expect_select_rows(database,
+                                   "SELECT a AS x, b `label b`, hidden AS `hidden alias`, "
+                                   "CamelCase AS 'cc' FROM t",
+                                   alias_columns, 4, alias_values, 2, "projection aliases");
+    failures += expect_select_rows(database, "SELECT a AS x, b AS x FROM t", duplicate_columns, 2,
+                                   duplicate_values, 2, "duplicate projection labels");
+    failures +=
+        expect_select_rows(database, "SELECT camelcase, CAMELCASE, `CamelCase` FROM t",
+                           case_columns, 3, case_values, 2, "case-insensitive column lookup");
+    failures +=
+        expect_select_rows(database, "SELECT a, t.*, hidden FROM t", mixed_columns,
+                           mixed_column_count, mixed_values, 2, "mixed qualified wildcard select");
+
+    failures +=
+        prepare_sql(database, "SELECT alias.a AS x, alias.* FROM t AS alias", MYLITE_OK, &stmt);
+    failures += expect_column_metadata(stmt, alias_metadata, 4, "alias result metadata");
+    failures += expect_null_text(mylite_column_schema_name(stmt, -1), "negative metadata column");
+    failures += expect_null_text(mylite_column_table_name(stmt, 4), "past-end metadata column");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT camelcase, CAMELCASE, `CamelCase` FROM t", MYLITE_OK, &stmt);
+    failures += expect_column_metadata(stmt, case_metadata, 3, "case result metadata");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_prepare_error(database, "SELECT * FROM missing_select15.t", MYLITE_EXEC_ERROR,
+                             "Unknown database 'missing_select15'", "select missing schema");
+    failures += expect_prepare_error(
+        database, "SELECT * FROM mylite_select15.missing_t", MYLITE_EXEC_ERROR,
+        "Table 'mylite_select15.missing_t' doesn't exist", "select missing table");
+    failures += expect_prepare_error(database, "SELECT missing_col FROM t", MYLITE_EXEC_ERROR,
+                                     "Unknown column 'missing_col' in 'field list'",
+                                     "select missing column");
+    failures += expect_prepare_error(database, "SELECT missing_alias.a FROM t", MYLITE_EXEC_ERROR,
+                                     "Unknown column 'missing_alias.a' in 'field list'",
+                                     "select missing qualifier");
+    failures += expect_prepare_error(database, "SELECT t.a FROM t AS alias", MYLITE_EXEC_ERROR,
+                                     "Unknown column 't.a' in 'field list'",
+                                     "select alias hides base column qualifier");
+    failures += expect_prepare_error(database, "SELECT mylite_select15.t.a FROM t AS alias",
+                                     MYLITE_EXEC_ERROR,
+                                     "Unknown column 'mylite_select15.t.a' in 'field list'",
+                                     "select alias hides schema qualifier");
+    failures += expect_prepare_error(database, "SELECT T.a FROM t", MYLITE_EXEC_ERROR,
+                                     "Unknown column 'T.a' in 'field list'",
+                                     "select qualifier case sensitivity");
+    failures += expect_prepare_error(database, "SELECT ALIAS.a FROM t AS alias", MYLITE_EXEC_ERROR,
+                                     "Unknown column 'ALIAS.a' in 'field list'",
+                                     "select alias case sensitivity");
+    failures +=
+        expect_prepare_error(database, "SELECT missing_alias.* FROM t", MYLITE_EXEC_ERROR,
+                             "Unknown table 'missing_alias'", "select missing wildcard qualifier");
+    failures +=
+        expect_prepare_error(database, "SELECT t.* FROM t AS alias", MYLITE_EXEC_ERROR,
+                             "Unknown table 't'", "select alias hides base wildcard qualifier");
+    failures += expect_prepare_error(database, "SELECT missing_select15.t.* FROM t",
+                                     MYLITE_EXEC_ERROR, "Unknown table 'missing_select15.t'",
+                                     "select missing schema wildcard qualifier");
+    failures += expect_prepare_error(database, "SELECT a + 1 FROM t", MYLITE_UNSUPPORTED,
+                                     "Unsupported SELECT projection",
+                                     "select unsupported expression projection");
+    failures += expect_prepare_error(database, "SELECT 1 FROM t", MYLITE_UNSUPPORTED,
+                                     "Unsupported SELECT projection",
+                                     "select unsupported literal projection");
+
+    failures += prepare_sql(database, "SELECT * FROM t", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "select side effect first row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "select side effect second row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "select side effect done");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "select affected rows");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), (int64_t)last_insert_id,
+                             "select last insert id unchanged");
+    mylite_finalize(stmt);
+
+    mylite_close(database);
+    return failures;
+}
+
 static int test_parse_error(void)
 {
     mylite_db *database = NULL;
@@ -2588,6 +2754,39 @@ static int prepare_sql(mylite_db *database, const char *sql, int expected_status
     }
 
     return 0;
+}
+
+static int expect_prepare_error(mylite_db *database, const char *sql, int expected_status,
+                                const char *error_fragment, const char *context)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, sql, expected_status, &stmt);
+
+    failures += expect_no_stmt_handle(&stmt, context);
+    failures += expect_contains(mylite_error_message(database), error_fragment, context);
+    return failures;
+}
+
+static int expect_select_rows(mylite_db *database, const char *sql, const char *const *columns,
+                              int column_count, const char *const *values, int row_count,
+                              const char *context)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, sql, MYLITE_OK, &stmt);
+
+    failures += expect_column_names(stmt, columns, column_count, context);
+    for (int row = 0; row < row_count; ++row) {
+        failures += expect_status(mylite_step(stmt), MYLITE_ROW, context);
+        for (int column = 0; column < column_count; ++column) {
+            const char *expected = values[(row * column_count) + column];
+
+            failures += expect_string(mylite_column_text(stmt, column), expected, context);
+        }
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, context);
+    failures += expect_int64(mylite_affected_rows(stmt), -1, context);
+    mylite_finalize(stmt);
+    return failures;
 }
 
 static int expect_no_stmt_handle(mylite_stmt **stmt, const char *context)
@@ -2933,6 +3132,26 @@ static int expect_column_names(const mylite_stmt *stmt, const char *const *expec
 
     for (int index = 0; index < count; ++index) {
         failures += expect_string(mylite_column_name(stmt, index), expected[index], context);
+    }
+    return failures;
+}
+
+static int expect_column_metadata(const mylite_stmt *stmt,
+                                  const struct expected_column_metadata *expected, int count,
+                                  const char *context)
+{
+    int failures = expect_int(mylite_column_count(stmt), count, context);
+
+    for (int index = 0; index < count; ++index) {
+        failures += expect_string(mylite_column_name(stmt, index), expected[index].name, context);
+        failures += expect_string(mylite_column_schema_name(stmt, index),
+                                  expected[index].schema_name, context);
+        failures += expect_string(mylite_column_table_name(stmt, index), expected[index].table_name,
+                                  context);
+        failures += expect_string(mylite_column_origin_table_name(stmt, index),
+                                  expected[index].origin_table_name, context);
+        failures += expect_string(mylite_column_origin_name(stmt, index),
+                                  expected[index].origin_column_name, context);
     }
     return failures;
 }

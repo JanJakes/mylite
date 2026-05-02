@@ -400,13 +400,16 @@ mylite_sql_parser_append_select_item(struct mylite_sql_parser_state *state,
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_select_item(struct mylite_sql_parser_state *state,
                                    struct mylite_sql_ast_node *expression);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_aliased_select_item(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *expression,
+                                           struct mylite_sql_ast_node *alias);
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_dual(struct mylite_sql_parser_state *state,
                                                              struct mylite_sql_token from_token,
                                                              struct mylite_sql_token dual_token);
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_from_table(struct mylite_sql_parser_state *state,
-                                  struct mylite_sql_token from_token,
-                                  struct mylite_sql_ast_node *table_name);
+struct mylite_sql_ast_node *mylite_sql_parser_make_from_table(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token from_token,
+    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *alias);
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(struct mylite_sql_parser_state *state,
                                                               struct mylite_sql_token token);
 struct mylite_sql_ast_node *mylite_sql_parser_make_default(struct mylite_sql_parser_state *state,
@@ -415,6 +418,9 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_qualified_identifier(struct mylite_sql_parser_state *state,
                                             struct mylite_sql_ast_node *left,
                                             struct mylite_sql_ast_node *right);
+struct mylite_sql_ast_node *mylite_sql_parser_make_qualified_wildcard(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *first,
+    struct mylite_sql_ast_node *second, struct mylite_sql_token wildcard_token);
 struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard(struct mylite_sql_parser_state *state,
                                                             struct mylite_sql_token token);
 struct mylite_sql_ast_node *

@@ -518,7 +518,8 @@ Diagnostics:
 
 ### Result metadata model
 
-For every output column, MyLite should track:
+The broader result metadata model should eventually track these fields for
+every output column:
 
 - client-visible column label
 - catalog name, currently `def`
@@ -531,13 +532,12 @@ For every output column, MyLite should track:
 - type/nullability/key/visibility details already available in
   `__mylite_column_catalog`
 
-Current public C APIs can verify column count and labels through
-`mylite_column_count()` and `mylite_column_name()`. If Task 15 adds public
-origin-metadata accessors, they should be narrow, statement-owned, and
-documented with explicit lifetime rules. If not, the implementation should
-still keep internal result metadata so a future MySQL protocol layer and Task
-23's broader result metadata work do not have to reverse-engineer origin data
-from generated SQLite SQL.
+Task 15 adds a narrow public metadata surface for table-backed statements:
+`mylite_column_schema_name()`, `mylite_column_table_name()`,
+`mylite_column_origin_table_name()`, and `mylite_column_origin_name()`.
+`mylite_column_name()` returns the client-visible label. Broader public flags,
+length, collation, decimals, and nullability metadata remain deferred to the
+result-metadata task.
 
 ### Explicit deferred behavior
 

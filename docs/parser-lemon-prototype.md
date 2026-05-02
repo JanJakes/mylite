@@ -17,7 +17,10 @@ token sink:
   while remaining available in expression and permissive statement bodies.
 - Numeric and single-quoted literals are rejected in strict object-name
   productions while numeric-leading identifiers, double-quoted identifiers, and
-  quoted account/charset strings remain valid.
+  quoted account/charset strings remain valid. Standalone `CASCADE` and
+  `RESTRICT` object, column, index, constraint, prepared-statement, and `USE`
+  names are rejected where MySQL treats them as reserved syntax, while quoted
+  and dotted references such as `` `restrict` `` and `db.restrict` remain valid.
 - A Lemon grammar recognizes MySQL statement families for DDL, DML,
   transactions, utility statements, administration statements, replication/XA,
   and stored-program statement starts.
@@ -190,7 +193,8 @@ token sink:
   operators, and `LIMIT` suffixes after `READ`.
 - `USE` recognizes one-part unquoted schema names using the shared identifier
   grammar and unreserved keyword names while rejecting string, numeric,
-  variable, operator, and reserved-keyword targets.
+  variable, operator, and reserved-keyword targets including `CASCADE` and
+  `RESTRICT`.
 - Account and role names use the shared unreserved identifier grammar across
   `CREATE`/`ALTER`/`DROP` account statements.
 - `RENAME USER` reuses the shared account-reference grammar for source and
@@ -214,9 +218,10 @@ token sink:
 - `CREATE TABLE` table-definition bodies require non-empty comma-separated
   elements while preserving nested token bodies for column and constraint
   definitions, and validate table-level index key-part prefix lengths plus
-  `ASC`/`DESC` tails and closed `USING`/`TYPE` values plus table-level
-  foreign-key child lists, referenced table names, optional parent column-list
-  envelopes, and referential-action tails. Column and table `CHECK` constraints validate parenthesized expression
+  `ASC`/`DESC` tails, closed `USING`/`TYPE` values, and standalone reserved
+  index/constraint names, plus table-level foreign-key child lists, referenced
+  table names, optional parent column-list envelopes, and referential-action
+  tails. Column and table `CHECK` constraints validate parenthesized expression
   bodies for dangling operators and scalar comma lists, and `CHECK` constraints
   validate `ENFORCED`/`NOT ENFORCED` tails while allowing later column
   attributes where MySQL permits them. Column definitions require a known MySQL
@@ -303,7 +308,8 @@ token sink:
   validation, repeated `COLLATE` rejection, repeated column `COMMENT`
   attributes, quoted hex/bit literal rejection for text options,
   column-level `CONSTRAINT CHECK` restriction, `DEFAULT` charset/collation
-  value rejection, and storage modifier context and repetition checks, index key-part prefix lengths,
+  value rejection, storage modifier context and repetition checks, standalone
+  reserved index/constraint names, index key-part prefix lengths,
   `ASC`/`DESC` tails, and index option values including quoted-hex
   `KEY_BLOCK_SIZE` values and closed index `USING`/`TYPE` values. `ADD FOREIGN KEY` child lists, referenced table names,
   optional parent column-list envelopes, and referential-action tails are also
@@ -333,9 +339,11 @@ token sink:
   `OR REPLACE`, bare numeric SRS ids, documented text-string attribute forms
   with quoted hex/bit rejection, and numeric organization authority codes.
 - `DROP INDEX` recognizes MySQL's identifier-valued `ALGORITHM` and `LOCK`
-  option tails.
+  option tails and rejects standalone reserved `CASCADE`/`RESTRICT` index
+  names.
 - `TRUNCATE TABLE` recognizes optional `TABLE` and one- or two-part table
-  references using the shared identifier grammar.
+  references using the shared identifier grammar, with MySQL's standalone
+  reserved-name rejection preserved for `CASCADE` and `RESTRICT`.
 - `INSTALL PLUGIN` and `UNINSTALL PLUGIN` recognize plugin names using the
   shared identifier grammar; plugin `SONAME` values reject quoted hex/bit
   literals.

@@ -105,6 +105,8 @@ void mylite_parser_require_quoted_hex_literal(MyliteParseContext *ctx,
                                               MyliteToken token);
 void mylite_parser_require_name_atom(MyliteParseContext *ctx,
                                      MyliteToken token);
+void mylite_parser_require_strict_identifier_atom(MyliteParseContext *ctx,
+                                                  MyliteToken token);
 void mylite_parser_require_identifier_atom(MyliteParseContext *ctx,
                                            MyliteToken token);
 void mylite_parser_require_charset_name_atom(MyliteParseContext *ctx,

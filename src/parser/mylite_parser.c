@@ -6248,6 +6248,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
   int constraint_prefix = 0;
   int index_using_pending = 0;
   int index_using_requires_key_list = 0;
+  int index_name_pending = 0;
   int find_if_not_exists_state = 0;
   int find_table_name_parts = 0;
   int find_table_dot_pending = 0;
@@ -6771,6 +6772,17 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
       column_tail_flags = 0;
       index_using_pending = 0;
       index_using_requires_key_list = 0;
+      index_name_pending = 0;
+      continue;
+    }
+
+    if (index_candidate && index_name_pending && token_id != ML_LP &&
+        token_id != ML_USING && token_id != ML_TYPE) {
+      mylite_parser_require_strict_identifier_atom(ctx, token);
+      if (ctx->failed) {
+        return;
+      }
+      index_name_pending = 0;
       continue;
     }
 
@@ -6788,6 +6800,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
           return;
         }
         index_candidate = 0;
+        index_name_pending = 0;
         constraint_prefix = 0;
         element_start = 0;
       } else if (column_in_definition) {
@@ -6959,6 +6972,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
     if (constraint_prefix > 0) {
       if (alter_table_add_index_marker(token_id)) {
         index_candidate = 1;
+        index_name_pending = 1;
         constraint_prefix = 0;
         pending_token = token;
         continue;
@@ -6971,6 +6985,10 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
         continue;
       }
       if (constraint_prefix == 1) {
+        mylite_parser_require_strict_identifier_atom(ctx, token);
+        if (ctx->failed) {
+          return;
+        }
         constraint_prefix = 2;
         continue;
       }
@@ -6980,6 +6998,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
 
     if (element_start && alter_table_add_index_marker(token_id)) {
       index_candidate = 1;
+      index_name_pending = 1;
       element_start = 0;
       pending_token = token;
       continue;
@@ -6987,6 +7006,7 @@ void mylite_parser_validate_create_table_statement(MyliteParseContext *ctx,
 
     if (index_candidate && (token_id == ML_USING || token_id == ML_TYPE)) {
       index_using_pending = 1;
+      index_name_pending = 0;
       pending_token = token;
       continue;
     }
@@ -7402,6 +7422,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   int add_index_option_equals = 0;
   int index_using_pending = 0;
   int index_using_requires_key_list = 0;
+  int add_index_name_pending = 0;
   int depth = 0;
   int key_state = ALTER_INDEX_KEY_NEED_PART;
 
@@ -7917,6 +7938,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       column_tail_flags = 0;
       index_using_pending = 0;
       index_using_requires_key_list = 0;
+      add_index_name_pending = 0;
       continue;
     }
 
@@ -8212,6 +8234,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
       column_precision_modifier_pending = 0;
       column_tail_state = COLUMN_DEFINITION_TAIL_READY;
       column_tail_flags = 0;
+      add_index_name_pending = 0;
       pending_token = token;
       continue;
     }
@@ -8401,6 +8424,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
     if (add_constraint_prefix > 0) {
       if (alter_table_add_index_marker(token_id)) {
         add_index_candidate = 1;
+        add_index_name_pending = 1;
         add_constraint_prefix = 0;
         continue;
       }
@@ -8418,6 +8442,10 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
         continue;
       }
       if (add_constraint_prefix == 1) {
+        mylite_parser_require_strict_identifier_atom(ctx, token);
+        if (ctx->failed) {
+          return;
+        }
         add_constraint_prefix = 2;
       }
       continue;
@@ -8456,12 +8484,24 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
 
     if (alter_table_add_index_marker(token_id)) {
       add_index_candidate = 1;
+      add_index_name_pending = 1;
+      continue;
+    }
+
+    if (add_index_candidate && add_index_name_pending && token_id != ML_LP &&
+        token_id != ML_USING && token_id != ML_TYPE) {
+      mylite_parser_require_strict_identifier_atom(ctx, token);
+      if (ctx->failed) {
+        return;
+      }
+      add_index_name_pending = 0;
       continue;
     }
 
     if (add_index_candidate &&
         (token_id == ML_USING || token_id == ML_TYPE)) {
       index_using_pending = 1;
+      add_index_name_pending = 0;
       pending_token = token;
       continue;
     }
@@ -8479,6 +8519,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
         validate_key_list = 1;
         depth = 1;
         key_state = ALTER_INDEX_KEY_NEED_PART;
+        add_index_name_pending = 0;
         pending_token = token;
       } else {
         depth = 1;
@@ -10932,6 +10973,15 @@ void mylite_parser_require_name_atom(MyliteParseContext *ctx,
   }
 }
 
+void mylite_parser_require_strict_identifier_atom(MyliteParseContext *ctx,
+                                                  MyliteToken token) {
+  if (token_is_invalid_identifier_atom(token, 0) ||
+      token_ascii_equal(token, "cascade") ||
+      token_ascii_equal(token, "restrict")) {
+    mylite_parser_reject(ctx, token, "invalid identifier");
+  }
+}
+
 void mylite_parser_require_identifier_atom(MyliteParseContext *ctx,
                                            MyliteToken token) {
   if (token_is_invalid_identifier_atom(token, 0)) {
@@ -10958,7 +11008,9 @@ void mylite_parser_require_use_target_atom(MyliteParseContext *ctx,
     return;
   }
 
-  if (token_is_invalid_identifier_atom(token, 0)) {
+  if (token_is_invalid_identifier_atom(token, 0) ||
+      token_ascii_equal(token, "cascade") ||
+      token_ascii_equal(token, "restrict")) {
     mylite_parser_reject(ctx, token, "invalid USE target");
   }
 }

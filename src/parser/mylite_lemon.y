@@ -240,7 +240,9 @@ create_index_kind ::= UNIQUE.
 create_index_kind ::= FULLTEXT.
 create_index_kind ::= SPATIAL.
 
-create_index_name ::= strict_name_part.
+create_index_name ::= strict_name_part(A). {
+  mylite_parser_require_strict_identifier_atom(ctx, A);
+}
 
 create_index_using_tail ::= .
 create_index_using_tail ::= USING cache_name_part.
@@ -349,7 +351,9 @@ create_table_element ::= create_table_constraint_start create_table_element_toke
 create_table_element ::= CONSTRAINT create_table_constraint_start create_table_element_tokens.
 create_table_element ::= CONSTRAINT create_table_element_name create_table_constraint_start create_table_element_tokens.
 
-create_table_element_name ::= strict_name_part.
+create_table_element_name ::= strict_name_part(A). {
+  mylite_parser_require_strict_identifier_atom(ctx, A);
+}
 create_table_element_name ::= BINLOG.
 create_table_element_name ::= CHECKSUM.
 create_table_element_name ::= CONNECTION.
@@ -1209,7 +1213,9 @@ undo_tablespace_option ::= tablespace_engine_option.
 tablespace_engine_option ::= ENGINE drop_index_option_equals_tail cache_name_part.
 tablespace_engine_option ::= STORAGE ENGINE drop_index_option_equals_tail cache_name_part.
 
-drop_index_name ::= strict_name_part.
+drop_index_name ::= strict_name_part(A). {
+  mylite_parser_require_strict_identifier_atom(ctx, A);
+}
 
 drop_index_options_tail ::= .
 drop_index_options_tail ::= drop_index_options_tail drop_index_option.
@@ -1393,7 +1399,9 @@ alter_table_rename_table_connector ::= AS.
 alter_table_rename_index_kind ::= INDEX.
 alter_table_rename_index_kind ::= KEY.
 
-alter_table_rename_identifier ::= strict_name_part.
+alter_table_rename_identifier ::= strict_name_part(A). {
+  mylite_parser_require_strict_identifier_atom(ctx, A);
+}
 
 alter_table_drop_action_tail ::= .
 alter_table_drop_action_tail ::= COMMA alter_table_drop_after_comma.
@@ -1438,7 +1446,9 @@ alter_table_column_keyword_tail ::= COLUMN.
 alter_table_drop_index_kind ::= INDEX.
 alter_table_drop_index_kind ::= KEY.
 
-alter_table_drop_identifier ::= strict_name_part.
+alter_table_drop_identifier ::= strict_name_part(A). {
+  mylite_parser_require_strict_identifier_atom(ctx, A);
+}
 
 alter_table_alter_action_tail ::= .
 alter_table_alter_action_tail ::= COMMA alter_table_alter_after_comma.
@@ -1524,7 +1534,9 @@ alter_table_index_definition_start ::= KEY.
 
 alter_table_change_action ::= CHANGE alter_table_column_keyword_tail alter_table_column_name alter_table_column_name alter_table_definition_tokens alter_table_definition_action_tail.
 
-alter_table_column_name ::= strict_name_part.
+alter_table_column_name ::= strict_name_part(A). {
+  mylite_parser_require_strict_identifier_atom(ctx, A);
+}
 alter_table_column_name ::= DATA.
 
 alter_table_modify_action ::= MODIFY alter_table_column_keyword_tail alter_table_column_name alter_table_definition_tokens alter_table_definition_action_tail.
@@ -1885,10 +1897,10 @@ truncate_statement ::= TRUNCATE truncate_tail. {
 truncate_tail ::= TABLE truncate_table_ref.
 truncate_tail ::= truncate_table_ref.
 
-truncate_table_ref ::= truncate_table_part.
-truncate_table_ref ::= truncate_table_part DOT truncate_table_part.
-
-truncate_table_part ::= strict_name_part.
+truncate_table_ref ::= strict_name_part(A). {
+  mylite_parser_require_strict_identifier_atom(ctx, A);
+}
+truncate_table_ref ::= strict_name_part DOT strict_name_part.
 
 load_statement ::= LOAD load_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_UTILITY);
@@ -2425,8 +2437,14 @@ cache_partition_names ::= cache_partition_names import_comma cache_name_part.
 cache_index_kind ::= INDEX.
 cache_index_kind ::= KEY.
 
-cache_table_ref ::= strict_name_part.
-cache_table_ref ::= strict_name_part DOT strict_name_part.
+cache_table_ref(A) ::= strict_name_part(B). {
+  A = B;
+  mylite_parser_require_strict_identifier_atom(ctx, B);
+}
+cache_table_ref(A) ::= strict_name_part(B) DOT strict_name_part(C). {
+  A = B;
+  (void)C;
+}
 
 strict_name_part ::= cache_name_part(A). {
   mylite_parser_require_identifier_atom(ctx, A);
@@ -3004,12 +3022,14 @@ describe_statement ::= DESC(A) describe_explain_tail. {
 describe_tail ::= describe_table_ref.
 describe_tail ::= describe_table_ref describe_column_ref.
 
-describe_table_ref ::= describe_name_part.
-describe_table_ref ::= describe_name_part DOT describe_name_part.
+describe_table_ref ::= strict_name_part(A). {
+  mylite_parser_require_strict_identifier_atom(ctx, A);
+}
+describe_table_ref ::= strict_name_part DOT strict_name_part.
 
-describe_column_ref ::= strict_name_part.
-
-describe_name_part ::= strict_name_part.
+describe_column_ref ::= strict_name_part(A). {
+  mylite_parser_require_strict_identifier_atom(ctx, A);
+}
 
 describe_explain_tail ::= describe_explain_query_start required_statement_tail.
 describe_explain_tail ::= explain_schema_spec describe_explain_query_start required_statement_tail.
@@ -3102,7 +3122,9 @@ use_target ::= ATOM(A). {
 }
 use_target ::= help_topic_keyword.
 use_target ::= ACCOUNT.
-use_target ::= CASCADE.
+use_target ::= CASCADE(A). {
+  mylite_parser_reject(ctx, A, "invalid USE target");
+}
 use_target ::= COMPONENT.
 use_target ::= COUNT.
 use_target ::= DATABASE.
@@ -3115,7 +3137,9 @@ use_target ::= FULL.
 use_target ::= GRANTS.
 use_target ::= PLUGIN.
 use_target ::= PROCESSLIST.
-use_target ::= RESTRICT.
+use_target ::= RESTRICT(A). {
+  mylite_parser_reject(ctx, A, "invalid USE target");
+}
 use_target ::= TABLES.
 use_target ::= TABLESPACE.
 use_target ::= TRIGGERS.
@@ -3581,7 +3605,9 @@ dml_delete_table_list ::= dml_delete_table_ref.
 dml_delete_table_list ::= dml_delete_table_list import_comma dml_delete_table_ref.
 
 dml_delete_table_ref ::= cache_table_ref.
-dml_delete_table_ref ::= strict_name_part DOT STAR.
+dml_delete_table_ref ::= strict_name_part(A) DOT STAR. {
+  mylite_parser_require_strict_identifier_atom(ctx, A);
+}
 dml_delete_table_ref ::= strict_name_part DOT strict_name_part DOT STAR.
 
 dml_delete_source_start ::= cache_table_ref.
@@ -3891,7 +3917,9 @@ execute_using_arg ::= user_variable_name.
 user_variable_name ::= AT_HOST set_variable_dot_tail.
 user_variable_name ::= AT_SIGN set_variable_part set_variable_dot_tail.
 
-prepared_statement_name ::= strict_name_part.
+prepared_statement_name ::= strict_name_part(A). {
+  mylite_parser_require_strict_identifier_atom(ctx, A);
+}
 
 get_statement ::= GET diagnostics_area_tail DIAGNOSTICS diagnostics_tail. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_STORED_PROGRAM);

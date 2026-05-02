@@ -8701,6 +8701,7 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
   int select_prefix = 1;
   int alias_pending = 0;
   int alias_complete = 0;
+  int seen_select_item = 0;
   MyliteExpressionStack expression_stack = {0};
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
@@ -8773,6 +8774,7 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
                              "incomplete SELECT expression clause");
         return;
       }
+      seen_select_item = 1;
       expression_started = 0;
       previous_top_token_id = 0;
       previous_was_operator = 1;
@@ -8824,8 +8826,8 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
     }
 
     if (token_id == ML_STAR &&
-        (!expression_started || previous_top_token_id == ML_DOT ||
-         previous_was_operator)) {
+        ((!expression_started && !seen_select_item) ||
+         previous_top_token_id == ML_DOT)) {
       previous_top_token_id = token_id;
       previous_top_token = token;
       previous_was_operator = 0;

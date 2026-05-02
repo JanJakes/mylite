@@ -144,6 +144,9 @@ token sink:
   `ORDER BY` expression lists.
 - Top-level and query-body `SELECT` list tails reject incomplete `AS` aliases
   and stray tokens after explicit aliases.
+- Top-level and query-body `SELECT` list tails allow bare `*` only as the
+  first select item while preserving qualified `table.*` items later in the
+  list.
 - `SELECT ... INTO` variable lists reject missing user-variable names, dangling
   commas, and adjacent variable targets.
 - Top-level `SELECT` requires `INTO OUTFILE` and `INTO DUMPFILE` to include

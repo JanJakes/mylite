@@ -142,8 +142,9 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_statement_target_name_end_at(ast, i, j));
     }
     for (size_t j = 0; j < column_count; j++) {
-      printf("  column[%zu] family=%s flags=0x%x span=%zu..%zu name=%zu..%zu "
-             "type=%zu..%zu type_name=%zu..%zu type_params=%zu..%zu "
+      printf("  column[%zu] family=%s kind=%s flags=0x%x span=%zu..%zu "
+             "name=%zu..%zu type=%zu..%zu type_name=%zu..%zu "
+             "type_params=%zu..%zu "
              "type_attrs=%zu..%zu options=%zu..%zu default=%zu..%zu "
              "default_value=%zu..%zu on_update=%zu..%zu "
              "on_update_value=%zu..%zu generated=%zu..%zu "
@@ -154,6 +155,8 @@ static void dump_statements(const MyliteAst *ast) {
              j,
              mylite_create_table_column_type_family_name(
                  mylite_ast_create_table_column_type_family(ast, i, j)),
+             mylite_create_table_column_type_kind_name(
+                 mylite_ast_create_table_column_type_kind(ast, i, j)),
              mylite_ast_create_table_column_flags(ast, i, j),
              mylite_ast_create_table_column_start(ast, i, j),
              mylite_ast_create_table_column_end(ast, i, j),

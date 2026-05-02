@@ -28,6 +28,7 @@ typedef struct MyliteAstStatementTarget {
 
 typedef struct MyliteAstCreateTableColumn {
   MyliteCreateTableColumnTypeFamily type_family;
+  MyliteCreateTableColumnTypeKind type_kind;
   unsigned int flags;
   size_t start;
   size_t end;
@@ -265,6 +266,7 @@ static void mylite_ast_set_create_table_column_type_details(
 static void mylite_ast_set_create_table_column_type_tail_details(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *type_body,
     const MyliteAstNode *type_name);
+static int mylite_ast_is_column_type_name_continuation(const MyliteAstNode *node);
 static int mylite_ast_is_column_type_parameter_child(const MyliteAstNode *node);
 static int mylite_ast_is_column_type_attribute_child(const MyliteAstNode *node);
 static void mylite_ast_set_create_table_column_option_details(
@@ -284,6 +286,8 @@ static void mylite_ast_set_create_table_column_check_detail(
 static void mylite_ast_set_create_table_column_reference_detail(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *option);
 static MyliteCreateTableColumnTypeFamily mylite_ast_classify_column_type(
+    const MyliteAstNode *type);
+static MyliteCreateTableColumnTypeKind mylite_ast_classify_column_type_kind(
     const MyliteAstNode *type);
 static unsigned int mylite_ast_collect_column_flags(const MyliteAstNode *type,
                                                     const MyliteAstNode *options);
@@ -567,6 +571,105 @@ const char *mylite_create_table_column_type_family_name(
       return "set";
     case MYLITE_CREATE_TABLE_COLUMN_TYPE_SPATIAL:
       return "spatial";
+  }
+  return "unknown";
+}
+
+const char *mylite_create_table_column_type_kind_name(
+    MyliteCreateTableColumnTypeKind kind) {
+  switch (kind) {
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN:
+      return "unknown";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYINT:
+      return "tinyint";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_SMALLINT:
+      return "smallint";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMINT:
+      return "mediumint";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT:
+      return "int";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIGINT:
+      return "bigint";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BOOL:
+      return "bool";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL:
+      return "decimal";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_FLOAT:
+      return "float";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_REAL:
+      return "real";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DOUBLE:
+      return "double";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIT:
+      return "bit";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_CHAR:
+      return "char";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARCHAR:
+      return "varchar";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NCHAR:
+      return "nchar";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NVARCHAR:
+      return "nvarchar";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BINARY:
+      return "binary";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARBINARY:
+      return "varbinary";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYBLOB:
+      return "tinyblob";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BLOB:
+      return "blob";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMBLOB:
+      return "mediumblob";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONGBLOB:
+      return "longblob";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYTEXT:
+      return "tinytext";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TEXT:
+      return "text";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMTEXT:
+      return "mediumtext";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONGTEXT:
+      return "longtext";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_ENUM:
+      return "enum";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_SET:
+      return "set";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_JSON:
+      return "json";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG:
+      return "long";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARCHAR:
+      return "long_varchar";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARBINARY:
+      return "long_varbinary";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VECTOR:
+      return "vector";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DATE:
+      return "date";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DATETIME:
+      return "datetime";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TIMESTAMP:
+      return "timestamp";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TIME:
+      return "time";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_YEAR:
+      return "year";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRY:
+      return "geometry";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_POINT:
+      return "point";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LINESTRING:
+      return "linestring";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_POLYGON:
+      return "polygon";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTIPOINT:
+      return "multipoint";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTILINESTRING:
+      return "multilinestring";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTIPOLYGON:
+      return "multipolygon";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRYCOLLECTION:
+      return "geometrycollection";
   }
   return "unknown";
 }
@@ -1236,6 +1339,14 @@ MyliteCreateTableColumnTypeFamily mylite_ast_create_table_column_type_family(
       mylite_ast_create_table_column_at(ast, statement_index, column_index);
   return column == NULL ? MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN
                         : column->type_family;
+}
+
+MyliteCreateTableColumnTypeKind mylite_ast_create_table_column_type_kind(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN
+                        : column->type_kind;
 }
 
 unsigned int mylite_ast_create_table_column_flags(const MyliteAst *ast,
@@ -2695,6 +2806,7 @@ static void mylite_ast_fill_create_table_column(
   const MyliteAstNode *type = mylite_ast_find_first_symbol(node, "nt_type");
   if (type != NULL) {
     column->type_family = mylite_ast_classify_column_type(type);
+    column->type_kind = mylite_ast_classify_column_type_kind(type);
     column->type_start = mylite_ast_node_start(type);
     column->type_end = mylite_ast_node_end(type);
     mylite_ast_set_create_table_column_type_details(column, type);
@@ -2745,6 +2857,12 @@ static void mylite_ast_set_create_table_column_type_tail_details(
       continue;
     }
 
+    if (mylite_ast_is_column_type_name_continuation(child)) {
+      mylite_ast_extend_span(&column->type_name_start, &column->type_name_end,
+                             child);
+      continue;
+    }
+
     if (mylite_ast_is_column_type_attribute_child(child)) {
       mylite_ast_extend_span(&column->type_attributes_start,
                              &column->type_attributes_end, child);
@@ -2766,6 +2884,18 @@ static void mylite_ast_set_create_table_column_type_tail_details(
       in_parenthesized_parameters = 0;
     }
   }
+}
+
+static int mylite_ast_is_column_type_name_continuation(const MyliteAstNode *node) {
+  if (node == NULL || node->symbol_name == NULL) {
+    return 0;
+  }
+
+  static const char *const symbols[] = {
+      "nt_varchar",
+  };
+  return symbol_is_one_of(node->symbol_name, symbols,
+                          sizeof(symbols) / sizeof(symbols[0]));
 }
 
 static int mylite_ast_is_column_type_parameter_child(const MyliteAstNode *node) {
@@ -2974,6 +3104,136 @@ static MyliteCreateTableColumnTypeFamily mylite_ast_classify_column_type(
     return MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING;
   }
   return MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN;
+}
+
+static MyliteCreateTableColumnTypeKind mylite_ast_classify_column_type_kind(
+    const MyliteAstNode *type) {
+  if (type == NULL) {
+    return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN;
+  }
+
+  int first_token = mylite_ast_first_token(type);
+  if (first_token == MYLITE_TOK_LONG) {
+    if (mylite_ast_find_first_token(type, MYLITE_TOK_VARBINARY_TYPE) != NULL) {
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARBINARY;
+    }
+    if (mylite_ast_find_first_symbol(type, "nt_varchar") != NULL) {
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARCHAR;
+    }
+    return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG;
+  }
+  if (first_token == MYLITE_TOK_NATIONAL) {
+    if (mylite_ast_find_first_symbol(type, "nt_n_varchar") != NULL) {
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NVARCHAR;
+    }
+    return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NCHAR;
+  }
+
+  switch (first_token) {
+    case MYLITE_TOK_TINY_INT_TYPE:
+    case MYLITE_TOK_INT1_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYINT;
+    case MYLITE_TOK_SMALL_INT_TYPE:
+    case MYLITE_TOK_INT2_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_SMALLINT;
+    case MYLITE_TOK_MEDIUM_INT_TYPE:
+    case MYLITE_TOK_MIDDLE_INT_TYPE:
+    case MYLITE_TOK_INT3_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMINT;
+    case MYLITE_TOK_INT_TYPE:
+    case MYLITE_TOK_INT4_TYPE:
+    case MYLITE_TOK_INTEGER_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT;
+    case MYLITE_TOK_BIG_INT_TYPE:
+    case MYLITE_TOK_INT8_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIGINT;
+    case MYLITE_TOK_BOOL_TYPE:
+    case MYLITE_TOK_BOOLEAN_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BOOL;
+    case MYLITE_TOK_DECIMAL_TYPE:
+    case MYLITE_TOK_NUMERIC_TYPE:
+    case MYLITE_TOK_FIXED:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL;
+    case MYLITE_TOK_FLOAT_TYPE:
+    case MYLITE_TOK_FLOAT4_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_FLOAT;
+    case MYLITE_TOK_REAL_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_REAL;
+    case MYLITE_TOK_DOUBLE_TYPE:
+    case MYLITE_TOK_FLOAT8_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DOUBLE;
+    case MYLITE_TOK_BIT_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIT;
+    case MYLITE_TOK_CHAR_TYPE:
+    case MYLITE_TOK_CHARACTER:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_CHAR;
+    case MYLITE_TOK_VARCHAR_TYPE:
+    case MYLITE_TOK_VARCHARACTER:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARCHAR;
+    case MYLITE_TOK_NCHAR_TYPE:
+      if (mylite_ast_find_first_symbol(type, "nt_n_varchar") != NULL) {
+        return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NVARCHAR;
+      }
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NCHAR;
+    case MYLITE_TOK_NVARCHAR_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NVARCHAR;
+    case MYLITE_TOK_BINARY_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BINARY;
+    case MYLITE_TOK_VARBINARY_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARBINARY;
+    case MYLITE_TOK_TINYBLOB_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYBLOB;
+    case MYLITE_TOK_BLOB_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BLOB;
+    case MYLITE_TOK_MEDIUMBLOB_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMBLOB;
+    case MYLITE_TOK_LONGBLOB_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONGBLOB;
+    case MYLITE_TOK_TINYTEXT_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYTEXT;
+    case MYLITE_TOK_TEXT_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TEXT;
+    case MYLITE_TOK_MEDIUMTEXT_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMTEXT;
+    case MYLITE_TOK_LONGTEXT_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONGTEXT;
+    case MYLITE_TOK_ENUM:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_ENUM;
+    case MYLITE_TOK_SET:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_SET;
+    case MYLITE_TOK_JSON_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_JSON;
+    case MYLITE_TOK_VECTOR_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VECTOR;
+    case MYLITE_TOK_DATE_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DATE;
+    case MYLITE_TOK_DATETIME_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DATETIME;
+    case MYLITE_TOK_TIMESTAMP_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TIMESTAMP;
+    case MYLITE_TOK_TIME_TYPE:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TIME;
+    case MYLITE_TOK_YEAR_TYPE:
+    case MYLITE_TOK_SQL_TSI_YEAR:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_YEAR;
+    case MYLITE_TOK_GEOMETRY:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRY;
+    case MYLITE_TOK_POINT:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_POINT;
+    case MYLITE_TOK_LINESTRING:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LINESTRING;
+    case MYLITE_TOK_POLYGON:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_POLYGON;
+    case MYLITE_TOK_MULTIPOINT:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTIPOINT;
+    case MYLITE_TOK_MULTILINESTRING:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTILINESTRING;
+    case MYLITE_TOK_MULTIPOLYGON:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTIPOLYGON;
+    case MYLITE_TOK_GEOMETRYCOLLECTION:
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRYCOLLECTION;
+  }
+  return MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN;
 }
 
 static unsigned int mylite_ast_collect_column_flags(const MyliteAstNode *type,

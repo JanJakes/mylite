@@ -17,11 +17,16 @@ include(MyLiteCompilerOptions)
 include(MyLiteDeveloperTools)
 
 option(MYLITE_BUILD_TOOLS "Build MyLite command-line tools" ON)
+option(MYLITE_BUILD_PHP_EXTENSION "Build the MyLite PHP extension package" ON)
 option(MYLITE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
 add_subdirectory(third_party/sqlite)
 add_subdirectory(tools/lemon)
 add_subdirectory(packages/libmylite)
+
+if(MYLITE_BUILD_PHP_EXTENSION)
+  add_subdirectory(packages/php-ext-mylite)
+endif()
 
 if(MYLITE_BUILD_TOOLS)
   add_subdirectory(tools)

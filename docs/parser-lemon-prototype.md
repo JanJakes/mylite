@@ -55,8 +55,9 @@ token sink:
   argument adjacent operands, dangling operators, and invalid plain
   parenthesized groups at top level and in stored-program body sinks.
 - `DO` recognizes comma-separated expression lists while rejecting dangling
-  separators, dangling operators, malformed nested expression groups, adjacent
-  top-level operands, and top-level query-clause tails.
+  separators, dangling operators, malformed nested expression groups, invalid
+  `DEFAULT` values, adjacent top-level operands, and top-level query-clause
+  tails.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
   write payloads, and validate `SET` assignment lists including repeated-`SET`
   continuations, malformed top-level assignment value adjacent operands and

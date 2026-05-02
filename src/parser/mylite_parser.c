@@ -4495,6 +4495,10 @@ void mylite_parser_validate_do_statement(MyliteParseContext *ctx,
                              "incomplete DO expression list");
         return;
       }
+      if (token_id == ML_DEFAULT) {
+        mylite_parser_reject(ctx, token, "malformed DO expression list");
+        return;
+      }
       need_expression = 0;
     } else if (do_clause_boundary(token_id)) {
       mylite_parser_reject(ctx, token, "malformed DO expression list");

@@ -2616,6 +2616,7 @@ def main() -> int:
         ("do trim(both 'x' from 'xxx');", 0, {"statements": "1", "utility": "1"}),
         ("do (select 1);", 0, {"statements": "1", "utility": "1"}),
         ("do date '2020-01-01';", 0, {"statements": "1", "utility": "1"}),
+        ("do default;", 1, {}),
         ("do 1,;", 1, {}),
         ("do 1 +;", 1, {}),
         ("do 1, 2 *;", 1, {}),

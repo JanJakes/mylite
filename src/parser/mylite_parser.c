@@ -332,6 +332,7 @@ static int token_is_unsigned_decimal_literal(MyliteToken token);
 static int token_is_unsigned_size_literal(MyliteToken token);
 static int token_is_plain_unsigned_integer(MyliteToken token,
                                            unsigned long *value);
+static int token_is_quoted_hex_literal(MyliteToken token);
 static int token_is_quoted_hex_or_bit_literal(MyliteToken token);
 static int token_has_leading_sign(MyliteToken token);
 static int create_table_column_name_needs_type_check(int token_id,
@@ -443,6 +444,7 @@ static int validate_create_table_index_key_list(MyliteParseContext *ctx,
                                                 MyliteLexer *lexer,
                                                 MyliteToken start);
 static int create_index_prefix_length_token(int token_id);
+static int create_index_option_number_token(int token_id, MyliteToken token);
 static int index_using_type_token(MyliteToken token);
 static int alter_table_add_index_marker(int token_id);
 static int alter_table_add_non_index_marker(int token_id);
@@ -6791,6 +6793,11 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
     INDEX_KEY_AFTER_DIRECTION,
     INDEX_KEY_IN_FUNCTION
   };
+  enum {
+    CREATE_INDEX_OPTION_READY,
+    CREATE_INDEX_OPTION_NUMBER,
+    CREATE_INDEX_OPTION_STRING
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token = start;
@@ -6801,6 +6808,8 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
   int key_list_done = 0;
   int create_index_name_seen = 0;
   int index_using_pending = 0;
+  int index_option_state = CREATE_INDEX_OPTION_READY;
+  int index_option_equals = 0;
   int depth = 0;
   int key_state = INDEX_KEY_NEED_PART;
 
@@ -6845,6 +6854,34 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
 
     if (!in_key_list) {
       if (key_list_done) {
+        if (index_option_state == CREATE_INDEX_OPTION_NUMBER) {
+          if (token_id == ML_EQUALS && !index_option_equals) {
+            index_option_equals = 1;
+            continue;
+          }
+          if (!create_index_option_number_token(token_id, token)) {
+            mylite_parser_reject(ctx, pending_token,
+                                 "invalid CREATE INDEX option");
+            return;
+          }
+          index_option_state = CREATE_INDEX_OPTION_READY;
+          index_option_equals = 0;
+          continue;
+        }
+        if (index_option_state == CREATE_INDEX_OPTION_STRING) {
+          if (token_id == ML_EQUALS && !index_option_equals) {
+            index_option_equals = 1;
+            continue;
+          }
+          if (!create_table_tail_option_string_token(token_id, token)) {
+            mylite_parser_reject(ctx, pending_token,
+                                 "invalid CREATE INDEX option");
+            return;
+          }
+          index_option_state = CREATE_INDEX_OPTION_READY;
+          index_option_equals = 0;
+          continue;
+        }
         if (index_using_pending) {
           if (!index_using_type_token(token)) {
             mylite_parser_reject(ctx, pending_token,
@@ -6856,6 +6893,19 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
         }
         if (token_id == ML_USING || token_id == ML_TYPE) {
           index_using_pending = 1;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_KEY_BLOCK_SIZE) {
+          index_option_state = CREATE_INDEX_OPTION_NUMBER;
+          index_option_equals = 0;
+          pending_token = token;
+          continue;
+        }
+        if (token_id == ML_COMMENT || token_id == ML_ENGINE_ATTRIBUTE ||
+            token_id == ML_SECONDARY_ENGINE_ATTRIBUTE) {
+          index_option_state = CREATE_INDEX_OPTION_STRING;
+          index_option_equals = 0;
           pending_token = token;
           continue;
         }
@@ -6990,6 +7040,9 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
   } else if (index_using_pending) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE INDEX USING");
+  } else if (index_option_state != CREATE_INDEX_OPTION_READY) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete CREATE INDEX option");
   }
 }
 
@@ -7607,7 +7660,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
           add_index_option_equals = 1;
           continue;
         }
-        if (!create_table_tail_option_number_token(token_id)) {
+        if (!create_index_option_number_token(token_id, token)) {
           mylite_parser_reject(ctx, pending_token,
                                "invalid ALTER TABLE index option");
           return;
@@ -10486,6 +10539,15 @@ void mylite_parser_require_xid_number(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, token, "invalid XA XID literal");
 }
 
+void mylite_parser_require_quoted_hex_literal(MyliteParseContext *ctx,
+                                              MyliteToken token) {
+  if (token_is_quoted_hex_literal(token)) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid index number literal");
+}
+
 void mylite_parser_require_name_atom(MyliteParseContext *ctx,
                                      MyliteToken token) {
   if (token_is_invalid_identifier_atom(token, 1)) {
@@ -12259,13 +12321,23 @@ static int token_is_plain_unsigned_integer(MyliteToken token,
   return 1;
 }
 
-static int token_is_quoted_hex_or_bit_literal(MyliteToken token) {
+static int token_is_quoted_hex_literal(MyliteToken token) {
   if (token.length < 3 || token.start[1] != '\'') {
     return 0;
   }
 
-  return token.start[0] == 'B' || token.start[0] == 'X' ||
-         token.start[0] == 'b' || token.start[0] == 'x';
+  return token.start[0] == 'X' || token.start[0] == 'x';
+}
+
+static int token_is_quoted_hex_or_bit_literal(MyliteToken token) {
+  if (token_is_quoted_hex_literal(token)) {
+    return 1;
+  }
+  if (token.length < 3 || token.start[1] != '\'') {
+    return 0;
+  }
+
+  return token.start[0] == 'B' || token.start[0] == 'b';
 }
 
 static int token_has_leading_sign(MyliteToken token) {
@@ -13997,6 +14069,11 @@ static int validate_create_table_index_key_list(MyliteParseContext *ctx,
 static int create_index_prefix_length_token(int token_id) {
   return token_id == ML_BOOLEAN_NUMBER || token_id == ML_FACTOR_NUMBER ||
          token_id == ML_NUMBER_LITERAL;
+}
+
+static int create_index_option_number_token(int token_id, MyliteToken token) {
+  return create_index_prefix_length_token(token_id) ||
+         (token_id == ML_STRING_LITERAL && token_is_quoted_hex_literal(token));
 }
 
 static int index_using_type_token(MyliteToken token) {

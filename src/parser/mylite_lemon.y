@@ -281,6 +281,9 @@ create_index_option ::= drop_index_option.
 index_number_value ::= BOOLEAN_NUMBER.
 index_number_value ::= FACTOR_NUMBER.
 index_number_value ::= NUMBER_LITERAL.
+index_number_value ::= STRING_LITERAL(A). {
+  mylite_parser_require_quoted_hex_literal(ctx, A);
+}
 
 create_database_kind ::= DATABASE.
 create_database_kind ::= SCHEMA.

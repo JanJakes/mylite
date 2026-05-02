@@ -1920,7 +1920,7 @@ load_assignment_list ::= load_assignment.
 load_assignment_list ::= load_assignment_list import_comma load_assignment.
 
 load_assignment ::= update_assignment_target set_assignment_operator set_assignment_value(A). {
-  mylite_parser_validate_expression_from(
+  mylite_parser_validate_default_value_expression_from(
       ctx, A, "malformed LOAD assignment");
 }
 
@@ -4131,12 +4131,14 @@ set_assignment_list ::= set_assignment_list import_comma set_assignment.
 
 set_assignment ::= set_variable_name set_assignment_operator set_assignment_value(A). {
   if (!ctx->permissive) {
-    mylite_parser_validate_expression_from(ctx, A, "malformed SET assignment");
+    mylite_parser_validate_default_value_expression_from(
+        ctx, A, "malformed SET assignment");
   }
 }
 set_assignment ::= set_assignment_scope set_variable_name set_assignment_operator set_assignment_value(A). {
   if (!ctx->permissive) {
-    mylite_parser_validate_expression_from(ctx, A, "malformed SET assignment");
+    mylite_parser_validate_default_value_expression_from(
+        ctx, A, "malformed SET assignment");
   }
 }
 

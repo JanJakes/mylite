@@ -54,10 +54,10 @@ token sink:
   argument lists with nested expression bodies, while rejecting malformed
   argument adjacent operands, dangling operators, and invalid plain
   parenthesized groups at top level and in stored-program body sinks.
-- `DO` recognizes comma-separated expression lists while rejecting dangling
-  separators, dangling operators, malformed nested expression groups, invalid
-  `DEFAULT` values, adjacent top-level operands, and top-level query-clause
-  tails.
+- `DO` recognizes comma-separated expression lists while preserving
+  `DEFAULT(column)` expressions and rejecting dangling separators, dangling
+  operators, malformed nested expression groups, invalid or bare `DEFAULT`
+  values, adjacent top-level operands, and top-level query-clause tails.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
   write payloads, and validate `SET` assignment lists including repeated-`SET`
   continuations, malformed top-level assignment value adjacent operands and
@@ -70,9 +70,9 @@ token sink:
   direct query payload `SELECT` list tails, parenthesized query payload
   `SELECT`/`WITH`/`TABLE`/`VALUES` expression tails plus outer `ORDER BY` and
   `LIMIT` suffixes, malformed `SELECT` operands after set operators, and
-  `ON DUPLICATE KEY UPDATE`
-  assignment tails including malformed post-value continuations and stray
-  top-level `SELECT`/`FROM` suffixes after assignment values.
+  `ON DUPLICATE KEY UPDATE` assignment tails including whole-value `DEFAULT`,
+  malformed post-value continuations, and stray top-level `SELECT`/`FROM`
+  suffixes after assignment values.
 - Single-table `UPDATE` validates `SET` assignment lists, malformed top-level
   assignment value adjacent operands and dangling operators, adjacent operands,
   dangling operators, and trailing separators inside plain parenthesized
@@ -84,9 +84,10 @@ token sink:
   `WHERE`/`ORDER BY` adjacent operands and dangling operators including inside
   plain parenthesized expression groups, trailing separators inside those
   groups, and out-of-order top-level DML clauses.
-- `VALUES` recognizes comma-separated row contents while preserving nested
-  expression bodies, rejects adjacent operands and dangling operators in row
-  expression lists, applies the same checks in CTAS, view, and DML
+- `VALUES` recognizes comma-separated row contents, whole-value `DEFAULT`, and
+  `DEFAULT(column)` while preserving nested expression bodies, rejects adjacent
+  operands and dangling operators in row expression lists, applies the same
+  checks in CTAS, view, and DML
   set-operation `VALUES` bodies, preserves set operators, validates
   parenthesized `ORDER BY` expressions plus `ORDER BY`/`LIMIT` tails, and
   malformed `SELECT` operands after set operators are rejected.
@@ -147,6 +148,9 @@ token sink:
 - Top-level and query-body `SELECT` list tails allow bare `*` only as the
   first select item while preserving qualified `table.*` items later in the
   list.
+- Ordinary expression validators preserve `DEFAULT(column)` and dotted
+  `default` identifier paths while rejecting bare `DEFAULT` outside
+  default-capable assignment and row-value contexts.
 - `SELECT ... INTO` variable lists reject missing user-variable names, dangling
   commas, and adjacent variable targets.
 - Top-level `SELECT` requires `INTO OUTFILE` and `INTO DUMPFILE` to include
@@ -428,10 +432,11 @@ token sink:
   the shared identifier grammar, `BINARY`, `DEFAULT`, optional collation, and
   comma-following variable assignments.
 - `SET` variable assignments recognize comma-separated assignment lists with
-  optional per-assignment scopes and nested value expressions, reject malformed
-  non-`@@` assignment values with adjacent operands, dangling operators, and
-  invalid plain parenthesized groups, preserve `@@` system-variable values as
-  token tails, and reject repeated top-level `SET` continuations after
+  optional per-assignment scopes, whole-value `DEFAULT`, and nested value
+  expressions, reject malformed non-`@@` assignment values with adjacent
+  operands, dangling operators, and invalid plain parenthesized groups, preserve
+  `@@` system-variable values as token tails, and reject repeated top-level
+  `SET` continuations after
   completed assignment values.
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form
   with user-variable targets, while `INTO` is still rejected for

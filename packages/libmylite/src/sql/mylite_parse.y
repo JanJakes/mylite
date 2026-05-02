@@ -1831,6 +1831,9 @@ unary_expression(A) ::= LOGICAL_NOT(T) unary_expression(B). {
 primary_expression(A) ::= literal(B). {
     A = B;
 }
+primary_expression(A) ::= case_expression(B). {
+    A = B;
+}
 primary_expression(A) ::= scalar_function_call(B). {
     A = B;
 }
@@ -1845,6 +1848,31 @@ primary_expression(A) ::= bare_temporal_function(B). {
 }
 primary_expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+case_expression(A) ::= CASE(T) expression(B) case_when_list(C) opt_case_else(D) END(E). {
+    A = mylite_sql_parser_make_simple_case_expression(state, T, B, C, D, E);
+}
+case_expression(A) ::= CASE(T) case_when_list(B) opt_case_else(C) END(E). {
+    A = mylite_sql_parser_make_searched_case_expression(state, T, B, C, E);
+}
+
+case_when_list(A) ::= case_when(B). {
+    A = mylite_sql_parser_make_case_when_list(state, B);
+}
+case_when_list(A) ::= case_when_list(B) case_when(C). {
+    A = mylite_sql_parser_append_case_when(state, B, C);
+}
+
+case_when(A) ::= WHEN(T) expression(B) THEN expression(C). {
+    A = mylite_sql_parser_make_case_when(state, T, B, C);
+}
+
+opt_case_else(A) ::= . {
+    A = NULL;
+}
+opt_case_else(A) ::= ELSE expression(B). {
+    A = B;
 }
 
 bare_temporal_function(A) ::= CURRENT_DATE(T). {

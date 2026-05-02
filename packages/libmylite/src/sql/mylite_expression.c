@@ -94,6 +94,22 @@ static int eval_ternary(const struct mylite_sql_ast_node *node,
                         const struct mylite_expression_eval_context *context,
                         struct mylite_expression_warnings *warnings,
                         struct mylite_expression_value *out_value);
+static int eval_case_expression(const struct mylite_sql_ast_node *node,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value);
+static int eval_simple_case_expression(const struct mylite_sql_ast_node *node,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value);
+static int eval_searched_case_expression(const struct mylite_sql_ast_node *node,
+                                         const struct mylite_expression_eval_context *context,
+                                         struct mylite_expression_warnings *warnings,
+                                         struct mylite_expression_value *out_value);
+static int eval_case_default(const struct mylite_sql_ast_node *expression,
+                             const struct mylite_expression_eval_context *context,
+                             struct mylite_expression_warnings *warnings,
+                             struct mylite_expression_value *out_value);
 static int eval_function_call(const struct mylite_sql_ast_node *node,
                               const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
@@ -373,6 +389,9 @@ bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *e
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
+    case MYLITE_SQL_AST_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_CASE_WHEN_LIST:
+    case MYLITE_SQL_AST_CASE_WHEN:
         for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
              child = child->next_sibling) {
             if (!mylite_expression_is_supported_no_table(child)) {
@@ -477,6 +496,8 @@ static int eval_node(const struct mylite_sql_ast_node *node,
         return eval_binary(node, context, warnings, out_value);
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
         return eval_ternary(node, context, warnings, out_value);
+    case MYLITE_SQL_AST_CASE_EXPRESSION:
+        return eval_case_expression(node, context, warnings, out_value);
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return eval_function_call(node, context, warnings, out_value);
     default:
@@ -824,6 +845,111 @@ static int eval_ternary(const struct mylite_sql_ast_node *node,
         return eval_like(node->operator_kind, node, context, warnings, out_value);
     }
     return -1;
+}
+
+static int eval_case_expression(const struct mylite_sql_ast_node *node,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value)
+{
+    if (node->case_expression_simple) {
+        return eval_simple_case_expression(node, context, warnings, out_value);
+    }
+    return eval_searched_case_expression(node, context, warnings, out_value);
+}
+
+static int eval_simple_case_expression(const struct mylite_sql_ast_node *node,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *base_expression = child_at(node, 0U);
+    const struct mylite_sql_ast_node *when_list = child_at(node, 1U);
+    const struct mylite_sql_ast_node *else_expression = child_at(node, 2U);
+    struct mylite_expression_value base = {0};
+    int status = eval_node(base_expression, context, warnings, &base);
+
+    if (status != 0 || when_list == NULL || when_list->kind != MYLITE_SQL_AST_CASE_WHEN_LIST) {
+        mylite_expression_value_deinit(&base);
+        return status == 0 ? -1 : status;
+    }
+
+    for (const struct mylite_sql_ast_node *arm = when_list->first_child; arm != NULL;
+         arm = arm->next_sibling) {
+        const struct mylite_sql_ast_node *compare_expression = child_at(arm, 0U);
+        const struct mylite_sql_ast_node *result_expression = child_at(arm, 1U);
+        struct mylite_expression_value compare = {0};
+        int comparison = 0;
+        bool matches = false;
+
+        status = eval_node(compare_expression, context, warnings, &compare);
+        if (status == 0 && !is_null(&base) && !is_null(&compare)) {
+            status = compare_values(&base, &compare, warnings, &comparison);
+            matches = status == 0 && comparison == 0;
+        }
+        mylite_expression_value_deinit(&compare);
+        if (status != 0) {
+            break;
+        }
+        if (matches) {
+            status = eval_node(result_expression, context, warnings, out_value);
+            mylite_expression_value_deinit(&base);
+            return status;
+        }
+    }
+
+    mylite_expression_value_deinit(&base);
+    if (status != 0) {
+        return status;
+    }
+    return eval_case_default(else_expression, context, warnings, out_value);
+}
+
+static int eval_searched_case_expression(const struct mylite_sql_ast_node *node,
+                                         const struct mylite_expression_eval_context *context,
+                                         struct mylite_expression_warnings *warnings,
+                                         struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *when_list = child_at(node, 0U);
+    const struct mylite_sql_ast_node *else_expression = child_at(node, 1U);
+
+    if (when_list == NULL || when_list->kind != MYLITE_SQL_AST_CASE_WHEN_LIST) {
+        return -1;
+    }
+
+    for (const struct mylite_sql_ast_node *arm = when_list->first_child; arm != NULL;
+         arm = arm->next_sibling) {
+        const struct mylite_sql_ast_node *condition_expression = child_at(arm, 0U);
+        const struct mylite_sql_ast_node *result_expression = child_at(arm, 1U);
+        struct mylite_expression_value condition = {0};
+        int truth = -1;
+        int status = eval_node(condition_expression, context, warnings, &condition);
+
+        if (status == 0) {
+            status = truth_value(&condition, warnings, &truth);
+        }
+        mylite_expression_value_deinit(&condition);
+        if (status != 0) {
+            return status;
+        }
+        if (truth == 1) {
+            return eval_node(result_expression, context, warnings, out_value);
+        }
+    }
+
+    return eval_case_default(else_expression, context, warnings, out_value);
+}
+
+static int eval_case_default(const struct mylite_sql_ast_node *expression,
+                             const struct mylite_expression_eval_context *context,
+                             struct mylite_expression_warnings *warnings,
+                             struct mylite_expression_value *out_value)
+{
+    if (expression == NULL) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    }
+    return eval_node(expression, context, warnings, out_value);
 }
 
 static int eval_function_call(const struct mylite_sql_ast_node *node,

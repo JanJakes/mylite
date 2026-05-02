@@ -207,7 +207,10 @@ The update changed only row `2` to `marker='hit'`. The delete then removed row
 
 Strict DML probes confirmed that unselected warning-producing branches do not
 affect the statement, while selected warning-producing branches fail under the
-verified default mode:
+verified default mode. The delete examples below use a focused one-row `d`
+fixture with `id = 1`; with additional rows, any row that reaches the
+warning-producing branch makes the statement fail under the verified default
+mode.
 
 | SQL | MySQL behavior |
 | --- | --- |
@@ -431,6 +434,11 @@ Assert symbolic descriptor fields for the verified metadata examples above:
 | `DELETE FROM d WHERE CASE WHEN id = 1 THEN 0 ELSE MOD(7,0) END` | succeeds; deletes no rows |
 | `DELETE FROM d WHERE CASE WHEN id = 1 THEN MOD(7,0) ELSE 0 END` | error 1365 / `22012`; row unchanged |
 | `DELETE FROM d WHERE CASE WHEN v >= 10 THEN 1 ELSE 0 END ORDER BY CASE WHEN marker = 'hit' THEN 0 ELSE 1 END, id LIMIT 1` | deletes the row ordered first by the CASE key |
+
+The first two delete tests should use a one-row `d` fixture with `id = 1` so
+the successful case proves the unselected branch is not evaluated. A separate
+multi-row strict-DML test should cover a row reaching `ELSE MOD(7,0)` and
+failing the statement.
 
 ## Deferred behavior and compatibility risks
 

@@ -131,6 +131,7 @@ static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
+static int test_case_expression_execution(void);
 static int test_schema_lifecycle(void);
 static int test_character_set_collation_foundation(void);
 static int test_core_metadata_catalog(void);
@@ -238,6 +239,7 @@ int main(void)
     failures += test_select_integer_literal_with_semicolon();
     failures += test_expression_operator_foundation();
     failures += test_scalar_builtin_functions_execution();
+    failures += test_case_expression_execution();
     failures += test_schema_lifecycle();
     failures += test_character_set_collation_foundation();
     failures += test_core_metadata_catalog();
@@ -1047,6 +1049,254 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported concat arity");
     failures += prepare_sql(database, "SELECT PI(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported pi arity");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_case_expression_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const rowless_columns[] = {
+        "searched_short", "searched_second", "null_condition", "simple_match",
+        "simple_null",    "omitted_else",    "nested_case",
+    };
+    static const struct expected_result_metadata metadata[] = {
+        {"case_text", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"case_int", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"case_null", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_NULL, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"case_decimal", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_NEWDECIMAL, 1U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"case_func", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const id_label_columns[] = {"id", "label"};
+    static const char *const projection_values[] = {
+        "1", "n=1", "2", "n=-2", "3", "nil", "4", "n=0",
+    };
+    static const char *const simple_projection_values[] = {
+        "1", "one", "2", "minus", "3", "zero", "4", "zero",
+    };
+    static const char *const where_values[] = {"1", "3"};
+    static const char *const order_values[] = {"3", "2", "1", "4"};
+    static const char *const id_s_columns[] = {"id", "s"};
+    static const char *const updated_s_values[] = {"2", "beta"};
+    static const char *const v_column[] = {"v"};
+    static const char *const v_11[] = {"11"};
+    static const char *const order_dml_columns[] = {"id", "marker"};
+    static const char *const order_dml_after_update[] = {"1", "a", "2", "hit", "3", "c"};
+    static const char *const order_dml_after_delete[] = {"1", "a", "3", "c"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open CASE database");
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_case_expression "
+                            "DEFAULT CHARACTER SET utf8mb4",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_case_expression", MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT CASE WHEN 1 THEN 'yes' ELSE 1/0 END AS searched_short, "
+                            "CASE WHEN 0 THEN 1/0 WHEN 2 THEN 'second' ELSE 'else' END "
+                            "AS searched_second, "
+                            "CASE WHEN NULL THEN 'null-branch' ELSE 'else' END "
+                            "AS null_condition, "
+                            "CASE 2 WHEN 1 THEN 'one' WHEN 2 THEN 'two' ELSE 'other' END "
+                            "AS simple_match, "
+                            "CASE NULL WHEN NULL THEN 'matched' ELSE 'else' END AS simple_null, "
+                            "CASE WHEN 0 THEN 'no' END AS omitted_else, "
+                            "CASE WHEN 1 THEN CASE WHEN 0 THEN 2 ELSE 3 END ELSE 4 END "
+                            "AS nested_case",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, rowless_columns,
+                                    (int)(sizeof(rowless_columns) / sizeof(rowless_columns[0])),
+                                    "CASE rowless columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CASE rowless row");
+    failures += expect_string(mylite_column_text(stmt, 0), "yes", "CASE searched short");
+    failures += expect_string(mylite_column_text(stmt, 1), "second", "CASE searched second");
+    failures += expect_string(mylite_column_text(stmt, 2), "else", "CASE null condition");
+    failures += expect_string(mylite_column_text(stmt, 3), "two", "CASE simple match");
+    failures += expect_string(mylite_column_text(stmt, 4), "else", "CASE simple null");
+    failures += expect_null_text(mylite_column_text(stmt, 5), "CASE omitted else");
+    failures += expect_string(mylite_column_text(stmt, 6), "3", "CASE nested");
+    failures += expect_int(mylite_warning_count(database), 0, "CASE rowless warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CASE rowless done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT CASE WHEN 0 THEN 10 ELSE 1/0 END AS selected_warning",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CASE selected warning row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "CASE selected warning result");
+    failures += expect_int(mylite_warning_count(database), 1, "CASE selected warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "CASE selected warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT CASE 1 WHEN 1 THEN 10 WHEN 1/0 THEN 20 ELSE 30 END "
+                            "AS simple_short",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CASE simple short row");
+    failures += expect_string(mylite_column_text(stmt, 0), "10", "CASE simple short result");
+    failures += expect_int(mylite_warning_count(database), 0, "CASE simple short warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT CASE 1 WHEN 0 THEN 10 WHEN 1/0 THEN 20 ELSE 30 END "
+                            "AS simple_warning",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CASE simple warning row");
+    failures += expect_string(mylite_column_text(stmt, 0), "30", "CASE simple warning result");
+    failures += expect_int(mylite_warning_count(database), 1, "CASE simple warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "CASE simple warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT CASE 1/0 WHEN 0 THEN 10 ELSE 20 END AS base_warning",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CASE base warning row");
+    failures += expect_string(mylite_column_text(stmt, 0), "20", "CASE base warning result");
+    failures += expect_int(mylite_warning_count(database), 1, "CASE base warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT CASE WHEN 1 THEN 'yes' ELSE 'no' END AS case_text, "
+                            "CASE WHEN 1 THEN 10 ELSE 20 END AS case_int, "
+                            "CASE WHEN 0 THEN NULL END AS case_null, "
+                            "CASE 1 WHEN 1 THEN 2.5 ELSE 3 END AS case_decimal, "
+                            "CASE WHEN 1 THEN ISNULL(NULL) ELSE 0 END AS case_func",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "CASE metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CASE metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CASE metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE t ("
+                            "id INT PRIMARY KEY, "
+                            "n INT, "
+                            "s VARCHAR(20), "
+                            "marker VARCHAR(10))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO t VALUES "
+                            "(1,1,'alpha','a'),"
+                            "(2,-2,'Beta','b'),"
+                            "(3,NULL,NULL,'c'),"
+                            "(4,0,'gamma','d')",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, CASE WHEN n IS NULL THEN 'nil' ELSE CONCAT('n=', n) END AS label "
+        "FROM t ORDER BY id",
+        id_label_columns, 2, projection_values, 4, "CASE table projection");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, CASE n WHEN 1 THEN 'one' WHEN -2 THEN 'minus' ELSE 'zero' END AS label "
+        "FROM t ORDER BY id",
+        id_label_columns, 2, simple_projection_values, 4, "CASE simple table projection");
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM t WHERE CASE WHEN n = 1 THEN 1 WHEN s IS NULL THEN 1 ELSE 0 END "
+        "ORDER BY id",
+        id_column, 1, where_values, 2, "CASE where");
+    failures += expect_select_rows(
+        database, "SELECT id FROM t ORDER BY CASE WHEN s IS NULL THEN 0 ELSE LENGTH(s) END, id",
+        id_column, 1, order_values, 4, "CASE order");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE t SET s = CASE WHEN n < 0 THEN LOWER(s) ELSE s END WHERE id = 2", 1,
+        "CASE update assignment");
+    failures += expect_select_rows(database, "SELECT id, s FROM t WHERE id = 2", id_s_columns, 2,
+                                   updated_s_values, 1, "CASE update value");
+    failures +=
+        expect_prepare_error(database,
+                             "SELECT CASE WHEN 1 THEN 1 ELSE missing_col END FROM t "
+                             "LIMIT 1",
+                             MYLITE_EXEC_ERROR, "missing_col", "CASE binds unselected branch");
+
+    failures += execute_sql(database, "CREATE TABLE d (id INT PRIMARY KEY, v INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO d VALUES (1,10)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE d SET v = CASE WHEN 1 THEN v + 1 ELSE MOD(7,0) END WHERE id = 1", 1,
+        "CASE update unselected warning");
+    failures += expect_select_rows(database, "SELECT v FROM d WHERE id = 1", v_column, 1, v_11, 1,
+                                   "CASE update unselected warning value");
+    failures += prepare_sql(
+        database, "UPDATE d SET v = CASE WHEN 0 THEN v + 1 ELSE MOD(7,0) END WHERE id = 1",
+        MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Division by 0", "CASE update selected warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT v FROM d WHERE id = 1", v_column, 1, v_11, 1,
+                                   "CASE update selected warning unchanged");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM d WHERE CASE WHEN id = 1 THEN 0 ELSE MOD(7,0) END", 0,
+        "CASE delete unselected warning");
+    failures += expect_select_row_count(database, "SELECT id FROM d WHERE id = 1", 1,
+                                        "CASE delete unselected warning unchanged");
+    failures +=
+        prepare_sql(database, "DELETE FROM d WHERE CASE WHEN id = 1 THEN MOD(7,0) ELSE 0 END",
+                    MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Division by 0", "CASE delete selected warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(database, "SELECT id FROM d WHERE id = 1", 1,
+                                        "CASE delete selected warning unchanged");
+
+    failures += execute_sql(database, "CREATE TABLE d2 (id INT PRIMARY KEY, v INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO d2 VALUES (1,10),(2,20)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "DELETE FROM d2 WHERE CASE WHEN id = 1 THEN 0 ELSE MOD(7,0) END",
+                    MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Division by 0", "CASE delete later row warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(database, "SELECT id FROM d2", 2,
+                                        "CASE delete later row unchanged");
+
+    failures += execute_sql(
+        database, "CREATE TABLE order_dml_case (id INT PRIMARY KEY, v INT, marker VARCHAR(10))",
+        MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO order_dml_case VALUES (1,30,'a'), (2,10,'b'), (3,20,'c')",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "UPDATE order_dml_case "
+                                         "SET marker = CASE WHEN id = 2 THEN 'hit' ELSE 'miss' END "
+                                         "WHERE CASE WHEN v >= 10 THEN 1 ELSE 0 END "
+                                         "ORDER BY CASE WHEN id = 2 THEN 0 ELSE 1 END, id "
+                                         "LIMIT 1",
+                                         1, "CASE update order");
+    failures += expect_select_rows(database, "SELECT id, marker FROM order_dml_case ORDER BY id",
+                                   order_dml_columns, 2, order_dml_after_update, 3,
+                                   "CASE update order rows");
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "DELETE FROM order_dml_case "
+                                         "WHERE CASE WHEN v >= 10 THEN 1 ELSE 0 END "
+                                         "ORDER BY CASE WHEN marker = 'hit' THEN 0 ELSE 1 END, id "
+                                         "LIMIT 1",
+                                         1, "CASE delete order");
+    failures += expect_select_rows(database, "SELECT id, marker FROM order_dml_case ORDER BY id",
+                                   order_dml_columns, 2, order_dml_after_delete, 2,
+                                   "CASE delete order rows");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

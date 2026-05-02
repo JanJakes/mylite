@@ -89,6 +89,9 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT = 78,
     MYLITE_SQL_AST_FUNCTION_CALL = 79,
     MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST = 80,
+    MYLITE_SQL_AST_CASE_EXPRESSION = 81,
+    MYLITE_SQL_AST_CASE_WHEN_LIST = 82,
+    MYLITE_SQL_AST_CASE_WHEN = 83,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -308,6 +311,7 @@ struct mylite_sql_ast_node {
     bool column_byte_attribute;
     bool column_zerofill_attribute;
     bool column_national_attribute;
+    bool case_expression_simple;
     bool drop_table_temporary;
     bool drop_table_restrict;
     bool drop_table_cascade;
@@ -376,6 +380,7 @@ void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_a
 void mylite_sql_ast_node_set_transaction_completion(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_chain chain,
     enum mylite_sql_ast_transaction_release release);
+void mylite_sql_ast_node_set_case_expression_simple(struct mylite_sql_ast_node *node);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 

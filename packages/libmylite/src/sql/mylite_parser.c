@@ -2766,6 +2766,97 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     return call;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_simple_case_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token case_token,
+    struct mylite_sql_ast_node *base, struct mylite_sql_ast_node *when_list,
+    struct mylite_sql_ast_node *else_expression, struct mylite_sql_token end_token)
+{
+    struct mylite_sql_ast_node *expression =
+        make_node(state, MYLITE_SQL_AST_CASE_EXPRESSION,
+                  span_join(span_from_token(&case_token), span_from_token(&end_token)));
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_case_expression_simple(expression);
+    mylite_sql_ast_node_append_child(expression, base);
+    mylite_sql_ast_node_append_child(expression, when_list);
+    mylite_sql_ast_node_append_child(expression, else_expression);
+    return expression;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_searched_case_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token case_token,
+    struct mylite_sql_ast_node *when_list, struct mylite_sql_ast_node *else_expression,
+    struct mylite_sql_token end_token)
+{
+    struct mylite_sql_ast_node *expression =
+        make_node(state, MYLITE_SQL_AST_CASE_EXPRESSION,
+                  span_join(span_from_token(&case_token), span_from_token(&end_token)));
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(expression, when_list);
+    mylite_sql_ast_node_append_child(expression, else_expression);
+    return expression;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_case_when_list(struct mylite_sql_parser_state *state,
+                                      struct mylite_sql_ast_node *case_when)
+{
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_CASE_WHEN_LIST,
+                  case_when == NULL ? (struct mylite_sql_source_span){0} : case_when->span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, case_when);
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_case_when(struct mylite_sql_parser_state *state,
+                                   struct mylite_sql_ast_node *list,
+                                   struct mylite_sql_ast_node *case_when)
+{
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, case_when);
+    if (case_when != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, case_when->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_case_when(struct mylite_sql_parser_state *state,
+                                                             struct mylite_sql_token when_token,
+                                                             struct mylite_sql_ast_node *condition,
+                                                             struct mylite_sql_ast_node *result)
+{
+    struct mylite_sql_source_span span = span_from_token(&when_token);
+    struct mylite_sql_ast_node *case_when = NULL;
+
+    if (result != NULL) {
+        span = span_join(span, result->span);
+    } else if (condition != NULL) {
+        span = span_join(span, condition->span);
+    }
+
+    case_when = make_node(state, MYLITE_SQL_AST_CASE_WHEN, span);
+    if (case_when == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(case_when, condition);
+    mylite_sql_ast_node_append_child(case_when, result);
+    return case_when;
+}
+
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_empty_function_argument_list(struct mylite_sql_parser_state *state,
                                                     struct mylite_sql_token left_paren,
@@ -3238,6 +3329,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"BY", MYLITE_SQL_PARSE_BY},
         {"BYTE", MYLITE_SQL_PARSE_BYTE},
         {"CASCADE", MYLITE_SQL_PARSE_CASCADE},
+        {"CASE", MYLITE_SQL_PARSE_CASE},
         {"CHAR", MYLITE_SQL_PARSE_CHAR},
         {"CHARACTER", MYLITE_SQL_PARSE_CHARACTER},
         {"CHARSET", MYLITE_SQL_PARSE_CHARSET},
@@ -3268,6 +3360,8 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"DROP", MYLITE_SQL_PARSE_DROP},
         {"DUAL", MYLITE_SQL_PARSE_DUAL},
         {"DYNAMIC", MYLITE_SQL_PARSE_DYNAMIC},
+        {"ELSE", MYLITE_SQL_PARSE_ELSE},
+        {"END", MYLITE_SQL_PARSE_END},
         {"ENGINE", MYLITE_SQL_PARSE_ENGINE},
         {"ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_ENGINE_ATTRIBUTE},
         {"ENCRYPTION", MYLITE_SQL_PARSE_ENCRYPTION},
@@ -3348,6 +3442,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
         {"TEMPORARY", MYLITE_SQL_PARSE_TEMPORARY},
         {"TEXT", MYLITE_SQL_PARSE_TEXT},
+        {"THEN", MYLITE_SQL_PARSE_THEN},
         {"TIME", MYLITE_SQL_PARSE_TIME},
         {"TIMESTAMP", MYLITE_SQL_PARSE_TIMESTAMP},
         {"TINYBLOB", MYLITE_SQL_PARSE_TINYBLOB},
@@ -3370,6 +3465,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"VALUES", MYLITE_SQL_PARSE_VALUES},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
         {"VARYING", MYLITE_SQL_PARSE_VARYING},
+        {"WHEN", MYLITE_SQL_PARSE_WHEN},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"VISIBLE", MYLITE_SQL_PARSE_VISIBLE},
         {"WITH", MYLITE_SQL_PARSE_WITH},

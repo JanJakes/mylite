@@ -26,6 +26,7 @@ static int test_savepoint_statement_syntax(void);
 static int test_select_expression_list(void);
 static int test_expression_operator_foundation_syntax(void);
 static int test_scalar_function_call_syntax(void);
+static int test_case_expression_syntax(void);
 static int test_information_schema_select(void);
 static int test_select_table_core_syntax(void);
 static int test_select_where_clause_syntax(void);
@@ -44,6 +45,7 @@ static int expect_node(const struct mylite_sql_ast_node *node,
                        enum mylite_sql_ast_node_kind expected_kind, const char *context);
 static int expect_child_count(const struct mylite_sql_ast_node *node, size_t expected,
                               const char *context);
+static int expect_bool(bool actual, bool expected, const char *context);
 static int expect_span_text(const struct mylite_sql_ast_node *node, const char *expected,
                             const char *context);
 static int expect_function_call(const struct mylite_sql_ast_node *node, const char *expected_name,
@@ -113,6 +115,7 @@ int main(void)
     failures += test_select_expression_list();
     failures += test_expression_operator_foundation_syntax();
     failures += test_scalar_function_call_syntax();
+    failures += test_case_expression_syntax();
     failures += test_information_schema_select();
     failures += test_select_table_core_syntax();
     failures += test_select_where_clause_syntax();
@@ -3094,6 +3097,71 @@ static int test_scalar_function_call_syntax(void)
     return failures;
 }
 
+static int test_case_expression_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *case_expression = NULL;
+    const struct mylite_sql_ast_node *when_list = NULL;
+    const struct mylite_sql_ast_node *case_when = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT CASE WHEN 1 THEN 2 END;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    case_expression = child_at(child_at(select_list, 0U), 0U);
+    when_list = child_at(case_expression, 0U);
+    case_when = child_at(when_list, 0U);
+    failures +=
+        expect_node(case_expression, MYLITE_SQL_AST_CASE_EXPRESSION, "searched CASE expression");
+    failures += expect_child_count(case_expression, 1U, "searched CASE children");
+    failures += expect_bool(case_expression->case_expression_simple, false, "searched CASE mode");
+    failures += expect_node(when_list, MYLITE_SQL_AST_CASE_WHEN_LIST, "searched CASE when list");
+    failures += expect_child_count(when_list, 1U, "searched CASE when count");
+    failures += expect_node(case_when, MYLITE_SQL_AST_CASE_WHEN, "searched CASE when");
+    failures += expect_span_text(child_at(case_when, 0U), "1", "searched CASE condition");
+    failures += expect_span_text(child_at(case_when, 1U), "2", "searched CASE result");
+    failures += expect_span_text(case_expression, "CASE WHEN 1 THEN 2 END", "searched CASE span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CASE 1 WHEN 1 THEN 'one' ELSE 'other' END;", MYLITE_SQL_PARSE_OK,
+                          &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    case_expression = child_at(child_at(select_list, 0U), 0U);
+    when_list = child_at(case_expression, 1U);
+    case_when = child_at(when_list, 0U);
+    failures +=
+        expect_node(case_expression, MYLITE_SQL_AST_CASE_EXPRESSION, "simple CASE expression");
+    failures += expect_child_count(case_expression, 3U, "simple CASE children");
+    failures += expect_bool(case_expression->case_expression_simple, true, "simple CASE mode");
+    failures += expect_span_text(child_at(case_expression, 0U), "1", "simple CASE base");
+    failures += expect_node(when_list, MYLITE_SQL_AST_CASE_WHEN_LIST, "simple CASE when list");
+    failures += expect_span_text(child_at(case_when, 0U), "1", "simple CASE compare");
+    failures += expect_span_text(child_at(case_when, 1U), "'one'", "simple CASE result");
+    failures += expect_span_text(child_at(case_expression, 2U), "'other'", "simple CASE else");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CASE WHEN 0 THEN 1 WHEN 1 THEN CASE WHEN 1 THEN 2 ELSE 3 END "
+                          "ELSE 4 END;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    case_expression = child_at(child_at(select_list, 0U), 0U);
+    when_list = child_at(case_expression, 0U);
+    failures += expect_child_count(when_list, 2U, "multi WHEN CASE count");
+    case_when = child_at(when_list, 1U);
+    failures +=
+        expect_node(child_at(case_when, 1U), MYLITE_SQL_AST_CASE_EXPRESSION, "nested CASE result");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CASE ELSE 1 END", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CASE WHEN 1 END", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
 static int test_information_schema_select(void)
 {
     struct mylite_sql_parse_result result;
@@ -3636,6 +3704,25 @@ static int expect_child_count(const struct mylite_sql_ast_node *node, size_t exp
 
     if (actual != expected) {
         fprintf(stderr, "%s: expected %zu children, got %zu\n", context, expected, actual);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_bool(bool actual, bool expected, const char *context)
+{
+    const char *actual_text = "false";
+    const char *expected_text = "false";
+
+    if (actual) {
+        actual_text = "true";
+    }
+    if (expected) {
+        expected_text = "true";
+    }
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %s, got %s\n", context, expected_text, actual_text);
         return 1;
     }
 

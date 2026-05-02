@@ -371,6 +371,15 @@ void mylite_sql_ast_node_set_transaction_completion(struct mylite_sql_ast_node *
     node->transaction_release = release;
 }
 
+void mylite_sql_ast_node_set_case_expression_simple(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->case_expression_simple = true;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -553,6 +562,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "function_call";
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
         return "function_argument_list";
+    case MYLITE_SQL_AST_CASE_EXPRESSION:
+        return "case_expression";
+    case MYLITE_SQL_AST_CASE_WHEN_LIST:
+        return "case_when_list";
+    case MYLITE_SQL_AST_CASE_WHEN:
+        return "case_when";
     }
 
     return "unknown";

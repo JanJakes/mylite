@@ -132,7 +132,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. |  |
 | `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. |  |
 | `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. |  |
-| `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. |  |
+| `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. | Design-only Task 19 spec exists for the single-table executable subset: target aliases, assignment source order, repeated targets, `DEFAULT`, `WHERE`, `ORDER BY`, `LIMIT`, affected/matched rows, diagnostics, atomicity, primary/unique conflicts, and `AUTO_INCREMENT` side effects. Runtime implementation is not started; `LOW_PRIORITY`, `IGNORE`, partitions, generated-column execution, automatic `ON UPDATE`, functions, and multi-table forms remain deferred. See [single-table UPDATE spec](docs/specs/update-single-table/specs.md). |
 | `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. |  |
 | `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. |  |
 

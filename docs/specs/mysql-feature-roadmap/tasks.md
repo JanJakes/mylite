@@ -48,7 +48,7 @@ level application surfaces.
        [ORDER BY, LIMIT, and OFFSET](../order-limit-offset/specs.md).
 19. [ ] Single-table `UPDATE`: assignment order, expressions, `WHERE`,
        `ORDER BY`, `LIMIT`, generated/default columns, affected rows, and
-       warnings.
+       warnings. Spec: [single-table UPDATE](../update-single-table/specs.md).
 20. [ ] Single-table `DELETE`: aliases, `WHERE`, `ORDER BY`, `LIMIT`,
        affected rows, and warnings.
 21. [ ] Transaction statements: `START TRANSACTION`, `BEGIN`, `COMMIT`,

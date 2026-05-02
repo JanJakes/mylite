@@ -44,6 +44,8 @@ enum mylite_stmt_kind {
     MYLITE_STMT_SAVEPOINT = 22,
     MYLITE_STMT_ROLLBACK_TO_SAVEPOINT = 23,
     MYLITE_STMT_RELEASE_SAVEPOINT = 24,
+    MYLITE_STMT_CREATE_INDEX = 25,
+    MYLITE_STMT_DROP_INDEX = 26,
 };
 
 enum mylite_information_schema_table {
@@ -61,7 +63,10 @@ enum mylite_mysql_condition_code {
     MYLITE_MYSQL_ER_NON_UNIQ_ERROR = 1052,
     MYLITE_MYSQL_ER_BAD_FIELD_ERROR = 1054,
     MYLITE_MYSQL_ER_WRONG_FIELD_WITH_GROUP = 1055,
+    MYLITE_MYSQL_ER_DUP_KEYNAME = 1061,
     MYLITE_MYSQL_ER_DUP_ENTRY = 1062,
+    MYLITE_MYSQL_ER_KEY_COLUMN_DOES_NOT_EXITS = 1072,
+    MYLITE_MYSQL_ER_CANT_DROP_FIELD_OR_KEY = 1091,
     MYLITE_MYSQL_ER_NONUNIQ_TABLE = 1066,
     MYLITE_MYSQL_ER_INVALID_GROUP_FUNC_USE = 1111,
     MYLITE_MYSQL_ER_MIX_OF_GROUP_FUNC_AND_FIELDS = 1140,
@@ -82,6 +87,8 @@ enum mylite_mysql_condition_code {
     MYLITE_MYSQL_ER_WARN_LEGACY_SYNTAX_CONVERTED = 3005,
     MYLITE_MYSQL_ER_FIELD_IN_ORDER_NOT_SELECT = 3065,
     MYLITE_MYSQL_ER_CANT_EXECUTE_IN_READ_ONLY_TRANSACTION = 1792,
+    MYLITE_MYSQL_ER_DUP_INDEX = 1831,
+    MYLITE_MYSQL_ER_WARN_USING_OTHER_HANDLER = 3502,
 };
 
 enum mylite_transaction_access_mode {
@@ -213,6 +220,7 @@ struct mylite_create_table_index {
     bool is_unique;
     bool is_visible;
     bool explicit_name;
+    bool has_with_parser;
 };
 
 struct mylite_create_table_plan {
@@ -243,6 +251,20 @@ struct mylite_drop_table_plan {
     bool temporary;
     bool restrict_mode;
     bool cascade_mode;
+};
+
+struct mylite_index_ddl_plan {
+    char *schema_name;
+    char *table_name;
+    char *index_name;
+    struct mylite_create_table_index index;
+    enum mylite_sql_ast_index_class index_class;
+};
+
+struct mylite_index_catalog_lookup {
+    const char *schema_name;
+    const char *table_name;
+    const char *index_name;
 };
 
 enum mylite_insert_value_kind {
@@ -414,6 +436,7 @@ struct mylite_insert_table_column {
 struct mylite_insert_unique_index {
     char *name;
     size_t *column_indexes;
+    uint64_t *prefix_lengths;
     size_t column_count;
     bool is_primary;
 };
@@ -421,6 +444,14 @@ struct mylite_insert_unique_index {
 struct mylite_insert_unique_index_part_name {
     const char *index_name;
     const char *column_name;
+    uint64_t prefix_length;
+    bool has_prefix_length;
+};
+
+struct mylite_insert_unique_index_part {
+    size_t column_index;
+    uint64_t prefix_length;
+    bool has_prefix_length;
 };
 
 struct mylite_insert_table {
@@ -974,6 +1005,7 @@ struct mylite_stmt {
     struct mylite_schema_options options;
     struct mylite_create_table_plan create_table;
     struct mylite_drop_table_plan drop_table;
+    struct mylite_index_ddl_plan index_ddl;
     struct mylite_insert_values_plan insert_values;
     struct mylite_insert_set_plan insert_set;
     struct mylite_insert_duplicate_update_plan insert_update;
@@ -1206,6 +1238,12 @@ static int prepare_create_table_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           mylite_stmt **out_stmt);
 static int prepare_drop_table_statement(mylite_db *database,
+                                        const struct mylite_sql_ast_node *statement,
+                                        mylite_stmt **out_stmt);
+static int prepare_create_index_statement(mylite_db *database,
+                                          const struct mylite_sql_ast_node *statement,
+                                          mylite_stmt **out_stmt);
+static int prepare_drop_index_statement(mylite_db *database,
                                         const struct mylite_sql_ast_node *statement,
                                         mylite_stmt **out_stmt);
 static int prepare_insert_values_statement(mylite_db *database,
@@ -2092,6 +2130,8 @@ static int execute_set_names_statement(mylite_stmt *stmt);
 static int execute_set_character_set_statement(mylite_stmt *stmt);
 static int execute_create_table_statement(mylite_stmt *stmt);
 static int execute_drop_table_statement(mylite_stmt *stmt);
+static int execute_create_index_statement(mylite_stmt *stmt);
+static int execute_drop_index_statement(mylite_stmt *stmt);
 static int execute_insert_values_statement(mylite_stmt *stmt);
 static int execute_insert_set_statement(mylite_stmt *stmt);
 static int execute_replace_values_statement(mylite_stmt *stmt);
@@ -2715,6 +2755,40 @@ static int delete_table_catalog_rows(mylite_stmt *stmt,
                                      const struct mylite_drop_table_target *target);
 static int delete_table_catalog_row(mylite_db *database, const char *sql,
                                     const struct mylite_drop_table_target *target);
+static int validate_create_index_plan(mylite_stmt *stmt);
+static int validate_drop_index_plan(mylite_stmt *stmt);
+static int resolve_index_ddl_schema(mylite_stmt *stmt);
+static int validate_index_ddl_target(mylite_stmt *stmt);
+static int index_catalog_name_exists(mylite_db *database,
+                                     const struct mylite_index_catalog_lookup *lookup,
+                                     bool *out_exists);
+static int catalog_index_name(mylite_db *database, const struct mylite_index_catalog_lookup *lookup,
+                              char **out_name);
+static int validate_create_index_columns(mylite_stmt *stmt,
+                                         const struct mylite_insert_table *table);
+static int validate_create_index_supported_features(mylite_stmt *stmt);
+static int validate_create_unique_index_values(mylite_stmt *stmt,
+                                               const struct mylite_insert_table *table);
+static char *build_create_unique_index_duplicate_sql(mylite_db *database,
+                                                     const struct mylite_insert_table *table,
+                                                     const struct mylite_create_table_index *index);
+static int create_index_transaction(mylite_stmt *stmt, const struct mylite_insert_table *table);
+static int insert_standalone_index_catalog_rows(mylite_stmt *stmt,
+                                                const struct mylite_insert_table *table);
+static int insert_standalone_index_catalog_part(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                                const struct mylite_insert_table *table,
+                                                const struct mylite_create_table_key_part *part,
+                                                size_t part_index);
+static int drop_index_transaction(mylite_stmt *stmt);
+static int delete_index_catalog_rows(mylite_stmt *stmt);
+static int append_create_index_warnings(mylite_stmt *stmt);
+static int append_using_hash_warning(mylite_db *database);
+static int append_duplicate_index_warning(mylite_db *database, const char *index_name);
+static int maybe_append_duplicate_index_warning(mylite_stmt *stmt);
+static int catalog_index_matches_create_index(mylite_db *database, const char *schema_name,
+                                              const char *table_name, const char *index_name,
+                                              const struct mylite_create_table_index *create_index,
+                                              bool *out_matches);
 static int validate_insert_values_target(mylite_stmt *stmt, const char **out_schema_name);
 static int load_insert_table(mylite_stmt *stmt, const char *schema_name,
                              struct mylite_insert_table *out_table);
@@ -2732,7 +2806,7 @@ static int add_insert_unique_index_part(struct mylite_db *database,
                                         struct mylite_insert_table *table,
                                         const struct mylite_insert_unique_index_part_name *part);
 static int append_insert_unique_index_part(struct mylite_insert_unique_index *index,
-                                           size_t column_index);
+                                           const struct mylite_insert_unique_index_part *part);
 static int initialize_insert_auto_increment(mylite_stmt *stmt, struct mylite_insert_table *table,
                                             uint64_t catalog_auto_increment,
                                             bool has_catalog_auto_increment);
@@ -3169,6 +3243,10 @@ static int copy_create_table_statement(const struct mylite_sql_ast_node *stateme
                                        mylite_stmt *stmt);
 static int copy_drop_table_statement(const struct mylite_sql_ast_node *statement,
                                      mylite_stmt *stmt);
+static int copy_create_index_statement(const struct mylite_sql_ast_node *statement,
+                                       mylite_stmt *stmt);
+static int copy_drop_index_statement(const struct mylite_sql_ast_node *statement,
+                                     mylite_stmt *stmt);
 static int copy_insert_values_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt);
 static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement,
@@ -3357,6 +3435,8 @@ static int set_row_quantified_non_alias_error(mylite_db *database,
 static int set_scalar_subquery_cardinality_error(mylite_db *database);
 static int copy_create_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_create_table_plan *plan);
+static int copy_index_ddl_table_name(const struct mylite_sql_ast_node *table_name,
+                                     struct mylite_index_ddl_plan *plan);
 static int copy_drop_table_target(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_drop_table_target *target);
 static int copy_insert_table_name(const struct mylite_sql_ast_node *table_name,
@@ -3566,6 +3646,7 @@ static void schema_options_deinit(struct mylite_schema_options *options);
 static void create_table_options_deinit(struct mylite_create_table_options *options);
 static void create_table_plan_deinit(struct mylite_create_table_plan *plan);
 static void drop_table_plan_deinit(struct mylite_drop_table_plan *plan);
+static void index_ddl_plan_deinit(struct mylite_index_ddl_plan *plan);
 static void drop_table_target_deinit(struct mylite_drop_table_target *target);
 static void insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
 static void insert_set_plan_deinit(struct mylite_insert_set_plan *plan);
@@ -3755,6 +3836,7 @@ void mylite_finalize(mylite_stmt *stmt)
     schema_options_deinit(&stmt->options);
     create_table_plan_deinit(&stmt->create_table);
     drop_table_plan_deinit(&stmt->drop_table);
+    index_ddl_plan_deinit(&stmt->index_ddl);
     insert_values_plan_deinit(&stmt->insert_values);
     insert_set_plan_deinit(&stmt->insert_set);
     insert_duplicate_update_plan_deinit(&stmt->insert_update);
@@ -4167,6 +4249,10 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_create_table_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
             return prepare_drop_table_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+            return prepare_create_index_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+            return prepare_drop_index_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
             return prepare_insert_values_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
@@ -4296,6 +4382,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT:
         case MYLITE_SQL_AST_INSERT_ROW_ALIAS:
         case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
+        case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+        case MYLITE_SQL_AST_DDL_TABLE_OPTION:
             break;
         }
     }
@@ -4384,6 +4472,8 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
@@ -4409,6 +4499,8 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_UNIQUE_INDEX:
     case MYLITE_SQL_AST_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_TABLE_OPTION:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
     case MYLITE_SQL_AST_TABLE_NAME_LIST:
     case MYLITE_SQL_AST_INSERT_COLUMN_LIST:
     case MYLITE_SQL_AST_INSERT_ROW:
@@ -4511,6 +4603,8 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
@@ -4536,6 +4630,8 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_UNIQUE_INDEX:
     case MYLITE_SQL_AST_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_TABLE_OPTION:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
     case MYLITE_SQL_AST_TABLE_NAME_LIST:
     case MYLITE_SQL_AST_INSERT_COLUMN_LIST:
     case MYLITE_SQL_AST_INSERT_ROW:
@@ -4580,6 +4676,20 @@ static int prepare_drop_table_statement(mylite_db *database,
                                         mylite_stmt **out_stmt)
 {
     return prepare_custom_statement(database, MYLITE_STMT_DROP_TABLE, statement, out_stmt);
+}
+
+static int prepare_create_index_statement(mylite_db *database,
+                                          const struct mylite_sql_ast_node *statement,
+                                          mylite_stmt **out_stmt)
+{
+    return prepare_custom_statement(database, MYLITE_STMT_CREATE_INDEX, statement, out_stmt);
+}
+
+static int prepare_drop_index_statement(mylite_db *database,
+                                        const struct mylite_sql_ast_node *statement,
+                                        mylite_stmt **out_stmt)
+{
+    return prepare_custom_statement(database, MYLITE_STMT_DROP_INDEX, statement, out_stmt);
 }
 
 static int prepare_insert_values_statement(mylite_db *database,
@@ -4768,6 +4878,10 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_TABLE_OPTION:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
     case MYLITE_SQL_AST_TABLE_NAME_LIST:
     case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
     case MYLITE_SQL_AST_INSERT_COLUMN_LIST:
@@ -5856,6 +5970,10 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
         return infer_quantified_subquery_expression_descriptor(database, plan, node,
                                                                out_descriptor);
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -8790,6 +8908,10 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
         return bind_select_predicate_quantified_subquery_expression(
             database, expression, plan, clause_context, first_table, table_count);
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -9471,6 +9593,10 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
         return bind_select_aggregate_aware_quantified_subquery_expression(database, expression,
                                                                           plan, clause_context);
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
@@ -10012,6 +10138,10 @@ static int bind_select_order_expression(mylite_db *database,
             database, expression, expression->kind == MYLITE_SQL_AST_SUBQUERY_EXPRESSION);
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
         return bind_select_order_quantified_subquery_expression(database, expression, plan);
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -10708,6 +10838,10 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
         return select_expression_is_group_invariant(plan, child_at(expression, 0U),
                                                     reference_policy);
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -13322,6 +13456,12 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     case MYLITE_STMT_DROP_TABLE:
         status = copy_drop_table_statement(statement, stmt);
         break;
+    case MYLITE_STMT_CREATE_INDEX:
+        status = copy_create_index_statement(statement, stmt);
+        break;
+    case MYLITE_STMT_DROP_INDEX:
+        status = copy_drop_index_statement(statement, stmt);
+        break;
     case MYLITE_STMT_INSERT_VALUES:
         status = copy_insert_values_statement(statement, stmt);
         break;
@@ -13441,6 +13581,12 @@ static int execute_custom_statement(mylite_stmt *stmt)
         break;
     case MYLITE_STMT_DROP_TABLE:
         status = execute_drop_table_statement(stmt);
+        break;
+    case MYLITE_STMT_CREATE_INDEX:
+        status = execute_create_index_statement(stmt);
+        break;
+    case MYLITE_STMT_DROP_INDEX:
+        status = execute_drop_index_statement(stmt);
         break;
     case MYLITE_STMT_INSERT_VALUES:
         status = execute_insert_values_statement(stmt);
@@ -14444,6 +14590,604 @@ static int delete_table_catalog_row(mylite_db *database, const char *sql,
     return MYLITE_OK;
 }
 
+static int execute_create_index_statement(mylite_stmt *stmt)
+{
+    struct mylite_insert_table table = {0};
+    int status = validate_create_index_plan(stmt);
+
+    stmt->affected_rows = 0;
+    if (status == MYLITE_OK) {
+        status =
+            load_write_table(stmt, stmt->index_ddl.schema_name, stmt->index_ddl.table_name, &table);
+    }
+    if (status == MYLITE_OK) {
+        status = validate_create_index_columns(stmt, &table);
+    }
+    if (status == MYLITE_OK) {
+        status = validate_create_index_supported_features(stmt);
+    }
+    if (status == MYLITE_OK && stmt->index_ddl.index_class == MYLITE_SQL_AST_INDEX_CLASS_UNIQUE) {
+        status = validate_create_unique_index_values(stmt, &table);
+    }
+    if (status == MYLITE_OK) {
+        status = append_create_index_warnings(stmt);
+    }
+    if (status == MYLITE_OK) {
+        status = create_index_transaction(stmt, &table);
+    }
+
+    insert_table_deinit(&table);
+    if (status != MYLITE_OK) {
+        stmt->affected_rows = -1;
+    }
+    return status;
+}
+
+static int execute_drop_index_statement(mylite_stmt *stmt)
+{
+    int status = validate_drop_index_plan(stmt);
+
+    stmt->affected_rows = 0;
+    if (status == MYLITE_OK) {
+        status = drop_index_transaction(stmt);
+    }
+    if (status != MYLITE_OK) {
+        stmt->affected_rows = -1;
+    }
+    return status;
+}
+
+static int validate_create_index_plan(mylite_stmt *stmt)
+{
+    bool exists = false;
+    int status = resolve_index_ddl_schema(stmt);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    status = validate_index_ddl_target(stmt);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    const struct mylite_index_catalog_lookup lookup = {
+        .schema_name = stmt->index_ddl.schema_name,
+        .table_name = stmt->index_ddl.table_name,
+        .index_name = stmt->index_ddl.index.name,
+    };
+
+    status = index_catalog_name_exists(stmt->database, &lookup, &exists);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (exists) {
+        (void)set_error_message_parts(stmt->database, "Duplicate key name '",
+                                      stmt->index_ddl.index.name, "'");
+        return MYLITE_EXEC_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int validate_drop_index_plan(mylite_stmt *stmt)
+{
+    char *name = NULL;
+    int status = resolve_index_ddl_schema(stmt);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    status = validate_index_ddl_target(stmt);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    const struct mylite_index_catalog_lookup lookup = {
+        .schema_name = stmt->index_ddl.schema_name,
+        .table_name = stmt->index_ddl.table_name,
+        .index_name = stmt->index_ddl.index_name,
+    };
+
+    status = catalog_index_name(stmt->database, &lookup, &name);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (name == NULL) {
+        (void)set_error_message_parts(stmt->database, "Can't DROP '", stmt->index_ddl.index_name,
+                                      "'; check that column/key exists");
+        return MYLITE_EXEC_ERROR;
+    }
+    free(stmt->index_ddl.index_name);
+    stmt->index_ddl.index_name = name;
+    return MYLITE_OK;
+}
+
+static int resolve_index_ddl_schema(mylite_stmt *stmt)
+{
+    if (stmt->index_ddl.schema_name != NULL) {
+        return MYLITE_OK;
+    }
+    if (stmt->database->selected_schema == NULL) {
+        (void)set_error_message(stmt->database, "No database selected");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    stmt->index_ddl.schema_name =
+        copy_span_text(stmt->database->selected_schema, strlen(stmt->database->selected_schema));
+    if (stmt->index_ddl.schema_name == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
+}
+
+static int validate_index_ddl_target(mylite_stmt *stmt)
+{
+    struct mylite_schema_presence presence;
+    bool exists = false;
+    int status = schema_exists(stmt->database, stmt->index_ddl.schema_name, &presence);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!presence.exists) {
+        (void)set_error_message_parts(stmt->database, "Unknown database '",
+                                      stmt->index_ddl.schema_name, "'");
+        return MYLITE_EXEC_ERROR;
+    }
+    if (presence.is_system) {
+        (void)set_error_message_parts(stmt->database, "Access to system schema '",
+                                      stmt->index_ddl.schema_name, "' is rejected.");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    status = table_exists(stmt->database, stmt->index_ddl.schema_name, stmt->index_ddl.table_name,
+                          &exists);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!exists) {
+        return set_table_doesnt_exist_error(stmt->database, stmt->index_ddl.schema_name,
+                                            stmt->index_ddl.table_name);
+    }
+    return MYLITE_OK;
+}
+
+static int index_catalog_name_exists(mylite_db *database,
+                                     const struct mylite_index_catalog_lookup *lookup,
+                                     bool *out_exists)
+{
+    char *name = NULL;
+    int status = catalog_index_name(database, lookup, &name);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    *out_exists = name != NULL;
+    free(name);
+    return MYLITE_OK;
+}
+
+static int catalog_index_name(mylite_db *database, const struct mylite_index_catalog_lookup *lookup,
+                              char **out_name)
+{
+    sqlite3_stmt *select = NULL;
+    static const char sql[] = "SELECT DISTINCT index_name FROM __mylite_index_catalog "
+                              "WHERE table_schema = ? AND table_name = ?";
+    int rc =
+        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+
+    *out_name = NULL;
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(database);
+    }
+
+    sqlite3_bind_text(select, 1, lookup->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, lookup->table_name, -1, sqlite_transient_destructor());
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        const char *candidate = (const char *)sqlite3_column_text(select, 0);
+
+        if (ascii_case_equal(candidate, lookup->index_name)) {
+            *out_name = copy_span_text(candidate, candidate == NULL ? 0U : strlen(candidate));
+            sqlite3_finalize(select);
+            if (*out_name == NULL) {
+                (void)set_error_message(database, "out of memory");
+                return MYLITE_NOMEM;
+            }
+            return MYLITE_OK;
+        }
+    }
+    sqlite3_finalize(select);
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(database);
+}
+
+static int validate_create_index_columns(mylite_stmt *stmt, const struct mylite_insert_table *table)
+{
+    for (size_t part = 0U; part < stmt->index_ddl.index.part_count; ++part) {
+        const char *column_name = stmt->index_ddl.index.parts[part].column_name;
+
+        if (insert_table_column_index(table, column_name) == table->column_count) {
+            (void)set_error_message_parts(stmt->database, "Key column '", column_name,
+                                          "' doesn't exist in table");
+            return MYLITE_EXEC_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int validate_create_index_supported_features(mylite_stmt *stmt)
+{
+    if (stmt->index_ddl.index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT ||
+        stmt->index_ddl.index_class == MYLITE_SQL_AST_INDEX_CLASS_SPATIAL) {
+        (void)set_error_message(stmt->database, "Unsupported standalone index class");
+        return MYLITE_UNSUPPORTED;
+    }
+    if (stmt->index_ddl.index.has_with_parser) {
+        (void)set_error_message(stmt->database,
+                                "WITH PARSER is only supported for FULLTEXT indexes");
+        return MYLITE_EXEC_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int validate_create_unique_index_values(mylite_stmt *stmt,
+                                               const struct mylite_insert_table *table)
+{
+    char *sql =
+        build_create_unique_index_duplicate_sql(stmt->database, table, &stmt->index_ddl.index);
+    sqlite3_stmt *select = NULL;
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
+                            NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+    rc = sqlite3_step(select);
+    sqlite3_finalize(select);
+    if (rc == SQLITE_ROW) {
+        (void)set_error_message_parts(stmt->database, "Duplicate entry for key '",
+                                      stmt->index_ddl.index.name, "'");
+        return MYLITE_EXEC_ERROR;
+    }
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static char *build_create_unique_index_duplicate_sql(mylite_db *database,
+                                                     const struct mylite_insert_table *table,
+                                                     const struct mylite_create_table_index *index)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_append(sql, "SELECT 1 FROM (SELECT ", (int)strlen("SELECT 1 FROM (SELECT "));
+    for (size_t part = 0U; part < index->part_count; ++part) {
+        const struct mylite_create_table_key_part *key_part = &index->parts[part];
+        size_t column_index = insert_table_column_index(table, key_part->column_name);
+
+        if (part != 0U) {
+            sqlite3_str_append(sql, ",", 1);
+        }
+        if (key_part->has_prefix_length) {
+            sqlite3_str_appendf(sql, "substr(\"%w\",1,%llu)", table->columns[column_index].name,
+                                (unsigned long long)key_part->prefix_length);
+        } else {
+            sqlite3_str_appendf(sql, "\"%w\"", table->columns[column_index].name);
+        }
+    }
+    sqlite3_str_appendf(sql, " FROM \"%w\" WHERE ", table->physical_name);
+    for (size_t part = 0U; part < index->part_count; ++part) {
+        size_t column_index = insert_table_column_index(table, index->parts[part].column_name);
+
+        if (part != 0U) {
+            sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
+        }
+        sqlite3_str_appendf(sql, "\"%w\" IS NOT NULL", table->columns[column_index].name);
+    }
+    sqlite3_str_append(sql, " GROUP BY ", (int)strlen(" GROUP BY "));
+    for (size_t part = 0U; part < index->part_count; ++part) {
+        if (part != 0U) {
+            sqlite3_str_append(sql, ",", 1);
+        }
+        sqlite3_str_appendf(sql, "%d", (int)(part + 1U));
+    }
+    sqlite3_str_append(sql, " HAVING COUNT(*) > 1) LIMIT 1",
+                       (int)strlen(" HAVING COUNT(*) > 1) LIMIT 1"));
+    return sqlite3_str_finish(sql);
+}
+
+static int create_index_transaction(mylite_stmt *stmt, const struct mylite_insert_table *table)
+{
+    int status = begin_sqlite_transaction(stmt->database);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    status = insert_standalone_index_catalog_rows(stmt, table);
+    if (status == MYLITE_OK) {
+        status = commit_sqlite_transaction(stmt->database);
+        if (status == MYLITE_OK) {
+            return MYLITE_OK;
+        }
+    }
+
+    rollback_sqlite_transaction(stmt->database);
+    return status;
+}
+
+static int insert_standalone_index_catalog_rows(mylite_stmt *stmt,
+                                                const struct mylite_insert_table *table)
+{
+    sqlite3_stmt *insert = NULL;
+    static const char sql[] =
+        "INSERT INTO __mylite_index_catalog("
+        "table_catalog, table_schema, table_name, non_unique, index_schema, index_name, "
+        "seq_in_index, column_name, collation, cardinality, sub_part, packed, nullable, "
+        "index_type, comment, index_comment, is_visible, expression)"
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, '', ?, ?, NULL)";
+    int rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert,
+                                NULL);
+
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    for (size_t part = 0U; part < stmt->index_ddl.index.part_count; ++part) {
+        int status = insert_standalone_index_catalog_part(stmt, insert, table,
+                                                          &stmt->index_ddl.index.parts[part], part);
+
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(insert);
+            return status;
+        }
+    }
+
+    sqlite3_finalize(insert);
+    return MYLITE_OK;
+}
+
+static int insert_standalone_index_catalog_part(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                                const struct mylite_insert_table *table,
+                                                const struct mylite_create_table_key_part *part,
+                                                size_t part_index)
+{
+    enum {
+        bind_table_schema = 1,
+        bind_table_name = 2,
+        bind_non_unique = 3,
+        bind_index_schema = 4,
+        bind_index_name = 5,
+        bind_seq_in_index = 6,
+        bind_column_name = 7,
+        bind_collation = 8,
+        bind_sub_part = 9,
+        bind_nullable = 10,
+        bind_index_type = 11,
+        bind_index_comment = 12,
+        bind_is_visible = 13,
+    };
+    size_t column_index = insert_table_column_index(table, part->column_name);
+    const char *nullable =
+        column_index < table->column_count && table->columns[column_index].nullable ? "YES" : "";
+    const char *is_visible = "NO";
+    int non_unique = 1;
+    int rc = SQLITE_OK;
+
+    if (stmt->index_ddl.index.is_unique) {
+        non_unique = 0;
+    }
+    if (stmt->index_ddl.index.is_visible) {
+        is_visible = "YES";
+    }
+
+    sqlite3_reset(insert);
+    sqlite3_clear_bindings(insert);
+    sqlite3_bind_text(insert, bind_table_schema, stmt->index_ddl.schema_name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_table_name, stmt->index_ddl.table_name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_int(insert, bind_non_unique, non_unique);
+    sqlite3_bind_text(insert, bind_index_schema, stmt->index_ddl.schema_name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_index_name, stmt->index_ddl.index.name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_int64(insert, bind_seq_in_index, (sqlite3_int64)part_index + 1);
+    sqlite3_bind_text(insert, bind_column_name, part->column_name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_collation, index_collation_for_order(part->order), -1,
+                      SQLITE_STATIC);
+    if (part->has_prefix_length) {
+        sqlite3_bind_int64(insert, bind_sub_part, (sqlite3_int64)part->prefix_length);
+    } else {
+        sqlite3_bind_null(insert, bind_sub_part);
+    }
+    sqlite3_bind_text(insert, bind_nullable, nullable, -1, SQLITE_STATIC);
+    sqlite3_bind_text(insert, bind_index_type, "BTREE", -1, SQLITE_STATIC);
+    sqlite3_bind_text(insert, bind_index_comment,
+                      stmt->index_ddl.index.comment == NULL ? "" : stmt->index_ddl.index.comment,
+                      -1, sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_is_visible, is_visible, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(insert);
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static int drop_index_transaction(mylite_stmt *stmt)
+{
+    int status = begin_sqlite_transaction(stmt->database);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    status = delete_index_catalog_rows(stmt);
+    if (status == MYLITE_OK) {
+        status = commit_sqlite_transaction(stmt->database);
+        if (status == MYLITE_OK) {
+            return MYLITE_OK;
+        }
+    }
+
+    rollback_sqlite_transaction(stmt->database);
+    return status;
+}
+
+static int delete_index_catalog_rows(mylite_stmt *stmt)
+{
+    sqlite3_stmt *delete_stmt = NULL;
+    static const char sql[] = "DELETE FROM __mylite_index_catalog "
+                              "WHERE table_schema = ? AND table_name = ? AND index_name = ?";
+    int rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT,
+                                &delete_stmt, NULL);
+
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    sqlite3_bind_text(delete_stmt, 1, stmt->index_ddl.schema_name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(delete_stmt, 2, stmt->index_ddl.table_name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(delete_stmt, 3, stmt->index_ddl.index_name, -1,
+                      sqlite_transient_destructor());
+    rc = sqlite3_step(delete_stmt);
+    sqlite3_finalize(delete_stmt);
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static int append_create_index_warnings(mylite_stmt *stmt)
+{
+    int status = MYLITE_OK;
+
+    if (stmt->index_ddl.index.algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_HASH) {
+        status = append_using_hash_warning(stmt->database);
+    }
+    if (status == MYLITE_OK) {
+        status = maybe_append_duplicate_index_warning(stmt);
+    }
+    return status;
+}
+
+static int append_using_hash_warning(mylite_db *database)
+{
+    return append_database_warning(
+        database, MYLITE_MYSQL_ER_WARN_USING_OTHER_HANDLER,
+        "This storage engine does not support HASH indexes; using BTREE instead");
+}
+
+static int append_duplicate_index_warning(mylite_db *database, const char *index_name)
+{
+    char *message = sqlite3_mprintf(
+        "Duplicate index '%q' defined on the table. This is deprecated and will be disallowed in "
+        "a future release.",
+        index_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = append_database_warning(database, MYLITE_MYSQL_ER_DUP_INDEX, message);
+    sqlite3_free(message);
+    return status;
+}
+
+static int maybe_append_duplicate_index_warning(mylite_stmt *stmt)
+{
+    sqlite3_stmt *select = NULL;
+    static const char sql[] = "SELECT DISTINCT index_name FROM __mylite_index_catalog "
+                              "WHERE table_schema = ? AND table_name = ?";
+    int rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
+                                NULL);
+
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    sqlite3_bind_text(select, 1, stmt->index_ddl.schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, stmt->index_ddl.table_name, -1, sqlite_transient_destructor());
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        const char *index_name = (const char *)sqlite3_column_text(select, 0);
+        bool matches = false;
+        int status = catalog_index_matches_create_index(stmt->database, stmt->index_ddl.schema_name,
+                                                        stmt->index_ddl.table_name, index_name,
+                                                        &stmt->index_ddl.index, &matches);
+
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(select);
+            return status;
+        }
+        if (matches) {
+            sqlite3_finalize(select);
+            return append_duplicate_index_warning(stmt->database, stmt->index_ddl.index.name);
+        }
+    }
+    sqlite3_finalize(select);
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static int catalog_index_matches_create_index(mylite_db *database, const char *schema_name,
+                                              const char *table_name, const char *index_name,
+                                              const struct mylite_create_table_index *create_index,
+                                              bool *out_matches)
+{
+    sqlite3_stmt *select = NULL;
+    static const char sql[] =
+        "SELECT non_unique, column_name, collation, sub_part, index_type "
+        "FROM __mylite_index_catalog "
+        "WHERE table_schema = ? AND table_name = ? AND index_name = ? ORDER BY seq_in_index";
+    int rc =
+        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    int expected_non_unique = 1;
+    size_t part = 0U;
+
+    *out_matches = false;
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(database);
+    }
+    if (create_index->is_unique) {
+        expected_non_unique = 0;
+    }
+
+    sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 3, index_name, -1, sqlite_transient_destructor());
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        const char *column_name = (const char *)sqlite3_column_text(select, 1);
+        const char *collation = (const char *)sqlite3_column_text(select, 2);
+        const char *index_type = (const char *)sqlite3_column_text(select, 4);
+        bool has_sub_part = sqlite3_column_type(select, 3) != SQLITE_NULL;
+        sqlite3_int64 sub_part = sqlite3_column_int64(select, 3);
+        int non_unique = sqlite3_column_int(select, 0);
+
+        if (part >= create_index->part_count || non_unique != expected_non_unique ||
+            !ascii_case_equal(column_name, create_index->parts[part].column_name) ||
+            strcmp(collation == NULL ? "" : collation,
+                   index_collation_for_order(create_index->parts[part].order)) != 0 ||
+            !ascii_case_equal(index_type, "BTREE") ||
+            has_sub_part != create_index->parts[part].has_prefix_length ||
+            (has_sub_part && (uint64_t)sub_part != create_index->parts[part].prefix_length)) {
+            sqlite3_finalize(select);
+            return MYLITE_OK;
+        }
+        ++part;
+    }
+    sqlite3_finalize(select);
+    if (rc != SQLITE_DONE) {
+        return set_sqlite_error(database);
+    }
+
+    *out_matches = part == create_index->part_count;
+    return MYLITE_OK;
+}
+
 static int execute_insert_values_statement(mylite_stmt *stmt)
 {
     const char *schema_name = NULL;
@@ -14838,6 +15582,10 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -15787,7 +16535,14 @@ static char *build_update_unique_check_sql(mylite_db *database,
         if (part != 0U) {
             sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
         }
-        sqlite3_str_appendf(sql, "\"%w\" = ?", write_table->columns[column_index].name);
+        if (index->prefix_lengths[part] != 0U) {
+            sqlite3_str_appendf(sql, "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
+                                write_table->columns[column_index].name,
+                                (unsigned long long)index->prefix_lengths[part],
+                                (unsigned long long)index->prefix_lengths[part]);
+        } else {
+            sqlite3_str_appendf(sql, "\"%w\" = ?", write_table->columns[column_index].name);
+        }
     }
     sqlite3_str_append(sql, " AND rowid <> ? LIMIT 1", (int)strlen(" AND rowid <> ? LIMIT 1"));
     return sqlite3_str_finish(sql);
@@ -16279,6 +17034,10 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -16892,6 +17651,8 @@ static int execute_union_operand_statement(mylite_stmt *operand)
     case MYLITE_STMT_SET_CHARACTER_SET:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
+    case MYLITE_STMT_CREATE_INDEX:
+    case MYLITE_STMT_DROP_INDEX:
     case MYLITE_STMT_INSERT_VALUES:
     case MYLITE_STMT_INSERT_SET:
     case MYLITE_STMT_REPLACE_VALUES:
@@ -20779,9 +21540,10 @@ static int load_insert_unique_indexes(mylite_stmt *stmt, const char *schema_name
 {
     sqlite3_stmt *select = NULL;
     /* Index rows are inserted in CREATE TABLE index order. */
-    static const char sql[] = "SELECT index_name, column_name FROM __mylite_index_catalog "
-                              "WHERE table_schema = ? AND table_name = ? AND non_unique = 0 "
-                              "ORDER BY rowid";
+    static const char sql[] =
+        "SELECT index_name, column_name, sub_part FROM __mylite_index_catalog "
+        "WHERE table_schema = ? AND table_name = ? AND non_unique = 0 "
+        "ORDER BY rowid";
     int rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
                                 NULL);
 
@@ -20795,6 +21557,8 @@ static int load_insert_unique_indexes(mylite_stmt *stmt, const char *schema_name
         const struct mylite_insert_unique_index_part_name part = {
             .index_name = (const char *)sqlite3_column_text(select, 0),
             .column_name = (const char *)sqlite3_column_text(select, 1),
+            .prefix_length = (uint64_t)sqlite3_column_int64(select, 2),
+            .has_prefix_length = sqlite3_column_type(select, 2) != SQLITE_NULL,
         };
         int status = add_insert_unique_index_part(stmt->database, table, &part);
 
@@ -20813,6 +21577,11 @@ static int add_insert_unique_index_part(struct mylite_db *database,
 {
     struct mylite_insert_unique_index *index = NULL;
     size_t column_index = insert_table_column_index(table, part->column_name);
+    const struct mylite_insert_unique_index_part insert_part = {
+        .column_index = column_index,
+        .prefix_length = part->prefix_length,
+        .has_prefix_length = part->has_prefix_length,
+    };
 
     if (column_index == table->column_count) {
         (void)set_error_message_parts(database, "Index references unknown column '",
@@ -20823,7 +21592,7 @@ static int add_insert_unique_index_part(struct mylite_db *database,
     for (size_t current = 0U; current < table->unique_index_count; ++current) {
         if (ascii_case_equal(table->unique_indexes[current].name, part->index_name)) {
             int status =
-                append_insert_unique_index_part(&table->unique_indexes[current], column_index);
+                append_insert_unique_index_part(&table->unique_indexes[current], &insert_part);
 
             if (status == MYLITE_NOMEM) {
                 (void)set_error_message(database, "out of memory");
@@ -20850,7 +21619,7 @@ static int add_insert_unique_index_part(struct mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    int status = append_insert_unique_index_part(index, column_index);
+    int status = append_insert_unique_index_part(index, &insert_part);
     if (status == MYLITE_NOMEM) {
         (void)set_error_message(database, "out of memory");
     }
@@ -20858,17 +21627,29 @@ static int add_insert_unique_index_part(struct mylite_db *database,
 }
 
 static int append_insert_unique_index_part(struct mylite_insert_unique_index *index,
-                                           size_t column_index)
+                                           const struct mylite_insert_unique_index_part *part)
 {
     size_t *column_indexes =
         realloc(index->column_indexes, (index->column_count + 1U) * sizeof(*index->column_indexes));
+    uint64_t *prefix_lengths = NULL;
+    uint64_t stored_prefix_length = 0U;
 
     if (column_indexes == NULL) {
         return MYLITE_NOMEM;
     }
 
     index->column_indexes = column_indexes;
-    index->column_indexes[index->column_count++] = column_index;
+    prefix_lengths =
+        realloc(index->prefix_lengths, (index->column_count + 1U) * sizeof(*index->prefix_lengths));
+    if (prefix_lengths == NULL) {
+        return MYLITE_NOMEM;
+    }
+    index->prefix_lengths = prefix_lengths;
+    if (part->has_prefix_length) {
+        stored_prefix_length = part->prefix_length;
+    }
+    index->column_indexes[index->column_count++] = part->column_index;
+    index->prefix_lengths[index->column_count - 1U] = stored_prefix_length;
     return MYLITE_OK;
 }
 
@@ -23817,7 +24598,14 @@ static char *build_insert_unique_conflict_sql(mylite_db *database,
         if (part != 0U) {
             sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
         }
-        sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[column_index].name);
+        if (index->prefix_lengths[part] != 0U) {
+            sqlite3_str_appendf(sql, "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
+                                table->columns[column_index].name,
+                                (unsigned long long)index->prefix_lengths[part],
+                                (unsigned long long)index->prefix_lengths[part]);
+        } else {
+            sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[column_index].name);
+        }
     }
     if (has_excluded_rowid) {
         sqlite3_str_append(sql, " AND rowid <> ?", (int)strlen(" AND rowid <> ?"));
@@ -23868,7 +24656,14 @@ static char *build_insert_unique_check_sql(mylite_db *database,
         if (part != 0U) {
             sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
         }
-        sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[column_index].name);
+        if (index->prefix_lengths[part] != 0U) {
+            sqlite3_str_appendf(sql, "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
+                                table->columns[column_index].name,
+                                (unsigned long long)index->prefix_lengths[part],
+                                (unsigned long long)index->prefix_lengths[part]);
+        } else {
+            sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[column_index].name);
+        }
     }
     sqlite3_str_append(sql, " LIMIT 1", (int)strlen(" LIMIT 1"));
     return sqlite3_str_finish(sql);
@@ -24706,6 +25501,8 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
     case MYLITE_STMT_SET_CHARACTER_SET:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
+    case MYLITE_STMT_CREATE_INDEX:
+    case MYLITE_STMT_DROP_INDEX:
     case MYLITE_STMT_INSERT_VALUES:
     case MYLITE_STMT_INSERT_SET:
     case MYLITE_STMT_REPLACE_VALUES:
@@ -24803,6 +25600,69 @@ static int copy_drop_table_statement(const struct mylite_sql_ast_node *statement
     return stmt->drop_table.target_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
 }
 
+static int copy_create_index_statement(const struct mylite_sql_ast_node *statement,
+                                       mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *child = statement == NULL ? NULL : statement->first_child;
+    const struct mylite_sql_ast_node *index_name = child;
+    const struct mylite_sql_ast_node *pre_index_type = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+    const struct mylite_sql_ast_node *key_parts = NULL;
+    const struct mylite_sql_ast_node *options = NULL;
+    int status = MYLITE_OK;
+
+    child = child == NULL ? NULL : child->next_sibling;
+    if (child != NULL && child->kind == MYLITE_SQL_AST_INDEX_TYPE) {
+        pre_index_type = child;
+        child = child->next_sibling;
+    }
+    table_name = child;
+    child = child == NULL ? NULL : child->next_sibling;
+    key_parts = child;
+    child = child == NULL ? NULL : child->next_sibling;
+    options = child;
+
+    stmt->index_ddl.index_class = statement->index_class;
+    stmt->index_ddl.index = (struct mylite_create_table_index){
+        .algorithm = MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
+        .is_unique = statement->index_class == MYLITE_SQL_AST_INDEX_CLASS_UNIQUE,
+        .is_visible = true,
+        .explicit_name = true,
+    };
+
+    status = copy_index_ddl_table_name(table_name, &stmt->index_ddl);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    stmt->index_ddl.index.name = copy_identifier_span(index_name);
+    if (stmt->index_ddl.index.name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (pre_index_type != NULL) {
+        stmt->index_ddl.index.algorithm = pre_index_type->index_algorithm;
+    }
+    status = copy_create_table_key_parts(key_parts, &stmt->index_ddl.index);
+    if (status == MYLITE_OK) {
+        status = copy_create_table_index_options(options, &stmt->index_ddl.index);
+    }
+    return status;
+}
+
+static int copy_drop_index_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *index_name = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *table_name = child_at(statement, 1U);
+    int status = copy_index_ddl_table_name(table_name, &stmt->index_ddl);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    stmt->index_ddl.index_name = copy_identifier_span(index_name);
+    return stmt->index_ddl.index_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
 static int copy_create_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_create_table_plan *plan)
 {
@@ -24825,6 +25685,24 @@ static int copy_create_table_name(const struct mylite_sql_ast_node *table_name,
         return MYLITE_OK;
     }
     return MYLITE_UNSUPPORTED;
+}
+
+static int copy_index_ddl_table_name(const struct mylite_sql_ast_node *table_name,
+                                     struct mylite_index_ddl_plan *plan)
+{
+    struct mylite_create_table_plan table_plan = {0};
+    int status = copy_create_table_name(table_name, &table_plan);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    plan->schema_name = table_plan.schema_name;
+    plan->table_name = table_plan.table_name;
+    table_plan.schema_name = NULL;
+    table_plan.table_name = NULL;
+    create_table_plan_deinit(&table_plan);
+    return MYLITE_OK;
 }
 
 static int copy_drop_table_target(const struct mylite_sql_ast_node *table_name,
@@ -27246,6 +28124,10 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_INSERT_ROW_ALIAS:
     case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:
@@ -28266,6 +29148,9 @@ static int copy_create_table_index_options(const struct mylite_sql_ast_node *opt
         case MYLITE_SQL_AST_INDEX_OPTION_ENGINE_ATTRIBUTE:
         case MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE:
         case MYLITE_SQL_AST_INDEX_OPTION_NONE:
+            break;
+        case MYLITE_SQL_AST_INDEX_OPTION_WITH_PARSER:
+            index->has_with_parser = true;
             break;
         }
     }
@@ -30119,6 +31004,19 @@ static void drop_table_plan_deinit(struct mylite_drop_table_plan *plan)
     *plan = (struct mylite_drop_table_plan){0};
 }
 
+static void index_ddl_plan_deinit(struct mylite_index_ddl_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->schema_name);
+    free(plan->table_name);
+    free(plan->index_name);
+    create_table_index_deinit(&plan->index);
+    *plan = (struct mylite_index_ddl_plan){0};
+}
+
 static void drop_table_target_deinit(struct mylite_drop_table_target *target)
 {
     if (target == NULL) {
@@ -30404,6 +31302,7 @@ static void insert_unique_index_deinit(struct mylite_insert_unique_index *index)
 
     free(index->name);
     free(index->column_indexes);
+    free(index->prefix_lengths);
     *index = (struct mylite_insert_unique_index){0};
 }
 

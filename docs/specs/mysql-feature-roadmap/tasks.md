@@ -103,10 +103,12 @@ level application surfaces.
        deferred. Spec: [REPLACE](../replace/specs.md).
 34. [ ] `CREATE INDEX` and `DROP INDEX`: standalone index creation/removal,
        options, metadata, warnings, and implicit commit behavior.
-       Started/speced only; no parser or runtime support yet. First slice
-       targets metadata-backed ordinary and unique standalone indexes plus
-       `DROP INDEX name ON table`, with full-text, spatial, functional, and
-       optimizer surfaces deferred. Spec:
+       First executable slice is implemented for metadata-backed ordinary and
+       unique standalone indexes plus `DROP INDEX name ON table`, including
+       parser coverage, statistics metadata, duplicate validation, warnings,
+       and write-path conflict effects. Full-text, spatial, functional,
+       multi-valued, optimizer, physical-index, primary-key dependency, and
+       implicit-commit surfaces remain. Spec:
        [standalone CREATE INDEX and DROP INDEX](../create-drop-index/specs.md).
 35. [ ] `ALTER TABLE` column operations: `ADD`, `DROP`, `RENAME`, `CHANGE`,
        `MODIFY`, defaults, positioning, validation, and metadata rewrite.

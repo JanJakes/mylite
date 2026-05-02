@@ -360,15 +360,15 @@ semantics are implemented explicitly.
 
 Add top-level statement nodes for `CREATE INDEX` and `DROP INDEX`.
 
-`CREATE INDEX` node children:
+`CREATE INDEX` records the index class (`ordinary`, `unique`, `fulltext`, or
+`spatial`) on the statement node. Its children are:
 
 1. index name
-2. target table name
-3. key-part list
-4. optional index class: ordinary, unique, full-text, or spatial
-5. optional pre-`ON` index type
-6. index-option list, including post-key-list index type options
-7. DDL algorithm/lock option list
+2. optional pre-`ON` index type
+3. target table name
+4. key-part list
+5. index-option list, including post-key-list index type options
+6. DDL algorithm/lock option list
 
 `DROP INDEX` node children:
 
@@ -386,14 +386,21 @@ These snippets describe MyLite's intended grammar for this feature and are
 independently authored for MyLite's parser:
 
 ```lemon
-create_index_statement ::= CREATE index_class INDEX identifier opt_pre_index_type
+create_index_statement ::= CREATE INDEX identifier opt_pre_index_type
                            ON table_name LPAREN key_part_list RPAREN
                            index_option_list ddl_table_option_list.
 
-index_class ::= .
-index_class ::= UNIQUE.
-index_class ::= FULLTEXT.
-index_class ::= SPATIAL.
+create_index_statement ::= CREATE UNIQUE INDEX identifier opt_pre_index_type
+                           ON table_name LPAREN key_part_list RPAREN
+                           index_option_list ddl_table_option_list.
+
+create_index_statement ::= CREATE FULLTEXT INDEX identifier opt_pre_index_type
+                           ON table_name LPAREN key_part_list RPAREN
+                           fulltext_index_option_list ddl_table_option_list.
+
+create_index_statement ::= CREATE SPATIAL INDEX identifier opt_pre_index_type
+                           ON table_name LPAREN key_part_list RPAREN
+                           index_option_list ddl_table_option_list.
 
 opt_pre_index_type ::= .
 opt_pre_index_type ::= index_type.
@@ -416,7 +423,6 @@ index_option_list ::= index_option_list index_option.
 index_option ::= index_type.
 index_option ::= KEY_BLOCK_SIZE INTEGER.
 index_option ::= KEY_BLOCK_SIZE EQ INTEGER.
-index_option ::= WITH PARSER identifier.
 index_option ::= COMMENT STRING.
 index_option ::= VISIBLE.
 index_option ::= INVISIBLE.
@@ -424,6 +430,12 @@ index_option ::= ENGINE_ATTRIBUTE STRING.
 index_option ::= ENGINE_ATTRIBUTE EQ STRING.
 index_option ::= SECONDARY_ENGINE_ATTRIBUTE STRING.
 index_option ::= SECONDARY_ENGINE_ATTRIBUTE EQ STRING.
+
+fulltext_index_option_list ::= .
+fulltext_index_option_list ::= fulltext_index_option_list index_option.
+fulltext_index_option_list ::= fulltext_index_option_list fulltext_index_option.
+
+fulltext_index_option ::= WITH PARSER identifier.
 
 index_type ::= USING index_algorithm.
 index_type ::= TYPE index_algorithm.
@@ -460,7 +472,7 @@ key_part ::= LPAREN expression RPAREN.
 key_part ::= LPAREN CAST LPAREN expression AS type_name ARRAY RPAREN RPAREN.
 
 /* Deferred runtime: full-text parser behavior. */
-index_option ::= WITH PARSER identifier.
+fulltext_index_option ::= WITH PARSER identifier.
 
 /* Invalid standalone MySQL syntax, keep rejected. */
 create_index_statement ::= CREATE INDEX ON table_name LPAREN key_part_list RPAREN.
@@ -517,6 +529,32 @@ with current MyLite DDL implicit-commit gaps. When implemented, standalone
 index DDL should commit any active explicit transaction before execution and
 commit its own DDL transaction after success or failure according to the MySQL
 DDL boundary model.
+
+### Implementation status
+
+The first executable slice is implemented for supported base tables:
+
+- `CREATE INDEX` and `CREATE UNIQUE INDEX` parse and execute for identifier key
+  parts, prefix lengths, `ASC`/`DESC`, BTREE/HASH clauses, comments,
+  visibility, engine attributes, and embedded no-op `ALGORITHM`/`LOCK`
+  modifiers.
+- successful creation writes internal index catalog rows surfaced through
+  `INFORMATION_SCHEMA.STATISTICS`, including `NON_UNIQUE`, `SEQ_IN_INDEX`,
+  `COLUMN_NAME`, `COLLATION`, `SUB_PART`, `INDEX_TYPE`, `INDEX_COMMENT`, and
+  `IS_VISIBLE`.
+- standalone unique indexes validate existing rows before mutation and
+  participate in later `INSERT`, ODKU, `REPLACE`, and `UPDATE` duplicate
+  checks, including prefix-length comparisons and nullable unique-key behavior.
+- `DROP INDEX name ON table` removes metadata rows and removes the index from
+  later unique-conflict checks.
+- warning 3502 is recorded for HASH fallback and warning 1831 is recorded for
+  redundant index definitions.
+- `WITH PARSER` is accepted by the parser only on the full-text standalone
+  index shape; full-text parser-plugin behavior remains tied to the deferred
+  full-text index surface.
+
+The remaining gaps in the next section are still intentionally unsupported or
+metadata-only.
 
 ### Compatibility gaps
 

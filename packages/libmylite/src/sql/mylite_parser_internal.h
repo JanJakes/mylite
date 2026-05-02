@@ -90,6 +90,16 @@ struct mylite_sql_parser_table_integer_option_tokens {
     struct mylite_sql_token integer;
 };
 
+struct mylite_sql_parser_create_index_tokens {
+    struct mylite_sql_token create;
+    struct mylite_sql_token class_token;
+};
+
+struct mylite_sql_parser_ddl_table_option_tokens {
+    struct mylite_sql_token option;
+    struct mylite_sql_token value;
+};
+
 struct mylite_sql_parser_drop_table_tokens {
     struct mylite_sql_token drop;
     struct mylite_sql_token temporary;
@@ -431,6 +441,26 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *columns, struct mylite_sql_ast_node *options);
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_create_index_tokens tokens,
+    enum mylite_sql_ast_index_class index_class, struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *pre_index_type, struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *key_parts, struct mylite_sql_ast_node *options,
+    struct mylite_sql_ast_node *ddl_options);
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_index_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *index_name, struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *ddl_options);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_ddl_table_option_list(struct mylite_sql_parser_state *state);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_ddl_table_option(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_ast_node *list,
+                                          struct mylite_sql_ast_node *option);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_ddl_table_option(struct mylite_sql_parser_state *state,
+                                        struct mylite_sql_parser_ddl_table_option_tokens tokens,
+                                        enum mylite_sql_ast_ddl_table_option option_kind);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_table_option_list(struct mylite_sql_parser_state *state);
 struct mylite_sql_ast_node *
@@ -506,6 +536,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_index_attribute_option(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_index_string_option_tokens tokens,
     enum mylite_sql_ast_index_option option);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_index_with_parser_option(struct mylite_sql_parser_state *state,
+                                                struct mylite_sql_token with_token,
+                                                struct mylite_sql_ast_node *parser_name);
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_ast_node *column_type, struct mylite_sql_ast_node *attributes);

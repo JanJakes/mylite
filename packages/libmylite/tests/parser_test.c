@@ -16,6 +16,7 @@ static int test_create_table_column_attributes(void);
 static int test_create_table_primary_keys_auto_increment(void);
 static int test_create_table_unique_secondary_indexes(void);
 static int test_create_table_base_execution_syntax(void);
+static int test_create_drop_index_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
@@ -108,6 +109,11 @@ static int expect_index_algorithm(const struct mylite_sql_ast_node *node,
                                   const char *context);
 static int expect_index_option(const struct mylite_sql_ast_node *node,
                                enum mylite_sql_ast_index_option expected, const char *context);
+static int expect_index_class(const struct mylite_sql_ast_node *node,
+                              enum mylite_sql_ast_index_class expected, const char *context);
+static int expect_ddl_table_option(const struct mylite_sql_ast_node *node,
+                                   enum mylite_sql_ast_ddl_table_option expected,
+                                   const char *context);
 static int expect_table_option(const struct mylite_sql_ast_node *node,
                                enum mylite_sql_ast_table_option expected, const char *context);
 static int expect_transaction_access_mode(const struct mylite_sql_ast_node *node,
@@ -136,6 +142,7 @@ int main(void)
     failures += test_create_table_primary_keys_auto_increment();
     failures += test_create_table_unique_secondary_indexes();
     failures += test_create_table_base_execution_syntax();
+    failures += test_create_drop_index_syntax();
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
@@ -2087,6 +2094,187 @@ static int test_create_table_base_execution_syntax(void)
 
     failures += parse_sql("CREATE TABLE bad_unknown_option (a INT) ROW_FORMAT = DYNAMIC;",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_drop_index_syntax(void)
+{
+    enum {
+        prefix_length = 3,
+        create_index_options_child = 4,
+        create_index_option_count = 5,
+        create_index_ddl_options_child = 5,
+        key_block_size = 8,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *key_parts = NULL;
+    const struct mylite_sql_ast_node *key_part = NULL;
+    const struct mylite_sql_ast_node *options = NULL;
+    const struct mylite_sql_ast_node *ddl_options = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE INDEX idx_a USING BTREE ON app.t "
+                          "(a(3) DESC, b ASC) COMMENT 'hello' INVISIBLE "
+                          "KEY_BLOCK_SIZE = 8 ENGINE_ATTRIBUTE '{}' "
+                          "SECONDARY_ENGINE_ATTRIBUTE = '' ALGORITHM=INPLACE LOCK=NONE;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_CREATE_INDEX_STATEMENT, "create index statement");
+    failures += expect_index_class(statement, MYLITE_SQL_AST_INDEX_CLASS_ORDINARY,
+                                   "ordinary create index class");
+    failures += expect_span_text(child_at(statement, 0U), "idx_a", "create index name");
+    failures += expect_index_algorithm(
+        child_at(statement, 1U), MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE, "create index pre-type");
+    failures += expect_node(child_at(statement, 2U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "create index qualified table");
+    key_parts = child_at(statement, 3U);
+    failures += expect_child_count(key_parts, 2U, "create index key part count");
+    key_part = child_at(key_parts, 0U);
+    failures += expect_span_text(child_at(key_part, 0U), "a", "create index prefix column");
+    if (child_at(key_part, 1U) != NULL &&
+        (!child_at(key_part, 1U)->has_column_length ||
+         child_at(key_part, 1U)->column_length != prefix_length)) {
+        fprintf(stderr, "create index prefix key part did not record length 3\n");
+        failures = 1;
+    }
+    failures +=
+        expect_key_part_order(key_part, MYLITE_SQL_AST_KEY_PART_ORDER_DESC, "create index desc");
+    failures += expect_key_part_order(child_at(key_parts, 1U), MYLITE_SQL_AST_KEY_PART_ORDER_ASC,
+                                      "create index asc");
+    options = child_at(statement, create_index_options_child);
+    failures += expect_child_count(options, create_index_option_count, "create index option count");
+    failures += expect_index_option(child_at(options, 0U), MYLITE_SQL_AST_INDEX_OPTION_COMMENT,
+                                    "create index comment option");
+    failures += expect_index_option(child_at(options, 1U), MYLITE_SQL_AST_INDEX_OPTION_INVISIBLE,
+                                    "create index invisible option");
+    failures +=
+        expect_index_option(child_at(options, 2U), MYLITE_SQL_AST_INDEX_OPTION_KEY_BLOCK_SIZE,
+                            "create index key block option");
+    if (child_at(child_at(options, 2U), 0U) != NULL &&
+        child_at(child_at(options, 2U), 0U)->column_length != key_block_size) {
+        fprintf(stderr, "create index key block size was not recorded as 8\n");
+        failures = 1;
+    }
+    failures +=
+        expect_index_option(child_at(options, 3U), MYLITE_SQL_AST_INDEX_OPTION_ENGINE_ATTRIBUTE,
+                            "create index engine attribute option");
+    failures += expect_index_option(child_at(options, 4U),
+                                    MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE,
+                                    "create index secondary engine attribute option");
+    ddl_options = child_at(statement, create_index_ddl_options_child);
+    failures += expect_child_count(ddl_options, 2U, "create index ddl option count");
+    failures += expect_ddl_table_option(child_at(ddl_options, 0U),
+                                        MYLITE_SQL_AST_DDL_TABLE_OPTION_ALGORITHM,
+                                        "create index algorithm option");
+    failures +=
+        expect_ddl_table_option(child_at(ddl_options, 1U), MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK,
+                                "create index lock option");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE UNIQUE INDEX uq_a ON t (a) USING HASH TYPE BTREE VISIBLE;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_index_class(statement, MYLITE_SQL_AST_INDEX_CLASS_UNIQUE,
+                                   "unique create index class");
+    failures += expect_span_text(child_at(statement, 0U), "uq_a", "unique create index name");
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_IDENTIFIER,
+                            "unique create index table without pre-type");
+    key_parts = child_at(statement, 2U);
+    failures += expect_node(key_parts, MYLITE_SQL_AST_KEY_PART_LIST, "unique create index parts");
+    options = child_at(statement, 3U);
+    failures += expect_child_count(options, 3U, "unique create index option count");
+    failures += expect_index_algorithm(child_at(child_at(options, 0U), 0U),
+                                       MYLITE_SQL_AST_INDEX_ALGORITHM_HASH,
+                                       "unique create index hash option");
+    failures += expect_index_algorithm(child_at(child_at(options, 1U), 0U),
+                                       MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
+                                       "unique create index type option");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE FULLTEXT INDEX ft_body ON docs (body) WITH PARSER ngram;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_index_class(child_at(result.root, 0U), MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT,
+                                   "fulltext create index class");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE FULLTEXT INDEX ft_body_comment ON docs (body) WITH PARSER ngram "
+                          "COMMENT 'ft';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE INDEX idx_parser ON t (a) WITH PARSER ngram;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE UNIQUE INDEX uq_parser ON t (a) WITH PARSER ngram;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE SPATIAL INDEX sp_g ON geo (g);", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_index_class(child_at(result.root, 0U), MYLITE_SQL_AST_INDEX_CLASS_SPATIAL,
+                                   "spatial create index class");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP INDEX `PRIMARY` ON t ALGORITHM=COPY LOCK=EXCLUSIVE;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_INDEX_STATEMENT, "drop index statement");
+    failures += expect_span_text(child_at(statement, 0U), "`PRIMARY`", "drop quoted primary");
+    ddl_options = child_at(statement, 2U);
+    failures += expect_child_count(ddl_options, 2U, "drop index ddl option count");
+    failures += expect_ddl_table_option(child_at(ddl_options, 0U),
+                                        MYLITE_SQL_AST_DDL_TABLE_OPTION_ALGORITHM,
+                                        "drop index algorithm option");
+    failures += expect_ddl_table_option(
+        child_at(ddl_options, 1U), MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK, "drop index lock option");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE INDEX idx_lock ON t (a) LOCK=SHARED ALGORITHM DEFAULT;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE INDEX parser ON t (algorithm);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_span_text(child_at(statement, 0U), "parser", "create index nonreserved parser name");
+    key_parts = child_at(statement, 2U);
+    key_part = child_at(key_parts, 0U);
+    failures += expect_span_text(child_at(key_part, 0U), "algorithm",
+                                 "create index nonreserved algorithm key part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE INDEX ON t (a);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE INDEX IF NOT EXISTS idx ON t (a);", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP INDEX IF EXISTS idx ON t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP KEY idx ON t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP INDEX PRIMARY ON t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE INDEX idx ON t (a) COMMENT = 'bad';",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE INDEX idx ON t (a) WITH PARSER ngram;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE INDEX idx ON t ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE INDEX idx ON t (a,);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -5385,6 +5573,37 @@ static int expect_index_option(const struct mylite_sql_ast_node *node,
         fprintf(stderr, "%s: expected index option %s, got %s\n", context,
                 mylite_sql_ast_index_option_name(expected),
                 mylite_sql_ast_index_option_name(node->index_option));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_index_class(const struct mylite_sql_ast_node *node,
+                              enum mylite_sql_ast_index_class expected, const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_CREATE_INDEX_STATEMENT, context);
+
+    if (node != NULL && node->index_class != expected) {
+        fprintf(stderr, "%s: expected index class %s, got %s\n", context,
+                mylite_sql_ast_index_class_name(expected),
+                mylite_sql_ast_index_class_name(node->index_class));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_ddl_table_option(const struct mylite_sql_ast_node *node,
+                                   enum mylite_sql_ast_ddl_table_option expected,
+                                   const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_DDL_TABLE_OPTION, context);
+
+    if (node != NULL && node->ddl_table_option != expected) {
+        fprintf(stderr, "%s: expected DDL table option %s, got %s\n", context,
+                mylite_sql_ast_ddl_table_option_name(expected),
+                mylite_sql_ast_ddl_table_option_name(node->ddl_table_option));
         failures = 1;
     }
 

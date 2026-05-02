@@ -11,6 +11,9 @@
 %type opt_order_direction { struct mylite_sql_token }
 %type opt_work { struct mylite_sql_token }
 %type opt_savepoint_keyword { struct mylite_sql_token }
+%type ddl_algorithm { struct mylite_sql_token }
+%type ddl_lock { struct mylite_sql_token }
+%type nonreserved_identifier_keyword { struct mylite_sql_token }
 %type select_duplicate_mode { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode_list { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode_item { struct mylite_sql_parser_select_duplicate_mode }
@@ -20,6 +23,9 @@
 %type subquery { struct mylite_sql_parser_subquery }
 %type quantified_comparison_operator { struct mylite_sql_parser_comparison_operator }
 %type subquery_quantifier { enum mylite_sql_ast_subquery_quantifier }
+%type index_class { enum mylite_sql_ast_index_class }
+%type fulltext_index_option_list { struct mylite_sql_ast_node * }
+%type fulltext_index_option { struct mylite_sql_ast_node * }
 %type opt_like_escape { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
 
@@ -60,11 +66,11 @@
 %right UPLUS UMINUS BIT_NOT.
 %right LOGICAL_NOT.
 %right KEY.
-%fallback IDENTIFIER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLUMN_FORMAT COMMENT
-    COMMIT CONSISTENT DATE DATETIME DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH
-    INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR NO NVARCHAR OFFSET ONLY ROLLBACK
-    SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE TEMPORARY TEXT TIME TIMESTAMP
-    TRANSACTION VISIBLE VALUE WORK YEAR.
+%fallback IDENTIFIER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLUMN_FORMAT
+    COMMENT COMMIT CONSISTENT DATE DATETIME DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION
+    FIXED HASH INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR NO NVARCHAR OFFSET ONLY ROLLBACK SAVEPOINT
+    SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE
+    TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE WORK YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -157,6 +163,12 @@ statement(A) ::= set_character_set_statement(B). {
     A = B;
 }
 statement(A) ::= create_table_statement(B). {
+    A = B;
+}
+statement(A) ::= create_index_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_index_statement(B). {
     A = B;
 }
 
@@ -622,6 +634,50 @@ set_character_set_statement(A) ::= SET(T) CHARSET DEFAULT(D). {
 
 create_table_statement(A) ::= CREATE(T) TABLE opt_if_not_exists(B) table_name(C) LPAREN table_element_list(D) RPAREN table_option_list(E). {
     A = mylite_sql_parser_make_create_table_statement(state, T, B, C, D, E);
+}
+
+create_index_statement(A) ::= CREATE(T) index_class(C) INDEX identifier(B) opt_index_type(P)
+        ON table_name(D) LPAREN key_part_list(E) RPAREN index_option_list(F)
+        ddl_table_option_list(G). {
+    A = mylite_sql_parser_make_create_index_statement(
+        state,
+        (struct mylite_sql_parser_create_index_tokens){
+            .create = T,
+            .class_token = (struct mylite_sql_token){0},
+        },
+        C, B, P, D, E, F, G);
+}
+create_index_statement(A) ::= CREATE(T) UNIQUE(U) INDEX identifier(B) opt_index_type(P)
+        ON table_name(D) LPAREN key_part_list(E) RPAREN index_option_list(F)
+        ddl_table_option_list(G). {
+    A = mylite_sql_parser_make_create_index_statement(
+        state,
+        (struct mylite_sql_parser_create_index_tokens){.create = T, .class_token = U},
+        MYLITE_SQL_AST_INDEX_CLASS_UNIQUE, B, P, D, E, F, G);
+}
+create_index_statement(A) ::= CREATE(T) FULLTEXT(F) INDEX identifier(B) opt_index_type(P)
+        ON table_name(D) LPAREN key_part_list(E) RPAREN fulltext_index_option_list(O)
+        ddl_table_option_list(G). {
+    A = mylite_sql_parser_make_create_index_statement(
+        state,
+        (struct mylite_sql_parser_create_index_tokens){.create = T, .class_token = F},
+        MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT, B, P, D, E, O, G);
+}
+create_index_statement(A) ::= CREATE(T) SPATIAL(S) INDEX identifier(B) opt_index_type(P)
+        ON table_name(D) LPAREN key_part_list(E) RPAREN index_option_list(F)
+        ddl_table_option_list(G). {
+    A = mylite_sql_parser_make_create_index_statement(
+        state,
+        (struct mylite_sql_parser_create_index_tokens){.create = T, .class_token = S},
+        MYLITE_SQL_AST_INDEX_CLASS_SPATIAL, B, P, D, E, F, G);
+}
+
+index_class(A) ::= . {
+    A = MYLITE_SQL_AST_INDEX_CLASS_ORDINARY;
+}
+
+drop_index_statement(A) ::= DROP(T) INDEX identifier(B) ON table_name(C) ddl_table_option_list(D). {
+    A = mylite_sql_parser_make_drop_index_statement(state, T, B, C, D);
 }
 
 table_element_list(A) ::= table_element(B). {
@@ -1279,6 +1335,12 @@ index_type(A) ::= USING(U) BTREE(T). {
 index_type(A) ::= USING(U) HASH(T). {
     A = mylite_sql_parser_make_index_type(state, U, T, MYLITE_SQL_AST_INDEX_ALGORITHM_HASH);
 }
+index_type(A) ::= TYPE(U) BTREE(T). {
+    A = mylite_sql_parser_make_index_type(state, U, T, MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE);
+}
+index_type(A) ::= TYPE(U) HASH(T). {
+    A = mylite_sql_parser_make_index_type(state, U, T, MYLITE_SQL_AST_INDEX_ALGORITHM_HASH);
+}
 
 index_option_list(A) ::= . {
     A = mylite_sql_parser_make_index_option_list(state);
@@ -1346,6 +1408,61 @@ index_option(A) ::= SECONDARY_ENGINE_ATTRIBUTE(T) EQ STRING(S). {
             .option = T,
             .string = S,
         }, MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE);
+}
+
+fulltext_index_option_list(A) ::= . {
+    A = mylite_sql_parser_make_index_option_list(state);
+}
+fulltext_index_option_list(A) ::= fulltext_index_option_list(B) index_option(C). {
+    A = mylite_sql_parser_append_index_option(state, B, C);
+}
+fulltext_index_option_list(A) ::= fulltext_index_option_list(B) fulltext_index_option(C). {
+    A = mylite_sql_parser_append_index_option(state, B, C);
+}
+
+fulltext_index_option(A) ::= WITH(T) PARSER identifier(B). {
+    A = mylite_sql_parser_make_index_with_parser_option(state, T, B);
+}
+
+ddl_table_option_list(A) ::= . {
+    A = mylite_sql_parser_make_ddl_table_option_list(state);
+}
+ddl_table_option_list(A) ::= ddl_table_option_list(B) ddl_table_option(C). {
+    A = mylite_sql_parser_append_ddl_table_option(state, B, C);
+}
+
+ddl_table_option(A) ::= ALGORITHM(T) opt_equal ddl_algorithm(V). {
+    A = mylite_sql_parser_make_ddl_table_option(
+        state, (struct mylite_sql_parser_ddl_table_option_tokens){.option = T, .value = V},
+        MYLITE_SQL_AST_DDL_TABLE_OPTION_ALGORITHM);
+}
+ddl_table_option(A) ::= LOCK(T) opt_equal ddl_lock(V). {
+    A = mylite_sql_parser_make_ddl_table_option(
+        state, (struct mylite_sql_parser_ddl_table_option_tokens){.option = T, .value = V},
+        MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK);
+}
+
+ddl_algorithm(A) ::= DEFAULT(T). {
+    A = T;
+}
+ddl_algorithm(A) ::= INPLACE(T). {
+    A = T;
+}
+ddl_algorithm(A) ::= COPY(T). {
+    A = T;
+}
+
+ddl_lock(A) ::= DEFAULT(T). {
+    A = T;
+}
+ddl_lock(A) ::= NONE(T). {
+    A = T;
+}
+ddl_lock(A) ::= SHARED(T). {
+    A = T;
+}
+ddl_lock(A) ::= EXCLUSIVE(T). {
+    A = T;
 }
 
 table_option_list(A) ::= . {
@@ -2553,4 +2670,29 @@ identifier(A) ::= IDENTIFIER(T). {
 }
 identifier(A) ::= QUOTED_IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= nonreserved_identifier_keyword(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+nonreserved_identifier_keyword(A) ::= ALGORITHM(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= COPY(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= EXCLUSIVE(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= INPLACE(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= NONE(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= PARSER(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= SHARED(T). {
+    A = T;
 }

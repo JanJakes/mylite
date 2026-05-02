@@ -303,6 +303,26 @@ void mylite_sql_ast_node_set_index_option(struct mylite_sql_ast_node *node,
     node->index_option = option;
 }
 
+void mylite_sql_ast_node_set_index_class(struct mylite_sql_ast_node *node,
+                                         enum mylite_sql_ast_index_class index_class)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->index_class = index_class;
+}
+
+void mylite_sql_ast_node_set_ddl_table_option(struct mylite_sql_ast_node *node,
+                                              enum mylite_sql_ast_ddl_table_option option)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->ddl_table_option = option;
+}
+
 void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
                                           enum mylite_sql_ast_table_option option)
 {
@@ -717,6 +737,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "replace_values_statement";
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
         return "replace_set_statement";
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+        return "create_index_statement";
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+        return "drop_index_statement";
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
+        return "ddl_table_option_list";
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
+        return "ddl_table_option";
     }
 
     return "unknown";
@@ -918,6 +946,38 @@ const char *mylite_sql_ast_index_option_name(enum mylite_sql_ast_index_option op
         return "engine_attribute";
     case MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE:
         return "secondary_engine_attribute";
+    case MYLITE_SQL_AST_INDEX_OPTION_WITH_PARSER:
+        return "with_parser";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_index_class_name(enum mylite_sql_ast_index_class index_class)
+{
+    switch (index_class) {
+    case MYLITE_SQL_AST_INDEX_CLASS_ORDINARY:
+        return "ordinary";
+    case MYLITE_SQL_AST_INDEX_CLASS_UNIQUE:
+        return "unique";
+    case MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT:
+        return "fulltext";
+    case MYLITE_SQL_AST_INDEX_CLASS_SPATIAL:
+        return "spatial";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_ddl_table_option_name(enum mylite_sql_ast_ddl_table_option option)
+{
+    switch (option) {
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_NONE:
+        return "none";
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_ALGORITHM:
+        return "algorithm";
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK:
+        return "lock";
     }
 
     return "unknown";

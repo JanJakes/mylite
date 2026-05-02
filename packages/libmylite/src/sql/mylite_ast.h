@@ -118,6 +118,10 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST = 107,
     MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT = 108,
     MYLITE_SQL_AST_REPLACE_SET_STATEMENT = 109,
+    MYLITE_SQL_AST_CREATE_INDEX_STATEMENT = 110,
+    MYLITE_SQL_AST_DROP_INDEX_STATEMENT = 111,
+    MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST = 112,
+    MYLITE_SQL_AST_DDL_TABLE_OPTION = 113,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -267,6 +271,20 @@ enum mylite_sql_ast_index_option {
     MYLITE_SQL_AST_INDEX_OPTION_INVISIBLE = 5,
     MYLITE_SQL_AST_INDEX_OPTION_ENGINE_ATTRIBUTE = 6,
     MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE = 7,
+    MYLITE_SQL_AST_INDEX_OPTION_WITH_PARSER = 8,
+};
+
+enum mylite_sql_ast_index_class {
+    MYLITE_SQL_AST_INDEX_CLASS_ORDINARY = 0,
+    MYLITE_SQL_AST_INDEX_CLASS_UNIQUE = 1,
+    MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT = 2,
+    MYLITE_SQL_AST_INDEX_CLASS_SPATIAL = 3,
+};
+
+enum mylite_sql_ast_ddl_table_option {
+    MYLITE_SQL_AST_DDL_TABLE_OPTION_NONE = 0,
+    MYLITE_SQL_AST_DDL_TABLE_OPTION_ALGORITHM = 1,
+    MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK = 2,
 };
 
 enum mylite_sql_ast_table_option {
@@ -377,6 +395,8 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_key_part_order key_part_order;
     enum mylite_sql_ast_index_algorithm index_algorithm;
     enum mylite_sql_ast_index_option index_option;
+    enum mylite_sql_ast_index_class index_class;
+    enum mylite_sql_ast_ddl_table_option ddl_table_option;
     enum mylite_sql_ast_table_option table_option;
     enum mylite_sql_ast_transaction_access_mode transaction_access_mode;
     enum mylite_sql_ast_transaction_chain transaction_chain;
@@ -465,6 +485,10 @@ void mylite_sql_ast_node_set_index_algorithm(struct mylite_sql_ast_node *node,
                                              enum mylite_sql_ast_index_algorithm algorithm);
 void mylite_sql_ast_node_set_index_option(struct mylite_sql_ast_node *node,
                                           enum mylite_sql_ast_index_option option);
+void mylite_sql_ast_node_set_index_class(struct mylite_sql_ast_node *node,
+                                         enum mylite_sql_ast_index_class index_class);
+void mylite_sql_ast_node_set_ddl_table_option(struct mylite_sql_ast_node *node,
+                                              enum mylite_sql_ast_ddl_table_option option);
 void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
                                           enum mylite_sql_ast_table_option option);
 void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node);
@@ -510,6 +534,8 @@ const char *mylite_sql_ast_column_storage_name(enum mylite_sql_ast_column_storag
 const char *mylite_sql_ast_key_part_order_name(enum mylite_sql_ast_key_part_order order);
 const char *mylite_sql_ast_index_algorithm_name(enum mylite_sql_ast_index_algorithm algorithm);
 const char *mylite_sql_ast_index_option_name(enum mylite_sql_ast_index_option option);
+const char *mylite_sql_ast_index_class_name(enum mylite_sql_ast_index_class index_class);
+const char *mylite_sql_ast_ddl_table_option_name(enum mylite_sql_ast_ddl_table_option option);
 const char *mylite_sql_ast_aggregate_kind_name(enum mylite_sql_ast_aggregate_kind aggregate_kind);
 const char *
 mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument aggregate_argument);

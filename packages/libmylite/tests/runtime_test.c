@@ -54,6 +54,7 @@ enum {
     statistics_seq_column = 6,
     statistics_column_name_column = 7,
     statistics_collation_column = 8,
+    statistics_sub_part_column = 10,
     statistics_nullable_column = 12,
     statistics_index_type_column = 13,
     statistics_index_comment_column = 15,
@@ -88,8 +89,10 @@ enum {
     mysql_warning_savepoint_does_not_exist = 1305,
     mysql_warning_no_default = 1364,
     mysql_warning_division_by_zero = 1365,
+    mysql_warning_duplicate_index = 1831,
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_field_in_order_not_select = 3065,
+    mysql_warning_using_other_handler = 3502,
 };
 
 struct expected_schemata_row {
@@ -128,6 +131,18 @@ struct expected_column_metadata {
     const char *origin_column_name;
 };
 
+struct expected_statistics_row {
+    const char *table_name;
+    const char *index_name;
+    int64_t seq_in_index;
+    const char *column_name;
+    int64_t non_unique;
+    const char *collation;
+    const char *sub_part;
+    const char *index_comment;
+    const char *visible;
+};
+
 struct expected_result_metadata {
     const char *name;
     const char *schema_name;
@@ -160,6 +175,7 @@ static int test_unsupported_statement(void);
 static int test_create_table_base_execution(void);
 static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
+static int test_create_drop_index_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_replace_execution(void);
@@ -207,6 +223,11 @@ static int expect_no_information_schema_column_table_name_row(mylite_db *databas
                                                               const char *table_name);
 static int expect_no_information_schema_statistics_table_name_row(mylite_db *database,
                                                                   const char *table_name);
+static int expect_information_schema_statistics_row(mylite_db *database,
+                                                    const struct expected_statistics_row *expected);
+static int expect_no_information_schema_statistics_index_row(mylite_db *database,
+                                                             const char *table_name,
+                                                             const char *index_name);
 static int
 expect_information_schema_table_collation(mylite_db *database,
                                           const struct expected_table_collation *expected);
@@ -278,6 +299,7 @@ int main(void)
     failures += test_create_table_base_execution();
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
+    failures += test_create_drop_index_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_replace_execution();
@@ -2907,6 +2929,285 @@ static int test_drop_table_base_execution(void)
 
     mylite_close(database);
     remove_runtime_test_files();
+    return failures;
+}
+
+static int test_create_drop_index_execution(void)
+{
+    static const char *const idx_base_columns[] = {"id", "a", "b", "c"};
+    static const char *const idx_base_after_update_values[] = {"1", "10", "abcdef", NULL};
+    static const char *const idx_base_after_drop_values[] = {
+        "1", "10", "abcdef", NULL, "8", "10", "allowed_after_drop", "8"};
+    static const char *const idx_odku_columns[] = {"id", "marker"};
+    static const char *const idx_odku_values[] = {"1", "9", "2", "0"};
+    static const char *const idx_replace_columns[] = {"id", "a", "b"};
+    static const char *const idx_replace_values[] = {"3", "1", "1"};
+    mylite_db *database = NULL;
+    mylite_db *no_schema_database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open index database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_idx", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_idx", MYLITE_DONE);
+
+    failures += execute_sql(database,
+                            "CREATE TABLE idx_base ("
+                            "id INT PRIMARY KEY, a INT, b VARCHAR(20), c INT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO idx_base VALUES "
+                            "(1,10,'abcdef',NULL),(2,20,'abzzzz',NULL),(3,30,'xyz',5)",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "CREATE INDEX idx_b USING BTREE ON idx_base "
+        "(b(3) DESC, a ASC) COMMENT 'hello' INVISIBLE KEY_BLOCK_SIZE=8 "
+        "ALGORITHM=INPLACE LOCK=NONE",
+        0, "create secondary index");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "idx_base",
+                                                               .index_name = "idx_b",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "b",
+                                                               .non_unique = 1,
+                                                               .collation = "D",
+                                                               .sub_part = "3",
+                                                               .index_comment = "hello",
+                                                               .visible = "NO",
+                                                           });
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "idx_base",
+                                                               .index_name = "idx_b",
+                                                               .seq_in_index = 2,
+                                                               .column_name = "a",
+                                                               .non_unique = 1,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "hello",
+                                                               .visible = "NO",
+                                                           });
+
+    failures += execute_sql_expect_done_affected(
+        database, "CREATE UNIQUE INDEX uq_a ON idx_base (a) INVISIBLE", 0,
+        "create standalone unique index");
+    failures +=
+        prepare_sql(database, "INSERT INTO idx_base VALUES (4,10,'dup',NULL)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "standalone unique index rejects insert duplicate");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "INSERT INTO idx_base SET id=9, a=10, b='setdup', c=NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "standalone unique index rejects insert set duplicate");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "UPDATE idx_base SET a = 20 WHERE id = 1", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "standalone unique index rejects update duplicate");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, a, b, c FROM idx_base WHERE id = 1",
+                                   idx_base_columns, 4, idx_base_after_update_values, 1,
+                                   "failed unique update leaves row unchanged");
+    failures += execute_sql(database, "INSERT INTO idx_base VALUES (4,40,'new',NULL)", MYLITE_DONE);
+
+    failures +=
+        execute_sql_expect_done_affected(database, "CREATE UNIQUE INDEX uq_c ON idx_base (c)", 0,
+                                         "create nullable standalone unique index");
+    failures += execute_sql(database,
+                            "INSERT INTO idx_base VALUES "
+                            "(5,50,'null1',NULL),(6,60,'null2',NULL)",
+                            MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "INSERT INTO idx_base VALUES (7,70,'cdup',5)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "standalone unique index rejects duplicate non-null");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql_expect_done_affected(database, "DROP INDEX uq_a ON idx_base LOCK=NONE",
+                                                 0, "drop standalone unique index");
+    failures += expect_no_information_schema_statistics_index_row(database, "idx_base", "uq_a");
+    failures += execute_sql(database, "INSERT INTO idx_base VALUES (8,10,'allowed_after_drop',8)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SELECT id, a, b, c FROM idx_base WHERE a = 10 ORDER BY id", idx_base_columns, 4,
+        idx_base_after_drop_values, 2, "dropped unique index no longer rejects duplicates");
+
+    failures += execute_sql_expect_done_affected(database,
+                                                 "CREATE INDEX idx_hash USING HASH ON idx_base (b)",
+                                                 0, "create hash fallback index");
+    failures += expect_int(mylite_warning_count(database), 1, "hash fallback warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_using_other_handler,
+                           "hash fallback warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "HASH indexes",
+                                "hash fallback warning message");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "idx_base",
+                                                               .index_name = "idx_hash",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "b",
+                                                               .non_unique = 1,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+
+    failures += execute_sql_expect_done_affected(
+        database, "CREATE INDEX idx_b_dup ON idx_base (b(3) DESC, a ASC)", 0,
+        "create duplicate secondary index");
+    failures += expect_int(mylite_warning_count(database), 1, "duplicate index warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_duplicate_index,
+                           "duplicate index warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "Duplicate index",
+                                "duplicate index warning message");
+
+    failures +=
+        execute_sql(database, "CREATE TABLE idx_prefix (id INT, s VARCHAR(10))", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO idx_prefix VALUES (1,'ab1'),(2,'ac1')", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "CREATE UNIQUE INDEX uq_prefix ON idx_prefix (s(2))", 0,
+        "create standalone prefix unique index");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "idx_prefix",
+                                                               .index_name = "uq_prefix",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "s",
+                                                               .non_unique = 0,
+                                                               .collation = "A",
+                                                               .sub_part = "2",
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+    failures += prepare_sql(database, "INSERT INTO idx_prefix VALUES (3,'ab2')", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "prefix unique index rejects duplicate prefix");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO idx_prefix VALUES (3,'zz1')", MYLITE_DONE);
+
+    failures += execute_sql(database, "CREATE TABLE idx_dup_existing (a INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO idx_dup_existing VALUES (1),(1)", MYLITE_DONE);
+    failures += prepare_sql(database, "CREATE UNIQUE INDEX uq_dup ON idx_dup_existing (a)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "unique create validates existing rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "idx_dup_existing", "uq_dup");
+
+    failures += prepare_sql(database, "CREATE INDEX idx_missing_column ON idx_base (missing)",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "Key column", "create index rejects missing column");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_statistics_index_row(database, "idx_base",
+                                                                  "idx_missing_column");
+
+    failures += prepare_sql(database, "CREATE INDEX IDX_B ON idx_base (a)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate key name",
+                                  "create index rejects duplicate name case-insensitively");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "DROP INDEX missing_idx ON idx_base", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Can't DROP", "drop index rejects missing index");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "CREATE INDEX idx_missing_schema ON missing_schema.t (a)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Unknown database",
+                                  "create index rejects missing schema");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "CREATE INDEX idx_missing_table ON missing_table (a)",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "doesn't exist", "create index rejects missing table");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "CREATE INDEX idx_system ON information_schema.tables (TABLE_NAME)",
+                    MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "system schema", "create index rejects system schema");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "CREATE FULLTEXT INDEX ft_missing_table ON missing_table (b)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "doesn't exist",
+                                  "fulltext create index resolves table before class support");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "CREATE FULLTEXT INDEX ft_missing_column ON idx_base (missing)",
+                    MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Key column",
+                                  "fulltext create index validates columns before class support");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database, "CREATE FULLTEXT INDEX ft_b ON idx_base (b) WITH PARSER ngram", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED,
+                              "fulltext create index deferred unsupported");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "fulltext create index affected rows");
+    failures +=
+        expect_contains(mylite_error_message(database), "Unsupported standalone index class",
+                        "fulltext create index unsupported error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_statistics_index_row(database, "idx_base", "ft_b");
+
+    failures += execute_sql(database, "CREATE TABLE idx_odku (id INT, a INT, b INT, marker INT)",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO idx_odku VALUES (1,1,2,0),(2,2,1,0)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE UNIQUE INDEX uq_odku_a ON idx_odku (a)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE UNIQUE INDEX uq_odku_b ON idx_odku (b)", MYLITE_DONE);
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "INSERT INTO idx_odku VALUES (3,1,1,9) "
+                                         "ON DUPLICATE KEY UPDATE marker = VALUES(marker)",
+                                         2, "standalone unique indexes drive ODKU conflict order");
+    failures += expect_select_rows(database, "SELECT id, marker FROM idx_odku ORDER BY id",
+                                   idx_odku_columns, 2, idx_odku_values, 2,
+                                   "ODKU picks first standalone unique conflict");
+
+    failures +=
+        execute_sql(database, "CREATE TABLE idx_replace (id INT, a INT, b INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO idx_replace VALUES (1,1,2),(2,2,1)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE UNIQUE INDEX uq_replace_a ON idx_replace (a)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE UNIQUE INDEX uq_replace_b ON idx_replace (b)", MYLITE_DONE);
+    failures +=
+        execute_sql_expect_done_affected(database, "REPLACE INTO idx_replace VALUES (3,1,1)", 3,
+                                         "replace deletes standalone unique conflicts");
+    failures += expect_select_rows(database, "SELECT id, a, b FROM idx_replace ORDER BY id",
+                                   idx_replace_columns, 3, idx_replace_values, 1,
+                                   "REPLACE keeps replacement row");
+
+    failures += expect_status(mylite_open_memory(&no_schema_database), MYLITE_OK,
+                              "open index no-schema database");
+    failures +=
+        prepare_sql(no_schema_database, "CREATE INDEX idx_no_schema ON t (a)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, no_schema_database, "No database selected",
+                                  "create index requires selected schema");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    mylite_close(no_schema_database);
+
+    mylite_close(database);
     return failures;
 }
 
@@ -8888,6 +9189,105 @@ static int expect_no_information_schema_statistics_table_name_row(mylite_db *dat
         }
         if (strcmp(mylite_column_text(stmt, statistics_table_name_column), table_name) == 0) {
             fprintf(stderr, "statistics unexpectedly returned row for table '%s'\n", table_name);
+            failures = 1;
+            break;
+        }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_information_schema_statistics_row(mylite_db *database,
+                                                    const struct expected_statistics_row *expected)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.STATISTICS", MYLITE_OK, &stmt);
+    int saw_row = 0;
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *table_name = NULL;
+        const char *index_name = NULL;
+        int64_t seq_in_index = 0;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "statistics row");
+        if (failures != 0) {
+            break;
+        }
+
+        table_name = mylite_column_text(stmt, statistics_table_name_column);
+        index_name = mylite_column_text(stmt, statistics_index_name_column);
+        seq_in_index = mylite_column_int64(stmt, statistics_seq_column);
+        if (strcmp(table_name, expected->table_name) != 0 ||
+            strcmp(index_name, expected->index_name) != 0 ||
+            seq_in_index != expected->seq_in_index) {
+            continue;
+        }
+
+        saw_row = 1;
+        failures += expect_int64(mylite_column_int64(stmt, statistics_non_unique_column),
+                                 expected->non_unique, "statistics non unique");
+        failures += expect_string(mylite_column_text(stmt, statistics_column_name_column),
+                                  expected->column_name, "statistics column name");
+        failures += expect_string(mylite_column_text(stmt, statistics_collation_column),
+                                  expected->collation, "statistics collation");
+        if (expected->sub_part == NULL) {
+            failures += expect_null_text(mylite_column_text(stmt, statistics_sub_part_column),
+                                         "statistics sub part");
+        } else {
+            failures += expect_string(mylite_column_text(stmt, statistics_sub_part_column),
+                                      expected->sub_part, "statistics sub part");
+        }
+        failures += expect_string(mylite_column_text(stmt, statistics_index_type_column), "BTREE",
+                                  "statistics index type");
+        failures += expect_string(mylite_column_text(stmt, statistics_index_comment_column),
+                                  expected->index_comment, "statistics index comment");
+        failures += expect_string(mylite_column_text(stmt, statistics_visible_column),
+                                  expected->visible, "statistics visibility");
+        break;
+    }
+
+    if (!saw_row) {
+        fprintf(stderr, "statistics did not return row for %s.%s seq %" PRId64 "\n",
+                expected->table_name, expected->index_name, expected->seq_in_index);
+        failures = 1;
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_no_information_schema_statistics_index_row(mylite_db *database,
+                                                             const char *table_name,
+                                                             const char *index_name)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.STATISTICS", MYLITE_OK, &stmt);
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *current_table_name = NULL;
+        const char *current_index_name = NULL;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "statistics row");
+        if (failures != 0) {
+            break;
+        }
+        current_table_name = mylite_column_text(stmt, statistics_table_name_column);
+        current_index_name = mylite_column_text(stmt, statistics_index_name_column);
+        if (strcmp(current_table_name, table_name) == 0 &&
+            strcmp(current_index_name, index_name) == 0) {
+            fprintf(stderr, "statistics unexpectedly returned row for table '%s' index '%s'\n",
+                    table_name, index_name);
             failures = 1;
             break;
         }

@@ -70,7 +70,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. |  |
 | `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. |  |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
-| `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. | Started/speced only; no parser or runtime support yet. First slice targets metadata-backed ordinary and unique standalone indexes with MySQL-compatible duplicate validation, statistics metadata, write-path conflict effects, and deferred full-text/spatial/functional surfaces. See [standalone CREATE INDEX and DROP INDEX spec](docs/specs/create-drop-index/specs.md). |
+| `CREATE INDEX` | 🟡 | top | Standalone index creation over MySQL index types and attributes. | Implemented for metadata-backed ordinary and unique standalone indexes over supported base tables, including schema resolution, duplicate-name and missing-column diagnostics, existing-row unique validation, prefix/order metadata, `INFORMATION_SCHEMA.STATISTICS` rows, write-path conflict effects for `INSERT`, ODKU, `REPLACE`, and `UPDATE`, warning 3502 for `USING HASH`, and warning 1831 for redundant indexes. Full-text, spatial, functional, multi-valued, optimizer, physical-index, implicit-commit, and full storage-engine validation surfaces remain deferred. See [standalone CREATE INDEX and DROP INDEX spec](docs/specs/create-drop-index/specs.md). |
 | `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
 | `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. |  |
 | `CREATE SERVER` | ❌ | low | Foreign server metadata syntax. |  |
@@ -87,7 +87,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP EVENT` | ❌ | medium | Event metadata deletion. |  |
 | `DROP FUNCTION` (stored) | ❌ | medium | Stored-function deletion and routine metadata cleanup. |  |
 | `DROP FUNCTION` (loadable) | ❌ | low | Loadable-function deregistration syntax. |  |
-| `DROP INDEX` | ❌ | top | Standalone index removal semantics. | Started/speced only; no parser or runtime support yet. First slice targets `DROP INDEX name ON table` metadata cleanup, unique-conflict-surface removal, MySQL diagnostics, and deferred primary-key dependency edge cases. See [standalone CREATE INDEX and DROP INDEX spec](docs/specs/create-drop-index/specs.md). |
+| `DROP INDEX` | 🟡 | top | Standalone index removal semantics. | Implemented for `DROP INDEX name ON table` against supported base tables, including schema/table/index validation, metadata cleanup from the internal index catalog and `INFORMATION_SCHEMA.STATISTICS`, and removal from later unique-conflict checks. Primary-key dependency checks, `AUTO_INCREMENT` interactions, implicit commits, physical-index cleanup, and `ALTER TABLE DROP KEY` remain deferred. See [standalone CREATE INDEX and DROP INDEX spec](docs/specs/create-drop-index/specs.md). |
 | `DROP LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
 | `DROP PROCEDURE` | ❌ | medium | Stored-procedure deletion and metadata cleanup. |  |
 | `DROP SERVER` | ❌ | low | Foreign server metadata deletion. |  |
@@ -364,7 +364,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Table options: misc | 🟡 | high | AUTO_INCREMENT, COMMENT, CHECKSUM, DELAY_KEY_WRITE, INSERT_METHOD, PACK_KEYS, PASSWORD, UNION. | `CREATE TABLE` accepts and executes table `AUTO_INCREMENT [=] integer` and `COMMENT [=] 'string'` into metadata. Allocation behavior, warnings, and other miscellaneous table options remain unsupported. See [CREATE TABLE base execution spec](docs/specs/create-table-base-execution/specs.md). |
 | NDB comment options | ❌ | low | NDB-specific table and column comment options recognized by MySQL grammar. |  |
 | Temporary table metadata | ❌ | top | Session isolation, name shadowing, and cleanup. |  |
-| CREATE INDEX options | ❌ | top | ALGORITHM, LOCK, visibility, comments, and index type clauses. | Started/speced only for standalone `CREATE INDEX`; no parser or runtime support yet. The intended first slice accepts `USING`/`TYPE`, `KEY_BLOCK_SIZE`, `COMMENT`, visibility, engine attributes, and embedded no-op `ALGORITHM`/`LOCK` modifiers while deferring full storage-engine warning fidelity. See [standalone CREATE INDEX and DROP INDEX spec](docs/specs/create-drop-index/specs.md). |
+| CREATE INDEX options | 🟡 | top | ALGORITHM, LOCK, visibility, comments, and index type clauses. | Standalone `CREATE INDEX` now accepts `USING`/`TYPE` in MySQL-supported positions, `KEY_BLOCK_SIZE`, `COMMENT`, `VISIBLE`/`INVISIBLE`, engine attributes, full-text-only parser-level `WITH PARSER` syntax, and embedded no-op `ALGORITHM`/`LOCK` modifiers. Metadata-backed ordinary and unique indexes preserve comment, visibility, prefix, order, and effective BTREE type where represented; full storage-engine validation, full-text parser semantics, optimizer effects, and physical index selection are deferred. See [standalone CREATE INDEX and DROP INDEX spec](docs/specs/create-drop-index/specs.md). |
 | CREATE VIEW options | ❌ | high | ALGORITHM, DEFINER, SQL SECURITY, column list, and WITH CHECK OPTION. |  |
 
 ### 3.2 ALTER TABLE actions
@@ -385,7 +385,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `ADD INDEX` / `ADD KEY` | ❌ | top | Secondary index addition and metadata. |  |
 | `ADD FULLTEXT` | ❌ | high | Full-text index addition. |  |
 | `ADD SPATIAL` | ❌ | medium | Spatial index addition. |  |
-| `DROP INDEX` / `DROP KEY` | ❌ | top | Index removal and constraint dependencies. | Standalone `DROP INDEX` is started/speced in [standalone CREATE INDEX and DROP INDEX spec](docs/specs/create-drop-index/specs.md); `DROP KEY` remains an `ALTER TABLE` key-action surface for the later ALTER TABLE task. |
+| `DROP INDEX` / `DROP KEY` | 🟡 | top | Index removal and constraint dependencies. | Standalone `DROP INDEX name ON table` is implemented for metadata-backed indexes created by supported table/index DDL; `DROP KEY` remains an `ALTER TABLE` key-action surface, and primary-key dependency checks are deferred. See [standalone CREATE INDEX and DROP INDEX spec](docs/specs/create-drop-index/specs.md). |
 | `RENAME INDEX` / `RENAME KEY` | ❌ | high | Index rename semantics. |  |
 | `ALTER INDEX VISIBLE` / `INVISIBLE` | ❌ | medium | Index visibility metadata and optimizer behavior. |  |
 | `ADD CONSTRAINT CHECK` | ❌ | high | Check constraint addition and validation. |  |

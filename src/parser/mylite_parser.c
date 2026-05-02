@@ -10989,6 +10989,14 @@ void mylite_parser_require_identifier_atom(MyliteParseContext *ctx,
   }
 }
 
+void mylite_parser_require_account_principal_atom(MyliteParseContext *ctx,
+                                                  MyliteToken token) {
+  if (token_ascii_equal(token, "cascade") ||
+      token_ascii_equal(token, "restrict")) {
+    mylite_parser_reject(ctx, token, "invalid account name");
+  }
+}
+
 void mylite_parser_require_charset_name_atom(MyliteParseContext *ctx,
                                              MyliteToken token) {
   if (token_is_quoted_hex_or_bit_literal(token)) {

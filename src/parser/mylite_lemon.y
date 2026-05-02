@@ -1153,7 +1153,9 @@ drop_account_trailing_tail ::= DOUBLE_QUOTED_STRING(A). {
   mylite_parser_require_permissive(ctx, A);
 }
 
-drop_account_principal ::= drop_account_ident.
+drop_account_principal ::= drop_account_ident(A). {
+  mylite_parser_require_account_principal_atom(ctx, A);
+}
 
 drop_account_host ::= AT_HOST drop_host_dot_tail.
 drop_account_host ::= AT_SIGN drop_host_name.
@@ -1164,9 +1166,9 @@ drop_host_name ::= drop_host_ident drop_host_dot_tail.
 drop_host_dot_tail ::= .
 drop_host_dot_tail ::= drop_host_dot_tail DOT drop_host_ident.
 
-drop_account_ident ::= set_charset_name_part.
-drop_account_ident ::= MASTER.
-drop_account_ident ::= ROLE.
+drop_account_ident(A) ::= set_charset_name_part(B). { A = B; }
+drop_account_ident(A) ::= MASTER(B). { A = B; }
+drop_account_ident(A) ::= ROLE(B). { A = B; }
 
 drop_host_ident ::= ATOM.
 drop_host_ident ::= MASTER.
@@ -2832,7 +2834,9 @@ show_tail ::= RELAYLOG EVENTS show_relaylog_events_tail.
 show_tail ::= show_routine_status_kind STATUS show_filter_tail.
 show_tail ::= show_routine_status_kind show_routine_code_marker cache_table_ref.
 show_tail ::= STORAGE ENGINES.
-show_tail ::= PARSE_TREE show_parse_tree_query.
+show_tail ::= PARSE_TREE(A) show_parse_tree_query. {
+  mylite_parser_require_permissive(ctx, A);
+}
 show_tail ::= PROFILE show_profile_tail.
 show_tail ::= REPLICA STATUS show_channel_tail.
 
@@ -4132,26 +4136,26 @@ set_collation_value ::= set_charset_name_part.
 set_charset_name_part ::= ATOM(A). {
   mylite_parser_require_charset_name_atom(ctx, A);
 }
-set_charset_name_part ::= ACCOUNT.
-set_charset_name_part ::= CASCADE.
-set_charset_name_part ::= COMPONENT.
-set_charset_name_part ::= COUNT.
-set_charset_name_part ::= DATABASE.
-set_charset_name_part ::= LABEL.
-set_charset_name_part ::= ENGINE.
-set_charset_name_part ::= EVENTS.
-set_charset_name_part ::= FIRST.
-set_charset_name_part ::= FULL.
-set_charset_name_part ::= GRANTS.
-set_charset_name_part ::= PLUGIN.
-set_charset_name_part ::= PROCESSLIST.
-set_charset_name_part ::= RESTRICT.
-set_charset_name_part ::= TABLES.
-set_charset_name_part ::= TABLESPACE.
-set_charset_name_part ::= TRIGGERS.
-set_charset_name_part ::= USER.
-set_charset_name_part ::= VARIABLES.
-set_charset_name_part ::= BINARY.
+set_charset_name_part(A) ::= ACCOUNT(B). { A = B; }
+set_charset_name_part(A) ::= CASCADE(B). { A = B; }
+set_charset_name_part(A) ::= COMPONENT(B). { A = B; }
+set_charset_name_part(A) ::= COUNT(B). { A = B; }
+set_charset_name_part(A) ::= DATABASE(B). { A = B; }
+set_charset_name_part(A) ::= LABEL(B). { A = B; }
+set_charset_name_part(A) ::= ENGINE(B). { A = B; }
+set_charset_name_part(A) ::= EVENTS(B). { A = B; }
+set_charset_name_part(A) ::= FIRST(B). { A = B; }
+set_charset_name_part(A) ::= FULL(B). { A = B; }
+set_charset_name_part(A) ::= GRANTS(B). { A = B; }
+set_charset_name_part(A) ::= PLUGIN(B). { A = B; }
+set_charset_name_part(A) ::= PROCESSLIST(B). { A = B; }
+set_charset_name_part(A) ::= RESTRICT(B). { A = B; }
+set_charset_name_part(A) ::= TABLES(B). { A = B; }
+set_charset_name_part(A) ::= TABLESPACE(B). { A = B; }
+set_charset_name_part(A) ::= TRIGGERS(B). { A = B; }
+set_charset_name_part(A) ::= USER(B). { A = B; }
+set_charset_name_part(A) ::= VARIABLES(B). { A = B; }
+set_charset_name_part(A) ::= BINARY(B). { A = B; }
 
 set_resource_group_tail ::= .
 set_resource_group_tail ::= FOR set_resource_group_thread_list.

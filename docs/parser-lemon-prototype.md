@@ -18,9 +18,10 @@ token sink:
 - Numeric and single-quoted literals are rejected in strict object-name
   productions while numeric-leading identifiers, double-quoted identifiers, and
   quoted account/charset strings remain valid. Standalone `CASCADE` and
-  `RESTRICT` object, column, index, constraint, prepared-statement, and `USE`
-  names are rejected where MySQL treats them as reserved syntax, while quoted
-  and dotted references such as `` `restrict` `` and `db.restrict` remain valid.
+  `RESTRICT` object, column, index, constraint, prepared-statement, account
+  principal, and `USE` names are rejected where MySQL treats them as reserved
+  syntax, while quoted and dotted references such as `` `restrict` `` and
+  `db.restrict` remain valid.
 - A Lemon grammar recognizes MySQL statement families for DDL, DML,
   transactions, utility statements, administration statements, replication/XA,
   and stored-program statement starts.
@@ -196,7 +197,8 @@ token sink:
   variable, operator, and reserved-keyword targets including `CASCADE` and
   `RESTRICT`.
 - Account and role names use the shared unreserved identifier grammar across
-  `CREATE`/`ALTER`/`DROP` account statements.
+  `CREATE`/`ALTER`/`DROP` account statements, rejecting standalone
+  `CASCADE`/`RESTRICT` principals while preserving quoted principals and hosts.
 - `RENAME USER` reuses the shared account-reference grammar for source and
   destination account pairs.
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
@@ -417,8 +419,8 @@ token sink:
 - Replication channel clauses share one text-string grammar across
   `START`/`STOP`/`RESET`/`SHOW`/`FLUSH` and `CHANGE ... FOR CHANNEL`, with
   quoted hex/bit rejection.
-- `SHOW PARSE_TREE` recognizes SELECT and WITH SELECT inputs as a
-  debug/development SHOW form.
+- `SHOW PARSE_TREE` is accepted only in permissive corpus mode because normal
+  MySQL 8.4 builds reject that conditional debug/development SHOW form.
 - `SHOW ENGINE ... STATUS|LOGS|MUTEX` recognizes engine names using the shared
   identifier grammar plus MySQL's `ALL` engine selector.
 - Shared `SHOW ... LIKE` filters require text-string patterns, while

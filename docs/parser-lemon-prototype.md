@@ -283,6 +283,9 @@ token sink:
   `MATCH`-before-actions order, and `ADD CHECK`
   requires a non-empty parenthesized expression body plus a valid
   `ENFORCED`/`NOT ENFORCED` tail when present.
+- `CREATE TABLE ... LIKE` recognizes one- and two-part target/source table
+  names, including `TEMPORARY` and `IF NOT EXISTS`, and rejects trailing table
+  options or tokens after the source table.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;
   `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body.
   Table-level `ENGINE_ATTRIBUTE` and `SECONDARY_ENGINE_ATTRIBUTE` changes

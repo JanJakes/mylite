@@ -3,6 +3,8 @@
 %token_type { struct mylite_sql_token }
 %default_type { struct mylite_sql_ast_node * }
 %type opt_column_unique_key { struct mylite_sql_token }
+%type opt_temporary { struct mylite_sql_token }
+%type opt_drop_table_mode { struct mylite_sql_token }
 %extra_argument { struct mylite_sql_parser_state *state }
 
 %include {
@@ -32,7 +34,8 @@
 %right KEY.
 %fallback IDENTIFIER AUTO_INCREMENT BOOL BOOLEAN BTREE CHARSET COLUMN_FORMAT COMMENT DATE DATETIME
     DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR
-    NVARCHAR ONLY SECONDARY_ENGINE_ATTRIBUTE SIGNED STORAGE TEXT TIME TIMESTAMP VISIBLE YEAR.
+    NVARCHAR ONLY SECONDARY_ENGINE_ATTRIBUTE SIGNED STORAGE TEMPORARY TEXT TIME TIMESTAMP VISIBLE
+    YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -68,6 +71,9 @@ statement(A) ::= alter_schema_statement(B). {
     A = B;
 }
 statement(A) ::= drop_schema_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_table_statement(B). {
     A = B;
 }
 statement(A) ::= show_schemas_statement(B). {
@@ -112,6 +118,42 @@ drop_schema_statement(A) ::= DROP(T) DATABASE opt_if_exists(B) identifier(C). {
 }
 drop_schema_statement(A) ::= DROP(T) SCHEMA opt_if_exists(B) identifier(C). {
     A = mylite_sql_parser_make_drop_schema_statement(state, T, B, C);
+}
+
+drop_table_statement(A) ::= DROP(T) opt_temporary(U) TABLE opt_if_exists(B) drop_table_name_list(C) opt_drop_table_mode(D). {
+    A = mylite_sql_parser_make_drop_table_statement(
+        state,
+        (struct mylite_sql_parser_drop_table_tokens){
+            .drop = T,
+            .temporary = U,
+            .mode = D,
+        },
+        B,
+        C);
+}
+
+opt_temporary(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_temporary(A) ::= TEMPORARY(T). {
+    A = T;
+}
+
+drop_table_name_list(A) ::= table_name(B). {
+    A = mylite_sql_parser_make_table_name_list(state, B);
+}
+drop_table_name_list(A) ::= drop_table_name_list(B) COMMA table_name(C). {
+    A = mylite_sql_parser_append_table_name(state, B, C);
+}
+
+opt_drop_table_mode(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_drop_table_mode(A) ::= RESTRICT(T). {
+    A = T;
+}
+opt_drop_table_mode(A) ::= CASCADE(T). {
+    A = T;
 }
 
 show_schemas_statement(A) ::= SHOW(T) DATABASES(D). {

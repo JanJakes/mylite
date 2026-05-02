@@ -381,6 +381,75 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_drop_table_tokens tokens,
+    struct mylite_sql_ast_node *if_exists, struct mylite_sql_ast_node *table_names)
+{
+    struct mylite_sql_source_span span = span_from_token(&tokens.drop);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_names != NULL) {
+        span = span_join(span, table_names->span);
+    }
+    if (tokens.mode.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.mode));
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_DROP_TABLE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    if (tokens.temporary.text != NULL) {
+        mylite_sql_ast_node_set_drop_table_temporary(statement);
+    }
+    if (tokens.mode.text != NULL) {
+        if (token_text_equals(&tokens.mode, "RESTRICT")) {
+            mylite_sql_ast_node_set_drop_table_restrict(statement);
+        } else if (token_text_equals(&tokens.mode, "CASCADE")) {
+            mylite_sql_ast_node_set_drop_table_cascade(statement);
+        }
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_names);
+    mylite_sql_ast_node_append_child(statement, if_exists);
+    return statement;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_table_name_list(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *table_name)
+{
+    struct mylite_sql_ast_node *list = NULL;
+
+    if (table_name == NULL) {
+        return NULL;
+    }
+
+    list = make_node(state, MYLITE_SQL_AST_TABLE_NAME_LIST, table_name->span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, table_name);
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_table_name(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *list,
+                                    struct mylite_sql_ast_node *table_name)
+{
+    (void)state;
+
+    if (list == NULL || table_name == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, table_name);
+    mylite_sql_ast_node_set_span(list, span_join(list->span, table_name->span));
+    return list;
+}
+
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
                                               struct mylite_sql_token show_token,
@@ -2076,6 +2145,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"BLOB", MYLITE_SQL_PARSE_BLOB},
         {"BTREE", MYLITE_SQL_PARSE_BTREE},
         {"BYTE", MYLITE_SQL_PARSE_BYTE},
+        {"CASCADE", MYLITE_SQL_PARSE_CASCADE},
         {"CHAR", MYLITE_SQL_PARSE_CHAR},
         {"CHARACTER", MYLITE_SQL_PARSE_CHARACTER},
         {"CHARSET", MYLITE_SQL_PARSE_CHARSET},
@@ -2142,6 +2212,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"PRIMARY", MYLITE_SQL_PARSE_PRIMARY},
         {"READ", MYLITE_SQL_PARSE_READ},
         {"REAL", MYLITE_SQL_PARSE_REAL},
+        {"RESTRICT", MYLITE_SQL_PARSE_RESTRICT},
         {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
         {"SCHEMAS", MYLITE_SQL_PARSE_SCHEMAS},
         {"SECONDARY_ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_SECONDARY_ENGINE_ATTRIBUTE},
@@ -2152,6 +2223,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"SMALLINT", MYLITE_SQL_PARSE_SMALLINT},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
+        {"TEMPORARY", MYLITE_SQL_PARSE_TEMPORARY},
         {"TEXT", MYLITE_SQL_PARSE_TEXT},
         {"TIME", MYLITE_SQL_PARSE_TIME},
         {"TIMESTAMP", MYLITE_SQL_PARSE_TIMESTAMP},

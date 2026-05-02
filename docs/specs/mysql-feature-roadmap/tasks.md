@@ -31,7 +31,7 @@ level application surfaces.
        prefix lengths, index types, visibility, and comments.
 11. [x] `CREATE TABLE` base execution: column definitions, constraints, table
        options, schema qualification, `IF NOT EXISTS`, warnings, and atomicity.
-12. [ ] `DROP TABLE`: multi-table drops, `IF EXISTS`, temporary table handling,
+12. [x] `DROP TABLE`: multi-table drops, `IF EXISTS`, temporary table handling,
        warning behavior, metadata cleanup, and implicit commit behavior.
 13. [ ] `INSERT ... VALUES`: column lists, multi-row values, defaults,
        generated/default columns, affected rows, warnings, and insert ids.

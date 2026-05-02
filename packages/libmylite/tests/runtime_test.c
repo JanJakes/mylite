@@ -96,6 +96,7 @@ static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
 static int test_create_table_base_execution(void);
 static int test_create_table_prepare_has_no_side_effects(void);
+static int test_drop_table_base_execution(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -128,6 +129,7 @@ static int expect_column_names(const mylite_stmt *stmt, const char *const *expec
                                const char *context);
 static char *expected_physical_table_name(const char *schema_name, const char *table_name);
 static int expect_sqlite_table_exists(const struct sqlite_table_lookup *lookup);
+static int expect_sqlite_table_missing(const struct sqlite_table_lookup *lookup);
 static void remove_runtime_test_files(void);
 static int read_file_at(const char *path, long offset, unsigned char *buffer, size_t size);
 static int exec_sqlite(sqlite3 *database, const char *sql);
@@ -157,6 +159,7 @@ int main(void)
     failures += test_unsupported_statement();
     failures += test_create_table_base_execution();
     failures += test_create_table_prepare_has_no_side_effects();
+    failures += test_drop_table_base_execution();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -1483,6 +1486,193 @@ static int test_create_table_prepare_has_no_side_effects(void)
     return failures;
 }
 
+static int test_drop_table_base_execution(void)
+{
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    char *drop_me_physical = NULL;
+    int failures = 0;
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &database), MYLITE_OK, "open drop table file");
+
+    failures += prepare_sql(database, "DROP TABLE no_default_table", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop table no database");
+    failures += expect_contains(mylite_error_message(database), "No database selected",
+                                "drop table no database error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "DROP TABLE IF EXISTS no_default_table", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop table if exists no database");
+    failures += expect_contains(mylite_error_message(database), "No database selected",
+                                "drop table if exists no database error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_dt12", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_dt12", MYLITE_DONE);
+
+    failures += prepare_sql(database, "DROP TABLE missing_schema.t", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop missing schema table");
+    failures += expect_contains(mylite_error_message(database), "Unknown table 'missing_schema.t'",
+                                "drop missing schema table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "DROP TABLE IF EXISTS missing_schema.t", MYLITE_DONE);
+
+    failures += prepare_sql(database, "DROP TABLE information_schema.tables", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop system schema table");
+    failures += expect_contains(mylite_error_message(database), "system schema",
+                                "drop system schema table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "DROP TEMPORARY TABLE information_schema.tables", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop temporary system schema table");
+    failures += expect_contains(mylite_error_message(database), "system schema",
+                                "drop temporary system schema table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "DROP TEMPORARY TABLE IF EXISTS information_schema.tables",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "drop temporary if exists system schema table");
+    failures += expect_contains(mylite_error_message(database), "system schema",
+                                "drop temporary if exists system schema table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        execute_sql(database, "CREATE TABLE drop_me (id INT, KEY idx_id (id))", MYLITE_DONE);
+    drop_me_physical = expected_physical_table_name("mylite_dt12", "drop_me");
+    if (drop_me_physical == NULL) {
+        fprintf(stderr, "out of memory while building drop_me physical table name\n");
+        failures = 1;
+    } else {
+        failures += expect_sqlite_table_exists(&(const struct sqlite_table_lookup){
+            .path = path,
+            .table_name = drop_me_physical,
+        });
+    }
+    failures += execute_sql(database, "DROP TABLE drop_me", MYLITE_DONE);
+    failures += expect_no_information_schema_table_name_row(database, "drop_me");
+    failures += expect_no_information_schema_column_table_name_row(database, "drop_me");
+    failures += expect_no_information_schema_statistics_table_name_row(database, "drop_me");
+    if (drop_me_physical != NULL) {
+        failures += expect_sqlite_table_missing(&(const struct sqlite_table_lookup){
+            .path = path,
+            .table_name = drop_me_physical,
+        });
+        free(drop_me_physical);
+        drop_me_physical = NULL;
+    }
+
+    failures += prepare_sql(database, "DROP TABLE missing", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop missing table");
+    failures += expect_contains(mylite_error_message(database),
+                                "Unknown table 'mylite_dt12.missing'", "drop missing table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "DROP TABLE IF EXISTS missing", MYLITE_DONE);
+
+    failures += execute_sql(database, "CREATE TABLE if_existing1 (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE if_existing2 (id INT)", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "DROP TABLE IF EXISTS if_existing1, missing_if_exists, if_existing2 "
+                            "RESTRICT",
+                            MYLITE_DONE);
+    failures += expect_no_information_schema_table_name_row(database, "if_existing1");
+    failures += expect_no_information_schema_table_name_row(database, "if_existing2");
+
+    failures += execute_sql(database, "CREATE TABLE cascade_existing1 (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE cascade_existing2 (id INT)", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "DROP TABLE IF EXISTS cascade_existing1, cascade_existing2 "
+                            "CASCADE",
+                            MYLITE_DONE);
+    failures += expect_no_information_schema_table_name_row(database, "cascade_existing1");
+    failures += expect_no_information_schema_table_name_row(database, "cascade_existing2");
+
+    failures += execute_sql(database, "CREATE TABLE atomic_d (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE atomic_e (id INT)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "DROP TABLE atomic_d, missing_atomic, atomic_e", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop table atomic missing");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_information_schema_table_collation(database,
+                                                          &(const struct expected_table_collation){
+                                                              .table_name = "atomic_d",
+                                                              .collation = "utf8mb4_0900_ai_ci",
+                                                          });
+    failures += expect_information_schema_table_collation(database,
+                                                          &(const struct expected_table_collation){
+                                                              .table_name = "atomic_e",
+                                                              .collation = "utf8mb4_0900_ai_ci",
+                                                          });
+
+    failures += execute_sql(database, "CREATE TABLE dup (id INT)", MYLITE_DONE);
+    failures += prepare_sql(database, "DROP TABLE dup, dup", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop duplicate table");
+    failures += expect_contains(mylite_error_message(database), "Not unique table/alias: 'dup'",
+                                "drop duplicate table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "DROP TABLE IF EXISTS dup, dup", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop duplicate table if exists");
+    failures += expect_contains(mylite_error_message(database), "Not unique table/alias: 'dup'",
+                                "drop duplicate table if exists error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "DROP TABLE dup, mylite_dt12.dup", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop duplicate qualified table");
+    failures += expect_contains(mylite_error_message(database), "Not unique table/alias: 'dup'",
+                                "drop duplicate qualified table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_information_schema_table_collation(database,
+                                                          &(const struct expected_table_collation){
+                                                              .table_name = "dup",
+                                                              .collation = "utf8mb4_0900_ai_ci",
+                                                          });
+
+    failures += execute_sql(database, "CREATE TABLE temp_base (id INT)", MYLITE_DONE);
+    failures += prepare_sql(database, "DROP TEMPORARY TABLE temp_base", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop temporary base table");
+    failures +=
+        expect_contains(mylite_error_message(database), "Unknown table 'mylite_dt12.temp_base'",
+                        "drop temporary base table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_information_schema_table_collation(database,
+                                                          &(const struct expected_table_collation){
+                                                              .table_name = "temp_base",
+                                                              .collation = "utf8mb4_0900_ai_ci",
+                                                          });
+    failures += execute_sql(database, "DROP TEMPORARY TABLE IF EXISTS temp_base", MYLITE_DONE);
+    failures += expect_information_schema_table_collation(database,
+                                                          &(const struct expected_table_collation){
+                                                              .table_name = "temp_base",
+                                                              .collation = "utf8mb4_0900_ai_ci",
+                                                          });
+
+    failures += execute_sql(database, "DROP TABLE temp_base, dup, atomic_d, atomic_e", MYLITE_DONE);
+    failures += execute_sql(database, "DROP DATABASE mylite_dt12", MYLITE_DONE);
+
+    mylite_close(database);
+    remove_runtime_test_files();
+    return failures;
+}
+
 static int test_parse_error(void)
 {
     mylite_db *database = NULL;
@@ -1912,6 +2102,31 @@ static int expect_sqlite_table_exists(const struct sqlite_table_lookup *lookup)
     if (rc == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, lookup->table_name, -1, SQLITE_STATIC);
         failures += expect_sqlite_status(sqlite3_step(stmt), SQLITE_ROW, "physical table exists");
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(sqlite);
+    return failures;
+}
+
+static int expect_sqlite_table_missing(const struct sqlite_table_lookup *lookup)
+{
+    sqlite3 *sqlite = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int failures = expect_sqlite_status(
+        sqlite3_open_v2(lookup->path, &sqlite, SQLITE_OPEN_READONLY, mylite_vfs_name()), SQLITE_OK,
+        "open sqlite for physical table missing check");
+    int rc = SQLITE_OK;
+
+    if (sqlite == NULL) {
+        return failures + 1;
+    }
+
+    rc = sqlite3_prepare_v2(sqlite, "SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?", -1,
+                            &stmt, NULL);
+    failures += expect_sqlite_status(rc, SQLITE_OK, "prepare physical table missing check");
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, lookup->table_name, -1, SQLITE_STATIC);
+        failures += expect_sqlite_status(sqlite3_step(stmt), SQLITE_DONE, "physical table missing");
     }
     sqlite3_finalize(stmt);
     sqlite3_close(sqlite);

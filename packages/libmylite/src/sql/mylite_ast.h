@@ -51,6 +51,8 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_UNIQUE_INDEX = 40,
     MYLITE_SQL_AST_TABLE_OPTION_LIST = 41,
     MYLITE_SQL_AST_TABLE_OPTION = 42,
+    MYLITE_SQL_AST_DROP_TABLE_STATEMENT = 43,
+    MYLITE_SQL_AST_TABLE_NAME_LIST = 44,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -214,6 +216,9 @@ struct mylite_sql_ast_node {
     bool column_byte_attribute;
     bool column_zerofill_attribute;
     bool column_national_attribute;
+    bool drop_table_temporary;
+    bool drop_table_restrict;
+    bool drop_table_cascade;
 };
 
 struct mylite_sql_ast {
@@ -268,6 +273,9 @@ void mylite_sql_ast_node_set_index_option(struct mylite_sql_ast_node *node,
                                           enum mylite_sql_ast_index_option option);
 void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
                                           enum mylite_sql_ast_table_option option);
+void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 

@@ -92,7 +92,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP PROCEDURE` | ❌ | medium | Stored-procedure deletion and metadata cleanup. |  |
 | `DROP SERVER` | ❌ | low | Foreign server metadata deletion. |  |
 | `DROP SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system deletion and dependency checks. |  |
-| `DROP TABLE` | ❌ | top | Multi-table drop, temporary tables, foreign-key checks, and warnings. |  |
+| `DROP TABLE` | 🟡 | top | Multi-table drop, temporary tables, foreign-key checks, and warnings. | Implemented for base tables created by the supported `CREATE TABLE` subset, including schema-qualified/default-schema resolution, physical SQLite table removal, table/column/index catalog cleanup, `IF EXISTS` mixed existing/missing behavior, duplicate-target validation, all-or-nothing cleanup, and no-op `RESTRICT`/`CASCADE`. Temporary-table storage, warning records, foreign-key interactions, and implicit commit semantics are deferred; `DROP TEMPORARY TABLE` never drops base tables. See [DROP TABLE base execution spec](docs/specs/drop-table/specs.md). |
 | `DROP TABLESPACE` | ❌ | low | Tablespace deletion syntax and diagnostics. |  |
 | `DROP UNDO TABLESPACE` | ❌ | low | Undo tablespace deletion syntax and diagnostics. |  |
 | `DROP TRIGGER` | ❌ | high | Trigger deletion and metadata cleanup. |  |

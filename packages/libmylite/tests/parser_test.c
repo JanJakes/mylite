@@ -16,6 +16,7 @@ static int test_create_table_column_attributes(void);
 static int test_create_table_primary_keys_auto_increment(void);
 static int test_create_table_unique_secondary_indexes(void);
 static int test_create_table_base_execution_syntax(void);
+static int test_drop_table_syntax(void);
 static int test_select_expression_list(void);
 static int test_information_schema_select(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -77,6 +78,7 @@ int main(void)
     failures += test_create_table_primary_keys_auto_increment();
     failures += test_create_table_unique_secondary_indexes();
     failures += test_create_table_base_execution_syntax();
+    failures += test_drop_table_syntax();
     failures += test_select_expression_list();
     failures += test_information_schema_select();
     failures += test_unary_and_parenthesized_expression();
@@ -2006,6 +2008,76 @@ static int test_create_table_base_execution_syntax(void)
 
     failures += parse_sql("CREATE TABLE bad_unknown_option (a INT) ROW_FORMAT = DYNAMIC;",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_drop_table_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *names = NULL;
+    int failures = 0;
+
+    failures += parse_sql("DROP TABLE app.one, two;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    names = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_TABLE_STATEMENT, "drop table statement");
+    failures += expect_node(names, MYLITE_SQL_AST_TABLE_NAME_LIST, "drop table names");
+    failures += expect_child_count(names, 2U, "drop table name count");
+    failures += expect_node(child_at(names, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "qualified drop table name");
+    failures += expect_span_text(child_at(child_at(names, 0U), 0U), "app", "drop schema name");
+    failures += expect_span_text(child_at(child_at(names, 0U), 1U), "one", "drop table name");
+    failures += expect_span_text(child_at(names, 1U), "two", "unqualified drop table name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP TEMPORARY TABLE IF EXISTS `restrict` CASCADE;", MYLITE_SQL_PARSE_OK,
+                          &result);
+    statement = child_at(result.root, 0U);
+    names = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_TABLE_STATEMENT,
+                            "drop temporary table statement");
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_IF_EXISTS, "drop table if exists");
+    failures += expect_child_count(names, 1U, "drop temporary table name count");
+    failures += expect_span_text(child_at(names, 0U), "`restrict`", "quoted reserved table name");
+    if (!statement->drop_table_temporary) {
+        fprintf(stderr, "DROP TEMPORARY TABLE did not record temporary mode\n");
+        failures = 1;
+    }
+    if (!statement->drop_table_cascade) {
+        fprintf(stderr, "DROP TABLE CASCADE did not record cascade mode\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP TABLE IF EXISTS x, y RESTRICT;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    if (!statement->drop_table_restrict) {
+        fprintf(stderr, "DROP TABLE RESTRICT did not record restrict mode\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DROP TABLE IF EXISTS trailing,;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP TABLE restrict;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP TABLE cascade;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP TABLE temporary;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    names = child_at(statement, 0U);
+    failures += expect_span_text(child_at(names, 0U), "temporary", "nonreserved temporary name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP TABLE ;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

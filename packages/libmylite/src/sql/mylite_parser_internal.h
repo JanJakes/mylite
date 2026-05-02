@@ -69,6 +69,12 @@ struct mylite_sql_parser_table_integer_option_tokens {
     struct mylite_sql_token integer;
 };
 
+struct mylite_sql_parser_drop_table_tokens {
+    struct mylite_sql_token drop;
+    struct mylite_sql_token temporary;
+    struct mylite_sql_token mode;
+};
+
 void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
                                       struct mylite_sql_ast_node *root);
 void mylite_sql_parser_state_syntax_error(struct mylite_sql_parser_state *state, int parser_token,
@@ -102,6 +108,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_schema_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token drop_token,
     struct mylite_sql_ast_node *if_exists, struct mylite_sql_ast_node *schema_name);
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_drop_table_tokens tokens,
+    struct mylite_sql_ast_node *if_exists, struct mylite_sql_ast_node *table_names);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_table_name_list(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *table_name);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_table_name(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *list,
+                                    struct mylite_sql_ast_node *table_name);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
                                               struct mylite_sql_token show_token,

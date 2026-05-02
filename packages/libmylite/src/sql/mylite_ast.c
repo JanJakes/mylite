@@ -303,6 +303,33 @@ void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
     node->table_option = option;
 }
 
+void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->drop_table_temporary = true;
+}
+
+void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->drop_table_restrict = true;
+}
+
+void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->drop_table_cascade = true;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -409,6 +436,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "table_option_list";
     case MYLITE_SQL_AST_TABLE_OPTION:
         return "table_option";
+    case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+        return "drop_table_statement";
+    case MYLITE_SQL_AST_TABLE_NAME_LIST:
+        return "table_name_list";
     }
 
     return "unknown";

@@ -345,6 +345,11 @@ size_t mylite_ast_create_table_column_name_start(const MyliteAst *ast,
 size_t mylite_ast_create_table_column_name_end(const MyliteAst *ast,
                                                size_t statement_index,
                                                size_t column_index);
+const char *mylite_ast_create_table_column_name_value(const MyliteAst *ast,
+                                                      size_t statement_index,
+                                                      size_t column_index);
+size_t mylite_ast_create_table_column_name_value_length(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
 size_t mylite_ast_create_table_column_type_start(const MyliteAst *ast,
                                                  size_t statement_index,
                                                  size_t column_index);

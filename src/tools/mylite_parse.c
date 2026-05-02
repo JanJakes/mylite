@@ -259,6 +259,18 @@ static void dump_statements(const MyliteAst *ast) {
                  mylite_ast_create_table_column_check_expression_node(ast, i, j)),
              node_symbol_or_none(
                  mylite_ast_create_table_column_reference_node(ast, i, j)));
+      const char *column_name_value =
+          mylite_ast_create_table_column_name_value(ast, i, j);
+      size_t column_name_value_length =
+          mylite_ast_create_table_column_name_value_length(ast, i, j);
+      printf("    column[%zu].name_value len=%zu value=", j,
+             column_name_value_length);
+      if (column_name_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(column_name_value, column_name_value_length);
+      }
+      fputc('\n', stdout);
       size_t type_element_count =
           mylite_ast_create_table_column_type_element_count(ast, i, j);
       for (size_t k = 0; k < type_element_count; k++) {

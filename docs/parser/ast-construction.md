@@ -27,11 +27,11 @@ expression nodes.
   `DELETE`, and joined `UPDATE`.
 - `CREATE TABLE` statements expose typed column descriptors for direct column
   definitions, including definition, name, type, option spans, exact type
-  name/parameter/attribute spans, exact type kind, parser-level storage class,
-  numeric type parameters, semantic type-shape fields, enum/set element counts
-  and spans, decoded regular string-literal enum/set element values, exact
-  type-attribute spans, selected option detail spans, CST node anchors, coarse
-  type family, and column option flags.
+  name/parameter/attribute spans, decoded column names, exact type kind,
+  parser-level storage class, numeric type parameters, semantic type-shape
+  fields, enum/set element counts and spans, decoded regular string-literal
+  enum/set element values, exact type-attribute spans, selected option detail
+  spans, CST node anchors, coarse type family, and column option flags.
 - `CREATE TABLE` statements expose typed table key and constraint descriptors
   for primary keys, secondary indexes, unique indexes, fulltext indexes, spatial
   indexes, foreign keys, and check constraints.
@@ -69,10 +69,10 @@ expression nodes.
 - typed `CREATE TABLE` column descriptors with definition, name, type, type
   name, type parameters, type attributes, options, defaults, `ON UPDATE`,
   generated expression/storage, comments, inline check, and inline reference
-  spans, plus CST node anchors, type family, exact type kind, storage class,
-  numeric type parameters, semantic type-shape fields, enum/set element counts
-  and spans, decoded regular string-literal enum/set element values, exact
-  type-attribute spans, and option flags
+  spans, plus decoded column names, CST node anchors, type family, exact type
+  kind, storage class, numeric type parameters, semantic type-shape fields,
+  enum/set element counts and spans, decoded regular string-literal enum/set
+  element values, exact type-attribute spans, and option flags
 - typed `CREATE TABLE` key descriptors with kind, full constraint/index span,
   constraint name, key name, local key parts, referenced table, referenced
   schema/name, referenced key parts, index options, foreign actions, and check
@@ -98,13 +98,16 @@ now classifies the coarse type family (`numeric`, `string`, `temporal`, `json`,
 `enum`, `set`, or `spatial`) and exposes flags for common column attributes:
 nullability, defaults, auto-increment, inline key markers, comments, generated
 columns, `ON UPDATE`, references, checks, unsigned, zerofill, character set, and
-collation. It also exposes exact source spans for type names, type parameter
-lists, type attributes, default values, `ON UPDATE` values, generated
+collation. It also exposes exact source spans for column names, type names, type
+parameter lists, type attributes, default values, `ON UPDATE` values, generated
 expressions and storage mode, comments, inline check expressions/enforcement,
-and inline references. The column type view now classifies the exact grammar
-type kind for MySQL numeric, string, temporal, JSON, enum/set, and spatial type
-tokens, including common aliases such as `INT8`, `FLOAT8`, `NATIONAL VARCHAR`,
-`LONG`, `LONG VARCHAR`, and `LONG VARBINARY`. It also exposes a compact
+and inline references. Column names are exposed as length-aware values; unquoted
+names point into the retained SQL copy, while quoted names are arena-backed and
+have doubled quote characters collapsed. The column type view now classifies the
+exact grammar type kind for MySQL numeric, string, temporal, JSON, enum/set, and
+spatial type tokens, including common aliases such as `INT8`, `FLOAT8`,
+`NATIONAL VARCHAR`, `LONG`, `LONG VARCHAR`, and `LONG VARBINARY`. It also
+exposes a compact
 storage-class bucket (`integer`, `decimal`, `float`, `bit`, fixed/variable
 character string, binary string, blob, text, enum, set, JSON, temporal, spatial,
 or vector) derived from the exact type kind. `LONG` and `LONG VARCHAR` are
@@ -171,8 +174,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.998069 qps=496790 mbps=37.78 avg_us=2.013
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=21.999429 qps=316104 mbps=24.04 avg_us=3.164 avg_nodes=74.5 avg_ast_bytes=10135.1 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.987984 qps=497148 mbps=37.81 avg_us=2.011
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=22.083275 qps=314903 mbps=23.95 avg_us=3.176 avg_nodes=74.5 avg_ast_bytes=10139.0 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04 avg_column_name_values=0.29 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -185,7 +188,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 109K on disk, 72,080 bytes text/data/other
+parser support object: 109K on disk, 72,716 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.2M on disk
 mylite-parse: 1.0M on disk

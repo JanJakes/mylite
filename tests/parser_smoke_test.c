@@ -27,6 +27,7 @@ typedef struct ExpectedCreateTableColumn {
   const char *type_element1;
   const char *type_element0_value;
   const char *type_element1_value;
+  const char *name_value;
   int has_type_length;
   unsigned long long type_length;
   int has_type_precision;
@@ -811,6 +812,13 @@ int main(void) {
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_DECIMAL,
          .type_node_symbol = "nt_type"},
+        {.definition = "`a``b` INT",
+         .name = "`a``b`",
+         .type = "INT",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
+         .name_value = "a`b",
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER},
         {.definition = "e ENUM('a,b','c''d') DEFAULT 'a,b'",
          .name = "e",
          .type = "ENUM('a,b','c''d')",
@@ -921,6 +929,7 @@ int main(void) {
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEXT}};
     failures += expect_create_table_columns(
         "CREATE TABLE t (d DECIMAL(10,2) UNSIGNED ZEROFILL, "
+        "`a``b` INT, "
         "e ENUM('a,b','c''d') DEFAULT 'a,b', "
         "v VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin COMMENT 'x', "
         "x VARCHAR(10) BINARY, "
@@ -1610,6 +1619,10 @@ static int expect_create_table_columns(const char *sql,
         !span_matches(sql, mylite_ast_create_table_column_name_start(ast, 0, i),
                       mylite_ast_create_table_column_name_end(ast, 0, i),
                       columns[i].name) ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_column_name_value(ast, 0, i),
+            mylite_ast_create_table_column_name_value_length(ast, 0, i),
+            columns[i].name_value) ||
         !span_matches(sql, mylite_ast_create_table_column_type_start(ast, 0, i),
                       mylite_ast_create_table_column_type_end(ast, 0, i),
                       columns[i].type) ||
@@ -1803,7 +1816,7 @@ static int expect_create_table_columns(const char *sql,
             columns[i].reference)) {
       fprintf(stderr,
               "CREATE TABLE column[%zu] failed: %s\ndef=%zu..%zu name=%zu..%zu "
-              "type=%zu..%zu options=%zu..%zu family=%s kind=%s storage=%s "
+              "name_value=%zu type=%zu..%zu options=%zu..%zu family=%s kind=%s storage=%s "
               "flags=0x%x\n"
               "type_name=%zu..%zu type_params=%zu..%zu "
               "type_numeric_params=%zu:%llu,%llu type_elements=%zu "
@@ -1824,6 +1837,7 @@ static int expect_create_table_columns(const char *sql,
               mylite_ast_create_table_column_end(ast, 0, i),
               mylite_ast_create_table_column_name_start(ast, 0, i),
               mylite_ast_create_table_column_name_end(ast, 0, i),
+              mylite_ast_create_table_column_name_value_length(ast, 0, i),
               mylite_ast_create_table_column_type_start(ast, 0, i),
               mylite_ast_create_table_column_type_end(ast, 0, i),
               mylite_ast_create_table_column_options_start(ast, 0, i),

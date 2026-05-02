@@ -59,6 +59,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t statements = 0;
   size_t targets = 0;
   size_t columns = 0;
+  size_t column_name_values = 0;
   size_t column_known_types = 0;
   size_t column_known_storage_classes = 0;
   size_t column_type_numeric_parameters = 0;
@@ -104,6 +105,9 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
             options += mylite_ast_create_table_option_count(ast, i);
             for (size_t j = 0; j < mylite_ast_create_table_column_count(ast, i);
                  j++) {
+              if (mylite_ast_create_table_column_name_value(ast, i, j) != NULL) {
+                column_name_values++;
+              }
               if (mylite_ast_create_table_column_type_kind(ast, i, j) !=
                   MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN) {
                 column_known_types++;
@@ -230,7 +234,8 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)columns / (double)parsed, (double)keys / (double)parsed,
            (double)key_columns / (double)parsed,
            (double)key_options / (double)parsed, (double)options / (double)parsed);
-    printf(" avg_column_defaults=%.2f avg_column_on_updates=%.2f "
+    printf(" avg_column_name_values=%.2f "
+           "avg_column_defaults=%.2f avg_column_on_updates=%.2f "
            "avg_column_generated=%.2f avg_column_checks=%.2f "
            "avg_column_references=%.2f avg_column_known_types=%.2f "
            "avg_column_storage_classes=%.2f "
@@ -243,6 +248,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_column_type_zerofill_attrs=%.2f "
            "avg_column_type_binary_attrs=%.2f avg_column_type_charsets=%.2f "
            "avg_column_type_collations=%.2f avg_column_value_roots=%.2f",
+           (double)column_name_values / (double)parsed,
            (double)column_defaults / (double)parsed,
            (double)column_on_updates / (double)parsed,
            (double)column_generated / (double)parsed,

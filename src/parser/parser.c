@@ -57,6 +57,8 @@ typedef struct MyliteAstCreateTableColumn {
   size_t end;
   size_t name_start;
   size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
   size_t type_start;
   size_t type_end;
   const MyliteAstNode *type_node;
@@ -320,6 +322,8 @@ static int mylite_ast_fill_create_table_columns(MyliteAst *ast,
 static int mylite_ast_fill_create_table_column(
     MyliteAst *ast, MyliteAstCreateTableColumn *column,
     const MyliteAstNode *node);
+static int mylite_ast_set_create_table_column_name_value(
+    MyliteAst *ast, MyliteAstCreateTableColumn *column);
 static void mylite_ast_set_create_table_column_type_details(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *type);
 static void mylite_ast_set_create_table_column_type_tail_details(
@@ -365,6 +369,14 @@ static size_t mylite_ast_write_decoded_sql_string_literal(char *target,
                                                           size_t start,
                                                           size_t end);
 static int mylite_ast_sql_string_escape_value(int ch);
+static int mylite_ast_decode_identifier(MyliteAst *ast, size_t start,
+                                        size_t end, const char **value,
+                                        size_t *value_length);
+static size_t mylite_ast_decoded_identifier_length(const char *source,
+                                                   size_t start, size_t end);
+static size_t mylite_ast_write_decoded_identifier(char *target,
+                                                  const char *source,
+                                                  size_t start, size_t end);
 static void mylite_ast_set_create_table_column_type_shape(
     MyliteAstCreateTableColumn *column);
 static void mylite_ast_set_create_table_column_type_length(
@@ -1211,6 +1223,21 @@ size_t mylite_ast_create_table_column_name_end(const MyliteAst *ast,
   const MyliteAstCreateTableColumn *column =
       mylite_ast_create_table_column_at(ast, statement_index, column_index);
   return column == NULL ? 0 : column->name_end;
+}
+
+const char *mylite_ast_create_table_column_name_value(const MyliteAst *ast,
+                                                      size_t statement_index,
+                                                      size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? NULL : column->name_value;
+}
+
+size_t mylite_ast_create_table_column_name_value_length(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->name_value_length;
 }
 
 size_t mylite_ast_create_table_column_type_start(const MyliteAst *ast,
@@ -3316,6 +3343,9 @@ static int mylite_ast_fill_create_table_column(
   if (name != NULL) {
     column->name_start = mylite_ast_node_start(name);
     column->name_end = mylite_ast_node_end(name);
+    if (!mylite_ast_set_create_table_column_name_value(ast, column)) {
+      return 0;
+    }
   }
 
   const MyliteAstNode *type = mylite_ast_find_first_symbol(node, "nt_type");
@@ -3344,6 +3374,18 @@ static int mylite_ast_fill_create_table_column(
   mylite_ast_set_create_table_column_option_details(column, options);
   column->flags = mylite_ast_collect_column_flags(type, options);
   return 1;
+}
+
+static int mylite_ast_set_create_table_column_name_value(
+    MyliteAst *ast, MyliteAstCreateTableColumn *column) {
+  if (ast == NULL || column == NULL || column->name_start >= column->name_end ||
+      column->name_end > ast->source_length) {
+    return 1;
+  }
+
+  return mylite_ast_decode_identifier(ast, column->name_start,
+                                      column->name_end, &column->name_value,
+                                      &column->name_value_length);
 }
 
 static void mylite_ast_set_create_table_column_type_details(
@@ -3803,6 +3845,66 @@ static int mylite_ast_sql_string_escape_value(int ch) {
     default:
       return ch;
   }
+}
+
+static int mylite_ast_decode_identifier(MyliteAst *ast, size_t start,
+                                        size_t end, const char **value,
+                                        size_t *value_length) {
+  if (ast == NULL || ast->source == NULL || value == NULL ||
+      value_length == NULL || start >= end || end > ast->source_length) {
+    return 1;
+  }
+
+  char quote = ast->source[start];
+  if ((quote != '`' && quote != '"') || end - start < 2 ||
+      ast->source[end - 1] != quote) {
+    *value = ast->source + start;
+    *value_length = end - start;
+    return 1;
+  }
+
+  size_t length = mylite_ast_decoded_identifier_length(ast->source, start, end);
+  char *decoded = mylite_ast_alloc(ast, length + 1);
+  if (decoded == NULL) {
+    return 0;
+  }
+  size_t written =
+      mylite_ast_write_decoded_identifier(decoded, ast->source, start, end);
+  decoded[written] = '\0';
+  *value = decoded;
+  *value_length = written;
+  return 1;
+}
+
+static size_t mylite_ast_decoded_identifier_length(const char *source,
+                                                   size_t start, size_t end) {
+  size_t length = 0;
+  char quote = source[start];
+  for (size_t offset = start + 1; offset + 1 < end;) {
+    unsigned char ch = (unsigned char)source[offset++];
+    if (ch == (unsigned char)quote && offset + 1 < end &&
+        source[offset] == quote) {
+      offset++;
+    }
+    length++;
+  }
+  return length;
+}
+
+static size_t mylite_ast_write_decoded_identifier(char *target,
+                                                  const char *source,
+                                                  size_t start, size_t end) {
+  size_t written = 0;
+  char quote = source[start];
+  for (size_t offset = start + 1; offset + 1 < end;) {
+    unsigned char ch = (unsigned char)source[offset++];
+    if (ch == (unsigned char)quote && offset + 1 < end &&
+        source[offset] == quote) {
+      offset++;
+    }
+    target[written++] = (char)ch;
+  }
+  return written;
 }
 
 static void mylite_ast_set_create_table_column_type_shape(

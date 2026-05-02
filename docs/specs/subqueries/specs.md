@@ -281,9 +281,10 @@ multi-column subqueries fail with error 1241:
 | `SELECT id FROM outer_t WHERE (val,grp) <> ANY (SELECT a,b FROM pair_t)` | error 1241 / `21000` |
 | `SELECT id FROM outer_t WHERE (val,grp) = ALL (SELECT a,b FROM pair_t)` | error 1241 / `21000` |
 
-The row quantified alias follow-up is specified in
-`docs/specs/row-quantified-subquery-comparisons/specs.md`. It is currently
-deferred from runtime execution.
+The row quantified alias follow-up is implemented for uncorrelated aliases in
+the current no-table scalar `SELECT` and table-backed `SELECT` expression
+contexts. It remains separate from general row quantified comparisons,
+correlation, and DML subquery execution.
 
 ### Row Subqueries
 
@@ -342,7 +343,11 @@ Representative diagnostics:
 | --- | --- |
 | `SELECT id FROM outer_t WHERE val IN (SELECT val FROM inner_t ORDER BY val LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` |
 | `SELECT id FROM outer_t WHERE (val,grp) IN (SELECT a,b FROM pair_t LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` |
+| `SELECT id FROM outer_t WHERE val IN (SELECT a,b FROM pair_t LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` |
 | `SELECT id FROM outer_t WHERE val = (SELECT val FROM inner_t ORDER BY val LIMIT 1)` | accepted as a scalar-subquery comparison |
+
+For `IN`, `ANY`, `SOME`, and `ALL` subqueries, the `LIMIT` diagnostic takes
+precedence over operand-width diagnostics.
 
 Subquery-specific errors to preserve:
 
@@ -856,8 +861,8 @@ results as `NULL`, row `IN` / `NOT IN` error 1235 for inner `LIMIT`, row tuple
 nullable row predicates, and `NOT_NULL` metadata for null-safe row scalar
 comparisons.
 
-The remaining Task 29 surfaces are deferred: correlated subqueries, row
-quantified alias execution, DML subquery execution, derived-table row sources,
-CTE/set-operation subqueries, and optimizer behavior. The row quantified alias
-surface is specified in
+The remaining Task 29 surfaces are deferred: correlated subqueries, general row
+quantified comparison execution outside the accepted alias forms, DML subquery
+execution, derived-table row sources, CTE/set-operation subqueries, and
+optimizer behavior. The row quantified alias surface is specified in
 `docs/specs/row-quantified-subquery-comparisons/specs.md`.

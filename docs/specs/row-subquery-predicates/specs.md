@@ -37,8 +37,9 @@ The first runtime slice does not support:
   contexts
 - `TABLE` and `VALUES` subqueries
 - CTEs and set operations inside subqueries
-- row quantified comparisons except where a later implementation deliberately
-  treats row `= ANY` and row `= SOME` as row `IN` aliases after separate tests
+- general row quantified comparisons; the later
+  `row-quantified-subquery-comparisons` slice implements only the MySQL-accepted
+  row `= ANY` / `= SOME` and row `<>` / `!= ALL` aliases
 - optimizer semijoin, antijoin, decorrelation, tuple-index lookup, or
   materialization planning beyond externally visible MySQL-compatible behavior
 
@@ -327,6 +328,7 @@ Verified warning behavior:
 | `SELECT (1,2) IN (SELECT x,y FROM warn_pair_t)` | `1` | `2` | warnings 1292 for `'1x'` and `'2x'`; membership stops after the true row |
 | `SELECT (1,3) IN (SELECT x,y FROM warn_pair_t)` | `0` | `3` | warnings 1292 for `'1x'`, `'2x'`, and `'bad'` |
 | `SELECT (2,3) IN (SELECT x,y FROM warn_pair_t)` | `0` | `1` | warning 1292 for `'1x'`; later elements are skipped after false first elements |
+| `SELECT (NULL,2) IN (SELECT x,y FROM warn_pair_t)` | `NULL` | `1` | warning 1292 for `'2x'`; scanning stops after the first unknown candidate because no later row can become a true match |
 | `SELECT (1,3) NOT IN (SELECT x,y FROM warn_pair_t)` | `1` | `3` | same warning rows as the corresponding `IN` probe |
 
 The implementation must preserve warning order and counts for supported
@@ -354,7 +356,11 @@ Verified diagnostics:
 | `SELECT (1,2) = (SELECT a,b FROM pair_t)` | error 1242 / `21000`, `Subquery returns more than 1 row` |
 | `SELECT (1,2) = (SELECT a FROM pair_t LIMIT 1)` | error 1241 / `21000`, `Operand should contain 2 column(s)` |
 | `SELECT (1,2) IN (SELECT a,b FROM pair_t LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` |
+| `SELECT (1,2) IN (SELECT a FROM pair_t LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` |
 | `SELECT ROW(1) = (SELECT a FROM pair_t LIMIT 1)` | syntax error 1064 / `42000` |
+
+For row `IN` predicates, `LIMIT` diagnostics take precedence over operand-width
+diagnostics.
 
 Subquery-specific errors to preserve:
 
@@ -425,12 +431,9 @@ verified cases:
 | `SELECT (10,1) = SOME (SELECT a,b FROM pair_t)` | `1` |
 | `SELECT (10,1) > ANY (SELECT a,b FROM pair_t)` | error 1241 / `21000`, `Operand should contain 1 column(s)` |
 
-This row-subquery slice should focus on row scalar comparisons and row
-`IN` / `NOT IN`. Row `= ANY` / `= SOME` may be implemented as a follow-up once
-the row tuple comparison path is stable, or included only if the implementation
-can preserve all row `IN` semantics and diagnostics without broadening support
-to unsupported row quantified operators.
-That follow-up is specified in
+This row-subquery slice focuses on row scalar comparisons and row `IN` /
+`NOT IN`. The row quantified alias follow-up is now implemented only for the
+MySQL-accepted membership aliases and is specified in
 `docs/specs/row-quantified-subquery-comparisons/specs.md`.
 
 ## MyLite Parser and AST Design
@@ -557,12 +560,13 @@ primary_expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
 }
 ```
 
-The row quantified alias surface is deferred from this slice:
+The row quantified alias surface is implemented by the separate
+`row-quantified-subquery-comparisons` slice:
 
 ```lemon
-/* Deferred until row IN is stable and separately verified. */
 comparison_expression ::= row_constructor EQ ANY subquery.
 comparison_expression ::= row_constructor EQ SOME subquery.
+comparison_expression ::= row_constructor NE ALL subquery.
 ```
 
 ## Runtime Design
@@ -632,8 +636,8 @@ Parser tests should cover:
 - one-element `ROW(a)` syntax rejection
 - scalar `(a)` with a two-column subquery producing 1241 at analysis/runtime,
   not a row-constructor parse
-- row quantified aliases kept deferred or explicitly routed only for `= ANY`
-  and `= SOME` if the implementation chooses to include them
+- row quantified aliases covered by
+  `docs/specs/row-quantified-subquery-comparisons/specs.md`
 
 Runtime tests should cover:
 

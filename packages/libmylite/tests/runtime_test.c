@@ -4788,6 +4788,7 @@ static int test_subquery_execution(void)
     static const char *const row_order_warning_column[] = {"row_order_warning"};
     static const char *const row_warning_column[] = {"row_warn"};
     static const char *const row_warning_false[] = {"0"};
+    static const char *const row_warning_null[] = {NULL};
     static const char *const row_warning_true[] = {"1"};
     static const char *const row_scalar_warning_column[] = {"row_scalar_warn"};
     static const char *const row_metadata_columns[] = {
@@ -4802,6 +4803,47 @@ static int test_subquery_execution(void)
         {"row_nse_result", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
         {"no_table_row_in", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const row_quant_truth_columns[] = {
+        "eq_any",      "eq_some",  "row_eq_any",     "ne_all",      "bang_ne_all", "row_ne_all",
+        "unknown_any", "miss_any", "unknown_ne_all", "miss_ne_all", "empty_any",   "empty_ne_all"};
+    static const char *const row_quant_truth_values[] = {
+        "1", "1", "1", "0", "0", "0", NULL, "0", NULL, "1", "0", "1",
+    };
+    static const char *const row_quant_projection_columns[] = {"id", "row_eq_any", "row_ne_all"};
+    static const char *const row_quant_projection_values[] = {
+        "1", "1", "0", "2", "1", "0", "3", NULL, NULL, "4", NULL, NULL,
+        "5", "1", "0", "6", "0", "1", "7", NULL, NULL, "8", NULL, NULL,
+    };
+    static const char *const row_quant_match_ids[] = {"1", "2", "5"};
+    static const char *const row_quant_not_all_ids[] = {"6"};
+    static const char *const row_quant_join_values[] = {"1", "201", "2", "202", "5", "205"};
+    static const char *const row_quant_having_values[] = {"1", "2", "3", "1"};
+    static const char *const row_quant_order_ids[] = {"1", "2", "5", "6", "3", "4", "7", "8"};
+    static const char *const row_quant_no_table_columns[] = {"row_eq_any", "row_ne_all"};
+    static const char *const row_quant_no_table_values[] = {"1", "0"};
+    static const char *const row_quant_inner_clause_columns[] = {
+        "ordered_row_any", "distinct_row_any", "group_row_any"};
+    static const char *const row_quant_inner_clause_values[] = {"1", "1", "1"};
+    static const char *const row_quant_order_warning_column[] = {"order_warning_row_any"};
+    static const char *const row_quant_warning_column[] = {"row_quant_warn"};
+    static const char *const row_quant_warning_false[] = {"0"};
+    static const char *const row_quant_warning_null[] = {NULL};
+    static const char *const row_quant_warning_true[] = {"1"};
+    static const char *const row_quant_warning_projection_values[] = {
+        "0", "0", NULL, "0", "0", "0", "0", "0",
+    };
+    static const char *const row_quant_metadata_columns[] = {"row_eq_any", "row_eq_some",
+                                                             "row_ne_all", "row_bang_ne_all"};
+    static const struct expected_result_metadata row_quant_metadata[] = {
+        {"row_eq_any", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"row_eq_some", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"row_ne_all", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"row_bang_ne_all", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
     };
     mylite_db *database = NULL;
@@ -4849,6 +4891,15 @@ static int test_subquery_execution(void)
     failures += execute_sql(database,
                             "CREATE TABLE warn_pair_t ("
                             "x VARCHAR(16) NULL, y VARCHAR(16) NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE row_quant_outer_t ("
+                            "id INT PRIMARY KEY, grp INT NULL, val INT NULL, txt VARCHAR(16) NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE row_quant_join_t ("
+                            "id INT PRIMARY KEY, outer_id INT NULL, marker_a INT NULL, "
+                            "marker_b INT NULL)",
                             MYLITE_DONE);
     failures += execute_sql(database,
                             "INSERT INTO outer_in_t VALUES "
@@ -4905,6 +4956,28 @@ static int test_subquery_execution(void)
                             "('1x','2x'),"
                             "('1','bad'),"
                             "('9','bad')",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO row_quant_outer_t VALUES "
+                            "(1,1,10,'alpha'),"
+                            "(2,1,20,'beta'),"
+                            "(3,2,NULL,'gamma'),"
+                            "(4,NULL,5,NULL),"
+                            "(5,3,30,'delta'),"
+                            "(6,9,7,'epsilon'),"
+                            "(7,2,7,'zeta'),"
+                            "(8,NULL,10,'eta')",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO row_quant_join_t VALUES "
+                            "(201,1,10,1),"
+                            "(202,2,20,1),"
+                            "(203,3,NULL,2),"
+                            "(204,4,5,NULL),"
+                            "(205,5,30,3),"
+                            "(206,6,7,9),"
+                            "(207,7,NULL,2),"
+                            "(208,8,10,NULL)",
                             MYLITE_DONE);
 
     failures +=
@@ -5343,6 +5416,12 @@ static int test_subquery_execution(void)
         database, "SELECT (2,3) IN (SELECT x,y FROM warn_pair_t) AS row_warn", row_warning_column,
         1, row_warning_false, 1, "row in warning first element false");
     failures += expect_int(mylite_warning_count(database), 1, "row in first element warning count");
+    failures +=
+        expect_select_rows(database, "SELECT (NULL,2) IN (SELECT x,y FROM warn_pair_t) AS row_warn",
+                           row_warning_column, 1, row_warning_null, 1, "row in left null warning");
+    failures += expect_int(mylite_warning_count(database), 1, "row in left null warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "row in left null warning code");
     failures += expect_select_rows(
         database, "SELECT (1,3) NOT IN (SELECT x,y FROM warn_pair_t) AS row_warn",
         row_warning_column, 1, row_warning_true, 1, "row not in warning true");
@@ -5366,6 +5445,139 @@ static int test_subquery_execution(void)
     failures += expect_column_names(stmt, row_metadata_columns, 5, "row subquery metadata names");
     failures += expect_result_metadata(stmt, row_metadata, 5, "row subquery metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "row subquery metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT "
+        "(10,1) = ANY (SELECT a,b FROM pair_t) AS eq_any, "
+        "(10,1) = SOME (SELECT a,b FROM pair_t) AS eq_some, "
+        "ROW(10,1) = ANY (SELECT a,b FROM pair_t) AS row_eq_any, "
+        "(10,1) <> ALL (SELECT a,b FROM pair_t) AS ne_all, "
+        "(10,1) != ALL (SELECT a,b FROM pair_t) AS bang_ne_all, "
+        "ROW(10,1) <> ALL (SELECT a,b FROM pair_t) AS row_ne_all, "
+        "(7,2) = ANY (SELECT a,b FROM pair_t) AS unknown_any, "
+        "(7,9) = ANY (SELECT a,b FROM pair_t) AS miss_any, "
+        "(7,2) <> ALL (SELECT a,b FROM pair_t) AS unknown_ne_all, "
+        "(7,9) <> ALL (SELECT a,b FROM pair_t) AS miss_ne_all, "
+        "(NULL,2) = ANY (SELECT a,b FROM pair_t WHERE a=999) AS empty_any, "
+        "(NULL,2) <> ALL (SELECT a,b FROM pair_t WHERE a=999) AS empty_ne_all",
+        row_quant_truth_columns, 12, row_quant_truth_values, 1, "row quantified truth table");
+    failures += expect_select_rows(database,
+                                   "SELECT id, "
+                                   "(val,grp) = ANY (SELECT a,b FROM pair_t) AS row_eq_any, "
+                                   "(val,grp) <> ALL (SELECT a,b FROM pair_t) AS row_ne_all "
+                                   "FROM row_quant_outer_t ORDER BY id",
+                                   row_quant_projection_columns, 3, row_quant_projection_values, 8,
+                                   "row quantified projection");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM row_quant_outer_t "
+                           "WHERE (val,grp) = ANY (SELECT a,b FROM pair_t) ORDER BY id",
+                           id_column, 1, row_quant_match_ids, 3, "row quantified where any");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM row_quant_outer_t "
+                           "WHERE (val,grp) <> ALL (SELECT a,b FROM pair_t) ORDER BY id",
+                           id_column, 1, row_quant_not_all_ids, 1, "row quantified where all");
+    failures += expect_select_rows(
+        database,
+        "SELECT o.id AS outer_id, j.id AS join_id FROM row_quant_outer_t AS o "
+        "JOIN row_quant_join_t AS j "
+        "ON j.outer_id=o.id AND (j.marker_a,j.marker_b) = ANY (SELECT a,b FROM pair_t) "
+        "ORDER BY o.id, j.id",
+        in_join_columns, 2, row_quant_join_values, 3, "row quantified join on");
+    failures += expect_select_rows(
+        database,
+        "SELECT grp, COUNT(*) AS c FROM row_quant_outer_t GROUP BY grp "
+        "HAVING (grp, COUNT(*)) = ANY "
+        "(SELECT b, COUNT(*) FROM pair_t WHERE b IS NOT NULL GROUP BY b) "
+        "ORDER BY grp",
+        in_having_columns, 2, row_quant_having_values, 2, "row quantified having");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM row_quant_outer_t "
+                           "ORDER BY (val,grp) = ANY (SELECT a,b FROM pair_t) DESC, id",
+                           id_column, 1, row_quant_order_ids, 8, "row quantified hidden order");
+    failures += expect_select_rows(database,
+                                   "SELECT "
+                                   "(10,1) = ANY (SELECT a,b FROM pair_t) AS row_eq_any, "
+                                   "(10,1) <> ALL (SELECT a,b FROM pair_t) AS row_ne_all",
+                                   row_quant_no_table_columns, 2, row_quant_no_table_values, 1,
+                                   "row quantified no-table select");
+    failures += expect_select_rows(
+        database,
+        "SELECT "
+        "(10,1) = ANY (SELECT a,b FROM pair_t ORDER BY label DESC) AS ordered_row_any, "
+        "(10,1) = ANY (SELECT DISTINCT a,b FROM pair_t) AS distinct_row_any, "
+        "(1,2) = ANY "
+        "(SELECT b, COUNT(*) FROM pair_t WHERE b IS NOT NULL GROUP BY b HAVING COUNT(*) >= 1) "
+        "AS group_row_any",
+        row_quant_inner_clause_columns, 3, row_quant_inner_clause_values, 1,
+        "row quantified inner clauses");
+    failures += expect_select_rows(
+        database,
+        "SELECT (10,1) = ANY (SELECT a,b FROM pair_t ORDER BY 1/0) AS order_warning_row_any",
+        row_quant_order_warning_column, 1, row_quant_warning_true, 1,
+        "row quantified ignored order warnings");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "row quantified ignored order warning count");
+    failures += expect_select_rows(
+        database, "SELECT (1,2) = ANY (SELECT x,y FROM warn_pair_t) AS row_quant_warn",
+        row_quant_warning_column, 1, row_quant_warning_true, 1, "row quantified warning true");
+    failures += expect_int(mylite_warning_count(database), 2, "row quantified warning true count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "row quantified warning true code 0");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 1), mysql_warning_truncated_wrong_value,
+                   "row quantified warning true code 1");
+    failures += expect_select_rows(
+        database, "SELECT (1,3) = ANY (SELECT x,y FROM warn_pair_t) AS row_quant_warn",
+        row_quant_warning_column, 1, row_quant_warning_false, 1, "row quantified warning false");
+    failures += expect_int(mylite_warning_count(database), 3, "row quantified warning false count");
+    failures += expect_select_rows(
+        database, "SELECT (2,3) = ANY (SELECT x,y FROM warn_pair_t) AS row_quant_warn",
+        row_quant_warning_column, 1, row_quant_warning_false, 1,
+        "row quantified warning first element false");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "row quantified first element warning count");
+    failures += expect_select_rows(
+        database, "SELECT (NULL,2) = ANY (SELECT x,y FROM warn_pair_t) AS row_quant_warn",
+        row_quant_warning_column, 1, row_quant_warning_null, 1, "row quantified left null warning");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "row quantified left null warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "row quantified left null warning code");
+    failures += expect_select_rows(
+        database, "SELECT (1,3) <> ALL (SELECT x,y FROM warn_pair_t) AS row_quant_warn",
+        row_quant_warning_column, 1, row_quant_warning_true, 1,
+        "row quantified not all warning true");
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "row quantified not all warning true count");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT (val,grp) = ANY (SELECT x,y FROM warn_pair_t) AS row_quant_warn "
+                           "FROM row_quant_outer_t ORDER BY id",
+                           row_quant_warning_column, 1, row_quant_warning_projection_values, 8,
+                           "row quantified projection warning rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 8, "row quantified projection warning count");
+
+    failures += prepare_sql(database,
+                            "SELECT "
+                            "(val,grp) = ANY (SELECT a,b FROM pair_t) AS row_eq_any, "
+                            "(val,grp) = SOME (SELECT a,b FROM pair_t) AS row_eq_some, "
+                            "(val,grp) <> ALL (SELECT a,b FROM pair_t) AS row_ne_all, "
+                            "(val,grp) != ALL (SELECT a,b FROM pair_t) AS row_bang_ne_all "
+                            "FROM row_quant_outer_t LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_column_names(stmt, row_quant_metadata_columns, 4, "row quantified metadata names");
+    failures += expect_result_metadata(stmt, row_quant_metadata, 4, "row quantified metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "row quantified metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -5407,6 +5619,12 @@ static int test_subquery_execution(void)
     failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
                            "in subquery limit warning code");
     failures += expect_prepare_error(
+        database, "SELECT 1 IN (SELECT n, txt FROM set_in_t WHERE set_name='base' LIMIT 1)",
+        MYLITE_EXEC_ERROR, "LIMIT & IN/ALL/ANY/SOME subquery",
+        "in subquery limit before column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
+                           "in subquery limit before column count warning code");
+    failures += expect_prepare_error(
         database, "SELECT 1 = ANY (SELECT n, txt FROM set_in_t WHERE set_name='base')",
         MYLITE_EXEC_ERROR, "Operand should contain 1 column(s)",
         "quantified subquery column count");
@@ -5422,6 +5640,12 @@ static int test_subquery_execution(void)
         MYLITE_EXEC_ERROR, "LIMIT & IN/ALL/ANY/SOME subquery", "quantified any subquery limit");
     failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
                            "quantified any subquery limit warning code");
+    failures += expect_prepare_error(
+        database, "SELECT 1 = ANY (SELECT n, txt FROM set_in_t WHERE set_name='base' LIMIT 1)",
+        MYLITE_EXEC_ERROR, "LIMIT & IN/ALL/ANY/SOME subquery",
+        "quantified subquery limit before column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
+                           "quantified subquery limit before column count warning code");
     failures += expect_prepare_error(
         database, "SELECT 1 = SOME (SELECT n FROM set_in_t WHERE set_name='base' LIMIT 1)",
         MYLITE_EXEC_ERROR, "LIMIT & IN/ALL/ANY/SOME subquery", "quantified some subquery limit");
@@ -5461,6 +5685,11 @@ static int test_subquery_execution(void)
                                      "row in subquery limit");
     failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
                            "row in subquery limit warning code");
+    failures += expect_prepare_error(database, "SELECT (1,2) IN (SELECT a FROM pair_t LIMIT 1)",
+                                     MYLITE_EXEC_ERROR, "LIMIT & IN/ALL/ANY/SOME subquery",
+                                     "row in subquery limit before column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
+                           "row in subquery limit before column count warning code");
     failures +=
         expect_prepare_error(database, "SELECT (1,2) IN (SELECT missing_col,b FROM pair_t)",
                              MYLITE_EXEC_ERROR, "Unknown column", "row in subquery unknown column");
@@ -5475,6 +5704,86 @@ static int test_subquery_execution(void)
     failures +=
         expect_int((int)mylite_warning_code(database, 0), mysql_warning_field_in_order_not_select,
                    "row in distinct hidden order column warning code");
+    failures += expect_prepare_error(database, "SELECT (1,2) = ANY (SELECT a FROM pair_t)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 2 column(s)",
+                                     "row quantified narrow column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "row quantified narrow column count warning code");
+    failures += expect_prepare_error(database, "SELECT (1,2) = ANY (SELECT a,b,label FROM pair_t)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 2 column(s)",
+                                     "row quantified wide column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "row quantified wide column count warning code");
+    failures += expect_prepare_error(database, "SELECT (1) = ANY (SELECT a,b FROM pair_t)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 1 column(s)",
+                                     "scalar quantified row-looking column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "scalar quantified row-looking warning code");
+    failures += prepare_sql(database, "SELECT ROW(1) = ANY (SELECT a FROM pair_t)",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "single element ROW quantified rejected");
+    failures += prepare_sql(database, "SELECT (10,1) <=> ANY (SELECT a,b FROM pair_t)",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "row null-safe quantified rejected");
+    failures += expect_prepare_error(database, "SELECT (10,1) = ALL (SELECT a,b FROM pair_t)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 1 column(s)",
+                                     "row quantified equal all rejected");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "row quantified equal all warning code");
+    failures += expect_prepare_error(database, "SELECT (10,1) <> ANY (SELECT a,b FROM pair_t)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 1 column(s)",
+                                     "row quantified not equal any rejected");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "row quantified not equal any warning code");
+    failures += expect_prepare_error(database, "SELECT (10,1) != ANY (SELECT a,b FROM pair_t)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 1 column(s)",
+                                     "row quantified bang not equal any rejected");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "row quantified bang not equal any warning code");
+    failures += expect_prepare_error(database, "SELECT (10,1) > ANY (SELECT a,b FROM pair_t)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 1 column(s)",
+                                     "row quantified greater any rejected");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "row quantified greater any warning code");
+    failures += expect_prepare_error(database, "SELECT (10,1) >= ALL (SELECT a,b FROM pair_t)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 1 column(s)",
+                                     "row quantified greater equal all rejected");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "row quantified greater equal all warning code");
+    failures += expect_prepare_error(database, "SELECT (10,1) < SOME (SELECT a,b FROM pair_t)",
+                                     MYLITE_EXEC_ERROR, "Operand should contain 1 column(s)",
+                                     "row quantified less some rejected");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "row quantified less some warning code");
+    failures += expect_prepare_error(
+        database, "SELECT (10,1) = ANY (SELECT a,b FROM pair_t LIMIT 1)", MYLITE_EXEC_ERROR,
+        "LIMIT & IN/ALL/ANY/SOME subquery", "row quantified any limit");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
+                           "row quantified any limit warning code");
+    failures += expect_prepare_error(database, "SELECT (10,1) = ANY (SELECT a FROM pair_t LIMIT 1)",
+                                     MYLITE_EXEC_ERROR, "LIMIT & IN/ALL/ANY/SOME subquery",
+                                     "row quantified limit before column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
+                           "row quantified limit before column count warning code");
+    failures += expect_prepare_error(
+        database, "SELECT (10,1) > ANY (SELECT a,b FROM pair_t LIMIT 1)", MYLITE_EXEC_ERROR,
+        "LIMIT & IN/ALL/ANY/SOME subquery", "row quantified unsupported limit precedence");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
+                           "row quantified unsupported limit precedence warning code");
+    failures += expect_prepare_error(
+        database, "SELECT (10,1) <> ALL (SELECT a,b FROM pair_t LIMIT 1)", MYLITE_EXEC_ERROR,
+        "LIMIT & IN/ALL/ANY/SOME subquery", "row quantified all limit");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
+                           "row quantified all limit warning code");
+    failures += expect_prepare_error(database,
+                                     "SELECT DISTINCT id FROM row_quant_outer_t "
+                                     "ORDER BY (val,grp) = ANY (SELECT a,b FROM pair_t)",
+                                     MYLITE_EXEC_ERROR,
+                                     "Expression #1 of ORDER BY clause is not in SELECT list",
+                                     "row quantified distinct hidden order column");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_field_in_order_not_select,
+                   "row quantified distinct hidden order warning code");
     failures += prepare_sql(database,
                             "SELECT id FROM outer_in_t "
                             "WHERE val IN (SELECT n FROM set_in_t WHERE n=outer_in_t.val)",
@@ -5486,10 +5795,16 @@ static int test_subquery_execution(void)
                             MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unqualified correlated in subquery deferred");
     failures += prepare_sql(database,
-                            "SELECT id FROM outer_in_t "
-                            "WHERE ROW(val,grp) = ANY (SELECT n, n FROM set_in_t)",
+                            "SELECT id FROM row_quant_outer_t AS o "
+                            "WHERE (o.val,o.grp) = ANY "
+                            "(SELECT a,b FROM pair_t WHERE b=o.grp)",
                             MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "row quantified subquery deferred");
+    failures += expect_no_stmt_handle(&stmt, "correlated row quantified subquery deferred");
+    failures += prepare_sql(database,
+                            "SELECT id FROM row_quant_outer_t "
+                            "WHERE (val,grp) = ANY (SELECT a,b FROM pair_t WHERE b=grp)",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unqualified correlated row quantified deferred");
     failures += prepare_sql(database,
                             "SELECT id FROM outer_in_t "
                             "WHERE (val,grp) IN "
@@ -5520,6 +5835,14 @@ static int test_subquery_execution(void)
                             MYLITE_OK, &stmt);
     failures += expect_exec_error(stmt, database, "Unsupported UPDATE clause",
                                   "dml row in subquery deferred");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "UPDATE row_quant_outer_t SET val = 1 "
+                            "WHERE (val,grp) = ANY (SELECT a,b FROM pair_t)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Unsupported UPDATE clause",
+                                  "dml row quantified subquery deferred");
     mylite_finalize(stmt);
     stmt = NULL;
 

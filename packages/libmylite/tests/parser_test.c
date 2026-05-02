@@ -4167,6 +4167,83 @@ static int test_subquery_expression_syntax(void)
                                            "all quantified quantifier");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT id FROM outer_t WHERE (val, grp) = ANY "
+                          "(SELECT a, b FROM pair_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    row = child_at(predicate, 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_QUANTIFIED_COMPARISON,
+                            "row any quantified predicate");
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_EQUAL, "row any quantified operator");
+    failures += expect_subquery_quantifier(predicate, MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ANY,
+                                           "row any quantified quantifier");
+    failures += expect_node(row, MYLITE_SQL_AST_ROW_CONSTRUCTOR, "row any constructor");
+    failures += expect_child_count(row, 2U, "row any constructor arity");
+    failures += expect_node(child_at(predicate, 1U), MYLITE_SQL_AST_SELECT_STATEMENT,
+                            "row any inner select");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE (val, grp) = SOME "
+                          "(SELECT a, b FROM pair_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_QUANTIFIED_COMPARISON,
+                            "row some quantified predicate");
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_EQUAL, "row some quantified operator");
+    failures += expect_subquery_quantifier(predicate, MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_SOME,
+                                           "row some quantified quantifier");
+    failures += expect_node(child_at(predicate, 0U), MYLITE_SQL_AST_ROW_CONSTRUCTOR,
+                            "row some constructor");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE (val, grp) <> ALL "
+                          "(SELECT a, b FROM pair_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_QUANTIFIED_COMPARISON,
+                            "row not equal all quantified predicate");
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+                                "row not equal all quantified operator");
+    failures += expect_subquery_quantifier(predicate, MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ALL,
+                                           "row not equal all quantified quantifier");
+    failures += expect_node(child_at(predicate, 0U), MYLITE_SQL_AST_ROW_CONSTRUCTOR,
+                            "row not equal all constructor");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE (val, grp) != ALL "
+                          "(SELECT a, b FROM pair_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_QUANTIFIED_COMPARISON,
+                            "row bang not equal all quantified predicate");
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+                                "row bang not equal all quantified operator");
+    failures += expect_subquery_quantifier(predicate, MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ALL,
+                                           "row bang not equal all quantified quantifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE ROW(val, grp) = ANY "
+                          "(SELECT a, b FROM pair_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    row = child_at(predicate, 0U);
+    failures += expect_node(row, MYLITE_SQL_AST_ROW_CONSTRUCTOR, "ROW any constructor");
+    failures += expect_child_count(row, 2U, "ROW any constructor arity");
+    failures += expect_subquery_quantifier(predicate, MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ANY,
+                                           "ROW any quantified quantifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE ROW(val) = ANY (SELECT a FROM pair_t);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE (val, grp) <=> ANY "
+                          "(SELECT a, b FROM pair_t);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT id FROM outer_t WHERE val <=> ANY (SELECT val FROM inner_t);",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);

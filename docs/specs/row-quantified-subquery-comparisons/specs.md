@@ -2,11 +2,11 @@
 
 ## Scope
 
-This specification starts the Task 29 row quantified subquery comparison
-follow-up. It covers the narrow MySQL 8.4.9 surface where a multi-element row
-constructor appears on the left of `ANY`, `SOME`, or `ALL`.
+This specification defines the implemented Task 29 row quantified subquery
+comparison follow-up. It covers the narrow MySQL 8.4.9 surface where a
+multi-element row constructor appears on the left of `ANY`, `SOME`, or `ALL`.
 
-The implementation slice should support only the row quantified forms that
+The implementation supports only the row quantified forms that
 MySQL accepts as row membership aliases:
 
 - `(expr, expr, ...) = ANY (SELECT ...)`
@@ -18,7 +18,7 @@ MySQL accepts as row membership aliases:
 - `ROW(expr, expr, ...) <> ALL (SELECT ...)`
 - `ROW(expr, expr, ...) != ALL (SELECT ...)`
 
-The first executable slice should support:
+The executable slice supports:
 
 - multi-element row constructors written as `(expr, expr, ...)` or
   `ROW(expr, expr, ...)`
@@ -32,7 +32,7 @@ The first executable slice should support:
   `HAVING`, `DISTINCT`, and `ORDER BY`
 - MySQL-compatible result rows, errors, warnings, and boolean metadata
 
-The first executable slice should not support:
+The executable slice does not support:
 
 - row `= ALL`, row `<> ANY`, row `<> SOME`, row `!= ANY`, row `!= SOME`, or
   ordered row quantified comparisons such as row `> ANY` and row `<= ALL`;
@@ -51,10 +51,11 @@ The first executable slice should not support:
 - optimizer semijoin, antijoin, tuple-index lookup, materialization, and
   decorrelation behavior beyond externally visible compatibility
 
-This is a specified and planned slice, not an implemented feature. Until the
-runtime is added, MyLite should continue to return its current deterministic
-unsupported/deferred diagnostics for row quantified operands rather than
-executing partial behavior.
+MyLite implements this narrow alias surface by routing accepted row
+quantified forms through the row `IN` / `NOT IN` validation and evaluation
+machinery. Non-alias row quantified operands continue to use the deterministic
+MySQL-compatible diagnostics described below rather than executing partial
+general row quantified behavior.
 
 ## Sources
 
@@ -280,7 +281,12 @@ Verified diagnostics:
 | SQL | Expected behavior |
 | --- | --- |
 | `SELECT (10,1) = ANY (SELECT a,b FROM pair_t LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` |
+| `SELECT (10,1) = ANY (SELECT a FROM pair_t LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` |
+| `SELECT (10,1) > ANY (SELECT a,b FROM pair_t LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` |
 | `SELECT (10,1) <> ALL (SELECT a,b FROM pair_t LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` |
+
+`LIMIT` diagnostics take precedence over operand-width errors and unsupported
+non-alias row quantified comparison errors.
 
 The accepted row quantified aliases consume table subqueries and allow any
 number of rows. They must not raise row scalar-subquery cardinality error 1242
@@ -368,6 +374,7 @@ Verified warning behavior:
 | `SELECT (1,2) = ANY (SELECT x,y FROM warn_pair_t)` | `1` | `2` | warnings 1292 for `'1x'` and `'2x'` |
 | `SELECT (1,3) = ANY (SELECT x,y FROM warn_pair_t)` | `0` | `3` | warnings 1292 for `'1x'`, `'2x'`, and `'bad'` |
 | `SELECT (2,3) = ANY (SELECT x,y FROM warn_pair_t)` | `0` | `1` | warning 1292 for `'1x'`; later tuple elements are skipped after a false first element |
+| `SELECT (NULL,2) = ANY (SELECT x,y FROM warn_pair_t)` | `NULL` | `1` | warning 1292 for `'2x'`; scanning stops after the first unknown candidate because no later row can become a true match |
 | `SELECT (1,3) <> ALL (SELECT x,y FROM warn_pair_t)` | `1` | `3` | same warning rows as the corresponding `= ANY` false probe |
 | `SELECT (val,grp) = ANY (SELECT x,y FROM warn_pair_t) FROM outer_t ORDER BY id` | `0`, `0`, `NULL`, `0`, `0`, `0`, `0`, `0` | `8` | warning order follows per-row candidate comparison |
 
@@ -432,11 +439,12 @@ The current runtime implements:
 - scalar `ANY` / `SOME` / `ALL` quantified subquery comparisons
 - row scalar subquery comparisons
 - row `IN` / `NOT IN` subqueries
+- row `= ANY` / `= SOME` and row `<>` / `!= ALL` aliases
 
-Row operands on quantified-comparison nodes are currently deferred. The
-implementation for this slice should bridge only the MySQL-accepted alias
-forms to the row `IN` / `NOT IN` machinery. It should leave scalar quantified
-comparisons and row scalar comparisons unchanged.
+General row operands on quantified-comparison nodes remain deferred. The
+implementation for this slice bridges only the MySQL-accepted alias forms to
+the row `IN` / `NOT IN` machinery and leaves scalar quantified comparisons and
+row scalar comparisons unchanged.
 
 ## Parser and AST Design
 
@@ -577,10 +585,11 @@ Before execution, validation should:
 5. Resolve each left tuple element in the current outer expression context.
 6. Resolve the subquery as an independent query block.
 7. Reject outer references for this first executable slice.
-8. Require the visible subquery output column count to match the left tuple
+8. Reject `LIMIT` inside accepted alias subqueries with error 1235 / `42000`
+   before operand-width validation.
+9. Require the visible subquery output column count to match the left tuple
    width for accepted alias forms. Raise 1241 / `21000` with the left tuple
    width otherwise.
-9. Reject `LIMIT` inside accepted alias subqueries with error 1235 / `42000`.
 10. Build nullable MySQL integer boolean metadata with no origin fields.
 
 Wrong-width diagnostics should use the consumer's expected width:
@@ -701,6 +710,7 @@ codes, and warning messages:
 | `SELECT (1,2) = ANY (SELECT x,y FROM warn_pair_t)` | `1` | two 1292 warnings: `'1x'`, `'2x'` |
 | `SELECT (1,3) = ANY (SELECT x,y FROM warn_pair_t)` | `0` | three 1292 warnings: `'1x'`, `'2x'`, `'bad'` |
 | `SELECT (2,3) = ANY (SELECT x,y FROM warn_pair_t)` | `0` | one 1292 warning: `'1x'` |
+| `SELECT (NULL,2) = ANY (SELECT x,y FROM warn_pair_t)` | `NULL` | one 1292 warning: `'2x'` |
 | `SELECT (1,3) <> ALL (SELECT x,y FROM warn_pair_t)` | `1` | three 1292 warnings: `'1x'`, `'2x'`, `'bad'` |
 | `SELECT (val,grp) = ANY (SELECT x,y FROM warn_pair_t) FROM outer_t ORDER BY id` | `0`, `0`, `NULL`, `0`, `0`, `0`, `0`, `0` | eight 1292 warnings in MySQL-observed order |
 
@@ -753,9 +763,9 @@ passes:
 
 ## Compatibility Status
 
-This slice is specified and planned, not implemented.
+This slice is implemented.
 
-Target implementation coverage is uncorrelated row `= ANY`, row `= SOME`, row
+Implemented coverage is uncorrelated row `= ANY`, row `= SOME`, row
 `<> ALL`, and row `!= ALL` aliases in no-table scalar `SELECT` and the current
 table-backed `SELECT` projection, `WHERE`, join `ON`, grouped `HAVING`, and
 `ORDER BY` expression contexts.

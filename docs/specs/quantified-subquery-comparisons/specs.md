@@ -30,8 +30,8 @@ The first executable slice should support:
 
 The first executable slice should not support:
 
-- row left operands such as `(a,b) = ANY (SELECT ...)` or
-  `ROW(a,b) = SOME (SELECT ...)`
+- row left operands outside the accepted alias forms implemented by
+  `docs/specs/row-quantified-subquery-comparisons/specs.md`
 - multi-column subqueries
 - correlated subquery references
 - `INSERT`, `UPDATE`, `DELETE`, `SET`, `DO`, stored-program, generated-column,
@@ -308,9 +308,13 @@ Verified diagnostics:
 | `SELECT 1 = ANY (SELECT n, txt FROM set_t WHERE set_name='base')` | error 1241 / `21000`, `Operand should contain 1 column(s)` | one error row, code 1241 |
 | `SELECT 1 = ANY (SELECT missing_col FROM set_t)` | error 1054 / `42S22`, unknown column | one error row, code 1054 |
 | `SELECT 1 = ANY (SELECT n FROM set_t WHERE set_name='base' LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` | one error row, code 1235 |
+| `SELECT 1 = ANY (SELECT n, txt FROM set_t WHERE set_name='base' LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` | one error row, code 1235 |
 | `SELECT 1 = SOME (SELECT n FROM set_t WHERE set_name='base' LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` | one error row, code 1235 |
 | `SELECT 1 = ALL (SELECT n FROM set_t WHERE set_name='base' LIMIT 1)` | error 1235 / `42000`, unsupported `LIMIT & IN/ALL/ANY/SOME subquery` | one error row, code 1235 |
 | `SELECT 1 <=> ANY (SELECT n FROM set_t WHERE set_name='base')` | syntax error 1064 / `42000` | one error row, code 1064 |
+
+`LIMIT` diagnostics take precedence over scalar operand-width diagnostics for
+quantified subquery forms.
 
 Deferred shapes should not be mis-executed. Correlated quantified subqueries,
 row operands, `TABLE`/`VALUES` subqueries, CTEs, set operations, and DML
@@ -354,8 +358,10 @@ uses nullable boolean metadata, preserves comparison-warning order through
 short-circuit evaluation, and shares the existing subquery diagnostics for
 multi-column output and inner `LIMIT`.
 
-Row left operands, correlated subqueries, DML contexts, and broader query
-surfaces remain deferred.
+The separate row quantified alias slice implements row `= ANY` / `= SOME` and
+row `<>` / `!= ALL` by reusing row membership semantics. General row quantified
+comparisons, correlated subqueries, DML contexts, and broader query surfaces
+remain deferred.
 
 ## Parser and AST Design
 
@@ -580,7 +586,7 @@ Runtime diagnostic tests should compare error code, SQLSTATE, message, and
 | `SELECT 1 = ALL (SELECT n FROM set_t WHERE set_name='base' LIMIT 1)` | error 1235 / `42000`; `SHOW WARNINGS` has one error row |
 | `SELECT 1 <=> ANY (SELECT n FROM set_t WHERE set_name='base')` | syntax error 1064 / `42000`; `SHOW WARNINGS` has one error row |
 | `SELECT id FROM outer_t WHERE val > ANY (SELECT n FROM set_t WHERE n=outer_t.val)` | deferred correlated subquery diagnostic; do not execute as an uncorrelated subquery |
-| `SELECT id FROM outer_t WHERE (val,grp) = ANY (SELECT n, n FROM set_t)` | deferred row-left-operand diagnostic; do not execute as scalar quantified comparison |
+| `SELECT id FROM outer_t WHERE (val,grp) = ANY (SELECT n, n FROM set_t)` | handled by the row quantified alias slice; do not execute as scalar quantified comparison |
 
 ### Metadata Tests
 
@@ -614,8 +620,8 @@ Implemented coverage is uncorrelated scalar `ANY` / `SOME` / `ALL` comparisons
 in no-table scalar `SELECT` and the current table-backed `SELECT` projection,
 `WHERE`, join `ON`, `HAVING`, and `ORDER BY` expression contexts.
 
-Row operands, correlation, DML contexts, derived tables, `TABLE`/`VALUES`
-subqueries, CTEs, set operations, null-safe quantified comparison execution,
-and optimizer-specific behavior remain separate features. The narrow
-MySQL-accepted row alias forms are specified in
+General row operands outside the accepted aliases, correlation, DML contexts,
+derived tables, `TABLE`/`VALUES` subqueries, CTEs, set operations, null-safe
+quantified comparison execution, and optimizer-specific behavior remain
+separate features. The narrow MySQL-accepted row alias forms are specified in
 `docs/specs/row-quantified-subquery-comparisons/specs.md`.

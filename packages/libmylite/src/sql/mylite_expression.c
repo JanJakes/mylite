@@ -228,6 +228,7 @@ static bool binary_expression_is_row_subquery(const struct mylite_sql_ast_node *
 static bool binary_expression_is_row_scalar_subquery(const struct mylite_sql_ast_node *node);
 static bool
 row_subquery_comparison_operator_is_supported(enum mylite_sql_ast_operator operator_kind);
+static bool quantified_comparison_has_row_left(const struct mylite_sql_ast_node *node);
 static int eval_quantified_comparison(const struct mylite_sql_ast_node *node,
                                       const struct mylite_expression_eval_context *context,
                                       struct mylite_expression_warnings *warnings,
@@ -2135,7 +2136,16 @@ static int eval_quantified_comparison(const struct mylite_sql_ast_node *node,
                                       struct mylite_expression_value *out_value)
 {
     struct mylite_expression_value value = {0};
-    int status = eval_node(child_at(node, 0U), context, warnings, &value);
+    int status = 0;
+
+    if (quantified_comparison_has_row_left(node)) {
+        return context == NULL || context->eval_row_subquery == NULL
+                   ? -1
+                   : context->eval_row_subquery(context->user_data, node, context, warnings,
+                                                out_value);
+    }
+
+    status = eval_node(child_at(node, 0U), context, warnings, &value);
 
     if (status != 0) {
         return status;
@@ -2146,6 +2156,14 @@ static int eval_quantified_comparison(const struct mylite_sql_ast_node *node,
                                                      out_value);
     mylite_expression_value_deinit(&value);
     return status;
+}
+
+static bool quantified_comparison_has_row_left(const struct mylite_sql_ast_node *node)
+{
+    const struct mylite_sql_ast_node *left = unwrap_parenthesized_node(child_at(node, 0U));
+
+    return node != NULL && node->kind == MYLITE_SQL_AST_QUANTIFIED_COMPARISON && left != NULL &&
+           left->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR;
 }
 
 static int eval_numeric_unary(enum mylite_sql_ast_operator operator_kind,

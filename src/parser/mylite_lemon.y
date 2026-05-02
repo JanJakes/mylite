@@ -3702,9 +3702,13 @@ table_limit_value ::= parser_limit_option.
 table_into_tail ::= .
 table_into_tail ::= INTO table_output_target.
 
-table_output_target ::= OUTFILE text_string_literal load_fields_tail load_lines_tail.
+table_output_target ::= OUTFILE text_string_literal table_output_charset_tail load_fields_tail load_lines_tail.
 table_output_target ::= DUMPFILE text_string_literal.
 table_output_target ::= table_into_variable_list.
+
+table_output_charset_tail ::= .
+table_output_charset_tail ::= CHARACTER SET set_charset_name.
+table_output_charset_tail ::= CHARSET set_charset_name.
 
 table_into_variable_list ::= table_into_variable.
 table_into_variable_list ::= table_into_variable_list import_comma table_into_variable.

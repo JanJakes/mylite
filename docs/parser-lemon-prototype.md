@@ -62,11 +62,13 @@ token sink:
   later bare wildcards, wildcard aliases/arithmetic, and top-level query-clause
   tails.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
-  write payloads, and validate `SET` assignment lists including repeated-`SET`
+  write payloads, MySQL's `INSERT` priority/`IGNORE` modifier order, and
+  validate `SET` assignment lists including repeated-`SET`
   continuations, malformed top-level assignment value adjacent operands and
   dangling operators, adjacent operands, dangling operators, and trailing
   separators inside plain parenthesized assignment value groups, explicit
-  `VALUE(S)` row-list tails, `ROW(...)` constructors, `INSERT`
+  `VALUE(S)` row-list tails, `VALUES ROW(...)` versus singular `VALUE (...)`,
+  `INSERT`
   `VALUE(S)` row expression lists with empty rows plus adjacent-operand,
   dangling-operator, and trailing-separator checks, `INSERT` `VALUE(S)`/`SET`
   row aliases,

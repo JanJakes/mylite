@@ -3360,7 +3360,11 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int query_order_previous_top_token_id = 0;
   int query_order_previous_was_operator = 1;
   int values_state = DML_VALUES_NONE;
+  int values_row_keyword_allowed = 0;
   int set_alias_state = DML_SET_ALIAS_NONE;
+  int insert_modifier_scan = kind == MYLITE_STATEMENT_INSERT;
+  int insert_priority_modifier_seen = 0;
+  int insert_ignore_modifier_seen = 0;
   int update_table_condition_started = 0;
   int update_table_alias_pending = 0;
 
@@ -3372,6 +3376,30 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
       } else {
         continue;
       }
+    }
+
+    if (insert_modifier_scan) {
+      if (token.offset == start.offset) {
+        continue;
+      }
+      if (token_id == ML_DELAYED || token_id == ML_HIGH_PRIORITY ||
+          token_id == ML_LOW_PRIORITY) {
+        if (insert_priority_modifier_seen || insert_ignore_modifier_seen) {
+          mylite_parser_reject(ctx, token, "malformed INSERT modifier");
+          return;
+        }
+        insert_priority_modifier_seen = 1;
+        continue;
+      }
+      if (token_id == ML_IGNORE) {
+        if (insert_ignore_modifier_seen) {
+          mylite_parser_reject(ctx, token, "malformed INSERT modifier");
+          return;
+        }
+        insert_ignore_modifier_seen = 1;
+        continue;
+      }
+      insert_modifier_scan = 0;
     }
 
     if (depth > 0) {
@@ -3539,6 +3567,11 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
       if (values_state == DML_VALUES_AFTER_VALUES ||
           values_state == DML_VALUES_AFTER_COMMA) {
         if (token_id == ML_ROW) {
+          if (!values_row_keyword_allowed) {
+            mylite_parser_reject(ctx, token,
+                                 "malformed DML VALUES row list");
+            return;
+          }
           values_state = DML_VALUES_AFTER_ROW_KEYWORD;
           pending_token = token;
           continue;
@@ -4217,6 +4250,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         (token_id == ML_VALUE || token_id == ML_VALUES)) {
       payload_kind = DML_PAYLOAD_VALUES;
       values_state = DML_VALUES_AFTER_VALUES;
+      values_row_keyword_allowed = token_id == ML_VALUES;
       pending_token = token;
       continue;
     }

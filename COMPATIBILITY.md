@@ -171,7 +171,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. | Parser requires a text-string payload with quoted hex/bit rejection. |
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser recognizes `TO` text-string log names with quoted hex/bit rejection and validates `BEFORE` expression tails. |
 | `PURGE MASTER LOGS` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than purging binary logs. | Replacement statement is `PURGE BINARY LOGS`; removed syntax is accepted only in permissive corpus mode. |
-| `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser recognizes optional numeric `TO` index values and comma-separated combinations with `RESET REPLICA` options. |
+| `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser recognizes optional unsigned integer-or-hex `TO` index values and comma-separated combinations with `RESET REPLICA` options. |
 | `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |
 | `CHANGE MASTER TO` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than changing replication source settings. | Replacement statement is `CHANGE REPLICATION SOURCE TO`; removed syntax is accepted only in permissive corpus mode. |
 | `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. | Parser recognizes MySQL 8.4 filter names, parenthesized rule lists, empty rule lists, rewrite-db pairs, and optional text-string channel clauses with quoted hex/bit rejection. |

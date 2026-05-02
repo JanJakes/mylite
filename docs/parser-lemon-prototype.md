@@ -383,9 +383,9 @@ token sink:
   spellings. Removed `SHOW SLAVE STATUS` and `SHOW SLAVE HOSTS` syntax is
   permissive-corpus-only.
 - `RESET` recognizes comma-separated MySQL 8.4 reset options, including
-  `RESET BINARY LOGS AND GTIDS` with optional numeric `TO` index values and
-  `RESET REPLICA` text-string channel clauses. Removed `RESET MASTER` and
-  `RESET SLAVE` syntax is permissive-corpus-only.
+  `RESET BINARY LOGS AND GTIDS` with optional unsigned integer-or-hex `TO`
+  index values and `RESET REPLICA` text-string channel clauses. Removed
+  `RESET MASTER` and `RESET SLAVE` syntax is permissive-corpus-only.
 - `BINLOG` requires a text-string payload, `PURGE BINARY LOGS ... TO` requires a
   text-string log name, and both reject quoted hex/bit literals.
   `PURGE BINARY LOGS ... BEFORE` validates expression tails. Removed

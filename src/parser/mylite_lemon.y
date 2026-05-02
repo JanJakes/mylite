@@ -2534,9 +2534,15 @@ reset_option ::= SLAVE(A) reset_replica_tail. {
 reset_binary_logs_tail ::= .
 reset_binary_logs_tail ::= TO reset_binary_logs_index.
 
-reset_binary_logs_index ::= BOOLEAN_NUMBER.
-reset_binary_logs_index ::= FACTOR_NUMBER.
-reset_binary_logs_index ::= NUMBER_LITERAL.
+reset_binary_logs_index ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_or_hex_literal(ctx, A);
+}
+reset_binary_logs_index ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_or_hex_literal(ctx, A);
+}
+reset_binary_logs_index ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_integer_or_hex_literal(ctx, A);
+}
 
 reset_gtids ::= GTIDS.
 

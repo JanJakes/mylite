@@ -24,6 +24,7 @@ typedef struct MyliteParseResult {
 typedef struct MyliteAst MyliteAst;
 typedef struct MyliteAstAlterTable MyliteAstAlterTable;
 typedef struct MyliteAstAlterTableSpec MyliteAstAlterTableSpec;
+typedef struct MyliteAstCreateDatabase MyliteAstCreateDatabase;
 typedef struct MyliteAstCreateIndex MyliteAstCreateIndex;
 typedef struct MyliteAstCreateTable MyliteAstCreateTable;
 typedef struct MyliteAstCreateTableColumn MyliteAstCreateTableColumn;
@@ -33,6 +34,8 @@ typedef struct MyliteAstCreateTableKey MyliteAstCreateTableKey;
 typedef struct MyliteAstCreateTableKeyPart MyliteAstCreateTableKeyPart;
 typedef struct MyliteAstCreateTableKeyOption MyliteAstCreateTableKeyOption;
 typedef struct MyliteAstCreateTableOption MyliteAstCreateTableOption;
+typedef struct MyliteAstDatabaseOption MyliteAstDatabaseOption;
+typedef struct MyliteAstDropDatabase MyliteAstDropDatabase;
 typedef struct MyliteAstDropIndex MyliteAstDropIndex;
 typedef struct MyliteAstDropTable MyliteAstDropTable;
 typedef struct MyliteAstNode MyliteAstNode;
@@ -328,6 +331,24 @@ typedef enum MyliteCreateTableOptionValueKind {
   MYLITE_CREATE_TABLE_OPTION_VALUE_LIST
 } MyliteCreateTableOptionValueKind;
 
+typedef enum MyliteDatabaseOptionKind {
+  MYLITE_DATABASE_OPTION_UNKNOWN = 0,
+  MYLITE_DATABASE_OPTION_CHARSET,
+  MYLITE_DATABASE_OPTION_COLLATE,
+  MYLITE_DATABASE_OPTION_ENCRYPTION,
+  MYLITE_DATABASE_OPTION_PLACEMENT_POLICY,
+  MYLITE_DATABASE_OPTION_TI_FLASH_REPLICA,
+  MYLITE_DATABASE_OPTION_READ_ONLY
+} MyliteDatabaseOptionKind;
+
+typedef enum MyliteDatabaseOptionValueKind {
+  MYLITE_DATABASE_OPTION_VALUE_UNKNOWN = 0,
+  MYLITE_DATABASE_OPTION_VALUE_RAW,
+  MYLITE_DATABASE_OPTION_VALUE_IDENTIFIER,
+  MYLITE_DATABASE_OPTION_VALUE_STRING,
+  MYLITE_DATABASE_OPTION_VALUE_DEFAULT
+} MyliteDatabaseOptionValueKind;
+
 typedef enum MyliteAlterTableSpecKind {
   MYLITE_ALTER_TABLE_SPEC_UNKNOWN = 0,
   MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS,
@@ -407,6 +428,9 @@ const char *mylite_create_table_option_kind_name(
     MyliteCreateTableOptionKind kind);
 const char *mylite_create_table_option_value_kind_name(
     MyliteCreateTableOptionValueKind kind);
+const char *mylite_database_option_kind_name(MyliteDatabaseOptionKind kind);
+const char *mylite_database_option_value_kind_name(
+    MyliteDatabaseOptionValueKind kind);
 const char *mylite_alter_table_spec_kind_name(MyliteAlterTableSpecKind kind);
 
 void mylite_ast_free(MyliteAst *ast);
@@ -468,9 +492,13 @@ size_t mylite_ast_statement_target_name_value_length_at(
     const MyliteAst *ast, size_t statement_index, size_t target_index);
 const MyliteAstAlterTable *mylite_ast_alter_table_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstCreateDatabase *mylite_ast_create_database_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstCreateTable *mylite_ast_create_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstCreateIndex *mylite_ast_create_index_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstDropDatabase *mylite_ast_drop_database_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDropIndex *mylite_ast_drop_index_view(
     const MyliteAst *ast, size_t statement_index);
@@ -679,6 +707,80 @@ int mylite_ast_create_index_view_has_key_block_size_value(
     const MyliteAstCreateIndex *create_index);
 unsigned long long mylite_ast_create_index_view_key_block_size_value(
     const MyliteAstCreateIndex *create_index);
+const MyliteAstNode *mylite_ast_create_database_view_node(
+    const MyliteAstCreateDatabase *create_database);
+size_t mylite_ast_create_database_view_start(
+    const MyliteAstCreateDatabase *create_database);
+size_t mylite_ast_create_database_view_end(
+    const MyliteAstCreateDatabase *create_database);
+int mylite_ast_create_database_view_has_if_not_exists(
+    const MyliteAstCreateDatabase *create_database);
+int mylite_ast_create_database_view_uses_schema_keyword(
+    const MyliteAstCreateDatabase *create_database);
+size_t mylite_ast_create_database_view_name_start(
+    const MyliteAstCreateDatabase *create_database);
+size_t mylite_ast_create_database_view_name_end(
+    const MyliteAstCreateDatabase *create_database);
+const char *mylite_ast_create_database_view_name_value(
+    const MyliteAstCreateDatabase *create_database);
+size_t mylite_ast_create_database_view_name_value_length(
+    const MyliteAstCreateDatabase *create_database);
+size_t mylite_ast_create_database_view_option_count(
+    const MyliteAstCreateDatabase *create_database);
+const MyliteAstDatabaseOption *mylite_ast_create_database_view_option_at(
+    const MyliteAstCreateDatabase *create_database, size_t option_index);
+const char *mylite_ast_create_database_view_charset_value(
+    const MyliteAstCreateDatabase *create_database);
+size_t mylite_ast_create_database_view_charset_value_length(
+    const MyliteAstCreateDatabase *create_database);
+const char *mylite_ast_create_database_view_collation_value(
+    const MyliteAstCreateDatabase *create_database);
+size_t mylite_ast_create_database_view_collation_value_length(
+    const MyliteAstCreateDatabase *create_database);
+const char *mylite_ast_create_database_view_encryption_value(
+    const MyliteAstCreateDatabase *create_database);
+size_t mylite_ast_create_database_view_encryption_value_length(
+    const MyliteAstCreateDatabase *create_database);
+const MyliteAstNode *mylite_ast_drop_database_view_node(
+    const MyliteAstDropDatabase *drop_database);
+size_t mylite_ast_drop_database_view_start(
+    const MyliteAstDropDatabase *drop_database);
+size_t mylite_ast_drop_database_view_end(
+    const MyliteAstDropDatabase *drop_database);
+int mylite_ast_drop_database_view_has_if_exists(
+    const MyliteAstDropDatabase *drop_database);
+int mylite_ast_drop_database_view_uses_schema_keyword(
+    const MyliteAstDropDatabase *drop_database);
+size_t mylite_ast_drop_database_view_name_start(
+    const MyliteAstDropDatabase *drop_database);
+size_t mylite_ast_drop_database_view_name_end(
+    const MyliteAstDropDatabase *drop_database);
+const char *mylite_ast_drop_database_view_name_value(
+    const MyliteAstDropDatabase *drop_database);
+size_t mylite_ast_drop_database_view_name_value_length(
+    const MyliteAstDropDatabase *drop_database);
+const MyliteAstNode *mylite_ast_database_option_view_node(
+    const MyliteAstDatabaseOption *option);
+MyliteDatabaseOptionKind mylite_ast_database_option_view_kind(
+    const MyliteAstDatabaseOption *option);
+MyliteDatabaseOptionValueKind mylite_ast_database_option_view_value_kind(
+    const MyliteAstDatabaseOption *option);
+size_t mylite_ast_database_option_view_start(
+    const MyliteAstDatabaseOption *option);
+size_t mylite_ast_database_option_view_end(
+    const MyliteAstDatabaseOption *option);
+size_t mylite_ast_database_option_view_name_start(
+    const MyliteAstDatabaseOption *option);
+size_t mylite_ast_database_option_view_name_end(
+    const MyliteAstDatabaseOption *option);
+size_t mylite_ast_database_option_view_value_start(
+    const MyliteAstDatabaseOption *option);
+size_t mylite_ast_database_option_view_value_end(
+    const MyliteAstDatabaseOption *option);
+const char *mylite_ast_database_option_view_value(
+    const MyliteAstDatabaseOption *option);
+size_t mylite_ast_database_option_view_value_length(
+    const MyliteAstDatabaseOption *option);
 const MyliteAstNode *mylite_ast_drop_index_view_node(
     const MyliteAstDropIndex *drop_index);
 size_t mylite_ast_drop_index_view_start(

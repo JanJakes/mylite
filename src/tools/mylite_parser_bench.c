@@ -130,6 +130,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t alter_table_options = 0;
   size_t alter_table_if_exists = 0;
   size_t alter_table_if_not_exists = 0;
+  size_t create_database_views = 0;
+  size_t create_database_name_values = 0;
+  size_t create_database_options = 0;
+  size_t create_database_option_values = 0;
+  size_t create_database_charset_values = 0;
+  size_t create_database_collation_values = 0;
+  size_t create_database_encryption_values = 0;
+  size_t create_database_if_not_exists = 0;
+  size_t create_database_schema_keywords = 0;
   size_t create_index_views = 0;
   size_t create_index_name_values = 0;
   size_t create_index_table_name_values = 0;
@@ -137,6 +146,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_index_options = 0;
   size_t create_index_comments = 0;
   size_t create_index_key_block_sizes = 0;
+  size_t drop_database_views = 0;
+  size_t drop_database_name_values = 0;
+  size_t drop_database_if_exists = 0;
+  size_t drop_database_schema_keywords = 0;
   size_t drop_index_views = 0;
   size_t drop_index_name_values = 0;
   size_t drop_index_table_name_values = 0;
@@ -535,6 +548,48 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 }
               }
             }
+            const MyliteAstCreateDatabase *create_database =
+                mylite_ast_create_database_view(ast, i);
+            if (create_database != NULL) {
+              create_database_views++;
+              if (mylite_ast_create_database_view_name_value(
+                      create_database) != NULL) {
+                create_database_name_values++;
+              }
+              create_database_options +=
+                  mylite_ast_create_database_view_option_count(create_database);
+              for (size_t j = 0;
+                   j <
+                   mylite_ast_create_database_view_option_count(create_database);
+                   j++) {
+                const MyliteAstDatabaseOption *option =
+                    mylite_ast_create_database_view_option_at(create_database,
+                                                              j);
+                if (mylite_ast_database_option_view_value(option) != NULL) {
+                  create_database_option_values++;
+                }
+              }
+              if (mylite_ast_create_database_view_charset_value(
+                      create_database) != NULL) {
+                create_database_charset_values++;
+              }
+              if (mylite_ast_create_database_view_collation_value(
+                      create_database) != NULL) {
+                create_database_collation_values++;
+              }
+              if (mylite_ast_create_database_view_encryption_value(
+                      create_database) != NULL) {
+                create_database_encryption_values++;
+              }
+              if (mylite_ast_create_database_view_has_if_not_exists(
+                      create_database)) {
+                create_database_if_not_exists++;
+              }
+              if (mylite_ast_create_database_view_uses_schema_keyword(
+                      create_database)) {
+                create_database_schema_keywords++;
+              }
+            }
             const MyliteAstCreateIndex *create_index =
                 mylite_ast_create_index_view(ast, i);
             if (create_index != NULL) {
@@ -573,6 +628,22 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
               }
               if (mylite_ast_drop_index_view_has_if_exists(drop_index)) {
                 drop_index_if_exists++;
+              }
+            }
+            const MyliteAstDropDatabase *drop_database =
+                mylite_ast_drop_database_view(ast, i);
+            if (drop_database != NULL) {
+              drop_database_views++;
+              if (mylite_ast_drop_database_view_name_value(drop_database) !=
+                  NULL) {
+                drop_database_name_values++;
+              }
+              if (mylite_ast_drop_database_view_has_if_exists(drop_database)) {
+                drop_database_if_exists++;
+              }
+              if (mylite_ast_drop_database_view_uses_schema_keyword(
+                      drop_database)) {
+                drop_database_schema_keywords++;
               }
             }
             const MyliteAstDropTable *drop_table =
@@ -834,12 +905,25 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_alter_table_options=%.2f "
            "avg_alter_table_if_exists=%.2f "
            "avg_alter_table_if_not_exists=%.2f "
+           "avg_create_database_views=%.2f "
+           "avg_create_database_name_values=%.2f "
+           "avg_create_database_options=%.2f "
+           "avg_create_database_option_values=%.2f "
+           "avg_create_database_charset_values=%.2f "
+           "avg_create_database_collation_values=%.2f "
+           "avg_create_database_encryption_values=%.2f "
+           "avg_create_database_if_not_exists=%.2f "
+           "avg_create_database_schema_keywords=%.2f "
            "avg_create_index_views=%.2f "
            "avg_create_index_name_values=%.2f "
            "avg_create_index_table_name_values=%.2f "
            "avg_create_index_columns=%.2f avg_create_index_options=%.2f "
            "avg_create_index_comments=%.2f "
            "avg_create_index_key_block_sizes=%.2f "
+           "avg_drop_database_views=%.2f "
+           "avg_drop_database_name_values=%.2f "
+           "avg_drop_database_if_exists=%.2f "
+           "avg_drop_database_schema_keywords=%.2f "
            "avg_drop_index_views=%.2f "
            "avg_drop_index_name_values=%.2f "
            "avg_drop_index_table_name_values=%.2f "
@@ -947,6 +1031,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)alter_table_options / (double)parsed,
            (double)alter_table_if_exists / (double)parsed,
            (double)alter_table_if_not_exists / (double)parsed,
+           (double)create_database_views / (double)parsed,
+           (double)create_database_name_values / (double)parsed,
+           (double)create_database_options / (double)parsed,
+           (double)create_database_option_values / (double)parsed,
+           (double)create_database_charset_values / (double)parsed,
+           (double)create_database_collation_values / (double)parsed,
+           (double)create_database_encryption_values / (double)parsed,
+           (double)create_database_if_not_exists / (double)parsed,
+           (double)create_database_schema_keywords / (double)parsed,
            (double)create_index_views / (double)parsed,
            (double)create_index_name_values / (double)parsed,
            (double)create_index_table_name_values / (double)parsed,
@@ -954,6 +1047,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)create_index_options / (double)parsed,
            (double)create_index_comments / (double)parsed,
            (double)create_index_key_block_sizes / (double)parsed,
+           (double)drop_database_views / (double)parsed,
+           (double)drop_database_name_values / (double)parsed,
+           (double)drop_database_if_exists / (double)parsed,
+           (double)drop_database_schema_keywords / (double)parsed,
            (double)drop_index_views / (double)parsed,
            (double)drop_index_name_values / (double)parsed,
            (double)drop_index_table_name_values / (double)parsed,

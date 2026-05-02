@@ -278,6 +278,34 @@ struct MyliteAstCreateTable {
   const MyliteAstCreateTableOption *auto_increment_option;
 };
 
+struct MyliteAstDatabaseOption {
+  const MyliteAstNode *node;
+  MyliteDatabaseOptionKind kind;
+  MyliteDatabaseOptionValueKind value_kind;
+  size_t start;
+  size_t end;
+  size_t name_start;
+  size_t name_end;
+  size_t value_start;
+  size_t value_end;
+  const char *value;
+  size_t value_length;
+};
+
+struct MyliteAstCreateDatabase {
+  const MyliteAstNode *node;
+  const MyliteAstStatementTarget *target;
+  MyliteAstDatabaseOption *options;
+  size_t option_count;
+  const MyliteAstDatabaseOption *charset_option;
+  const MyliteAstDatabaseOption *collation_option;
+  const MyliteAstDatabaseOption *encryption_option;
+  size_t start;
+  size_t end;
+  int has_if_not_exists;
+  int uses_schema_keyword;
+};
+
 struct MyliteAstAlterTableSpec {
   const MyliteAstNode *node;
   MyliteAstCreateTableColumn column;
@@ -345,6 +373,15 @@ struct MyliteAstDropIndex {
   int is_hypothetical;
 };
 
+struct MyliteAstDropDatabase {
+  const MyliteAstNode *node;
+  const MyliteAstStatementTarget *target;
+  size_t start;
+  size_t end;
+  int has_if_exists;
+  int uses_schema_keyword;
+};
+
 struct MyliteAstDropTable {
   const MyliteAstNode *node;
   const MyliteAstStatementTarget *targets;
@@ -384,8 +421,10 @@ typedef struct MyliteAstStatement {
   MyliteAstCreateTableOption *create_table_options;
   size_t create_table_option_count;
   MyliteAstCreateTable *create_table;
+  MyliteAstCreateDatabase *create_database;
   MyliteAstAlterTable *alter_table;
   MyliteAstCreateIndex *create_index;
+  MyliteAstDropDatabase *drop_database;
   MyliteAstDropIndex *drop_index;
   MyliteAstDropTable *drop_table;
   MyliteAstRenameTable *rename_table;
@@ -457,6 +496,11 @@ static int mylite_ast_set_statement_target(MyliteAstStatement *statement,
 static int mylite_ast_set_statement_details(MyliteAst *ast,
                                             MyliteAstStatement *statement,
                                             const MyliteAstNode *payload);
+static int mylite_ast_set_create_database_view(MyliteAst *ast,
+                                               MyliteAstStatement *statement,
+                                               const MyliteAstNode *payload);
+static void mylite_ast_set_database_option_summary(
+    MyliteAstCreateDatabase *create_database);
 static int mylite_ast_set_create_table_view(MyliteAst *ast,
                                             MyliteAstStatement *statement,
                                             const MyliteAstNode *payload);
@@ -514,6 +558,9 @@ static int mylite_ast_set_create_index_key(MyliteAst *ast,
 static int mylite_ast_set_drop_index_view(MyliteAst *ast,
                                           MyliteAstStatement *statement,
                                           const MyliteAstNode *payload);
+static int mylite_ast_set_drop_database_view(MyliteAst *ast,
+                                             MyliteAstStatement *statement,
+                                             const MyliteAstNode *payload);
 static int mylite_ast_set_drop_table_view(MyliteAst *ast,
                                           MyliteAstStatement *statement,
                                           const MyliteAstNode *payload);
@@ -761,6 +808,29 @@ static const MyliteAstNode *mylite_ast_find_constraint_keyword_name(
 static int mylite_ast_collect_create_table_options(MyliteAst *ast,
                                                    MyliteAstStatement *statement,
                                                    const MyliteAstNode *payload);
+static int mylite_ast_set_database_options(MyliteAst *ast,
+                                           MyliteAstCreateDatabase *create_database,
+                                           const MyliteAstNode *payload);
+static size_t mylite_ast_count_database_options(const MyliteAstNode *node);
+static void mylite_ast_fill_database_options(
+    MyliteAst *ast, MyliteAstDatabaseOption *options, size_t option_count,
+    const MyliteAstNode *node, size_t *index, int *ok);
+static int mylite_ast_fill_database_option(
+    MyliteAst *ast, MyliteAstDatabaseOption *option,
+    const MyliteAstNode *node);
+static MyliteDatabaseOptionKind mylite_ast_classify_database_option(
+    const MyliteAstNode *node);
+static void mylite_ast_set_database_option_name(
+    MyliteAstDatabaseOption *option, const MyliteAstNode *node);
+static void mylite_ast_set_database_option_value(
+    MyliteAstDatabaseOption *option, const MyliteAstNode *node);
+static int mylite_ast_set_database_option_value_metadata(
+    MyliteAst *ast, MyliteAstDatabaseOption *option,
+    const MyliteAstNode *node);
+static const MyliteAstNode *mylite_ast_find_database_option_value_token(
+    const MyliteAstNode *node, size_t min_start);
+static const MyliteAstNode *mylite_ast_find_database_option_name(
+    const MyliteAstNode *node, MyliteDatabaseOptionKind kind);
 static size_t mylite_ast_count_create_table_options(const MyliteAstNode *node);
 static void mylite_ast_fill_create_table_options(
     MyliteAst *ast, MyliteAstStatement *statement, const MyliteAstNode *node,
@@ -1430,6 +1500,43 @@ const char *mylite_create_table_option_value_kind_name(
   return "unknown";
 }
 
+const char *mylite_database_option_kind_name(MyliteDatabaseOptionKind kind) {
+  switch (kind) {
+    case MYLITE_DATABASE_OPTION_UNKNOWN:
+      return "unknown";
+    case MYLITE_DATABASE_OPTION_CHARSET:
+      return "charset";
+    case MYLITE_DATABASE_OPTION_COLLATE:
+      return "collate";
+    case MYLITE_DATABASE_OPTION_ENCRYPTION:
+      return "encryption";
+    case MYLITE_DATABASE_OPTION_PLACEMENT_POLICY:
+      return "placement_policy";
+    case MYLITE_DATABASE_OPTION_TI_FLASH_REPLICA:
+      return "ti_flash_replica";
+    case MYLITE_DATABASE_OPTION_READ_ONLY:
+      return "read_only";
+  }
+  return "unknown";
+}
+
+const char *mylite_database_option_value_kind_name(
+    MyliteDatabaseOptionValueKind kind) {
+  switch (kind) {
+    case MYLITE_DATABASE_OPTION_VALUE_UNKNOWN:
+      return "unknown";
+    case MYLITE_DATABASE_OPTION_VALUE_RAW:
+      return "raw";
+    case MYLITE_DATABASE_OPTION_VALUE_IDENTIFIER:
+      return "identifier";
+    case MYLITE_DATABASE_OPTION_VALUE_STRING:
+      return "string";
+    case MYLITE_DATABASE_OPTION_VALUE_DEFAULT:
+      return "default";
+  }
+  return "unknown";
+}
+
 const char *mylite_alter_table_spec_kind_name(MyliteAlterTableSpecKind kind) {
   switch (kind) {
     case MYLITE_ALTER_TABLE_SPEC_UNKNOWN:
@@ -1726,6 +1833,13 @@ const MyliteAstAlterTable *mylite_ast_alter_table_view(
   return statement == NULL ? NULL : statement->alter_table;
 }
 
+const MyliteAstCreateDatabase *mylite_ast_create_database_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->create_database;
+}
+
 const MyliteAstCreateTable *mylite_ast_create_table_view(
     const MyliteAst *ast, size_t statement_index) {
   const MyliteAstStatement *statement = mylite_ast_statement_at(ast, statement_index);
@@ -1737,6 +1851,13 @@ const MyliteAstCreateIndex *mylite_ast_create_index_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->create_index;
+}
+
+const MyliteAstDropDatabase *mylite_ast_drop_database_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->drop_database;
 }
 
 const MyliteAstDropIndex *mylite_ast_drop_index_view(
@@ -2341,6 +2462,223 @@ unsigned long long mylite_ast_create_index_view_key_block_size_value(
     const MyliteAstCreateIndex *create_index) {
   return mylite_ast_create_table_key_view_key_block_size_value(
       create_index == NULL ? NULL : &create_index->key);
+}
+
+const MyliteAstNode *mylite_ast_create_database_view_node(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL ? NULL : create_database->node;
+}
+
+size_t mylite_ast_create_database_view_start(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL ? 0 : create_database->start;
+}
+
+size_t mylite_ast_create_database_view_end(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL ? 0 : create_database->end;
+}
+
+int mylite_ast_create_database_view_has_if_not_exists(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database != NULL && create_database->has_if_not_exists;
+}
+
+int mylite_ast_create_database_view_uses_schema_keyword(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database != NULL && create_database->uses_schema_keyword;
+}
+
+size_t mylite_ast_create_database_view_name_start(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL || create_database->target == NULL
+             ? 0
+             : create_database->target->name_start;
+}
+
+size_t mylite_ast_create_database_view_name_end(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL || create_database->target == NULL
+             ? 0
+             : create_database->target->name_end;
+}
+
+const char *mylite_ast_create_database_view_name_value(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL || create_database->target == NULL
+             ? NULL
+             : create_database->target->name_value;
+}
+
+size_t mylite_ast_create_database_view_name_value_length(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL || create_database->target == NULL
+             ? 0
+             : create_database->target->name_value_length;
+}
+
+size_t mylite_ast_create_database_view_option_count(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL ? 0 : create_database->option_count;
+}
+
+const MyliteAstDatabaseOption *mylite_ast_create_database_view_option_at(
+    const MyliteAstCreateDatabase *create_database, size_t option_index) {
+  if (create_database == NULL || option_index >= create_database->option_count) {
+    return NULL;
+  }
+  return &create_database->options[option_index];
+}
+
+const char *mylite_ast_create_database_view_charset_value(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL || create_database->charset_option == NULL
+             ? NULL
+             : create_database->charset_option->value;
+}
+
+size_t mylite_ast_create_database_view_charset_value_length(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL || create_database->charset_option == NULL
+             ? 0
+             : create_database->charset_option->value_length;
+}
+
+const char *mylite_ast_create_database_view_collation_value(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL || create_database->collation_option == NULL
+             ? NULL
+             : create_database->collation_option->value;
+}
+
+size_t mylite_ast_create_database_view_collation_value_length(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL || create_database->collation_option == NULL
+             ? 0
+             : create_database->collation_option->value_length;
+}
+
+const char *mylite_ast_create_database_view_encryption_value(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL || create_database->encryption_option == NULL
+             ? NULL
+             : create_database->encryption_option->value;
+}
+
+size_t mylite_ast_create_database_view_encryption_value_length(
+    const MyliteAstCreateDatabase *create_database) {
+  return create_database == NULL || create_database->encryption_option == NULL
+             ? 0
+             : create_database->encryption_option->value_length;
+}
+
+const MyliteAstNode *mylite_ast_drop_database_view_node(
+    const MyliteAstDropDatabase *drop_database) {
+  return drop_database == NULL ? NULL : drop_database->node;
+}
+
+size_t mylite_ast_drop_database_view_start(
+    const MyliteAstDropDatabase *drop_database) {
+  return drop_database == NULL ? 0 : drop_database->start;
+}
+
+size_t mylite_ast_drop_database_view_end(
+    const MyliteAstDropDatabase *drop_database) {
+  return drop_database == NULL ? 0 : drop_database->end;
+}
+
+int mylite_ast_drop_database_view_has_if_exists(
+    const MyliteAstDropDatabase *drop_database) {
+  return drop_database != NULL && drop_database->has_if_exists;
+}
+
+int mylite_ast_drop_database_view_uses_schema_keyword(
+    const MyliteAstDropDatabase *drop_database) {
+  return drop_database != NULL && drop_database->uses_schema_keyword;
+}
+
+size_t mylite_ast_drop_database_view_name_start(
+    const MyliteAstDropDatabase *drop_database) {
+  return drop_database == NULL || drop_database->target == NULL
+             ? 0
+             : drop_database->target->name_start;
+}
+
+size_t mylite_ast_drop_database_view_name_end(
+    const MyliteAstDropDatabase *drop_database) {
+  return drop_database == NULL || drop_database->target == NULL
+             ? 0
+             : drop_database->target->name_end;
+}
+
+const char *mylite_ast_drop_database_view_name_value(
+    const MyliteAstDropDatabase *drop_database) {
+  return drop_database == NULL || drop_database->target == NULL
+             ? NULL
+             : drop_database->target->name_value;
+}
+
+size_t mylite_ast_drop_database_view_name_value_length(
+    const MyliteAstDropDatabase *drop_database) {
+  return drop_database == NULL || drop_database->target == NULL
+             ? 0
+             : drop_database->target->name_value_length;
+}
+
+const MyliteAstNode *mylite_ast_database_option_view_node(
+    const MyliteAstDatabaseOption *option) {
+  return option == NULL ? NULL : option->node;
+}
+
+MyliteDatabaseOptionKind mylite_ast_database_option_view_kind(
+    const MyliteAstDatabaseOption *option) {
+  return option == NULL ? MYLITE_DATABASE_OPTION_UNKNOWN : option->kind;
+}
+
+MyliteDatabaseOptionValueKind mylite_ast_database_option_view_value_kind(
+    const MyliteAstDatabaseOption *option) {
+  return option == NULL ? MYLITE_DATABASE_OPTION_VALUE_UNKNOWN
+                        : option->value_kind;
+}
+
+size_t mylite_ast_database_option_view_start(
+    const MyliteAstDatabaseOption *option) {
+  return option == NULL ? 0 : option->start;
+}
+
+size_t mylite_ast_database_option_view_end(
+    const MyliteAstDatabaseOption *option) {
+  return option == NULL ? 0 : option->end;
+}
+
+size_t mylite_ast_database_option_view_name_start(
+    const MyliteAstDatabaseOption *option) {
+  return option == NULL ? 0 : option->name_start;
+}
+
+size_t mylite_ast_database_option_view_name_end(
+    const MyliteAstDatabaseOption *option) {
+  return option == NULL ? 0 : option->name_end;
+}
+
+size_t mylite_ast_database_option_view_value_start(
+    const MyliteAstDatabaseOption *option) {
+  return option == NULL ? 0 : option->value_start;
+}
+
+size_t mylite_ast_database_option_view_value_end(
+    const MyliteAstDatabaseOption *option) {
+  return option == NULL ? 0 : option->value_end;
+}
+
+const char *mylite_ast_database_option_view_value(
+    const MyliteAstDatabaseOption *option) {
+  return option == NULL ? NULL : option->value;
+}
+
+size_t mylite_ast_database_option_view_value_length(
+    const MyliteAstDatabaseOption *option) {
+  return option == NULL ? 0 : option->value_length;
 }
 
 const MyliteAstNode *mylite_ast_drop_index_view_node(
@@ -5631,6 +5969,9 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
            mylite_ast_collect_create_table_options(ast, statement, payload) &&
            mylite_ast_set_create_table_view(ast, statement, payload);
   }
+  if (strcmp(statement->symbol_name, "nt_create_database_stmt") == 0) {
+    return mylite_ast_set_create_database_view(ast, statement, payload);
+  }
   if (strcmp(statement->symbol_name, "nt_alter_table_stmt") == 0) {
     return mylite_ast_set_alter_table_view(ast, statement, payload);
   }
@@ -5639,6 +5980,9 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   }
   if (strcmp(statement->symbol_name, "nt_drop_index_stmt") == 0) {
     return mylite_ast_set_drop_index_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_drop_database_stmt") == 0) {
+    return mylite_ast_set_drop_database_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_drop_table_stmt") == 0) {
     return mylite_ast_set_drop_table_view(ast, statement, payload);
@@ -5650,6 +5994,67 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
     return mylite_ast_set_truncate_table_view(ast, statement, payload);
   }
   return 1;
+}
+
+static int mylite_ast_set_create_database_view(MyliteAst *ast,
+                                               MyliteAstStatement *statement,
+                                               const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstCreateDatabase *create_database =
+      mylite_ast_alloc(ast, sizeof(*create_database));
+  if (create_database == NULL) {
+    return 0;
+  }
+  create_database->node = payload == NULL ? statement->node : payload;
+  create_database->start = mylite_ast_node_start(create_database->node);
+  create_database->end = mylite_ast_node_end(create_database->node);
+  if (statement->target_count > 0) {
+    create_database->target = &statement->targets[0];
+  }
+  const MyliteAstNode *if_not_exists =
+      mylite_ast_find_first_symbol(create_database->node, "nt_if_not_exists");
+  create_database->has_if_not_exists =
+      if_not_exists != NULL && if_not_exists->has_span;
+  const MyliteAstNode *database_sym =
+      mylite_ast_find_first_symbol(create_database->node, "nt_database_sym");
+  create_database->uses_schema_keyword =
+      mylite_ast_find_first_token(database_sym, MYLITE_TOK_SCHEMA) !=
+      NULL;
+  if (!mylite_ast_set_database_options(ast, create_database,
+                                       create_database->node)) {
+    return 0;
+  }
+  mylite_ast_set_database_option_summary(create_database);
+  statement->create_database = create_database;
+  return 1;
+}
+
+static void mylite_ast_set_database_option_summary(
+    MyliteAstCreateDatabase *create_database) {
+  if (create_database == NULL) {
+    return;
+  }
+  for (size_t i = 0; i < create_database->option_count; i++) {
+    const MyliteAstDatabaseOption *option = &create_database->options[i];
+    switch (option->kind) {
+      case MYLITE_DATABASE_OPTION_CHARSET:
+        create_database->charset_option = option;
+        break;
+      case MYLITE_DATABASE_OPTION_COLLATE:
+        create_database->collation_option = option;
+        break;
+      case MYLITE_DATABASE_OPTION_ENCRYPTION:
+        create_database->encryption_option = option;
+        break;
+      case MYLITE_DATABASE_OPTION_UNKNOWN:
+      case MYLITE_DATABASE_OPTION_PLACEMENT_POLICY:
+      case MYLITE_DATABASE_OPTION_TI_FLASH_REPLICA:
+      case MYLITE_DATABASE_OPTION_READ_ONLY:
+        break;
+    }
+  }
 }
 
 static int mylite_ast_set_create_table_view(MyliteAst *ast,
@@ -6451,6 +6856,35 @@ static int mylite_ast_set_drop_index_view(MyliteAst *ast,
   drop_index->is_hypothetical =
       mylite_ast_find_first_token(drop_index->node, MYLITE_TOK_HYPO) != NULL;
   statement->drop_index = drop_index;
+  return 1;
+}
+
+static int mylite_ast_set_drop_database_view(MyliteAst *ast,
+                                             MyliteAstStatement *statement,
+                                             const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstDropDatabase *drop_database =
+      mylite_ast_alloc(ast, sizeof(*drop_database));
+  if (drop_database == NULL) {
+    return 0;
+  }
+  drop_database->node = payload == NULL ? statement->node : payload;
+  drop_database->start = mylite_ast_node_start(drop_database->node);
+  drop_database->end = mylite_ast_node_end(drop_database->node);
+  if (statement->target_count > 0) {
+    drop_database->target = &statement->targets[0];
+  }
+  const MyliteAstNode *if_exists =
+      mylite_ast_find_first_symbol(drop_database->node, "nt_if_exists");
+  drop_database->has_if_exists = if_exists != NULL && if_exists->has_span;
+  const MyliteAstNode *database_sym =
+      mylite_ast_find_first_symbol(drop_database->node, "nt_database_sym");
+  drop_database->uses_schema_keyword =
+      mylite_ast_find_first_token(database_sym, MYLITE_TOK_SCHEMA) !=
+      NULL;
+  statement->drop_database = drop_database;
   return 1;
 }
 
@@ -9068,6 +9502,264 @@ static const MyliteAstNode *mylite_ast_find_constraint_keyword_name(
   }
   const MyliteAstNode *symbol = mylite_ast_find_first_symbol(keyword, "nt_symbol");
   return symbol != NULL ? symbol : mylite_ast_find_first_symbol(keyword, "nt_identifier");
+}
+
+static int mylite_ast_set_database_options(
+    MyliteAst *ast, MyliteAstCreateDatabase *create_database,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || create_database == NULL || payload == NULL) {
+    return 1;
+  }
+
+  const MyliteAstNode *option_list =
+      mylite_ast_find_first_symbol(payload, "nt_database_option_list_opt");
+  if (option_list == NULL) {
+    option_list = mylite_ast_find_first_symbol(payload,
+                                               "nt_database_option_list");
+  }
+  size_t count = mylite_ast_count_database_options(option_list);
+  if (count == 0) {
+    return 1;
+  }
+
+  create_database->options =
+      mylite_ast_alloc(ast, count * sizeof(*create_database->options));
+  if (create_database->options == NULL) {
+    return 0;
+  }
+  create_database->option_count = count;
+
+  size_t index = 0;
+  int ok = 1;
+  mylite_ast_fill_database_options(ast, create_database->options,
+                                   create_database->option_count, option_list,
+                                   &index, &ok);
+  return ok && index == count;
+}
+
+static size_t mylite_ast_count_database_options(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_database_option") == 0) {
+    return 1;
+  }
+
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_database_options(node->children[i]);
+  }
+  return count;
+}
+
+static void mylite_ast_fill_database_options(
+    MyliteAst *ast, MyliteAstDatabaseOption *options, size_t option_count,
+    const MyliteAstNode *node, size_t *index, int *ok) {
+  if (options == NULL || node == NULL || index == NULL || ok == NULL || !*ok ||
+      *index >= option_count) {
+    return;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_database_option") == 0) {
+    *ok = mylite_ast_fill_database_option(ast, &options[*index], node);
+    if (*ok) {
+      (*index)++;
+    }
+    return;
+  }
+
+  for (size_t i = 0; i < node->child_count; i++) {
+    mylite_ast_fill_database_options(ast, options, option_count,
+                                     node->children[i], index, ok);
+    if (!*ok) {
+      return;
+    }
+  }
+}
+
+static int mylite_ast_fill_database_option(
+    MyliteAst *ast, MyliteAstDatabaseOption *option,
+    const MyliteAstNode *node) {
+  option->node = node;
+  option->kind = mylite_ast_classify_database_option(node);
+  option->start = mylite_ast_node_start(node);
+  option->end = mylite_ast_node_end(node);
+  mylite_ast_set_database_option_name(option, node);
+  mylite_ast_set_database_option_value(option, node);
+  return mylite_ast_set_database_option_value_metadata(ast, option, node);
+}
+
+static MyliteDatabaseOptionKind mylite_ast_classify_database_option(
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return MYLITE_DATABASE_OPTION_UNKNOWN;
+  }
+  if (mylite_ast_find_first_symbol(node, "nt_charset_kw") != NULL) {
+    return MYLITE_DATABASE_OPTION_CHARSET;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_COLLATE) != NULL) {
+    return MYLITE_DATABASE_OPTION_COLLATE;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_ENCRYPTION) != NULL) {
+    return MYLITE_DATABASE_OPTION_ENCRYPTION;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_SET) != NULL &&
+      mylite_ast_find_first_token(node, MYLITE_TOK_TI_FLASH) != NULL &&
+      mylite_ast_find_first_token(node, MYLITE_TOK_REPLICA) != NULL) {
+    return MYLITE_DATABASE_OPTION_TI_FLASH_REPLICA;
+  }
+  if ((mylite_ast_find_first_token(node, MYLITE_TOK_READ) != NULL &&
+       mylite_ast_find_first_token(node, MYLITE_TOK_ONLY) != NULL) ||
+      mylite_ast_find_first_token(node, MYLITE_TOK_READ_ONLY) != NULL) {
+    return MYLITE_DATABASE_OPTION_READ_ONLY;
+  }
+  if (mylite_ast_find_first_symbol(node, "nt_placement_policy_option") != NULL) {
+    return MYLITE_DATABASE_OPTION_PLACEMENT_POLICY;
+  }
+  return MYLITE_DATABASE_OPTION_UNKNOWN;
+}
+
+static void mylite_ast_set_database_option_name(
+    MyliteAstDatabaseOption *option, const MyliteAstNode *node) {
+  if (option == NULL || node == NULL) {
+    return;
+  }
+
+  const MyliteAstNode *name =
+      mylite_ast_find_database_option_name(node, option->kind);
+  if (name != NULL) {
+    option->name_start = mylite_ast_node_start(name);
+    option->name_end = mylite_ast_node_end(name);
+  }
+
+  if (option->kind == MYLITE_DATABASE_OPTION_READ_ONLY) {
+    const MyliteAstNode *only = mylite_ast_find_first_token(node,
+                                                           MYLITE_TOK_ONLY);
+    if (only != NULL) {
+      option->name_end = mylite_ast_node_end(only);
+    } else {
+      const MyliteAstNode *read_only =
+          mylite_ast_find_first_token(node, MYLITE_TOK_READ_ONLY);
+      if (read_only != NULL) {
+        option->name_start = mylite_ast_node_start(read_only);
+        option->name_end = mylite_ast_node_end(read_only);
+      }
+    }
+  } else if (option->kind == MYLITE_DATABASE_OPTION_TI_FLASH_REPLICA) {
+    const MyliteAstNode *replica =
+        mylite_ast_find_first_token(node, MYLITE_TOK_REPLICA);
+    if (replica != NULL) {
+      option->name_end = mylite_ast_node_end(replica);
+    }
+  }
+}
+
+static void mylite_ast_set_database_option_value(
+    MyliteAstDatabaseOption *option, const MyliteAstNode *node) {
+  if (option == NULL || option->name_end == 0) {
+    return;
+  }
+  mylite_ast_collect_value_span_after(node, option->name_end,
+                                      &option->value_start,
+                                      &option->value_end);
+}
+
+static int mylite_ast_set_database_option_value_metadata(
+    MyliteAst *ast, MyliteAstDatabaseOption *option,
+    const MyliteAstNode *node) {
+  if (ast == NULL || ast->source == NULL || option == NULL ||
+      option->value_start >= option->value_end ||
+      option->value_end > ast->source_length) {
+    return 1;
+  }
+
+  option->value = ast->source + option->value_start;
+  option->value_length = option->value_end - option->value_start;
+
+  const MyliteAstNode *token =
+      mylite_ast_find_database_option_value_token(node, option->name_end);
+  if (token == NULL) {
+    option->value_kind = MYLITE_DATABASE_OPTION_VALUE_RAW;
+    return 1;
+  }
+
+  if (token->token == MYLITE_TOK_DEFAULT_KWD) {
+    option->value_kind = MYLITE_DATABASE_OPTION_VALUE_DEFAULT;
+    return 1;
+  }
+
+  if (token->token == MYLITE_TOK_STRING_LIT) {
+    option->value_kind = MYLITE_DATABASE_OPTION_VALUE_STRING;
+    return mylite_ast_decode_sql_string_literal(ast, token->start, token->end,
+                                                &option->value,
+                                                &option->value_length);
+  }
+
+  if (token->start == option->value_start && token->end == option->value_end) {
+    option->value_kind = MYLITE_DATABASE_OPTION_VALUE_IDENTIFIER;
+    return mylite_ast_decode_identifier(ast, token->start, token->end,
+                                        &option->value,
+                                        &option->value_length);
+  }
+
+  option->value_kind = MYLITE_DATABASE_OPTION_VALUE_RAW;
+  return 1;
+}
+
+static const MyliteAstNode *mylite_ast_find_database_option_value_token(
+    const MyliteAstNode *node, size_t min_start) {
+  if (node == NULL || !node->has_span || node->end <= min_start) {
+    return NULL;
+  }
+  if (node->kind == MYLITE_AST_NODE_TOKEN) {
+    return node->start >= min_start && node->token != MYLITE_TOK_EQ ? node
+                                                                    : NULL;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    const MyliteAstNode *found =
+        mylite_ast_find_database_option_value_token(node->children[i],
+                                                    min_start);
+    if (found != NULL) {
+      return found;
+    }
+  }
+  return NULL;
+}
+
+static const MyliteAstNode *mylite_ast_find_database_option_name(
+    const MyliteAstNode *node, MyliteDatabaseOptionKind kind) {
+  if (kind == MYLITE_DATABASE_OPTION_CHARSET) {
+    return mylite_ast_find_first_symbol(node, "nt_charset_kw");
+  }
+  if (kind == MYLITE_DATABASE_OPTION_PLACEMENT_POLICY) {
+    const MyliteAstNode *placement =
+        mylite_ast_find_first_symbol(node, "nt_placement_policy_option");
+    return placement != NULL ? placement
+                             : mylite_ast_find_first_spanned_child(node);
+  }
+
+  int token = 0;
+  switch (kind) {
+    case MYLITE_DATABASE_OPTION_COLLATE:
+      token = MYLITE_TOK_COLLATE;
+      break;
+    case MYLITE_DATABASE_OPTION_ENCRYPTION:
+      token = MYLITE_TOK_ENCRYPTION;
+      break;
+    case MYLITE_DATABASE_OPTION_TI_FLASH_REPLICA:
+      token = MYLITE_TOK_SET;
+      break;
+    case MYLITE_DATABASE_OPTION_READ_ONLY:
+      token = MYLITE_TOK_READ;
+      break;
+    case MYLITE_DATABASE_OPTION_UNKNOWN:
+    case MYLITE_DATABASE_OPTION_CHARSET:
+    case MYLITE_DATABASE_OPTION_PLACEMENT_POLICY:
+      break;
+  }
+  return token == 0 ? mylite_ast_find_first_spanned_child(node)
+                    : mylite_ast_find_first_token(node, token);
 }
 
 static int mylite_ast_collect_create_table_options(

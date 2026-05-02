@@ -117,10 +117,14 @@ static void dump_statements(const MyliteAst *ast) {
     size_t option_count = mylite_ast_create_table_option_count(ast, i);
     const MyliteAstAlterTable *alter_table =
         mylite_ast_alter_table_view(ast, i);
+    const MyliteAstCreateDatabase *create_database =
+        mylite_ast_create_database_view(ast, i);
     const MyliteAstCreateTable *create_table =
         mylite_ast_create_table_view(ast, i);
     const MyliteAstCreateIndex *create_index =
         mylite_ast_create_index_view(ast, i);
+    const MyliteAstDropDatabase *drop_database =
+        mylite_ast_drop_database_view(ast, i);
     const MyliteAstDropIndex *drop_index = mylite_ast_drop_index_view(ast, i);
     const MyliteAstDropTable *drop_table = mylite_ast_drop_table_view(ast, i);
     const MyliteAstRenameTable *rename_table =
@@ -329,6 +333,90 @@ static void dump_statements(const MyliteAst *ast) {
       fputc('\n', stdout);
       dump_create_table_view_handles(create_table);
     }
+    if (create_database != NULL) {
+      printf("  create_database span=%zu..%zu if_not_exists=%d "
+             "schema_keyword=%d options=%zu name_len=%zu name=",
+             mylite_ast_create_database_view_start(create_database),
+             mylite_ast_create_database_view_end(create_database),
+             mylite_ast_create_database_view_has_if_not_exists(create_database),
+             mylite_ast_create_database_view_uses_schema_keyword(
+                 create_database),
+             mylite_ast_create_database_view_option_count(create_database),
+             mylite_ast_create_database_view_name_value_length(
+                 create_database));
+      const char *database_name =
+          mylite_ast_create_database_view_name_value(create_database);
+      size_t database_name_length =
+          mylite_ast_create_database_view_name_value_length(create_database);
+      if (database_name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(database_name, database_name_length);
+      }
+      fputs(" charset=", stdout);
+      const char *charset =
+          mylite_ast_create_database_view_charset_value(create_database);
+      size_t charset_length =
+          mylite_ast_create_database_view_charset_value_length(create_database);
+      if (charset == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(charset, charset_length);
+      }
+      fputs(" collation=", stdout);
+      const char *collation =
+          mylite_ast_create_database_view_collation_value(create_database);
+      size_t collation_length =
+          mylite_ast_create_database_view_collation_value_length(
+              create_database);
+      if (collation == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(collation, collation_length);
+      }
+      fputs(" encryption=", stdout);
+      const char *encryption =
+          mylite_ast_create_database_view_encryption_value(create_database);
+      size_t encryption_length =
+          mylite_ast_create_database_view_encryption_value_length(
+              create_database);
+      if (encryption == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(encryption, encryption_length);
+      }
+      fputc('\n', stdout);
+      for (size_t j = 0;
+           j < mylite_ast_create_database_view_option_count(create_database);
+           j++) {
+        const MyliteAstDatabaseOption *option =
+            mylite_ast_create_database_view_option_at(create_database, j);
+        printf("    database_option[%zu] kind=%s value_kind=%s "
+               "span=%zu..%zu name=%zu..%zu value=%zu..%zu value_len=%zu "
+               "value=",
+               j,
+               mylite_database_option_kind_name(
+                   mylite_ast_database_option_view_kind(option)),
+               mylite_database_option_value_kind_name(
+                   mylite_ast_database_option_view_value_kind(option)),
+               mylite_ast_database_option_view_start(option),
+               mylite_ast_database_option_view_end(option),
+               mylite_ast_database_option_view_name_start(option),
+               mylite_ast_database_option_view_name_end(option),
+               mylite_ast_database_option_view_value_start(option),
+               mylite_ast_database_option_view_value_end(option),
+               mylite_ast_database_option_view_value_length(option));
+        const char *value = mylite_ast_database_option_view_value(option);
+        size_t value_length =
+            mylite_ast_database_option_view_value_length(option);
+        if (value == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(value, value_length);
+        }
+        fputc('\n', stdout);
+      }
+    }
     if (create_index != NULL) {
       printf("  create_index span=%zu..%zu kind=%s index_type=%s "
              "visibility=%s columns=%zu options=%zu name_len=%zu table=",
@@ -374,6 +462,25 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_index_view_has_key_block_size_value(
                  create_index),
              mylite_ast_create_index_view_key_block_size_value(create_index));
+    }
+    if (drop_database != NULL) {
+      printf("  drop_database span=%zu..%zu if_exists=%d schema_keyword=%d "
+             "name_len=%zu name=",
+             mylite_ast_drop_database_view_start(drop_database),
+             mylite_ast_drop_database_view_end(drop_database),
+             mylite_ast_drop_database_view_has_if_exists(drop_database),
+             mylite_ast_drop_database_view_uses_schema_keyword(drop_database),
+             mylite_ast_drop_database_view_name_value_length(drop_database));
+      const char *database_name =
+          mylite_ast_drop_database_view_name_value(drop_database);
+      size_t database_name_length =
+          mylite_ast_drop_database_view_name_value_length(drop_database);
+      if (database_name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(database_name, database_name_length);
+      }
+      fputc('\n', stdout);
     }
     if (drop_index != NULL) {
       printf("  drop_index span=%zu..%zu if_exists=%d hypothetical=%d "

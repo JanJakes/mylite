@@ -187,7 +187,9 @@ static int expect_create_table_options(const char *sql,
                                        const ExpectedCreateTableOption *options,
                                        size_t option_count);
 static int expect_alter_table_view(void);
+static int expect_create_database_view(void);
 static int expect_create_index_view(void);
+static int expect_drop_database_view(void);
 static int expect_drop_index_view(void);
 static int expect_drop_table_view(void);
 static int expect_rename_table_view(void);
@@ -780,7 +782,9 @@ int main(void) {
       "'hello') ENGINE=InnoDB AUTO_INCREMENT=42 COMMENT='table comment'",
       "`db``x`.`t``y`", "`db``x`", "`t``y`", "db`x", "t`y", 1, 1, 3);
   failures += expect_alter_table_view();
+  failures += expect_create_database_view();
   failures += expect_create_index_view();
+  failures += expect_drop_database_view();
   failures += expect_drop_index_view();
   failures += expect_drop_table_view();
   failures += expect_rename_table_view();
@@ -3214,6 +3218,123 @@ static int expect_create_index_view(void) {
       !mylite_ast_create_index_view_has_key_block_size_value(view) ||
       mylite_ast_create_index_view_key_block_size_value(view) != 8) {
     fprintf(stderr, "CREATE INDEX view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_create_database_view(void) {
+  const char *sql =
+      "CREATE SCHEMA IF NOT EXISTS `db``x` DEFAULT CHARACTER SET utf8mb4 "
+      "COLLATE utf8mb4_0900_ai_ci DEFAULT ENCRYPTION='Y'";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "CREATE DATABASE view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstCreateDatabase *view =
+      mylite_ast_create_database_view(ast, 0);
+  const MyliteAstDatabaseOption *charset =
+      mylite_ast_create_database_view_option_at(view, 0);
+  const MyliteAstDatabaseOption *collation =
+      mylite_ast_create_database_view_option_at(view, 1);
+  const MyliteAstDatabaseOption *encryption =
+      mylite_ast_create_database_view_option_at(view, 2);
+  int failed = 0;
+  if (view == NULL ||
+      mylite_ast_create_database_view_node(view) == NULL ||
+      !mylite_ast_create_database_view_has_if_not_exists(view) ||
+      !mylite_ast_create_database_view_uses_schema_keyword(view) ||
+      !span_matches(sql, mylite_ast_create_database_view_name_start(view),
+                    mylite_ast_create_database_view_name_end(view),
+                    "`db``x`") ||
+      !value_matches_when_expected(
+          mylite_ast_create_database_view_name_value(view),
+          mylite_ast_create_database_view_name_value_length(view), "db`x") ||
+      mylite_ast_create_database_view_option_count(view) != 3 ||
+      !value_matches_when_expected(
+          mylite_ast_create_database_view_charset_value(view),
+          mylite_ast_create_database_view_charset_value_length(view),
+          "utf8mb4") ||
+      !value_matches_when_expected(
+          mylite_ast_create_database_view_collation_value(view),
+          mylite_ast_create_database_view_collation_value_length(view),
+          "utf8mb4_0900_ai_ci") ||
+      !value_matches_when_expected(
+          mylite_ast_create_database_view_encryption_value(view),
+          mylite_ast_create_database_view_encryption_value_length(view), "Y") ||
+      charset == NULL ||
+      mylite_ast_database_option_view_kind(charset) !=
+          MYLITE_DATABASE_OPTION_CHARSET ||
+      mylite_ast_database_option_view_value_kind(charset) !=
+          MYLITE_DATABASE_OPTION_VALUE_IDENTIFIER ||
+      !span_matches(sql, mylite_ast_database_option_view_name_start(charset),
+                    mylite_ast_database_option_view_name_end(charset),
+                    "CHARACTER SET") ||
+      !span_matches(sql, mylite_ast_database_option_view_value_start(charset),
+                    mylite_ast_database_option_view_value_end(charset),
+                    "utf8mb4") ||
+      collation == NULL ||
+      mylite_ast_database_option_view_kind(collation) !=
+          MYLITE_DATABASE_OPTION_COLLATE ||
+      !value_matches_when_expected(
+          mylite_ast_database_option_view_value(collation),
+          mylite_ast_database_option_view_value_length(collation),
+          "utf8mb4_0900_ai_ci") ||
+      encryption == NULL ||
+      mylite_ast_database_option_view_kind(encryption) !=
+          MYLITE_DATABASE_OPTION_ENCRYPTION ||
+      mylite_ast_database_option_view_value_kind(encryption) !=
+          MYLITE_DATABASE_OPTION_VALUE_STRING ||
+      !span_matches(sql, mylite_ast_database_option_view_value_start(encryption),
+                    mylite_ast_database_option_view_value_end(encryption),
+                    "'Y'") ||
+      !value_matches_when_expected(
+          mylite_ast_database_option_view_value(encryption),
+          mylite_ast_database_option_view_value_length(encryption), "Y")) {
+    fprintf(stderr, "CREATE DATABASE view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_drop_database_view(void) {
+  const char *sql = "DROP SCHEMA IF EXISTS `db``x`";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "DROP DATABASE view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstDropDatabase *view = mylite_ast_drop_database_view(ast, 0);
+  int failed = 0;
+  if (view == NULL ||
+      mylite_ast_drop_database_view_node(view) == NULL ||
+      !mylite_ast_drop_database_view_has_if_exists(view) ||
+      !mylite_ast_drop_database_view_uses_schema_keyword(view) ||
+      !span_matches(sql, mylite_ast_drop_database_view_name_start(view),
+                    mylite_ast_drop_database_view_name_end(view), "`db``x`") ||
+      !value_matches_when_expected(
+          mylite_ast_drop_database_view_name_value(view),
+          mylite_ast_drop_database_view_name_value_length(view), "db`x")) {
+    fprintf(stderr, "DROP DATABASE view failed: %s\n", sql);
     failed = 1;
   }
 

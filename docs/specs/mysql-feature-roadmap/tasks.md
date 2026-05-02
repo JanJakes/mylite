@@ -67,6 +67,7 @@ level application surfaces.
        [scalar built-in functions](../scalar-built-in-functions/specs.md).
 25. [ ] Aggregate functions and grouping: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`,
        `GROUP BY`, `HAVING`, aliases, ordinals, and `ONLY_FULL_GROUP_BY`.
+       Started; spec: [aggregate functions and grouping](../aggregate-grouping/specs.md).
 26. [ ] Inner joins and comma joins: join precedence, aliases, `ON`, `USING`,
        name resolution, and result metadata.
 27. [ ] Outer joins: `LEFT`/`RIGHT` joins, null extension, predicate placement,

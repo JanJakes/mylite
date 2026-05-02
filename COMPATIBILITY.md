@@ -305,9 +305,9 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `STRAIGHT_JOIN` | ❌ | medium | Join-order forcing syntax and optimizer interaction. |  |
 | Lateral derived tables | ❌ | medium | LATERAL derived table correlation rules. |  |
 | `WHERE` | 🟡 | top | Predicate semantics, type conversion, three-valued logic, and short-circuit-sensitive warnings. | Implemented for one user base table in table-backed `SELECT`, over the Task 16 expression subset, Task 24 pure scalar function subset, and Task 25 CASE expressions, with MyLite-owned row scanning, predicate name resolution, three-valued filtering, conversion and division warnings, invalid `ESCAPE` diagnostics, warning lifecycle, and projection metadata preservation. Single-table `UPDATE` and `DELETE` predicates use the same supported scalar subset. Joins, `HAVING`, `ON`, subqueries, remaining function families, broad collations, no-table/`DUAL` predicates, information-schema filters, optimizer pushdown, and index use remain deferred. See [WHERE clause spec](docs/specs/where-clause/specs.md), [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md), [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md), and [CASE expression spec](docs/specs/case-expression/specs.md). |
-| `GROUP BY` | ❌ | top | Grouping expression semantics, ordinals, aliases, functional-dependence handling, and ONLY_FULL_GROUP_BY. |  |
+| `GROUP BY` | ❌ | top | Grouping expression semantics, ordinals, aliases, functional-dependence handling, and ONLY_FULL_GROUP_BY. | Specified for the first single-table aggregate slice with `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, grouped and implicit aggregate queries, alias/ordinal resolution, conservative functional-dependence handling, metadata, diagnostics, warnings, and known deferrals. Not implemented. See [aggregate functions and grouping spec](docs/specs/aggregate-grouping/specs.md). |
 | `WITH ROLLUP` | ❌ | medium | Super-aggregate rows and GROUPING() behavior. |  |
-| `HAVING` | ❌ | top | Post-group predicate semantics and alias resolution. |  |
+| `HAVING` | ❌ | top | Post-group predicate semantics and alias resolution. | Specified for the first aggregate slice, including post-group filtering, aggregate and select-alias references, implicit-group behavior, ambiguity warnings, and ordering before `ORDER BY`/`LIMIT`. Not implemented. See [aggregate functions and grouping spec](docs/specs/aggregate-grouping/specs.md). |
 | Window definitions | ❌ | high | WINDOW clause, named windows, inheritance, partitioning, ordering, frames, and MySQL restrictions. |  |
 | `ORDER BY` | 🟡 | top | Expression, alias, ordinal, collation, ASC/DESC, and filesort metadata behavior. | Implemented for one-table `SELECT` after optional `WHERE`, with MyLite-owned sorting, multiple keys, `ASC`/`DESC`, `NULL` ordering, unqualified alias-before-column lookup, qualified table-column lookup, duplicate-alias ambiguity diagnostics, one-based ordinals, hidden supported sort expressions including Task 24 pure scalar functions and Task 25 CASE expressions, warning preservation before `LIMIT`, and projection metadata preservation. Single-table `UPDATE` and `DELETE` order keys use the same supported scalar subset. Joins, grouped queries, set operations, no-table/`DUAL` ordering, full collation fidelity, remaining function families, and broader expression metadata remain deferred. See [ORDER BY, LIMIT, and OFFSET spec](docs/specs/order-limit-offset/specs.md), [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md), and [CASE expression spec](docs/specs/case-expression/specs.md). |
 | `LIMIT` / `OFFSET` | 🟡 | top | Row limiting, prepared markers, integer conversion, and error cases. | Implemented for one-table `SELECT` as literal `LIMIT row_count`, `LIMIT offset,row_count`, and `LIMIT row_count OFFSET offset`, with normalized offset/count AST, unsigned 64-bit literal validation, syntax errors for negative/decimal/string/`NULL`/expression/overflow bounds and direct `LIMIT ?`, `LIMIT 0` metadata preservation, and read-only `SELECT` side effects. Prepared-statement parameter markers and use outside the single-table `SELECT` subset remain deferred. See [ORDER BY, LIMIT, and OFFSET spec](docs/specs/order-limit-offset/specs.md). |
@@ -585,7 +585,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `asynchronous_connection_failover_reset()` | ❌ | low | Remove all settings relating to group replication asynchronous failover |  |
 | `ATAN()` | ❌ | medium | Return the arc tangent |  |
 | `ATAN2(), ATAN()` | ❌ | medium | Return the arc tangent of the two arguments |  |
-| `AVG()` | ❌ | top | Return the average value of the argument |  |
+| `AVG()` | ❌ | top | Return the average value of the argument | Specified for the first aggregate slice, including NULL handling, implicit and grouped aggregates, numeric conversion warnings, decimal metadata, and empty-input behavior. Not implemented. See [aggregate functions and grouping spec](docs/specs/aggregate-grouping/specs.md). |
 | `BENCHMARK()` | ❌ | low | Repeatedly execute an expression |  |
 | `BETWEEN ... AND ...` | 🟡 | top | Whether a value is within a range of values | Implemented for no-table scalar `SELECT` expressions through MyLite expression evaluation, with parser/AST support and runtime tests for Task 16 verified cases. Row expression contexts outside single-table SELECT `WHERE`, full metadata, SQL-mode variants, complete collation behavior, functions, casts, row constructors, and subqueries remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md). |
 | `BIN()` | ❌ | high | Return a string containing binary representation of a number |  |
@@ -621,8 +621,8 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `CONVERT_TZ()` | ❌ | medium | Convert from one time zone to another |  |
 | `COS()` | ❌ | medium | Return the cosine |  |
 | `COT()` | ❌ | medium | Return the cotangent |  |
-| `COUNT()` | ❌ | top | Return a count of the number of rows returned |  |
-| `COUNT(DISTINCT)` | ❌ | top | Return the count of a number of different values |  |
+| `COUNT()` | ❌ | top | Return a count of the number of rows returned | Specified for the first aggregate slice, including `COUNT(*)`, `COUNT(expr)`, implicit and grouped aggregates, `HAVING`, result metadata, and diagnostics for invalid placement/arity. Not implemented. See [aggregate functions and grouping spec](docs/specs/aggregate-grouping/specs.md). |
+| `COUNT(DISTINCT)` | ❌ | top | Return the count of a number of different values | Deferred from the first aggregate slice pending duplicate-elimination semantics; MySQL-verified behavior is recorded in the aggregate grouping spec. See [aggregate functions and grouping spec](docs/specs/aggregate-grouping/specs.md). |
 | `CRC32()` | ❌ | high | Compute a cyclic redundancy check value |  |
 | `CUME_DIST()` | ❌ | medium | Cumulative distribution value |  |
 | `CURDATE()` | ❌ | top | Return the current date |  |
@@ -782,7 +782,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `MAKETIME()` | ❌ | medium | Create time from hour, minute, second |  |
 | `MASTER_POS_WAIT()` | ❌ | low | Block until the replica has read and applied all updates up to the specified position |  |
 | `MATCH()` | ❌ | high | Perform full-text search |  |
-| `MAX()` | ❌ | top | Return the maximum value |  |
+| `MAX()` | ❌ | top | Return the maximum value | Specified for the first aggregate slice, including NULL handling, implicit and grouped aggregates, string/numeric comparison domains, metadata, and empty-input behavior. Not implemented. See [aggregate functions and grouping spec](docs/specs/aggregate-grouping/specs.md). |
 | `MBRContains()` | ❌ | medium | Whether MBR of one geometry contains MBR of another |  |
 | `MBRCoveredBy()` | ❌ | medium | Whether one MBR is covered by another |  |
 | `MBRCovers()` | ❌ | medium | Whether one MBR covers another |  |
@@ -796,7 +796,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `MEMBER OF()` | ❌ | high | Returns true (1) if first operand matches any element of JSON array passed as second operand, otherwise returns false (0) |  |
 | `MICROSECOND()` | ❌ | high | Return the microseconds from argument |  |
 | `MID()` | ❌ | top | Return a substring starting from the specified position |  |
-| `MIN()` | ❌ | top | Return the minimum value |  |
+| `MIN()` | ❌ | top | Return the minimum value | Specified for the first aggregate slice, including NULL handling, implicit and grouped aggregates, string/numeric comparison domains, metadata, and empty-input behavior. Not implemented. See [aggregate functions and grouping spec](docs/specs/aggregate-grouping/specs.md). |
 | `MINUTE()` | ❌ | high | Return the minute from the argument |  |
 | `MOD()` | 🟡 | top | Return the remainder | Implemented as an operator in Task 16 and as a function in the Task 24 pure scalar function subset, including division-by-zero warning behavior in covered scalar results. Full type coercion edge cases remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `MONTH()` | ❌ | high | Return the month from the date passed |  |
@@ -957,7 +957,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `SUBSTRING()` | ❌ | top | Return the substring as specified |  |
 | `SUBSTRING_INDEX()` | ❌ | high | Return a substring from a string before the specified number of occurrences of the delimiter |  |
 | `SUBTIME()` | ❌ | medium | Subtract times |  |
-| `SUM()` | ❌ | top | Return the sum |  |
+| `SUM()` | ❌ | top | Return the sum | Specified for the first aggregate slice, including NULL handling, implicit and grouped aggregates, numeric conversion warnings, decimal metadata, and empty-input behavior. Not implemented. See [aggregate functions and grouping spec](docs/specs/aggregate-grouping/specs.md). |
 | `SYSDATE()` | ❌ | medium | Return the time at which the function executes |  |
 | `SYSTEM_USER()` | ❌ | high | Synonym for USER() |  |
 | `TAN()` | ❌ | medium | Return the tangent of the argument |  |

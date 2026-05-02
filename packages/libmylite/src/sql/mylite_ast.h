@@ -92,6 +92,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_CASE_EXPRESSION = 81,
     MYLITE_SQL_AST_CASE_WHEN_LIST = 82,
     MYLITE_SQL_AST_CASE_WHEN = 83,
+    MYLITE_SQL_AST_CAST_EXPRESSION = 84,
 };
 
 enum mylite_sql_ast_literal_kind {

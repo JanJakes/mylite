@@ -32,6 +32,8 @@ struct mylite_sql_parser_keyword_token {
 
 static unsigned int parse_display_width(const struct mylite_sql_ast_node *display_width);
 static bool parse_column_length(const struct mylite_sql_ast_node *length, uint64_t *out_length);
+static char *copy_column_type_option_text(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_source_span span);
 static struct mylite_sql_ast_node *
 make_checked_integer_literal(struct mylite_sql_parser_state *state,
                              struct mylite_sql_token integer_token);
@@ -2144,6 +2146,8 @@ mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
                                        struct mylite_sql_ast_node *column_type)
 {
     const char *type_name = NULL;
+    char *character_set = NULL;
+    char *collation = NULL;
     struct mylite_column_type_descriptor descriptor;
     struct mylite_column_type_attributes attributes = {false};
     enum mylite_column_type_status status = MYLITE_COLUMN_TYPE_OK;
@@ -2156,6 +2160,19 @@ mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
     }
 
     type_name = column_type_descriptor_name(column_type->column_type);
+    if (column_type->has_column_character_set) {
+        character_set = copy_column_type_option_text(state, column_type->column_character_set);
+        if (character_set == NULL) {
+            return column_type;
+        }
+    }
+    if (column_type->has_column_collation) {
+        collation = copy_column_type_option_text(state, column_type->column_collation);
+        if (collation == NULL) {
+            free(character_set);
+            return column_type;
+        }
+    }
     attributes = (struct mylite_column_type_attributes){
         .has_signed = column_type->column_type_signed,
         .has_unsigned = column_type->column_type_unsigned,
@@ -2166,11 +2183,11 @@ mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
         .has_scale = column_type->has_column_scale,
         .scale = column_type->column_scale,
         .has_character_set = column_type->has_column_character_set,
-        .character_set = column_type->column_character_set.text,
-        .character_set_length = column_type->column_character_set.length,
+        .character_set = character_set,
+        .character_set_length = character_set == NULL ? 0U : strlen(character_set),
         .has_collation = column_type->has_column_collation,
-        .collation = column_type->column_collation.text,
-        .collation_length = column_type->column_collation.length,
+        .collation = collation,
+        .collation_length = collation == NULL ? 0U : strlen(collation),
         .has_binary_attribute = column_type->column_binary_attribute,
         .has_byte_attribute = column_type->column_byte_attribute,
         .has_zerofill_attribute = column_type->column_zerofill_attribute,
@@ -2190,6 +2207,8 @@ mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
     if (status != MYLITE_COLUMN_TYPE_OK) {
         mylite_sql_parser_state_parse_failed(state);
     }
+    free(character_set);
+    free(collation);
     return column_type;
 }
 
@@ -2766,6 +2785,23 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     return call;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_cast_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token cast_token,
+    struct mylite_sql_ast_node *expression, struct mylite_sql_ast_node *target_type,
+    struct mylite_sql_token right_paren)
+{
+    struct mylite_sql_ast_node *cast =
+        make_node(state, MYLITE_SQL_AST_CAST_EXPRESSION,
+                  span_join(span_from_token(&cast_token), span_from_token(&right_paren)));
+    if (cast == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(cast, expression);
+    mylite_sql_ast_node_append_child(cast, target_type);
+    return cast;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_simple_case_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_token case_token,
     struct mylite_sql_ast_node *base, struct mylite_sql_ast_node *when_list,
@@ -3175,6 +3211,31 @@ static bool parse_column_length(const struct mylite_sql_ast_node *length, uint64
     return true;
 }
 
+static char *copy_column_type_option_text(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_source_span span)
+{
+    const char *text = span.text == NULL ? "" : span.text;
+    size_t start = 0U;
+    size_t end = span.text == NULL ? 0U : span.length;
+    char *copy = NULL;
+
+    if (end >= 2U && (text[0] == '\'' || text[0] == '"') && text[end - 1U] == text[0]) {
+        start = 1U;
+        --end;
+    }
+
+    copy = malloc((end - start) + 1U);
+    if (copy == NULL) {
+        set_state_status(state, MYLITE_SQL_PARSE_NOMEM);
+        return NULL;
+    }
+    if (end > start) {
+        memcpy(copy, text + start, end - start);
+    }
+    copy[end - start] = '\0';
+    return copy;
+}
+
 static struct mylite_sql_ast_node *
 make_checked_integer_literal(struct mylite_sql_parser_state *state,
                              struct mylite_sql_token integer_token)
@@ -3330,6 +3391,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"BYTE", MYLITE_SQL_PARSE_BYTE},
         {"CASCADE", MYLITE_SQL_PARSE_CASCADE},
         {"CASE", MYLITE_SQL_PARSE_CASE},
+        {"CAST", MYLITE_SQL_PARSE_CAST},
         {"CHAR", MYLITE_SQL_PARSE_CHAR},
         {"CHARACTER", MYLITE_SQL_PARSE_CHARACTER},
         {"CHARSET", MYLITE_SQL_PARSE_CHARSET},

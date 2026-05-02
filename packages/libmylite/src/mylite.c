@@ -84,11 +84,13 @@ static const unsigned int mylite_mysql_utf8mb4_0900_ai_ci_charset_id = 255U;
 static const unsigned int mylite_mysql_not_fixed_decimals = 31U;
 static const uint64_t mylite_mysql_decimal_divide_display_length = 7U;
 static const unsigned int mylite_mysql_decimal_divide_scale = 4U;
+static const unsigned int mylite_mysql_cast_default_decimal_precision = 10U;
 static const uint64_t mylite_mysql_double_display_length = 22U;
 static const uint64_t mylite_mysql_length_function_display_length = 10U;
 static const uint64_t mylite_mysql_integer_function_display_length = 21U;
 static const uint64_t mylite_mysql_pi_function_display_length = 8U;
 static const unsigned int mylite_mysql_pi_function_scale = 6U;
+static const uint64_t mylite_mysql_signed_longlong_display_length = 21U;
 static const uint64_t mylite_mysql_unsigned_longlong_display_length = 20U;
 static const uint64_t mylite_mysql_tinyint_unsigned_display_length = 3U;
 static const uint64_t mylite_mysql_tinyint_signed_display_length = 4U;
@@ -942,6 +944,11 @@ static int infer_case_expression_descriptor(mylite_db *database,
                                             const struct mylite_select_plan *plan,
                                             const struct mylite_sql_ast_node *expression,
                                             struct mylite_field_descriptor *out_descriptor);
+static int infer_cast_expression_descriptor(mylite_db *database,
+                                            const struct mylite_select_plan *plan,
+                                            const struct mylite_sql_ast_node *expression,
+                                            const struct mylite_expression_value *value,
+                                            struct mylite_field_descriptor *out_descriptor);
 static int infer_case_result_descriptor(mylite_db *database, const struct mylite_select_plan *plan,
                                         const struct mylite_sql_ast_node *expression,
                                         struct mylite_case_descriptor_aggregate *aggregate);
@@ -954,6 +961,26 @@ static bool field_descriptor_has_text_result(const struct mylite_field_descripto
 static bool field_descriptor_has_decimal_result(const struct mylite_field_descriptor *descriptor);
 static bool field_descriptor_has_double_result(const struct mylite_field_descriptor *descriptor);
 static struct mylite_field_descriptor null_expression_descriptor(void);
+static struct mylite_field_descriptor
+cast_signed_descriptor(const struct mylite_field_descriptor *source);
+static struct mylite_field_descriptor
+cast_unsigned_descriptor(const struct mylite_field_descriptor *source);
+static struct mylite_field_descriptor
+cast_decimal_descriptor(const struct mylite_sql_ast_node *target,
+                        const struct mylite_field_descriptor *source);
+static struct mylite_field_descriptor
+cast_character_descriptor(mylite_db *database, const struct mylite_sql_ast_node *target,
+                          const struct mylite_expression_value *value,
+                          const struct mylite_field_descriptor *source);
+static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *target);
+static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target);
+static uint64_t cast_character_length(mylite_db *database, const struct mylite_sql_ast_node *target,
+                                      const struct mylite_expression_value *value,
+                                      const struct mylite_field_descriptor *source);
+static unsigned int cast_target_charset_id(mylite_db *database,
+                                           const struct mylite_sql_ast_node *target);
+static int cast_target_charset_max_length(mylite_db *database,
+                                          const struct mylite_sql_ast_node *target);
 static int infer_function_arguments_nullable(mylite_db *database,
                                              const struct mylite_select_plan *plan,
                                              const struct mylite_sql_ast_node *arguments,
@@ -1848,6 +1875,7 @@ static char *copy_identifier_span(const struct mylite_sql_ast_node *node);
 static char *copy_normalized_savepoint_name(const char *name);
 static char *copy_string_literal_span(const struct mylite_sql_ast_node *node);
 static char *copy_schema_text_span(const struct mylite_sql_ast_node *node);
+static char *copy_unquoted_span_text(struct mylite_sql_source_span span);
 static char *copy_span_text(const char *text, size_t length);
 static bool span_contains_newline(const char *text, size_t length);
 static bool text_contains_word(const char *text, const char *word);
@@ -2506,6 +2534,7 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_CASE_EXPRESSION:
         case MYLITE_SQL_AST_CASE_WHEN_LIST:
         case MYLITE_SQL_AST_CASE_WHEN:
+        case MYLITE_SQL_AST_CAST_EXPRESSION:
         case MYLITE_SQL_AST_WHERE_CLAUSE:
         case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
         case MYLITE_SQL_AST_ORDER_ITEM_LIST:
@@ -2603,6 +2632,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_ITEM_LIST:
@@ -2697,6 +2727,7 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_ITEM_LIST:
@@ -2955,6 +2986,7 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_ITEM_LIST:
@@ -3243,6 +3275,8 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
         return infer_case_expression_descriptor(database, plan, node, out_descriptor);
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return infer_function_expression_descriptor(database, plan, node, value, out_descriptor);
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
+        return infer_cast_expression_descriptor(database, plan, node, value, out_descriptor);
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
@@ -3917,6 +3951,222 @@ static struct mylite_field_descriptor null_expression_descriptor(void)
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = true,
     };
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_cast_expression_descriptor(mylite_db *database,
+                                            const struct mylite_select_plan *plan,
+                                            const struct mylite_sql_ast_node *expression,
+                                            const struct mylite_expression_value *value,
+                                            struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *source = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *target = child_at(expression, 1U);
+    struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
+    int status = infer_expression_descriptor(database, plan, source, NULL, &source_descriptor);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (target == NULL || target->kind != MYLITE_SQL_AST_COLUMN_TYPE) {
+        *out_descriptor = field_descriptor_defaults();
+        return MYLITE_OK;
+    }
+
+    switch (target->column_type) {
+    case MYLITE_SQL_AST_COLUMN_TYPE_BIGINT:
+        if (target->column_type_unsigned) {
+            *out_descriptor = cast_unsigned_descriptor(&source_descriptor);
+        } else {
+            *out_descriptor = cast_signed_descriptor(&source_descriptor);
+        }
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL:
+        *out_descriptor = cast_decimal_descriptor(target, &source_descriptor);
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
+    case MYLITE_SQL_AST_COLUMN_TYPE_BINARY:
+        *out_descriptor = cast_character_descriptor(database, target, value, &source_descriptor);
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_INT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
+    case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:
+    case MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYTEXT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TEXT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMTEXT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_LONGTEXT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_VARBINARY:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYBLOB:
+    case MYLITE_SQL_AST_COLUMN_TYPE_BLOB:
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB:
+    case MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB:
+    case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_DATE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TIME:
+    case MYLITE_SQL_AST_COLUMN_TYPE_DATETIME:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP:
+    case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
+        break;
+    }
+
+    *out_descriptor = field_descriptor_defaults();
+    return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor
+cast_signed_descriptor(const struct mylite_field_descriptor *source)
+{
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_LONGLONG,
+        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+        .length = mylite_mysql_signed_longlong_display_length,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = expression_descriptor_is_nullable(source),
+    };
+
+    field_descriptor_set_nullable(&descriptor, descriptor.nullable);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor
+cast_unsigned_descriptor(const struct mylite_field_descriptor *source)
+{
+    struct mylite_field_descriptor descriptor = cast_signed_descriptor(source);
+
+    descriptor.flags |= MYLITE_FIELD_FLAG_UNSIGNED;
+    return descriptor;
+}
+
+static struct mylite_field_descriptor
+cast_decimal_descriptor(const struct mylite_sql_ast_node *target,
+                        const struct mylite_field_descriptor *source)
+{
+    unsigned int precision = cast_decimal_precision(target);
+    unsigned int scale = cast_decimal_scale(target);
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_NEWDECIMAL,
+        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+        .length = (uint64_t)precision + (scale == 0U ? 1U : 2U),
+        .decimals = scale,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = expression_descriptor_is_nullable(source),
+    };
+
+    field_descriptor_set_nullable(&descriptor, descriptor.nullable);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor
+cast_character_descriptor(mylite_db *database, const struct mylite_sql_ast_node *target,
+                          const struct mylite_expression_value *value,
+                          const struct mylite_field_descriptor *source)
+{
+    unsigned int charset_id = cast_target_charset_id(database, target);
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = cast_character_length(database, target, value, source),
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = charset_id,
+        .nullable = expression_descriptor_is_nullable(source),
+    };
+
+    if (charset_id == mylite_mysql_binary_charset_id) {
+        descriptor.flags |= MYLITE_FIELD_FLAG_BINARY;
+    }
+    field_descriptor_set_nullable(&descriptor, descriptor.nullable);
+    return descriptor;
+}
+
+static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *target)
+{
+    if (target != NULL && target->has_column_precision) {
+        return (unsigned int)target->column_precision;
+    }
+    return mylite_mysql_cast_default_decimal_precision;
+}
+
+static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target)
+{
+    if (target != NULL && target->has_column_scale) {
+        return (unsigned int)target->column_scale;
+    }
+    return 0U;
+}
+
+static uint64_t cast_character_length(mylite_db *database, const struct mylite_sql_ast_node *target,
+                                      const struct mylite_expression_value *value,
+                                      const struct mylite_field_descriptor *source)
+{
+    int max_length = cast_target_charset_max_length(database, target);
+
+    if (target != NULL && target->has_column_length) {
+        return target->column_length * (uint64_t)max_length;
+    }
+    if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return (uint64_t)(value->text_value == NULL ? 0U : strlen(value->text_value)) *
+               (uint64_t)max_length;
+    }
+    if (source != NULL && source->length != 0U) {
+        return source->length;
+    }
+    return 0U;
+}
+
+static unsigned int cast_target_charset_id(mylite_db *database,
+                                           const struct mylite_sql_ast_node *target)
+{
+    char *name = NULL;
+    const struct mylite_charset *charset = NULL;
+    const struct mylite_collation *collation = NULL;
+
+    if (target == NULL || !target->has_column_character_set) {
+        if (target != NULL && target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_BINARY) {
+            return mylite_mysql_binary_charset_id;
+        }
+        return field_descriptor_connection_charset_id(database);
+    }
+
+    name = copy_unquoted_span_text(target->column_character_set);
+    if (name == NULL) {
+        return field_descriptor_connection_charset_id(database);
+    }
+    charset = mylite_charset_lookup(name);
+    if (charset != NULL) {
+        collation = mylite_collation_lookup(charset->default_collation);
+    }
+    free(name);
+    return collation == NULL ? field_descriptor_connection_charset_id(database)
+                             : (unsigned int)collation->id;
+}
+
+static int cast_target_charset_max_length(mylite_db *database,
+                                          const struct mylite_sql_ast_node *target)
+{
+    char *name = NULL;
+    const struct mylite_charset *charset = NULL;
+
+    if (target == NULL || !target->has_column_character_set) {
+        charset =
+            target != NULL && target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_BINARY
+                ? mylite_charset_lookup("binary")
+                : mylite_charset_lookup(database == NULL ? NULL : database->character_set_results);
+        return charset == NULL ? 1 : charset->max_length;
+    }
+
+    name = copy_unquoted_span_text(target->column_character_set);
+    if (name == NULL) {
+        return 1;
+    }
+    charset = mylite_charset_lookup(name);
+    free(name);
+    return charset == NULL ? 1 : charset->max_length;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -5044,6 +5294,8 @@ static int bind_select_predicate_expression(mylite_db *database,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
+        return bind_select_predicate_expression(database, child_at(expression, 0U), plan);
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return bind_select_function_arguments(database, expression, plan);
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
@@ -5332,6 +5584,8 @@ static int bind_select_order_expression(mylite_db *database,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
+        return bind_select_order_expression(database, child_at(expression, 0U), plan);
     case MYLITE_SQL_AST_FUNCTION_CALL: {
         const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
 
@@ -7833,6 +8087,9 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
+        return bind_update_predicate_expression(stmt, table, child_at(expression, 0U),
+                                                clause_context);
     case MYLITE_SQL_AST_FUNCTION_CALL: {
         const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
 
@@ -9245,6 +9502,9 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
+        return bind_delete_predicate_expression(stmt, table, child_at(expression, 0U),
+                                                clause_context);
     case MYLITE_SQL_AST_FUNCTION_CALL: {
         const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
 
@@ -13273,6 +13533,7 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_ITEM_LIST:
@@ -15688,6 +15949,19 @@ static char *copy_schema_text_span(const struct mylite_sql_ast_node *node)
         return copy_string_literal_span(node);
     }
     return copy_identifier_span(node);
+}
+
+static char *copy_unquoted_span_text(struct mylite_sql_source_span span)
+{
+    const char *text = span.text == NULL ? "" : span.text;
+    size_t start = 0U;
+    size_t end = span.text == NULL ? 0U : span.length;
+
+    if (end >= 2U && (text[0] == '\'' || text[0] == '"') && text[end - 1U] == text[0]) {
+        start = 1U;
+        --end;
+    }
+    return copy_span_text(text + start, end - start);
 }
 
 static char *copy_span_text(const char *text, size_t length)

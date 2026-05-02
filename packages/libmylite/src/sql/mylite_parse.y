@@ -1831,6 +1831,9 @@ unary_expression(A) ::= LOGICAL_NOT(T) unary_expression(B). {
 primary_expression(A) ::= literal(B). {
     A = B;
 }
+primary_expression(A) ::= cast_expression(B). {
+    A = B;
+}
 primary_expression(A) ::= case_expression(B). {
     A = B;
 }
@@ -1848,6 +1851,69 @@ primary_expression(A) ::= bare_temporal_function(B). {
 }
 primary_expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+cast_expression(A) ::= CAST(T) LPAREN expression(B) AS cast_target_type(C) RPAREN(R). {
+    A = mylite_sql_parser_make_cast_expression(state, T, B, C, R);
+}
+
+cast_target_type(A) ::= SIGNED(T) opt_integer_keyword. {
+    A = mylite_sql_parser_set_column_type_signed(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BIGINT), T);
+}
+cast_target_type(A) ::= UNSIGNED(T) opt_integer_keyword. {
+    A = mylite_sql_parser_set_column_type_unsigned(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BIGINT), T);
+}
+cast_target_type(A) ::= DECIMALKW(T) opt_numeric_precision_scale(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_set_column_precision_scale(
+                   state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL),
+                   B));
+}
+cast_target_type(A) ::= DEC(T) opt_numeric_precision_scale(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_set_column_precision_scale(
+                   state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL),
+                   B));
+}
+cast_target_type(A) ::= CHAR(T) opt_column_length(B) opt_cast_character_set(C). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_apply_column_type_attributes(
+            state,
+            mylite_sql_parser_set_column_length(
+                state,
+                mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_CHAR), B),
+            C));
+}
+cast_target_type(A) ::= NCHAR(T) opt_column_length(B). {
+    A = mylite_sql_parser_set_column_type_national(
+        state,
+        mylite_sql_parser_validate_column_type(
+            state, mylite_sql_parser_set_column_length(
+                       state,
+                       mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_CHAR),
+                       B)),
+        T);
+}
+cast_target_type(A) ::= BINARY(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BINARY);
+}
+
+opt_integer_keyword ::= .
+opt_integer_keyword ::= INTEGERKW.
+
+opt_cast_character_set(A) ::= . {
+    A = mylite_sql_parser_make_column_type_attribute_list(state);
+}
+opt_cast_character_set(A) ::= CHARACTER SET charset_value(B). {
+    A = mylite_sql_parser_set_column_type_character_set(
+        state, mylite_sql_parser_make_column_type_attribute_list(state), B);
+}
+opt_cast_character_set(A) ::= CHARSET charset_value(B). {
+    A = mylite_sql_parser_set_column_type_character_set(
+        state, mylite_sql_parser_make_column_type_attribute_list(state), B);
 }
 
 case_expression(A) ::= CASE(T) expression(B) case_when_list(C) opt_case_else(D) END(E). {

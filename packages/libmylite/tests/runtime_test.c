@@ -69,6 +69,7 @@ enum {
     simple_create_statistics_count = 3,
     mysql_warning_ambiguous_column = 1052,
     mysql_warning_unknown_column = 1054,
+    mysql_warning_unknown = 1105,
     mysql_warning_incorrect_escape_arguments = 1210,
     mysql_warning_truncated_wrong_value = 1292,
     mysql_warning_savepoint_does_not_exist = 1305,
@@ -132,6 +133,7 @@ static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_case_expression_execution(void);
+static int test_cast_expression_execution(void);
 static int test_schema_lifecycle(void);
 static int test_character_set_collation_foundation(void);
 static int test_core_metadata_catalog(void);
@@ -240,6 +242,7 @@ int main(void)
     failures += test_expression_operator_foundation();
     failures += test_scalar_builtin_functions_execution();
     failures += test_case_expression_execution();
+    failures += test_cast_expression_execution();
     failures += test_schema_lifecycle();
     failures += test_character_set_collation_foundation();
     failures += test_core_metadata_catalog();
@@ -1297,6 +1300,283 @@ static int test_case_expression_execution(void)
     failures += expect_select_rows(database, "SELECT id, marker FROM order_dml_case ORDER BY id",
                                    order_dml_columns, 2, order_dml_after_delete, 2,
                                    "CASE delete order rows");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_cast_expression_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const rowless_columns[] = {
+        "null_signed",   "round_signed", "unsigned_wrap",
+        "decimal_value", "char_value",   "binary_value",
+    };
+    static const struct expected_result_metadata metadata[] = {
+        {"signed_value", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_UNSIGNED, 0},
+        {"unsigned_value", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+        {"decimal_value", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_NEWDECIMAL, 2U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"char_value", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"binary_value", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"null_char", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+        {"quoted_binary_char", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         63U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const id_text_columns[] = {"id", "n_text"};
+    static const char *const table_projection_values[] = {"1", "1", "2", "2"};
+    static const char *const where_values[] = {"1"};
+    static const char *const order_values[] = {"3", "2", "1"};
+    static const char *const n_column[] = {"n"};
+    static const char *const n_13[] = {"13"};
+    static const char *const n_2[] = {"2"};
+    static const char *const n_5[] = {"5"};
+    static const char *const n_6[] = {"6"};
+    static const char *const n_7[] = {"7"};
+    static const char *const ids_2_3[] = {"2", "3"};
+    static const char *const id_3[] = {"3"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open CAST database");
+
+    failures += prepare_sql(database,
+                            "SELECT CAST(NULL AS SIGNED) AS null_signed, "
+                            "CAST(12.5 AS SIGNED) AS round_signed, "
+                            "CAST(-1 AS UNSIGNED) AS unsigned_wrap, "
+                            "CAST(12.345 AS DECIMAL(5,2)) AS decimal_value, "
+                            "CAST(38.8 AS CHAR) AS char_value, "
+                            "CAST('abc' AS BINARY) AS binary_value",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, rowless_columns,
+                                    (int)(sizeof(rowless_columns) / sizeof(rowless_columns[0])),
+                                    "CAST rowless columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST rowless row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "CAST null signed");
+    failures += expect_string(mylite_column_text(stmt, 1), "13", "CAST rounded signed");
+    failures += expect_string(mylite_column_text(stmt, 2), "18446744073709551615",
+                              "CAST numeric unsigned wrap");
+    failures += expect_string(mylite_column_text(stmt, 3), "12.35", "CAST decimal value");
+    failures += expect_string(mylite_column_text(stmt, 4), "38.8", "CAST char value");
+    failures += expect_string(mylite_column_text(stmt, 5), "abc", "CAST binary value");
+    failures += expect_int(mylite_warning_count(database), 0, "CAST rowless warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST rowless done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT CAST('123' AS SIGNED) AS signed_value, "
+                            "CAST('123' AS UNSIGNED) AS unsigned_value, "
+                            "CAST('12.34' AS DECIMAL(6,2)) AS decimal_value, "
+                            "CAST('abc' AS CHAR(3)) AS char_value, "
+                            "CAST('abc' AS BINARY) AS binary_value, "
+                            "CAST(NULL AS CHAR) AS null_char, "
+                            "CAST('abc' AS CHAR CHARACTER SET 'binary') AS quoted_binary_char",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "CAST metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT CAST('12.5' AS SIGNED) AS value", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST string signed warning row");
+    failures += expect_string(mylite_column_text(stmt, 0), "12", "CAST string signed value");
+    failures += expect_int(mylite_warning_count(database), 1, "CAST string signed warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "CAST string signed warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "INTEGER",
+                                "CAST string signed warning message");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT CAST('-1' AS UNSIGNED) AS value", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST string unsigned warning row");
+    failures += expect_string(mylite_column_text(stmt, 0), "18446744073709551615",
+                              "CAST string unsigned value");
+    failures += expect_int(mylite_warning_count(database), 1, "CAST string unsigned warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown,
+                           "CAST string unsigned warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "negative integer",
+                                "CAST string unsigned warning message");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT CAST('18446744073709551615' AS UNSIGNED) AS value",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST string unsigned max row");
+    failures += expect_string(mylite_column_text(stmt, 0), "18446744073709551615",
+                              "CAST string unsigned max value");
+    failures += expect_int(mylite_warning_count(database), 0, "CAST string unsigned max warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT CAST('9223372036854775808' AS SIGNED) AS value",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST string signed complement row");
+    failures += expect_string(mylite_column_text(stmt, 0), "-9223372036854775808",
+                              "CAST string signed complement value");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "CAST string signed complement warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown,
+                           "CAST string signed complement warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "positive out-of-range",
+                                "CAST string signed complement warning message");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT CAST('18446744073709551616' AS UNSIGNED) AS value",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST string unsigned overflow row");
+    failures += expect_string(mylite_column_text(stmt, 0), "18446744073709551615",
+                              "CAST string unsigned overflow value");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "CAST string unsigned overflow warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "CAST string unsigned overflow warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT CAST(1e20 AS SIGNED) AS signed_value, "
+                            "CAST(1e20 AS UNSIGNED) AS unsigned_value",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST real overflow row");
+    failures += expect_string(mylite_column_text(stmt, 0), "9223372036854775807",
+                              "CAST real signed overflow value");
+    failures += expect_string(mylite_column_text(stmt, 1), "9223372036854775807",
+                              "CAST real unsigned overflow value");
+    failures += expect_int(mylite_warning_count(database), 0, "CAST real overflow warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT CAST('x' AS DECIMAL(5,2)) AS value", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST bad decimal warning row");
+    failures += expect_string(mylite_column_text(stmt, 0), "0.00", "CAST bad decimal value");
+    failures += expect_int(mylite_warning_count(database), 1, "CAST bad decimal warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "CAST bad decimal warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "DECIMAL",
+                                "CAST bad decimal warning message");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT CAST('abcdef' AS CHAR(3)) AS value", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST char warning row");
+    failures += expect_string(mylite_column_text(stmt, 0), "abc", "CAST char truncated value");
+    failures += expect_int(mylite_warning_count(database), 1, "CAST char warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "CAST char warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "CHAR(3)",
+                                "CAST char warning message");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT CAST('abc' AS CHAR(0)) AS value", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST char zero warning row");
+    failures += expect_string(mylite_column_text(stmt, 0), "", "CAST char zero value");
+    failures += expect_int(mylite_warning_count(database), 1, "CAST char zero warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "CAST char zero warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_cast_expression "
+                            "DEFAULT CHARACTER SET utf8mb4",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_cast_expression", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE t ("
+                            "id INT PRIMARY KEY, s VARCHAR(20), n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO t VALUES (1,'12',1),(2,'2',2),(3,NULL,NULL)",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, CAST(n AS CHAR) AS n_text "
+                           "FROM t WHERE n IS NOT NULL ORDER BY id",
+                           id_text_columns, 2, table_projection_values, 2, "CAST table projection");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE CAST(s AS SIGNED) = 12",
+                                   id_column, 1, where_values, 1, "CAST table where");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY CAST(s AS UNSIGNED), id",
+                                   id_column, 1, order_values, 3, "CAST table order");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE t SET n = CAST(12.5 AS SIGNED) WHERE id = 1", 1,
+        "CAST update assignment");
+    failures += expect_select_rows(database, "SELECT n FROM t WHERE id = 1", n_column, 1, n_13, 1,
+                                   "CAST update value");
+    failures += prepare_sql(database, "UPDATE t SET n = CAST('12.5' AS SIGNED) WHERE id = 2",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect INTEGER value",
+                                  "CAST update warning promoted");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT n FROM t WHERE id = 2", n_column, 1, n_2, 1,
+                                   "CAST update warning unchanged");
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "UPDATE t SET n = CASE WHEN id = 2 THEN CAST(5 AS SIGNED) "
+                                         "ELSE CAST('bad' AS SIGNED) END WHERE id = 2",
+                                         1, "CAST update unselected warning");
+    failures += expect_select_rows(database, "SELECT n FROM t WHERE id = 2", n_column, 1, n_5, 1,
+                                   "CAST update unselected warning value");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE t SET n = n + 1 WHERE CAST(s AS SIGNED) = 2", 1, "CAST update predicate");
+    failures += expect_select_rows(database, "SELECT n FROM t WHERE id = 2", n_column, 1, n_6, 1,
+                                   "CAST update predicate value");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE t SET n = 7 WHERE n IS NOT NULL ORDER BY CAST(s AS UNSIGNED), id LIMIT 1",
+        1, "CAST update order");
+    failures += expect_select_rows(database, "SELECT n FROM t WHERE id = 2", n_column, 1, n_7, 1,
+                                   "CAST update order value");
+
+    failures += execute_sql(database, "CREATE TABLE d (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO d VALUES (1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM d WHERE CASE WHEN id = 1 THEN 0 ELSE CAST('bad' AS SIGNED) END", 0,
+        "CAST delete unselected warning");
+    failures += expect_select_row_count(database, "SELECT id FROM d WHERE id = 1", 1,
+                                        "CAST delete unselected warning unchanged");
+    failures += prepare_sql(database,
+                            "DELETE FROM d WHERE CASE WHEN id = 1 THEN CAST('bad' AS SIGNED) "
+                            "ELSE 0 END",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect INTEGER value",
+                                  "CAST delete warning promoted");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(database, "SELECT id FROM d WHERE id = 1", 1,
+                                        "CAST delete warning unchanged");
+    failures +=
+        execute_sql(database, "CREATE TABLE del (id INT PRIMARY KEY, s VARCHAR(20))", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO del VALUES (1,'12'),(2,'2'),(3,'30')", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM del WHERE CAST(s AS SIGNED) = 12", 1, "CAST delete predicate");
+    failures += expect_select_rows(database, "SELECT id FROM del ORDER BY id", id_column, 1,
+                                   ids_2_3, 2, "CAST delete predicate remaining rows");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM del WHERE 1 ORDER BY CAST(s AS UNSIGNED), id LIMIT 1", 1,
+        "CAST delete order");
+    failures += expect_select_rows(database, "SELECT id FROM del ORDER BY id", id_column, 1, id_3,
+                                   1, "CAST delete order remaining rows");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

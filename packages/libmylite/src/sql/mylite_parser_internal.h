@@ -547,6 +547,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
     struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *mylite_sql_parser_make_cast_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token cast_token,
+    struct mylite_sql_ast_node *expression, struct mylite_sql_ast_node *target_type,
+    struct mylite_sql_token right_paren);
 struct mylite_sql_ast_node *mylite_sql_parser_make_simple_case_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_token case_token,
     struct mylite_sql_ast_node *base, struct mylite_sql_ast_node *when_list,

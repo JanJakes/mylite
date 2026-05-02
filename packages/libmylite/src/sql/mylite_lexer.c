@@ -252,6 +252,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"CASCADE", MYLITE_SQL_KEYWORD_RESERVED},
         {"CASCADED", 0U},
         {"CASE", MYLITE_SQL_KEYWORD_RESERVED},
+        {"CAST", MYLITE_SQL_KEYWORD_RESERVED},
         {"CATALOG_NAME", 0U},
         {"CHAIN", 0U},
         {"CHALLENGE_RESPONSE", 0U},

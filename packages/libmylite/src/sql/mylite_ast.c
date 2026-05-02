@@ -568,6 +568,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "case_when_list";
     case MYLITE_SQL_AST_CASE_WHEN:
         return "case_when";
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
+        return "cast_expression";
     }
 
     return "unknown";

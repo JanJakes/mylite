@@ -13,8 +13,8 @@ Task 26 implements the first application-facing CAST slice:
 - `CAST(expr AS DECIMAL)`, `DECIMAL(M)`, `DECIMAL(M,D)`, `DEC(M)`, and
   `DEC(M,D)`
 - `CAST(expr AS CHAR)`, `CHAR(N)`, `NCHAR`, and `NCHAR(N)`
-- `CAST(expr AS CHAR CHARACTER SET charset_name)` for the initial MyLite
-  charset registry
+- `CAST(expr AS CHAR CHARACTER SET charset_name)` and the `CHARSET` shorthand
+  for the initial MyLite charset registry
 - `CAST(expr AS BINARY)` as a binary-string metadata cast without fixed-length
   zero padding
 
@@ -134,8 +134,8 @@ Metadata observations from `mysql --column-type-info -vvv`:
 | `CAST('12' AS DECIMAL)` | `NEWDECIMAL` | `11` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `CAST('12' AS DECIMAL(5))` | `NEWDECIMAL` | `6` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `CAST('12.34' AS DECIMAL(6,2))` | `NEWDECIMAL` | `8` | `2` | `binary` | `NOT_NULL BINARY NUM` |
-| `CAST('abc' AS CHAR)` | `VAR_STRING` | connection dependent | `31` | connection dependent | none |
-| `CAST('abc' AS CHAR(3))` | `VAR_STRING` | `3` | `31` | connection dependent | none |
+| `CAST('abc' AS CHAR)` | `VAR_STRING` | source length times charset maxlen | `31` | connection dependent | none |
+| `CAST('abc' AS CHAR(3))` | `VAR_STRING` | `3` times charset maxlen | `31` | connection dependent | none |
 | `CAST('abc' AS BINARY)` | `VAR_STRING` | source length | `31` | `binary` | `BINARY` |
 | `CAST(NULL AS CHAR)` | `VAR_STRING` | `0` | `31` | connection dependent | nullable |
 
@@ -165,6 +165,7 @@ opt_integer_keyword ::= INTEGERKW.
 
 opt_cast_character_set ::= .
 opt_cast_character_set ::= CHARACTER SET charset_value.
+opt_cast_character_set ::= CHARSET charset_value.
 ```
 
 `COLLATE` inside the cast target remains a syntax error. Applying a future

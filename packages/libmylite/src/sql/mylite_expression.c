@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,10 +11,12 @@
 // NOLINTBEGIN(misc-no-recursion, readability-implicit-bool-conversion)
 
 enum {
+    MYLITE_WARNING_UNKNOWN = 1105,
     MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS = 1210,
     MYLITE_WARNING_TRUNCATED_WRONG_VALUE = 1292,
     MYLITE_WARNING_DIVISION_BY_ZERO = 1365,
     MYLITE_EXPRESSION_TEXT_BUFFER_SIZE = 64,
+    MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE = 128,
     MYLITE_EXPRESSION_DECIMAL_BASE = 10,
     MYLITE_EXPRESSION_UINT64_DIGITS = 19,
     MYLITE_EXPRESSION_BITS_PER_UINT64 = 64,
@@ -24,6 +27,8 @@ enum {
 };
 
 static const char mylite_pi_text[] = "3.141593";
+static const uint64_t mylite_expression_int64_min_magnitude = (uint64_t)INT64_MAX + UINT64_C(1);
+static const double mylite_expression_round_half = 0.5;
 
 struct numeric_value {
     double real_value;
@@ -36,6 +41,14 @@ struct numeric_value {
 struct between_truth {
     int low;
     int high;
+};
+
+struct cast_integer_parse {
+    uint64_t magnitude;
+    bool negative;
+    bool saw_digit;
+    bool trailing_garbage;
+    bool overflow;
 };
 
 enum mylite_scalar_function_id {
@@ -110,6 +123,26 @@ static int eval_case_default(const struct mylite_sql_ast_node *expression,
                              const struct mylite_expression_eval_context *context,
                              struct mylite_expression_warnings *warnings,
                              struct mylite_expression_value *out_value);
+static int eval_cast_expression(const struct mylite_sql_ast_node *node,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value);
+static int eval_signed_cast(const struct mylite_expression_value *value,
+                            struct mylite_expression_warnings *warnings,
+                            struct mylite_expression_value *out_value);
+static int eval_unsigned_cast(const struct mylite_expression_value *value,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value);
+static int eval_decimal_cast(const struct mylite_sql_ast_node *target,
+                             const struct mylite_expression_value *value,
+                             struct mylite_expression_warnings *warnings,
+                             struct mylite_expression_value *out_value);
+static int eval_char_cast(const struct mylite_sql_ast_node *target,
+                          const struct mylite_expression_value *value,
+                          struct mylite_expression_warnings *warnings,
+                          struct mylite_expression_value *out_value);
+static int eval_binary_cast(const struct mylite_expression_value *value,
+                            struct mylite_expression_value *out_value);
 static int eval_function_call(const struct mylite_sql_ast_node *node,
                               const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
@@ -223,6 +256,31 @@ static int compare_values(const struct mylite_expression_value *left,
 static int value_to_numeric(const struct mylite_expression_value *value,
                             struct mylite_expression_warnings *warnings,
                             struct numeric_value *out_numeric);
+static int cast_value_to_signed_integer(const struct mylite_expression_value *value,
+                                        struct mylite_expression_warnings *warnings,
+                                        int64_t *out_integer);
+static int cast_value_to_unsigned_integer(const struct mylite_expression_value *value,
+                                          struct mylite_expression_warnings *warnings,
+                                          uint64_t *out_integer);
+static int cast_string_to_signed_integer(const char *text,
+                                         struct mylite_expression_warnings *warnings,
+                                         int64_t *out_integer);
+static int cast_string_to_unsigned_integer(const char *text,
+                                           struct mylite_expression_warnings *warnings,
+                                           uint64_t *out_integer);
+static struct cast_integer_parse parse_cast_integer_text(const char *text);
+static int64_t signed_integer_from_uint64(uint64_t value);
+static uint64_t unsigned_complement_from_magnitude(uint64_t magnitude);
+static int cast_value_to_decimal_double(const struct mylite_expression_value *value,
+                                        struct mylite_expression_warnings *warnings,
+                                        double *out_number);
+static int cast_string_to_decimal_double(const char *text,
+                                         struct mylite_expression_warnings *warnings,
+                                         double *out_number);
+static int cast_value_to_string(const struct mylite_expression_value *value, char **out_text);
+static int cast_real_to_string(double value, char **out_text);
+static int64_t cast_real_to_signed_integer(double value);
+static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target);
 static double absolute_real_value(double value);
 static int64_t floor_real_value(double value);
 static int64_t ceil_real_value(double value);
@@ -235,6 +293,12 @@ static size_t utf8_offset_for_chars(const char *text, int64_t char_count);
 static int append_warning(struct mylite_expression_warnings *warnings, unsigned int code,
                           const char *message);
 static int append_truncation_warning(struct mylite_expression_warnings *warnings, const char *text);
+static int append_cast_truncation_warning(struct mylite_expression_warnings *warnings,
+                                          const char *type_name, const char *text);
+static int append_char_truncation_warning(struct mylite_expression_warnings *warnings,
+                                          uint64_t length, const char *text);
+static int append_signed_complement_warning(struct mylite_expression_warnings *warnings);
+static int append_unsigned_complement_warning(struct mylite_expression_warnings *warnings);
 static char *copy_span_text(const char *text, size_t length);
 static char *decode_string_literal(const struct mylite_sql_ast_node *node);
 static bool decode_string_escape(char escaped, char *out_character);
@@ -399,6 +463,8 @@ bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *e
             }
         }
         return true;
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
+        return mylite_expression_is_supported_no_table(child_at(expression, 0U));
     case MYLITE_SQL_AST_FUNCTION_CALL:
         if (!mylite_expression_is_supported_function_call(expression)) {
             return false;
@@ -498,6 +564,8 @@ static int eval_node(const struct mylite_sql_ast_node *node,
         return eval_ternary(node, context, warnings, out_value);
     case MYLITE_SQL_AST_CASE_EXPRESSION:
         return eval_case_expression(node, context, warnings, out_value);
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
+        return eval_cast_expression(node, context, warnings, out_value);
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return eval_function_call(node, context, warnings, out_value);
     default:
@@ -950,6 +1018,173 @@ static int eval_case_default(const struct mylite_sql_ast_node *expression,
         return 0;
     }
     return eval_node(expression, context, warnings, out_value);
+}
+
+static int eval_cast_expression(const struct mylite_sql_ast_node *node,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *source = child_at(node, 0U);
+    const struct mylite_sql_ast_node *target = child_at(node, 1U);
+    struct mylite_expression_value value = {0};
+    int status = eval_node(source, context, warnings, &value);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        mylite_expression_value_deinit(&value);
+        return 0;
+    }
+    if (target == NULL || target->kind != MYLITE_SQL_AST_COLUMN_TYPE) {
+        mylite_expression_value_deinit(&value);
+        return -1;
+    }
+
+    switch (target->column_type) {
+    case MYLITE_SQL_AST_COLUMN_TYPE_BIGINT:
+        if (target->column_type_unsigned) {
+            status = eval_unsigned_cast(&value, warnings, out_value);
+        } else {
+            status = eval_signed_cast(&value, warnings, out_value);
+        }
+        break;
+    case MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL:
+        status = eval_decimal_cast(target, &value, warnings, out_value);
+        break;
+    case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
+        status = eval_char_cast(target, &value, warnings, out_value);
+        break;
+    case MYLITE_SQL_AST_COLUMN_TYPE_BINARY:
+        status = eval_binary_cast(&value, out_value);
+        break;
+    case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_INT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
+    case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:
+    case MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYTEXT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TEXT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMTEXT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_LONGTEXT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_VARBINARY:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TINYBLOB:
+    case MYLITE_SQL_AST_COLUMN_TYPE_BLOB:
+    case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB:
+    case MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB:
+    case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_DATE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TIME:
+    case MYLITE_SQL_AST_COLUMN_TYPE_DATETIME:
+    case MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP:
+    case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
+        status = -1;
+        break;
+    }
+
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int eval_signed_cast(const struct mylite_expression_value *value,
+                            struct mylite_expression_warnings *warnings,
+                            struct mylite_expression_value *out_value)
+{
+    int64_t integer = 0;
+    int status = cast_value_to_signed_integer(value, warnings, &integer);
+
+    if (status != 0) {
+        return status;
+    }
+    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                  .int64_value = integer};
+    return 0;
+}
+
+static int eval_unsigned_cast(const struct mylite_expression_value *value,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value)
+{
+    uint64_t integer = 0;
+    int status = cast_value_to_unsigned_integer(value, warnings, &integer);
+
+    if (status != 0) {
+        return status;
+    }
+    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
+                                                  .uint64_value = integer};
+    return 0;
+}
+
+static int eval_decimal_cast(const struct mylite_sql_ast_node *target,
+                             const struct mylite_expression_value *value,
+                             struct mylite_expression_warnings *warnings,
+                             struct mylite_expression_value *out_value)
+{
+    char buffer[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
+    unsigned int scale = cast_decimal_scale(target);
+    double number = 0.0;
+    int length = 0;
+    int status = cast_value_to_decimal_double(value, warnings, &number);
+
+    if (status != 0) {
+        return status;
+    }
+    length = snprintf(buffer, sizeof(buffer), "%.*f", (int)scale, number);
+    if (length < 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    return set_text_value(buffer, (size_t)length, out_value);
+}
+
+static int eval_char_cast(const struct mylite_sql_ast_node *target,
+                          const struct mylite_expression_value *value,
+                          struct mylite_expression_warnings *warnings,
+                          struct mylite_expression_value *out_value)
+{
+    char *text = NULL;
+    int status = cast_value_to_string(value, &text);
+
+    if (status != 0) {
+        return status;
+    }
+    if (target->has_column_length) {
+        int64_t character_count = 0;
+
+        status = utf8_char_count(text, &character_count);
+        if (status == 0 && character_count > (int64_t)target->column_length) {
+            size_t offset = utf8_offset_for_chars(text, (int64_t)target->column_length);
+
+            status = append_char_truncation_warning(warnings, target->column_length, text);
+            if (status == 0) {
+                text[offset] = '\0';
+            }
+        }
+    }
+    if (status == 0) {
+        status = set_text_value(text, strlen(text), out_value);
+    }
+    free(text);
+    return status;
+}
+
+static int eval_binary_cast(const struct mylite_expression_value *value,
+                            struct mylite_expression_value *out_value)
+{
+    char *text = NULL;
+    int status = cast_value_to_string(value, &text);
+
+    if (status == 0) {
+        status = set_text_value(text, strlen(text), out_value);
+    }
+    free(text);
+    return status;
 }
 
 static int eval_function_call(const struct mylite_sql_ast_node *node,
@@ -2166,6 +2401,301 @@ static int value_to_numeric(const struct mylite_expression_value *value,
     return 0;
 }
 
+static int cast_value_to_signed_integer(const struct mylite_expression_value *value,
+                                        struct mylite_expression_warnings *warnings,
+                                        int64_t *out_integer)
+{
+    if (out_integer == NULL) {
+        return -1;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
+        *out_integer = value->int64_value;
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
+        *out_integer = signed_integer_from_uint64(value->uint64_value);
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
+        *out_integer = cast_real_to_signed_integer(value->real_value);
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return cast_string_to_signed_integer(value->text_value == NULL ? "" : value->text_value,
+                                             warnings, out_integer);
+    }
+    return -1;
+}
+
+static int cast_value_to_unsigned_integer(const struct mylite_expression_value *value,
+                                          struct mylite_expression_warnings *warnings,
+                                          uint64_t *out_integer)
+{
+    if (out_integer == NULL) {
+        return -1;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
+        *out_integer = (uint64_t)value->int64_value;
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
+        *out_integer = value->uint64_value;
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
+        *out_integer = (uint64_t)cast_real_to_signed_integer(value->real_value);
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return cast_string_to_unsigned_integer(value->text_value == NULL ? "" : value->text_value,
+                                               warnings, out_integer);
+    }
+    return -1;
+}
+
+static int cast_string_to_signed_integer(const char *text,
+                                         struct mylite_expression_warnings *warnings,
+                                         int64_t *out_integer)
+{
+    struct cast_integer_parse parsed = parse_cast_integer_text(text);
+    bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
+
+    if (truncated) {
+        int status = append_cast_truncation_warning(warnings, "INTEGER", text);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+    if (!parsed.saw_digit) {
+        *out_integer = 0;
+        return 0;
+    }
+    if (parsed.negative) {
+        *out_integer = parsed.magnitude == mylite_expression_int64_min_magnitude
+                           ? INT64_MIN
+                           : -(int64_t)parsed.magnitude;
+        return 0;
+    }
+    *out_integer = signed_integer_from_uint64(parsed.magnitude);
+    if (!parsed.overflow && parsed.magnitude > (uint64_t)INT64_MAX) {
+        return append_signed_complement_warning(warnings);
+    }
+    return 0;
+}
+
+static int cast_string_to_unsigned_integer(const char *text,
+                                           struct mylite_expression_warnings *warnings,
+                                           uint64_t *out_integer)
+{
+    struct cast_integer_parse parsed = parse_cast_integer_text(text);
+    bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
+
+    if (truncated) {
+        int status = append_cast_truncation_warning(warnings, "INTEGER", text);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+    if (!parsed.saw_digit) {
+        *out_integer = 0;
+        return 0;
+    }
+    if (parsed.negative) {
+        *out_integer = unsigned_complement_from_magnitude(parsed.magnitude);
+        if (!parsed.overflow && parsed.magnitude != 0U) {
+            return append_unsigned_complement_warning(warnings);
+        }
+        return 0;
+    }
+    *out_integer = parsed.magnitude;
+    return 0;
+}
+
+static struct cast_integer_parse parse_cast_integer_text(const char *text)
+{
+    const char *start = text == NULL ? "" : text;
+    const char *scan = NULL;
+    const uint64_t radix = (uint64_t)MYLITE_EXPRESSION_DECIMAL_BASE;
+    struct cast_integer_parse parsed = {0};
+
+    while (isspace((unsigned char)*start)) {
+        ++start;
+    }
+    if (*start == '+' || *start == '-') {
+        parsed.negative = *start == '-';
+        ++start;
+    }
+    scan = start;
+    while (isdigit((unsigned char)*scan)) {
+        uint64_t digit = (uint64_t)(*scan - '0');
+        uint64_t limit = parsed.negative ? mylite_expression_int64_min_magnitude : UINT64_MAX;
+
+        parsed.saw_digit = true;
+        if (parsed.magnitude > (limit - digit) / radix) {
+            parsed.magnitude = limit;
+            parsed.overflow = true;
+        } else if (!parsed.overflow) {
+            parsed.magnitude = (parsed.magnitude * radix) + digit;
+        }
+        ++scan;
+    }
+    while (isspace((unsigned char)*scan)) {
+        ++scan;
+    }
+    parsed.trailing_garbage = *scan != '\0';
+    return parsed;
+}
+
+static int64_t signed_integer_from_uint64(uint64_t value)
+{
+    if (value <= (uint64_t)INT64_MAX) {
+        return (int64_t)value;
+    }
+    return INT64_MIN + (int64_t)(value - mylite_expression_int64_min_magnitude);
+}
+
+static uint64_t unsigned_complement_from_magnitude(uint64_t magnitude)
+{
+    if (magnitude == 0U) {
+        return 0U;
+    }
+    return (UINT64_MAX - magnitude) + 1U;
+}
+
+static int cast_value_to_decimal_double(const struct mylite_expression_value *value,
+                                        struct mylite_expression_warnings *warnings,
+                                        double *out_number)
+{
+    if (out_number == NULL) {
+        return -1;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
+        *out_number = (double)value->int64_value;
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
+        *out_number = (double)value->uint64_value;
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
+        *out_number = value->real_value;
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return cast_string_to_decimal_double(value->text_value == NULL ? "" : value->text_value,
+                                             warnings, out_number);
+    }
+    return -1;
+}
+
+static int cast_string_to_decimal_double(const char *text,
+                                         struct mylite_expression_warnings *warnings,
+                                         double *out_number)
+{
+    char *copy = copy_span_text(text == NULL ? "" : text, strlen(text == NULL ? "" : text));
+    char *start = NULL;
+    char *end = NULL;
+
+    if (copy == NULL) {
+        return -1;
+    }
+    start = copy;
+    while (isspace((unsigned char)*start)) {
+        ++start;
+    }
+    errno = 0;
+    *out_number = strtod(start, &end);
+    while (end != NULL && isspace((unsigned char)*end)) {
+        ++end;
+    }
+    if (end == start || (end != NULL && *end != '\0')) {
+        int status = append_cast_truncation_warning(warnings, "DECIMAL", text);
+
+        if (end == start) {
+            *out_number = 0.0;
+        }
+        free(copy);
+        return status;
+    }
+    free(copy);
+    return 0;
+}
+
+static int cast_value_to_string(const struct mylite_expression_value *value, char **out_text)
+{
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    int length = 0;
+
+    if (out_text == NULL || value == NULL) {
+        return -1;
+    }
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->int64_value);
+        *out_text = length < 0 ? NULL : copy_span_text(buffer, (size_t)length);
+        return *out_text == NULL ? -1 : 0;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        length = snprintf(buffer, sizeof(buffer), "%llu", (unsigned long long)value->uint64_value);
+        *out_text = length < 0 ? NULL : copy_span_text(buffer, (size_t)length);
+        return *out_text == NULL ? -1 : 0;
+    case MYLITE_EXPRESSION_VALUE_REAL:
+        return cast_real_to_string(value->real_value, out_text);
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        *out_text = copy_span_text(value->text_value == NULL ? "" : value->text_value,
+                                   value->text_value == NULL ? 0U : strlen(value->text_value));
+        return *out_text == NULL ? -1 : 0;
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        return -1;
+    }
+    return -1;
+}
+
+static int cast_real_to_string(double value, char **out_text)
+{
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    int length = snprintf(buffer, sizeof(buffer), "%.15g", value);
+
+    if (length < 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    *out_text = copy_span_text(buffer, (size_t)length);
+    return *out_text == NULL ? -1 : 0;
+}
+
+static int64_t cast_real_to_signed_integer(double value)
+{
+    double rounded = 0.0;
+
+    if (value >= (double)INT64_MAX) {
+        return INT64_MAX;
+    }
+    if (value <= (double)INT64_MIN) {
+        return INT64_MIN;
+    }
+    if (value >= 0.0) {
+        rounded = value + mylite_expression_round_half;
+    } else {
+        rounded = value - mylite_expression_round_half;
+    }
+    if (rounded >= (double)INT64_MAX) {
+        return INT64_MAX;
+    }
+    if (rounded <= (double)INT64_MIN) {
+        return INT64_MIN;
+    }
+    return (int64_t)rounded;
+}
+
+static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target)
+{
+    if (target != NULL && target->has_column_scale) {
+        return (unsigned int)target->column_scale;
+    }
+    return 0U;
+}
+
 static double absolute_real_value(double value)
 {
     return value < 0.0 ? -value : value;
@@ -2222,8 +2752,12 @@ static int utf8_char_count(const char *text, int64_t *out_count)
 {
     int64_t count = 0;
 
-    for (const unsigned char *cursor = (const unsigned char *)(text == NULL ? "" : text);
-         *cursor != '\0'; ++cursor) {
+    if (text == NULL) {
+        *out_count = 0;
+        return 0;
+    }
+
+    for (const unsigned char *cursor = (const unsigned char *)text; *cursor != '\0'; ++cursor) {
         if ((*cursor & MYLITE_UTF8_CONTINUATION_MASK) != MYLITE_UTF8_CONTINUATION_MARKER) {
             ++count;
         }
@@ -2282,6 +2816,48 @@ static int append_truncation_warning(struct mylite_expression_warnings *warnings
         return -1;
     }
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
+}
+
+static int append_cast_truncation_warning(struct mylite_expression_warnings *warnings,
+                                          const char *type_name, const char *text)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int length = snprintf(message, sizeof(message), "Truncated incorrect %s value: '%.*s'",
+                          type_name == NULL ? "" : type_name,
+                          MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW, text == NULL ? "" : text);
+
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
+}
+
+static int append_char_truncation_warning(struct mylite_expression_warnings *warnings,
+                                          uint64_t length, const char *text)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int written = snprintf(message, sizeof(message), "Truncated incorrect CHAR(%llu) value: '%.*s'",
+                           (unsigned long long)length, MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW,
+                           text == NULL ? "" : text);
+
+    if (written < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
+}
+
+static int append_signed_complement_warning(struct mylite_expression_warnings *warnings)
+{
+    return append_warning(warnings, MYLITE_WARNING_UNKNOWN,
+                          "Cast to signed converted positive out-of-range integer to its negative "
+                          "complement");
+}
+
+static int append_unsigned_complement_warning(struct mylite_expression_warnings *warnings)
+{
+    return append_warning(warnings, MYLITE_WARNING_UNKNOWN,
+                          "Cast to unsigned converted negative integer to its positive "
+                          "complement");
 }
 
 static char *copy_span_text(const char *text, size_t length)

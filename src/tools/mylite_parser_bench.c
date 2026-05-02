@@ -70,6 +70,14 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_table_view_known_column_types = 0;
   size_t create_table_view_key_handles = 0;
   size_t create_table_view_named_keys = 0;
+  size_t create_table_view_key_column_handles = 0;
+  size_t create_table_view_named_key_columns = 0;
+  size_t create_table_view_ordered_key_columns = 0;
+  size_t create_table_view_prefixed_key_columns = 0;
+  size_t create_table_view_expression_key_columns = 0;
+  size_t create_table_view_referenced_column_handles = 0;
+  size_t create_table_view_named_referenced_columns = 0;
+  size_t create_table_view_key_option_handles = 0;
   size_t create_table_view_option_handles = 0;
   size_t columns = 0;
   size_t column_name_values = 0;
@@ -172,6 +180,59 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 }
                 if (mylite_ast_create_table_key_view_name_value(key) != NULL) {
                   create_table_view_named_keys++;
+                }
+                for (size_t l = 0;
+                     l < mylite_ast_create_table_key_view_column_count(key);
+                     l++) {
+                  const MyliteAstCreateTableKeyPart *part =
+                      mylite_ast_create_table_key_view_column_at(key, l);
+                  if (part != NULL) {
+                    create_table_view_key_column_handles++;
+                  }
+                  if (mylite_ast_create_table_key_part_view_name_value(part) !=
+                      NULL) {
+                    create_table_view_named_key_columns++;
+                  }
+                  if (mylite_ast_create_table_key_part_view_order(part) !=
+                      MYLITE_CREATE_TABLE_KEY_PART_ORDER_UNSPECIFIED) {
+                    create_table_view_ordered_key_columns++;
+                  }
+                  if (mylite_ast_create_table_key_part_view_prefix_value_start(
+                          part) !=
+                      mylite_ast_create_table_key_part_view_prefix_value_end(
+                          part)) {
+                    create_table_view_prefixed_key_columns++;
+                  }
+                  if (mylite_ast_create_table_key_part_view_expression_start(
+                          part) !=
+                      mylite_ast_create_table_key_part_view_expression_end(
+                          part)) {
+                    create_table_view_expression_key_columns++;
+                  }
+                }
+                for (size_t l = 0;
+                     l <
+                     mylite_ast_create_table_key_view_referenced_column_count(
+                         key);
+                     l++) {
+                  const MyliteAstCreateTableKeyPart *part =
+                      mylite_ast_create_table_key_view_referenced_column_at(key,
+                                                                            l);
+                  if (part != NULL) {
+                    create_table_view_referenced_column_handles++;
+                  }
+                  if (mylite_ast_create_table_key_part_view_name_value(part) !=
+                      NULL) {
+                    create_table_view_named_referenced_columns++;
+                  }
+                }
+                for (size_t l = 0;
+                     l < mylite_ast_create_table_key_view_option_count(key);
+                     l++) {
+                  if (mylite_ast_create_table_key_view_option_at(key, l) !=
+                      NULL) {
+                    create_table_view_key_option_handles++;
+                  }
                 }
               }
               for (size_t k = 0;
@@ -352,6 +413,14 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_table_view_known_column_types=%.2f "
            "avg_create_table_view_key_handles=%.2f "
            "avg_create_table_view_named_keys=%.2f "
+           "avg_create_table_view_key_column_handles=%.2f "
+           "avg_create_table_view_named_key_columns=%.2f "
+           "avg_create_table_view_ordered_key_columns=%.2f "
+           "avg_create_table_view_prefixed_key_columns=%.2f "
+           "avg_create_table_view_expression_key_columns=%.2f "
+           "avg_create_table_view_referenced_column_handles=%.2f "
+           "avg_create_table_view_named_referenced_columns=%.2f "
+           "avg_create_table_view_key_option_handles=%.2f "
            "avg_create_table_view_option_handles=%.2f "
            "avg_key_constraint_name_values=%.2f avg_key_name_values=%.2f "
            "avg_key_referenced_table_schema_values=%.2f "
@@ -374,6 +443,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)create_table_view_known_column_types / (double)parsed,
            (double)create_table_view_key_handles / (double)parsed,
            (double)create_table_view_named_keys / (double)parsed,
+           (double)create_table_view_key_column_handles / (double)parsed,
+           (double)create_table_view_named_key_columns / (double)parsed,
+           (double)create_table_view_ordered_key_columns / (double)parsed,
+           (double)create_table_view_prefixed_key_columns / (double)parsed,
+           (double)create_table_view_expression_key_columns / (double)parsed,
+           (double)create_table_view_referenced_column_handles /
+               (double)parsed,
+           (double)create_table_view_named_referenced_columns / (double)parsed,
+           (double)create_table_view_key_option_handles / (double)parsed,
            (double)create_table_view_option_handles / (double)parsed,
            (double)key_constraint_name_values / (double)parsed,
            (double)key_name_values / (double)parsed,

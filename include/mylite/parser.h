@@ -25,6 +25,8 @@ typedef struct MyliteAst MyliteAst;
 typedef struct MyliteAstCreateTable MyliteAstCreateTable;
 typedef struct MyliteAstCreateTableColumn MyliteAstCreateTableColumn;
 typedef struct MyliteAstCreateTableKey MyliteAstCreateTableKey;
+typedef struct MyliteAstCreateTableKeyPart MyliteAstCreateTableKeyPart;
+typedef struct MyliteAstCreateTableKeyOption MyliteAstCreateTableKeyOption;
 typedef struct MyliteAstCreateTableOption MyliteAstCreateTableOption;
 typedef struct MyliteAstNode MyliteAstNode;
 
@@ -410,18 +412,142 @@ unsigned int mylite_ast_create_table_column_view_flags(
     const MyliteAstCreateTableColumn *column);
 MyliteCreateTableKeyKind mylite_ast_create_table_key_view_kind(
     const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_end(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_constraint_name_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_constraint_name_end(
+    const MyliteAstCreateTableKey *key);
 const char *mylite_ast_create_table_key_view_constraint_name_value(
     const MyliteAstCreateTableKey *key);
 size_t mylite_ast_create_table_key_view_constraint_name_value_length(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_name_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_name_end(
     const MyliteAstCreateTableKey *key);
 const char *mylite_ast_create_table_key_view_name_value(
     const MyliteAstCreateTableKey *key);
 size_t mylite_ast_create_table_key_view_name_value_length(
     const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_index_type_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_index_type_end(
+    const MyliteAstCreateTableKey *key);
 size_t mylite_ast_create_table_key_view_column_count(
     const MyliteAstCreateTableKey *key);
 size_t mylite_ast_create_table_key_view_referenced_column_count(
     const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_option_count(
+    const MyliteAstCreateTableKey *key);
+const MyliteAstCreateTableKeyPart *mylite_ast_create_table_key_view_column_at(
+    const MyliteAstCreateTableKey *key, size_t column_index);
+size_t mylite_ast_create_table_key_view_referenced_table_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_referenced_table_end(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_referenced_table_schema_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_referenced_table_schema_end(
+    const MyliteAstCreateTableKey *key);
+const char *mylite_ast_create_table_key_view_referenced_table_schema_value(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_referenced_table_schema_value_length(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_referenced_table_name_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_referenced_table_name_end(
+    const MyliteAstCreateTableKey *key);
+const char *mylite_ast_create_table_key_view_referenced_table_name_value(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_referenced_table_name_value_length(
+    const MyliteAstCreateTableKey *key);
+const MyliteAstCreateTableKeyPart *
+mylite_ast_create_table_key_view_referenced_column_at(
+    const MyliteAstCreateTableKey *key, size_t column_index);
+MyliteCreateTableForeignMatchKind
+mylite_ast_create_table_key_view_foreign_match_kind(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_foreign_match_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_foreign_match_end(
+    const MyliteAstCreateTableKey *key);
+MyliteCreateTableForeignAction
+mylite_ast_create_table_key_view_foreign_on_delete_action(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_foreign_on_delete_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_foreign_on_delete_end(
+    const MyliteAstCreateTableKey *key);
+MyliteCreateTableForeignAction
+mylite_ast_create_table_key_view_foreign_on_update_action(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_foreign_on_update_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_foreign_on_update_end(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_check_expression_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_check_expression_end(
+    const MyliteAstCreateTableKey *key);
+MyliteCreateTableCheckEnforcement
+mylite_ast_create_table_key_view_check_enforcement(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_check_enforcement_start(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_check_enforcement_end(
+    const MyliteAstCreateTableKey *key);
+const MyliteAstCreateTableKeyOption *
+mylite_ast_create_table_key_view_option_at(
+    const MyliteAstCreateTableKey *key, size_t option_index);
+MyliteCreateTableKeyPartKind mylite_ast_create_table_key_part_view_kind(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_start(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_end(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_name_start(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_name_end(
+    const MyliteAstCreateTableKeyPart *part);
+const char *mylite_ast_create_table_key_part_view_name_value(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_name_value_length(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_expression_start(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_expression_end(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_prefix_start(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_prefix_end(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_prefix_value_start(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_prefix_value_end(
+    const MyliteAstCreateTableKeyPart *part);
+MyliteCreateTableKeyPartOrder mylite_ast_create_table_key_part_view_order(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_order_start(
+    const MyliteAstCreateTableKeyPart *part);
+size_t mylite_ast_create_table_key_part_view_order_end(
+    const MyliteAstCreateTableKeyPart *part);
+MyliteCreateTableKeyOptionKind mylite_ast_create_table_key_option_view_kind(
+    const MyliteAstCreateTableKeyOption *option);
+size_t mylite_ast_create_table_key_option_view_start(
+    const MyliteAstCreateTableKeyOption *option);
+size_t mylite_ast_create_table_key_option_view_end(
+    const MyliteAstCreateTableKeyOption *option);
+size_t mylite_ast_create_table_key_option_view_name_start(
+    const MyliteAstCreateTableKeyOption *option);
+size_t mylite_ast_create_table_key_option_view_name_end(
+    const MyliteAstCreateTableKeyOption *option);
+size_t mylite_ast_create_table_key_option_view_value_start(
+    const MyliteAstCreateTableKeyOption *option);
+size_t mylite_ast_create_table_key_option_view_value_end(
+    const MyliteAstCreateTableKeyOption *option);
 MyliteCreateTableOptionKind mylite_ast_create_table_option_view_kind(
     const MyliteAstCreateTableOption *option);
 size_t mylite_ast_create_table_option_view_start(

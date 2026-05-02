@@ -605,13 +605,16 @@ static void dump_create_table_view_handles(
     const char *name_value = mylite_ast_create_table_key_view_name_value(key);
     size_t name_value_length =
         mylite_ast_create_table_key_view_name_value_length(key);
-    printf("    create_table.key[%zu] kind=%s columns=%zu ref_columns=%zu "
-           "constraint_name_value_len=%zu value=",
+    printf("    create_table.key[%zu] kind=%s span=%zu..%zu columns=%zu "
+           "ref_columns=%zu options=%zu constraint_name_value_len=%zu value=",
            i,
            mylite_create_table_key_kind_name(
                mylite_ast_create_table_key_view_kind(key)),
+           mylite_ast_create_table_key_view_start(key),
+           mylite_ast_create_table_key_view_end(key),
            mylite_ast_create_table_key_view_column_count(key),
            mylite_ast_create_table_key_view_referenced_column_count(key),
+           mylite_ast_create_table_key_view_option_count(key),
            constraint_name_value_length);
     if (constraint_name_value == NULL) {
       fputs("none", stdout);
@@ -626,6 +629,92 @@ static void dump_create_table_view_handles(
       print_escaped_bytes(name_value, name_value_length);
     }
     fputc('\n', stdout);
+    for (size_t j = 0; j < mylite_ast_create_table_key_view_column_count(key);
+         j++) {
+      const MyliteAstCreateTableKeyPart *part =
+          mylite_ast_create_table_key_view_column_at(key, j);
+      const char *part_name_value =
+          mylite_ast_create_table_key_part_view_name_value(part);
+      size_t part_name_value_length =
+          mylite_ast_create_table_key_part_view_name_value_length(part);
+      printf("      create_table.key[%zu].column[%zu] kind=%s span=%zu..%zu "
+             "name=%zu..%zu expr=%zu..%zu prefix=%zu..%zu "
+             "prefix_value=%zu..%zu order=%s order_span=%zu..%zu "
+             "name_value_len=%zu value=",
+             i, j,
+             mylite_create_table_key_part_kind_name(
+                 mylite_ast_create_table_key_part_view_kind(part)),
+             mylite_ast_create_table_key_part_view_start(part),
+             mylite_ast_create_table_key_part_view_end(part),
+             mylite_ast_create_table_key_part_view_name_start(part),
+             mylite_ast_create_table_key_part_view_name_end(part),
+             mylite_ast_create_table_key_part_view_expression_start(part),
+             mylite_ast_create_table_key_part_view_expression_end(part),
+             mylite_ast_create_table_key_part_view_prefix_start(part),
+             mylite_ast_create_table_key_part_view_prefix_end(part),
+             mylite_ast_create_table_key_part_view_prefix_value_start(part),
+             mylite_ast_create_table_key_part_view_prefix_value_end(part),
+             mylite_create_table_key_part_order_name(
+                 mylite_ast_create_table_key_part_view_order(part)),
+             mylite_ast_create_table_key_part_view_order_start(part),
+             mylite_ast_create_table_key_part_view_order_end(part),
+             part_name_value_length);
+      if (part_name_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(part_name_value, part_name_value_length);
+      }
+      fputc('\n', stdout);
+    }
+    for (size_t j = 0;
+         j < mylite_ast_create_table_key_view_referenced_column_count(key);
+         j++) {
+      const MyliteAstCreateTableKeyPart *part =
+          mylite_ast_create_table_key_view_referenced_column_at(key, j);
+      const char *part_name_value =
+          mylite_ast_create_table_key_part_view_name_value(part);
+      size_t part_name_value_length =
+          mylite_ast_create_table_key_part_view_name_value_length(part);
+      printf("      create_table.key[%zu].referenced_column[%zu] kind=%s "
+             "span=%zu..%zu name=%zu..%zu expr=%zu..%zu order=%s "
+             "order_span=%zu..%zu name_value_len=%zu value=",
+             i, j,
+             mylite_create_table_key_part_kind_name(
+                 mylite_ast_create_table_key_part_view_kind(part)),
+             mylite_ast_create_table_key_part_view_start(part),
+             mylite_ast_create_table_key_part_view_end(part),
+             mylite_ast_create_table_key_part_view_name_start(part),
+             mylite_ast_create_table_key_part_view_name_end(part),
+             mylite_ast_create_table_key_part_view_expression_start(part),
+             mylite_ast_create_table_key_part_view_expression_end(part),
+             mylite_create_table_key_part_order_name(
+                 mylite_ast_create_table_key_part_view_order(part)),
+             mylite_ast_create_table_key_part_view_order_start(part),
+             mylite_ast_create_table_key_part_view_order_end(part),
+             part_name_value_length);
+      if (part_name_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(part_name_value, part_name_value_length);
+      }
+      fputc('\n', stdout);
+    }
+    for (size_t j = 0; j < mylite_ast_create_table_key_view_option_count(key);
+         j++) {
+      const MyliteAstCreateTableKeyOption *option =
+          mylite_ast_create_table_key_view_option_at(key, j);
+      printf("      create_table.key[%zu].option[%zu] kind=%s span=%zu..%zu "
+             "name=%zu..%zu value=%zu..%zu\n",
+             i, j,
+             mylite_create_table_key_option_kind_name(
+                 mylite_ast_create_table_key_option_view_kind(option)),
+             mylite_ast_create_table_key_option_view_start(option),
+             mylite_ast_create_table_key_option_view_end(option),
+             mylite_ast_create_table_key_option_view_name_start(option),
+             mylite_ast_create_table_key_option_view_name_end(option),
+             mylite_ast_create_table_key_option_view_value_start(option),
+             mylite_ast_create_table_key_option_view_value_end(option));
+    }
   }
   for (size_t i = 0; i < mylite_ast_create_table_view_option_count(create_table);
        i++) {

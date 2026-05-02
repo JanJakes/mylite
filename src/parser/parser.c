@@ -134,7 +134,7 @@ struct MyliteAstCreateTableColumn {
   const MyliteAstNode *reference_node;
 };
 
-typedef struct MyliteAstCreateTableKeyPart {
+struct MyliteAstCreateTableKeyPart {
   MyliteCreateTableKeyPartKind kind;
   MyliteCreateTableKeyPartOrder order;
   size_t start;
@@ -151,9 +151,9 @@ typedef struct MyliteAstCreateTableKeyPart {
   size_t prefix_value_end;
   size_t order_start;
   size_t order_end;
-} MyliteAstCreateTableKeyPart;
+};
 
-typedef struct MyliteAstCreateTableKeyOption {
+struct MyliteAstCreateTableKeyOption {
   MyliteCreateTableKeyOptionKind kind;
   size_t start;
   size_t end;
@@ -161,7 +161,7 @@ typedef struct MyliteAstCreateTableKeyOption {
   size_t name_end;
   size_t value_start;
   size_t value_end;
-} MyliteAstCreateTableKeyOption;
+};
 
 struct MyliteAstCreateTableKey {
   MyliteCreateTableKeyKind kind;
@@ -1453,6 +1453,26 @@ MyliteCreateTableKeyKind mylite_ast_create_table_key_view_kind(
   return key == NULL ? MYLITE_CREATE_TABLE_KEY_UNKNOWN : key->kind;
 }
 
+size_t mylite_ast_create_table_key_view_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->start;
+}
+
+size_t mylite_ast_create_table_key_view_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->end;
+}
+
+size_t mylite_ast_create_table_key_view_constraint_name_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->constraint_name_start;
+}
+
+size_t mylite_ast_create_table_key_view_constraint_name_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->constraint_name_end;
+}
+
 const char *mylite_ast_create_table_key_view_constraint_name_value(
     const MyliteAstCreateTableKey *key) {
   return key == NULL ? NULL : key->constraint_name_value;
@@ -1461,6 +1481,16 @@ const char *mylite_ast_create_table_key_view_constraint_name_value(
 size_t mylite_ast_create_table_key_view_constraint_name_value_length(
     const MyliteAstCreateTableKey *key) {
   return key == NULL ? 0 : key->constraint_name_value_length;
+}
+
+size_t mylite_ast_create_table_key_view_name_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->name_start;
+}
+
+size_t mylite_ast_create_table_key_view_name_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->name_end;
 }
 
 const char *mylite_ast_create_table_key_view_name_value(
@@ -1473,6 +1503,16 @@ size_t mylite_ast_create_table_key_view_name_value_length(
   return key == NULL ? 0 : key->name_value_length;
 }
 
+size_t mylite_ast_create_table_key_view_index_type_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->index_type_start;
+}
+
+size_t mylite_ast_create_table_key_view_index_type_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->index_type_end;
+}
+
 size_t mylite_ast_create_table_key_view_column_count(
     const MyliteAstCreateTableKey *key) {
   return key == NULL ? 0 : key->column_count;
@@ -1481,6 +1521,282 @@ size_t mylite_ast_create_table_key_view_column_count(
 size_t mylite_ast_create_table_key_view_referenced_column_count(
     const MyliteAstCreateTableKey *key) {
   return key == NULL ? 0 : key->referenced_column_count;
+}
+
+size_t mylite_ast_create_table_key_view_option_count(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->option_count;
+}
+
+const MyliteAstCreateTableKeyPart *mylite_ast_create_table_key_view_column_at(
+    const MyliteAstCreateTableKey *key, size_t column_index) {
+  if (key == NULL || column_index >= key->column_count) {
+    return NULL;
+  }
+  return &key->columns[column_index];
+}
+
+size_t mylite_ast_create_table_key_view_referenced_table_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->referenced_table_start;
+}
+
+size_t mylite_ast_create_table_key_view_referenced_table_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->referenced_table_end;
+}
+
+size_t mylite_ast_create_table_key_view_referenced_table_schema_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->referenced_table_schema_start;
+}
+
+size_t mylite_ast_create_table_key_view_referenced_table_schema_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->referenced_table_schema_end;
+}
+
+const char *mylite_ast_create_table_key_view_referenced_table_schema_value(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? NULL : key->referenced_table_schema_value;
+}
+
+size_t mylite_ast_create_table_key_view_referenced_table_schema_value_length(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->referenced_table_schema_value_length;
+}
+
+size_t mylite_ast_create_table_key_view_referenced_table_name_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->referenced_table_name_start;
+}
+
+size_t mylite_ast_create_table_key_view_referenced_table_name_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->referenced_table_name_end;
+}
+
+const char *mylite_ast_create_table_key_view_referenced_table_name_value(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? NULL : key->referenced_table_name_value;
+}
+
+size_t mylite_ast_create_table_key_view_referenced_table_name_value_length(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->referenced_table_name_value_length;
+}
+
+const MyliteAstCreateTableKeyPart *
+mylite_ast_create_table_key_view_referenced_column_at(
+    const MyliteAstCreateTableKey *key, size_t column_index) {
+  if (key == NULL || column_index >= key->referenced_column_count) {
+    return NULL;
+  }
+  return &key->referenced_columns[column_index];
+}
+
+MyliteCreateTableForeignMatchKind
+mylite_ast_create_table_key_view_foreign_match_kind(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? MYLITE_CREATE_TABLE_FOREIGN_MATCH_UNSPECIFIED
+                     : key->foreign_match_kind;
+}
+
+size_t mylite_ast_create_table_key_view_foreign_match_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->foreign_match_start;
+}
+
+size_t mylite_ast_create_table_key_view_foreign_match_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->foreign_match_end;
+}
+
+MyliteCreateTableForeignAction
+mylite_ast_create_table_key_view_foreign_on_delete_action(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? MYLITE_CREATE_TABLE_FOREIGN_ACTION_UNSPECIFIED
+                     : key->foreign_on_delete_action;
+}
+
+size_t mylite_ast_create_table_key_view_foreign_on_delete_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->foreign_on_delete_start;
+}
+
+size_t mylite_ast_create_table_key_view_foreign_on_delete_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->foreign_on_delete_end;
+}
+
+MyliteCreateTableForeignAction
+mylite_ast_create_table_key_view_foreign_on_update_action(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? MYLITE_CREATE_TABLE_FOREIGN_ACTION_UNSPECIFIED
+                     : key->foreign_on_update_action;
+}
+
+size_t mylite_ast_create_table_key_view_foreign_on_update_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->foreign_on_update_start;
+}
+
+size_t mylite_ast_create_table_key_view_foreign_on_update_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->foreign_on_update_end;
+}
+
+size_t mylite_ast_create_table_key_view_check_expression_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->check_expression_start;
+}
+
+size_t mylite_ast_create_table_key_view_check_expression_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->check_expression_end;
+}
+
+MyliteCreateTableCheckEnforcement
+mylite_ast_create_table_key_view_check_enforcement(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? MYLITE_CREATE_TABLE_CHECK_ENFORCEMENT_UNSPECIFIED
+                     : key->check_enforcement;
+}
+
+size_t mylite_ast_create_table_key_view_check_enforcement_start(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->check_enforcement_start;
+}
+
+size_t mylite_ast_create_table_key_view_check_enforcement_end(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? 0 : key->check_enforcement_end;
+}
+
+const MyliteAstCreateTableKeyOption *
+mylite_ast_create_table_key_view_option_at(
+    const MyliteAstCreateTableKey *key, size_t option_index) {
+  if (key == NULL || option_index >= key->option_count) {
+    return NULL;
+  }
+  return &key->options[option_index];
+}
+
+MyliteCreateTableKeyPartKind mylite_ast_create_table_key_part_view_kind(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? MYLITE_CREATE_TABLE_KEY_PART_UNKNOWN : part->kind;
+}
+
+size_t mylite_ast_create_table_key_part_view_start(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->start;
+}
+
+size_t mylite_ast_create_table_key_part_view_end(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->end;
+}
+
+size_t mylite_ast_create_table_key_part_view_name_start(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->name_start;
+}
+
+size_t mylite_ast_create_table_key_part_view_name_end(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->name_end;
+}
+
+const char *mylite_ast_create_table_key_part_view_name_value(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? NULL : part->name_value;
+}
+
+size_t mylite_ast_create_table_key_part_view_name_value_length(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->name_value_length;
+}
+
+size_t mylite_ast_create_table_key_part_view_expression_start(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->expression_start;
+}
+
+size_t mylite_ast_create_table_key_part_view_expression_end(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->expression_end;
+}
+
+size_t mylite_ast_create_table_key_part_view_prefix_start(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->prefix_start;
+}
+
+size_t mylite_ast_create_table_key_part_view_prefix_end(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->prefix_end;
+}
+
+size_t mylite_ast_create_table_key_part_view_prefix_value_start(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->prefix_value_start;
+}
+
+size_t mylite_ast_create_table_key_part_view_prefix_value_end(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->prefix_value_end;
+}
+
+MyliteCreateTableKeyPartOrder mylite_ast_create_table_key_part_view_order(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? MYLITE_CREATE_TABLE_KEY_PART_ORDER_UNSPECIFIED
+                      : part->order;
+}
+
+size_t mylite_ast_create_table_key_part_view_order_start(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->order_start;
+}
+
+size_t mylite_ast_create_table_key_part_view_order_end(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? 0 : part->order_end;
+}
+
+MyliteCreateTableKeyOptionKind mylite_ast_create_table_key_option_view_kind(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? MYLITE_CREATE_TABLE_KEY_OPTION_UNKNOWN
+                        : option->kind;
+}
+
+size_t mylite_ast_create_table_key_option_view_start(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? 0 : option->start;
+}
+
+size_t mylite_ast_create_table_key_option_view_end(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? 0 : option->end;
+}
+
+size_t mylite_ast_create_table_key_option_view_name_start(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? 0 : option->name_start;
+}
+
+size_t mylite_ast_create_table_key_option_view_name_end(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? 0 : option->name_end;
+}
+
+size_t mylite_ast_create_table_key_option_view_value_start(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? 0 : option->value_start;
+}
+
+size_t mylite_ast_create_table_key_option_view_value_end(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? 0 : option->value_end;
 }
 
 MyliteCreateTableOptionKind mylite_ast_create_table_option_view_kind(

@@ -747,7 +747,8 @@ int main(void) {
         sizeof(targets) / sizeof(targets[0]));
   }
   failures += expect_create_table_view(
-      "CREATE TABLE `db``x`.`t``y` (id INT, KEY `k``x` (id)) ENGINE=InnoDB",
+      "CREATE TABLE `db``x`.`t``y` (id INT, KEY `k``x` (id(3) DESC) COMMENT "
+      "'hello') ENGINE=InnoDB",
       "`db``x`.`t``y`", "`db``x`", "`t``y`", "db`x", "t`y", 1, 1, 1);
   {
     const ExpectedCreateTableColumn columns[] = {
@@ -1690,6 +1691,14 @@ static int expect_create_table_view(const char *sql, const char *target,
       create_table == NULL ? NULL
                            : mylite_ast_create_table_view_key_at(create_table,
                                                                  0);
+  const MyliteAstCreateTableKeyPart *first_key_column =
+      first_key == NULL ? NULL
+                        : mylite_ast_create_table_key_view_column_at(first_key,
+                                                                     0);
+  const MyliteAstCreateTableKeyOption *first_key_option =
+      first_key == NULL ? NULL
+                        : mylite_ast_create_table_key_view_option_at(first_key,
+                                                                     0);
   const MyliteAstCreateTableOption *first_option =
       create_table == NULL
           ? NULL
@@ -1729,10 +1738,31 @@ static int expect_create_table_view(const char *sql, const char *target,
        (first_key == NULL ||
         mylite_ast_create_table_key_view_kind(first_key) !=
             MYLITE_CREATE_TABLE_KEY_INDEX ||
+        mylite_ast_create_table_key_view_column_count(first_key) != 1 ||
+        mylite_ast_create_table_key_view_option_count(first_key) != 1 ||
         !value_matches_when_expected(
             mylite_ast_create_table_key_view_name_value(first_key),
             mylite_ast_create_table_key_view_name_value_length(first_key),
-            "k`x"))) ||
+            "k`x") ||
+        first_key_column == NULL ||
+        mylite_ast_create_table_key_part_view_kind(first_key_column) !=
+            MYLITE_CREATE_TABLE_KEY_PART_COLUMN ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_key_part_view_name_value(first_key_column),
+            mylite_ast_create_table_key_part_view_name_value_length(
+                first_key_column),
+            "id") ||
+        !span_matches(sql,
+                      mylite_ast_create_table_key_part_view_prefix_value_start(
+                          first_key_column),
+                      mylite_ast_create_table_key_part_view_prefix_value_end(
+                          first_key_column),
+                      "3") ||
+        mylite_ast_create_table_key_part_view_order(first_key_column) !=
+            MYLITE_CREATE_TABLE_KEY_PART_ORDER_DESC ||
+        first_key_option == NULL ||
+        mylite_ast_create_table_key_option_view_kind(first_key_option) !=
+            MYLITE_CREATE_TABLE_KEY_OPTION_COMMENT)) ||
       (option_count > 0 &&
        (first_option == NULL ||
         mylite_ast_create_table_option_view_kind(first_option) !=

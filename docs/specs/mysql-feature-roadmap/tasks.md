@@ -77,7 +77,8 @@ level application surfaces.
        metadata, and interaction with ordering/limits. Spec:
        [SELECT DISTINCT](../select-distinct/specs.md).
 29. [ ] Subqueries: scalar, row, `EXISTS`, `IN`, quantified comparisons,
-       correlation, cardinality errors, and metadata.
+       correlation, cardinality errors, and metadata. Started; spec:
+       [subqueries](../subqueries/specs.md).
 30. [ ] `UNION`: `ALL`/`DISTINCT`, column names/types, ordering, limits,
        parentheses, and metadata.
 31. [ ] `INSERT IGNORE`: duplicate, conversion, and constraint warning-demotion

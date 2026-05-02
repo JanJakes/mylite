@@ -127,7 +127,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. |  |
-| `SELECT` | ❌ | top | Full query expression surface; see section 2. |  |
+| `SELECT` | ❌ | top | Full query expression surface; see section 2. | Task 15 table-backed SELECT core is specified, covering one base table, schema qualification, projection aliases, qualified wildcards, invisible-column wildcard omission, and base column result metadata. Implementation is pending. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md). |
 | `SELECT ... INTO var_list` | ❌ | high | User/local variable assignment semantics. |  |
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. |  |
 | `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. |  |
@@ -297,8 +297,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Query expression grammar | ❌ | top | Parenthesized query expressions, query terms, and query primary rules. |  |
 | `WITH` common table expressions | ❌ | high | Non-recursive CTEs, column lists, name shadowing, and scope. |  |
 | `WITH RECURSIVE` | ❌ | high | Recursive CTE execution, cycle behavior, limits, and type inference. |  |
-| Projection list | ❌ | top | Expression aliases, wildcard expansion, qualified wildcards, duplicate names, and metadata. |  |
-| Table references | ❌ | top | Base tables, aliases, schema qualifiers, derived tables, table functions, and parentheses. |  |
+| Projection list | ❌ | top | Expression aliases, wildcard expansion, qualified wildcards, duplicate names, and metadata. | Task 15 design covers column-reference projection aliases, duplicate output labels, `*`, `table.*`, `schema.table.*`, and alias-qualified wildcards for one base table. Implementation is pending. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md). |
+| Table references | ❌ | top | Base tables, aliases, schema qualifiers, derived tables, table functions, and parentheses. | Task 15 design covers one user base table with selected-schema or schema-qualified resolution and optional `AS`/bare table aliases. Joins, derived tables, table functions, partitions, index hints, and parenthesized table references remain deferred. Implementation is pending. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md). |
 | Inner joins | ❌ | top | JOIN, INNER JOIN, CROSS JOIN, comma join, ON, and USING. |  |
 | Outer joins | ❌ | top | LEFT/RIGHT OUTER JOIN null-extension and predicate placement. |  |
 | Natural joins | ❌ | high | NATURAL INNER/LEFT/RIGHT JOIN column matching and metadata. |  |
@@ -326,7 +326,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `PARTITION` selection | ❌ | low | Explicit partition selection syntax and errors. |  |
 | Locking clauses | ❌ | high | FOR UPDATE, FOR SHARE, OF table list, NOWAIT, and SKIP LOCKED. |  |
 | SELECT modifiers | ❌ | top | ALL, HIGH_PRIORITY, SQL_SMALL_RESULT, SQL_BIG_RESULT, SQL_BUFFER_RESULT, SQL_CALC_FOUND_ROWS, and STRAIGHT_JOIN. |  |
-| Expression metadata | ❌ | top | Column type, length, decimals, flags, charset, collation, nullability, and origin metadata. |  |
+| Expression metadata | ❌ | top | Column type, length, decimals, flags, charset, collation, nullability, and origin metadata. | Task 15 design covers base-table column labels, table names, origin table/column identity, and catalog-backed metadata for column projections and wildcard-expanded columns. Broader expression metadata remains deferred. Implementation is pending. See [table-backed SELECT core spec](docs/specs/select-table-core/specs.md). |
 
 ## 3. DDL detail surface
 

@@ -2142,6 +2142,65 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_binary_expression(
     return expression;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_ternary_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *first,
+    struct mylite_sql_token operator_token, enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_ast_node *second, struct mylite_sql_ast_node *third)
+{
+    struct mylite_sql_source_span span =
+        first == NULL ? span_from_token(&operator_token) : first->span;
+    struct mylite_sql_ast_node *expression = NULL;
+
+    if (third != NULL) {
+        span = span_join(span, third->span);
+    } else if (second != NULL) {
+        span = span_join(span, second->span);
+    }
+
+    expression = make_node(state, MYLITE_SQL_AST_TERNARY_EXPRESSION, span);
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_operator(expression, operator_kind);
+    mylite_sql_ast_node_append_child(expression, first);
+    mylite_sql_ast_node_append_child(expression, second);
+    mylite_sql_ast_node_append_child(expression, third);
+    return expression;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_expression_list(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *expression)
+{
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_EXPRESSION_LIST,
+                  expression == NULL ? (struct mylite_sql_source_span){0} : expression->span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, expression);
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_expression(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *list,
+                                    struct mylite_sql_ast_node *expression)
+{
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, expression);
+    if (expression != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, expression->span));
+    }
+    return list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_token left_paren,
     struct mylite_sql_ast_node *expression, struct mylite_sql_token right_paren)
@@ -2424,11 +2483,13 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
 {
     static const struct mylite_sql_parser_keyword_token keywords[] = {
         {"ALTER", MYLITE_SQL_PARSE_ALTER},
+        {"AND", MYLITE_SQL_PARSE_AND},
         {"AS", MYLITE_SQL_PARSE_AS},
         {"ASC", MYLITE_SQL_PARSE_ASC},
         {"AUTO_INCREMENT", MYLITE_SQL_PARSE_AUTO_INCREMENT},
         {"BIGINT", MYLITE_SQL_PARSE_BIGINT},
         {"BINARY", MYLITE_SQL_PARSE_BINARY},
+        {"BETWEEN", MYLITE_SQL_PARSE_BETWEEN},
         {"BOOL", MYLITE_SQL_PARSE_BOOL},
         {"BOOLEAN", MYLITE_SQL_PARSE_BOOLEAN},
         {"BLOB", MYLITE_SQL_PARSE_BLOB},
@@ -2452,6 +2513,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"DECIMAL", MYLITE_SQL_PARSE_DECIMALKW},
         {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
         {"DESC", MYLITE_SQL_PARSE_DESC},
+        {"DIV", MYLITE_SQL_PARSE_DIV},
         {"DISK", MYLITE_SQL_PARSE_DISK},
         {"DOUBLE", MYLITE_SQL_PARSE_DOUBLE},
         {"DROP", MYLITE_SQL_PARSE_DROP},
@@ -2460,6 +2522,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"ENGINE", MYLITE_SQL_PARSE_ENGINE},
         {"ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_ENGINE_ATTRIBUTE},
         {"ENCRYPTION", MYLITE_SQL_PARSE_ENCRYPTION},
+        {"ESCAPE", MYLITE_SQL_PARSE_ESCAPE},
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
         {"FALSE", MYLITE_SQL_PARSE_FALSE},
         {"FIXED", MYLITE_SQL_PARSE_FIXED},
@@ -2469,6 +2532,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"HASH", MYLITE_SQL_PARSE_HASH},
         {"IF", MYLITE_SQL_PARSE_IF},
+        {"IN", MYLITE_SQL_PARSE_IN},
         {"INT", MYLITE_SQL_PARSE_INT},
         {"INT1", MYLITE_SQL_PARSE_INT1},
         {"INT2", MYLITE_SQL_PARSE_INT2},
@@ -2480,16 +2544,19 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"INSERT", MYLITE_SQL_PARSE_INSERT},
         {"INVISIBLE", MYLITE_SQL_PARSE_INVISIBLE},
         {"INTO", MYLITE_SQL_PARSE_INTO},
+        {"IS", MYLITE_SQL_PARSE_IS},
         {"KEY", MYLITE_SQL_PARSE_KEY},
         {"KEY_BLOCK_SIZE", MYLITE_SQL_PARSE_KEY_BLOCK_SIZE},
         {"LONGBLOB", MYLITE_SQL_PARSE_LONGBLOB},
         {"LONG", MYLITE_SQL_PARSE_LONG},
         {"LONGTEXT", MYLITE_SQL_PARSE_LONGTEXT},
+        {"LIKE", MYLITE_SQL_PARSE_LIKE},
         {"MEDIUMINT", MYLITE_SQL_PARSE_MEDIUMINT},
         {"MEDIUMBLOB", MYLITE_SQL_PARSE_MEDIUMBLOB},
         {"MEDIUMTEXT", MYLITE_SQL_PARSE_MEDIUMTEXT},
         {"MEMORY", MYLITE_SQL_PARSE_MEMORY},
         {"MIDDLEINT", MYLITE_SQL_PARSE_MIDDLEINT},
+        {"MOD", MYLITE_SQL_PARSE_MOD},
         {"NAMES", MYLITE_SQL_PARSE_NAMES},
         {"NATIONAL", MYLITE_SQL_PARSE_NATIONAL},
         {"NCHAR", MYLITE_SQL_PARSE_NCHAR},
@@ -2499,6 +2566,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"NUMERIC", MYLITE_SQL_PARSE_NUMERIC},
         {"ON", MYLITE_SQL_PARSE_ON},
         {"ONLY", MYLITE_SQL_PARSE_ONLY},
+        {"OR", MYLITE_SQL_PARSE_OR},
         {"PRECISION", MYLITE_SQL_PARSE_PRECISION},
         {"PRIMARY", MYLITE_SQL_PARSE_PRIMARY},
         {"READ", MYLITE_SQL_PARSE_READ},
@@ -2524,6 +2592,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"TINYTEXT", MYLITE_SQL_PARSE_TINYTEXT},
         {"TRUE", MYLITE_SQL_PARSE_TRUE},
         {"UNIQUE", MYLITE_SQL_PARSE_UNIQUE},
+        {"UNKNOWN", MYLITE_SQL_PARSE_UNKNOWN},
         {"UNSIGNED", MYLITE_SQL_PARSE_UNSIGNED},
         {"UPDATE", MYLITE_SQL_PARSE_UPDATE},
         {"USE", MYLITE_SQL_PARSE_USE},
@@ -2534,6 +2603,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
         {"VARYING", MYLITE_SQL_PARSE_VARYING},
         {"VISIBLE", MYLITE_SQL_PARSE_VISIBLE},
+        {"XOR", MYLITE_SQL_PARSE_XOR},
         {"YEAR", MYLITE_SQL_PARSE_YEAR},
         {"ZEROFILL", MYLITE_SQL_PARSE_ZEROFILL},
     };
@@ -2589,31 +2659,62 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
     case MYLITE_SQL_OPERATOR_SLASH:
         *out_parser_token = MYLITE_SQL_PARSE_SLASH;
         return true;
+    case MYLITE_SQL_OPERATOR_NULL_SAFE_EQUAL:
+        *out_parser_token = MYLITE_SQL_PARSE_NULL_SAFE_EQ;
+        return true;
+    case MYLITE_SQL_OPERATOR_LEFT_SHIFT:
+        *out_parser_token = MYLITE_SQL_PARSE_SHIFT_LEFT;
+        return true;
+    case MYLITE_SQL_OPERATOR_RIGHT_SHIFT:
+        *out_parser_token = MYLITE_SQL_PARSE_SHIFT_RIGHT;
+        return true;
+    case MYLITE_SQL_OPERATOR_LESS_EQUAL:
+        *out_parser_token = MYLITE_SQL_PARSE_LE;
+        return true;
+    case MYLITE_SQL_OPERATOR_GREATER_EQUAL:
+        *out_parser_token = MYLITE_SQL_PARSE_GE;
+        return true;
+    case MYLITE_SQL_OPERATOR_NOT_EQUAL:
+        *out_parser_token = MYLITE_SQL_PARSE_NE;
+        return true;
+    case MYLITE_SQL_OPERATOR_LOGICAL_AND:
+        *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_AND;
+        return true;
+    case MYLITE_SQL_OPERATOR_LOGICAL_OR:
+        *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_OR;
+        return true;
     case MYLITE_SQL_OPERATOR_NONE:
     case MYLITE_SQL_OPERATOR_JSON_UNQUOTE_EXTRACT:
     case MYLITE_SQL_OPERATOR_JSON_EXTRACT:
-    case MYLITE_SQL_OPERATOR_NULL_SAFE_EQUAL:
-    case MYLITE_SQL_OPERATOR_LEFT_SHIFT:
-    case MYLITE_SQL_OPERATOR_RIGHT_SHIFT:
-    case MYLITE_SQL_OPERATOR_LESS_EQUAL:
-    case MYLITE_SQL_OPERATOR_GREATER_EQUAL:
-    case MYLITE_SQL_OPERATOR_NOT_EQUAL:
-    case MYLITE_SQL_OPERATOR_LOGICAL_AND:
-    case MYLITE_SQL_OPERATOR_LOGICAL_OR:
     case MYLITE_SQL_OPERATOR_ASSIGN:
         return false;
     case MYLITE_SQL_OPERATOR_EQUAL:
         *out_parser_token = MYLITE_SQL_PARSE_EQ;
         return true;
     case MYLITE_SQL_OPERATOR_LESS:
+        *out_parser_token = MYLITE_SQL_PARSE_LT;
+        return true;
     case MYLITE_SQL_OPERATOR_GREATER:
+        *out_parser_token = MYLITE_SQL_PARSE_GT;
+        return true;
     case MYLITE_SQL_OPERATOR_PERCENT:
+        *out_parser_token = MYLITE_SQL_PARSE_PERCENT;
+        return true;
     case MYLITE_SQL_OPERATOR_NOT:
+        *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_NOT;
+        return true;
     case MYLITE_SQL_OPERATOR_BITWISE_NOT:
+        *out_parser_token = MYLITE_SQL_PARSE_BIT_NOT;
+        return true;
     case MYLITE_SQL_OPERATOR_BITWISE_XOR:
+        *out_parser_token = MYLITE_SQL_PARSE_BIT_XOR;
+        return true;
     case MYLITE_SQL_OPERATOR_BITWISE_AND:
+        *out_parser_token = MYLITE_SQL_PARSE_BIT_AND;
+        return true;
     case MYLITE_SQL_OPERATOR_BITWISE_OR:
-        return false;
+        *out_parser_token = MYLITE_SQL_PARSE_BIT_OR;
+        return true;
     }
 
     return false;

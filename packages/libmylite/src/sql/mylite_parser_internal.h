@@ -433,6 +433,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_binary_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
     struct mylite_sql_token operator_token, enum mylite_sql_ast_operator operator_kind,
     struct mylite_sql_ast_node *right);
+struct mylite_sql_ast_node *mylite_sql_parser_make_ternary_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *first,
+    struct mylite_sql_token operator_token, enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_ast_node *second, struct mylite_sql_ast_node *third);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_expression_list(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_ast_node *expression);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_expression(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *list,
+                                    struct mylite_sql_ast_node *expression);
 struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_token left_paren,
     struct mylite_sql_ast_node *expression, struct mylite_sql_token right_paren);

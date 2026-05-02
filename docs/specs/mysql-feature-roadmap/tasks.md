@@ -39,7 +39,7 @@ level application surfaces.
        column diagnostics, affected rows, and insert ids.
 15. [x] Table-backed `SELECT` core: projection aliases, qualified wildcards,
        base table references, schema qualification, and result metadata.
-16. [ ] Expression operator foundation: comparison, logical, bitwise, `IS NULL`,
+16. [x] Expression operator foundation: comparison, logical, bitwise, `IS NULL`,
        `BETWEEN`, `LIKE`, `IN`, arithmetic, precedence, and type conversion.
 17. [ ] `WHERE`: predicate evaluation, three-valued logic, conversion warnings,
        and name resolution.

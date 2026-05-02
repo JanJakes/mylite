@@ -1,6 +1,7 @@
 #include <mylite/mylite.h>
 
 #include "mylite_charset.h"
+#include "mylite_expression.h"
 #include "mylite_internal.h"
 #include "mylite_parser.h"
 #include "mylite_sqlite_translator.h"
@@ -29,6 +30,7 @@ enum mylite_stmt_kind {
     MYLITE_STMT_DROP_TABLE = 8,
     MYLITE_STMT_INSERT_VALUES = 9,
     MYLITE_STMT_INSERT_SET = 10,
+    MYLITE_STMT_SCALAR_SELECT = 11,
 };
 
 enum mylite_information_schema_table {
@@ -290,6 +292,14 @@ struct mylite_result_metadata {
     size_t column_count;
 };
 
+struct mylite_scalar_result {
+    struct mylite_expression_value *values;
+    char **texts;
+    struct mylite_expression_warnings warnings;
+    size_t value_count;
+    bool has_row;
+};
+
 struct mylite_connection_charset_request {
     const char *character_set_name;
     const char *collation_name;
@@ -298,6 +308,7 @@ struct mylite_connection_charset_request {
 struct mylite_db {
     sqlite3 *sqlite;
     char *error_message;
+    struct mylite_expression_warnings warnings;
     char *selected_schema;
     uint64_t last_insert_id;
     const char *character_set_client;
@@ -320,6 +331,7 @@ struct mylite_stmt {
     struct mylite_insert_values_plan insert_values;
     struct mylite_insert_set_plan insert_set;
     struct mylite_result_metadata result_metadata;
+    struct mylite_scalar_result scalar_result;
     char *character_set_name;
     char *collation_name;
     int64_t affected_rows;
@@ -543,6 +555,9 @@ static int prepare_information_schema_select_statement(mylite_db *database,
 static int prepare_table_select_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           mylite_stmt **out_stmt);
+static int prepare_scalar_select_statement(mylite_db *database,
+                                           const struct mylite_sql_ast_node *statement,
+                                           mylite_stmt **out_stmt);
 static int attach_select_result_metadata(mylite_stmt *stmt, const struct mylite_select_plan *plan);
 static int copy_select_result_column_metadata(mylite_db *database,
                                               struct mylite_result_column_metadata *metadata,
@@ -605,6 +620,7 @@ static int execute_create_table_statement(mylite_stmt *stmt);
 static int execute_drop_table_statement(mylite_stmt *stmt);
 static int execute_insert_values_statement(mylite_stmt *stmt);
 static int execute_insert_set_statement(mylite_stmt *stmt);
+static int execute_scalar_select_statement(mylite_stmt *stmt);
 static int validate_create_table_plan(mylite_stmt *stmt, const char *schema_name,
                                       struct mylite_schema_default *schema_default);
 static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
@@ -852,6 +868,8 @@ static int copy_insert_values_statement(const struct mylite_sql_ast_node *statem
                                         mylite_stmt *stmt);
 static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement,
                                      mylite_stmt *stmt);
+static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
+                                        mylite_stmt *stmt);
 static int copy_create_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_create_table_plan *plan);
 static int copy_drop_table_target(const struct mylite_sql_ast_node *table_name,
@@ -1002,6 +1020,7 @@ static void insert_table_deinit(struct mylite_insert_table *table);
 static void insert_table_column_deinit(struct mylite_insert_table_column *column);
 static void insert_unique_index_deinit(struct mylite_insert_unique_index *index);
 static void result_metadata_deinit(struct mylite_result_metadata *metadata);
+static void scalar_result_deinit(struct mylite_scalar_result *result);
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata);
 static void select_plan_deinit(struct mylite_select_plan *plan);
 static void select_table_deinit(struct mylite_select_table *table);
@@ -1021,6 +1040,7 @@ static const struct mylite_sql_ast_node *single_statement(const struct mylite_sq
 static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status status);
 static int map_translate_status(mylite_db *database, enum mylite_sqlite_translate_status status);
 static int set_sqlite_error(mylite_db *database);
+static void clear_warnings(mylite_db *database);
 static int set_error_message(mylite_db *database, const char *message);
 static int set_error_message_parts(mylite_db *database, const char *prefix, const char *value,
                                    const char *suffix);
@@ -1089,6 +1109,7 @@ void mylite_close(mylite_db *database)
 
     sqlite3_close(database->sqlite);
     free(database->error_message);
+    mylite_expression_warnings_deinit(&database->warnings);
     free(database->selected_schema);
     free(database);
 }
@@ -1118,6 +1139,7 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
     }
 
     clear_error_message(database);
+    clear_warnings(database);
     parse_status = mylite_sql_parse(
         (struct mylite_sql_parse_config){
             .input = sql,
@@ -1152,6 +1174,7 @@ void mylite_finalize(mylite_stmt *stmt)
     insert_values_plan_deinit(&stmt->insert_values);
     insert_set_plan_deinit(&stmt->insert_set);
     result_metadata_deinit(&stmt->result_metadata);
+    scalar_result_deinit(&stmt->scalar_result);
     free(stmt);
 }
 
@@ -1164,6 +1187,9 @@ int mylite_step(mylite_stmt *stmt)
     }
 
     clear_error_message(stmt->database);
+    if (!stmt->executed) {
+        clear_warnings(stmt->database);
+    }
     if (stmt->kind != MYLITE_STMT_SQLITE) {
         return execute_custom_statement(stmt);
     }
@@ -1199,12 +1225,36 @@ uint64_t mylite_last_insert_id(const mylite_db *database)
     return database->last_insert_id;
 }
 
+int mylite_warning_count(const mylite_db *database)
+{
+    return database == NULL ? 0 : (int)database->warnings.count;
+}
+
+unsigned int mylite_warning_code(const mylite_db *database, int warning)
+{
+    if (database == NULL || warning < 0 || (size_t)warning >= database->warnings.count) {
+        return 0U;
+    }
+    return database->warnings.items[warning].code;
+}
+
+const char *mylite_warning_message(const mylite_db *database, int warning)
+{
+    if (database == NULL || warning < 0 || (size_t)warning >= database->warnings.count) {
+        return NULL;
+    }
+    return database->warnings.items[warning].message;
+}
+
 int mylite_column_count(const mylite_stmt *stmt)
 {
     if (stmt == NULL) {
         return 0;
     }
 
+    if (stmt->kind == MYLITE_STMT_SCALAR_SELECT) {
+        return (int)stmt->scalar_result.value_count;
+    }
     if (stmt->sqlite_stmt == NULL) {
         return 0;
     }
@@ -1218,6 +1268,10 @@ const char *mylite_column_name(const mylite_stmt *stmt, int column)
 
     if (metadata != NULL && metadata->name != NULL) {
         return metadata->name;
+    }
+    if (stmt != NULL && stmt->kind == MYLITE_STMT_SCALAR_SELECT && column >= 0 &&
+        (size_t)column < stmt->result_metadata.column_count) {
+        return stmt->result_metadata.columns[column].name;
     }
     if (stmt == NULL || stmt->sqlite_stmt == NULL || column < 0 ||
         column >= sqlite3_column_count(stmt->sqlite_stmt)) {
@@ -1259,6 +1313,10 @@ int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
 {
     if (stmt == NULL || stmt->sqlite_stmt == NULL || column < 0 ||
         column >= sqlite3_column_count(stmt->sqlite_stmt)) {
+        if (stmt != NULL && stmt->kind == MYLITE_STMT_SCALAR_SELECT && column >= 0 &&
+            (size_t)column < stmt->scalar_result.value_count) {
+            return mylite_expression_value_to_int64(&stmt->scalar_result.values[column]);
+        }
         return 0;
     }
 
@@ -1269,6 +1327,10 @@ const char *mylite_column_text(const mylite_stmt *stmt, int column)
 {
     if (stmt == NULL || stmt->sqlite_stmt == NULL || column < 0 ||
         column >= sqlite3_column_count(stmt->sqlite_stmt)) {
+        if (stmt != NULL && stmt->kind == MYLITE_STMT_SCALAR_SELECT && column >= 0 &&
+            (size_t)column < stmt->scalar_result.value_count) {
+            return stmt->scalar_result.texts[column];
+        }
         return NULL;
     }
 
@@ -1431,6 +1493,10 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             if (status != MYLITE_UNSUPPORTED || database->error_message != NULL) {
                 return status;
             }
+            status = prepare_scalar_select_statement(database, statement, out_stmt);
+            if (status != MYLITE_UNSUPPORTED || database->error_message != NULL) {
+                return status;
+            }
             break;
         case MYLITE_SQL_AST_SCRIPT:
         case MYLITE_SQL_AST_SELECT_LIST:
@@ -1443,6 +1509,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_LITERAL:
         case MYLITE_SQL_AST_UNARY_EXPRESSION:
         case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+        case MYLITE_SQL_AST_EXPRESSION_LIST:
         case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
         case MYLITE_SQL_AST_IF_EXISTS:
         case MYLITE_SQL_AST_IF_NOT_EXISTS:
@@ -1518,6 +1586,8 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+    case MYLITE_SQL_AST_EXPRESSION_LIST:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
@@ -1581,6 +1651,8 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_SELECT_ITEM:
     case MYLITE_SQL_AST_FROM_DUAL:
     case MYLITE_SQL_AST_FROM_TABLE:
+    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+    case MYLITE_SQL_AST_EXPRESSION_LIST:
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
     case MYLITE_SQL_AST_WILDCARD:
@@ -1731,6 +1803,29 @@ static int prepare_table_select_statement(mylite_db *database,
     sqlite3_free(sqlite_sql);
     select_plan_deinit(&plan);
     return status;
+}
+
+static int prepare_scalar_select_statement(mylite_db *database,
+                                           const struct mylite_sql_ast_node *statement,
+                                           mylite_stmt **out_stmt)
+{
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
+        (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    for (const struct mylite_sql_ast_node *item = select_list->first_child; item != NULL;
+         item = item->next_sibling) {
+        const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+
+        if (item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
+            !mylite_expression_is_supported_no_table(expression)) {
+            return MYLITE_UNSUPPORTED;
+        }
+    }
+    return prepare_custom_statement(database, MYLITE_STMT_SCALAR_SELECT, statement, out_stmt);
 }
 
 static int attach_select_result_metadata(mylite_stmt *stmt, const struct mylite_select_plan *plan)
@@ -2206,7 +2301,7 @@ static int resolve_select_column_reference(const struct mylite_select_table *tab
         *out_index = select_column_index(table, parts[part_count - 1U]);
     }
 
-    for (size_t index = 0U; index < part_count; ++index) {
+    for (size_t index = 0U; index < part_count && index < 3U; ++index) {
         free(parts[index]);
     }
     return MYLITE_OK;
@@ -2522,6 +2617,9 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     case MYLITE_STMT_INSERT_SET:
         status = copy_insert_set_statement(statement, stmt);
         break;
+    case MYLITE_STMT_SCALAR_SELECT:
+        status = copy_scalar_select_statement(statement, stmt);
+        break;
     case MYLITE_STMT_SQLITE:
         status = MYLITE_UNSUPPORTED;
         break;
@@ -2559,6 +2657,9 @@ static int execute_custom_statement(mylite_stmt *stmt)
 {
     int status = MYLITE_OK;
 
+    if (stmt->kind == MYLITE_STMT_SCALAR_SELECT) {
+        return execute_scalar_select_statement(stmt);
+    }
     if (stmt->executed) {
         return MYLITE_DONE;
     }
@@ -2595,6 +2696,8 @@ static int execute_custom_statement(mylite_stmt *stmt)
     case MYLITE_STMT_INSERT_SET:
         status = execute_insert_set_statement(stmt);
         break;
+    case MYLITE_STMT_SCALAR_SELECT:
+        return execute_scalar_select_statement(stmt);
     case MYLITE_STMT_SQLITE:
         status = MYLITE_MISUSE;
         break;
@@ -3447,6 +3550,20 @@ static int execute_insert_set_statement(mylite_stmt *stmt)
     free(column_indexes);
     insert_table_deinit(&table);
     return status;
+}
+
+static int execute_scalar_select_statement(mylite_stmt *stmt)
+{
+    if (stmt->scalar_result.has_row) {
+        return MYLITE_DONE;
+    }
+
+    stmt->scalar_result.has_row = true;
+    stmt->executed = true;
+    stmt->database->warnings = stmt->scalar_result.warnings;
+    stmt->scalar_result.warnings = (struct mylite_expression_warnings){0};
+    stmt->affected_rows = -1;
+    return MYLITE_ROW;
 }
 
 static int validate_insert_values_target(mylite_stmt *stmt, const char **out_schema_name)
@@ -4474,6 +4591,7 @@ static int evaluate_insert_set_binary_expression(mylite_stmt *stmt,
         case MYLITE_SQL_AST_OPERATOR_NONE:
         case MYLITE_SQL_AST_OPERATOR_POSITIVE:
         case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+        default:
             insert_bound_value_deinit(&left);
             insert_bound_value_deinit(&right);
             return set_insert_unsupported_expression_error(stmt->database);
@@ -4501,6 +4619,7 @@ static int evaluate_insert_set_binary_expression(mylite_stmt *stmt,
         case MYLITE_SQL_AST_OPERATOR_NONE:
         case MYLITE_SQL_AST_OPERATOR_POSITIVE:
         case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+        default:
             insert_bound_value_deinit(&left);
             insert_bound_value_deinit(&right);
             return set_insert_unsupported_expression_error(stmt->database);
@@ -5735,6 +5854,7 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_INSERT_VALUES:
     case MYLITE_STMT_INSERT_SET:
+    case MYLITE_STMT_SCALAR_SELECT:
     case MYLITE_STMT_SQLITE:
         return MYLITE_OK;
     }
@@ -5902,6 +6022,62 @@ static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement
         status = copy_insert_set_assignments(assignments, &stmt->insert_set);
     }
     return status;
+}
+
+static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
+                                        mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    size_t column_count = 0U;
+
+    for (const struct mylite_sql_ast_node *item = select_list == NULL ? NULL
+                                                                      : select_list->first_child;
+         item != NULL; item = item->next_sibling) {
+        ++column_count;
+    }
+    if (column_count == 0U) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    stmt->scalar_result.values = calloc(column_count, sizeof(*stmt->scalar_result.values));
+    stmt->scalar_result.texts = (char **)calloc(column_count, sizeof(*stmt->scalar_result.texts));
+    stmt->result_metadata.columns = calloc(column_count, sizeof(*stmt->result_metadata.columns));
+    if (stmt->scalar_result.values == NULL || stmt->scalar_result.texts == NULL ||
+        stmt->result_metadata.columns == NULL) {
+        return MYLITE_NOMEM;
+    }
+    stmt->scalar_result.value_count = column_count;
+    stmt->result_metadata.column_count = column_count;
+    stmt->affected_rows = -1;
+
+    size_t index = 0U;
+    for (const struct mylite_sql_ast_node *item = select_list->first_child; item != NULL;
+         item = item->next_sibling, ++index) {
+        const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+        const struct mylite_sql_ast_node *alias = child_at(item, 1U);
+        int status = mylite_expression_eval(expression, &stmt->scalar_result.warnings,
+                                            &stmt->scalar_result.values[index]);
+
+        if (status != 0) {
+            return MYLITE_UNSUPPORTED;
+        }
+        stmt->scalar_result.texts[index] =
+            mylite_expression_value_to_text(&stmt->scalar_result.values[index]);
+        if (stmt->scalar_result.values[index].kind != MYLITE_EXPRESSION_VALUE_NULL &&
+            stmt->scalar_result.texts[index] == NULL) {
+            return MYLITE_NOMEM;
+        }
+        if (alias != NULL) {
+            stmt->result_metadata.columns[index].name = copy_select_alias(alias);
+        } else {
+            stmt->result_metadata.columns[index].name =
+                copy_span_text(expression->span.text, expression->span.length);
+        }
+        if (stmt->result_metadata.columns[index].name == NULL) {
+            return MYLITE_NOMEM;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int copy_insert_table_name(const struct mylite_sql_ast_node *table_name,
@@ -6084,6 +6260,8 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
         return copy_insert_column_reference(value_node, &out_value->column_reference);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+    case MYLITE_SQL_AST_EXPRESSION_LIST:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_USE_STATEMENT:
@@ -8097,6 +8275,22 @@ static void result_metadata_deinit(struct mylite_result_metadata *metadata)
     *metadata = (struct mylite_result_metadata){0};
 }
 
+static void scalar_result_deinit(struct mylite_scalar_result *result)
+{
+    if (result == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < result->value_count; ++index) {
+        mylite_expression_value_deinit(&result->values[index]);
+        free(result->texts[index]);
+    }
+    mylite_expression_warnings_deinit(&result->warnings);
+    free(result->values);
+    free((void *)result->texts);
+    *result = (struct mylite_scalar_result){0};
+}
+
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata)
 {
     if (metadata == NULL) {
@@ -8305,6 +8499,15 @@ static int map_translate_status(mylite_db *database, enum mylite_sqlite_translat
     }
 
     return MYLITE_UNSUPPORTED;
+}
+
+static void clear_warnings(mylite_db *database)
+{
+    if (database == NULL) {
+        return;
+    }
+
+    mylite_expression_warnings_deinit(&database->warnings);
 }
 
 static int set_sqlite_error(mylite_db *database)

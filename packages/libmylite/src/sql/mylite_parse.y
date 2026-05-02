@@ -2,11 +2,11 @@
 %token_prefix MYLITE_SQL_PARSE_
 %token_type { struct mylite_sql_token }
 %default_type { struct mylite_sql_ast_node * }
-%type opt_column_unique_key { struct mylite_sql_token }
 %type opt_into { struct mylite_sql_token }
 %type opt_temporary { struct mylite_sql_token }
 %type opt_drop_table_mode { struct mylite_sql_token }
 %type insert_values_keyword { struct mylite_sql_token }
+%type opt_like_escape { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
 
 %include {
@@ -30,9 +30,21 @@
     mylite_sql_parser_state_stack_overflow(state);
 }
 
+%left LOWEST.
+%left OR LOGICAL_OR.
+%left XOR.
+%left AND LOGICAL_AND.
+%right NOT.
+%left BETWEEN.
+%left EQ NULL_SAFE_EQ NE LT LE GT GE IS LIKE IN.
+%left BIT_OR.
+%left BIT_AND.
+%left SHIFT_LEFT SHIFT_RIGHT.
 %left PLUS MINUS.
-%left STAR SLASH.
-%right UPLUS UMINUS.
+%left STAR SLASH DIV PERCENT MOD.
+%left BIT_XOR.
+%right UPLUS UMINUS BIT_NOT.
+%right LOGICAL_NOT.
 %right KEY.
 %fallback IDENTIFIER AUTO_INCREMENT BOOL BOOLEAN BTREE CHARSET COLUMN_FORMAT COMMENT DATE DATETIME
     DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR
@@ -847,19 +859,19 @@ column_attribute(A) ::= PRIMARY(P) KEY(K). {
 column_attribute(A) ::= KEY(T). {
     A = mylite_sql_parser_make_column_primary_key_attribute(state, T, T);
 }
-column_attribute(A) ::= UNIQUE(U) opt_column_unique_key(K). {
+column_attribute(A) ::= UNIQUE(U). [LOWEST] {
+    A = mylite_sql_parser_make_column_unique_key_attribute(
+        state, (struct mylite_sql_parser_column_unique_key_attribute_tokens){
+            .unique_token = U,
+            .key_token = (struct mylite_sql_token){0},
+        });
+}
+column_attribute(A) ::= UNIQUE(U) KEY(K). {
     A = mylite_sql_parser_make_column_unique_key_attribute(
         state, (struct mylite_sql_parser_column_unique_key_attribute_tokens){
             .unique_token = U,
             .key_token = K,
         });
-}
-
-opt_column_unique_key(A) ::= . [KEY] {
-    A = (struct mylite_sql_token){0};
-}
-opt_column_unique_key(A) ::= KEY(T). {
-    A = T;
 }
 
 table_primary_key_constraint(A) ::= PRIMARY(P) KEY opt_primary_key_name(B) opt_index_type(C) LPAREN key_part_list(D) RPAREN index_option_list(E). {
@@ -1299,41 +1311,263 @@ qualified_wildcard(A) ::= qualified_identifier(B) DOT STAR(T). {
     A = mylite_sql_parser_make_qualified_wildcard(state, B, NULL, T);
 }
 
-expression(A) ::= literal(B). {
+expression(A) ::= logical_or_expression(B). [LOWEST] {
     A = B;
 }
-expression(A) ::= qualified_identifier(B). {
+
+logical_or_expression(A) ::= logical_xor_expression(B). [OR] {
     A = B;
 }
-expression(A) ::= current_timestamp_value(B). {
+logical_or_expression(A) ::= logical_or_expression(B) OR(T) logical_xor_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_OR, C);
+}
+logical_or_expression(A) ::= logical_or_expression(B) LOGICAL_OR(T) logical_xor_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_OR, C);
+}
+
+logical_xor_expression(A) ::= logical_and_expression(B). [XOR] {
     A = B;
 }
-expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
-    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+logical_xor_expression(A) ::= logical_xor_expression(B) XOR(T) logical_and_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR, C);
 }
-expression(A) ::= PLUS(T) expression(B). [UPLUS] {
+
+logical_and_expression(A) ::= logical_not_expression(B). [AND] {
+    A = B;
+}
+logical_and_expression(A) ::= logical_and_expression(B) AND(T) logical_not_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_AND, C);
+}
+logical_and_expression(A) ::= logical_and_expression(B) LOGICAL_AND(T) logical_not_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_AND, C);
+}
+
+logical_not_expression(A) ::= between_expression(B). [NOT] {
+    A = B;
+}
+logical_not_expression(A) ::= NOT(T) logical_not_expression(B). {
     A = mylite_sql_parser_make_unary_expression(
-        state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE, B);
+        state, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, B);
 }
-expression(A) ::= MINUS(T) expression(B). [UMINUS] {
+
+between_expression(A) ::= comparison_expression(B). [NOT] {
+    A = B;
+}
+between_expression(A) ::= comparison_expression(B) BETWEEN(T) comparison_expression(C) AND comparison_expression(D). {
+    A = mylite_sql_parser_make_ternary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_BETWEEN, C, D);
+}
+between_expression(A) ::= comparison_expression(B) NOT(T) BETWEEN comparison_expression(C) AND comparison_expression(D). {
+    A = mylite_sql_parser_make_ternary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN, C, D);
+}
+
+comparison_expression(A) ::= bit_or_expression(B). {
+    A = B;
+}
+comparison_expression(A) ::= comparison_expression(B) EQ(T) bit_or_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_EQUAL, C);
+}
+comparison_expression(A) ::= comparison_expression(B) NULL_SAFE_EQ(T) bit_or_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, C);
+}
+comparison_expression(A) ::= comparison_expression(B) NE(T) bit_or_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, C);
+}
+comparison_expression(A) ::= comparison_expression(B) LT(T) bit_or_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LESS, C);
+}
+comparison_expression(A) ::= comparison_expression(B) LE(T) bit_or_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LESS_EQUAL, C);
+}
+comparison_expression(A) ::= comparison_expression(B) GT(T) bit_or_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_GREATER, C);
+}
+comparison_expression(A) ::= comparison_expression(B) GE(T) bit_or_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, C);
+}
+comparison_expression(A) ::= comparison_expression(B) IS(T) NULL. {
     A = mylite_sql_parser_make_unary_expression(
-        state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE, B);
+        state, T, MYLITE_SQL_AST_OPERATOR_IS_NULL, B);
 }
-expression(A) ::= expression(B) PLUS(T) expression(C). {
+comparison_expression(A) ::= comparison_expression(B) IS(T) NOT NULL. {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, B);
+}
+comparison_expression(A) ::= comparison_expression(B) IS(T) TRUE. {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_IS_TRUE, B);
+}
+comparison_expression(A) ::= comparison_expression(B) IS(T) NOT TRUE. {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE, B);
+}
+comparison_expression(A) ::= comparison_expression(B) IS(T) FALSE. {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_IS_FALSE, B);
+}
+comparison_expression(A) ::= comparison_expression(B) IS(T) NOT FALSE. {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE, B);
+}
+comparison_expression(A) ::= comparison_expression(B) IS(T) UNKNOWN. {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN, B);
+}
+comparison_expression(A) ::= comparison_expression(B) IS(T) NOT UNKNOWN. {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN, B);
+}
+comparison_expression(A) ::= comparison_expression(B) LIKE(T) bit_or_expression(C) opt_like_escape(D). {
+    A = D == NULL ? mylite_sql_parser_make_binary_expression(
+                        state, B, T, MYLITE_SQL_AST_OPERATOR_LIKE, C)
+                  : mylite_sql_parser_make_ternary_expression(
+                        state, B, T, MYLITE_SQL_AST_OPERATOR_LIKE, C, D);
+}
+comparison_expression(A) ::= comparison_expression(B) NOT(T) LIKE bit_or_expression(C) opt_like_escape(D). {
+    A = D == NULL ? mylite_sql_parser_make_binary_expression(
+                        state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_LIKE, C)
+                  : mylite_sql_parser_make_ternary_expression(
+                        state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_LIKE, C, D);
+}
+comparison_expression(A) ::= comparison_expression(B) IN(T) LPAREN expression_list(C) RPAREN. {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_IN, C);
+}
+comparison_expression(A) ::= comparison_expression(B) NOT(T) IN LPAREN expression_list(C) RPAREN. {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_IN, C);
+}
+
+opt_like_escape(A) ::= . {
+    A = NULL;
+}
+opt_like_escape(A) ::= ESCAPE expression(B). {
+    A = B;
+}
+
+expression_list(A) ::= expression(B). {
+    A = mylite_sql_parser_make_expression_list(state, B);
+}
+expression_list(A) ::= expression_list(B) COMMA expression(C). {
+    A = mylite_sql_parser_append_expression(state, B, C);
+}
+
+bit_or_expression(A) ::= bit_and_expression(B). {
+    A = B;
+}
+bit_or_expression(A) ::= bit_or_expression(B) BIT_OR(T) bit_and_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_OR, C);
+}
+
+bit_and_expression(A) ::= bit_shift_expression(B). {
+    A = B;
+}
+bit_and_expression(A) ::= bit_and_expression(B) BIT_AND(T) bit_shift_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_AND, C);
+}
+
+bit_shift_expression(A) ::= additive_expression(B). {
+    A = B;
+}
+bit_shift_expression(A) ::= bit_shift_expression(B) SHIFT_LEFT(T) additive_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SHIFT_LEFT, C);
+}
+bit_shift_expression(A) ::= bit_shift_expression(B) SHIFT_RIGHT(T) additive_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT, C);
+}
+
+additive_expression(A) ::= multiplicative_expression(B). {
+    A = B;
+}
+additive_expression(A) ::= additive_expression(B) PLUS(T) multiplicative_expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
 }
-expression(A) ::= expression(B) MINUS(T) expression(C). {
+additive_expression(A) ::= additive_expression(B) MINUS(T) multiplicative_expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
 }
-expression(A) ::= expression(B) STAR(T) expression(C). {
+
+multiplicative_expression(A) ::= bit_xor_expression(B). {
+    A = B;
+}
+multiplicative_expression(A) ::= multiplicative_expression(B) STAR(T) bit_xor_expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_MULTIPLY, C);
 }
-expression(A) ::= expression(B) SLASH(T) expression(C). {
+multiplicative_expression(A) ::= multiplicative_expression(B) SLASH(T) bit_xor_expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_DIVIDE, C);
+}
+multiplicative_expression(A) ::= multiplicative_expression(B) DIV(T) bit_xor_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE, C);
+}
+multiplicative_expression(A) ::= multiplicative_expression(B) PERCENT(T) bit_xor_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO, C);
+}
+multiplicative_expression(A) ::= multiplicative_expression(B) MOD(T) bit_xor_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO, C);
+}
+
+bit_xor_expression(A) ::= unary_expression(B). {
+    A = B;
+}
+bit_xor_expression(A) ::= bit_xor_expression(B) BIT_XOR(T) unary_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_XOR, C);
+}
+
+unary_expression(A) ::= primary_expression(B). {
+    A = B;
+}
+unary_expression(A) ::= PLUS(T) unary_expression(B). [UPLUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE, B);
+}
+unary_expression(A) ::= MINUS(T) unary_expression(B). [UMINUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE, B);
+}
+unary_expression(A) ::= BIT_NOT(T) unary_expression(B). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, B);
+}
+unary_expression(A) ::= LOGICAL_NOT(T) unary_expression(B). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, B);
+}
+
+primary_expression(A) ::= literal(B). {
+    A = B;
+}
+primary_expression(A) ::= qualified_identifier(B). {
+    A = B;
+}
+primary_expression(A) ::= current_timestamp_value(B). {
+    A = B;
+}
+primary_expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
 
 literal(A) ::= INTEGER(T). {

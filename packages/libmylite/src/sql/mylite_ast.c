@@ -456,6 +456,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "insert_set_assignment_list";
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
         return "insert_set_assignment";
+    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+        return "ternary_expression";
+    case MYLITE_SQL_AST_EXPRESSION_LIST:
+        return "expression_list";
     }
 
     return "unknown";
@@ -709,6 +713,72 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "multiply";
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
         return "divide";
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+        return "equal";
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+        return "null_safe_equal";
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+        return "not_equal";
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+        return "less";
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+        return "less_equal";
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+        return "greater";
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return "greater_equal";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
+        return "logical_not";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+        return "logical_and";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
+        return "logical_xor";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+        return "logical_or";
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+        return "bitwise_not";
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+        return "bitwise_and";
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+        return "bitwise_xor";
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+        return "bitwise_or";
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_LEFT:
+        return "shift_left";
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT:
+        return "shift_right";
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+        return "is_null";
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+        return "is_not_null";
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+        return "is_true";
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+        return "is_not_true";
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+        return "is_false";
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+        return "is_not_false";
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+        return "is_unknown";
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+        return "is_not_unknown";
+    case MYLITE_SQL_AST_OPERATOR_BETWEEN:
+        return "between";
+    case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
+        return "not_between";
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
+        return "like";
+    case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+        return "not_like";
+    case MYLITE_SQL_AST_OPERATOR_IN:
+        return "in";
+    case MYLITE_SQL_AST_OPERATOR_NOT_IN:
+        return "not_in";
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+        return "integer_divide";
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+        return "modulo";
     }
 
     return "unknown";

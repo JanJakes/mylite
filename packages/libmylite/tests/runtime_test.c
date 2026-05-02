@@ -107,6 +107,7 @@ struct expected_column_metadata {
 
 static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
+static int test_expression_operator_foundation(void);
 static int test_schema_lifecycle(void);
 static int test_character_set_collation_foundation(void);
 static int test_core_metadata_catalog(void);
@@ -194,6 +195,7 @@ int main(void)
 
     failures += test_select_integer_literal();
     failures += test_select_integer_literal_with_semicolon();
+    failures += test_expression_operator_foundation();
     failures += test_schema_lifecycle();
     failures += test_character_set_collation_foundation();
     failures += test_core_metadata_catalog();
@@ -682,6 +684,117 @@ static int test_select_integer_literal_with_semicolon(void)
     return failures;
 }
 
+static int test_expression_operator_foundation(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    static const char *columns[] = {
+        "1 + 2 * 3",
+        "(1 + 2) * 3",
+        "1 | 2 & 0",
+        "1 OR 0 AND 0",
+        "NOT 1 BETWEEN 0 AND 2",
+        "1 + 2 << 1",
+        "1 BETWEEN 0 AND 2 AND 0",
+        "1 XOR 1 OR 1",
+    };
+    static const char *values[] = {"7", "9", "1", "1", "0", "6", "0", "1"};
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+    failures += expect_select_rows(database,
+                                   "SELECT 1 + 2 * 3, (1 + 2) * 3, 1 | 2 & 0, "
+                                   "1 OR 0 AND 0, NOT 1 BETWEEN 0 AND 2, "
+                                   "1 + 2 << 1, 1 BETWEEN 0 AND 2 AND 0, 1 XOR 1 OR 1",
+                                   columns, 8, values, 1, "expression precedence");
+
+    failures += prepare_sql(database,
+                            "SELECT NULL = NULL, NULL <=> NULL, 1 <=> NULL, NULL <> 1, "
+                            "NULL IS NULL, NULL IS NOT NULL, 0 IS FALSE, 2 IS TRUE, "
+                            "NULL IS UNKNOWN",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "null truth row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "null equality");
+    failures += expect_string(mylite_column_text(stmt, 1), "1", "null-safe equality");
+    failures += expect_string(mylite_column_text(stmt, 2), "0", "null-safe nonmatch");
+    failures += expect_null_text(mylite_column_text(stmt, 3), "null not equal");
+    failures += expect_string(mylite_column_text(stmt, 4), "1", "is null");
+    failures += expect_string(mylite_column_text(stmt, 5), "0", "is not null");
+    failures += expect_string(mylite_column_text(stmt, 6), "1", "is false");
+    failures += expect_string(mylite_column_text(stmt, 7), "1", "is true");
+    failures += expect_string(mylite_column_text(stmt, 8), "1", "is unknown");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "null truth done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT 5 DIV 2, 5 / 2, 5 % 2, 5 MOD 2, ~0, 1 << 63, 1 >> 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "arithmetic row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2", "div");
+    failures += expect_string(mylite_column_text(stmt, 1), "2.5000", "slash division");
+    failures += expect_string(mylite_column_text(stmt, 2), "1", "percent");
+    failures += expect_string(mylite_column_text(stmt, 3), "1", "mod");
+    failures += expect_string(mylite_column_text(stmt, 4), "18446744073709551615", "bitwise not");
+    failures += expect_string(mylite_column_text(stmt, 5), "9223372036854775808", "shift left");
+    failures += expect_string(mylite_column_text(stmt, 6), "0", "shift right");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "arithmetic done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT 2 BETWEEN 1 AND 3, 2 NOT BETWEEN 3 AND 1, "
+                            "2 BETWEEN 3 AND NULL, 2 BETWEEN NULL AND 1, "
+                            "2 NOT BETWEEN 3 AND NULL, 2 NOT BETWEEN NULL AND 1, "
+                            "'abc' LIKE 'a%', 'abc' LIKE 'A%', 'abc' LIKE 'a\\_c', "
+                            "'a_c' LIKE 'a\\_c', 'abc' LIKE 'a\\%c', "
+                            "'a%c' LIKE 'a\\%c', 'abc' NOT LIKE 'a%', 2 IN (1,2,3), "
+                            "4 IN (1,2,NULL), 4 NOT IN (1,2,NULL)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "range pattern row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "between");
+    failures += expect_string(mylite_column_text(stmt, 1), "1", "not between");
+    failures += expect_string(mylite_column_text(stmt, 2), "0", "between false low null high");
+    failures += expect_string(mylite_column_text(stmt, 3), "0", "between false high null low");
+    failures += expect_string(mylite_column_text(stmt, 4), "1", "not between false low null high");
+    failures += expect_string(mylite_column_text(stmt, 5), "1", "not between false high null low");
+    failures += expect_string(mylite_column_text(stmt, 6), "1", "like percent");
+    failures += expect_string(mylite_column_text(stmt, 7), "1", "like case insensitive");
+    failures += expect_string(mylite_column_text(stmt, 8), "0", "like escaped underscore miss");
+    failures += expect_string(mylite_column_text(stmt, 9), "1", "like escaped underscore match");
+    failures += expect_string(mylite_column_text(stmt, 10), "0", "like escaped percent miss");
+    failures += expect_string(mylite_column_text(stmt, 11), "1", "like escaped percent match");
+    failures += expect_string(mylite_column_text(stmt, 12), "0", "not like");
+    failures += expect_string(mylite_column_text(stmt, 13), "1", "in match");
+    failures += expect_null_text(mylite_column_text(stmt, 14), "in null miss");
+    failures += expect_null_text(mylite_column_text(stmt, 15), "not in null miss");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "range pattern done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT 1/0, 1 DIV 0, 1 % 0", MYLITE_OK, &stmt);
+    failures += expect_int(mylite_warning_count(database), 0, "division warning count before step");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "division warning row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "slash zero");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "div zero");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "mod zero");
+    failures += expect_int(mylite_warning_count(database), 3, "division warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), 1365, "division warning code");
+    failures += expect_string(mylite_warning_message(database, 0), "Division by 0",
+                              "division warning message");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT 1 IN ()", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "empty in list");
+    failures += prepare_sql(database, "SELECT ROW(1,2) IN ((1,2))", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "row in deferred");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
 static int test_mylite_file_preamble_and_vfs_payload(void)
 {
     enum { expected_payload_value = 7 };
@@ -795,7 +908,7 @@ static int test_unsupported_statement(void)
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
-    failures += prepare_sql(database, "SELECT 1 + 2", MYLITE_UNSUPPORTED, &stmt);
+    failures += prepare_sql(database, "SELECT CURRENT_TIMESTAMP", MYLITE_UNSUPPORTED, &stmt);
     if (stmt != NULL) {
         fprintf(stderr, "unsupported statement returned a statement handle\n");
         failures = 1;

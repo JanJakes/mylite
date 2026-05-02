@@ -20,6 +20,7 @@ static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
 static int test_select_expression_list(void);
+static int test_expression_operator_foundation_syntax(void);
 static int test_information_schema_select(void);
 static int test_select_table_core_syntax(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -85,6 +86,7 @@ int main(void)
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
     failures += test_select_expression_list();
+    failures += test_expression_operator_foundation_syntax();
     failures += test_information_schema_select();
     failures += test_select_table_core_syntax();
     failures += test_unary_and_parenthesized_expression();
@@ -2322,6 +2324,98 @@ static int test_select_expression_list(void)
                                "null literal");
 
     mylite_sql_parse_result_deinit(&result);
+    return failures;
+}
+
+static int test_expression_operator_foundation_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT 1 = 1, 1 <=> NULL, 1 <> 2, 1 != 2, 1 < 2, 1 <= 2, "
+                          "2 > 1, 2 >= 1",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    failures += expect_operator(child_at(child_at(select_list, 0U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_EQUAL, "equal operator");
+    failures +=
+        expect_operator(child_at(child_at(select_list, 1U), 0U),
+                        MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, "null safe equal operator");
+    failures += expect_operator(child_at(child_at(select_list, 2U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, "angle not equal operator");
+    failures += expect_operator(child_at(child_at(select_list, 3U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, "bang not equal operator");
+    failures += expect_operator(child_at(child_at(select_list, 4U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_LESS, "less operator");
+    failures += expect_operator(child_at(child_at(select_list, 5U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_LESS_EQUAL, "less equal operator");
+    failures += expect_operator(child_at(child_at(select_list, 6U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_GREATER, "greater operator");
+    failures += expect_operator(child_at(child_at(select_list, 7U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, "greater equal operator");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT !0, NOT 0, 1 AND 1, 1 && 1, 1 XOR 0, 1 OR 0, 1 || 0, "
+                          "~0, 1 & 3, 1 | 2, 1 ^ 3, 1 << 2, 4 >> 1",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_operator(child_at(child_at(select_list, 0U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, "bang not");
+    failures += expect_operator(child_at(child_at(select_list, 2U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_LOGICAL_AND, "and");
+    failures += expect_operator(child_at(child_at(select_list, 4U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR, "xor");
+    failures += expect_operator(child_at(child_at(select_list, 5U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_LOGICAL_OR, "or");
+    failures += expect_operator(child_at(child_at(select_list, 7U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, "bit not");
+    failures += expect_operator(child_at(child_at(select_list, 8U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_BITWISE_AND, "bit and");
+    failures += expect_operator(child_at(child_at(select_list, 9U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_BITWISE_OR, "bit or");
+    failures += expect_operator(child_at(child_at(select_list, 10U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_BITWISE_XOR, "bit xor");
+    failures += expect_operator(child_at(child_at(select_list, 11U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_SHIFT_LEFT, "shift left");
+    failures += expect_operator(child_at(child_at(select_list, 12U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT, "shift right");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1 IS NULL, 1 IS NOT TRUE, 2 BETWEEN 1 AND 3, "
+                          "2 NOT BETWEEN 3 AND 1, 'a' LIKE 'a' ESCAPE '!', "
+                          "1 NOT IN (2,3), 5 DIV 2, 5 % 2, 5 MOD 2",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_operator(child_at(child_at(select_list, 0U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_IS_NULL, "is null");
+    failures += expect_operator(child_at(child_at(select_list, 1U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE, "is not true");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_TERNARY_EXPRESSION, "between node");
+    failures += expect_operator(expression, MYLITE_SQL_AST_OPERATOR_BETWEEN, "between op");
+    expression = child_at(child_at(select_list, 4U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_TERNARY_EXPRESSION, "like escape node");
+    failures += expect_operator(child_at(child_at(select_list, 5U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_NOT_IN, "not in");
+    failures += expect_node(child_at(child_at(child_at(select_list, 5U), 0U), 1U),
+                            MYLITE_SQL_AST_EXPRESSION_LIST, "in expression list");
+    failures += expect_operator(child_at(child_at(select_list, 6U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE, "div");
+    failures += expect_operator(child_at(child_at(select_list, 7U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_MODULO, "percent");
+    failures += expect_operator(child_at(child_at(select_list, 8U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_MODULO, "mod");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1 IN ()", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

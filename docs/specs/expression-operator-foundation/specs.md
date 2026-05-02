@@ -178,10 +178,15 @@ Representative runtime results:
 | `SELECT NULL BETWEEN 1 AND 3` | `NULL` |
 | `SELECT 2 BETWEEN NULL AND 3` | `NULL` |
 | `SELECT 2 BETWEEN 1 AND NULL` | `NULL` |
+| `SELECT 2 BETWEEN 3 AND NULL` | `0` |
+| `SELECT 2 BETWEEN NULL AND 1` | `0` |
 | `SELECT 2 NOT BETWEEN 3 AND 1` | `1` |
+| `SELECT 2 NOT BETWEEN 3 AND NULL` | `1` |
+| `SELECT 2 NOT BETWEEN NULL AND 1` | `1` |
 
-`BETWEEN` is inclusive. `NOT BETWEEN` is the logical negation of `BETWEEN`,
-preserving `NULL` as `NULL`.
+`BETWEEN` is inclusive and follows the three-valued result of
+`low <= value AND value <= high`. `NOT BETWEEN` is the logical negation of
+that result, preserving unknown results as `NULL`.
 
 ### `LIKE`
 
@@ -579,7 +584,11 @@ these cases.
 | `SELECT 2 BETWEEN 3 AND 1` | `0` |
 | `SELECT NULL BETWEEN 1 AND 3` | `NULL` |
 | `SELECT 2 BETWEEN NULL AND 3` | `NULL` |
+| `SELECT 2 BETWEEN 3 AND NULL` | `0` |
+| `SELECT 2 BETWEEN NULL AND 1` | `0` |
 | `SELECT 2 NOT BETWEEN 3 AND 1` | `1` |
+| `SELECT 2 NOT BETWEEN 3 AND NULL` | `1` |
+| `SELECT 2 NOT BETWEEN NULL AND 1` | `1` |
 | `SELECT 'abc' LIKE 'a%'` | `1` |
 | `SELECT 'abc' LIKE 'A%'` | `1` |
 | `SELECT 'a_c' LIKE 'a\\_c'` | `1` |

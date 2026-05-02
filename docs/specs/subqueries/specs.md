@@ -91,6 +91,7 @@ and MySQL-runtime verified.
   - `docs/specs/select-distinct/specs.md`
   - `docs/specs/subquery-in-predicates/specs.md`
   - `docs/specs/quantified-subquery-comparisons/specs.md`
+  - `docs/specs/row-subquery-predicates/specs.md`
 
 Observed behavior was verified against MySQL 8.4.9 in Docker container
 `mylite-mysql-849`, using:
@@ -284,6 +285,9 @@ valid scalar quantified comparisons.
 Row subqueries are used with row constructors such as `(a,b)` or
 `ROW(a,b)`. The left row constructor and subquery row must have the same
 number of values.
+
+The narrower row subquery and row `IN` / `NOT IN` predicate slice is specified
+in `docs/specs/row-subquery-predicates/specs.md`.
 
 Representative results:
 

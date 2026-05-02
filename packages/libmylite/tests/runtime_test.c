@@ -111,6 +111,22 @@ struct expected_column_metadata {
     const char *origin_column_name;
 };
 
+struct expected_result_metadata {
+    const char *name;
+    const char *schema_name;
+    const char *table_name;
+    const char *origin_schema_name;
+    const char *origin_table_name;
+    const char *origin_column_name;
+    uint64_t declared_length;
+    int field_type;
+    unsigned int decimals;
+    unsigned int charset_id;
+    unsigned int flags_set;
+    unsigned int flags_clear;
+    int nullable;
+};
+
 static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
@@ -128,6 +144,7 @@ static int test_insert_set_execution(void);
 static int test_select_table_core_execution(void);
 static int test_select_where_execution(void);
 static int test_select_order_limit_offset_execution(void);
+static int test_result_metadata_expression_labels_execution(void);
 static int test_update_single_table_execution(void);
 static int test_delete_single_table_execution(void);
 static int test_transaction_statements_execution(void);
@@ -177,6 +194,9 @@ static int expect_column_names(const mylite_stmt *stmt, const char *const *expec
                                const char *context);
 static int expect_column_metadata(const mylite_stmt *stmt,
                                   const struct expected_column_metadata *expected, int count,
+                                  const char *context);
+static int expect_result_metadata(const mylite_stmt *stmt,
+                                  const struct expected_result_metadata *expected, int count,
                                   const char *context);
 static char *expected_physical_table_name(const char *schema_name, const char *table_name);
 static int expect_sqlite_table_exists(const struct sqlite_table_lookup *lookup);
@@ -230,6 +250,7 @@ int main(void)
     failures += test_select_table_core_execution();
     failures += test_select_where_execution();
     failures += test_select_order_limit_offset_execution();
+    failures += test_result_metadata_expression_labels_execution();
     failures += test_update_single_table_execution();
     failures += test_delete_single_table_execution();
     failures += test_transaction_statements_execution();
@@ -935,6 +956,8 @@ static int test_unsupported_statement(void)
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
     failures += prepare_sql(database, "SELECT CURRENT_TIMESTAMP", MYLITE_UNSUPPORTED, &stmt);
+    failures += prepare_sql(database, "SELECT x'0a'", MYLITE_UNSUPPORTED, &stmt);
+    failures += prepare_sql(database, "SELECT b'1010'", MYLITE_UNSUPPORTED, &stmt);
     if (stmt != NULL) {
         fprintf(stderr, "unsupported statement returned a statement handle\n");
         failures = 1;
@@ -2727,6 +2750,10 @@ static int test_select_table_core_execution(void)
     static const char *const mixed_columns[] = {"a", "a", "b", "CamelCase", "hidden"};
     static const char *const mixed_values[] = {"1", "1", "one", "7", "99",
                                                "2", "2", "two", "8", "88"};
+    static const char *const expression_columns[] = {"a + 1"};
+    static const char *const expression_values[] = {"2", "3"};
+    static const char *const literal_columns[] = {"1"};
+    static const char *const literal_values[] = {"1", "1"};
     static const struct expected_column_metadata alias_metadata[] = {
         {"x", "mylite_select15", "alias", "t", "a"},
         {"a", "mylite_select15", "alias", "t", "a"},
@@ -2843,12 +2870,16 @@ static int test_select_table_core_execution(void)
     failures += expect_prepare_error(database, "SELECT missing_select15.t.* FROM t",
                                      MYLITE_EXEC_ERROR, "Unknown table 'missing_select15.t'",
                                      "select missing schema wildcard qualifier");
-    failures += expect_prepare_error(database, "SELECT a + 1 FROM t", MYLITE_UNSUPPORTED,
-                                     "Unsupported SELECT projection",
-                                     "select unsupported expression projection");
-    failures += expect_prepare_error(database, "SELECT 1 FROM t", MYLITE_UNSUPPORTED,
-                                     "Unsupported SELECT projection",
-                                     "select unsupported literal projection");
+    failures += expect_select_rows(database, "SELECT a + 1 FROM t", expression_columns, 1,
+                                   expression_values, 2, "select expression projection");
+    failures += expect_select_rows(database, "SELECT 1 FROM t", literal_columns, 1, literal_values,
+                                   2, "select literal projection");
+    failures +=
+        expect_prepare_error(database, "SELECT x'0a' FROM t", MYLITE_UNSUPPORTED,
+                             "Unsupported SELECT projection", "unsupported hex literal projection");
+    failures +=
+        expect_prepare_error(database, "SELECT b'1010' FROM t", MYLITE_UNSUPPORTED,
+                             "Unsupported SELECT projection", "unsupported bit literal projection");
 
     failures += prepare_sql(database, "SELECT * FROM t", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "select side effect first row");
@@ -3160,7 +3191,10 @@ static int test_select_where_execution(void)
 
 static int test_select_order_limit_offset_execution(void)
 {
-    enum { hidden_order_warning_count = 5 };
+    enum {
+        full_order_row_count = 5,
+        hidden_order_warning_count = 5,
+    };
     static const char *const id_column[] = {"id"};
     static const char *const ids_1_2[] = {"1", "2"};
     static const char *const ids_2_3[] = {"2", "3"};
@@ -3199,6 +3233,10 @@ static int test_select_order_limit_offset_execution(void)
         "10",
         "1",
     };
+    static const char *const x_column[] = {"x"};
+    static const char *const one_column[] = {"1"};
+    static const char *const id_plus_order_values[] = {"2", "3", "4", "5", "6"};
+    static const char *const literal_order_values[] = {"1", "1", "1", "1", "1"};
     static const char *const metadata_columns[] = {"x", "s"};
     static const struct expected_column_metadata metadata[] = {
         {"x", "mylite_task18_order", "t", "t", "n"},
@@ -3283,12 +3321,12 @@ static int test_select_order_limit_offset_execution(void)
     failures +=
         expect_select_rows(database, "SELECT id FROM t AS tt ORDER BY tt.CamelCase DESC LIMIT 3",
                            id_column, 1, ids_qualified_alias, 3, "qualified alias order key");
-    failures += expect_prepare_error(database, "SELECT id + 1 AS x FROM t ORDER BY id",
-                                     MYLITE_UNSUPPORTED, "Unsupported SELECT projection",
-                                     "unreferenced order projection expression");
-    failures += expect_prepare_error(database, "SELECT 1 FROM t ORDER BY id", MYLITE_UNSUPPORTED,
-                                     "Unsupported SELECT projection",
-                                     "literal projection remains unsupported with order");
+    failures += expect_select_rows(database, "SELECT id + 1 AS x FROM t ORDER BY id", x_column, 1,
+                                   id_plus_order_values, full_order_row_count,
+                                   "unreferenced order projection expression");
+    failures += expect_select_rows(database, "SELECT 1 FROM t ORDER BY id", one_column, 1,
+                                   literal_order_values, full_order_row_count,
+                                   "literal projection with order");
 
     failures += expect_prepare_error(
         database, "SELECT n AS x, category AS x FROM t ORDER BY x LIMIT 1", MYLITE_EXEC_ERROR,
@@ -3376,6 +3414,192 @@ static int test_select_order_limit_offset_execution(void)
 
     failures += expect_int64((int64_t)mylite_last_insert_id(database), (int64_t)last_insert_id,
                              "order last insert id unchanged");
+    mylite_close(database);
+    return failures;
+}
+
+static int test_result_metadata_expression_labels_execution(void)
+{
+    static const char *const wildcard_columns[] = {
+        "id", "n", "u", "s", "c", "txt", "b", "d", "r", "dt", "ts", "y",
+    };
+    static const struct expected_result_metadata base_metadata[] = {
+        {"label", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "id", 11U,
+         MYLITE_FIELD_TYPE_LONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_AUTO_INCREMENT |
+             MYLITE_FIELD_FLAG_PART_KEY | MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+        {"label", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "n", 11U,
+         MYLITE_FIELD_TYPE_LONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_MULTIPLE_KEY | MYLITE_FIELD_FLAG_PART_KEY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"u_alias", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "u", 10U,
+         MYLITE_FIELD_TYPE_LONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+         0U, 0},
+        {"s_alias", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "s", 48U,
+         MYLITE_FIELD_TYPE_VAR_STRING, 0U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+        {"c", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "c", 12U,
+         MYLITE_FIELD_TYPE_STRING, 0U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE, 0U, 0},
+        {"txt", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "txt", 65535U,
+         MYLITE_FIELD_TYPE_BLOB, 0U, 255U, MYLITE_FIELD_FLAG_BLOB,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+        {"b", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "b", 8U,
+         MYLITE_FIELD_TYPE_VAR_STRING, 0U, 63U, MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"d", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "d", 8U,
+         MYLITE_FIELD_TYPE_NEWDECIMAL, 2U, 63U, MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"r", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "r", 22U,
+         MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U, MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"dt", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "dt", 23U,
+         MYLITE_FIELD_TYPE_DATETIME, 3U, 63U, MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"ts", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "ts", 19U,
+         MYLITE_FIELD_TYPE_TIMESTAMP, 0U, 63U, MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"y", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "y", 4U,
+         MYLITE_FIELD_TYPE_YEAR, 0U, 63U,
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_ZEROFILL | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"hidden_alias", "mylite_task23_metadata", "tt", "mylite_task23_metadata", "t", "hidden",
+         11U, MYLITE_FIELD_TYPE_LONG, 0U, 63U, MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+    };
+    static const struct expected_result_metadata scalar_metadata[] = {
+        {"1", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"nil", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_NULL, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"str_lit", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"sum_expr", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"slash_expr", NULL, NULL, NULL, NULL, NULL, 7U, MYLITE_FIELD_TYPE_NEWDECIMAL, 4U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"div_expr", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"eq_expr", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"is_expr", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"bit_expr", NULL, NULL, NULL, NULL, NULL, 20U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+    };
+    static const struct expected_result_metadata table_expression_metadata[] = {
+        {"n_plus", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"u_plus", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+        {"n_is_null", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"nullsafe", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"n_in", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"n_between", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"s_like", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata hidden_order_metadata[] = {
+        {"id", "mylite_task23_metadata", "t", "mylite_task23_metadata", "t", "id", 11U,
+         MYLITE_FIELD_TYPE_LONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_AUTO_INCREMENT |
+             MYLITE_FIELD_FLAG_PART_KEY | MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open metadata database");
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_task23_metadata DEFAULT CHARACTER SET utf8mb4",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_task23_metadata", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE t ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "n INT NULL, "
+                            "u INT UNSIGNED NOT NULL, "
+                            "s VARCHAR(12) NULL, "
+                            "c CHAR(3) NOT NULL, "
+                            "txt TEXT, "
+                            "b VARBINARY(8), "
+                            "d DECIMAL(6,2), "
+                            "r DOUBLE, "
+                            "dt DATETIME(3), "
+                            "ts TIMESTAMP NULL, "
+                            "y YEAR, "
+                            "hidden INT INVISIBLE, "
+                            "KEY n_idx(n))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO t (n,u,s,c,txt,b,d,r,dt,ts,y,hidden) VALUES "
+                            "(NULL, 5, 'abc', 'xy', 'body', 'abcd', 12.30, 2.5, "
+                            "'2024-01-02 03:04:05.123', NULL, 2024, 9)",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT id AS label, n AS label, u AS u_alias, s AS s_alias, c, "
+                            "txt, b, d, r, dt, ts, y, hidden AS hidden_alias "
+                            "FROM t AS tt LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, base_metadata,
+                                       (int)(sizeof(base_metadata) / sizeof(base_metadata[0])),
+                                       "base result metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "base metadata limit zero");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT * FROM t LIMIT 0", MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, wildcard_columns,
+                                    (int)(sizeof(wildcard_columns) / sizeof(wildcard_columns[0])),
+                                    "wildcard invisible metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "wildcard metadata limit zero");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT 1, NULL AS nil, 'abc' AS str_lit, 1 + 2 AS sum_expr, "
+                            "5 / 2 AS slash_expr, 5 DIV 2 AS div_expr, 1 = 1 AS eq_expr, "
+                            "NULL IS NULL AS is_expr, 1 & 3 AS bit_expr",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, scalar_metadata,
+                                       (int)(sizeof(scalar_metadata) / sizeof(scalar_metadata[0])),
+                                       "scalar result metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "scalar metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "scalar metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT n + 1 AS n_plus, u + 1 AS u_plus, "
+                            "n IS NULL AS n_is_null, n <=> NULL AS nullsafe, "
+                            "n IN (1,2) AS n_in, n BETWEEN 1 AND 20 AS n_between, "
+                            "s LIKE 'a%' AS s_like FROM t LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, table_expression_metadata,
+        (int)(sizeof(table_expression_metadata) / sizeof(table_expression_metadata[0])),
+        "table expression metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "table expression limit zero");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT id FROM t ORDER BY n + 1 LIMIT 0", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, hidden_order_metadata, 1, "hidden order metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hidden order limit zero");
+    mylite_finalize(stmt);
+
     mylite_close(database);
     return failures;
 }
@@ -4771,6 +4995,71 @@ static int expect_column_metadata(const mylite_stmt *stmt,
                                   expected[index].origin_table_name, context);
         failures += expect_string(mylite_column_origin_name(stmt, index),
                                   expected[index].origin_column_name, context);
+    }
+    return failures;
+}
+
+static int expect_result_metadata(const mylite_stmt *stmt,
+                                  const struct expected_result_metadata *expected, int count,
+                                  const char *context)
+{
+    int failures = expect_int(mylite_column_count(stmt), count, context);
+
+    for (int index = 0; index < count; ++index) {
+        unsigned int flags = mylite_column_flags(stmt, index);
+
+        failures += expect_string(mylite_column_name(stmt, index), expected[index].name, context);
+        if (expected[index].schema_name == NULL) {
+            failures += expect_null_text(mylite_column_schema_name(stmt, index), context);
+        } else {
+            failures += expect_string(mylite_column_schema_name(stmt, index),
+                                      expected[index].schema_name, context);
+        }
+        if (expected[index].table_name == NULL) {
+            failures += expect_null_text(mylite_column_table_name(stmt, index), context);
+        } else {
+            failures += expect_string(mylite_column_table_name(stmt, index),
+                                      expected[index].table_name, context);
+        }
+        if (expected[index].origin_schema_name == NULL) {
+            failures += expect_null_text(mylite_column_origin_schema_name(stmt, index), context);
+        } else {
+            failures += expect_string(mylite_column_origin_schema_name(stmt, index),
+                                      expected[index].origin_schema_name, context);
+        }
+        if (expected[index].origin_table_name == NULL) {
+            failures += expect_null_text(mylite_column_origin_table_name(stmt, index), context);
+        } else {
+            failures += expect_string(mylite_column_origin_table_name(stmt, index),
+                                      expected[index].origin_table_name, context);
+        }
+        if (expected[index].origin_column_name == NULL) {
+            failures += expect_null_text(mylite_column_origin_name(stmt, index), context);
+        } else {
+            failures += expect_string(mylite_column_origin_name(stmt, index),
+                                      expected[index].origin_column_name, context);
+        }
+        failures +=
+            expect_int(mylite_column_field_type(stmt, index), expected[index].field_type, context);
+        failures += expect_int64((int64_t)mylite_column_declared_length(stmt, index),
+                                 (int64_t)expected[index].declared_length, context);
+        failures += expect_int64((int64_t)mylite_column_max_length(stmt, index), 0, context);
+        failures +=
+            expect_u16(mylite_column_decimals(stmt, index), expected[index].decimals, context);
+        failures +=
+            expect_u16(mylite_column_charset_id(stmt, index), expected[index].charset_id, context);
+        failures +=
+            expect_int(mylite_column_is_nullable(stmt, index), expected[index].nullable, context);
+        if ((flags & expected[index].flags_set) != expected[index].flags_set) {
+            fprintf(stderr, "%s: column %d expected flags 0x%x in 0x%x\n", context, index,
+                    expected[index].flags_set, flags);
+            failures = 1;
+        }
+        if ((flags & expected[index].flags_clear) != 0U) {
+            fprintf(stderr, "%s: column %d expected flags 0x%x clear in 0x%x\n", context, index,
+                    expected[index].flags_clear, flags);
+            failures = 1;
+        }
     }
     return failures;
 }

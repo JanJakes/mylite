@@ -58,8 +58,9 @@ level application surfaces.
 22. [x] Savepoints: `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`,
        `RELEASE SAVEPOINT`, replacement, nesting, and error behavior.
        Spec: [savepoints](../savepoints/specs.md).
-23. [ ] Result metadata and expression labels: type, length, flags, origin
-       metadata, alias labels, duplicate labels, and nullability.
+23. [x] Result metadata and expression labels: type, length, flags, origin
+       metadata, alias labels, duplicate labels, and nullability. Spec:
+       [result metadata and expression labels](../result-metadata-expression-labels/specs.md).
 24. [ ] Scalar built-in functions used by common applications: string, numeric,
        temporal, conditional, comparison, information, and compatibility
        functions with MySQL conversion behavior.

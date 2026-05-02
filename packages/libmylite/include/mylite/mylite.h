@@ -41,6 +41,56 @@ enum mylite_status {
     MYLITE_DONE = 101,
 };
 
+enum mylite_field_type {
+    MYLITE_FIELD_TYPE_INVALID = -1,
+    MYLITE_FIELD_TYPE_DECIMAL = 0,
+    MYLITE_FIELD_TYPE_TINY = 1,
+    MYLITE_FIELD_TYPE_SHORT = 2,
+    MYLITE_FIELD_TYPE_LONG = 3,
+    MYLITE_FIELD_TYPE_FLOAT = 4,
+    MYLITE_FIELD_TYPE_DOUBLE = 5,
+    MYLITE_FIELD_TYPE_NULL = 6,
+    MYLITE_FIELD_TYPE_TIMESTAMP = 7,
+    MYLITE_FIELD_TYPE_LONGLONG = 8,
+    MYLITE_FIELD_TYPE_INT24 = 9,
+    MYLITE_FIELD_TYPE_DATE = 10,
+    MYLITE_FIELD_TYPE_TIME = 11,
+    MYLITE_FIELD_TYPE_DATETIME = 12,
+    MYLITE_FIELD_TYPE_YEAR = 13,
+    MYLITE_FIELD_TYPE_NEWDATE = 14,
+    MYLITE_FIELD_TYPE_VARCHAR = 15,
+    MYLITE_FIELD_TYPE_BIT = 16,
+    MYLITE_FIELD_TYPE_NEWDECIMAL = 246,
+    MYLITE_FIELD_TYPE_ENUM = 247,
+    MYLITE_FIELD_TYPE_SET = 248,
+    MYLITE_FIELD_TYPE_TINY_BLOB = 249,
+    MYLITE_FIELD_TYPE_MEDIUM_BLOB = 250,
+    MYLITE_FIELD_TYPE_LONG_BLOB = 251,
+    MYLITE_FIELD_TYPE_BLOB = 252,
+    MYLITE_FIELD_TYPE_VAR_STRING = 253,
+    MYLITE_FIELD_TYPE_STRING = 254,
+    MYLITE_FIELD_TYPE_GEOMETRY = 255,
+};
+
+enum mylite_field_flag {
+    MYLITE_FIELD_FLAG_NOT_NULL = 1U,
+    MYLITE_FIELD_FLAG_PRI_KEY = 2U,
+    MYLITE_FIELD_FLAG_UNIQUE_KEY = 4U,
+    MYLITE_FIELD_FLAG_MULTIPLE_KEY = 8U,
+    MYLITE_FIELD_FLAG_BLOB = 16U,
+    MYLITE_FIELD_FLAG_UNSIGNED = 32U,
+    MYLITE_FIELD_FLAG_ZEROFILL = 64U,
+    MYLITE_FIELD_FLAG_BINARY = 128U,
+    MYLITE_FIELD_FLAG_ENUM = 256U,
+    MYLITE_FIELD_FLAG_AUTO_INCREMENT = 512U,
+    MYLITE_FIELD_FLAG_TIMESTAMP = 1024U,
+    MYLITE_FIELD_FLAG_SET = 2048U,
+    MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE = 4096U,
+    MYLITE_FIELD_FLAG_ON_UPDATE_NOW = 8192U,
+    MYLITE_FIELD_FLAG_PART_KEY = 16384U,
+    MYLITE_FIELD_FLAG_NUM = 32768U,
+};
+
 MYLITE_API const char *mylite_version(void);
 MYLITE_API const char *mylite_status_name(int status);
 
@@ -63,8 +113,16 @@ MYLITE_API int mylite_column_count(const mylite_stmt *stmt);
 MYLITE_API const char *mylite_column_name(const mylite_stmt *stmt, int column);
 MYLITE_API const char *mylite_column_schema_name(const mylite_stmt *stmt, int column);
 MYLITE_API const char *mylite_column_table_name(const mylite_stmt *stmt, int column);
+MYLITE_API const char *mylite_column_origin_schema_name(const mylite_stmt *stmt, int column);
 MYLITE_API const char *mylite_column_origin_table_name(const mylite_stmt *stmt, int column);
 MYLITE_API const char *mylite_column_origin_name(const mylite_stmt *stmt, int column);
+MYLITE_API int mylite_column_field_type(const mylite_stmt *stmt, int column);
+MYLITE_API unsigned int mylite_column_flags(const mylite_stmt *stmt, int column);
+MYLITE_API uint64_t mylite_column_declared_length(const mylite_stmt *stmt, int column);
+MYLITE_API uint64_t mylite_column_max_length(const mylite_stmt *stmt, int column);
+MYLITE_API unsigned int mylite_column_decimals(const mylite_stmt *stmt, int column);
+MYLITE_API unsigned int mylite_column_charset_id(const mylite_stmt *stmt, int column);
+MYLITE_API int mylite_column_is_nullable(const mylite_stmt *stmt, int column);
 MYLITE_API int64_t mylite_column_int64(const mylite_stmt *stmt, int column);
 MYLITE_API const char *mylite_column_text(const mylite_stmt *stmt, int column);
 

@@ -259,6 +259,22 @@ bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *e
     }
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
+        switch (expression->literal_kind) {
+        case MYLITE_SQL_AST_LITERAL_NULL:
+        case MYLITE_SQL_AST_LITERAL_TRUE:
+        case MYLITE_SQL_AST_LITERAL_FALSE:
+        case MYLITE_SQL_AST_LITERAL_INTEGER:
+        case MYLITE_SQL_AST_LITERAL_DECIMAL:
+        case MYLITE_SQL_AST_LITERAL_FLOAT:
+        case MYLITE_SQL_AST_LITERAL_STRING:
+        case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
+            return true;
+        case MYLITE_SQL_AST_LITERAL_HEX:
+        case MYLITE_SQL_AST_LITERAL_BIT:
+        case MYLITE_SQL_AST_LITERAL_NONE:
+            return false;
+        }
+        return false;
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:

@@ -402,7 +402,7 @@ token sink:
   optional `FROM`, `INFILE`/`URL`/`S3` sources, text-string source names,
   source counts and primary-key-order hints, partition or row-matching clauses,
   character sets, compression, field/line options with non-empty option bodies,
-  numeric ignored-row counts, column/user-variable lists, validated
+  unsigned-integer ignored-row counts, column/user-variable lists, validated
   comma-separated `SET` assignment tails, and bulk-load parallel, memory, and
   algorithm options where they are unambiguous with `SET` assignment tails.
   Source and compression strings reject quoted hex/bit literals while field and

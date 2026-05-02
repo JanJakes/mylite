@@ -3585,6 +3585,11 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     DML_VALUES_AFTER_ALIAS_RP
   };
   enum {
+    DML_VALUES_ROW_MODE_NONE,
+    DML_VALUES_ROW_MODE_PLAIN,
+    DML_VALUES_ROW_MODE_KEYWORD
+  };
+  enum {
     DML_SET_ALIAS_NONE,
     DML_SET_ALIAS_AFTER_AS,
     DML_SET_ALIAS_AFTER_ALIAS,
@@ -3633,6 +3638,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int query_order_previous_was_operator = 1;
   int values_state = DML_VALUES_NONE;
   int values_row_keyword_allowed = 0;
+  int values_row_mode = DML_VALUES_ROW_MODE_NONE;
   int set_alias_state = DML_SET_ALIAS_NONE;
   int insert_modifier_scan = kind == MYLITE_STATEMENT_INSERT;
   int insert_priority_modifier_seen = 0;
@@ -3861,11 +3867,23 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
                                  "malformed DML VALUES row list");
             return;
           }
+          if (values_row_mode == DML_VALUES_ROW_MODE_PLAIN) {
+            mylite_parser_reject(ctx, token,
+                                 "malformed DML VALUES row list");
+            return;
+          }
+          values_row_mode = DML_VALUES_ROW_MODE_KEYWORD;
           values_state = DML_VALUES_AFTER_ROW_KEYWORD;
           pending_token = token;
           continue;
         }
         if (token_id == ML_LP) {
+          if (values_row_mode == DML_VALUES_ROW_MODE_KEYWORD) {
+            mylite_parser_reject(ctx, token,
+                                 "malformed DML VALUES row list");
+            return;
+          }
+          values_row_mode = DML_VALUES_ROW_MODE_PLAIN;
           values_state = DML_VALUES_IN_ROW;
           values_row_last_token_id = 0;
           depth = 1;
@@ -3901,6 +3919,11 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
           continue;
         }
         if (kind == MYLITE_STATEMENT_INSERT && token_id == ML_AS) {
+          if (values_row_mode == DML_VALUES_ROW_MODE_KEYWORD) {
+            mylite_parser_reject(ctx, token,
+                                 "malformed DML VALUES row list");
+            return;
+          }
           values_state = DML_VALUES_AFTER_AS;
           pending_token = token;
           continue;
@@ -4540,6 +4563,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
       payload_kind = DML_PAYLOAD_VALUES;
       values_state = DML_VALUES_AFTER_VALUES;
       values_row_keyword_allowed = token_id == ML_VALUES;
+      values_row_mode = DML_VALUES_ROW_MODE_NONE;
       pending_token = token;
       continue;
     }

@@ -73,10 +73,10 @@ token sink:
   dangling operators, adjacent operands, dangling operators, and trailing
   separators inside plain parenthesized assignment value groups, explicit
   `VALUE(S)` row-list tails, `VALUES ROW(...)` versus singular `VALUE (...)`,
-  `INSERT`
+  mixed `ROW(...)`/plain tuple rejection, `INSERT`
   `VALUE(S)` row expression lists with empty rows plus adjacent-operand,
-  dangling-operator, and trailing-separator checks, `INSERT` `VALUE(S)`/`SET`
-  row aliases,
+  dangling-operator, and trailing-separator checks, `INSERT` plain
+  `VALUE(S)`/`SET` row aliases,
   direct query payload `SELECT` list tails, parenthesized query payload
   `SELECT`/`WITH`/`TABLE`/`VALUES` expression tails plus outer `ORDER BY` and
   `LIMIT` suffixes, malformed `SELECT` operands after set operators, and

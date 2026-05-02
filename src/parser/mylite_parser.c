@@ -504,7 +504,8 @@ static int routine_direct_query_body_start_token(int token_id);
 static int routine_compound_statement_start_token(int token_id);
 static int routine_end_suffix_token(int token_id);
 static int diagnostics_item_name_token(int token_id);
-static int routine_characteristic_token(MyliteLexer *lexer, int *token_id,
+static int routine_characteristic_token(MyliteParseContext *ctx,
+                                        MyliteLexer *lexer, int *token_id,
                                         MyliteToken *token);
 static int token_is_statement_terminator(int token_id, MyliteToken token);
 static int token_is_plus(MyliteToken token);
@@ -9423,6 +9424,12 @@ void mylite_parser_validate_create_function_statement(MyliteParseContext *ctx,
       depth++;
       continue;
     }
+    if (routine_characteristic_token(ctx, &lexer, &token_id, &token)) {
+      if (ctx->failed) {
+        return;
+      }
+      continue;
+    }
     if (token_id == ML_BEGIN || token_id == ML_RETURN) {
       validate_routine_statement_body_from(ctx, token_id, token);
       return;
@@ -9469,7 +9476,10 @@ void mylite_parser_validate_create_procedure_statement(MyliteParseContext *ctx,
       continue;
     }
 
-    if (routine_characteristic_token(&lexer, &token_id, &token)) {
+    if (routine_characteristic_token(ctx, &lexer, &token_id, &token)) {
+      if (ctx->failed) {
+        return;
+      }
       continue;
     }
     if (routine_body_statement_start_token(token_id) ||
@@ -9500,6 +9510,18 @@ static void validate_event_body_statement(MyliteParseContext *ctx,
     if (after_event_do) {
       validate_embedded_statement_body_from(ctx, token_id, token);
       return;
+    }
+
+    if (token_id == ML_COMMENT) {
+      MyliteToken comment_token = token;
+      token_id = mylite_lexer_next(&lexer, &token);
+      if (token_id <= 0 ||
+          !create_table_tail_option_string_token(token_id, token)) {
+        mylite_parser_reject(ctx, comment_token,
+                             "invalid EVENT comment value");
+        return;
+      }
+      continue;
     }
 
     if (token_id == ML_DO) {
@@ -14175,10 +14197,21 @@ static int diagnostics_item_name_token(int token_id) {
          token_id == ML_TABLE_NAME;
 }
 
-static int routine_characteristic_token(MyliteLexer *lexer, int *token_id,
+static int routine_characteristic_token(MyliteParseContext *ctx,
+                                        MyliteLexer *lexer, int *token_id,
                                         MyliteToken *token) {
   switch (*token_id) {
     case ML_COMMENT:
+      {
+        MyliteToken comment_token = *token;
+        *token_id = mylite_lexer_next(lexer, token);
+        if (*token_id <= 0 ||
+            !create_table_tail_option_string_token(*token_id, *token)) {
+          mylite_parser_reject(ctx, comment_token,
+                               "invalid routine comment value");
+        }
+      }
+      return 1;
     case ML_LANGUAGE:
     case ML_NOT:
       *token_id = mylite_lexer_next(lexer, token);

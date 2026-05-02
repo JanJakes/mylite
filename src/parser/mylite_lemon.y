@@ -271,11 +271,11 @@ create_index_option ::= KEY_BLOCK_SIZE drop_index_option_equals_tail index_numbe
 create_index_option ::= USING cache_name_part.
 create_index_option ::= create_index_type cache_name_part.
 create_index_option ::= WITH PARSER cache_name_part.
-create_index_option ::= COMMENT string_literal.
+create_index_option ::= COMMENT text_string_literal.
 create_index_option ::= VISIBLE.
 create_index_option ::= INVISIBLE.
-create_index_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
-create_index_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
+create_index_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail text_string_literal.
+create_index_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail text_string_literal.
 create_index_option ::= drop_index_option.
 
 index_number_value ::= BOOLEAN_NUMBER.
@@ -470,7 +470,7 @@ string_literal ::= SQLSTATE_VALUE.
 string_literal ::= ENCRYPTION_VALUE.
 string_literal ::= DOUBLE_QUOTED_STRING.
 
-create_udf_tail ::= create_returns create_udf_return_type create_soname string_literal.
+create_udf_tail ::= create_returns create_udf_return_type create_soname text_string_literal.
 
 create_returns ::= RETURNS.
 
@@ -816,7 +816,7 @@ account_factor ::= FACTOR_NUMBER FACTOR.
 user_auth_value ::= user_auth_string_value.
 user_auth_value ::= RANDOM PASSWORD.
 
-user_auth_string_value ::= string_literal.
+user_auth_string_value ::= text_string_literal.
 
 user_auth_plugin ::= user_option_value.
 
@@ -843,8 +843,8 @@ account_password_lock_option ::= account_password_option.
 account_password_lock_option ::= account_lock_option.
 
 account_comment_attribute_tail ::= .
-account_comment_attribute_tail ::= COMMENT string_literal.
-account_comment_attribute_tail ::= ATTRIBUTE string_literal.
+account_comment_attribute_tail ::= COMMENT text_string_literal.
+account_comment_attribute_tail ::= ATTRIBUTE text_string_literal.
 
 account_default_role_spec ::= NONE.
 account_default_role_spec ::= ALL.
@@ -861,9 +861,9 @@ account_tls_and_tail ::= AND.
 
 account_tls_option ::= SSL.
 account_tls_option ::= X509.
-account_tls_option ::= CIPHER string_literal.
-account_tls_option ::= ISSUER string_literal.
-account_tls_option ::= SUBJECT string_literal.
+account_tls_option ::= CIPHER text_string_literal.
+account_tls_option ::= ISSUER text_string_literal.
+account_tls_option ::= SUBJECT text_string_literal.
 
 account_resource_options ::= account_resource_option.
 account_resource_options ::= account_resource_options account_resource_option.
@@ -1034,12 +1034,12 @@ create_options_marker ::= OPTIONS.
 create_server_option_list ::= create_server_option.
 create_server_option_list ::= create_server_option_list import_comma create_server_option.
 
-create_server_option ::= HOST string_literal.
-create_server_option ::= DATABASE string_literal.
-create_server_option ::= USER string_literal.
-create_server_option ::= PASSWORD string_literal.
-create_server_option ::= SOCKET string_literal.
-create_server_option ::= OWNER string_literal.
+create_server_option ::= HOST text_string_literal.
+create_server_option ::= DATABASE text_string_literal.
+create_server_option ::= USER text_string_literal.
+create_server_option ::= PASSWORD text_string_literal.
+create_server_option ::= SOCKET text_string_literal.
+create_server_option ::= OWNER text_string_literal.
 create_server_option ::= PORT create_server_port.
 
 create_server_port ::= BOOLEAN_NUMBER.
@@ -1057,10 +1057,10 @@ srs_id ::= NUMBER_LITERAL.
 create_srs_attributes ::= create_srs_attribute.
 create_srs_attributes ::= create_srs_attributes create_srs_attribute.
 
-create_srs_attribute ::= NAME string_literal.
-create_srs_attribute ::= DEFINITION string_literal.
-create_srs_attribute ::= DESCRIPTION string_literal.
-create_srs_attribute ::= ORGANIZATION string_literal IDENTIFIED BY create_srs_authority_code.
+create_srs_attribute ::= NAME text_string_literal.
+create_srs_attribute ::= DEFINITION text_string_literal.
+create_srs_attribute ::= DESCRIPTION text_string_literal.
+create_srs_attribute ::= ORGANIZATION text_string_literal IDENTIFIED BY create_srs_authority_code.
 
 create_srs_authority_code ::= BOOLEAN_NUMBER.
 create_srs_authority_code ::= FACTOR_NUMBER.
@@ -1285,7 +1285,7 @@ alter_routine_characteristic ::= READS SQL DATA.
 alter_routine_characteristic ::= MODIFIES SQL DATA.
 alter_routine_characteristic ::= SQL SECURITY create_view_security_kind.
 
-routine_comment_value ::= string_literal.
+routine_comment_value ::= text_string_literal.
 
 alter_table_tail ::= FORCE alter_table_force_option_tail.
 alter_table_tail ::= alter_table_keys_action alter_table_force_option_tail.
@@ -1555,19 +1555,19 @@ alter_table_table_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail table
 alter_table_table_option ::= alter_table_boolean_table_option drop_index_option_equals_tail alter_table_number_value.
 alter_table_table_option ::= alter_table_default_boolean_table_option drop_index_option_equals_tail alter_table_default_boolean_value.
 alter_table_table_option ::= STATS_SAMPLE_PAGES drop_index_option_equals_tail alter_table_default_number_value.
-alter_table_table_option ::= COMMENT drop_index_option_equals_tail string_literal.
-alter_table_table_option ::= COMPRESSION drop_index_option_equals_tail string_literal.
-alter_table_table_option ::= CONNECTION drop_index_option_equals_tail string_literal.
-alter_table_table_option ::= DATA DIRECTORY drop_index_option_equals_tail string_literal.
+alter_table_table_option ::= COMMENT drop_index_option_equals_tail text_string_literal.
+alter_table_table_option ::= COMPRESSION drop_index_option_equals_tail text_string_literal.
+alter_table_table_option ::= CONNECTION drop_index_option_equals_tail text_string_literal.
+alter_table_table_option ::= DATA DIRECTORY drop_index_option_equals_tail text_string_literal.
 alter_table_table_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
-alter_table_table_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
-alter_table_table_option ::= INDEX DIRECTORY drop_index_option_equals_tail string_literal.
+alter_table_table_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail text_string_literal.
+alter_table_table_option ::= INDEX DIRECTORY drop_index_option_equals_tail text_string_literal.
 alter_table_table_option ::= ENGINE drop_index_option_equals_tail alter_table_table_option_value.
 alter_table_table_option ::= INSERT_METHOD drop_index_option_equals_tail alter_table_insert_method_value.
-alter_table_table_option ::= PASSWORD drop_index_option_equals_tail string_literal.
+alter_table_table_option ::= PASSWORD drop_index_option_equals_tail text_string_literal.
 alter_table_table_option ::= ROW_FORMAT drop_index_option_equals_tail alter_table_row_format_value.
 alter_table_table_option ::= SECONDARY_ENGINE drop_index_option_equals_tail alter_table_table_option_value.
-alter_table_table_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail string_literal.
+alter_table_table_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail text_string_literal.
 alter_table_table_option ::= START TRANSACTION.
 
 alter_table_number_table_option ::= AUTO_INCREMENT.

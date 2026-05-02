@@ -185,7 +185,8 @@ token sink:
   destination account pairs.
 - `CREATE USER` and `ALTER USER` recognize account lists, authentication
   clauses, repeatable TLS/resource/password/lock options, string-literal
-  comments and attributes, string-literal authentication/TLS values, and
+  comments and attributes, string-literal authentication/TLS values with
+  quoted hex/bit rejection in text-string positions, and
   default-role clauses rather than generic token tails, including numeric
   resource limits and password policy counts, MFA, initial-authentication, and
   WebAuthn registration syntax.
@@ -252,7 +253,8 @@ token sink:
   `STORAGE ENGINE`,
   `WAIT`, and `NO_WAIT`.
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
-  `OPTIONS` names, string-valued options, and numeric ports.
+  `OPTIONS` names, text-string option values with quoted hex/bit rejection, and
+  numeric ports.
 - `CREATE EVENT` recognizes event schedules with `AT` timestamps and `EVERY`
   intervals, validates interval units plus `STARTS`/`ENDS` schedule tails, and
   recognizes scheduler status tails including `DISABLE ON REPLICA` and
@@ -308,14 +310,16 @@ token sink:
   collation, string-literal encryption, and alter-only `READ ONLY` option clauses
   with MySQL's `DEFAULT`/`0`/`1` value grammar.
 - `CREATE EVENT` and `ALTER EVENT` recognize ordered event metadata clauses
-  for schedules, completion policy, enablement state, comments, and event
-  bodies, and reject malformed event schedule tails; `ALTER EVENT` also
-  recognizes renames.
-- `ALTER FUNCTION` and `ALTER PROCEDURE` recognize routine characteristics:
-  comments, `LANGUAGE SQL`, SQL data access, and SQL security.
+  for schedules, completion policy, enablement state, comments with text-string
+  validation, and event bodies, and reject malformed event schedule tails;
+  `ALTER EVENT` also recognizes renames.
+- `CREATE FUNCTION`, `CREATE PROCEDURE`, `ALTER FUNCTION`, and
+  `ALTER PROCEDURE` recognize routine characteristics: comments with
+  text-string validation, `LANGUAGE SQL`, SQL data access, and SQL security.
+- Loadable `CREATE FUNCTION` requires text-string `SONAME` values.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`,
-  `OR REPLACE`, bare numeric SRS ids, documented string-literal attribute forms,
-  and numeric organization authority codes.
+  `OR REPLACE`, bare numeric SRS ids, documented text-string attribute forms
+  with quoted hex/bit rejection, and numeric organization authority codes.
 - `DROP INDEX` recognizes MySQL's identifier-valued `ALGORITHM` and `LOCK`
   option tails.
 - `TRUNCATE TABLE` recognizes optional `TABLE` and one- or two-part table

@@ -2265,18 +2265,13 @@ analyze_table_tail ::= table_admin_optional_binlog table_admin_table_keyword cac
 analyze_table_after_first_table ::= .
 analyze_table_after_first_table ::= analyze_histogram_options.
 analyze_table_after_first_table ::= import_comma analyze_table_remaining_list.
-analyze_table_after_first_table ::= import_comma analyze_table_remaining_list UPDATE(A) analyze_histogram_marker ON table_admin_column_list analyze_histogram_bucket_tail analyze_histogram_update_mode_tail. {
-  mylite_parser_require_permissive(ctx, A);
-}
-analyze_table_after_first_table ::= import_comma analyze_table_remaining_list DROP(A) analyze_histogram_marker ON table_admin_column_list. {
-  mylite_parser_require_permissive(ctx, A);
-}
+analyze_table_after_first_table ::= import_comma analyze_table_remaining_list analyze_histogram_options.
 
 analyze_table_remaining_list ::= cache_table_ref.
 analyze_table_remaining_list ::= analyze_table_remaining_list import_comma cache_table_ref.
 
 analyze_histogram_options ::= UPDATE analyze_histogram_marker ON table_admin_column_list analyze_histogram_bucket_tail analyze_histogram_update_mode_tail.
-analyze_histogram_options ::= UPDATE analyze_histogram_marker ON table_admin_column USING DATA text_string_literal.
+analyze_histogram_options ::= UPDATE analyze_histogram_marker ON table_admin_column_list USING DATA text_string_literal.
 analyze_histogram_options ::= DROP analyze_histogram_marker ON table_admin_column_list.
 
 analyze_histogram_marker ::= HISTOGRAM.

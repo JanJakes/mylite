@@ -36,11 +36,6 @@ EXPECTED_FRAGMENT_FAILURES = [
     25464,
     # Removed FLUSH HOSTS syntax.
     25483,
-    # ANALYZE TABLE histogram negative-test cases with multiple table names;
-    # permissive corpus mode accepts them, but strict mode follows MySQL 8.4's
-    # single-table histogram grammar.
-    29001,
-    29029,
     # Bare ALTER TABLE negative-test fragments.
     31132,
     # Removed LOCK TABLES LOW_PRIORITY WRITE syntax; permissive corpus mode

@@ -67,6 +67,8 @@ typedef enum ColumnTypeParameterKind {
   COLUMN_TYPE_PARAMETER_NONE = 0,
   COLUMN_TYPE_PARAMETER_NUMERIC_ONE,
   COLUMN_TYPE_PARAMETER_NUMERIC_ONE_OR_TWO,
+  COLUMN_TYPE_PARAMETER_NUMERIC_TWO,
+  COLUMN_TYPE_PARAMETER_YEAR,
   COLUMN_TYPE_PARAMETER_STRING_LIST
 } ColumnTypeParameterKind;
 
@@ -336,6 +338,11 @@ static int column_type_national_family_token(int token_id,
 static int column_type_text_family_token(int token_id, MyliteToken token);
 static int column_type_blob_family_parameter_forbidden(int token_id,
                                                        MyliteToken token);
+static int column_type_numeric_parameter_token(int token_id,
+                                               MyliteToken token);
+static int column_type_integer_parameter_token(int token_id,
+                                               MyliteToken token);
+static int column_type_year_length_token(int token_id, MyliteToken token);
 static int column_type_string_parameter_token(int token_id,
                                               MyliteToken token);
 static int validate_column_type_parameter_list(
@@ -11743,11 +11750,19 @@ static ColumnTypeParameterKind column_type_parameter_kind(int token_id,
     return COLUMN_TYPE_PARAMETER_STRING_LIST;
   }
 
+  if (token_ascii_equal(token, "year")) {
+    return COLUMN_TYPE_PARAMETER_YEAR;
+  }
+
+  if (column_type_real_family_token(token_id, token)) {
+    return COLUMN_TYPE_PARAMETER_NUMERIC_TWO;
+  }
+
   if (token_id == ML_DECIMAL || token_ascii_equal(token, "dec") ||
-      token_ascii_equal(token, "double") || token_ascii_equal(token, "fixed") ||
+      token_ascii_equal(token, "fixed") ||
       token_ascii_equal(token, "float") || token_ascii_equal(token, "float4") ||
-      token_ascii_equal(token, "float8") || token_ascii_equal(token, "numeric") ||
-      token_id == ML_REAL) {
+      token_ascii_equal(token, "float8") ||
+      token_ascii_equal(token, "numeric")) {
     return COLUMN_TYPE_PARAMETER_NUMERIC_ONE_OR_TWO;
   }
 
@@ -12141,6 +12156,66 @@ static int column_type_blob_family_parameter_forbidden(int token_id,
          token_ascii_equal(token, "tinytext");
 }
 
+static int column_type_numeric_parameter_token(int token_id,
+                                               MyliteToken token) {
+  size_t i;
+  int saw_digit = 0;
+  int saw_dot = 0;
+
+  if (!create_table_tail_option_number_token(token_id)) {
+    return 0;
+  }
+
+  for (i = 0; i < token.length; i++) {
+    char ch = token.start[i];
+    if (ch >= '0' && ch <= '9') {
+      saw_digit = 1;
+      continue;
+    }
+    if (ch == '.' && !saw_dot) {
+      saw_dot = 1;
+      continue;
+    }
+    return 0;
+  }
+
+  return saw_digit;
+}
+
+static int column_type_integer_parameter_token(int token_id,
+                                               MyliteToken token) {
+  size_t i;
+
+  if (!column_type_numeric_parameter_token(token_id, token)) {
+    return 0;
+  }
+
+  for (i = 0; i < token.length; i++) {
+    if (token.start[i] == '.') {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+static int column_type_year_length_token(int token_id, MyliteToken token) {
+  size_t i = 0;
+  unsigned int value = 0;
+
+  if (!column_type_numeric_parameter_token(token_id, token)) {
+    return 0;
+  }
+
+  while (i < token.length && token.start[i] >= '0' &&
+         token.start[i] <= '9') {
+    value = value * 10 + (unsigned int) (token.start[i] - '0');
+    i++;
+  }
+
+  return value == 4;
+}
+
 static int column_type_string_parameter_token(int token_id,
                                               MyliteToken token) {
   return token_id == ML_DOUBLE_QUOTED_STRING ||
@@ -12162,11 +12237,13 @@ static int validate_column_type_parameter_list(
   MyliteToken pending_token = start;
   int token_id;
   int state = COLUMN_TYPE_PARAMETER_NEED_VALUE;
+  int first_numeric_parameter_integer = 0;
 
   while ((token_id = mylite_lexer_next(lexer, &token)) > 0) {
     if (token_id == ML_RP) {
-      if (state == COLUMN_TYPE_PARAMETER_AFTER_FIRST_VALUE ||
-          state == COLUMN_TYPE_PARAMETER_AFTER_SECOND_VALUE) {
+      if (state == COLUMN_TYPE_PARAMETER_AFTER_SECOND_VALUE ||
+          (state == COLUMN_TYPE_PARAMETER_AFTER_FIRST_VALUE &&
+           kind != COLUMN_TYPE_PARAMETER_NUMERIC_TWO)) {
         return 1;
       }
       mylite_parser_reject(ctx, pending_token, message);
@@ -12182,7 +12259,13 @@ static int validate_column_type_parameter_list(
         continue;
       }
       if (state != COLUMN_TYPE_PARAMETER_AFTER_FIRST_VALUE ||
-          kind == COLUMN_TYPE_PARAMETER_NUMERIC_ONE) {
+          kind == COLUMN_TYPE_PARAMETER_NUMERIC_ONE ||
+          kind == COLUMN_TYPE_PARAMETER_YEAR) {
+        mylite_parser_reject(ctx, pending_token, message);
+        return 0;
+      }
+      if (kind == COLUMN_TYPE_PARAMETER_NUMERIC_ONE_OR_TWO &&
+          !first_numeric_parameter_integer) {
         mylite_parser_reject(ctx, pending_token, message);
         return 0;
       }
@@ -12198,9 +12281,25 @@ static int validate_column_type_parameter_list(
           mylite_parser_reject(ctx, pending_token, message);
           return 0;
         }
-      } else if (!create_table_tail_option_number_token(token_id)) {
+      } else if (kind == COLUMN_TYPE_PARAMETER_YEAR) {
+        if (!column_type_year_length_token(token_id, token)) {
+          mylite_parser_reject(ctx, pending_token, message);
+          return 0;
+        }
+      } else if (kind == COLUMN_TYPE_PARAMETER_NUMERIC_TWO ||
+                 state == COLUMN_TYPE_PARAMETER_NEED_SECOND_VALUE) {
+        if (!column_type_integer_parameter_token(token_id, token)) {
+          mylite_parser_reject(ctx, pending_token, message);
+          return 0;
+        }
+      } else if (!column_type_numeric_parameter_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token, message);
         return 0;
+      }
+      if (state == COLUMN_TYPE_PARAMETER_NEED_VALUE &&
+          kind != COLUMN_TYPE_PARAMETER_STRING_LIST) {
+        first_numeric_parameter_integer =
+            column_type_integer_parameter_token(token_id, token);
       }
       state = state == COLUMN_TYPE_PARAMETER_NEED_VALUE
                   ? COLUMN_TYPE_PARAMETER_AFTER_FIRST_VALUE
@@ -12262,7 +12361,7 @@ static int consume_column_precision_modifier_if_pending(
   *pending = 0;
   *parameter_pending = 1;
   *parameter_required = 0;
-  *parameter_kind = COLUMN_TYPE_PARAMETER_NUMERIC_ONE_OR_TWO;
+  *parameter_kind = COLUMN_TYPE_PARAMETER_NUMERIC_TWO;
   return 1;
 }
 

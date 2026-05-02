@@ -483,13 +483,16 @@ subquery and `EXISTS` behavior still passes:
 
 ## Compatibility Status
 
-This is a start-feature specification. MyLite should continue to mark scalar
-and row `IN` subquery execution as not implemented until the runtime slice,
-MySQL-runtime comparison tests, and compatibility matrix update land.
+The first runtime slice is implemented for uncorrelated scalar `IN` / `NOT IN`
+subqueries in no-table scalar `SELECT` and the current table-backed `SELECT`
+projection, `WHERE`, join `ON`, `HAVING`, and `ORDER BY` expression contexts.
 
-Once implemented, the supported claim should be limited to uncorrelated scalar
-`IN` / `NOT IN` subqueries in no-table scalar `SELECT` and the current
-table-backed `SELECT` projection, `WHERE`, join `ON`, `HAVING`, and `ORDER BY`
-expression contexts. Row operands, correlation, DML contexts, quantified
-comparisons, derived tables, CTEs, set operations, and optimizer-specific
-behavior remain separate features.
+The implemented slice includes one-column validation with error 1241, `LIMIT`
+inside `IN` / `NOT IN` subqueries rejected with error 1235, MySQL-compatible
+empty-result and `NULL` truth semantics, conversion-warning propagation,
+boolean result metadata, and ignored inner `ORDER BY` execution when no
+subquery `LIMIT` is present.
+
+Row operands, correlation, DML contexts, quantified comparisons, derived
+tables, CTEs, set operations, and optimizer-specific behavior remain separate
+features.

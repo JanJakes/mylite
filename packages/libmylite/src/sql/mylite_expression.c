@@ -1975,6 +1975,14 @@ static int eval_in(enum mylite_sql_ast_operator operator_kind,
     if (status != 0) {
         return status;
     }
+    if (list != NULL && list->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        status =
+            context == NULL || context->eval_in_subquery == NULL
+                ? -1
+                : context->eval_in_subquery(context->user_data, node, &value, warnings, out_value);
+        mylite_expression_value_deinit(&value);
+        return status;
+    }
     if (is_null(&value)) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         mylite_expression_value_deinit(&value);

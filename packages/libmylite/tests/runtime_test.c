@@ -74,6 +74,7 @@ enum {
     mysql_warning_invalid_group_function = 1111,
     mysql_warning_mix_group_function_fields = 1140,
     mysql_warning_wrong_usage = 1221,
+    mysql_warning_not_supported_yet = 1235,
     mysql_warning_unknown = 1105,
     mysql_warning_incorrect_escape_arguments = 1210,
     mysql_warning_operand_columns = 1241,
@@ -4674,11 +4675,48 @@ static int test_subquery_execution(void)
     static const char *const exists_limit_value[] = {"0"};
     static const char *const scalar_warning_column[] = {"div_null"};
     static const char *const scalar_warning_value[] = {NULL};
+    static const char *const in_truth_columns[] = {
+        "match_in",     "miss_in_null", "miss_not_in_null", "empty_in",
+        "empty_not_in", "null_in_base", "null_empty_in",    "null_empty_not_in"};
+    static const char *const in_truth_values[] = {"1", NULL, NULL, "0", "1", NULL, "0", "1"};
+    static const char *const in_projection_columns[] = {"id", "in_base", "not_in_base"};
+    static const char *const in_projection_values[] = {
+        "1", "1", "0", "2", "1", "0", "3", NULL, NULL, "4", NULL, NULL, "5", NULL, NULL,
+    };
+    static const char *const in_two_ids[] = {"1", "2"};
+    static const char *const in_all_ids[] = {"1", "2", "3", "4", "5"};
+    static const char *const in_join_columns[] = {"outer_id", "join_id"};
+    static const char *const in_join_values[] = {"1", "201", "2", "202"};
+    static const char *const in_having_columns[] = {"grp", "c"};
+    static const char *const in_having_values[] = {"1", "2"};
+    static const char *const in_order_ids[] = {"2", "1", "3", "4", "5"};
+    static const char *const in_text_columns[] = {"text_in", "text_not_in"};
+    static const char *const in_text_values[] = {"1", "1"};
+    static const char *const in_inner_clause_columns[] = {"ordered_in", "distinct_in", "group_in"};
+    static const char *const in_inner_clause_values[] = {"1", "1", "1"};
+    static const char *const in_order_warning_column[] = {"ignored_order_warning"};
+    static const char *const in_order_warning_value[] = {NULL};
+    static const char *const in_warning_column[] = {"warn_in"};
+    static const char *const in_warning_false[] = {"0"};
+    static const char *const in_warning_true[] = {"1"};
+    static const char *const in_warning_projection_values[] = {"0", "0", NULL, "0", "0"};
+    static const char *const in_metadata_columns[] = {"in_result", "not_in_result", "no_table_in",
+                                                      "numeric_text_in"};
     static const struct expected_result_metadata metadata[] = {
         {"sub_val", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONG, 0U, 63U,
          MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
         {"has_one", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+    };
+    static const struct expected_result_metadata in_metadata[] = {
+        {"in_result", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"not_in_result", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"no_table_in", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"numeric_text_in", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
     };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -4701,6 +4739,48 @@ static int test_subquery_execution(void)
                             MYLITE_DONE);
     failures += execute_sql(
         database, "INSERT INTO other_t VALUES (10,1,'one'),(20,2,'two'),(30,99,'x')", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE outer_in_t ("
+                            "id INT PRIMARY KEY, grp INT NULL, val INT NULL, txt VARCHAR(16) NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE set_in_t ("
+                            "set_name VARCHAR(16) NOT NULL, n INT NULL, txt VARCHAR(16) NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE join_in_t ("
+                            "id INT PRIMARY KEY, outer_id INT NULL, marker INT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO outer_in_t VALUES "
+                            "(1,1,10,'alpha'),"
+                            "(2,1,20,'beta'),"
+                            "(3,2,NULL,'gamma'),"
+                            "(4,NULL,5,NULL),"
+                            "(5,3,30,'delta')",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO set_in_t VALUES "
+                            "('base',10,'10'),"
+                            "('base',20,'20'),"
+                            "('base',NULL,NULL),"
+                            "('order',20,'20'),"
+                            "('order',NULL,NULL),"
+                            "('having',2,'2'),"
+                            "('having',3,'3'),"
+                            "('text',NULL,'alpha'),"
+                            "('text',NULL,'beta'),"
+                            "('warn',NULL,'1x'),"
+                            "('warn',NULL,'abc')",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO join_in_t VALUES "
+                            "(201,1,10),"
+                            "(202,2,20),"
+                            "(203,3,30),"
+                            "(204,4,NULL),"
+                            "(205,5,5)",
+                            MYLITE_DONE);
 
     failures +=
         expect_select_rows(database,
@@ -4770,6 +4850,105 @@ static int test_subquery_execution(void)
     failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
                            "scalar subquery warning code");
 
+    failures += expect_select_rows(
+        database,
+        "SELECT "
+        "10 IN (SELECT n FROM set_in_t WHERE set_name='base') AS match_in, "
+        "5 IN (SELECT n FROM set_in_t WHERE set_name='base') AS miss_in_null, "
+        "5 NOT IN (SELECT n FROM set_in_t WHERE set_name='base') AS miss_not_in_null, "
+        "5 IN (SELECT n FROM set_in_t WHERE set_name='missing') AS empty_in, "
+        "5 NOT IN (SELECT n FROM set_in_t WHERE set_name='missing') AS empty_not_in, "
+        "NULL IN (SELECT n FROM set_in_t WHERE set_name='base') AS null_in_base, "
+        "NULL IN (SELECT n FROM set_in_t WHERE set_name='missing') AS null_empty_in, "
+        "NULL NOT IN (SELECT n FROM set_in_t WHERE set_name='missing') AS null_empty_not_in",
+        in_truth_columns, 8, in_truth_values, 1, "in subquery truth table");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, "
+        "val IN (SELECT n FROM set_in_t WHERE set_name='base') AS in_base, "
+        "val NOT IN (SELECT n FROM set_in_t WHERE set_name='base') AS not_in_base "
+        "FROM outer_in_t ORDER BY id",
+        in_projection_columns, 3, in_projection_values, 5, "in subquery projection");
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM outer_in_t "
+        "WHERE val IN (SELECT n FROM set_in_t WHERE set_name='base') ORDER BY id",
+        id_column, 1, in_two_ids, 2, "in subquery where");
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM outer_in_t "
+        "WHERE val NOT IN (SELECT n FROM set_in_t WHERE set_name='missing') ORDER BY id",
+        id_column, 1, in_all_ids, 5, "not in empty subquery where");
+    failures += expect_select_rows(database,
+                                   "SELECT o.id AS outer_id, j.id AS join_id FROM outer_in_t AS o "
+                                   "JOIN join_in_t AS j "
+                                   "ON j.outer_id=o.id AND j.marker IN "
+                                   "(SELECT n FROM set_in_t WHERE set_name='base') "
+                                   "ORDER BY o.id, j.id",
+                                   in_join_columns, 2, in_join_values, 2, "in subquery join on");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT grp, COUNT(*) AS c FROM outer_in_t GROUP BY grp "
+                           "HAVING COUNT(*) IN (SELECT n FROM set_in_t WHERE set_name='having') "
+                           "ORDER BY grp",
+                           in_having_columns, 2, in_having_values, 1, "in subquery having");
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM outer_in_t "
+        "ORDER BY val IN (SELECT n FROM set_in_t WHERE set_name='order') DESC, id",
+        id_column, 1, in_order_ids, 5, "in subquery hidden order");
+    failures += expect_select_rows(
+        database,
+        "SELECT "
+        "'alpha' IN (SELECT txt FROM set_in_t WHERE set_name='text') AS text_in, "
+        "'zeta' NOT IN (SELECT txt FROM set_in_t WHERE set_name='text') AS text_not_in",
+        in_text_columns, 2, in_text_values, 1, "text in subquery");
+    failures += expect_select_rows(
+        database,
+        "SELECT "
+        "10 IN (SELECT n FROM set_in_t WHERE set_name='base' ORDER BY n DESC) "
+        "AS ordered_in, "
+        "10 IN (SELECT DISTINCT n FROM set_in_t WHERE set_name IN ('base','order')) "
+        "AS distinct_in, "
+        "2 IN (SELECT COUNT(*) FROM outer_in_t GROUP BY grp HAVING COUNT(*) >= 2) "
+        "AS group_in",
+        in_inner_clause_columns, 3, in_inner_clause_values, 1, "in subquery inner clauses");
+    failures += expect_select_rows(
+        database,
+        "SELECT 5 IN (SELECT n FROM set_in_t WHERE set_name='base' ORDER BY 1/0) "
+        "AS ignored_order_warning",
+        in_order_warning_column, 1, in_order_warning_value, 1,
+        "in subquery ignored order warnings");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "in subquery ignored order warning count");
+
+    failures += expect_select_rows(
+        database, "SELECT 2 IN (SELECT txt FROM set_in_t WHERE set_name='warn') AS warn_in",
+        in_warning_column, 1, in_warning_false, 1, "in subquery warnings false");
+    failures += expect_int(mylite_warning_count(database), 2, "in subquery warning count false");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "in subquery warning false code 0");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_truncated_wrong_value, "in subquery warning false code 1");
+    failures += expect_select_rows(
+        database, "SELECT 1 IN (SELECT txt FROM set_in_t WHERE set_name='warn') AS warn_in",
+        in_warning_column, 1, in_warning_true, 1, "in subquery warnings true");
+    failures += expect_int(mylite_warning_count(database), 1, "in subquery warning count true");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "in subquery warning true code");
+    failures += expect_select_rows(
+        database, "SELECT 2 NOT IN (SELECT txt FROM set_in_t WHERE set_name='warn') AS warn_in",
+        in_warning_column, 1, in_warning_true, 1, "not in subquery warnings true");
+    failures += expect_int(mylite_warning_count(database), 2, "not in subquery warning count true");
+    failures += expect_select_rows(
+        database,
+        "SELECT val IN (SELECT txt FROM set_in_t WHERE set_name='warn') AS warn_in "
+        "FROM outer_in_t ORDER BY id",
+        in_warning_column, 1, in_warning_projection_values, 5,
+        "in subquery projection warning rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 8, "in subquery projection warning count");
+
     failures += prepare_sql(database,
                             "SELECT (SELECT val FROM outer_t WHERE id=1) AS sub_val, "
                             "EXISTS (SELECT 1 FROM outer_t WHERE id=1) AS has_one "
@@ -4777,6 +4956,23 @@ static int test_subquery_execution(void)
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(stmt, metadata, 2, "subquery metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "subquery metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT "
+                            "val IN (SELECT n FROM set_in_t WHERE set_name='base') AS in_result, "
+                            "val NOT IN (SELECT n FROM set_in_t WHERE set_name='base') "
+                            "AS not_in_result, "
+                            "5 IN (SELECT n FROM set_in_t WHERE set_name='missing') "
+                            "AS no_table_in, "
+                            "2 IN (SELECT txt FROM set_in_t WHERE set_name='warn') "
+                            "AS numeric_text_in "
+                            "FROM outer_in_t LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, in_metadata_columns, 4, "in subquery metadata names");
+    failures += expect_result_metadata(stmt, in_metadata, 4, "in subquery metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "in subquery metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -4802,8 +4998,36 @@ static int test_subquery_execution(void)
     mylite_finalize(stmt);
     stmt = NULL;
 
-    failures += prepare_sql(database, "SELECT 1 IN (SELECT 1)", MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "in subquery deferred");
+    failures += expect_prepare_error(
+        database, "SELECT 1 IN (SELECT n, txt FROM set_in_t WHERE set_name='base')",
+        MYLITE_EXEC_ERROR, "Operand should contain 1 column(s)", "in subquery column count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_operand_columns,
+                           "in subquery column count warning code");
+    failures +=
+        expect_prepare_error(database, "SELECT 1 IN (SELECT missing_col FROM set_in_t)",
+                             MYLITE_EXEC_ERROR, "Unknown column", "in subquery unknown column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "in subquery unknown column warning code");
+    failures += expect_prepare_error(
+        database, "SELECT 1 IN (SELECT n FROM set_in_t WHERE set_name='base' LIMIT 1)",
+        MYLITE_EXEC_ERROR, "LIMIT & IN/ALL/ANY/SOME subquery", "in subquery limit");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_not_supported_yet,
+                           "in subquery limit warning code");
+    failures += prepare_sql(database,
+                            "SELECT id FROM outer_in_t "
+                            "WHERE ROW(val,grp) IN (SELECT n, n FROM set_in_t)",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "row in subquery deferred");
+    failures += prepare_sql(database,
+                            "SELECT id FROM outer_in_t "
+                            "WHERE val IN (SELECT n FROM set_in_t WHERE n=outer_in_t.val)",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "correlated in subquery deferred");
+    failures += prepare_sql(database,
+                            "SELECT id FROM outer_in_t "
+                            "WHERE val IN (SELECT n FROM set_in_t WHERE n=val)",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unqualified correlated in subquery deferred");
     failures += prepare_sql(database, "SELECT 1 = ALL (SELECT 1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "all subquery deferred");
 

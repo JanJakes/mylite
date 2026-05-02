@@ -65,6 +65,7 @@ enum mylite_mysql_condition_code {
     MYLITE_MYSQL_ER_NO_SUCH_TABLE = 1146,
     MYLITE_MYSQL_ER_WRONG_ARGUMENTS = 1210,
     MYLITE_MYSQL_ER_WRONG_USAGE = 1221,
+    MYLITE_MYSQL_ER_NOT_SUPPORTED_YET = 1235,
     MYLITE_MYSQL_ER_OPERAND_COLUMNS = 1241,
     MYLITE_MYSQL_ER_SUBQUERY_NO_1_ROW = 1242,
     MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE = 1292,
@@ -797,6 +798,19 @@ struct mylite_table_select_expression_context {
     bool having_resolution;
 };
 
+struct mylite_in_subquery_scan_context {
+    mylite_stmt *outer_stmt;
+    mylite_stmt *subquery_stmt;
+    const struct mylite_expression_value *left;
+    struct mylite_expression_warnings *warnings;
+};
+
+struct mylite_in_subquery_scan_state {
+    bool has_row;
+    bool matched;
+    bool saw_unknown;
+};
+
 struct mylite_update_bound_assignment {
     size_t column_index;
     const struct mylite_sql_ast_node *value;
@@ -1195,6 +1209,10 @@ static int
 infer_scalar_subquery_expression_descriptor(mylite_db *database,
                                             const struct mylite_sql_ast_node *expression,
                                             struct mylite_field_descriptor *out_descriptor);
+static int infer_in_subquery_expression_descriptor(mylite_db *database,
+                                                   const struct mylite_select_plan *plan,
+                                                   const struct mylite_sql_ast_node *expression,
+                                                   struct mylite_field_descriptor *out_descriptor);
 static int infer_case_result_descriptor(mylite_db *database, const struct mylite_select_plan *plan,
                                         const struct mylite_sql_ast_node *expression,
                                         struct mylite_case_descriptor_aggregate *aggregate);
@@ -1403,9 +1421,40 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
                                                       const struct mylite_select_plan *plan,
                                                       const char *clause_context,
                                                       size_t first_table, size_t table_count);
+static int bind_select_predicate_binary_expression(mylite_db *database,
+                                                   const struct mylite_sql_ast_node *expression,
+                                                   const struct mylite_select_plan *plan,
+                                                   const char *clause_context, size_t first_table,
+                                                   size_t table_count);
+static int bind_select_predicate_in_subquery_expression(
+    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_plan *plan, const char *clause_context, size_t first_table,
+    size_t table_count);
 static int bind_select_subquery_expression(mylite_db *database,
                                            const struct mylite_sql_ast_node *expression,
                                            bool scalar_context);
+static int bind_select_in_subquery_expression(mylite_db *database,
+                                              const struct mylite_sql_ast_node *expression,
+                                              const struct mylite_select_plan *outer_plan);
+static int validate_in_subquery_expression(mylite_db *database,
+                                           const struct mylite_sql_ast_node *expression,
+                                           const struct mylite_select_plan *outer_plan);
+static bool in_subquery_references_outer_plan(const struct mylite_sql_ast_node *node,
+                                              const struct mylite_select_plan *outer_plan,
+                                              const struct mylite_sql_ast_node *select_statement);
+static bool
+in_subquery_has_unqualified_outer_column_reference(const struct mylite_sql_ast_node *node,
+                                                   const struct mylite_select_plan *outer_plan);
+static bool select_plan_has_column_span(const struct mylite_select_plan *plan,
+                                        struct mylite_sql_source_span name);
+static bool select_plan_has_visible_table_span(const struct mylite_select_plan *plan,
+                                               struct mylite_sql_source_span name);
+static bool select_statement_has_visible_table_span(const struct mylite_sql_ast_node *node,
+                                                    struct mylite_sql_source_span name);
+static const struct mylite_sql_ast_node *
+qualified_identifier_first_part(const struct mylite_sql_ast_node *identifier);
+static const struct mylite_sql_ast_node *
+qualified_identifier_last_part(const struct mylite_sql_ast_node *identifier);
 static int bind_select_function_arguments(mylite_db *database,
                                           const struct mylite_sql_ast_node *expression,
                                           const struct mylite_select_plan *plan,
@@ -1451,6 +1500,12 @@ static int bind_select_order_item(mylite_db *database, const struct mylite_sql_a
 static int bind_select_order_expression(mylite_db *database,
                                         const struct mylite_sql_ast_node *expression,
                                         struct mylite_select_plan *plan);
+static int bind_select_order_binary_expression(mylite_db *database,
+                                               const struct mylite_sql_ast_node *expression,
+                                               struct mylite_select_plan *plan);
+static int bind_select_order_in_subquery_expression(mylite_db *database,
+                                                    const struct mylite_sql_ast_node *expression,
+                                                    struct mylite_select_plan *plan);
 static int validate_select_expression_outputs(mylite_db *database,
                                               const struct mylite_select_plan *plan);
 static int validate_select_distinct_order_key(mylite_db *database,
@@ -2337,6 +2392,10 @@ static int evaluate_table_select_subquery_expression(void *user_data,
                                                      const struct mylite_sql_ast_node *subquery,
                                                      struct mylite_expression_warnings *warnings,
                                                      struct mylite_expression_value *out_value);
+static int evaluate_table_select_in_subquery_expression(
+    void *user_data, const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value);
 static int resolve_table_select_expression_identifier(void *user_data,
                                                       const struct mylite_sql_ast_node *identifier,
                                                       struct mylite_expression_value *out_value);
@@ -2426,6 +2485,25 @@ static int resolve_insert_row_values(mylite_stmt *stmt, const struct mylite_inse
                                      const size_t *column_indexes,
                                      struct mylite_insert_execution_state *state, size_t row_index,
                                      struct mylite_insert_bound_value *values);
+static int resolve_insert_column_list_row_values(mylite_stmt *stmt,
+                                                 const struct mylite_insert_table *table,
+                                                 const struct mylite_insert_row *row,
+                                                 const size_t *column_indexes,
+                                                 struct mylite_insert_execution_state *state,
+                                                 struct mylite_insert_bound_value *values);
+static const struct mylite_insert_value *
+insert_column_list_value_for_column(const struct mylite_insert_values_plan *plan,
+                                    const struct mylite_insert_row *row,
+                                    const size_t *column_indexes, size_t column);
+static int resolve_insert_positional_row_values(mylite_stmt *stmt,
+                                                const struct mylite_insert_table *table,
+                                                size_t row_index,
+                                                struct mylite_insert_execution_state *state,
+                                                struct mylite_insert_bound_value *values);
+static int resolve_insert_default_row_values(mylite_stmt *stmt,
+                                             const struct mylite_insert_table *table,
+                                             struct mylite_insert_execution_state *state,
+                                             struct mylite_insert_bound_value *values);
 static int validate_insert_set_assignments(mylite_stmt *stmt,
                                            const struct mylite_insert_table *table,
                                            const char *schema_name, size_t **out_column_indexes);
@@ -2620,10 +2698,36 @@ static int evaluate_scalar_select_subquery_expression(void *user_data,
                                                       const struct mylite_sql_ast_node *subquery,
                                                       struct mylite_expression_warnings *warnings,
                                                       struct mylite_expression_value *out_value);
+static int evaluate_scalar_select_in_subquery_expression(
+    void *user_data, const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value);
 static int evaluate_select_subquery_expression(mylite_stmt *stmt,
                                                const struct mylite_sql_ast_node *subquery,
                                                struct mylite_expression_warnings *warnings,
                                                struct mylite_expression_value *out_value);
+static int evaluate_in_subquery_expression(mylite_stmt *stmt,
+                                           const struct mylite_sql_ast_node *expression,
+                                           const struct mylite_expression_value *left,
+                                           struct mylite_expression_warnings *warnings,
+                                           struct mylite_expression_value *out_value);
+static int evaluate_in_subquery_expression_inner(mylite_stmt *stmt,
+                                                 const struct mylite_sql_ast_node *expression,
+                                                 const struct mylite_expression_value *left,
+                                                 struct mylite_expression_warnings *warnings,
+                                                 struct mylite_expression_value *out_value);
+static int prepare_in_subquery_statement(mylite_stmt *stmt,
+                                         const struct mylite_sql_ast_node *expression,
+                                         mylite_stmt **out_subquery_stmt,
+                                         size_t *out_order_key_count, bool *out_restore_order_keys);
+static int scan_in_subquery_statement(const struct mylite_in_subquery_scan_context *context,
+                                      struct mylite_in_subquery_scan_state *state);
+static int scan_in_subquery_statement_row(const struct mylite_in_subquery_scan_context *context,
+                                          struct mylite_in_subquery_scan_state *state);
+static int finish_in_subquery_expression(const struct mylite_sql_ast_node *expression,
+                                         const struct mylite_expression_value *left, bool has_row,
+                                         bool matched, bool saw_unknown,
+                                         struct mylite_expression_value *out_value);
 static int evaluate_scalar_subquery_expression(mylite_stmt *stmt,
                                                const struct mylite_sql_ast_node *subquery,
                                                struct mylite_expression_value *out_value);
@@ -2635,9 +2739,13 @@ static int copy_subquery_statement_column_value(mylite_stmt *stmt,
                                                 struct mylite_expression_value *out_value);
 static int validate_scalar_subquery_select_list(mylite_db *database,
                                                 const struct mylite_sql_ast_node *statement);
+static int validate_in_subquery_select(mylite_db *database,
+                                       const struct mylite_sql_ast_node *statement);
+static int validate_in_subquery_prepared_columns(mylite_db *database, const mylite_stmt *stmt);
 static int append_subquery_warnings(struct mylite_expression_warnings *destination,
                                     const struct mylite_expression_warnings *source);
 static int set_subquery_operand_columns_error(mylite_db *database);
+static int set_in_subquery_limit_error(mylite_db *database);
 static int set_scalar_subquery_cardinality_error(mylite_db *database);
 static int copy_create_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_create_table_plan *plan);
@@ -2739,7 +2847,7 @@ create_table_column_uses_temporal_descriptor(enum mylite_sql_ast_column_type col
 static const char *
 sqlite_affinity_for_descriptor(const struct mylite_column_type_descriptor *descriptor);
 static char *physical_table_name(const char *schema_name, const char *table_name);
-static bool hex_encoded_text_length(const char *text, size_t *out_length);
+static bool hex_encoded_text_length(size_t text_length, size_t *out_length);
 static char *append_hex_encoded_text(char *target, const char *source);
 static char *build_create_physical_table_sql(mylite_stmt *stmt, const char *physical_name,
                                              const struct mylite_schema_default *schema_default);
@@ -2821,6 +2929,7 @@ static char *copy_normalized_savepoint_name(const char *name);
 static char *copy_string_literal_span(const struct mylite_sql_ast_node *node);
 static char *copy_schema_text_span(const struct mylite_sql_ast_node *node);
 static char *copy_unquoted_span_text(struct mylite_sql_source_span span);
+static char *copy_nonempty_cstring(const char *text);
 static char *copy_span_text(const char *text, size_t length);
 static bool span_contains_newline(const char *text, size_t length);
 static bool text_contains_word(const char *text, const char *word);
@@ -2876,6 +2985,7 @@ static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_no
                                                   size_t index);
 static const struct mylite_sql_ast_node *find_child_kind(const struct mylite_sql_ast_node *node,
                                                          enum mylite_sql_ast_node_kind kind);
+static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *expression);
 static const struct mylite_sql_ast_node *single_statement(const struct mylite_sql_ast_node *root);
 static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status status);
 static int map_translate_status(mylite_db *database, enum mylite_sqlite_translate_status status);
@@ -4646,6 +4756,10 @@ static int infer_binary_expression_descriptor(mylite_db *database,
                                               const struct mylite_expression_value *value,
                                               struct mylite_field_descriptor *out_descriptor)
 {
+    if (binary_expression_is_in_subquery(expression)) {
+        return infer_in_subquery_expression_descriptor(database, plan, expression, out_descriptor);
+    }
+
     struct mylite_field_descriptor left = field_descriptor_defaults();
     struct mylite_field_descriptor right = field_descriptor_defaults();
     bool nullable = true;
@@ -5274,6 +5388,38 @@ static int infer_scalar_subquery_expression_descriptor( // NOLINT(misc-no-recurs
         field_descriptor_set_scalar_subquery_nullable(out_descriptor);
     }
     return status;
+}
+
+static int infer_in_subquery_expression_descriptor( // NOLINT(misc-no-recursion)
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor)
+{
+    struct mylite_field_descriptor left = field_descriptor_defaults();
+    const struct mylite_sql_ast_node *left_expression = child_at(expression, 0U);
+    int status = MYLITE_OK;
+
+    if (!binary_expression_is_in_subquery(expression)) {
+        *out_descriptor = field_descriptor_defaults();
+        return MYLITE_UNSUPPORTED;
+    }
+    if (left_expression == NULL || left_expression->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
+        *out_descriptor = field_descriptor_defaults();
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = infer_expression_descriptor(database, plan, left_expression, NULL, &left);
+    if (status != MYLITE_OK) {
+        *out_descriptor = field_descriptor_defaults();
+        return status;
+    }
+    status = validate_in_subquery_expression(database, expression, plan);
+    if (status != MYLITE_OK) {
+        *out_descriptor = field_descriptor_defaults();
+        return status;
+    }
+
+    *out_descriptor = boolean_expression_descriptor(true);
+    return MYLITE_OK;
 }
 
 static struct mylite_field_descriptor
@@ -6672,12 +6818,11 @@ static int resolve_select_table_target(mylite_db *database, struct mylite_select
     int status = MYLITE_OK;
 
     if (table->schema_name == NULL) {
-        if (database->selected_schema == NULL) {
+        if (database->selected_schema == NULL || database->selected_schema[0] == '\0') {
             (void)set_error_message(database, "No database selected");
             return MYLITE_EXEC_ERROR;
         }
-        table->schema_name =
-            copy_span_text(database->selected_schema, strlen(database->selected_schema));
+        table->schema_name = copy_nonempty_cstring(database->selected_schema);
         if (table->schema_name == NULL) {
             (void)set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
@@ -7176,7 +7321,6 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
                    : status;
     }
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
-    case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
@@ -7193,6 +7337,9 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        return bind_select_predicate_binary_expression(database, expression, plan, clause_context,
+                                                       first_table, table_count);
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
         return bind_select_subquery_expression(
@@ -7297,6 +7444,49 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
+static int bind_select_predicate_binary_expression(mylite_db *database,
+                                                   const struct mylite_sql_ast_node *expression,
+                                                   const struct mylite_select_plan *plan,
+                                                   const char *clause_context, size_t first_table,
+                                                   size_t table_count)
+{
+    if (binary_expression_is_in_subquery(expression)) {
+        return bind_select_predicate_in_subquery_expression(
+            database, expression, plan, clause_context, first_table, table_count);
+    }
+    for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
+         child = child->next_sibling) {
+        int status = bind_select_predicate_expression_in_clause(
+            database, child, plan, clause_context, first_table, table_count);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_select_predicate_in_subquery_expression(
+    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_plan *plan, const char *clause_context, size_t first_table,
+    size_t table_count)
+{
+    const struct mylite_sql_ast_node *left = child_at(expression, 0U);
+    int status = MYLITE_OK;
+
+    if (left == NULL || left->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
+        return set_select_unsupported_where_error(database);
+    }
+    status = bind_select_predicate_expression_in_clause(database, left, plan, clause_context,
+                                                        first_table, table_count);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return bind_select_in_subquery_expression(database, expression, plan);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
 static int bind_select_subquery_expression(mylite_db *database,
                                            const struct mylite_sql_ast_node *expression,
                                            bool scalar_context)
@@ -7329,6 +7519,187 @@ static int bind_select_subquery_expression(mylite_db *database,
         mylite_finalize(subquery_stmt);
     }
     return status;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_select_in_subquery_expression(mylite_db *database,
+                                              const struct mylite_sql_ast_node *expression,
+                                              const struct mylite_select_plan *outer_plan)
+{
+    return validate_in_subquery_expression(database, expression, outer_plan);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int validate_in_subquery_expression(mylite_db *database,
+                                           const struct mylite_sql_ast_node *expression,
+                                           const struct mylite_select_plan *outer_plan)
+{
+    const struct mylite_sql_ast_node *select_statement = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *from_clause = child_at(select_statement, 1U);
+    mylite_stmt *subquery_stmt = NULL;
+    int status = MYLITE_OK;
+
+    if (!binary_expression_is_in_subquery(expression)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (in_subquery_references_outer_plan(select_statement, outer_plan, select_statement)) {
+        return set_select_unsupported_where_error(database);
+    }
+
+    status = validate_in_subquery_select(database, select_statement);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
+        return MYLITE_OK;
+    }
+
+    status = prepare_select_subquery_statement(database, select_statement, &subquery_stmt);
+    if (status != MYLITE_OK) {
+        mylite_finalize(subquery_stmt);
+        if (in_subquery_has_unqualified_outer_column_reference(select_statement, outer_plan)) {
+            return set_select_unsupported_where_error(database);
+        }
+        return status;
+    }
+    if (subquery_stmt != NULL) {
+        status = validate_in_subquery_prepared_columns(database, subquery_stmt);
+        mylite_finalize(subquery_stmt);
+    }
+    return status;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static bool in_subquery_references_outer_plan(const struct mylite_sql_ast_node *node,
+                                              const struct mylite_select_plan *outer_plan,
+                                              const struct mylite_sql_ast_node *select_statement)
+{
+    const struct mylite_sql_ast_node *first = NULL;
+
+    if (node == NULL || outer_plan == NULL) {
+        return false;
+    }
+    if (node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        first = qualified_identifier_first_part(node);
+        if (first != NULL && select_plan_has_visible_table_span(outer_plan, first->span) &&
+            !select_statement_has_visible_table_span(select_statement, first->span)) {
+            return true;
+        }
+    }
+    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
+         child = child->next_sibling) {
+        if (in_subquery_references_outer_plan(child, outer_plan, select_statement)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool in_subquery_has_unqualified_outer_column_reference( // NOLINT(misc-no-recursion)
+    const struct mylite_sql_ast_node *node, const struct mylite_select_plan *outer_plan)
+{
+    if (node == NULL || outer_plan == NULL) {
+        return false;
+    }
+    if (node->kind == MYLITE_SQL_AST_FROM_TABLE) {
+        return false;
+    }
+    if (node->kind == MYLITE_SQL_AST_SELECT_ITEM) {
+        return in_subquery_has_unqualified_outer_column_reference(child_at(node, 0U), outer_plan);
+    }
+    if (node->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        select_plan_has_column_span(outer_plan, node->span)) {
+        return true;
+    }
+    if (node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return false;
+    }
+    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
+         child = child->next_sibling) {
+        if (in_subquery_has_unqualified_outer_column_reference(child, outer_plan)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool select_plan_has_column_span(const struct mylite_select_plan *plan,
+                                        struct mylite_sql_source_span name)
+{
+    for (size_t index = 0U; index < select_plan_column_count(plan); ++index) {
+        const struct mylite_select_column *column = select_plan_column_const(plan, index, NULL);
+
+        if (column != NULL && column->name != NULL && ascii_span_equal_ci(name, column->name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool select_plan_has_visible_table_span(const struct mylite_select_plan *plan,
+                                               struct mylite_sql_source_span name)
+{
+    for (size_t index = 0U; index < select_plan_table_count(plan); ++index) {
+        const struct mylite_select_table *table = select_plan_table_const(plan, index);
+        const char *visible_name = table == NULL || table->alias == NULL ? NULL : table->alias;
+
+        if (table != NULL && visible_name == NULL) {
+            visible_name = table->table_name;
+        }
+        if (visible_name != NULL && ascii_span_equal_ci(name, visible_name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static bool select_statement_has_visible_table_span(const struct mylite_sql_ast_node *node,
+                                                    struct mylite_sql_source_span name)
+{
+    if (node == NULL) {
+        return false;
+    }
+    if (node->kind == MYLITE_SQL_AST_FROM_TABLE) {
+        const struct mylite_sql_ast_node *table_name = child_at(node, 0U);
+        const struct mylite_sql_ast_node *alias = child_at(node, 1U);
+        const struct mylite_sql_ast_node *visible_name =
+            alias == NULL ? qualified_identifier_last_part(table_name) : alias;
+
+        if (visible_name == NULL) {
+            return false;
+        }
+        return ast_span_text_equal_ci(visible_name->span, name);
+    }
+    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
+         child = child->next_sibling) {
+        if (select_statement_has_visible_table_span(child, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static const struct mylite_sql_ast_node *
+qualified_identifier_first_part(const struct mylite_sql_ast_node *identifier)
+{
+    const struct mylite_sql_ast_node *current = identifier;
+
+    while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        current = child_at(current, 0U);
+    }
+    return current != NULL && current->kind == MYLITE_SQL_AST_IDENTIFIER ? current : NULL;
+}
+
+static const struct mylite_sql_ast_node *
+qualified_identifier_last_part(const struct mylite_sql_ast_node *identifier)
+{
+    const struct mylite_sql_ast_node *current = identifier;
+
+    while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        current = child_at(current, 1U);
+    }
+    return current != NULL && current->kind == MYLITE_SQL_AST_IDENTIFIER ? current : NULL;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -7395,13 +7766,27 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
         }
         return bind_select_predicate_expression(database, expression, plan);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
-    case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
     case MYLITE_SQL_AST_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
+        return bind_select_aggregate_aware_children(database, expression, plan, clause_context);
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        if (binary_expression_is_in_subquery(expression)) {
+            const struct mylite_sql_ast_node *left = child_at(expression, 0U);
+            int status = MYLITE_OK;
+
+            if (left == NULL || left->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
+                return set_select_unsupported_projection_error(database);
+            }
+            status = bind_select_aggregate_aware_expression(database, left, plan, clause_context);
+            if (status != MYLITE_OK) {
+                return status;
+            }
+            return bind_select_in_subquery_expression(database, expression, plan);
+        }
         return bind_select_aggregate_aware_children(database, expression, plan, clause_context);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return bind_select_aggregate_aware_expression(database, child_at(expression, 0U), plan,
@@ -7858,7 +8243,6 @@ static int bind_select_order_expression(mylite_db *database,
         return status;
     }
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
-    case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
@@ -7874,6 +8258,8 @@ static int bind_select_order_expression(mylite_db *database,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        return bind_select_order_binary_expression(database, expression, plan);
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
         return bind_select_subquery_expression(
@@ -7988,6 +8374,43 @@ static int bind_select_order_expression(mylite_db *database,
     }
 
     return set_select_unsupported_order_error(database);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_select_order_binary_expression(mylite_db *database,
+                                               const struct mylite_sql_ast_node *expression,
+                                               struct mylite_select_plan *plan)
+{
+    if (binary_expression_is_in_subquery(expression)) {
+        return bind_select_order_in_subquery_expression(database, expression, plan);
+    }
+    for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
+         child = child->next_sibling) {
+        int status = bind_select_order_expression(database, child, plan);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_select_order_in_subquery_expression(mylite_db *database,
+                                                    const struct mylite_sql_ast_node *expression,
+                                                    struct mylite_select_plan *plan)
+{
+    const struct mylite_sql_ast_node *left = child_at(expression, 0U);
+    int status = MYLITE_OK;
+
+    if (left == NULL || left->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
+        return set_select_unsupported_order_error(database);
+    }
+    status = bind_select_order_expression(database, left, plan);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return bind_select_in_subquery_expression(database, expression, plan);
 }
 
 static int validate_select_expression_outputs(mylite_db *database,
@@ -8465,7 +8888,6 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
         return true;
     }
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
-    case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
@@ -8473,6 +8895,18 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
+        for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
+             child = child->next_sibling) {
+            if (!select_expression_is_group_invariant(plan, child, reference_policy)) {
+                return false;
+            }
+        }
+        return true;
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        if (binary_expression_is_in_subquery(expression)) {
+            return select_expression_is_group_invariant(plan, child_at(expression, 0U),
+                                                        reference_policy);
+        }
         for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
              child = child->next_sibling) {
             if (!select_expression_is_group_invariant(plan, child, reference_policy)) {
@@ -12249,19 +12683,19 @@ static int copy_update_target_to_select_table(mylite_stmt *stmt, struct mylite_s
     const struct mylite_update_target *target = &stmt->update.target;
 
     if (target->schema_name != NULL) {
-        table->schema_name = copy_span_text(target->schema_name, strlen(target->schema_name));
+        table->schema_name = copy_nonempty_cstring(target->schema_name);
         if (table->schema_name == NULL) {
             (void)set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
-    table->table_name = copy_span_text(target->table_name, strlen(target->table_name));
+    table->table_name = copy_nonempty_cstring(target->table_name);
     if (table->table_name == NULL) {
         (void)set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (target->alias != NULL) {
-        table->alias = copy_span_text(target->alias, strlen(target->alias));
+        table->alias = copy_nonempty_cstring(target->alias);
         if (table->alias == NULL) {
             (void)set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
@@ -13760,19 +14194,19 @@ static int copy_delete_target_to_select_table(mylite_stmt *stmt, struct mylite_s
     const struct mylite_delete_target *target = &stmt->delete_plan.target;
 
     if (target->schema_name != NULL) {
-        table->schema_name = copy_span_text(target->schema_name, strlen(target->schema_name));
+        table->schema_name = copy_nonempty_cstring(target->schema_name);
         if (table->schema_name == NULL) {
             (void)set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
-    table->table_name = copy_span_text(target->table_name, strlen(target->table_name));
+    table->table_name = copy_nonempty_cstring(target->table_name);
     if (table->table_name == NULL) {
         (void)set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (target->alias != NULL) {
-        table->alias = copy_span_text(target->alias, strlen(target->alias));
+        table->alias = copy_nonempty_cstring(target->alias);
         if (table->alias == NULL) {
             (void)set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
@@ -16631,6 +17065,7 @@ static int evaluate_table_select_group_key(mylite_stmt *stmt,
         .eval_constant = evaluate_table_select_cached_constant_expression,
         .eval_aggregate = evaluate_table_select_aggregate_call,
         .eval_subquery = evaluate_table_select_subquery_expression,
+        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
     };
     int status = mylite_expression_eval_with_context(group_key->expression, &context,
                                                      &stmt->database->warnings, out_value);
@@ -16665,6 +17100,7 @@ static int evaluate_table_select_having(mylite_stmt *stmt,
         .eval_constant = evaluate_table_select_cached_constant_expression,
         .eval_aggregate = evaluate_table_select_aggregate_call,
         .eval_subquery = evaluate_table_select_subquery_expression,
+        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
     };
 
     status = mylite_expression_eval_with_context(stmt->select_plan.having_expression, &context,
@@ -16832,6 +17268,7 @@ static int evaluate_table_select_aggregate_argument(
         .eval_constant = evaluate_table_select_cached_constant_expression,
         .eval_aggregate = evaluate_table_select_aggregate_call,
         .eval_subquery = evaluate_table_select_subquery_expression,
+        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
     };
     int status = mylite_expression_eval_with_context(binding->argument, &context,
                                                      &stmt->database->warnings, out_value);
@@ -16975,6 +17412,7 @@ static int evaluate_table_select_order_key(mylite_stmt *stmt,
         .eval_constant = evaluate_table_select_cached_constant_expression,
         .eval_aggregate = evaluate_table_select_aggregate_call,
         .eval_subquery = evaluate_table_select_subquery_expression,
+        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
     };
     int status = mylite_expression_eval_with_context(order_key->expression, &context,
                                                      &stmt->database->warnings, out_value);
@@ -17396,6 +17834,7 @@ static int evaluate_table_select_output_value(mylite_stmt *stmt,
         .eval_constant = evaluate_table_select_cached_constant_expression,
         .eval_aggregate = evaluate_table_select_aggregate_call,
         .eval_subquery = evaluate_table_select_subquery_expression,
+        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
     };
     int status = mylite_expression_eval_with_context(output->expression, &context,
                                                      &stmt->database->warnings, out_value);
@@ -17523,6 +17962,7 @@ static int evaluate_table_select_expression_predicate(mylite_stmt *stmt,
         .eval_constant = evaluate_table_select_cached_constant_expression,
         .eval_aggregate = evaluate_table_select_aggregate_call,
         .eval_subquery = evaluate_table_select_subquery_expression,
+        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
     };
     struct mylite_expression_value value = {0};
     int truth = 0;
@@ -17623,6 +18063,19 @@ static int evaluate_table_select_subquery_expression(void *user_data,
         return MYLITE_UNSUPPORTED;
     }
     return evaluate_select_subquery_expression(context->stmt, subquery, warnings, out_value);
+}
+
+static int evaluate_table_select_in_subquery_expression(
+    void *user_data, const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value)
+{
+    struct mylite_table_select_expression_context *context = user_data;
+
+    if (context == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    return evaluate_in_subquery_expression(context->stmt, expression, left, warnings, out_value);
 }
 
 static int resolve_table_select_expression_identifier(void *user_data,
@@ -18343,35 +18796,89 @@ static int resolve_insert_row_values(mylite_stmt *stmt, const struct mylite_inse
     if (row->value_count != expected_count) {
         return set_insert_wrong_value_count_error(stmt->database, row_index);
     }
+    if (stmt->insert_values.has_column_list) {
+        return resolve_insert_column_list_row_values(stmt, table, row, column_indexes, state,
+                                                     values);
+    }
+    return resolve_insert_positional_row_values(stmt, table, row_index, state, values);
+}
+
+static int resolve_insert_column_list_row_values(mylite_stmt *stmt,
+                                                 const struct mylite_insert_table *table,
+                                                 const struct mylite_insert_row *row,
+                                                 const size_t *column_indexes,
+                                                 struct mylite_insert_execution_state *state,
+                                                 struct mylite_insert_bound_value *values)
+{
+    if (stmt->insert_values.column_count == 0U) {
+        return resolve_insert_default_row_values(stmt, table, state, values);
+    }
+    if (column_indexes == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
 
     for (size_t column = 0U; column < table->column_count; ++column) {
-        const struct mylite_insert_value *explicit_value = NULL;
+        const struct mylite_insert_value *explicit_value =
+            insert_column_list_value_for_column(&stmt->insert_values, row, column_indexes, column);
+        int status = explicit_value == NULL
+                         ? resolve_insert_default_value(stmt, &table->columns[column], state,
+                                                        &values[column])
+                         : resolve_insert_explicit_value(stmt, &table->columns[column],
+                                                         explicit_value, state, &values[column]);
 
-        if (stmt->insert_values.has_column_list) {
-            for (size_t target = 0U; target < stmt->insert_values.column_count; ++target) {
-                if (column_indexes[target] == column) {
-                    explicit_value = &row->values[target];
-                    break;
-                }
-            }
-        } else if (!insert_row_uses_all_defaults(&stmt->insert_values, row_index)) {
-            explicit_value = &row->values[column];
+        if (status != MYLITE_OK) {
+            return status;
         }
+    }
+    return MYLITE_OK;
+}
 
-        if (explicit_value == NULL) {
-            int status =
-                resolve_insert_default_value(stmt, &table->columns[column], state, &values[column]);
+static const struct mylite_insert_value *
+insert_column_list_value_for_column(const struct mylite_insert_values_plan *plan,
+                                    const struct mylite_insert_row *row,
+                                    const size_t *column_indexes, size_t column)
+{
+    for (size_t target = 0U; target < plan->column_count; ++target) {
+        if (column_indexes[target] == column) {
+            return &row->values[target];
+        }
+    }
+    return NULL;
+}
 
-            if (status != MYLITE_OK) {
-                return status;
-            }
-        } else {
-            int status = resolve_insert_explicit_value(stmt, &table->columns[column],
-                                                       explicit_value, state, &values[column]);
+static int resolve_insert_positional_row_values(mylite_stmt *stmt,
+                                                const struct mylite_insert_table *table,
+                                                size_t row_index,
+                                                struct mylite_insert_execution_state *state,
+                                                struct mylite_insert_bound_value *values)
+{
+    if (insert_row_uses_all_defaults(&stmt->insert_values, row_index)) {
+        return resolve_insert_default_row_values(stmt, table, state, values);
+    }
 
-            if (status != MYLITE_OK) {
-                return status;
-            }
+    for (size_t column = 0U; column < table->column_count; ++column) {
+        int status = resolve_insert_explicit_value(
+            stmt, &table->columns[column], &stmt->insert_values.rows[row_index].values[column],
+            state, &values[column]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int resolve_insert_default_row_values(mylite_stmt *stmt,
+                                             const struct mylite_insert_table *table,
+                                             struct mylite_insert_execution_state *state,
+                                             struct mylite_insert_bound_value *values)
+{
+    for (size_t column = 0U; column < table->column_count; ++column) {
+        int status =
+            resolve_insert_default_value(stmt, &table->columns[column], state, &values[column]);
+
+        if (status != MYLITE_OK) {
+            return status;
         }
     }
     return MYLITE_OK;
@@ -20422,6 +20929,7 @@ static int evaluate_scalar_select_expression(mylite_stmt *stmt,
     struct mylite_expression_eval_context context = {
         .user_data = stmt,
         .eval_subquery = evaluate_scalar_select_subquery_expression,
+        .eval_in_subquery = evaluate_scalar_select_in_subquery_expression,
     };
     int status = MYLITE_OK;
 
@@ -20452,6 +20960,7 @@ static int evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
     struct mylite_expression_eval_context context = {
         .user_data = stmt,
         .eval_subquery = evaluate_scalar_select_subquery_expression,
+        .eval_in_subquery = evaluate_scalar_select_in_subquery_expression,
     };
     int status = 0;
 
@@ -20569,6 +21078,14 @@ static int evaluate_scalar_select_subquery_expression(void *user_data,
     return evaluate_select_subquery_expression(user_data, subquery, warnings, out_value);
 }
 
+static int evaluate_scalar_select_in_subquery_expression(
+    void *user_data, const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value)
+{
+    return evaluate_in_subquery_expression(user_data, expression, left, warnings, out_value);
+}
+
 static int evaluate_select_subquery_expression(mylite_stmt *stmt,
                                                const struct mylite_sql_ast_node *subquery,
                                                struct mylite_expression_warnings *warnings,
@@ -20606,6 +21123,203 @@ static int evaluate_select_subquery_expression(mylite_stmt *stmt,
     }
     mylite_expression_warnings_deinit(&subquery_warnings);
     return status;
+}
+
+static int evaluate_in_subquery_expression(mylite_stmt *stmt,
+                                           const struct mylite_sql_ast_node *expression,
+                                           const struct mylite_expression_value *left,
+                                           struct mylite_expression_warnings *warnings,
+                                           struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_warnings saved_warnings = {0};
+    struct mylite_expression_warnings subquery_warnings = {0};
+    int status = MYLITE_UNSUPPORTED;
+
+    if (stmt == NULL || stmt->database == NULL || expression == NULL || left == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    saved_warnings = stmt->database->warnings;
+    stmt->database->warnings = (struct mylite_expression_warnings){0};
+
+    status = evaluate_in_subquery_expression_inner(stmt, expression, left, warnings, out_value);
+
+    subquery_warnings = stmt->database->warnings;
+    stmt->database->warnings = saved_warnings;
+    if (append_subquery_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
+        mylite_expression_value_deinit(out_value);
+        (void)set_error_message(stmt->database, "out of memory");
+        status = MYLITE_NOMEM;
+    }
+    mylite_expression_warnings_deinit(&subquery_warnings);
+    return status;
+}
+
+static int evaluate_in_subquery_expression_inner(mylite_stmt *stmt,
+                                                 const struct mylite_sql_ast_node *expression,
+                                                 const struct mylite_expression_value *left,
+                                                 struct mylite_expression_warnings *warnings,
+                                                 struct mylite_expression_value *out_value)
+{
+    mylite_stmt *subquery_stmt = NULL;
+    size_t order_key_count = 0U;
+    bool restore_order_keys = false;
+    struct mylite_in_subquery_scan_state scan = {
+        .has_row = false,
+        .matched = false,
+        .saw_unknown = false,
+    };
+    int status = MYLITE_OK;
+
+    status = prepare_in_subquery_statement(stmt, expression, &subquery_stmt, &order_key_count,
+                                           &restore_order_keys);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    struct mylite_in_subquery_scan_context scan_context = {
+        .outer_stmt = stmt,
+        .subquery_stmt = subquery_stmt,
+        .left = left,
+        .warnings = warnings,
+    };
+
+    status = scan_in_subquery_statement(&scan_context, &scan);
+    if (restore_order_keys) {
+        subquery_stmt->select_plan.order_key_count = order_key_count;
+    }
+    mylite_finalize(subquery_stmt);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return finish_in_subquery_expression(expression, left, scan.has_row, scan.matched,
+                                         scan.saw_unknown, out_value);
+}
+
+static int prepare_in_subquery_statement(mylite_stmt *stmt,
+                                         const struct mylite_sql_ast_node *expression,
+                                         mylite_stmt **out_subquery_stmt,
+                                         size_t *out_order_key_count, bool *out_restore_order_keys)
+{
+    const struct mylite_sql_ast_node *select_statement = child_at(expression, 1U);
+    mylite_stmt *subquery_stmt = NULL;
+    int status = MYLITE_OK;
+
+    *out_subquery_stmt = NULL;
+    *out_order_key_count = 0U;
+    *out_restore_order_keys = false;
+    if (!binary_expression_is_in_subquery(expression)) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = validate_in_subquery_select(stmt->database, select_statement);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    status = prepare_select_subquery_statement(stmt->database, select_statement, &subquery_stmt);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (subquery_stmt == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    status = validate_in_subquery_prepared_columns(stmt->database, subquery_stmt);
+    if (status != MYLITE_OK) {
+        mylite_finalize(subquery_stmt);
+        return status;
+    }
+    if (subquery_stmt->kind == MYLITE_STMT_TABLE_SELECT &&
+        subquery_stmt->select_plan.order_key_count != 0U) {
+        *out_order_key_count = subquery_stmt->select_plan.order_key_count;
+        *out_restore_order_keys = true;
+        subquery_stmt->select_plan.order_key_count = 0U;
+    }
+    *out_subquery_stmt = subquery_stmt;
+    return MYLITE_OK;
+}
+
+static int scan_in_subquery_statement(const struct mylite_in_subquery_scan_context *context,
+                                      struct mylite_in_subquery_scan_state *state)
+{
+    for (;;) {
+        int status = mylite_step(context->subquery_stmt);
+
+        if (status == MYLITE_DONE) {
+            return MYLITE_OK;
+        }
+        if (status != MYLITE_ROW) {
+            return status;
+        }
+        state->has_row = true;
+        status = scan_in_subquery_statement_row(context, state);
+        if (status != MYLITE_OK || state->matched) {
+            return status;
+        }
+    }
+}
+
+static int scan_in_subquery_statement_row(const struct mylite_in_subquery_scan_context *context,
+                                          struct mylite_in_subquery_scan_state *state)
+{
+    struct mylite_expression_value right = {0};
+    int comparison = 0;
+    int status = MYLITE_OK;
+
+    if (context->left->kind == MYLITE_EXPRESSION_VALUE_NULL) {
+        return MYLITE_OK;
+    }
+
+    status = copy_subquery_statement_column_value(context->subquery_stmt, &right);
+    if (status != MYLITE_OK) {
+        mylite_expression_value_deinit(&right);
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(context->outer_stmt->database, "out of memory");
+        }
+        return status;
+    }
+    if (right.kind == MYLITE_EXPRESSION_VALUE_NULL) {
+        state->saw_unknown = true;
+        mylite_expression_value_deinit(&right);
+        return MYLITE_OK;
+    }
+    status = mylite_expression_value_compare(context->left, &right, context->warnings, &comparison);
+    mylite_expression_value_deinit(&right);
+    if (status != 0) {
+        return status;
+    }
+    if (comparison == 0) {
+        state->matched = true;
+    }
+    return MYLITE_OK;
+}
+
+static int finish_in_subquery_expression(const struct mylite_sql_ast_node *expression,
+                                         const struct mylite_expression_value *left, bool has_row,
+                                         bool matched, bool saw_unknown,
+                                         struct mylite_expression_value *out_value)
+{
+    if (matched) {
+        int64_t result = expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IN ? 1 : 0;
+
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = result};
+        return MYLITE_OK;
+    }
+    if (!has_row) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IN ? 0 : 1};
+        return MYLITE_OK;
+    }
+    if (left->kind == MYLITE_EXPRESSION_VALUE_NULL || saw_unknown) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return MYLITE_OK;
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IN ? 0 : 1};
+    return MYLITE_OK;
 }
 
 static int evaluate_scalar_subquery_expression(mylite_stmt *stmt,
@@ -20791,6 +21505,31 @@ static int validate_scalar_subquery_select_list(mylite_db *database,
     return MYLITE_OK;
 }
 
+static int validate_in_subquery_select(mylite_db *database,
+                                       const struct mylite_sql_ast_node *statement)
+{
+    int status = validate_scalar_subquery_select_list(database, statement);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (find_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
+        return set_in_subquery_limit_error(database);
+    }
+    return MYLITE_OK;
+}
+
+static int validate_in_subquery_prepared_columns(mylite_db *database, const mylite_stmt *stmt)
+{
+    if (stmt == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (mylite_column_count(stmt) != 1) {
+        return set_subquery_operand_columns_error(database);
+    }
+    return MYLITE_OK;
+}
+
 static int append_subquery_warnings(struct mylite_expression_warnings *destination,
                                     const struct mylite_expression_warnings *source)
 {
@@ -20813,6 +21552,18 @@ static int set_subquery_operand_columns_error(mylite_db *database)
 
     if (status == MYLITE_OK) {
         status = append_database_warning(database, MYLITE_MYSQL_ER_OPERAND_COLUMNS, message);
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_in_subquery_limit_error(mylite_db *database)
+{
+    static const char message[] =
+        "This version of MySQL doesn't yet support 'LIMIT & IN/ALL/ANY/SOME subquery'";
+    int status = set_error_message(database, message);
+
+    if (status == MYLITE_OK) {
+        status = append_database_warning(database, MYLITE_MYSQL_ER_NOT_SUPPORTED_YET, message);
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -22285,18 +23036,23 @@ static char *physical_table_name(const char *schema_name, const char *table_name
     static const char separator[] = "__";
     size_t prefix_length = sizeof(prefix) - 1U;
     size_t separator_length = sizeof(separator) - 1U;
+    size_t schema_length = 0U;
+    size_t table_length = 0U;
     size_t schema_hex_length = 0U;
     size_t table_hex_length = 0U;
     size_t output_length = 0U;
     char *output = NULL;
     char *cursor = NULL;
 
-    if (schema_name[0] == '\0' || table_name[0] == '\0') {
+    if (schema_name == NULL || table_name == NULL || schema_name[0] == '\0' ||
+        table_name[0] == '\0') {
         return NULL;
     }
+    schema_length = strlen(schema_name);
+    table_length = strlen(table_name);
 
-    if (!hex_encoded_text_length(schema_name, &schema_hex_length) ||
-        !hex_encoded_text_length(table_name, &table_hex_length)) {
+    if (!hex_encoded_text_length(schema_length, &schema_hex_length) ||
+        !hex_encoded_text_length(table_length, &table_hex_length)) {
         return NULL;
     }
     if (prefix_length > SIZE_MAX - schema_hex_length ||
@@ -22305,6 +23061,9 @@ static char *physical_table_name(const char *schema_name, const char *table_name
         return NULL;
     }
     output_length = prefix_length + schema_hex_length + separator_length + table_hex_length;
+    if (output_length == SIZE_MAX) {
+        return NULL;
+    }
     output = malloc(output_length + 1U);
     if (output == NULL) {
         return NULL;
@@ -22321,21 +23080,16 @@ static char *physical_table_name(const char *schema_name, const char *table_name
     return output;
 }
 
-static bool hex_encoded_text_length(const char *text, size_t *out_length)
+static bool hex_encoded_text_length(size_t text_length, size_t *out_length)
 {
     enum {
         hex_encoded_byte_width = 2U,
     };
-    size_t length = 0U;
 
-    while (*text != '\0') {
-        if (length > SIZE_MAX / hex_encoded_byte_width) {
-            return false;
-        }
-        length += hex_encoded_byte_width;
-        ++text;
+    if (text_length > SIZE_MAX / hex_encoded_byte_width) {
+        return false;
     }
-    *out_length = length;
+    *out_length = text_length * hex_encoded_byte_width;
     return true;
 }
 
@@ -23461,6 +24215,27 @@ static char *copy_unquoted_span_text(struct mylite_sql_source_span span)
     return copy_span_text(text + start, end - start);
 }
 
+static char *copy_nonempty_cstring(const char *text)
+{
+    size_t length = 0U;
+    char *copy = NULL;
+
+    if (text == NULL || text[0] == '\0') {
+        return NULL;
+    }
+    length = strlen(text);
+    if (length == 0U || length == SIZE_MAX) {
+        return NULL;
+    }
+
+    copy = malloc(length + 1U);
+    if (copy == NULL) {
+        return NULL;
+    }
+    memcpy(copy, text, length + 1U);
+    return copy;
+}
+
 static char *copy_span_text(const char *text, size_t length)
 {
     char *copy = malloc(length + 1U);
@@ -24244,6 +25019,28 @@ static const struct mylite_sql_ast_node *find_child_kind(const struct mylite_sql
         }
     }
     return NULL;
+}
+
+static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *expression)
+{
+    const struct mylite_sql_ast_node *right = child_at(expression, 1U);
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return false;
+    }
+    if (expression->operator_kind != MYLITE_SQL_AST_OPERATOR_IN &&
+        expression->operator_kind != MYLITE_SQL_AST_OPERATOR_NOT_IN) {
+        return false;
+    }
+    if (right == NULL) {
+        return false;
+    }
+    switch (right->kind) {
+    case MYLITE_SQL_AST_SELECT_STATEMENT:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static const struct mylite_sql_ast_node *single_statement(const struct mylite_sql_ast_node *root)

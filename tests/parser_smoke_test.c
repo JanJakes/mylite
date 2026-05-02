@@ -83,6 +83,7 @@ typedef struct ExpectedCreateTableKeyPart {
   const char *prefix_value;
   MyliteCreateTableKeyPartOrder order;
   const char *order_span;
+  const char *name_value;
 } ExpectedCreateTableKeyPart;
 
 typedef struct ExpectedCreateTableKeyOption {
@@ -116,6 +117,10 @@ typedef struct ExpectedCreateTableKey {
   const char *check_enforcement_span;
   const ExpectedCreateTableKeyOption *options;
   size_t option_count;
+  const char *constraint_name_value;
+  const char *name_value;
+  const char *referenced_schema_value;
+  const char *referenced_name_value;
 } ExpectedCreateTableKey;
 
 typedef struct ExpectedCreateTableOption {
@@ -1246,6 +1251,41 @@ int main(void) {
         keys, sizeof(keys) / sizeof(keys[0]));
   }
   {
+    const ExpectedCreateTableKeyPart local_columns[] = {
+        {.definition = "`pid``x`",
+         .name = "`pid``x`",
+         .kind = MYLITE_CREATE_TABLE_KEY_PART_COLUMN,
+         .name_value = "pid`x"}};
+    const ExpectedCreateTableKeyPart referenced_columns[] = {
+        {.definition = "`id``x`",
+         .name = "`id``x`",
+         .kind = MYLITE_CREATE_TABLE_KEY_PART_COLUMN,
+         .name_value = "id`x"}};
+    const ExpectedCreateTableKey keys[] = {{
+        .kind = MYLITE_CREATE_TABLE_KEY_FOREIGN,
+        .definition =
+            "CONSTRAINT `fk``p` FOREIGN KEY `fk``idx` (`pid``x`) REFERENCES "
+            "`parent``db`.`parent``t` (`id``x`)",
+        .constraint_name = "`fk``p`",
+        .name = "`fk``idx`",
+        .columns = local_columns,
+        .column_count = sizeof(local_columns) / sizeof(local_columns[0]),
+        .referenced_table = "`parent``db`.`parent``t`",
+        .referenced_schema = "`parent``db`",
+        .referenced_name = "`parent``t`",
+        .referenced_columns = referenced_columns,
+        .referenced_column_count =
+            sizeof(referenced_columns) / sizeof(referenced_columns[0]),
+        .constraint_name_value = "fk`p",
+        .name_value = "fk`idx",
+        .referenced_schema_value = "parent`db",
+        .referenced_name_value = "parent`t"}};
+    failures += expect_create_table_keys(
+        "CREATE TABLE child (`pid``x` INT, CONSTRAINT `fk``p` FOREIGN KEY "
+        "`fk``idx` (`pid``x`) REFERENCES `parent``db`.`parent``t` (`id``x`))",
+        keys, sizeof(keys) / sizeof(keys[0]));
+  }
+  {
     const ExpectedCreateTableKeyPart ab_columns[] = {{"a", "a"}, {"b", "b"}};
     const ExpectedCreateTableKeyPart a_columns[] = {{"a", "a"}};
     const ExpectedCreateTableKey keys[] = {
@@ -1994,9 +2034,17 @@ static int expect_create_table_keys(const char *sql,
                                                                        i),
                       mylite_ast_create_table_key_constraint_name_end(ast, 0, i),
                       keys[i].constraint_name) ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_key_constraint_name_value(ast, 0, i),
+            mylite_ast_create_table_key_constraint_name_value_length(ast, 0, i),
+            keys[i].constraint_name_value) ||
         !span_matches(sql, mylite_ast_create_table_key_name_start(ast, 0, i),
                       mylite_ast_create_table_key_name_end(ast, 0, i),
                       keys[i].name) ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_key_name_value(ast, 0, i),
+            mylite_ast_create_table_key_name_value_length(ast, 0, i),
+            keys[i].name_value) ||
         (keys[i].index_type != NULL &&
          !span_matches(sql,
                        mylite_ast_create_table_key_index_type_start(ast, 0, i),
@@ -2014,12 +2062,22 @@ static int expect_create_table_keys(const char *sql,
                       mylite_ast_create_table_key_referenced_table_schema_end(
                           ast, 0, i),
                       keys[i].referenced_schema) ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_key_referenced_table_schema_value(ast, 0, i),
+            mylite_ast_create_table_key_referenced_table_schema_value_length(
+                ast, 0, i),
+            keys[i].referenced_schema_value) ||
         !span_matches(sql,
                       mylite_ast_create_table_key_referenced_table_name_start(
                           ast, 0, i),
                       mylite_ast_create_table_key_referenced_table_name_end(
                           ast, 0, i),
                       keys[i].referenced_name) ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_key_referenced_table_name_value(ast, 0, i),
+            mylite_ast_create_table_key_referenced_table_name_value_length(
+                ast, 0, i),
+            keys[i].referenced_name_value) ||
         (keys[i].foreign_match !=
              MYLITE_CREATE_TABLE_FOREIGN_MATCH_UNSPECIFIED &&
          mylite_ast_create_table_key_foreign_match_kind(ast, 0, i) !=
@@ -2072,8 +2130,9 @@ static int expect_create_table_keys(const char *sql,
                        keys[i].check_enforcement_span))) {
       fprintf(stderr,
               "CREATE TABLE key[%zu] failed: %s\nkind=%s span=%zu..%zu "
-              "constraint=%zu..%zu name=%zu..%zu index_type=%zu..%zu "
-              "ref_table=%zu..%zu ref_schema=%zu..%zu ref_name=%zu..%zu "
+              "constraint=%zu..%zu:%zu name=%zu..%zu:%zu "
+              "index_type=%zu..%zu ref_table=%zu..%zu "
+              "ref_schema=%zu..%zu:%zu ref_name=%zu..%zu:%zu "
               "match=%s:%zu..%zu on_delete=%s:%zu..%zu "
               "on_update=%s:%zu..%zu check_expr=%zu..%zu "
               "check_enforcement=%s:%zu..%zu\n",
@@ -2084,8 +2143,11 @@ static int expect_create_table_keys(const char *sql,
               mylite_ast_create_table_key_end(ast, 0, i),
               mylite_ast_create_table_key_constraint_name_start(ast, 0, i),
               mylite_ast_create_table_key_constraint_name_end(ast, 0, i),
+              mylite_ast_create_table_key_constraint_name_value_length(ast, 0,
+                                                                       i),
               mylite_ast_create_table_key_name_start(ast, 0, i),
               mylite_ast_create_table_key_name_end(ast, 0, i),
+              mylite_ast_create_table_key_name_value_length(ast, 0, i),
               mylite_ast_create_table_key_index_type_start(ast, 0, i),
               mylite_ast_create_table_key_index_type_end(ast, 0, i),
               mylite_ast_create_table_key_referenced_table_start(ast, 0, i),
@@ -2094,8 +2156,12 @@ static int expect_create_table_keys(const char *sql,
                                                                        i),
               mylite_ast_create_table_key_referenced_table_schema_end(ast, 0,
                                                                      i),
+              mylite_ast_create_table_key_referenced_table_schema_value_length(
+                  ast, 0, i),
               mylite_ast_create_table_key_referenced_table_name_start(ast, 0, i),
               mylite_ast_create_table_key_referenced_table_name_end(ast, 0, i),
+              mylite_ast_create_table_key_referenced_table_name_value_length(
+                  ast, 0, i),
               mylite_create_table_foreign_match_kind_name(
                   mylite_ast_create_table_key_foreign_match_kind(ast, 0, i)),
               mylite_ast_create_table_key_foreign_match_start(ast, 0, i),
@@ -2171,6 +2237,17 @@ static int expect_create_table_key_parts(
                          ast, 0, key_index, i)
                    : mylite_ast_create_table_key_column_name_end(
                          ast, 0, key_index, i);
+    const char *name_value =
+        referenced ? mylite_ast_create_table_key_referenced_column_name_value(
+                         ast, 0, key_index, i)
+                   : mylite_ast_create_table_key_column_name_value(
+                         ast, 0, key_index, i);
+    size_t name_value_length =
+        referenced
+            ? mylite_ast_create_table_key_referenced_column_name_value_length(
+                  ast, 0, key_index, i)
+            : mylite_ast_create_table_key_column_name_value_length(
+                  ast, 0, key_index, i);
     MyliteCreateTableKeyPartKind kind =
         referenced ? mylite_ast_create_table_key_referenced_column_kind(
                          ast, 0, key_index, i)
@@ -2201,6 +2278,8 @@ static int expect_create_table_key_parts(
                          ast, 0, key_index, i);
     if (!span_matches(sql, start, end, parts[i].definition) ||
         !span_matches(sql, name_start, name_end, parts[i].name) ||
+        !value_matches_when_expected(name_value, name_value_length,
+                                     parts[i].name_value) ||
         (parts[i].kind != MYLITE_CREATE_TABLE_KEY_PART_UNKNOWN &&
          kind != parts[i].kind) ||
         (parts[i].expression != NULL &&
@@ -2226,9 +2305,10 @@ static int expect_create_table_key_parts(
          !span_matches(sql, order_start, order_end, parts[i].order_span))) {
       fprintf(stderr,
               "CREATE TABLE key[%zu] %s[%zu] failed: %s\nspan=%zu..%zu "
-              "name=%zu..%zu kind=%s expr=%zu..%zu order=%s:%zu..%zu\n",
+              "name=%zu..%zu:%zu kind=%s expr=%zu..%zu "
+              "order=%s:%zu..%zu\n",
               key_index, referenced ? "ref_column" : "column", i, sql, start,
-              end, name_start, name_end,
+              end, name_start, name_end, name_value_length,
               mylite_create_table_key_part_kind_name(kind), expression_start,
               expression_end, mylite_create_table_key_part_order_name(order),
               order_start, order_end);

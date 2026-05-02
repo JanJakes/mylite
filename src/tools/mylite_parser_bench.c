@@ -83,7 +83,13 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t column_checks = 0;
   size_t column_references = 0;
   size_t keys = 0;
+  size_t key_constraint_name_values = 0;
+  size_t key_name_values = 0;
+  size_t key_referenced_table_schema_values = 0;
+  size_t key_referenced_table_name_values = 0;
   size_t key_columns = 0;
+  size_t key_column_name_values = 0;
+  size_t key_referenced_column_name_values = 0;
   size_t key_options = 0;
   size_t options = 0;
   double start = monotonic_seconds();
@@ -207,9 +213,42 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
               }
             }
             for (size_t j = 0; j < mylite_ast_create_table_key_count(ast, i); j++) {
+              if (mylite_ast_create_table_key_constraint_name_value(ast, i, j) !=
+                  NULL) {
+                key_constraint_name_values++;
+              }
+              if (mylite_ast_create_table_key_name_value(ast, i, j) != NULL) {
+                key_name_values++;
+              }
+              if (mylite_ast_create_table_key_referenced_table_schema_value(
+                      ast, i, j) != NULL) {
+                key_referenced_table_schema_values++;
+              }
+              if (mylite_ast_create_table_key_referenced_table_name_value(ast, i,
+                                                                          j) !=
+                  NULL) {
+                key_referenced_table_name_values++;
+              }
               key_columns += mylite_ast_create_table_key_column_count(ast, i, j);
+              for (size_t k = 0;
+                   k < mylite_ast_create_table_key_column_count(ast, i, j);
+                   k++) {
+                if (mylite_ast_create_table_key_column_name_value(ast, i, j, k) !=
+                    NULL) {
+                  key_column_name_values++;
+                }
+              }
               key_columns +=
                   mylite_ast_create_table_key_referenced_column_count(ast, i, j);
+              for (size_t k = 0;
+                   k <
+                   mylite_ast_create_table_key_referenced_column_count(ast, i, j);
+                   k++) {
+                if (mylite_ast_create_table_key_referenced_column_name_value(
+                        ast, i, j, k) != NULL) {
+                  key_referenced_column_name_values++;
+                }
+              }
               key_options += mylite_ast_create_table_key_option_count(ast, i, j);
             }
           }
@@ -240,13 +279,24 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
     printf(" avg_nodes=%.1f avg_ast_bytes=%.1f avg_statements=%.2f "
            "avg_targets=%.2f avg_target_schema_values=%.2f "
            "avg_target_name_values=%.2f avg_columns=%.2f avg_keys=%.2f "
-           "avg_key_columns=%.2f avg_key_options=%.2f avg_options=%.2f",
+           "avg_key_constraint_name_values=%.2f avg_key_name_values=%.2f "
+           "avg_key_referenced_table_schema_values=%.2f "
+           "avg_key_referenced_table_name_values=%.2f "
+           "avg_key_columns=%.2f avg_key_column_name_values=%.2f "
+           "avg_key_referenced_column_name_values=%.2f "
+           "avg_key_options=%.2f avg_options=%.2f",
            (double)ast_nodes / (double)parsed, (double)ast_bytes / (double)parsed,
            (double)statements / (double)parsed, (double)targets / (double)parsed,
            (double)target_schema_values / (double)parsed,
            (double)target_name_values / (double)parsed,
            (double)columns / (double)parsed, (double)keys / (double)parsed,
+           (double)key_constraint_name_values / (double)parsed,
+           (double)key_name_values / (double)parsed,
+           (double)key_referenced_table_schema_values / (double)parsed,
+           (double)key_referenced_table_name_values / (double)parsed,
            (double)key_columns / (double)parsed,
+           (double)key_column_name_values / (double)parsed,
+           (double)key_referenced_column_name_values / (double)parsed,
            (double)key_options / (double)parsed, (double)options / (double)parsed);
     printf(" avg_column_name_values=%.2f "
            "avg_column_defaults=%.2f avg_column_on_updates=%.2f "

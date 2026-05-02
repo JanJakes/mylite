@@ -366,6 +366,54 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_table_key_check_enforcement_start(ast, i, j),
              mylite_ast_create_table_key_check_enforcement_end(ast, i, j),
              key_option_count);
+      const char *constraint_name_value =
+          mylite_ast_create_table_key_constraint_name_value(ast, i, j);
+      size_t constraint_name_value_length =
+          mylite_ast_create_table_key_constraint_name_value_length(ast, i, j);
+      const char *key_name_value =
+          mylite_ast_create_table_key_name_value(ast, i, j);
+      size_t key_name_value_length =
+          mylite_ast_create_table_key_name_value_length(ast, i, j);
+      printf("    key[%zu].constraint_name_value len=%zu value=", j,
+             constraint_name_value_length);
+      if (constraint_name_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(constraint_name_value,
+                            constraint_name_value_length);
+      }
+      printf(" name_value len=%zu value=", key_name_value_length);
+      if (key_name_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(key_name_value, key_name_value_length);
+      }
+      fputc('\n', stdout);
+      const char *referenced_schema_value =
+          mylite_ast_create_table_key_referenced_table_schema_value(ast, i, j);
+      size_t referenced_schema_value_length =
+          mylite_ast_create_table_key_referenced_table_schema_value_length(ast, i,
+                                                                           j);
+      const char *referenced_name_value =
+          mylite_ast_create_table_key_referenced_table_name_value(ast, i, j);
+      size_t referenced_name_value_length =
+          mylite_ast_create_table_key_referenced_table_name_value_length(ast, i,
+                                                                         j);
+      printf("    key[%zu].referenced_table_schema_value len=%zu value=", j,
+             referenced_schema_value_length);
+      if (referenced_schema_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(referenced_schema_value,
+                            referenced_schema_value_length);
+      }
+      printf(" name_value len=%zu value=", referenced_name_value_length);
+      if (referenced_name_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(referenced_name_value, referenced_name_value_length);
+      }
+      fputc('\n', stdout);
       for (size_t k = 0; k < column_count_for_key; k++) {
         printf("    key_column[%zu] kind=%s span=%zu..%zu name=%zu..%zu "
                "expr=%zu..%zu prefix=%zu..%zu prefix_value=%zu..%zu "
@@ -389,6 +437,18 @@ static void dump_statements(const MyliteAst *ast) {
                    mylite_ast_create_table_key_column_order(ast, i, j, k)),
                mylite_ast_create_table_key_column_order_start(ast, i, j, k),
                mylite_ast_create_table_key_column_order_end(ast, i, j, k));
+        const char *name_value =
+            mylite_ast_create_table_key_column_name_value(ast, i, j, k);
+        size_t name_value_length =
+            mylite_ast_create_table_key_column_name_value_length(ast, i, j, k);
+        printf("      key_column[%zu].name_value len=%zu value=", k,
+               name_value_length);
+        if (name_value == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(name_value, name_value_length);
+        }
+        fputc('\n', stdout);
       }
       for (size_t k = 0; k < referenced_column_count; k++) {
         printf("    ref_column[%zu] kind=%s span=%zu..%zu name=%zu..%zu "
@@ -410,6 +470,20 @@ static void dump_statements(const MyliteAst *ast) {
                mylite_create_table_key_part_order_name(
                    mylite_ast_create_table_key_referenced_column_order(ast, i, j,
                                                                        k)));
+        const char *name_value =
+            mylite_ast_create_table_key_referenced_column_name_value(ast, i, j,
+                                                                     k);
+        size_t name_value_length =
+            mylite_ast_create_table_key_referenced_column_name_value_length(
+                ast, i, j, k);
+        printf("      ref_column[%zu].name_value len=%zu value=", k,
+               name_value_length);
+        if (name_value == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(name_value, name_value_length);
+        }
+        fputc('\n', stdout);
       }
       for (size_t k = 0; k < key_option_count; k++) {
         printf("    key_option[%zu] kind=%s span=%zu..%zu name=%zu..%zu "

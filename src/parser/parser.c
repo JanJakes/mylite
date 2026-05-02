@@ -141,6 +141,8 @@ typedef struct MyliteAstCreateTableKeyPart {
   size_t end;
   size_t name_start;
   size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
   size_t expression_start;
   size_t expression_end;
   size_t prefix_start;
@@ -167,8 +169,12 @@ typedef struct MyliteAstCreateTableKey {
   size_t end;
   size_t constraint_name_start;
   size_t constraint_name_end;
+  const char *constraint_name_value;
+  size_t constraint_name_value_length;
   size_t name_start;
   size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
   size_t index_type_start;
   size_t index_type_end;
   MyliteAstCreateTableKeyPart *columns;
@@ -179,6 +185,10 @@ typedef struct MyliteAstCreateTableKey {
   size_t referenced_table_schema_end;
   size_t referenced_table_name_start;
   size_t referenced_table_name_end;
+  const char *referenced_table_schema_value;
+  size_t referenced_table_schema_value_length;
+  const char *referenced_table_name_value;
+  size_t referenced_table_name_value_length;
   MyliteAstCreateTableKeyPart *referenced_columns;
   size_t referenced_column_count;
   MyliteCreateTableForeignMatchKind foreign_match_kind;
@@ -440,11 +450,15 @@ static MyliteCreateTableKeyKind mylite_ast_classify_create_table_key(
     const MyliteAstNode *constraint_elem);
 static void mylite_ast_set_create_table_key_names(MyliteAstCreateTableKey *key,
                                                   const MyliteAstNode *constraint);
+static int mylite_ast_set_create_table_key_name_values(
+    MyliteAst *ast, MyliteAstCreateTableKey *key);
 static void mylite_ast_set_create_table_key_index_type(
     MyliteAstCreateTableKey *key, const MyliteAstNode *constraint_elem);
 static int mylite_ast_set_create_table_key_reference(
     MyliteAst *ast, MyliteAstCreateTableKey *key,
     const MyliteAstNode *constraint_elem);
+static int mylite_ast_set_create_table_key_referenced_table_values(
+    MyliteAst *ast, MyliteAstCreateTableKey *key);
 static void mylite_ast_set_create_table_key_check(
     MyliteAstCreateTableKey *key, const MyliteAstNode *constraint_elem);
 static MyliteCreateTableForeignMatchKind mylite_ast_classify_foreign_match(
@@ -465,6 +479,8 @@ static void mylite_ast_fill_index_part_specs(MyliteAstCreateTableKeyPart *parts,
                                              size_t count,
                                              const MyliteAstNode *node,
                                              size_t *index);
+static int mylite_ast_set_create_table_key_part_name_values(
+    MyliteAst *ast, MyliteAstCreateTableKeyPart *parts, size_t count);
 static void mylite_ast_fill_key_part(MyliteAstCreateTableKeyPart *part,
                                      const MyliteAstNode *node);
 static size_t mylite_ast_count_index_options(const MyliteAstNode *node);
@@ -1986,6 +2002,20 @@ size_t mylite_ast_create_table_key_constraint_name_end(const MyliteAst *ast,
   return key == NULL ? 0 : key->constraint_name_end;
 }
 
+const char *mylite_ast_create_table_key_constraint_name_value(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? NULL : key->constraint_name_value;
+}
+
+size_t mylite_ast_create_table_key_constraint_name_value_length(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->constraint_name_value_length;
+}
+
 size_t mylite_ast_create_table_key_name_start(const MyliteAst *ast,
                                               size_t statement_index,
                                               size_t key_index) {
@@ -2000,6 +2030,22 @@ size_t mylite_ast_create_table_key_name_end(const MyliteAst *ast,
   const MyliteAstCreateTableKey *key =
       mylite_ast_create_table_key_at(ast, statement_index, key_index);
   return key == NULL ? 0 : key->name_end;
+}
+
+const char *mylite_ast_create_table_key_name_value(const MyliteAst *ast,
+                                                   size_t statement_index,
+                                                   size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? NULL : key->name_value;
+}
+
+size_t mylite_ast_create_table_key_name_value_length(const MyliteAst *ast,
+                                                     size_t statement_index,
+                                                     size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->name_value_length;
 }
 
 size_t mylite_ast_create_table_key_index_type_start(const MyliteAst *ast,
@@ -2073,6 +2119,24 @@ size_t mylite_ast_create_table_key_column_name_end(const MyliteAst *ast,
       mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
                                           column_index, 0);
   return part == NULL ? 0 : part->name_end;
+}
+
+const char *mylite_ast_create_table_key_column_name_value(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? NULL : part->name_value;
+}
+
+size_t mylite_ast_create_table_key_column_name_value_length(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 0);
+  return part == NULL ? 0 : part->name_value_length;
 }
 
 size_t mylite_ast_create_table_key_column_expression_start(
@@ -2187,6 +2251,20 @@ size_t mylite_ast_create_table_key_referenced_table_schema_end(
   return key == NULL ? 0 : key->referenced_table_schema_end;
 }
 
+const char *mylite_ast_create_table_key_referenced_table_schema_value(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? NULL : key->referenced_table_schema_value;
+}
+
+size_t mylite_ast_create_table_key_referenced_table_schema_value_length(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->referenced_table_schema_value_length;
+}
+
 size_t mylite_ast_create_table_key_referenced_table_name_start(
     const MyliteAst *ast, size_t statement_index, size_t key_index) {
   const MyliteAstCreateTableKey *key =
@@ -2199,6 +2277,20 @@ size_t mylite_ast_create_table_key_referenced_table_name_end(
   const MyliteAstCreateTableKey *key =
       mylite_ast_create_table_key_at(ast, statement_index, key_index);
   return key == NULL ? 0 : key->referenced_table_name_end;
+}
+
+const char *mylite_ast_create_table_key_referenced_table_name_value(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? NULL : key->referenced_table_name_value;
+}
+
+size_t mylite_ast_create_table_key_referenced_table_name_value_length(
+    const MyliteAst *ast, size_t statement_index, size_t key_index) {
+  const MyliteAstCreateTableKey *key =
+      mylite_ast_create_table_key_at(ast, statement_index, key_index);
+  return key == NULL ? 0 : key->referenced_table_name_value_length;
 }
 
 size_t mylite_ast_create_table_key_referenced_column_count(
@@ -2251,6 +2343,24 @@ size_t mylite_ast_create_table_key_referenced_column_name_end(
       mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
                                           column_index, 1);
   return part == NULL ? 0 : part->name_end;
+}
+
+const char *mylite_ast_create_table_key_referenced_column_name_value(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 1);
+  return part == NULL ? NULL : part->name_value;
+}
+
+size_t mylite_ast_create_table_key_referenced_column_name_value_length(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index) {
+  const MyliteAstCreateTableKeyPart *part =
+      mylite_ast_create_table_key_part_at(ast, statement_index, key_index,
+                                          column_index, 1);
+  return part == NULL ? 0 : part->name_value_length;
 }
 
 size_t mylite_ast_create_table_key_referenced_column_expression_start(
@@ -4762,6 +4872,9 @@ static int mylite_ast_fill_create_table_key(MyliteAst *ast,
   key->start = mylite_ast_node_start(constraint);
   key->end = mylite_ast_node_end(constraint);
   mylite_ast_set_create_table_key_names(key, constraint);
+  if (!mylite_ast_set_create_table_key_name_values(ast, key)) {
+    return 0;
+  }
   mylite_ast_set_create_table_key_index_type(key, elem);
 
   if (key->kind != MYLITE_CREATE_TABLE_KEY_CHECK) {
@@ -4834,6 +4947,22 @@ static void mylite_ast_set_create_table_key_names(MyliteAstCreateTableKey *key,
   }
 }
 
+static int mylite_ast_set_create_table_key_name_values(
+    MyliteAst *ast, MyliteAstCreateTableKey *key) {
+  if (key == NULL) {
+    return 1;
+  }
+  if (!mylite_ast_decode_identifier(ast, key->constraint_name_start,
+                                    key->constraint_name_end,
+                                    &key->constraint_name_value,
+                                    &key->constraint_name_value_length)) {
+    return 0;
+  }
+  return mylite_ast_decode_identifier(ast, key->name_start, key->name_end,
+                                      &key->name_value,
+                                      &key->name_value_length);
+}
+
 static void mylite_ast_set_create_table_key_index_type(
     MyliteAstCreateTableKey *key, const MyliteAstNode *constraint_elem) {
   const MyliteAstNode *index_type =
@@ -4864,6 +4993,9 @@ static int mylite_ast_set_create_table_key_reference(
         table_name, &key->referenced_table_schema_start,
         &key->referenced_table_schema_end, &key->referenced_table_name_start,
         &key->referenced_table_name_end);
+    if (!mylite_ast_set_create_table_key_referenced_table_values(ast, key)) {
+      return 0;
+    }
   }
 
   size_t remaining = 1;
@@ -4897,6 +5029,24 @@ static int mylite_ast_set_create_table_key_reference(
     key->foreign_on_update_end = mylite_ast_node_end(on_update);
   }
   return 1;
+}
+
+static int mylite_ast_set_create_table_key_referenced_table_values(
+    MyliteAst *ast, MyliteAstCreateTableKey *key) {
+  if (key == NULL) {
+    return 1;
+  }
+  if (!mylite_ast_decode_identifier(
+          ast, key->referenced_table_schema_start,
+          key->referenced_table_schema_end,
+          &key->referenced_table_schema_value,
+          &key->referenced_table_schema_value_length)) {
+    return 0;
+  }
+  return mylite_ast_decode_identifier(ast, key->referenced_table_name_start,
+                                      key->referenced_table_name_end,
+                                      &key->referenced_table_name_value,
+                                      &key->referenced_table_name_value_length);
 }
 
 static void mylite_ast_set_create_table_key_check(
@@ -4985,6 +5135,10 @@ static int mylite_ast_set_create_table_key_parts(MyliteAst *ast,
 
   size_t index = 0;
   mylite_ast_fill_index_part_specs(parts, count, list, &index);
+  if (index != count ||
+      !mylite_ast_set_create_table_key_part_name_values(ast, parts, count)) {
+    return 0;
+  }
   if (referenced) {
     key->referenced_columns = parts;
     key->referenced_column_count = count;
@@ -4992,7 +5146,7 @@ static int mylite_ast_set_create_table_key_parts(MyliteAst *ast,
     key->columns = parts;
     key->column_count = count;
   }
-  return index == count;
+  return 1;
 }
 
 static int mylite_ast_set_create_table_key_options(MyliteAst *ast,
@@ -5052,6 +5206,21 @@ static void mylite_ast_fill_index_part_specs(MyliteAstCreateTableKeyPart *parts,
   for (size_t i = 0; i < node->child_count; i++) {
     mylite_ast_fill_index_part_specs(parts, count, node->children[i], index);
   }
+}
+
+static int mylite_ast_set_create_table_key_part_name_values(
+    MyliteAst *ast, MyliteAstCreateTableKeyPart *parts, size_t count) {
+  if (parts == NULL) {
+    return 1;
+  }
+  for (size_t i = 0; i < count; i++) {
+    if (!mylite_ast_decode_identifier(ast, parts[i].name_start,
+                                      parts[i].name_end, &parts[i].name_value,
+                                      &parts[i].name_value_length)) {
+      return 0;
+    }
+  }
+  return 1;
 }
 
 static void mylite_ast_fill_key_part(MyliteAstCreateTableKeyPart *part,

@@ -579,12 +579,22 @@ size_t mylite_ast_create_table_key_constraint_name_start(const MyliteAst *ast,
 size_t mylite_ast_create_table_key_constraint_name_end(const MyliteAst *ast,
                                                        size_t statement_index,
                                                        size_t key_index);
+const char *mylite_ast_create_table_key_constraint_name_value(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_constraint_name_value_length(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
 size_t mylite_ast_create_table_key_name_start(const MyliteAst *ast,
                                               size_t statement_index,
                                               size_t key_index);
 size_t mylite_ast_create_table_key_name_end(const MyliteAst *ast,
                                             size_t statement_index,
                                             size_t key_index);
+const char *mylite_ast_create_table_key_name_value(const MyliteAst *ast,
+                                                   size_t statement_index,
+                                                   size_t key_index);
+size_t mylite_ast_create_table_key_name_value_length(const MyliteAst *ast,
+                                                     size_t statement_index,
+                                                     size_t key_index);
 size_t mylite_ast_create_table_key_index_type_start(const MyliteAst *ast,
                                                     size_t statement_index,
                                                     size_t key_index);
@@ -613,6 +623,12 @@ size_t mylite_ast_create_table_key_column_name_end(const MyliteAst *ast,
                                                    size_t statement_index,
                                                    size_t key_index,
                                                    size_t column_index);
+const char *mylite_ast_create_table_key_column_name_value(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_column_name_value_length(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
 size_t mylite_ast_create_table_key_column_expression_start(
     const MyliteAst *ast, size_t statement_index, size_t key_index,
     size_t column_index);
@@ -650,9 +666,17 @@ size_t mylite_ast_create_table_key_referenced_table_schema_start(
     const MyliteAst *ast, size_t statement_index, size_t key_index);
 size_t mylite_ast_create_table_key_referenced_table_schema_end(
     const MyliteAst *ast, size_t statement_index, size_t key_index);
+const char *mylite_ast_create_table_key_referenced_table_schema_value(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_referenced_table_schema_value_length(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
 size_t mylite_ast_create_table_key_referenced_table_name_start(
     const MyliteAst *ast, size_t statement_index, size_t key_index);
 size_t mylite_ast_create_table_key_referenced_table_name_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+const char *mylite_ast_create_table_key_referenced_table_name_value(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_referenced_table_name_value_length(
     const MyliteAst *ast, size_t statement_index, size_t key_index);
 size_t mylite_ast_create_table_key_referenced_column_count(
     const MyliteAst *ast, size_t statement_index, size_t key_index);
@@ -669,6 +693,12 @@ size_t mylite_ast_create_table_key_referenced_column_name_start(
     const MyliteAst *ast, size_t statement_index, size_t key_index,
     size_t column_index);
 size_t mylite_ast_create_table_key_referenced_column_name_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+const char *mylite_ast_create_table_key_referenced_column_name_value(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_referenced_column_name_value_length(
     const MyliteAst *ast, size_t statement_index, size_t key_index,
     size_t column_index);
 size_t mylite_ast_create_table_key_referenced_column_expression_start(

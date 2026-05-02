@@ -37,6 +37,7 @@ expression nodes.
   for primary keys, secondary indexes, unique indexes, fulltext indexes, spatial
   indexes, foreign keys, and check constraints.
 - Key descriptors include key-part kind, expression, prefix length, ordering,
+  decoded constraint/key/key-part/referenced-table/referenced-column names,
   index type/options, foreign-key match/actions, check expression, and check
   enforcement spans.
 - `CREATE TABLE` statements expose typed table-option descriptors for common
@@ -77,7 +78,7 @@ expression nodes.
 - typed `CREATE TABLE` key descriptors with kind, full constraint/index span,
   constraint name, key name, local key parts, referenced table, referenced
   schema/name, referenced key parts, index options, foreign actions, and check
-  expression details
+  expression details, plus decoded values for identifier-bearing fields
 - typed `CREATE TABLE` table-option descriptors with kind, full option span,
   option-name span, and value span
 
@@ -146,11 +147,15 @@ keys, fulltext keys, spatial keys, foreign keys, and check constraints. It
 preserves both constraint names and key names because MySQL syntax can carry
 both independently, and it records foreign-key referenced table and referenced
 columns. Key parts now distinguish column and functional-expression parts and
-carry prefix length and `ASC`/`DESC` spans. Key options expose index type,
+carry prefix length and `ASC`/`DESC` spans. Constraint names, key names, column
+key-part names, referenced table schema/name parts, and referenced column names
+are exposed as length-aware decoded identifier values using the same zero-copy
+unquoted / arena-backed quoted policy as table targets and columns. Key options
+expose index type,
 `KEY_BLOCK_SIZE`, comments, parser, visibility, secondary-engine attributes,
 and `WHERE` spans. Foreign keys expose `MATCH`, `ON DELETE`, and `ON UPDATE`;
 check constraints expose expression and enforcement spans. The view does not
-yet normalize these details into final metadata values or generate missing
+yet normalize these details into final metadata records or generate missing
 constraint names.
 
 The `CREATE TABLE` table-option view covers the option list after the table
@@ -178,8 +183,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.077706 qps=493980 mbps=37.57 avg_us=2.024
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=22.051897 qps=315352 mbps=23.98 avg_us=3.171 avg_nodes=74.5 avg_ast_bytes=10144.6 avg_statements=1.00 avg_targets=0.59 avg_target_schema_values=0.02 avg_target_name_values=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04 avg_column_name_values=0.29 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.048643 qps=495002 mbps=37.65 avg_us=2.020
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=22.139337 qps=314106 mbps=23.89 avg_us=3.184 avg_nodes=74.5 avg_ast_bytes=10149.8 avg_statements=1.00 avg_targets=0.59 avg_target_schema_values=0.02 avg_target_name_values=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_constraint_name_values=0.00 avg_key_name_values=0.02 avg_key_referenced_table_schema_values=0.00 avg_key_referenced_table_name_values=0.00 avg_key_columns=0.09 avg_key_column_name_values=0.09 avg_key_referenced_column_name_values=0.00 avg_key_options=0.00 avg_options=0.04 avg_column_name_values=0.29 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -192,7 +197,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 111K on disk, 73,852 bytes text/data/other
+parser support object: 114K on disk, 75,420 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.2M on disk
 mylite-parse: 1.0M on disk
@@ -205,8 +210,8 @@ mylite-parse: 1.0M on disk
 - Build semantic `CREATE TABLE` AST nodes on top of the current column, key, and
   table-option source spans and CST anchors, starting with data types and
   default/generated/check expression trees.
-- Normalize constraint, index, and table option descriptor values into MySQL
-  metadata-ready structures.
+- Normalize key/index identifiers and table option descriptor values into MySQL
+  metadata-ready structures, including generated names for unnamed constraints.
 - Add typed AST nodes for the next analyzer statement families underneath the
   statement classification and indexed target descriptor layer.
 - Decide whether syntax-only builds should use a separate no-action generated

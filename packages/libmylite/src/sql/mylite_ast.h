@@ -399,6 +399,7 @@ struct mylite_sql_ast_node {
     bool drop_table_temporary;
     bool drop_table_restrict;
     bool drop_table_cascade;
+    bool insert_ignore;
     bool select_duplicate_mode_explicit;
     bool select_duplicate_mode_conflict;
     bool transaction_consistent_snapshot;
@@ -460,6 +461,7 @@ void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
 void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_insert_ignore(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_transaction_access_mode(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_access_mode access_mode);
 void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_ast_node *node);

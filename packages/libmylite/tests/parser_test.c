@@ -2237,8 +2237,33 @@ static int test_insert_values_syntax(void)
     failures += parse_sql("INSERT INTO t VALUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("INSERT IGNORE INTO t VALUES (1);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    if (statement == NULL || !statement->insert_ignore) {
+        fprintf(stderr, "Expected INSERT IGNORE VALUES flag\n");
+        ++failures;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT IGNORE t VALUE (DEFAULT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    if (statement == NULL || !statement->insert_ignore) {
+        fprintf(stderr, "Expected INSERT IGNORE VALUE flag\n");
+        ++failures;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
-        parse_sql("INSERT IGNORE INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        parse_sql("INSERT IGNORE INTO t VALUES ROW(1), ROW(2);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    if (statement == NULL || !statement->insert_ignore) {
+        fprintf(stderr, "Expected INSERT IGNORE ROW flag\n");
+        ++failures;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT INTO IGNORE t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -2323,7 +2348,15 @@ static int test_insert_set_syntax(void)
     failures += parse_sql("INSERT INTO t SET a = 1,", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("INSERT IGNORE INTO t SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("INSERT IGNORE INTO t SET a = 1", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    if (statement == NULL || !statement->insert_ignore) {
+        fprintf(stderr, "Expected INSERT IGNORE SET flag\n");
+        ++failures;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO IGNORE t SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

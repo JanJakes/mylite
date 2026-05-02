@@ -10,6 +10,20 @@ forms MyLite already supports:
 - `INSERT [IGNORE] [INTO] table_name [(column_list)] VALUES ROW(...) ...`
 - `INSERT [IGNORE] [INTO] table_name SET assignment_list`
 
+Current implementation status:
+
+- The first implementation slice supports `IGNORE` on the existing
+  `INSERT ... VALUES` and `INSERT ... SET` parser/AST/runtime surfaces.
+- Implemented demotions are primary/unique duplicate-key row skipping and
+  required-column implicit defaults for explicit `NULL`, explicit `DEFAULT`,
+  and omitted required no-default non-auto columns.
+- The first slice records warnings through `mylite_warning_count()`,
+  `mylite_warning_code()`, and `mylite_warning_message()` for MySQL codes
+  1062, 1048, and 1364.
+- Full data conversion, range clipping, string truncation, and invalid temporal
+  value demotion remain deferred and must not be treated as supported by this
+  slice.
+
 In scope:
 
 - parser and AST representation for the `IGNORE` modifier on the existing
@@ -104,9 +118,11 @@ The scoped ignorable conditions are:
 - explicit `DEFAULT` for required columns with no explicit default
 - omitted required columns with no explicit default
 - type conversion errors that MySQL can coerce to an implicit or clipped value
-- numeric range overflow or underflow
-- string truncation
-- temporal invalid or zero values affected by strict SQL modes
+  in a later conversion slice
+- numeric range overflow or underflow in a later conversion slice
+- string truncation in a later conversion slice
+- temporal invalid or zero values affected by strict SQL modes in a later
+  conversion slice
 
 Unsupported expressions, unsupported generated default expressions, allocation
 failures, SQLite I/O failures, file corruption, and internal MyLite errors are
@@ -178,6 +194,10 @@ INSERT IGNORE INTO null_req(id, s) VALUES (NULL, NULL);
 
 MySQL inserted one row containing implicit defaults and recorded two 1048
 warnings.
+
+Repeated explicit `NULL` values for the same required column in a multi-row
+statement record one 1048 warning for that column, while all rows still receive
+the implicit stored default.
 
 For required columns omitted from the insert list:
 
@@ -480,13 +500,17 @@ conversion. `INSERT IGNORE` should not be marked supported until the conversion
 paths needed by this feature can emit MySQL-compatible warnings and store
 compatible values for the currently supported column types.
 
-Required first slice:
+Deferred conversion slices:
 
 - signed and unsigned integer clipping
 - string-to-integer conversion for invalid and partially numeric strings
 - string and binary truncation to declared length
 - date/time zero value insertion for invalid strict-mode temporal values where
   the temporal type is already supported by MyLite
+
+The first implementation slice only uses type metadata to construct implicit
+defaults for required-column `NULL`, `DEFAULT`, and omission demotions. It does
+not demote invalid input values, out-of-range values, or truncation.
 
 If the implementation lands before broad conversion support, the compatibility
 row must remain partial with explicit gaps, not fully supported.

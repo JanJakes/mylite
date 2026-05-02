@@ -67,8 +67,10 @@ enum {
     simple_create_amount_precision = 10,
     simple_create_column_count = 6,
     simple_create_statistics_count = 3,
+    mysql_warning_bad_null = 1048,
     mysql_warning_ambiguous_column = 1052,
     mysql_warning_unknown_column = 1054,
+    mysql_warning_duplicate_entry = 1062,
     mysql_warning_wrong_field_with_group = 1055,
     mysql_warning_nonunique_table = 1066,
     mysql_warning_invalid_group_function = 1111,
@@ -83,6 +85,7 @@ enum {
     mysql_warning_table_name_not_allowed = 1250,
     mysql_warning_truncated_wrong_value = 1292,
     mysql_warning_savepoint_does_not_exist = 1305,
+    mysql_warning_no_default = 1364,
     mysql_warning_division_by_zero = 1365,
     mysql_warning_field_in_order_not_select = 3065,
 };
@@ -157,6 +160,7 @@ static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
+static int test_insert_ignore_execution(void);
 static int test_select_table_core_execution(void);
 static int test_inner_join_execution(void);
 static int test_outer_join_execution(void);
@@ -272,6 +276,7 @@ int main(void)
     failures += test_drop_table_base_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
+    failures += test_insert_ignore_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
@@ -3751,6 +3756,262 @@ static int test_insert_set_execution(void)
     free(diag_physical);
     free(expr_fail_physical);
     free(duplicate_physical);
+    mylite_close(database);
+    remove_runtime_test_files();
+    return failures;
+}
+
+static int test_insert_ignore_execution(void)
+{
+    static const char *const pk_null_columns[] = {"id"};
+    static const char *const pk_null_values[] = {"0"};
+    enum {
+        duplicate_seed_id = 10,
+        duplicate_first_accepted_id = 12,
+        duplicate_second_accepted_id = 14,
+        duplicate_after_values_id = 15,
+        duplicate_after_set_id = 17,
+        same_statement_first_accepted_id = 18,
+        same_statement_second_accepted_id = 20,
+        same_statement_after_id = 21,
+        required_inserted_row_count = 8,
+    };
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    char *duplicate_physical = NULL;
+    char *required_physical = NULL;
+    int failures = 0;
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &database), MYLITE_OK, "open insert ignore file");
+    failures += execute_sql(database, "CREATE DATABASE mylite_ii31", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_ii31", MYLITE_DONE);
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ign_dup ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "v INT UNIQUE, nn INT NOT NULL, s VARCHAR(10) NOT NULL DEFAULT 'ok') "
+                            "AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    duplicate_physical = expected_physical_table_name("mylite_ii31", "ign_dup");
+    if (duplicate_physical == NULL) {
+        fprintf(stderr, "out of memory while building ign_dup physical table name\n");
+        failures = 1;
+    }
+
+    failures +=
+        execute_sql(database, "INSERT INTO ign_dup(v, nn, s) VALUES (1, 10, 'one')", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), duplicate_seed_id,
+                             "insert ignore duplicate seed id");
+    failures += prepare_sql(database,
+                            "INSERT IGNORE INTO ign_dup(v, nn, s) VALUES "
+                            "(1, 11, 'dup'), (2, 20, 'two'), "
+                            "(1, 12, 'dup'), (3, 30, 'tri')",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert ignore values duplicates");
+    failures += expect_int64(mylite_affected_rows(stmt), 2, "insert ignore values affected rows");
+    failures += expect_int(mylite_warning_count(database), 2,
+                           "insert ignore values duplicate warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_duplicate_entry,
+                           "insert ignore values first duplicate warning");
+    failures += expect_contains(mylite_warning_message(database, 0), "Duplicate entry '1'",
+                                "insert ignore values first duplicate message");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_duplicate_entry,
+                           "insert ignore values second duplicate warning");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), duplicate_first_accepted_id,
+                             "insert ignore values last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (duplicate_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, duplicate_physical, "COUNT(*)", "", 3,
+                                                 "insert ignore duplicate row count");
+        failures += expect_sqlite_physical_int64(path, duplicate_physical, "id", "WHERE v = 2",
+                                                 duplicate_first_accepted_id,
+                                                 "insert ignore first accepted generated id");
+        failures += expect_sqlite_physical_int64(path, duplicate_physical, "id", "WHERE v = 3",
+                                                 duplicate_second_accepted_id,
+                                                 "insert ignore second accepted generated id");
+    }
+
+    failures +=
+        execute_sql(database, "INSERT INTO ign_dup(v, nn, s) VALUES (4, 40, 'four')", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), duplicate_after_values_id,
+                             "insert ignore values consumed ignored ids");
+
+    failures += prepare_sql(database, "INSERT IGNORE INTO ign_dup SET v = 2, nn = 99, s = 'set'",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert ignore set duplicate");
+    failures += expect_int64(mylite_affected_rows(stmt), 0, "insert ignore set affected rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "insert ignore set duplicate warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_duplicate_entry,
+                           "insert ignore set duplicate warning");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), duplicate_after_values_id,
+                             "insert ignore set leaves last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        execute_sql(database, "INSERT INTO ign_dup(v, nn, s) VALUES (5, 50, 'five')", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), duplicate_after_set_id,
+                             "insert ignore set consumed ignored id");
+    failures += prepare_sql(database,
+                            "INSERT IGNORE INTO ign_dup(v, nn, s) VALUES "
+                            "(6, 60, 'six'), (6, 61, 'dup'), (7, 70, 'seven')",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE,
+                              "insert ignore duplicate against accepted row");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "insert ignore same statement affected rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "insert ignore same statement warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_duplicate_entry,
+                           "insert ignore same statement duplicate warning");
+    failures +=
+        expect_int64((int64_t)mylite_last_insert_id(database), same_statement_first_accepted_id,
+                     "insert ignore same statement last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (duplicate_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, duplicate_physical, "id", "WHERE v = 6",
+                                                 same_statement_first_accepted_id,
+                                                 "insert ignore same statement first id");
+        failures += expect_sqlite_physical_int64(path, duplicate_physical, "id", "WHERE v = 7",
+                                                 same_statement_second_accepted_id,
+                                                 "insert ignore same statement second id");
+    }
+    failures +=
+        execute_sql(database, "INSERT INTO ign_dup(v, nn, s) VALUES (8, 80, 'eight')", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), same_statement_after_id,
+                             "insert ignore same statement consumed ignored id");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ign_req ("
+                            "id INT NOT NULL, s VARCHAR(4) NOT NULL, "
+                            "d DATE NOT NULL, opt INT)",
+                            MYLITE_DONE);
+    required_physical = expected_physical_table_name("mylite_ii31", "ign_req");
+    if (required_physical == NULL) {
+        fprintf(stderr, "out of memory while building ign_req physical table name\n");
+        failures = 1;
+    }
+
+    failures += prepare_sql(database, "INSERT IGNORE INTO ign_req(opt) VALUES (10), (20)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert ignore omitted required");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "insert ignore omitted required affected rows");
+    failures += expect_int(mylite_warning_count(database), 3,
+                           "insert ignore omitted required warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_no_default,
+                           "insert ignore omitted id warning");
+    failures += expect_contains(mylite_warning_message(database, 0), "Field 'id'",
+                                "insert ignore omitted id message");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_no_default,
+                           "insert ignore omitted string warning");
+    failures += expect_int((int)mylite_warning_code(database, 2), mysql_warning_no_default,
+                           "insert ignore omitted date warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "INSERT IGNORE INTO ign_req(id, s, d) "
+                            "VALUES (DEFAULT, DEFAULT, DEFAULT)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert ignore default required");
+    failures += expect_int(mylite_warning_count(database), 3,
+                           "insert ignore default required warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_no_default,
+                           "insert ignore explicit default id warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "INSERT IGNORE INTO ign_req(id, s, d) VALUES (NULL, NULL, NULL)",
+                    MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert ignore null required");
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "insert ignore null required warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_bad_null,
+                           "insert ignore null id warning");
+    failures += expect_contains(mylite_warning_message(database, 0), "Column 'id'",
+                                "insert ignore null id message");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "INSERT IGNORE INTO ign_req(id, s, d, opt) "
+                            "VALUES (NULL, NULL, NULL, 40), (NULL, NULL, NULL, 50)",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "insert ignore repeated null required");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "insert ignore repeated null affected rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "insert ignore repeated null warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_bad_null,
+                           "insert ignore repeated null id warning");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_bad_null,
+                           "insert ignore repeated null string warning");
+    failures += expect_int((int)mylite_warning_code(database, 2), mysql_warning_bad_null,
+                           "insert ignore repeated null date warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "INSERT IGNORE INTO ign_req SET "
+                            "id = DEFAULT, s = DEFAULT, d = DEFAULT",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert ignore set default required");
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "insert ignore set default warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_no_default,
+                           "insert ignore set default warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "INSERT IGNORE INTO ign_req SET opt = 30", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert ignore set omitted required");
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "insert ignore set omitted warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE TABLE ign_pk_null (id INT NOT NULL PRIMARY KEY)",
+                            MYLITE_DONE);
+    failures += prepare_sql(database, "INSERT IGNORE INTO ign_pk_null(id) VALUES (NULL), (NULL)",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "insert ignore primary null duplicate");
+    failures += expect_int64(mylite_affected_rows(stmt), 1,
+                             "insert ignore primary null duplicate affected rows");
+    failures += expect_int(mylite_warning_count(database), 2,
+                           "insert ignore primary null duplicate warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_bad_null,
+                           "insert ignore primary null duplicate null warning");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_duplicate_entry,
+                           "insert ignore primary null duplicate duplicate warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM ign_pk_null", pk_null_columns, 1,
+                                   pk_null_values, 1, "insert ignore primary null stored row");
+
+    if (required_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, required_physical, "COUNT(*)", "",
+                                                 required_inserted_row_count,
+                                                 "insert ignore required row count");
+        failures += expect_sqlite_physical_int64(path, required_physical, "id", "WHERE opt = 10", 0,
+                                                 "insert ignore omitted numeric default");
+        failures += expect_sqlite_physical_text(path, required_physical, "s", "WHERE opt = 10", "",
+                                                "insert ignore omitted string default");
+        failures += expect_sqlite_physical_text(path, required_physical, "d", "WHERE opt = 10",
+                                                "0000-00-00", "insert ignore omitted date default");
+        failures += expect_sqlite_physical_text(path, required_physical, "d", "WHERE opt = 30",
+                                                "0000-00-00", "insert ignore set date default");
+    }
+
+    free(duplicate_physical);
+    free(required_physical);
     mylite_close(database);
     remove_runtime_test_files();
     return failures;

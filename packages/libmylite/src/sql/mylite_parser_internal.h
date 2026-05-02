@@ -96,6 +96,11 @@ struct mylite_sql_parser_drop_table_tokens {
     struct mylite_sql_token mode;
 };
 
+struct mylite_sql_parser_insert_tokens {
+    struct mylite_sql_token insert;
+    struct mylite_sql_token ignore;
+};
+
 struct mylite_sql_parser_completion_tokens {
     struct mylite_sql_token start;
     struct mylite_sql_token end;
@@ -249,11 +254,11 @@ mylite_sql_parser_append_table_name(struct mylite_sql_parser_state *state,
                                     struct mylite_sql_ast_node *list,
                                     struct mylite_sql_ast_node *table_name);
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_values_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token insert_token,
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_insert_tokens tokens,
     struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns,
     struct mylite_sql_ast_node *rows);
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token insert_token,
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_insert_tokens tokens,
     struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *assignments);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_insert_column_list(struct mylite_sql_parser_state *state,

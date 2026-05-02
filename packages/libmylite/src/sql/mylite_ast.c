@@ -340,6 +340,15 @@ void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node
     node->drop_table_cascade = true;
 }
 
+void mylite_sql_ast_node_set_insert_ignore(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->insert_ignore = true;
+}
+
 void mylite_sql_ast_node_set_transaction_access_mode(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_access_mode access_mode)
 {

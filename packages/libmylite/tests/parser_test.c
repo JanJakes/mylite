@@ -34,6 +34,7 @@ static int test_select_inner_join_syntax(void);
 static int test_select_outer_join_syntax(void);
 static int test_select_where_clause_syntax(void);
 static int test_select_order_limit_offset_syntax(void);
+static int test_select_distinct_syntax(void);
 static int test_aggregate_grouping_syntax(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
@@ -63,6 +64,10 @@ static int expect_join_type(const struct mylite_sql_ast_node *node,
 static int expect_join_condition_type(const struct mylite_sql_ast_node *node,
                                       enum mylite_sql_ast_join_condition_type expected,
                                       const char *context);
+static int expect_select_duplicate_mode(const struct mylite_sql_ast_node *node,
+                                        enum mylite_sql_ast_select_duplicate_mode expected,
+                                        bool explicit_mode, bool conflict, size_t modifier_count,
+                                        const char *context);
 static int expect_literal(const struct mylite_sql_ast_node *node,
                           enum mylite_sql_ast_literal_kind expected, const char *context);
 static int expect_operator(const struct mylite_sql_ast_node *node,
@@ -139,6 +144,7 @@ int main(void)
     failures += test_select_outer_join_syntax();
     failures += test_select_where_clause_syntax();
     failures += test_select_order_limit_offset_syntax();
+    failures += test_select_distinct_syntax();
     failures += test_aggregate_grouping_syntax();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
@@ -3857,6 +3863,67 @@ static int test_select_order_limit_offset_syntax(void)
     return failures;
 }
 
+static int test_select_distinct_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT 1;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_IMPLICIT_ALL,
+                                             false, false, 0U, "implicit duplicate mode");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ALL a FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_ALL, true,
+                                             false, 1U, "all duplicate mode");
+    failures +=
+        expect_node(child_at(select, 0U), MYLITE_SQL_AST_SELECT_LIST, "all select list child");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT DISTINCT a FROM t ORDER BY a LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT,
+                                             true, false, 1U, "distinct duplicate mode");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "distinct from child");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DISTINCTROW * FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT,
+                                             true, false, 1U, "distinctrow duplicate mode");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DISTINCT DISTINCTROW a FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT,
+                                             true, false, 2U, "repeated distinct duplicate mode");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ALL ALL a FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_ALL, true,
+                                             false, 2U, "repeated all duplicate mode");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ALL DISTINCT a FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_ALL, true,
+                                             true, 2U, "mixed duplicate mode");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DISTINCT ALL a FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT,
+                                             true, true, 2U, "reverse mixed duplicate mode");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_aggregate_grouping_syntax(void)
 {
     enum {
@@ -4331,6 +4398,32 @@ static int expect_join_condition_type(const struct mylite_sql_ast_node *node,
         failures = 1;
     }
 
+    return failures;
+}
+
+static int expect_select_duplicate_mode(const struct mylite_sql_ast_node *node,
+                                        enum mylite_sql_ast_select_duplicate_mode expected,
+                                        bool explicit_mode, bool conflict, size_t modifier_count,
+                                        const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_SELECT_STATEMENT, context);
+
+    if (node == NULL) {
+        return failures;
+    }
+    if (node->select_duplicate_mode != expected) {
+        fprintf(stderr, "%s: expected duplicate mode %s, got %s\n", context,
+                mylite_sql_ast_select_duplicate_mode_name(expected),
+                mylite_sql_ast_select_duplicate_mode_name(node->select_duplicate_mode));
+        failures = 1;
+    }
+    failures += expect_bool(node->select_duplicate_mode_explicit, explicit_mode, context);
+    failures += expect_bool(node->select_duplicate_mode_conflict, conflict, context);
+    if (node->select_duplicate_modifier_count != modifier_count) {
+        fprintf(stderr, "%s: expected %zu duplicate modifiers, got %zu\n", context, modifier_count,
+                node->select_duplicate_modifier_count);
+        failures = 1;
+    }
     return failures;
 }
 

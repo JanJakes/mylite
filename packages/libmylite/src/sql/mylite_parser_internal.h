@@ -13,6 +13,16 @@ struct mylite_sql_parser_state {
     bool accepted;
 };
 
+struct mylite_sql_parser_select_duplicate_mode {
+    enum mylite_sql_ast_select_duplicate_mode mode;
+    struct mylite_sql_source_span first_span;
+    struct mylite_sql_source_span last_span;
+    struct mylite_sql_source_span conflict_span;
+    size_t modifier_count;
+    bool explicit_mode;
+    bool conflict;
+};
+
 struct mylite_sql_parser_aggregate_star_tokens {
     struct mylite_sql_token left_paren;
     struct mylite_sql_token star;
@@ -119,10 +129,21 @@ mylite_sql_parser_append_statement(struct mylite_sql_parser_state *state,
                                    struct mylite_sql_ast_node *statement);
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token select_token,
+    struct mylite_sql_parser_select_duplicate_mode duplicate_mode,
     struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause,
     struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *group_by_clause,
     struct mylite_sql_ast_node *having_clause, struct mylite_sql_ast_node *order_by_clause,
     struct mylite_sql_ast_node *limit_clause);
+struct mylite_sql_parser_select_duplicate_mode
+mylite_sql_parser_make_implicit_select_duplicate_mode(void);
+struct mylite_sql_parser_select_duplicate_mode
+mylite_sql_parser_make_all_select_duplicate_mode(struct mylite_sql_token token);
+struct mylite_sql_parser_select_duplicate_mode
+mylite_sql_parser_make_distinct_select_duplicate_mode(struct mylite_sql_token token);
+struct mylite_sql_parser_select_duplicate_mode
+mylite_sql_parser_append_select_duplicate_mode(struct mylite_sql_parser_state *state,
+                                               struct mylite_sql_parser_select_duplicate_mode list,
+                                               struct mylite_sql_parser_select_duplicate_mode item);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_where_clause(struct mylite_sql_parser_state *state,
                                     struct mylite_sql_token where_token,

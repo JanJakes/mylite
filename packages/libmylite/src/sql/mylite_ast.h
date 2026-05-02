@@ -312,6 +312,18 @@ enum mylite_sql_ast_join_condition_type {
     MYLITE_SQL_AST_JOIN_CONDITION_USING = 2,
 };
 
+enum mylite_sql_ast_select_duplicate_mode {
+    MYLITE_SQL_AST_SELECT_DUPLICATES_IMPLICIT_ALL = 0,
+    MYLITE_SQL_AST_SELECT_DUPLICATES_ALL = 1,
+    MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT = 2,
+};
+
+struct mylite_sql_ast_select_duplicate_mode_spans {
+    struct mylite_sql_source_span first;
+    struct mylite_sql_source_span last;
+    struct mylite_sql_source_span conflict;
+};
+
 struct mylite_sql_ast_node {
     struct mylite_sql_ast_node *first_child;
     struct mylite_sql_ast_node *last_child;
@@ -321,9 +333,13 @@ struct mylite_sql_ast_node {
     uint64_t column_precision;
     uint64_t column_scale;
     uint64_t limit_bound_value;
+    size_t select_duplicate_modifier_count;
     struct mylite_sql_source_span span;
     struct mylite_sql_source_span column_character_set;
     struct mylite_sql_source_span column_collation;
+    struct mylite_sql_source_span select_duplicate_first_span;
+    struct mylite_sql_source_span select_duplicate_last_span;
+    struct mylite_sql_source_span select_duplicate_conflict_span;
     enum mylite_sql_ast_node_kind kind;
     enum mylite_sql_ast_literal_kind literal_kind;
     enum mylite_sql_ast_operator operator_kind;
@@ -343,6 +359,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_aggregate_argument aggregate_argument;
     enum mylite_sql_ast_join_type join_type;
     enum mylite_sql_ast_join_condition_type join_condition_type;
+    enum mylite_sql_ast_select_duplicate_mode select_duplicate_mode;
     unsigned int column_display_width;
     bool column_type_unsigned;
     bool column_type_signed;
@@ -361,6 +378,8 @@ struct mylite_sql_ast_node {
     bool drop_table_temporary;
     bool drop_table_restrict;
     bool drop_table_cascade;
+    bool select_duplicate_mode_explicit;
+    bool select_duplicate_mode_conflict;
     bool transaction_consistent_snapshot;
 };
 
@@ -434,6 +453,10 @@ void mylite_sql_ast_node_set_join_type(struct mylite_sql_ast_node *node,
                                        enum mylite_sql_ast_join_type join_type);
 void mylite_sql_ast_node_set_join_condition_type(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_join_condition_type condition_type);
+void mylite_sql_ast_node_set_select_duplicate_mode(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_select_duplicate_mode mode,
+    bool explicit_mode, bool conflict, size_t modifier_count,
+    struct mylite_sql_ast_select_duplicate_mode_spans spans);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 
@@ -455,5 +478,7 @@ mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument ag
 const char *mylite_sql_ast_join_type_name(enum mylite_sql_ast_join_type join_type);
 const char *
 mylite_sql_ast_join_condition_type_name(enum mylite_sql_ast_join_condition_type condition_type);
+const char *
+mylite_sql_ast_select_duplicate_mode_name(enum mylite_sql_ast_select_duplicate_mode mode);
 
 #endif

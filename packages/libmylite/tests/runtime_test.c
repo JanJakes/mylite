@@ -73,11 +73,13 @@ enum {
     mysql_warning_nonunique_table = 1066,
     mysql_warning_invalid_group_function = 1111,
     mysql_warning_mix_group_function_fields = 1140,
+    mysql_warning_wrong_usage = 1221,
     mysql_warning_unknown = 1105,
     mysql_warning_incorrect_escape_arguments = 1210,
     mysql_warning_truncated_wrong_value = 1292,
     mysql_warning_savepoint_does_not_exist = 1305,
     mysql_warning_division_by_zero = 1365,
+    mysql_warning_field_in_order_not_select = 3065,
 };
 
 struct expected_schemata_row {
@@ -153,6 +155,7 @@ static int test_insert_set_execution(void);
 static int test_select_table_core_execution(void);
 static int test_inner_join_execution(void);
 static int test_outer_join_execution(void);
+static int test_select_distinct_execution(void);
 static int test_select_where_execution(void);
 static int test_select_order_limit_offset_execution(void);
 static int test_result_metadata_expression_labels_execution(void);
@@ -265,6 +268,7 @@ int main(void)
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
+    failures += test_select_distinct_execution();
     failures += test_select_where_execution();
     failures += test_select_order_limit_offset_execution();
     failures += test_result_metadata_expression_labels_execution();
@@ -4427,6 +4431,209 @@ static int test_outer_join_execution(void)
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_select_distinct_execution(void)
+{
+    enum {
+        distinct_a_row_count = 5,
+        distinct_a_b_row_count = 5,
+        grouped_row_count = 5,
+        wildcard_column_count = 5,
+    };
+    static const char *const one_column[] = {"one"};
+    static const char *const one_value[] = {"1"};
+    static const char *const a_column[] = {"a"};
+    static const char *const alias_b_column[] = {"b"};
+    static const char *const distinct_a_values[] = {"1", "2", "3", "4", NULL};
+    static const char *const distinct_a_null_first_values[] = {NULL, "1", "2", "3", "4"};
+    static const char *const distinct_a_desc_limit_values[] = {"4", "3", "2"};
+    static const char *const all_a_values[] = {"1", "1", "2"};
+    static const char *const a_b_columns[] = {"a", "b"};
+    static const char *const distinct_a_b_values[] = {
+        "1", "x", "2", "y", "3", "A", "4", NULL, NULL, "n",
+    };
+    static const char *const b_column[] = {"b"};
+    static const char *const b_ai_values[] = {"A"};
+    static const char *const c_column[] = {"c"};
+    static const char *const c_bin_values[] = {"A", "a"};
+    static const char *const plus_one_column[] = {"plus_one"};
+    static const char *const plus_one_values[] = {"2", "3", "4", "5"};
+    static const char *const distinct_limit_values[] = {NULL, "1", "2"};
+    static const char *const join_columns[] = {"a", "tag"};
+    static const char *const join_values[] = {
+        NULL, "nil", "1", "one", "1", "two", "2", "two",
+    };
+    static const char *const count_column[] = {"n"};
+    static const char *const count_value[] = {"9"};
+    static const char *const grouped_columns[] = {"a", "n"};
+    static const char *const grouped_values[] = {
+        "1", "2", "2", "1", "3", "2", "4", "2", NULL, "2",
+    };
+    static const char *const grouped_count_values[] = {"1", "2"};
+    static const char *const wildcard_columns[] = {"id", "a", "b", "c", "sort_key"};
+    static const char *const wildcard_values[] = {
+        "1", "1", "x", "x", "30", "2", "1", "x", "x", "10", "3", "2", "y", "y", "20",
+    };
+    static const struct expected_result_metadata metadata[] = {
+        {"alias_a", "mylite_task28_distinct", "d", "mylite_task28_distinct", "d", "a", 11U,
+         MYLITE_FIELD_TYPE_LONG, 0U, 63U, MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"label_b", "mylite_task28_distinct", "d", "mylite_task28_distinct", "d", "b", 40U,
+         MYLITE_FIELD_TYPE_VAR_STRING, 0U, 255U, 0U, MYLITE_FIELD_FLAG_BINARY, 1},
+        {"plus_one", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open distinct database");
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_task28_distinct DEFAULT CHARACTER SET utf8mb4 "
+                            "COLLATE utf8mb4_0900_ai_ci",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_task28_distinct", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE d ("
+                            "id INT PRIMARY KEY AUTO_INCREMENT, "
+                            "a INT NULL, "
+                            "b VARCHAR(10) COLLATE utf8mb4_0900_ai_ci NULL, "
+                            "c VARCHAR(10) COLLATE utf8mb4_bin NULL, "
+                            "sort_key INT NOT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO d (a,b,c,sort_key) VALUES "
+                            "(1,'x','x',30), "
+                            "(1,'x','x',10), "
+                            "(2,'y','y',20), "
+                            "(NULL,'n','n',40), "
+                            "(NULL,'n','n',50), "
+                            "(3,'A','A',60), "
+                            "(3,'a','a',70), "
+                            "(4,NULL,NULL,80), "
+                            "(4,NULL,NULL,90)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE e ("
+                            "id INT PRIMARY KEY AUTO_INCREMENT, "
+                            "d_a INT NULL, "
+                            "tag VARCHAR(10))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO e (d_a, tag) VALUES "
+                            "(1,'one'), (1,'one'), (1,'two'), (2,'two'), (NULL,'nil')",
+                            MYLITE_DONE);
+
+    failures += expect_select_rows(database, "SELECT DISTINCT 1 AS one", one_column, 1, one_value,
+                                   1, "scalar distinct row");
+    failures +=
+        expect_select_rows(database, "SELECT DISTINCT a FROM d ORDER BY a IS NULL, a", a_column, 1,
+                           distinct_a_values, distinct_a_row_count, "distinct single column rows");
+    failures += expect_select_rows(database, "SELECT DISTINCT a FROM d ORDER BY a + 0", a_column, 1,
+                                   distinct_a_null_first_values, distinct_a_row_count,
+                                   "distinct selected expression order");
+    failures += expect_select_rows(database, "SELECT DISTINCT a AS b FROM d ORDER BY (b)",
+                                   alias_b_column, 1, distinct_a_null_first_values,
+                                   distinct_a_row_count, "distinct parenthesized alias order");
+    failures += expect_select_rows(database, "SELECT DISTINCTROW a FROM d ORDER BY a IS NULL, a",
+                                   a_column, 1, distinct_a_values, distinct_a_row_count,
+                                   "distinctrow single column rows");
+    failures += expect_select_rows(database, "SELECT ALL a FROM d ORDER BY id LIMIT 3", a_column, 1,
+                                   all_a_values, 3, "explicit all rows");
+    failures += expect_select_rows(
+        database, "SELECT DISTINCT DISTINCT a FROM d ORDER BY a IS NULL, a", a_column, 1,
+        distinct_a_values, distinct_a_row_count, "repeated distinct rows");
+    failures += expect_select_rows(database, "SELECT ALL ALL a FROM d ORDER BY id LIMIT 3",
+                                   a_column, 1, all_a_values, 3, "repeated all rows");
+    failures += expect_select_rows(database,
+                                   "SELECT DISTINCT a,b FROM d "
+                                   "ORDER BY a IS NULL, a, b IS NULL, b",
+                                   a_b_columns, 2, distinct_a_b_values, distinct_a_b_row_count,
+                                   "distinct multi-column rows");
+    failures +=
+        expect_select_rows(database, "SELECT DISTINCT b FROM d WHERE a=3 ORDER BY b", b_column, 1,
+                           b_ai_values, 1, "case-insensitive distinct collation");
+    failures += expect_select_rows(database, "SELECT DISTINCT c FROM d WHERE a=3 ORDER BY c",
+                                   c_column, 1, c_bin_values, 2, "binary distinct collation");
+    failures += expect_select_rows(
+        database, "SELECT DISTINCT a + 1 AS plus_one FROM d WHERE a IS NOT NULL ORDER BY plus_one",
+        plus_one_column, 1, plus_one_values, 4, "distinct expression output");
+    failures += expect_select_rows(database, "SELECT DISTINCT a FROM d ORDER BY a LIMIT 3",
+                                   a_column, 1, distinct_limit_values, 3, "distinct ordered limit");
+    failures +=
+        expect_select_rows(database, "SELECT DISTINCT a FROM d ORDER BY a DESC LIMIT 3", a_column,
+                           1, distinct_a_desc_limit_values, 3, "distinct descending limit");
+    failures += expect_select_rows(
+        database, "SELECT DISTINCT d.a, e.tag FROM d JOIN e ON d.a <=> e.d_a ORDER BY d.a, e.tag",
+        join_columns, 2, join_values, 4, "distinct join rows");
+    failures += expect_select_rows(
+        database,
+        "SELECT DISTINCT d.a FROM d LEFT JOIN e ON d.a <=> e.d_a ORDER BY d.a IS NULL, d.a",
+        a_column, 1, distinct_a_values, distinct_a_row_count, "distinct outer join rows");
+    failures += expect_select_rows(database, "SELECT DISTINCT COUNT(*) AS n FROM d", count_column,
+                                   1, count_value, 1, "distinct aggregate count");
+    failures += expect_select_rows(
+        database, "SELECT DISTINCT COUNT(*) AS n FROM d GROUP BY b ORDER BY n", count_column, 1,
+        grouped_count_values, 2, "distinct collapsed aggregate grouping");
+    failures += expect_select_rows(
+        database, "SELECT DISTINCT a, COUNT(*) AS n FROM d GROUP BY a ORDER BY a IS NULL, a",
+        grouped_columns, 2, grouped_values, grouped_row_count, "distinct aggregate grouping");
+    failures += expect_select_rows(
+        database, "SELECT DISTINCT * FROM d WHERE a IN (1,2) ORDER BY id", wildcard_columns,
+        wildcard_column_count, wildcard_values, 3, "distinct wildcard rows");
+    failures += expect_select_rows(database,
+                                   "SELECT DISTINCT d.* FROM d JOIN e ON d.a <=> e.d_a "
+                                   "WHERE d.a IN (1,2) ORDER BY d.id",
+                                   wildcard_columns, wildcard_column_count, wildcard_values, 3,
+                                   "distinct qualified wildcard join rows");
+
+    failures += prepare_sql(database,
+                            "SELECT DISTINCT a AS alias_a, b AS label_b, a + 1 AS plus_one "
+                            "FROM d ORDER BY alias_a IS NULL, alias_a, label_b LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, metadata, 3, "distinct metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "distinct metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_prepare_error(database, "SELECT ALL DISTINCT a FROM d", MYLITE_EXEC_ERROR,
+                             "Incorrect usage of ALL and DISTINCT", "mixed all distinct mode");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_wrong_usage,
+                           "mixed all distinct warning code");
+    failures +=
+        expect_prepare_error(database, "SELECT DISTINCT ALL a FROM d", MYLITE_EXEC_ERROR,
+                             "Incorrect usage of ALL and DISTINCT", "mixed distinct all mode");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_wrong_usage,
+                           "mixed distinct all warning code");
+    failures +=
+        expect_prepare_error(database, "SELECT ALL DISTINCTROW a FROM d", MYLITE_EXEC_ERROR,
+                             "Incorrect usage of ALL and DISTINCT", "mixed all distinctrow mode");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_wrong_usage,
+                           "mixed all distinctrow warning code");
+    failures += expect_prepare_error(
+        database, "SELECT DISTINCT a FROM d ORDER BY sort_key", MYLITE_EXEC_ERROR,
+        "Expression #1 of ORDER BY clause is not in SELECT list", "distinct hidden order column");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_field_in_order_not_select,
+                   "distinct hidden order warning code");
+    failures += expect_prepare_error(database, "SELECT DISTINCT a FROM d ORDER BY sort_key + 0",
+                                     MYLITE_EXEC_ERROR,
+                                     "Expression #1 of ORDER BY clause is not in SELECT list",
+                                     "distinct hidden order expression");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_field_in_order_not_select,
+                   "distinct hidden order expression warning code");
+    failures += expect_prepare_error(database, "SELECT DISTINCT a AS b FROM d ORDER BY b + 0",
+                                     MYLITE_EXEC_ERROR,
+                                     "Expression #1 of ORDER BY clause is not in SELECT list",
+                                     "distinct alias shadowed order expression");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_field_in_order_not_select,
+                   "distinct alias shadowed order warning code");
+
+    mylite_close(database);
     return failures;
 }
 

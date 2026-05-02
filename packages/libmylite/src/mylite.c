@@ -64,11 +64,13 @@ enum mylite_mysql_condition_code {
     MYLITE_MYSQL_ER_MIX_OF_GROUP_FUNC_AND_FIELDS = 1140,
     MYLITE_MYSQL_ER_NO_SUCH_TABLE = 1146,
     MYLITE_MYSQL_ER_WRONG_ARGUMENTS = 1210,
+    MYLITE_MYSQL_ER_WRONG_USAGE = 1221,
     MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE = 1292,
     MYLITE_MYSQL_ER_SP_DOES_NOT_EXIST = 1305,
     MYLITE_MYSQL_ER_NO_DEFAULT_FOR_FIELD = 1364,
     MYLITE_MYSQL_ER_DIVISION_BY_ZERO = 1365,
     MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE_FOR_FIELD = 1366,
+    MYLITE_MYSQL_ER_FIELD_IN_ORDER_NOT_SELECT = 3065,
     MYLITE_MYSQL_ER_CANT_EXECUTE_IN_READ_ONLY_TRANSACTION = 1792,
 };
 
@@ -84,6 +86,7 @@ enum mylite_transaction_completion_chain {
 };
 
 static const unsigned int mylite_mysql_binary_charset_id = 63U;
+static const unsigned int mylite_mysql_utf8mb4_bin_charset_id = 46U;
 static const unsigned int mylite_mysql_utf8mb4_0900_ai_ci_charset_id = 255U;
 static const unsigned int mylite_mysql_not_fixed_decimals = 31U;
 static const uint64_t mylite_mysql_decimal_divide_display_length = 7U;
@@ -582,6 +585,22 @@ struct mylite_select_limit_position {
     size_t kept_count;
 };
 
+struct mylite_select_distinct_order_column_error_context {
+    size_t order_position;
+    size_t column_index;
+};
+
+struct mylite_select_distinct_order_validation_frame {
+    const struct mylite_sql_ast_node *expression;
+    bool alias_first;
+};
+
+struct mylite_select_distinct_order_validation_stack {
+    struct mylite_select_distinct_order_validation_frame *frames;
+    size_t count;
+    size_t capacity;
+};
+
 struct mylite_select_plan {
     struct mylite_select_table table;
     struct mylite_select_table *tables;
@@ -607,6 +626,7 @@ struct mylite_select_plan {
     size_t using_request_count;
     const struct mylite_sql_ast_node *having_expression;
     struct mylite_select_limit limit;
+    enum mylite_sql_ast_select_duplicate_mode duplicate_mode;
     bool has_group_by;
     bool has_having;
     bool has_aggregate;
@@ -662,13 +682,20 @@ struct mylite_cached_expression_value {
 
 struct mylite_table_select_row {
     struct mylite_expression_value *values;
+    struct mylite_expression_value *output_values;
     struct mylite_expression_value *order_values;
     struct mylite_expression_value *aggregate_values;
     size_t *source_row_indexes;
     size_t value_count;
+    size_t output_value_count;
     size_t order_value_count;
     size_t aggregate_value_count;
     size_t source_row_index_count;
+};
+
+struct mylite_unordered_table_select_append_state {
+    uint64_t matched_row;
+    bool stop;
 };
 
 struct mylite_table_select_table_rowset {
@@ -1083,6 +1110,9 @@ static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out
 static int prepare_information_schema_select_statement(mylite_db *database,
                                                        const struct mylite_sql_ast_node *statement,
                                                        mylite_stmt **out_stmt);
+static int validate_select_duplicate_mode(mylite_db *database,
+                                          const struct mylite_sql_ast_node *statement);
+static bool select_duplicate_mode_is_distinct(enum mylite_sql_ast_select_duplicate_mode mode);
 static int prepare_table_select_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           const char *sql, size_t sql_length,
@@ -1409,6 +1439,44 @@ static int bind_select_order_expression(mylite_db *database,
                                         struct mylite_select_plan *plan);
 static int validate_select_expression_outputs(mylite_db *database,
                                               const struct mylite_select_plan *plan);
+static int validate_select_distinct_order_key(mylite_db *database,
+                                              const struct mylite_select_plan *plan,
+                                              const struct mylite_select_order_key *order_key,
+                                              size_t order_position);
+static int validate_select_distinct_order_expression(mylite_db *database,
+                                                     const struct mylite_select_plan *plan,
+                                                     const struct mylite_sql_ast_node *expression,
+                                                     size_t order_position);
+static int validate_select_distinct_order_expression_node(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    struct mylite_select_distinct_order_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression, size_t order_position, bool alias_first);
+static int push_select_distinct_order_expression_child(
+    mylite_db *database, struct mylite_select_distinct_order_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression, bool alias_first);
+static int push_select_distinct_order_expression_children(
+    mylite_db *database, struct mylite_select_distinct_order_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression, bool alias_first);
+static bool
+pop_select_distinct_order_expression(struct mylite_select_distinct_order_validation_stack *stack,
+                                     const struct mylite_sql_ast_node **out_expression,
+                                     bool *out_alias_first);
+static void select_distinct_order_validation_stack_deinit(
+    struct mylite_select_distinct_order_validation_stack *stack);
+static int validate_select_distinct_order_identifier(mylite_db *database,
+                                                     const struct mylite_select_plan *plan,
+                                                     const struct mylite_sql_ast_node *identifier,
+                                                     size_t order_position, bool alias_first);
+static int validate_select_distinct_order_identifier_column_first(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *identifier, size_t order_position, bool *out_resolved);
+static bool
+select_distinct_order_expression_matches_output(const struct mylite_select_plan *plan,
+                                                const struct mylite_sql_ast_node *expression);
+static const struct mylite_sql_ast_node *
+unwrap_parenthesized_expression(const struct mylite_sql_ast_node *expression);
+static bool select_distinct_column_index_is_output(const struct mylite_select_plan *plan,
+                                                   size_t column_index);
 static int validate_select_grouping(mylite_db *database, const struct mylite_select_plan *plan);
 static int validate_select_grouping_clause_expression(
     mylite_db *database, const struct mylite_select_plan *plan,
@@ -1555,6 +1623,10 @@ static int resolve_select_plan_column_parts_in_scope(mylite_db *database,
                                                      char **parts, size_t part_count,
                                                      const char *clause_context, size_t first_table,
                                                      size_t table_count, size_t *out_index);
+static size_t count_select_plan_column_parts_matches(const struct mylite_select_plan *plan,
+                                                     char **parts, size_t part_count,
+                                                     size_t first_table, size_t table_count,
+                                                     size_t *match_index);
 static int resolve_select_plan_column_in_table(const struct mylite_select_plan *plan,
                                                const struct mylite_select_table *table,
                                                const char *column_name, size_t *out_index);
@@ -1639,8 +1711,12 @@ static int set_select_unknown_group_column_error(mylite_db *database, const char
 static int set_select_ambiguous_group_column_warning(mylite_db *database, const char *column_name,
                                                      const char *clause_context);
 static int set_select_invalid_group_function_error(mylite_db *database);
+static int set_select_duplicate_mode_error(mylite_db *database);
 static int set_select_only_full_group_by_error(mylite_db *database, const char *expression_text,
                                                bool implicit_group);
+static int set_select_distinct_order_column_error(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    struct mylite_select_distinct_order_column_error_context context);
 static int set_select_unknown_table_error(mylite_db *database, const char *table_name);
 static int set_select_unsupported_projection_error(mylite_db *database);
 static int set_select_unsupported_where_error(mylite_db *database);
@@ -1900,6 +1976,15 @@ static int execute_table_select_statement(mylite_stmt *stmt);
 static int materialize_table_select_result(mylite_stmt *stmt);
 static int materialize_ordered_table_select_result(mylite_stmt *stmt);
 static int materialize_unordered_table_select_result(mylite_stmt *stmt);
+static int
+append_unordered_table_select_matched_row(mylite_stmt *stmt, struct mylite_table_select_row *row,
+                                          struct mylite_unordered_table_select_append_state *state,
+                                          bool distinct);
+static int append_unordered_table_select_distinct_row(mylite_stmt *stmt,
+                                                      struct mylite_table_select_row *row);
+static int
+append_unordered_table_select_limited_row(mylite_stmt *stmt, struct mylite_table_select_row *row,
+                                          struct mylite_unordered_table_select_append_state *state);
 static int materialize_joined_table_select_result(mylite_stmt *stmt);
 static bool select_plan_has_outer_join(const struct mylite_select_plan *plan);
 static int materialize_outer_joined_table_select_result(mylite_stmt *stmt);
@@ -2095,11 +2180,23 @@ static int append_finalized_table_select_group(mylite_stmt *stmt,
 static int evaluate_table_select_row_matches(mylite_stmt *stmt,
                                              const struct mylite_table_select_row *row,
                                              bool *out_matches);
+static int check_table_select_distinct_duplicate(mylite_stmt *stmt,
+                                                 struct mylite_table_select_row *row,
+                                                 bool *out_duplicate);
 static int append_table_select_result_row(mylite_stmt *stmt, struct mylite_table_select_row *row);
 static int append_table_select_result_row_copy(mylite_stmt *stmt,
                                                const struct mylite_table_select_row *row);
 static int table_select_row_copy(const struct mylite_table_select_row *row,
                                  struct mylite_table_select_row *out_row);
+static int allocate_table_select_row_copy(struct mylite_table_select_row *out_row);
+static int allocate_table_select_expression_values(struct mylite_expression_value **out_values,
+                                                   size_t value_count);
+static int allocate_table_select_source_row_indexes(size_t **out_indexes, size_t index_count);
+static int copy_table_select_row_copy_values(const struct mylite_table_select_row *row,
+                                             struct mylite_table_select_row *out_row);
+static int copy_table_select_expression_values(const struct mylite_expression_value *values,
+                                               struct mylite_expression_value *out_values,
+                                               size_t value_count);
 static int copy_table_select_sqlite_row(mylite_stmt *stmt, struct mylite_table_select_row *out_row);
 static int copy_sqlite_column_value(sqlite3_stmt *sqlite_stmt, size_t column_index,
                                     struct mylite_expression_value *out_value);
@@ -2158,15 +2255,32 @@ static void merge_table_select_rows(struct mylite_table_select_row *rows,
 static int compare_table_select_rows(const struct mylite_table_select_row *left,
                                      const struct mylite_table_select_row *right,
                                      const struct mylite_select_plan *plan);
+static int materialize_table_select_output_values(mylite_stmt *stmt,
+                                                  struct mylite_table_select_row *row);
+static bool table_select_distinct_row_exists(const mylite_stmt *stmt,
+                                             const struct mylite_table_select_row *row);
+static bool table_select_output_values_equal(const mylite_stmt *stmt,
+                                             const struct mylite_table_select_row *left,
+                                             const struct mylite_table_select_row *right);
+static int compare_table_select_distinct_values(const struct mylite_expression_value *left,
+                                                const struct mylite_expression_value *right,
+                                                const struct mylite_field_descriptor *descriptor);
 static int compare_table_select_values(const struct mylite_expression_value *left,
                                        const struct mylite_expression_value *right);
 static int compare_table_select_text_values(const char *left, const char *right);
+static int compare_table_select_binary_text_values(const char *left, const char *right);
+static bool
+table_select_text_descriptor_is_binary(const struct mylite_field_descriptor *descriptor);
 static int apply_table_select_limit(mylite_stmt *stmt);
 static bool table_select_limit_row_is_kept(const struct mylite_select_limit *limit,
                                            struct mylite_select_limit_position position);
 static bool table_select_limit_is_full(const struct mylite_select_limit *limit, size_t kept_count);
 static int set_table_select_current_row(mylite_stmt *stmt,
                                         const struct mylite_table_select_row *row);
+static int evaluate_table_select_cached_output_value(mylite_stmt *stmt,
+                                                     const struct mylite_table_select_row *row,
+                                                     size_t output_index,
+                                                     struct mylite_expression_value *out_value);
 static int evaluate_table_select_output_value(mylite_stmt *stmt,
                                               const struct mylite_table_select_row *row,
                                               size_t output_index,
@@ -3288,6 +3402,10 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
             return prepare_show_schemas_statement(database, out_stmt);
         case MYLITE_SQL_AST_SELECT_STATEMENT:
+            status = validate_select_duplicate_mode(database, statement);
+            if (status != MYLITE_OK) {
+                return status;
+            }
             status = prepare_information_schema_select_statement(database, statement, out_stmt);
             if (status != MYLITE_UNSUPPORTED) {
                 return status;
@@ -3866,6 +3984,23 @@ static int prepare_information_schema_select_statement(mylite_db *database,
     return prepare_sqlite_statement(database, sql, out_stmt);
 }
 
+static int validate_select_duplicate_mode(mylite_db *database,
+                                          const struct mylite_sql_ast_node *statement)
+{
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return MYLITE_OK;
+    }
+    if (statement->select_duplicate_mode_conflict) {
+        return set_select_duplicate_mode_error(database);
+    }
+    return MYLITE_OK;
+}
+
+static bool select_duplicate_mode_is_distinct(enum mylite_sql_ast_select_duplicate_mode mode)
+{
+    return mode == MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT;
+}
+
 static int prepare_table_select_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           const char *sql, size_t sql_length,
@@ -3899,6 +4034,7 @@ static int prepare_table_select_statement(mylite_db *database,
         return MYLITE_UNSUPPORTED;
     }
 
+    plan.duplicate_mode = statement->select_duplicate_mode;
     status = copy_select_from_clause(database, from_clause, &plan);
     if (status == MYLITE_OK) {
         status = resolve_select_plan_tables(database, &plan);
@@ -3978,6 +4114,9 @@ static bool select_plan_requires_custom_runtime(const struct mylite_select_plan 
     }
     if (plan == NULL) {
         return false;
+    }
+    if (select_duplicate_mode_is_distinct(plan->duplicate_mode)) {
+        return true;
     }
     if (select_plan_table_count(plan) > 1U) {
         return true;
@@ -7638,9 +7777,309 @@ static int bind_select_order_expression(mylite_db *database,
 static int validate_select_expression_outputs(mylite_db *database,
                                               const struct mylite_select_plan *plan)
 {
-    (void)database;
-    (void)plan;
+    if (!select_duplicate_mode_is_distinct(plan->duplicate_mode)) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; index < plan->order_key_count; ++index) {
+        int status = validate_select_distinct_order_key(database, plan, &plan->order_keys[index],
+                                                        index + 1U);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
     return MYLITE_OK;
+}
+
+static int validate_select_distinct_order_key(mylite_db *database,
+                                              const struct mylite_select_plan *plan,
+                                              const struct mylite_select_order_key *order_key,
+                                              size_t order_position)
+{
+    if (order_key->kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
+        return MYLITE_OK;
+    }
+    return validate_select_distinct_order_expression(database, plan, order_key->expression,
+                                                     order_position);
+}
+
+static int validate_select_distinct_order_expression(mylite_db *database,
+                                                     const struct mylite_select_plan *plan,
+                                                     const struct mylite_sql_ast_node *expression,
+                                                     size_t order_position)
+{
+    struct mylite_select_distinct_order_validation_stack stack = {0};
+    const struct mylite_sql_ast_node *current = NULL;
+    bool alias_first = false;
+    int status = push_select_distinct_order_expression_child(database, &stack, expression, true);
+
+    while (status == MYLITE_OK &&
+           pop_select_distinct_order_expression(&stack, &current, &alias_first)) {
+        status = validate_select_distinct_order_expression_node(database, plan, &stack, current,
+                                                                order_position, alias_first);
+    }
+
+    select_distinct_order_validation_stack_deinit(&stack);
+    return status;
+}
+
+static int validate_select_distinct_order_expression_node(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    struct mylite_select_distinct_order_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression, size_t order_position, bool alias_first)
+{
+    if (expression == NULL || select_distinct_order_expression_matches_output(plan, expression)) {
+        return MYLITE_OK;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_IDENTIFIER:
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+        return validate_select_distinct_order_identifier(database, plan, expression, order_position,
+                                                         alias_first);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+    case MYLITE_SQL_AST_EXPRESSION_LIST:
+    case MYLITE_SQL_AST_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_CASE_WHEN_LIST:
+    case MYLITE_SQL_AST_CASE_WHEN:
+        return push_select_distinct_order_expression_children(database, stack, expression, false);
+    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+        return push_select_distinct_order_expression_child(database, stack,
+                                                           child_at(expression, 0U), alias_first);
+    case MYLITE_SQL_AST_CAST_EXPRESSION:
+        return push_select_distinct_order_expression_child(database, stack,
+                                                           child_at(expression, 0U), false);
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+        return push_select_distinct_order_expression_children(database, stack,
+                                                              child_at(expression, 1U), false);
+    case MYLITE_SQL_AST_AGGREGATE_CALL:
+        if (expression->aggregate_argument == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION) {
+            return push_select_distinct_order_expression_child(database, stack,
+                                                               child_at(expression, 1U), false);
+        }
+        return MYLITE_OK;
+    default:
+        return MYLITE_OK;
+    }
+}
+
+static int push_select_distinct_order_expression_child(
+    mylite_db *database, struct mylite_select_distinct_order_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression, bool alias_first)
+{
+    const size_t next_count = stack->count + 1U;
+    struct mylite_select_distinct_order_validation_frame *frames = NULL;
+
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+    if (next_count <= stack->capacity) {
+        stack->frames[stack->count++] = (struct mylite_select_distinct_order_validation_frame){
+            .expression = expression,
+            .alias_first = alias_first,
+        };
+        return MYLITE_OK;
+    }
+
+    frames = realloc(stack->frames, next_count * sizeof(*stack->frames));
+    if (frames == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    stack->frames = frames;
+    stack->capacity = next_count;
+    stack->frames[stack->count++] = (struct mylite_select_distinct_order_validation_frame){
+        .expression = expression,
+        .alias_first = alias_first,
+    };
+    return MYLITE_OK;
+}
+
+static int push_select_distinct_order_expression_children(
+    mylite_db *database, struct mylite_select_distinct_order_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression, bool alias_first)
+{
+    struct mylite_select_distinct_order_validation_frame *children = NULL;
+    const struct mylite_sql_ast_node *child = expression == NULL ? NULL : expression->first_child;
+    size_t child_count = 0U;
+    int status = MYLITE_OK;
+
+    for (; child != NULL; child = child->next_sibling) {
+        ++child_count;
+    }
+    if (child_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    children = calloc(child_count, sizeof(*children));
+    if (children == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    child = expression->first_child;
+    for (size_t index = 0U; index < child_count; ++index) {
+        children[index].expression = child;
+        child = child->next_sibling;
+    }
+    for (size_t index = child_count; status == MYLITE_OK && index > 0U; --index) {
+        status = push_select_distinct_order_expression_child(
+            database, stack, children[index - 1U].expression, alias_first);
+    }
+    free(children);
+    return status;
+}
+
+static bool
+pop_select_distinct_order_expression(struct mylite_select_distinct_order_validation_stack *stack,
+                                     const struct mylite_sql_ast_node **out_expression,
+                                     bool *out_alias_first)
+{
+    if (stack->count == 0U) {
+        *out_expression = NULL;
+        *out_alias_first = false;
+        return false;
+    }
+    --stack->count;
+    *out_expression = stack->frames[stack->count].expression;
+    *out_alias_first = stack->frames[stack->count].alias_first;
+    return true;
+}
+
+static void select_distinct_order_validation_stack_deinit(
+    struct mylite_select_distinct_order_validation_stack *stack)
+{
+    free(stack->frames);
+    *stack = (struct mylite_select_distinct_order_validation_stack){0};
+}
+
+static int validate_select_distinct_order_identifier(mylite_db *database,
+                                                     const struct mylite_select_plan *plan,
+                                                     const struct mylite_sql_ast_node *identifier,
+                                                     size_t order_position, bool alias_first)
+{
+    enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
+    size_t index = 0U;
+    bool resolved = false;
+    int status = MYLITE_OK;
+
+    if (!alias_first) {
+        status = validate_select_distinct_order_identifier_column_first(database, plan, identifier,
+                                                                        order_position, &resolved);
+    }
+
+    if (status != MYLITE_OK || resolved) {
+        return status;
+    }
+
+    status = resolve_select_order_reference(database, plan, identifier, &kind, &index);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (kind == MYLITE_SELECT_ORDER_KEY_OUTPUT ||
+        select_distinct_column_index_is_output(plan, index)) {
+        return MYLITE_OK;
+    }
+    return set_select_distinct_order_column_error(
+        database, plan,
+        (struct mylite_select_distinct_order_column_error_context){
+            .order_position = order_position,
+            .column_index = index,
+        });
+}
+
+static int validate_select_distinct_order_identifier_column_first(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *identifier, size_t order_position, bool *out_resolved)
+{
+    char *parts[3] = {0};
+    size_t part_count = 0U;
+    size_t column_index = select_plan_column_count(plan);
+    int status = copy_select_identifier_parts(identifier, parts, &part_count);
+
+    *out_resolved = false;
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(database, "out of memory");
+        }
+        return status;
+    }
+    if (part_count == 1U) {
+        size_t column_matches = count_select_plan_column_parts_matches(
+            plan, parts, part_count, 0U, select_plan_table_count(plan), &column_index);
+
+        if (column_matches > 1U) {
+            status = set_select_ambiguous_order_column_error(database, parts[0]);
+            *out_resolved = true;
+            goto cleanup;
+        }
+        if (column_matches == 1U) {
+            *out_resolved = true;
+            if (select_distinct_column_index_is_output(plan, column_index)) {
+                goto cleanup;
+            }
+            status = set_select_distinct_order_column_error(
+                database, plan,
+                (struct mylite_select_distinct_order_column_error_context){
+                    .order_position = order_position,
+                    .column_index = column_index,
+                });
+        }
+    }
+
+cleanup:
+    for (size_t index = 0U; index < part_count && index < 3U; ++index) {
+        free(parts[index]);
+    }
+    return status;
+}
+
+static bool
+select_distinct_order_expression_matches_output(const struct mylite_select_plan *plan,
+                                                const struct mylite_sql_ast_node *expression)
+{
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(expression);
+
+    if (unwrapped == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < plan->output_count; ++index) {
+        const struct mylite_select_output_column *output = &plan->outputs[index];
+        const struct mylite_sql_ast_node *output_expression =
+            unwrap_parenthesized_expression(output->expression);
+
+        if (output->kind == MYLITE_SELECT_OUTPUT_EXPRESSION && output_expression != NULL &&
+            ast_span_text_equal_ci(output_expression->span, unwrapped->span)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static const struct mylite_sql_ast_node *
+unwrap_parenthesized_expression(const struct mylite_sql_ast_node *expression)
+{
+    while (expression != NULL && expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        expression = child_at(expression, 0U);
+    }
+    return expression;
+}
+
+static bool select_distinct_column_index_is_output(const struct mylite_select_plan *plan,
+                                                   size_t column_index)
+{
+    for (size_t index = 0U; index < plan->output_count; ++index) {
+        const struct mylite_select_output_column *output = &plan->outputs[index];
+
+        if (output->kind == MYLITE_SELECT_OUTPUT_COLUMN && output->column_index == column_index) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int validate_select_grouping(mylite_db *database, const struct mylite_select_plan *plan)
@@ -8883,11 +9322,6 @@ static int resolve_select_plan_column_parts_in_scope(mylite_db *database,
                                                      size_t table_count, size_t *out_index)
 {
     size_t plan_table_count = select_plan_table_count(plan);
-    size_t last_table = first_table + table_count;
-    struct mylite_select_table_range range = {
-        .first_table = first_table,
-        .table_count = table_count,
-    };
     size_t match_count = 0U;
     size_t match_index = select_plan_column_count(plan);
 
@@ -8897,9 +9331,41 @@ static int resolve_select_plan_column_parts_in_scope(mylite_db *database,
     if (first_table > plan_table_count || table_count > plan_table_count - first_table) {
         return MYLITE_UNSUPPORTED;
     }
+
+    match_count = count_select_plan_column_parts_matches(plan, parts, part_count, first_table,
+                                                         table_count, &match_index);
+    if (match_count == 1U) {
+        *out_index = match_index;
+        return MYLITE_OK;
+    }
+    if (match_count > 1U) {
+        return set_select_ambiguous_column_error(database, parts[part_count - 1U], clause_context);
+    }
+
+    return set_select_unknown_column_parts_error(database, parts, part_count, clause_context);
+}
+
+static size_t count_select_plan_column_parts_matches(const struct mylite_select_plan *plan,
+                                                     char **parts, size_t part_count,
+                                                     size_t first_table, size_t table_count,
+                                                     size_t *match_index)
+{
+    size_t plan_table_count = select_plan_table_count(plan);
+    size_t last_table = first_table + table_count;
+    struct mylite_select_table_range range = {
+        .first_table = first_table,
+        .table_count = table_count,
+    };
+    size_t match_count = 0U;
+
+    *match_index = select_plan_column_count(plan);
+    if (part_count < 1U || part_count > 3U || first_table > plan_table_count ||
+        table_count > plan_table_count - first_table) {
+        return 0U;
+    }
     if (part_count == 1U) {
         match_count =
-            count_select_plan_column_parts_using_matches(plan, parts[0], range, &match_index);
+            count_select_plan_column_parts_using_matches(plan, parts[0], range, match_index);
     }
 
     for (size_t table_index = first_table; table_index < last_table; ++table_index) {
@@ -8915,19 +9381,10 @@ static int resolve_select_plan_column_parts_in_scope(mylite_db *database,
             select_column_index_is_using_column_in_range(plan, column_index, range)) {
             continue;
         }
-        match_index = column_index;
+        *match_index = column_index;
         ++match_count;
     }
-
-    if (match_count == 1U) {
-        *out_index = match_index;
-        return MYLITE_OK;
-    }
-    if (match_count > 1U) {
-        return set_select_ambiguous_column_error(database, parts[part_count - 1U], clause_context);
-    }
-
-    return set_select_unknown_column_parts_error(database, parts, part_count, clause_context);
+    return match_count;
 }
 
 static size_t count_select_plan_column_parts_using_matches(const struct mylite_select_plan *plan,
@@ -9722,6 +10179,18 @@ static int set_select_invalid_group_function_error(mylite_db *database)
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
+static int set_select_duplicate_mode_error(mylite_db *database)
+{
+    int status = set_error_message(database, "Incorrect usage of ALL and DISTINCT");
+
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = append_database_warning(database, MYLITE_MYSQL_ER_WRONG_USAGE,
+                                     mylite_error_message(database));
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
 static int set_select_only_full_group_by_error(mylite_db *database, const char *expression_text,
                                                bool implicit_group)
 {
@@ -9751,6 +10220,42 @@ static int set_select_only_full_group_by_error(mylite_db *database, const char *
         status = append_database_warning(database, MYLITE_MYSQL_ER_WRONG_FIELD_WITH_GROUP,
                                          mylite_error_message(database));
     }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_select_distinct_order_column_error(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    struct mylite_select_distinct_order_column_error_context context)
+{
+    const struct mylite_select_table *table = NULL;
+    const struct mylite_select_column *column =
+        select_plan_column_const(plan, context.column_index, &table);
+    const char *schema_name = table == NULL || table->schema_name == NULL ? "" : table->schema_name;
+    const char *table_name = table == NULL || table->table_name == NULL ? "" : table->table_name;
+    const char *column_name = column == NULL || column->name == NULL ? "" : column->name;
+    char *reference = sqlite3_mprintf("%q.%q.%q", schema_name, table_name, column_name);
+    char *message = NULL;
+    int status = MYLITE_OK;
+
+    if (reference == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    message = sqlite3_mprintf(
+        "Expression #%llu of ORDER BY clause is not in SELECT list, references column '%q' "
+        "which is not in SELECT list; this is incompatible with DISTINCT",
+        (unsigned long long)context.order_position, reference);
+    sqlite3_free(reference);
+    if (message == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status =
+            append_database_warning(database, MYLITE_MYSQL_ER_FIELD_IN_ORDER_NOT_SELECT, message);
+    }
+    sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -13630,6 +14135,19 @@ static int materialize_ordered_table_select_result(mylite_stmt *stmt)
             continue;
         }
 
+        if (select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode)) {
+            bool duplicate = false;
+
+            status = check_table_select_distinct_duplicate(stmt, &row, &duplicate);
+            if (status != MYLITE_OK) {
+                table_select_row_deinit(&row);
+                return status;
+            }
+            if (duplicate) {
+                table_select_row_deinit(&row);
+                continue;
+            }
+        }
         status = evaluate_table_select_order_values(stmt, &row);
         if (status == MYLITE_OK) {
             status = append_table_select_result_row(stmt, &row);
@@ -13652,7 +14170,8 @@ static int materialize_ordered_table_select_result(mylite_stmt *stmt)
 
 static int materialize_unordered_table_select_result(mylite_stmt *stmt)
 {
-    uint64_t matched_row = 0U;
+    struct mylite_unordered_table_select_append_state append_state = {0};
+    bool distinct = select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
     int status = MYLITE_OK;
     int rc = SQLITE_OK;
 
@@ -13685,23 +14204,12 @@ static int materialize_unordered_table_select_result(mylite_stmt *stmt)
             table_select_row_deinit(&row);
             continue;
         }
-        if (table_select_limit_row_is_kept(&stmt->select_plan.limit,
-                                           (struct mylite_select_limit_position){
-                                               .matched_row = matched_row,
-                                               .kept_count = stmt->select_result.row_count,
-                                           })) {
-            status = append_table_select_result_row(stmt, &row);
-            if (status != MYLITE_OK) {
-                table_select_row_deinit(&row);
-                return status;
-            }
-        } else {
+        status = append_unordered_table_select_matched_row(stmt, &row, &append_state, distinct);
+        if (status != MYLITE_OK) {
             table_select_row_deinit(&row);
+            return status;
         }
-        if (matched_row != UINT64_MAX) {
-            ++matched_row;
-        }
-        if (table_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count)) {
+        if (append_state.stop) {
             break;
         }
     }
@@ -13709,6 +14217,61 @@ static int materialize_unordered_table_select_result(mylite_stmt *stmt)
         !table_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count)) {
         return set_sqlite_error(stmt->database);
     }
+    if (distinct) {
+        return apply_table_select_limit(stmt);
+    }
+    return MYLITE_OK;
+}
+
+static int
+append_unordered_table_select_matched_row(mylite_stmt *stmt, struct mylite_table_select_row *row,
+                                          struct mylite_unordered_table_select_append_state *state,
+                                          bool distinct)
+{
+    if (distinct) {
+        return append_unordered_table_select_distinct_row(stmt, row);
+    }
+    return append_unordered_table_select_limited_row(stmt, row, state);
+}
+
+static int append_unordered_table_select_distinct_row(mylite_stmt *stmt,
+                                                      struct mylite_table_select_row *row)
+{
+    bool duplicate = false;
+    int status = check_table_select_distinct_duplicate(stmt, row, &duplicate);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (duplicate) {
+        table_select_row_deinit(row);
+        return MYLITE_OK;
+    }
+    return append_table_select_result_row(stmt, row);
+}
+
+static int
+append_unordered_table_select_limited_row(mylite_stmt *stmt, struct mylite_table_select_row *row,
+                                          struct mylite_unordered_table_select_append_state *state)
+{
+    if (table_select_limit_row_is_kept(&stmt->select_plan.limit,
+                                       (struct mylite_select_limit_position){
+                                           .matched_row = state->matched_row,
+                                           .kept_count = stmt->select_result.row_count,
+                                       })) {
+        int status = append_table_select_result_row(stmt, row);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    } else {
+        table_select_row_deinit(row);
+    }
+    if (state->matched_row != UINT64_MAX) {
+        ++state->matched_row;
+    }
+    state->stop =
+        table_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count);
     return MYLITE_OK;
 }
 
@@ -13719,6 +14282,7 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
     struct mylite_table_select_row row = {0};
     bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
                             stmt->select_plan.has_having) != 0;
+    bool distinct = select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
     int status = MYLITE_OK;
 
     if (select_plan_has_outer_join(&stmt->select_plan)) {
@@ -13772,7 +14336,8 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
         status = sort_table_select_result_rows(stmt);
     }
-    if (status == MYLITE_OK && (aggregate_query || stmt->select_plan.order_key_count != 0U)) {
+    if (status == MYLITE_OK &&
+        (aggregate_query || stmt->select_plan.order_key_count != 0U || distinct)) {
         status = apply_table_select_limit(stmt);
     }
 
@@ -13804,6 +14369,7 @@ static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
     struct mylite_table_select_join_materialize_state state = {0};
     bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
                             stmt->select_plan.has_having) != 0;
+    bool distinct = select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
     int status = MYLITE_OK;
 
     if (!aggregate_query && stmt->select_plan.order_key_count == 0U &&
@@ -13843,7 +14409,8 @@ static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
         status = sort_table_select_result_rows(stmt);
     }
-    if (status == MYLITE_OK && (aggregate_query || stmt->select_plan.order_key_count != 0U)) {
+    if (status == MYLITE_OK &&
+        (aggregate_query || stmt->select_plan.order_key_count != 0U || distinct)) {
         status = apply_table_select_limit(stmt);
     }
 
@@ -15148,14 +15715,24 @@ static int process_joined_table_select_nonaggregate_row(
     mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
     const struct mylite_table_select_row *row)
 {
-    if (stmt->select_plan.order_key_count != 0U) {
+    bool distinct = select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
+
+    if (stmt->select_plan.order_key_count != 0U || distinct) {
         struct mylite_table_select_row copy = {0};
         int status = table_select_row_copy(row, &copy);
+        bool duplicate = false;
 
         if (status == MYLITE_NOMEM) {
             (void)set_error_message(stmt->database, "out of memory");
         }
-        if (status == MYLITE_OK) {
+        if (status == MYLITE_OK && distinct) {
+            status = check_table_select_distinct_duplicate(stmt, &copy, &duplicate);
+        }
+        if (status == MYLITE_OK && duplicate) {
+            table_select_row_deinit(&copy);
+            return MYLITE_OK;
+        }
+        if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
             status = evaluate_table_select_order_values(stmt, &copy);
         }
         if (status == MYLITE_OK) {
@@ -15305,12 +15882,21 @@ static int append_finalized_table_select_group(mylite_stmt *stmt,
 {
     struct mylite_table_select_row row = {0};
     bool having_matches = true;
+    bool duplicate = false;
     int status = finalize_table_select_group(stmt, group, &row);
 
     if (status == MYLITE_OK) {
         status = evaluate_table_select_having(stmt, &row, &having_matches);
     }
-    if (status == MYLITE_OK && having_matches) {
+    if (status == MYLITE_OK && having_matches &&
+        select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode)) {
+        status = check_table_select_distinct_duplicate(stmt, &row, &duplicate);
+    }
+    if (status == MYLITE_OK && duplicate) {
+        table_select_row_deinit(&row);
+        return MYLITE_OK;
+    }
+    if (status == MYLITE_OK && having_matches && stmt->select_plan.order_key_count != 0U) {
         status = evaluate_table_select_order_values(stmt, &row);
     }
     if (status == MYLITE_OK && having_matches) {
@@ -15391,6 +15977,20 @@ static int evaluate_table_select_join_predicates(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
+static int check_table_select_distinct_duplicate(mylite_stmt *stmt,
+                                                 struct mylite_table_select_row *row,
+                                                 bool *out_duplicate)
+{
+    int status = materialize_table_select_output_values(stmt, row);
+
+    *out_duplicate = false;
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    *out_duplicate = table_select_distinct_row_exists(stmt, row);
+    return MYLITE_OK;
+}
+
 static int append_table_select_result_row(mylite_stmt *stmt, struct mylite_table_select_row *row)
 {
     struct mylite_table_select_row *rows =
@@ -15427,61 +16027,98 @@ static int append_table_select_result_row_copy(mylite_stmt *stmt,
 static int table_select_row_copy(const struct mylite_table_select_row *row,
                                  struct mylite_table_select_row *out_row)
 {
+    int status = MYLITE_OK;
+
     *out_row = (struct mylite_table_select_row){0};
     out_row->value_count = row->value_count;
+    out_row->output_value_count = row->output_value_count;
     out_row->order_value_count = row->order_value_count;
     out_row->aggregate_value_count = row->aggregate_value_count;
     out_row->source_row_index_count = row->source_row_index_count;
 
-    if (out_row->value_count != 0U) {
-        out_row->values = calloc(out_row->value_count, sizeof(*out_row->values));
-        if (out_row->values == NULL) {
-            return MYLITE_NOMEM;
-        }
+    status = allocate_table_select_row_copy(out_row);
+    if (status == MYLITE_OK) {
+        status = copy_table_select_row_copy_values(row, out_row);
     }
-    if (out_row->order_value_count != 0U) {
-        out_row->order_values = calloc(out_row->order_value_count, sizeof(*out_row->order_values));
-        if (out_row->order_values == NULL) {
-            table_select_row_deinit(out_row);
-            return MYLITE_NOMEM;
-        }
+    if (status != MYLITE_OK) {
+        table_select_row_deinit(out_row);
     }
-    if (out_row->aggregate_value_count != 0U) {
-        out_row->aggregate_values =
-            calloc(out_row->aggregate_value_count, sizeof(*out_row->aggregate_values));
-        if (out_row->aggregate_values == NULL) {
-            table_select_row_deinit(out_row);
-            return MYLITE_NOMEM;
-        }
+    return status;
+}
+
+static int allocate_table_select_row_copy(struct mylite_table_select_row *out_row)
+{
+    int status = allocate_table_select_expression_values(&out_row->values, out_row->value_count);
+
+    if (status == MYLITE_OK) {
+        status = allocate_table_select_expression_values(&out_row->output_values,
+                                                         out_row->output_value_count);
     }
-    if (out_row->source_row_index_count != 0U) {
-        out_row->source_row_indexes =
-            calloc(out_row->source_row_index_count, sizeof(*out_row->source_row_indexes));
-        if (out_row->source_row_indexes == NULL) {
-            table_select_row_deinit(out_row);
-            return MYLITE_NOMEM;
-        }
+    if (status == MYLITE_OK) {
+        status = allocate_table_select_expression_values(&out_row->order_values,
+                                                         out_row->order_value_count);
+    }
+    if (status == MYLITE_OK) {
+        status = allocate_table_select_expression_values(&out_row->aggregate_values,
+                                                         out_row->aggregate_value_count);
+    }
+    if (status == MYLITE_OK) {
+        status = allocate_table_select_source_row_indexes(&out_row->source_row_indexes,
+                                                          out_row->source_row_index_count);
+    }
+    return status;
+}
+
+static int allocate_table_select_expression_values(struct mylite_expression_value **out_values,
+                                                   size_t value_count)
+{
+    if (value_count == 0U) {
+        return MYLITE_OK;
+    }
+    *out_values = calloc(value_count, sizeof(**out_values));
+    return *out_values == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static int allocate_table_select_source_row_indexes(size_t **out_indexes, size_t index_count)
+{
+    if (index_count == 0U) {
+        return MYLITE_OK;
+    }
+    *out_indexes = calloc(index_count, sizeof(**out_indexes));
+    return *out_indexes == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static int copy_table_select_row_copy_values(const struct mylite_table_select_row *row,
+                                             struct mylite_table_select_row *out_row)
+{
+    int status =
+        copy_table_select_expression_values(row->values, out_row->values, out_row->value_count);
+
+    if (status == MYLITE_OK) {
+        status = copy_table_select_expression_values(row->output_values, out_row->output_values,
+                                                     out_row->output_value_count);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_table_select_expression_values(row->order_values, out_row->order_values,
+                                                     out_row->order_value_count);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_table_select_expression_values(
+            row->aggregate_values, out_row->aggregate_values, out_row->aggregate_value_count);
+    }
+    if (status == MYLITE_OK && out_row->source_row_index_count != 0U) {
         memcpy(out_row->source_row_indexes, row->source_row_indexes,
                out_row->source_row_index_count * sizeof(*out_row->source_row_indexes));
     }
+    return status;
+}
 
-    for (size_t index = 0U; index < out_row->value_count; ++index) {
-        if (mylite_expression_value_copy(&row->values[index], &out_row->values[index]) != 0) {
-            table_select_row_deinit(out_row);
-            return MYLITE_NOMEM;
-        }
-    }
-    for (size_t index = 0U; index < out_row->order_value_count; ++index) {
-        if (mylite_expression_value_copy(&row->order_values[index],
-                                         &out_row->order_values[index]) != 0) {
-            table_select_row_deinit(out_row);
-            return MYLITE_NOMEM;
-        }
-    }
-    for (size_t index = 0U; index < out_row->aggregate_value_count; ++index) {
-        if (mylite_expression_value_copy(&row->aggregate_values[index],
-                                         &out_row->aggregate_values[index]) != 0) {
-            table_select_row_deinit(out_row);
+static int copy_table_select_expression_values(const struct mylite_expression_value *values,
+                                               struct mylite_expression_value *out_values,
+                                               size_t value_count)
+{
+    for (size_t index = 0U; index < value_count; ++index) {
+        if (mylite_expression_value_copy(&values[index], &out_values[index]) != 0) {
             return MYLITE_NOMEM;
         }
     }
@@ -15742,7 +16379,8 @@ static int evaluate_table_select_group_key(mylite_stmt *stmt,
                                            struct mylite_expression_value *out_value)
 {
     if (group_key->kind == MYLITE_SELECT_GROUP_KEY_OUTPUT) {
-        return evaluate_table_select_output_value(stmt, row, group_key->output_index, out_value);
+        return evaluate_table_select_cached_output_value(stmt, row, group_key->output_index,
+                                                         out_value);
     }
 
     struct mylite_table_select_expression_context user_context = {
@@ -16081,7 +16719,8 @@ static int evaluate_table_select_order_key(mylite_stmt *stmt,
                                            struct mylite_expression_value *out_value)
 {
     if (order_key->kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
-        return evaluate_table_select_output_value(stmt, row, order_key->output_index, out_value);
+        return evaluate_table_select_cached_output_value(stmt, row, order_key->output_index,
+                                                         out_value);
     }
 
     struct mylite_table_select_expression_context user_context = {
@@ -16193,6 +16832,88 @@ static int compare_table_select_rows(const struct mylite_table_select_row *left,
     return 0;
 }
 
+static int materialize_table_select_output_values(mylite_stmt *stmt,
+                                                  struct mylite_table_select_row *row)
+{
+    if (row->output_value_count == stmt->select_plan.output_count) {
+        return MYLITE_OK;
+    }
+
+    row->output_values = calloc(stmt->select_plan.output_count, sizeof(*row->output_values));
+    if (row->output_values == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    row->output_value_count = stmt->select_plan.output_count;
+
+    for (size_t index = 0U; index < stmt->select_plan.output_count; ++index) {
+        int status =
+            evaluate_table_select_output_value(stmt, row, index, &row->output_values[index]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static bool table_select_distinct_row_exists(const mylite_stmt *stmt,
+                                             const struct mylite_table_select_row *row)
+{
+    for (size_t index = 0U; index < stmt->select_result.row_count; ++index) {
+        if (table_select_output_values_equal(stmt, &stmt->select_result.rows[index], row)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool table_select_output_values_equal(const mylite_stmt *stmt,
+                                             const struct mylite_table_select_row *left,
+                                             const struct mylite_table_select_row *right)
+{
+    if (left->output_value_count != stmt->select_plan.output_count ||
+        right->output_value_count != stmt->select_plan.output_count) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < stmt->select_plan.output_count; ++index) {
+        const struct mylite_field_descriptor *descriptor =
+            index < stmt->result_metadata.column_count
+                ? &stmt->result_metadata.columns[index].descriptor
+                : NULL;
+
+        if (compare_table_select_distinct_values(&left->output_values[index],
+                                                 &right->output_values[index], descriptor) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int compare_table_select_distinct_values(const struct mylite_expression_value *left,
+                                                const struct mylite_expression_value *right,
+                                                const struct mylite_field_descriptor *descriptor)
+{
+    bool left_null = left->kind == MYLITE_EXPRESSION_VALUE_NULL;
+    bool right_null = right->kind == MYLITE_EXPRESSION_VALUE_NULL;
+
+    if (left_null || right_null) {
+        if (left_null == right_null) {
+            return 0;
+        }
+        if (left_null) {
+            return -1;
+        }
+        return 1;
+    }
+    if (left->kind == MYLITE_EXPRESSION_VALUE_TEXT && right->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
+        table_select_text_descriptor_is_binary(descriptor)) {
+        return compare_table_select_binary_text_values(left->text_value, right->text_value);
+    }
+    return compare_table_select_values(left, right);
+}
+
 static int compare_table_select_values(const struct mylite_expression_value *left,
                                        const struct mylite_expression_value *right)
 {
@@ -16273,6 +16994,36 @@ static int compare_table_select_text_values(const char *left, const char *right)
            ((unsigned char)left[index] < (unsigned char)right[index]);
 }
 
+static int compare_table_select_binary_text_values(const char *left, const char *right)
+{
+    if (left == NULL) {
+        left = "";
+    }
+    if (right == NULL) {
+        right = "";
+    }
+    return strcmp(left, right);
+}
+
+static bool table_select_text_descriptor_is_binary(const struct mylite_field_descriptor *descriptor)
+{
+    if (descriptor == NULL) {
+        return false;
+    }
+    switch (descriptor->type) {
+    case MYLITE_FIELD_TYPE_STRING:
+    case MYLITE_FIELD_TYPE_VAR_STRING:
+    case MYLITE_FIELD_TYPE_BLOB:
+        if (descriptor->charset_id == mylite_mysql_binary_charset_id ||
+            descriptor->charset_id == mylite_mysql_utf8mb4_bin_charset_id) {
+            return true;
+        }
+        return false;
+    default:
+        return false;
+    }
+}
+
 static int apply_table_select_limit(mylite_stmt *stmt)
 {
     const struct mylite_select_limit *limit = &stmt->select_plan.limit;
@@ -16342,8 +17093,8 @@ static int set_table_select_current_row(mylite_stmt *stmt,
     stmt->select_result.current_value_count = stmt->select_plan.output_count;
 
     for (size_t index = 0U; index < stmt->select_plan.output_count; ++index) {
-        int status = evaluate_table_select_output_value(stmt, row, index,
-                                                        &stmt->select_result.current_values[index]);
+        int status = evaluate_table_select_cached_output_value(
+            stmt, row, index, &stmt->select_result.current_values[index]);
 
         if (status != MYLITE_OK) {
             return status;
@@ -16359,6 +17110,22 @@ static int set_table_select_current_row(mylite_stmt *stmt,
     }
     stmt->select_result.has_current_row = true;
     return MYLITE_OK;
+}
+
+static int evaluate_table_select_cached_output_value(mylite_stmt *stmt,
+                                                     const struct mylite_table_select_row *row,
+                                                     size_t output_index,
+                                                     struct mylite_expression_value *out_value)
+{
+    if (row != NULL && row->output_value_count == stmt->select_plan.output_count &&
+        output_index < row->output_value_count) {
+        if (mylite_expression_value_copy(&row->output_values[output_index], out_value) != 0) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        return MYLITE_OK;
+    }
+    return evaluate_table_select_output_value(stmt, row, output_index, out_value);
 }
 
 static int evaluate_table_select_output_value(mylite_stmt *stmt,
@@ -16623,8 +17390,8 @@ static int resolve_table_select_expression_identifier(void *user_data,
             return -1;
         }
         if (kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
-            return evaluate_table_select_output_value(context->stmt, context->row, index,
-                                                      out_value) == MYLITE_OK
+            return evaluate_table_select_cached_output_value(context->stmt, context->row, index,
+                                                             out_value) == MYLITE_OK
                        ? 0
                        : -1;
         }
@@ -16640,8 +17407,8 @@ static int resolve_table_select_expression_identifier(void *user_data,
             return -1;
         }
         if (kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
-            return evaluate_table_select_output_value(context->stmt, context->row, index,
-                                                      out_value) == MYLITE_OK
+            return evaluate_table_select_cached_output_value(context->stmt, context->row, index,
+                                                             out_value) == MYLITE_OK
                        ? 0
                        : -1;
         }
@@ -22639,6 +23406,9 @@ static void table_select_row_deinit(struct mylite_table_select_row *row)
     for (size_t index = 0U; index < row->value_count; ++index) {
         mylite_expression_value_deinit(&row->values[index]);
     }
+    for (size_t index = 0U; index < row->output_value_count; ++index) {
+        mylite_expression_value_deinit(&row->output_values[index]);
+    }
     for (size_t index = 0U; index < row->order_value_count; ++index) {
         mylite_expression_value_deinit(&row->order_values[index]);
     }
@@ -22646,6 +23416,7 @@ static void table_select_row_deinit(struct mylite_table_select_row *row)
         mylite_expression_value_deinit(&row->aggregate_values[index]);
     }
     free(row->values);
+    free(row->output_values);
     free(row->order_values);
     free(row->aggregate_values);
     free(row->source_row_indexes);

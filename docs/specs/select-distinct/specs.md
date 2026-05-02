@@ -258,7 +258,9 @@ Representative runtime observations:
 | SQL | MySQL behavior |
 | --- | --- |
 | `SELECT DISTINCT a AS alias_a FROM d ORDER BY alias_a` | accepted; ordered `NULL`, `1`, `2`, `3`, `4` |
+| `SELECT DISTINCT a AS b FROM d ORDER BY (b)` where `d` also has column `b` | accepted; the parenthesized top-level alias remains visible |
 | `SELECT DISTINCT a FROM d ORDER BY a + 0` | accepted because the hidden expression references selected column `a` |
+| `SELECT DISTINCT a AS b FROM d ORDER BY b + 0` where `d` also has column `b` | error 3065 / `HY000`; inside the compound expression `b` resolves to the hidden base column |
 | `SELECT DISTINCT a FROM d ORDER BY sort_key` | error 3065 / `HY000`, order expression is incompatible with `DISTINCT` |
 | `SELECT DISTINCT a FROM d ORDER BY sort_key + 0` | error 3065 / `HY000`, order expression is incompatible with `DISTINCT` |
 
@@ -446,15 +448,19 @@ Core row tests:
 | multiple columns | `SELECT DISTINCT a,b FROM d ORDER BY a IS NULL, a, b` | `(1,'x')`, `(2,'y')`, `(3,'A')`, `(4,NULL)`, `(NULL,'n')` |
 | expression output | `SELECT DISTINCT a + 1 AS plus_one FROM d WHERE a IS NOT NULL ORDER BY plus_one` | `2`, `3`, `4`, `5` |
 | alias ordering | `SELECT DISTINCT a AS alias_a FROM d ORDER BY alias_a` | `NULL`, `1`, `2`, `3`, `4` |
+| parenthesized alias ordering | `SELECT DISTINCT a AS b FROM d ORDER BY (b)` where `d` also has column `b` | accepted; `NULL`, `1`, `2`, `3`, `4` |
 | case-insensitive collation | `SELECT DISTINCT b FROM d WHERE a=3 ORDER BY b` | one row: `'A'` |
 | binary collation | `SELECT DISTINCT c FROM d WHERE a=3 ORDER BY c` | `'A'`, `'a'` |
 | selected-column hidden order expression | `SELECT DISTINCT a FROM d ORDER BY a + 0` | accepted; `NULL`, `1`, `2`, `3`, `4` |
 | hidden non-selected order key | `SELECT DISTINCT a FROM d ORDER BY sort_key` | error 3065 / `HY000` |
 | hidden non-selected order expression | `SELECT DISTINCT a FROM d ORDER BY sort_key + 0` | error 3065 / `HY000` |
+| alias-shadowed hidden order expression | `SELECT DISTINCT a AS b FROM d ORDER BY b + 0` where `d` also has column `b` | error 3065 / `HY000` |
 | ordered limit | `SELECT DISTINCT a FROM d ORDER BY a LIMIT 3` | `NULL`, `1`, `2` |
 | descending ordered limit | `SELECT DISTINCT a FROM d ORDER BY a DESC LIMIT 3` | `4`, `3`, `2` |
 | joins | `SELECT DISTINCT d.a, e.tag FROM d JOIN e ON d.a <=> e.d_a ORDER BY d.a, e.tag` | `(NULL,'nil')`, `(1,'one')`, `(1,'two')`, `(2,'two')` |
+| outer joins | `SELECT DISTINCT d.a FROM d LEFT JOIN e ON d.a <=> e.d_a ORDER BY d.a IS NULL, d.a` | `1`, `2`, `3`, `4`, `NULL` |
 | aggregate no group | `SELECT DISTINCT COUNT(*) AS n FROM d` | one row: `9` |
+| aggregate duplicate collapse | `SELECT DISTINCT COUNT(*) AS n FROM d GROUP BY b ORDER BY n` | `1`, `2` |
 | aggregate with group | `SELECT DISTINCT a, COUNT(*) AS n FROM d GROUP BY a ORDER BY a IS NULL, a` | `(1,2)`, `(2,1)`, `(3,2)`, `(4,2)`, `(NULL,2)` |
 
 Modifier validation tests:
@@ -488,7 +494,7 @@ or claim support for:
 
 ## Compatibility status
 
-Task 28 is started by this specification but remains unimplemented. MyLite
-should keep `DISTINCT` / `DISTINCTROW` marked unsupported until parser,
-analyzer, runtime, metadata, warning/error, and MySQL-runtime comparison tests
-are complete.
+Task 28 is implemented for the scoped no-table scalar and table-backed SELECT
+surfaces. MyLite still defers aggregate-local `DISTINCT`, set-operation
+duplicate modes, derived tables, subqueries, rollup, and other row-source
+surfaces that this specification explicitly leaves out of scope.

@@ -6,6 +6,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -278,6 +279,7 @@ mylite_sql_parser_append_statement(struct mylite_sql_parser_state *state,
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token select_token,
+    struct mylite_sql_parser_select_duplicate_mode duplicate_mode,
     struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause,
     struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *group_by_clause,
     struct mylite_sql_ast_node *having_clause, struct mylite_sql_ast_node *order_by_clause,
@@ -313,6 +315,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
         return NULL;
     }
 
+    mylite_sql_ast_node_set_select_duplicate_mode(
+        statement, duplicate_mode.mode, duplicate_mode.explicit_mode, duplicate_mode.conflict,
+        duplicate_mode.modifier_count,
+        (struct mylite_sql_ast_select_duplicate_mode_spans){
+            .first = duplicate_mode.first_span,
+            .last = duplicate_mode.last_span,
+            .conflict = duplicate_mode.conflict_span,
+        });
     mylite_sql_ast_node_append_child(statement, select_list);
     mylite_sql_ast_node_append_child(statement, from_clause);
     mylite_sql_ast_node_append_child(statement, where_clause);
@@ -321,6 +331,64 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     mylite_sql_ast_node_append_child(statement, order_by_clause);
     mylite_sql_ast_node_append_child(statement, limit_clause);
     return statement;
+}
+
+struct mylite_sql_parser_select_duplicate_mode
+mylite_sql_parser_make_implicit_select_duplicate_mode(void)
+{
+    return (struct mylite_sql_parser_select_duplicate_mode){
+        .mode = MYLITE_SQL_AST_SELECT_DUPLICATES_IMPLICIT_ALL,
+    };
+}
+
+struct mylite_sql_parser_select_duplicate_mode
+mylite_sql_parser_make_all_select_duplicate_mode(struct mylite_sql_token token)
+{
+    struct mylite_sql_source_span span = span_from_token(&token);
+
+    return (struct mylite_sql_parser_select_duplicate_mode){
+        .mode = MYLITE_SQL_AST_SELECT_DUPLICATES_ALL,
+        .first_span = span,
+        .last_span = span,
+        .modifier_count = 1U,
+        .explicit_mode = true,
+    };
+}
+
+struct mylite_sql_parser_select_duplicate_mode
+mylite_sql_parser_make_distinct_select_duplicate_mode(struct mylite_sql_token token)
+{
+    struct mylite_sql_source_span span = span_from_token(&token);
+
+    return (struct mylite_sql_parser_select_duplicate_mode){
+        .mode = MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT,
+        .first_span = span,
+        .last_span = span,
+        .modifier_count = 1U,
+        .explicit_mode = true,
+    };
+}
+
+struct mylite_sql_parser_select_duplicate_mode
+mylite_sql_parser_append_select_duplicate_mode(struct mylite_sql_parser_state *state,
+                                               struct mylite_sql_parser_select_duplicate_mode list,
+                                               struct mylite_sql_parser_select_duplicate_mode item)
+{
+    (void)state;
+
+    if (list.modifier_count == 0U) {
+        return item;
+    }
+
+    if (!list.conflict && list.mode != item.mode) {
+        list.conflict = true;
+        list.conflict_span = item.first_span;
+    }
+    list.last_span = item.last_span;
+    if (list.modifier_count != SIZE_MAX) {
+        ++list.modifier_count;
+    }
+    return list;
 }
 
 struct mylite_sql_ast_node *
@@ -3763,6 +3831,7 @@ static bool map_keyword_token(const struct mylite_sql_token *token, bool previou
 static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, int *out_parser_token)
 {
     static const struct mylite_sql_parser_keyword_token keywords[] = {
+        {"ALL", MYLITE_SQL_PARSE_ALL},
         {"ALTER", MYLITE_SQL_PARSE_ALTER},
         {"AND", MYLITE_SQL_PARSE_AND},
         {"AS", MYLITE_SQL_PARSE_AS},
@@ -3806,6 +3875,8 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
         {"DELETE", MYLITE_SQL_PARSE_DELETE},
         {"DESC", MYLITE_SQL_PARSE_DESC},
+        {"DISTINCT", MYLITE_SQL_PARSE_DISTINCT},
+        {"DISTINCTROW", MYLITE_SQL_PARSE_DISTINCTROW},
         {"DIV", MYLITE_SQL_PARSE_DIV},
         {"DISK", MYLITE_SQL_PARSE_DISK},
         {"DOUBLE", MYLITE_SQL_PARSE_DOUBLE},

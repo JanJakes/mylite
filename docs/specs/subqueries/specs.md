@@ -89,6 +89,8 @@ and MySQL-runtime verified.
   - `docs/specs/inner-joins/specs.md`
   - `docs/specs/outer-joins/specs.md`
   - `docs/specs/select-distinct/specs.md`
+  - `docs/specs/subquery-in-predicates/specs.md`
+  - `docs/specs/quantified-subquery-comparisons/specs.md`
 
 Observed behavior was verified against MySQL 8.4.9 in Docker container
 `mylite-mysql-849`, using:
@@ -829,7 +831,10 @@ Task 29 has the first executable slice implemented. MyLite executes
 uncorrelated scalar subqueries, uncorrelated `EXISTS` / `NOT EXISTS`
 subqueries, and uncorrelated scalar `IN` / `NOT IN` subqueries in no-table
 scalar `SELECT` and the currently supported table-backed `SELECT` expression
-contexts: projection, `WHERE`, join `ON`, `HAVING`, and `ORDER BY`.
+contexts: projection, `WHERE`, join `ON`, `HAVING`, and `ORDER BY`. The
+focused scalar `ANY` / `SOME` / `ALL` quantified-comparison slice has a start
+spec in `docs/specs/quantified-subquery-comparisons/specs.md`, but runtime
+behavior remains deferred until implementation lands.
 
 This slice includes empty scalar-subquery results as `NULL`, one-row value
 return, scalar error 1241 for multi-column operands, scalar error 1242 for
@@ -838,6 +843,6 @@ warning propagation, first-slice result descriptors, and `EXISTS` checks that
 do not evaluate the subquery select list.
 
 The remaining Task 29 surfaces are deferred: correlated subqueries, row
-subqueries, row `IN` / `NOT IN`, quantified `ANY` / `SOME` / `ALL`, DML
-subquery execution, derived-table row sources, CTE/set-operation subqueries,
-and optimizer behavior.
+subqueries, row `IN` / `NOT IN`, quantified `ANY` / `SOME` / `ALL` execution,
+DML subquery execution, derived-table row sources, CTE/set-operation
+subqueries, and optimizer behavior.

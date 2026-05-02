@@ -105,6 +105,17 @@ typedef enum MyliteCreateTableColumnFlag {
   MYLITE_CREATE_TABLE_COLUMN_FLAG_COLLATE = 1u << 16
 } MyliteCreateTableColumnFlag;
 
+typedef enum MyliteCreateTableKeyKind {
+  MYLITE_CREATE_TABLE_KEY_UNKNOWN = 0,
+  MYLITE_CREATE_TABLE_KEY_PRIMARY,
+  MYLITE_CREATE_TABLE_KEY_INDEX,
+  MYLITE_CREATE_TABLE_KEY_UNIQUE,
+  MYLITE_CREATE_TABLE_KEY_FULLTEXT,
+  MYLITE_CREATE_TABLE_KEY_SPATIAL,
+  MYLITE_CREATE_TABLE_KEY_FOREIGN,
+  MYLITE_CREATE_TABLE_KEY_CHECK
+} MyliteCreateTableKeyKind;
+
 MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result);
 MyliteParseStatus mylite_parse_sql_ast(const char *sql, MyliteAst **ast,
                                        MyliteParseResult *result);
@@ -114,6 +125,7 @@ const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
 const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
 const char *mylite_create_table_column_type_family_name(
     MyliteCreateTableColumnTypeFamily family);
+const char *mylite_create_table_key_kind_name(MyliteCreateTableKeyKind kind);
 
 void mylite_ast_free(MyliteAst *ast);
 const MyliteAstNode *mylite_ast_root(const MyliteAst *ast);
@@ -187,6 +199,75 @@ MyliteCreateTableColumnTypeFamily mylite_ast_create_table_column_type_family(
 unsigned int mylite_ast_create_table_column_flags(const MyliteAst *ast,
                                                   size_t statement_index,
                                                   size_t column_index);
+size_t mylite_ast_create_table_key_count(const MyliteAst *ast,
+                                         size_t statement_index);
+MyliteCreateTableKeyKind mylite_ast_create_table_key_kind(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_start(const MyliteAst *ast,
+                                         size_t statement_index,
+                                         size_t key_index);
+size_t mylite_ast_create_table_key_end(const MyliteAst *ast,
+                                       size_t statement_index,
+                                       size_t key_index);
+size_t mylite_ast_create_table_key_constraint_name_start(const MyliteAst *ast,
+                                                         size_t statement_index,
+                                                         size_t key_index);
+size_t mylite_ast_create_table_key_constraint_name_end(const MyliteAst *ast,
+                                                       size_t statement_index,
+                                                       size_t key_index);
+size_t mylite_ast_create_table_key_name_start(const MyliteAst *ast,
+                                              size_t statement_index,
+                                              size_t key_index);
+size_t mylite_ast_create_table_key_name_end(const MyliteAst *ast,
+                                            size_t statement_index,
+                                            size_t key_index);
+size_t mylite_ast_create_table_key_column_count(const MyliteAst *ast,
+                                                size_t statement_index,
+                                                size_t key_index);
+size_t mylite_ast_create_table_key_column_start(const MyliteAst *ast,
+                                                size_t statement_index,
+                                                size_t key_index,
+                                                size_t column_index);
+size_t mylite_ast_create_table_key_column_end(const MyliteAst *ast,
+                                              size_t statement_index,
+                                              size_t key_index,
+                                              size_t column_index);
+size_t mylite_ast_create_table_key_column_name_start(const MyliteAst *ast,
+                                                     size_t statement_index,
+                                                     size_t key_index,
+                                                     size_t column_index);
+size_t mylite_ast_create_table_key_column_name_end(const MyliteAst *ast,
+                                                   size_t statement_index,
+                                                   size_t key_index,
+                                                   size_t column_index);
+size_t mylite_ast_create_table_key_referenced_table_start(const MyliteAst *ast,
+                                                          size_t statement_index,
+                                                          size_t key_index);
+size_t mylite_ast_create_table_key_referenced_table_end(const MyliteAst *ast,
+                                                        size_t statement_index,
+                                                        size_t key_index);
+size_t mylite_ast_create_table_key_referenced_table_schema_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_referenced_table_schema_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_referenced_table_name_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_referenced_table_name_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_referenced_column_count(
+    const MyliteAst *ast, size_t statement_index, size_t key_index);
+size_t mylite_ast_create_table_key_referenced_column_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_referenced_column_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_referenced_column_name_start(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
+size_t mylite_ast_create_table_key_referenced_column_name_end(
+    const MyliteAst *ast, size_t statement_index, size_t key_index,
+    size_t column_index);
 MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node);
 unsigned mylite_ast_node_rule_id(const MyliteAstNode *node);
 const char *mylite_ast_node_symbol_name(const MyliteAstNode *node);

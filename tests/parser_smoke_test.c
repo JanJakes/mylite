@@ -20,6 +20,25 @@ typedef struct ExpectedCreateTableColumn {
   unsigned int flags;
 } ExpectedCreateTableColumn;
 
+typedef struct ExpectedCreateTableKeyPart {
+  const char *definition;
+  const char *name;
+} ExpectedCreateTableKeyPart;
+
+typedef struct ExpectedCreateTableKey {
+  MyliteCreateTableKeyKind kind;
+  const char *definition;
+  const char *constraint_name;
+  const char *name;
+  const ExpectedCreateTableKeyPart *columns;
+  size_t column_count;
+  const char *referenced_table;
+  const char *referenced_schema;
+  const char *referenced_name;
+  const ExpectedCreateTableKeyPart *referenced_columns;
+  size_t referenced_column_count;
+} ExpectedCreateTableKey;
+
 static int expect_parse_ok(const char *sql);
 static int expect_ast_ok(const char *sql, const char *root_symbol);
 static int expect_ast_statements(const char *sql, size_t count,
@@ -34,6 +53,13 @@ static int expect_ast_targets(const char *sql, MyliteStatementKind statement_kin
 static int expect_create_table_columns(const char *sql,
                                        const ExpectedCreateTableColumn *columns,
                                        size_t column_count);
+static int expect_create_table_keys(const char *sql,
+                                    const ExpectedCreateTableKey *keys,
+                                    size_t key_count);
+static int expect_create_table_key_parts(
+    const char *sql, const MyliteAst *ast, size_t key_index,
+    const ExpectedCreateTableKeyPart *parts, size_t part_count,
+    int referenced);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
 
@@ -668,6 +694,84 @@ int main(void) {
         "gen INT GENERATED ALWAYS AS (1 + 2) STORED)",
         columns, sizeof(columns) / sizeof(columns[0]));
   }
+  {
+    const ExpectedCreateTableKeyPart pk_columns[] = {{"id", "id"}};
+    const ExpectedCreateTableKeyPart slug_columns[] = {{"slug", "slug"}};
+    const ExpectedCreateTableKeyPart id_slug_columns[] = {{"id", "id"},
+                                                          {"slug", "slug"}};
+    const ExpectedCreateTableKey keys[] = {
+        {MYLITE_CREATE_TABLE_KEY_PRIMARY, "PRIMARY KEY (id)", NULL, NULL,
+         pk_columns, sizeof(pk_columns) / sizeof(pk_columns[0]), NULL, NULL,
+         NULL, NULL, 0},
+        {MYLITE_CREATE_TABLE_KEY_INDEX, "KEY slug_idx (slug)", NULL,
+         "slug_idx", slug_columns,
+         sizeof(slug_columns) / sizeof(slug_columns[0]), NULL, NULL, NULL, NULL,
+         0},
+        {MYLITE_CREATE_TABLE_KEY_INDEX, "INDEX id_slug (id, slug)", NULL,
+         "id_slug", id_slug_columns,
+         sizeof(id_slug_columns) / sizeof(id_slug_columns[0]), NULL, NULL, NULL,
+         NULL, 0}};
+    failures += expect_create_table_keys(
+        "CREATE TABLE t (id INT, slug VARCHAR(50), PRIMARY KEY (id), "
+        "KEY slug_idx (slug), INDEX id_slug (id, slug))",
+        keys, sizeof(keys) / sizeof(keys[0]));
+  }
+  {
+    const ExpectedCreateTableKeyPart email_columns[] = {{"email", "email"}};
+    const ExpectedCreateTableKey keys[] = {
+        {MYLITE_CREATE_TABLE_KEY_UNIQUE, "UNIQUE KEY email_uq (email)", NULL,
+         "email_uq", email_columns,
+         sizeof(email_columns) / sizeof(email_columns[0]), NULL, NULL, NULL,
+         NULL, 0},
+        {MYLITE_CREATE_TABLE_KEY_FULLTEXT, "FULLTEXT KEY ft_email (email)",
+         NULL, "ft_email", email_columns,
+         sizeof(email_columns) / sizeof(email_columns[0]), NULL, NULL, NULL,
+         NULL, 0},
+        {MYLITE_CREATE_TABLE_KEY_SPATIAL, "SPATIAL KEY sp (email)", NULL,
+         "sp", email_columns, sizeof(email_columns) / sizeof(email_columns[0]),
+         NULL, NULL, NULL, NULL, 0}};
+    failures += expect_create_table_keys(
+        "CREATE TABLE t (id INT, email VARCHAR(100), "
+        "UNIQUE KEY email_uq (email), FULLTEXT KEY ft_email (email), "
+        "SPATIAL KEY sp (email))",
+        keys, sizeof(keys) / sizeof(keys[0]));
+  }
+  {
+    const ExpectedCreateTableKeyPart local_columns[] = {{"parent_id",
+                                                         "parent_id"}};
+    const ExpectedCreateTableKeyPart referenced_columns[] = {{"id", "id"}};
+    const ExpectedCreateTableKey keys[] = {
+        {MYLITE_CREATE_TABLE_KEY_FOREIGN,
+         "CONSTRAINT fk_parent FOREIGN KEY fk_idx (parent_id) REFERENCES "
+         "parent_db.parent(id)",
+         "fk_parent", "fk_idx", local_columns,
+         sizeof(local_columns) / sizeof(local_columns[0]), "parent_db.parent",
+         "parent_db", "parent", referenced_columns,
+         sizeof(referenced_columns) / sizeof(referenced_columns[0])},
+        {MYLITE_CREATE_TABLE_KEY_CHECK, "CHECK (parent_id > 0)", NULL, NULL,
+         NULL, 0, NULL, NULL, NULL, NULL, 0}};
+    failures += expect_create_table_keys(
+        "CREATE TABLE child (parent_id INT, CONSTRAINT fk_parent FOREIGN KEY "
+        "fk_idx (parent_id) REFERENCES parent_db.parent(id), CHECK (parent_id "
+        "> 0))",
+        keys, sizeof(keys) / sizeof(keys[0]));
+  }
+  {
+    const ExpectedCreateTableKeyPart ab_columns[] = {{"a", "a"}, {"b", "b"}};
+    const ExpectedCreateTableKeyPart a_columns[] = {{"a", "a"}};
+    const ExpectedCreateTableKey keys[] = {
+        {MYLITE_CREATE_TABLE_KEY_UNIQUE,
+         "CONSTRAINT uq_ab UNIQUE INDEX uq_ab USING BTREE (a, b)", "uq_ab",
+         "uq_ab", ab_columns, sizeof(ab_columns) / sizeof(ab_columns[0]), NULL,
+         NULL, NULL, NULL, 0},
+        {MYLITE_CREATE_TABLE_KEY_PRIMARY, "CONSTRAINT pk PRIMARY KEY (a)", "pk",
+         NULL, a_columns, sizeof(a_columns) / sizeof(a_columns[0]), NULL, NULL,
+         NULL, NULL, 0}};
+    failures += expect_create_table_keys(
+        "CREATE TABLE t (a INT, b INT, CONSTRAINT uq_ab UNIQUE INDEX uq_ab "
+        "USING BTREE (a, b), CONSTRAINT pk PRIMARY KEY (a))",
+        keys, sizeof(keys) / sizeof(keys[0]));
+  }
 
   return failures == 0 ? 0 : 1;
 }
@@ -885,6 +989,150 @@ static int expect_create_table_columns(const char *sql,
   }
 
   mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_create_table_keys(const char *sql,
+                                    const ExpectedCreateTableKey *keys,
+                                    size_t key_count) {
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "CREATE TABLE key parse failed: %s\nstatus=%s offset=%zu token=%d "
+            "message=%s\n",
+            sql, mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  int failed = 0;
+  if (mylite_ast_statement_count(ast) != 1 ||
+      mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_CREATE ||
+      mylite_ast_create_table_key_count(ast, 0) != key_count) {
+    fprintf(stderr, "CREATE TABLE key header failed: %s\nkind=%s key_count=%zu\n",
+            sql, mylite_statement_kind_name(mylite_ast_statement_kind(ast, 0)),
+            mylite_ast_create_table_key_count(ast, 0));
+    failed = 1;
+  }
+
+  size_t actual_count = mylite_ast_create_table_key_count(ast, 0);
+  for (size_t i = 0; i < key_count && i < actual_count; i++) {
+    if (mylite_ast_create_table_key_kind(ast, 0, i) != keys[i].kind ||
+        !span_matches(sql, mylite_ast_create_table_key_start(ast, 0, i),
+                      mylite_ast_create_table_key_end(ast, 0, i),
+                      keys[i].definition) ||
+        !span_matches(sql,
+                      mylite_ast_create_table_key_constraint_name_start(ast, 0,
+                                                                       i),
+                      mylite_ast_create_table_key_constraint_name_end(ast, 0, i),
+                      keys[i].constraint_name) ||
+        !span_matches(sql, mylite_ast_create_table_key_name_start(ast, 0, i),
+                      mylite_ast_create_table_key_name_end(ast, 0, i),
+                      keys[i].name) ||
+        !span_matches(sql,
+                      mylite_ast_create_table_key_referenced_table_start(ast, 0,
+                                                                        i),
+                      mylite_ast_create_table_key_referenced_table_end(ast, 0,
+                                                                      i),
+                      keys[i].referenced_table) ||
+        !span_matches(sql,
+                      mylite_ast_create_table_key_referenced_table_schema_start(
+                          ast, 0, i),
+                      mylite_ast_create_table_key_referenced_table_schema_end(
+                          ast, 0, i),
+                      keys[i].referenced_schema) ||
+        !span_matches(sql,
+                      mylite_ast_create_table_key_referenced_table_name_start(
+                          ast, 0, i),
+                      mylite_ast_create_table_key_referenced_table_name_end(
+                          ast, 0, i),
+                      keys[i].referenced_name)) {
+      fprintf(stderr,
+              "CREATE TABLE key[%zu] failed: %s\nkind=%s span=%zu..%zu "
+              "constraint=%zu..%zu name=%zu..%zu ref_table=%zu..%zu "
+              "ref_schema=%zu..%zu ref_name=%zu..%zu\n",
+              i, sql,
+              mylite_create_table_key_kind_name(
+                  mylite_ast_create_table_key_kind(ast, 0, i)),
+              mylite_ast_create_table_key_start(ast, 0, i),
+              mylite_ast_create_table_key_end(ast, 0, i),
+              mylite_ast_create_table_key_constraint_name_start(ast, 0, i),
+              mylite_ast_create_table_key_constraint_name_end(ast, 0, i),
+              mylite_ast_create_table_key_name_start(ast, 0, i),
+              mylite_ast_create_table_key_name_end(ast, 0, i),
+              mylite_ast_create_table_key_referenced_table_start(ast, 0, i),
+              mylite_ast_create_table_key_referenced_table_end(ast, 0, i),
+              mylite_ast_create_table_key_referenced_table_schema_start(ast, 0,
+                                                                       i),
+              mylite_ast_create_table_key_referenced_table_schema_end(ast, 0,
+                                                                     i),
+              mylite_ast_create_table_key_referenced_table_name_start(ast, 0, i),
+              mylite_ast_create_table_key_referenced_table_name_end(ast, 0, i));
+      failed = 1;
+    }
+
+    failed += expect_create_table_key_parts(sql, ast, i, keys[i].columns,
+                                            keys[i].column_count, 0);
+    failed += expect_create_table_key_parts(
+        sql, ast, i, keys[i].referenced_columns, keys[i].referenced_column_count,
+        1);
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_create_table_key_parts(
+    const char *sql, const MyliteAst *ast, size_t key_index,
+    const ExpectedCreateTableKeyPart *parts, size_t part_count,
+    int referenced) {
+  size_t actual_count =
+      referenced ? mylite_ast_create_table_key_referenced_column_count(
+                       ast, 0, key_index)
+                 : mylite_ast_create_table_key_column_count(ast, 0, key_index);
+  if (actual_count != part_count) {
+    fprintf(stderr,
+            "CREATE TABLE key[%zu] %s count failed: %s\nexpected=%zu "
+            "actual=%zu\n",
+            key_index, referenced ? "referenced column" : "column", sql,
+            part_count, actual_count);
+    return 1;
+  }
+
+  int failed = 0;
+  for (size_t i = 0; i < part_count; i++) {
+    size_t start =
+        referenced ? mylite_ast_create_table_key_referenced_column_start(
+                         ast, 0, key_index, i)
+                   : mylite_ast_create_table_key_column_start(ast, 0, key_index,
+                                                              i);
+    size_t end = referenced
+                     ? mylite_ast_create_table_key_referenced_column_end(
+                           ast, 0, key_index, i)
+                     : mylite_ast_create_table_key_column_end(ast, 0, key_index,
+                                                              i);
+    size_t name_start =
+        referenced ? mylite_ast_create_table_key_referenced_column_name_start(
+                         ast, 0, key_index, i)
+                   : mylite_ast_create_table_key_column_name_start(
+                         ast, 0, key_index, i);
+    size_t name_end =
+        referenced ? mylite_ast_create_table_key_referenced_column_name_end(
+                         ast, 0, key_index, i)
+                   : mylite_ast_create_table_key_column_name_end(
+                         ast, 0, key_index, i);
+    if (!span_matches(sql, start, end, parts[i].definition) ||
+        !span_matches(sql, name_start, name_end, parts[i].name)) {
+      fprintf(stderr,
+              "CREATE TABLE key[%zu] %s[%zu] failed: %s\nspan=%zu..%zu "
+              "name=%zu..%zu\n",
+              key_index, referenced ? "ref_column" : "column", i, sql, start,
+              end, name_start, name_end);
+      failed = 1;
+    }
+  }
   return failed;
 }
 

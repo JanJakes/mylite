@@ -109,13 +109,15 @@ static void dump_statements(const MyliteAst *ast) {
   for (size_t i = 0; i < count; i++) {
     size_t target_count = mylite_ast_statement_target_count(ast, i);
     size_t column_count = mylite_ast_create_table_column_count(ast, i);
+    size_t key_count = mylite_ast_create_table_key_count(ast, i);
     printf("statement[%zu] kind=%s symbol=%s span=%zu..%zu targets=%zu "
-           "columns=%zu target=%s:%zu..%zu schema=%zu..%zu name=%zu..%zu\n",
+           "columns=%zu keys=%zu target=%s:%zu..%zu schema=%zu..%zu "
+           "name=%zu..%zu\n",
            i,
            mylite_statement_kind_name(mylite_ast_statement_kind(ast, i)),
            mylite_ast_statement_symbol_name(ast, i),
            mylite_ast_statement_start(ast, i), mylite_ast_statement_end(ast, i),
-           target_count, column_count,
+           target_count, column_count, key_count,
            mylite_statement_target_kind_name(mylite_ast_statement_target_kind(ast, i)),
            mylite_ast_statement_target_start(ast, i),
            mylite_ast_statement_target_end(ast, i),
@@ -153,6 +155,48 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_table_column_type_end(ast, i, j),
              mylite_ast_create_table_column_options_start(ast, i, j),
              mylite_ast_create_table_column_options_end(ast, i, j));
+    }
+    for (size_t j = 0; j < key_count; j++) {
+      size_t column_count_for_key =
+          mylite_ast_create_table_key_column_count(ast, i, j);
+      size_t referenced_column_count =
+          mylite_ast_create_table_key_referenced_column_count(ast, i, j);
+      printf("  key[%zu] kind=%s span=%zu..%zu constraint=%zu..%zu "
+             "name=%zu..%zu columns=%zu ref_table=%zu..%zu "
+             "ref_schema=%zu..%zu ref_name=%zu..%zu ref_columns=%zu\n",
+             j,
+             mylite_create_table_key_kind_name(
+                 mylite_ast_create_table_key_kind(ast, i, j)),
+             mylite_ast_create_table_key_start(ast, i, j),
+             mylite_ast_create_table_key_end(ast, i, j),
+             mylite_ast_create_table_key_constraint_name_start(ast, i, j),
+             mylite_ast_create_table_key_constraint_name_end(ast, i, j),
+             mylite_ast_create_table_key_name_start(ast, i, j),
+             mylite_ast_create_table_key_name_end(ast, i, j),
+             column_count_for_key,
+             mylite_ast_create_table_key_referenced_table_start(ast, i, j),
+             mylite_ast_create_table_key_referenced_table_end(ast, i, j),
+             mylite_ast_create_table_key_referenced_table_schema_start(ast, i, j),
+             mylite_ast_create_table_key_referenced_table_schema_end(ast, i, j),
+             mylite_ast_create_table_key_referenced_table_name_start(ast, i, j),
+             mylite_ast_create_table_key_referenced_table_name_end(ast, i, j),
+             referenced_column_count);
+      for (size_t k = 0; k < column_count_for_key; k++) {
+        printf("    key_column[%zu] span=%zu..%zu name=%zu..%zu\n", k,
+               mylite_ast_create_table_key_column_start(ast, i, j, k),
+               mylite_ast_create_table_key_column_end(ast, i, j, k),
+               mylite_ast_create_table_key_column_name_start(ast, i, j, k),
+               mylite_ast_create_table_key_column_name_end(ast, i, j, k));
+      }
+      for (size_t k = 0; k < referenced_column_count; k++) {
+        printf("    ref_column[%zu] span=%zu..%zu name=%zu..%zu\n", k,
+               mylite_ast_create_table_key_referenced_column_start(ast, i, j, k),
+               mylite_ast_create_table_key_referenced_column_end(ast, i, j, k),
+               mylite_ast_create_table_key_referenced_column_name_start(ast, i, j,
+                                                                        k),
+               mylite_ast_create_table_key_referenced_column_name_end(ast, i, j,
+                                                                      k));
+      }
     }
   }
 }

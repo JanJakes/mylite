@@ -26,6 +26,9 @@ expression nodes.
 - `CREATE TABLE` statements expose typed column descriptors for direct column
   definitions, including definition, name, type, option spans, coarse type
   family, and column option flags.
+- `CREATE TABLE` statements expose typed table key and constraint descriptors
+  for primary keys, secondary indexes, unique indexes, fulltext indexes, spatial
+  indexes, foreign keys, and check constraints.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
   still cover the full current corpus.
 - The AST is opaque in the public API and freed with `mylite_ast_free()`.
@@ -53,6 +56,9 @@ expression nodes.
   span
 - typed `CREATE TABLE` column descriptors with definition, name, type, and
   options spans, type family, and option flags
+- typed `CREATE TABLE` key descriptors with kind, full constraint/index span,
+  constraint name, key name, local key parts, referenced table, referenced
+  schema/name, and referenced key parts
 
 The original single-target accessors remain compatibility helpers and mirror
 the first indexed target. The indexed API should be used by new analyzer and
@@ -73,8 +79,15 @@ now classifies the coarse type family (`numeric`, `string`, `temporal`, `json`,
 nullability, defaults, auto-increment, inline key markers, comments, generated
 columns, `ON UPDATE`, references, checks, unsigned, zerofill, character set, and
 collation. It does not yet classify exact MySQL data type names, default
-expressions, table constraints, standalone indexes, table options, partitions,
-or `CREATE TABLE ... SELECT`.
+expressions, table options, partitions, or `CREATE TABLE ... SELECT`.
+
+The `CREATE TABLE` key view covers table-level primary keys, indexes, unique
+keys, fulltext keys, spatial keys, foreign keys, and check constraints. It
+preserves both constraint names and key names because MySQL syntax can carry
+both independently, and it records foreign-key referenced table and referenced
+columns. It does not yet classify index options, key-part order/prefix lengths,
+foreign-key match/update/delete actions, check expressions, or generated
+constraint names.
 
 For development inspection:
 
@@ -95,8 +108,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.854240 qps=501947 mbps=38.17 avg_us=1.992
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=19.715159 qps=352729 mbps=26.83 avg_us=2.835 avg_nodes=74.5 avg_ast_bytes=9866.7 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.022573 qps=495922 mbps=37.72 avg_us=2.016
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=20.866257 qps=333270 mbps=25.35 avg_us=3.001 avg_nodes=74.5 avg_ast_bytes=9892.5 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -109,18 +122,19 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 55K on disk, 39,248 bytes text/data/other
+parser support object: 64K on disk, 45,259 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.1M on disk
-mylite-parse: 992K on disk
+mylite-parse: 995K on disk
 ```
 
 ## Next Work
 
 - Replace temporary recognizer placeholder roots with real grammar productions
   or explicit typed placeholder statements.
-- Expand `CREATE TABLE` typed descriptors to classify data types, defaults,
-  generated expressions, table constraints, indexes, and table options.
+- Expand `CREATE TABLE` typed descriptors to classify exact data types,
+  defaults, generated expressions, index options, foreign-key actions, check
+  expressions, and table options.
 - Add typed AST nodes for the next analyzer statement families underneath the
   statement classification and indexed target descriptor layer.
 - Decide whether syntax-only builds should use a separate no-action generated

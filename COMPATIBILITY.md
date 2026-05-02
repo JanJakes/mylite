@@ -59,9 +59,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 A Lemon-based parser prototype is present and generated from the vendored TiDB
 grammar plus MyLite MySQL overlay rules. It provides syntax acceptance and an
-optional generic parse tree, but it does not yet build the final typed MyLite AST
-and does not imply runtime support for the statement rows below. The current
-prototype parses the WordPress MySQL server query corpus with
+optional generic parse tree with typed statement, target, and initial
+`CREATE TABLE` column/key descriptor views, but it does not yet build the final
+typed MyLite AST and does not imply runtime support for the statement rows
+below. The current prototype parses the WordPress MySQL server query corpus with
 `parsed=69541 skipped=36 failed=0`. See
 [docs/parser/lemon-tidb-port.md](docs/parser/lemon-tidb-port.md) and
 [docs/parser/ast-construction.md](docs/parser/ast-construction.md).

@@ -63,7 +63,8 @@ token sink:
   tails.
 - `INSERT` and `REPLACE` recognize empty and comma-separated column lists before
   write payloads, MySQL's `INSERT` priority/`IGNORE` modifier order, and
-  validate `SET` assignment lists including repeated-`SET`
+  MySQL's single `REPLACE LOW_PRIORITY`/`DELAYED` modifier slot, and validate
+  `SET` assignment lists including repeated-`SET`
   continuations, malformed top-level assignment value adjacent operands and
   dangling operators, adjacent operands, dangling operators, and trailing
   separators inside plain parenthesized assignment value groups, explicit

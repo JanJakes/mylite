@@ -3365,6 +3365,8 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int insert_modifier_scan = kind == MYLITE_STATEMENT_INSERT;
   int insert_priority_modifier_seen = 0;
   int insert_ignore_modifier_seen = 0;
+  int replace_modifier_scan = kind == MYLITE_STATEMENT_REPLACE;
+  int replace_modifier_seen = 0;
   int update_table_condition_started = 0;
   int update_table_alias_pending = 0;
 
@@ -3400,6 +3402,21 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         continue;
       }
       insert_modifier_scan = 0;
+    }
+
+    if (replace_modifier_scan) {
+      if (token.offset == start.offset) {
+        continue;
+      }
+      if (token_id == ML_DELAYED || token_id == ML_LOW_PRIORITY) {
+        if (replace_modifier_seen) {
+          mylite_parser_reject(ctx, token, "malformed REPLACE modifier");
+          return;
+        }
+        replace_modifier_seen = 1;
+        continue;
+      }
+      replace_modifier_scan = 0;
     }
 
     if (depth > 0) {

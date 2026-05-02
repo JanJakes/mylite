@@ -63,6 +63,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t column_known_storage_classes = 0;
   size_t column_type_numeric_parameters = 0;
   size_t column_type_elements = 0;
+  size_t column_type_element_values = 0;
   size_t column_type_lengths = 0;
   size_t column_type_precisions = 0;
   size_t column_type_scales = 0;
@@ -116,6 +117,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                       ast, i, j);
               column_type_elements +=
                   mylite_ast_create_table_column_type_element_count(ast, i, j);
+              for (size_t k = 0;
+                   k < mylite_ast_create_table_column_type_element_count(ast, i,
+                                                                         j);
+                   k++) {
+                if (mylite_ast_create_table_column_type_element_value(ast, i, j,
+                                                                      k) != NULL) {
+                  column_type_element_values++;
+                }
+              }
               if (mylite_ast_create_table_column_type_has_length(ast, i, j)) {
                 column_type_lengths++;
               }
@@ -225,7 +235,9 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_column_references=%.2f avg_column_known_types=%.2f "
            "avg_column_storage_classes=%.2f "
            "avg_column_type_numeric_params=%.2f "
-           "avg_column_type_elements=%.2f avg_column_type_lengths=%.2f "
+           "avg_column_type_elements=%.2f "
+           "avg_column_type_element_values=%.2f "
+           "avg_column_type_lengths=%.2f "
            "avg_column_type_precisions=%.2f avg_column_type_scales=%.2f "
            "avg_column_type_fsps=%.2f avg_column_type_unsigned_attrs=%.2f "
            "avg_column_type_zerofill_attrs=%.2f "
@@ -240,6 +252,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)column_known_storage_classes / (double)parsed,
            (double)column_type_numeric_parameters / (double)parsed,
            (double)column_type_elements / (double)parsed,
+           (double)column_type_element_values / (double)parsed,
            (double)column_type_lengths / (double)parsed,
            (double)column_type_precisions / (double)parsed,
            (double)column_type_scales / (double)parsed,

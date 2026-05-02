@@ -374,6 +374,12 @@ size_t mylite_ast_create_table_column_type_element_start(
 size_t mylite_ast_create_table_column_type_element_end(
     const MyliteAst *ast, size_t statement_index, size_t column_index,
     size_t element_index);
+const char *mylite_ast_create_table_column_type_element_value(
+    const MyliteAst *ast, size_t statement_index, size_t column_index,
+    size_t element_index);
+size_t mylite_ast_create_table_column_type_element_value_length(
+    const MyliteAst *ast, size_t statement_index, size_t column_index,
+    size_t element_index);
 int mylite_ast_create_table_column_type_has_length(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
 unsigned long long mylite_ast_create_table_column_type_length(

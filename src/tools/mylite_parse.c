@@ -16,6 +16,7 @@ static int parse_file(const char *path, OutputMode mode);
 static int parse_sql_text(const char *sql, const char *label, OutputMode mode);
 static void dump_statements(const MyliteAst *ast);
 static const char *node_symbol_or_none(const MyliteAstNode *node);
+static void print_escaped_bytes(const char *value, size_t length);
 static void dump_ast_node(const MyliteAstNode *node, unsigned depth);
 static char *read_stream(FILE *stream, const char *label);
 
@@ -261,9 +262,23 @@ static void dump_statements(const MyliteAst *ast) {
       size_t type_element_count =
           mylite_ast_create_table_column_type_element_count(ast, i, j);
       for (size_t k = 0; k < type_element_count; k++) {
-        printf("    column[%zu].type_element[%zu] span=%zu..%zu\n", j, k,
+        const char *value =
+            mylite_ast_create_table_column_type_element_value(ast, i, j, k);
+        size_t value_length =
+            mylite_ast_create_table_column_type_element_value_length(ast, i, j,
+                                                                     k);
+        printf("    column[%zu].type_element[%zu] span=%zu..%zu "
+               "value_len=%zu value=",
+               j, k,
                mylite_ast_create_table_column_type_element_start(ast, i, j, k),
-               mylite_ast_create_table_column_type_element_end(ast, i, j, k));
+               mylite_ast_create_table_column_type_element_end(ast, i, j, k),
+               value_length);
+        if (value == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(value, value_length);
+        }
+        fputc('\n', stdout);
       }
     }
     for (size_t j = 0; j < key_count; j++) {
@@ -395,6 +410,47 @@ static void dump_statements(const MyliteAst *ast) {
 static const char *node_symbol_or_none(const MyliteAstNode *node) {
   const char *symbol = mylite_ast_node_symbol_name(node);
   return symbol == NULL ? "none" : symbol;
+}
+
+static void print_escaped_bytes(const char *value, size_t length) {
+  fputc('"', stdout);
+  for (size_t i = 0; i < length; i++) {
+    unsigned char ch = (unsigned char)value[i];
+    switch (ch) {
+      case '\0':
+        fputs("\\0", stdout);
+        break;
+      case '\b':
+        fputs("\\b", stdout);
+        break;
+      case '\n':
+        fputs("\\n", stdout);
+        break;
+      case '\r':
+        fputs("\\r", stdout);
+        break;
+      case '\t':
+        fputs("\\t", stdout);
+        break;
+      case 26:
+        fputs("\\Z", stdout);
+        break;
+      case '\\':
+        fputs("\\\\", stdout);
+        break;
+      case '"':
+        fputs("\\\"", stdout);
+        break;
+      default:
+        if (ch < 0x20 || ch >= 0x7f) {
+          printf("\\x%02x", ch);
+        } else {
+          fputc(ch, stdout);
+        }
+        break;
+    }
+  }
+  fputc('"', stdout);
 }
 
 static void dump_ast_node(const MyliteAstNode *node, unsigned depth) {

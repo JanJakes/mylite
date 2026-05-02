@@ -25,6 +25,8 @@ typedef struct ExpectedCreateTableColumn {
   size_t type_element_count;
   const char *type_element0;
   const char *type_element1;
+  const char *type_element0_value;
+  const char *type_element1_value;
   int has_type_length;
   unsigned long long type_length;
   int has_type_precision;
@@ -151,6 +153,8 @@ static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
 static int span_matches_when_expected(const char *sql, size_t start, size_t end,
                                       const char *expected);
+static int value_matches_when_expected(const char *actual, size_t actual_length,
+                                       const char *expected);
 static int node_symbol_matches_when_expected(const MyliteAstNode *node,
                                              const char *expected);
 
@@ -818,6 +822,8 @@ int main(void) {
          .type_element_count = 2,
          .type_element0 = "'a,b'",
          .type_element1 = "'c''d'",
+         .type_element0_value = "a,b",
+         .type_element1_value = "c'd",
          .default_span = "DEFAULT 'a,b'",
          .default_value = "'a,b'",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_ENUM,
@@ -1032,14 +1038,15 @@ int main(void) {
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_JSON,
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_JSON,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_JSON},
-        {.definition = "st SET('x')",
+        {.definition = "st SET('x\\ny')",
          .name = "st",
-         .type = "SET('x')",
+         .type = "SET('x\\ny')",
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_SET,
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_SET,
-         .type_parameters = "('x')",
+         .type_parameters = "('x\\ny')",
          .type_element_count = 1,
-         .type_element0 = "'x'",
+         .type_element0 = "'x\\ny'",
+         .type_element0_value = "x\ny",
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_SET},
         {.definition = "ve VECTOR(3)",
          .name = "ve",
@@ -1055,7 +1062,7 @@ int main(void) {
         "CREATE TABLE t (ti TINYINT, iw INT(11), i8 INT8, bo BOOLEAN, f FLOAT8, "
         "bt BIT(1), bn BINARY(2), tx MEDIUMTEXT, dt DATETIME(6), "
         "pt POINT, gc GEOMETRYCOLLECTION, ch CHAR(1), vb VARBINARY(2), "
-        "js JSON, st SET('x'), ve VECTOR(3))",
+        "js JSON, st SET('x\\ny'), ve VECTOR(3))",
         columns, sizeof(columns) / sizeof(columns[0]));
   }
   {
@@ -1674,6 +1681,16 @@ static int expect_create_table_columns(const char *sql,
             sql, mylite_ast_create_table_column_type_element_start(ast, 0, i, 1),
             mylite_ast_create_table_column_type_element_end(ast, 0, i, 1),
             columns[i].type_element1) ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_column_type_element_value(ast, 0, i, 0),
+            mylite_ast_create_table_column_type_element_value_length(ast, 0, i,
+                                                                     0),
+            columns[i].type_element0_value) ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_column_type_element_value(ast, 0, i, 1),
+            mylite_ast_create_table_column_type_element_value_length(ast, 0, i,
+                                                                     1),
+            columns[i].type_element1_value) ||
         (columns[i].has_type_length &&
          (!mylite_ast_create_table_column_type_has_length(ast, 0, i) ||
           mylite_ast_create_table_column_type_length(ast, 0, i) !=
@@ -1790,7 +1807,7 @@ static int expect_create_table_columns(const char *sql,
               "flags=0x%x\n"
               "type_name=%zu..%zu type_params=%zu..%zu "
               "type_numeric_params=%zu:%llu,%llu type_elements=%zu "
-              "type_element0=%zu..%zu type_element1=%zu..%zu "
+              "type_element0=%zu..%zu:%zu type_element1=%zu..%zu:%zu "
               "type_length=%d:%llu type_precision=%d:%llu "
               "type_scale=%d:%llu type_fsp=%d:%llu "
               "type_attrs=%zu..%zu type_unsigned=%zu..%zu "
@@ -1831,8 +1848,12 @@ static int expect_create_table_columns(const char *sql,
               mylite_ast_create_table_column_type_element_count(ast, 0, i),
               mylite_ast_create_table_column_type_element_start(ast, 0, i, 0),
               mylite_ast_create_table_column_type_element_end(ast, 0, i, 0),
+              mylite_ast_create_table_column_type_element_value_length(ast, 0, i,
+                                                                       0),
               mylite_ast_create_table_column_type_element_start(ast, 0, i, 1),
               mylite_ast_create_table_column_type_element_end(ast, 0, i, 1),
+              mylite_ast_create_table_column_type_element_value_length(ast, 0, i,
+                                                                       1),
               mylite_ast_create_table_column_type_has_length(ast, 0, i),
               mylite_ast_create_table_column_type_length(ast, 0, i),
               mylite_ast_create_table_column_type_has_precision(ast, 0, i),
@@ -2309,6 +2330,19 @@ static int span_matches(const char *sql, size_t start, size_t end,
 static int span_matches_when_expected(const char *sql, size_t start, size_t end,
                                       const char *expected) {
   return expected == NULL || span_matches(sql, start, end, expected);
+}
+
+static int value_matches_when_expected(const char *actual, size_t actual_length,
+                                       const char *expected) {
+  if (expected == NULL) {
+    return 1;
+  }
+  if (actual == NULL) {
+    return 0;
+  }
+  size_t expected_length = strlen(expected);
+  return actual_length == expected_length &&
+         memcmp(actual, expected, expected_length) == 0;
 }
 
 static int node_symbol_matches_when_expected(const MyliteAstNode *node,

@@ -567,6 +567,50 @@ static const char *node_symbol_or_none(const MyliteAstNode *node) {
 
 static void dump_create_table_view_handles(
     const MyliteAstCreateTable *create_table) {
+  const char *engine_value =
+      mylite_ast_create_table_view_engine_value(create_table);
+  const char *charset_value =
+      mylite_ast_create_table_view_charset_value(create_table);
+  const char *collation_value =
+      mylite_ast_create_table_view_collation_value(create_table);
+  const char *comment_value =
+      mylite_ast_create_table_view_comment_value(create_table);
+  printf("    create_table.option_summary engine=");
+  if (engine_value == NULL) {
+    fputs("none", stdout);
+  } else {
+    print_escaped_bytes(
+        engine_value,
+        mylite_ast_create_table_view_engine_value_length(create_table));
+  }
+  fputs(" charset=", stdout);
+  if (charset_value == NULL) {
+    fputs("none", stdout);
+  } else {
+    print_escaped_bytes(
+        charset_value,
+        mylite_ast_create_table_view_charset_value_length(create_table));
+  }
+  fputs(" collation=", stdout);
+  if (collation_value == NULL) {
+    fputs("none", stdout);
+  } else {
+    print_escaped_bytes(
+        collation_value,
+        mylite_ast_create_table_view_collation_value_length(create_table));
+  }
+  fputs(" comment=", stdout);
+  if (comment_value == NULL) {
+    fputs("none", stdout);
+  } else {
+    print_escaped_bytes(
+        comment_value,
+        mylite_ast_create_table_view_comment_value_length(create_table));
+  }
+  printf(" auto_increment=%d:%llu\n",
+         mylite_ast_create_table_view_has_auto_increment_value(create_table),
+         mylite_ast_create_table_view_auto_increment_value(create_table));
+
   for (size_t i = 0; i < mylite_ast_create_table_view_column_count(create_table);
        i++) {
     const MyliteAstCreateTableColumn *column =

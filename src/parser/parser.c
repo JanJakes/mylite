@@ -244,6 +244,11 @@ struct MyliteAstCreateTable {
   size_t key_count;
   const MyliteAstCreateTableOption *options;
   size_t option_count;
+  const MyliteAstCreateTableOption *engine_option;
+  const MyliteAstCreateTableOption *charset_option;
+  const MyliteAstCreateTableOption *collation_option;
+  const MyliteAstCreateTableOption *comment_option;
+  const MyliteAstCreateTableOption *auto_increment_option;
 };
 
 typedef struct MyliteAstStatement {
@@ -329,6 +334,8 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
 static int mylite_ast_set_create_table_view(MyliteAst *ast,
                                             MyliteAstStatement *statement,
                                             const MyliteAstNode *payload);
+static void mylite_ast_set_create_table_option_summary(
+    MyliteAstCreateTable *create_table);
 static const MyliteAstStatementTarget *mylite_ast_create_table_target(
     const MyliteAstStatement *statement);
 static MyliteStatementTargetKind mylite_ast_target_kind_for_statement(
@@ -1413,6 +1420,102 @@ size_t mylite_ast_create_table_view_key_count(
 size_t mylite_ast_create_table_view_option_count(
     const MyliteAstCreateTable *create_table) {
   return create_table == NULL ? 0 : create_table->option_count;
+}
+
+const MyliteAstCreateTableOption *mylite_ast_create_table_view_engine_option(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? NULL : create_table->engine_option;
+}
+
+const char *mylite_ast_create_table_view_engine_value(
+    const MyliteAstCreateTable *create_table) {
+  const MyliteAstCreateTableOption *option =
+      mylite_ast_create_table_view_engine_option(create_table);
+  return option == NULL ? NULL : option->value;
+}
+
+size_t mylite_ast_create_table_view_engine_value_length(
+    const MyliteAstCreateTable *create_table) {
+  const MyliteAstCreateTableOption *option =
+      mylite_ast_create_table_view_engine_option(create_table);
+  return option == NULL ? 0 : option->value_length;
+}
+
+const MyliteAstCreateTableOption *mylite_ast_create_table_view_charset_option(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? NULL : create_table->charset_option;
+}
+
+const char *mylite_ast_create_table_view_charset_value(
+    const MyliteAstCreateTable *create_table) {
+  const MyliteAstCreateTableOption *option =
+      mylite_ast_create_table_view_charset_option(create_table);
+  return option == NULL ? NULL : option->value;
+}
+
+size_t mylite_ast_create_table_view_charset_value_length(
+    const MyliteAstCreateTable *create_table) {
+  const MyliteAstCreateTableOption *option =
+      mylite_ast_create_table_view_charset_option(create_table);
+  return option == NULL ? 0 : option->value_length;
+}
+
+const MyliteAstCreateTableOption *mylite_ast_create_table_view_collation_option(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? NULL : create_table->collation_option;
+}
+
+const char *mylite_ast_create_table_view_collation_value(
+    const MyliteAstCreateTable *create_table) {
+  const MyliteAstCreateTableOption *option =
+      mylite_ast_create_table_view_collation_option(create_table);
+  return option == NULL ? NULL : option->value;
+}
+
+size_t mylite_ast_create_table_view_collation_value_length(
+    const MyliteAstCreateTable *create_table) {
+  const MyliteAstCreateTableOption *option =
+      mylite_ast_create_table_view_collation_option(create_table);
+  return option == NULL ? 0 : option->value_length;
+}
+
+const MyliteAstCreateTableOption *mylite_ast_create_table_view_comment_option(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? NULL : create_table->comment_option;
+}
+
+const char *mylite_ast_create_table_view_comment_value(
+    const MyliteAstCreateTable *create_table) {
+  const MyliteAstCreateTableOption *option =
+      mylite_ast_create_table_view_comment_option(create_table);
+  return option == NULL ? NULL : option->value;
+}
+
+size_t mylite_ast_create_table_view_comment_value_length(
+    const MyliteAstCreateTable *create_table) {
+  const MyliteAstCreateTableOption *option =
+      mylite_ast_create_table_view_comment_option(create_table);
+  return option == NULL ? 0 : option->value_length;
+}
+
+const MyliteAstCreateTableOption *
+mylite_ast_create_table_view_auto_increment_option(
+    const MyliteAstCreateTable *create_table) {
+  return create_table == NULL ? NULL : create_table->auto_increment_option;
+}
+
+int mylite_ast_create_table_view_has_auto_increment_value(
+    const MyliteAstCreateTable *create_table) {
+  const MyliteAstCreateTableOption *option =
+      mylite_ast_create_table_view_auto_increment_option(create_table);
+  return option != NULL && option->has_unsigned_integer_value;
+}
+
+unsigned long long mylite_ast_create_table_view_auto_increment_value(
+    const MyliteAstCreateTable *create_table) {
+  const MyliteAstCreateTableOption *option =
+      mylite_ast_create_table_view_auto_increment_option(create_table);
+  return option == NULL ? 0 : option->unsigned_integer_value;
 }
 
 const MyliteAstCreateTableColumn *mylite_ast_create_table_view_column_at(
@@ -4309,8 +4412,60 @@ static int mylite_ast_set_create_table_view(MyliteAst *ast,
   create_table->key_count = statement->create_table_key_count;
   create_table->options = statement->create_table_options;
   create_table->option_count = statement->create_table_option_count;
+  mylite_ast_set_create_table_option_summary(create_table);
   statement->create_table = create_table;
   return 1;
+}
+
+static void mylite_ast_set_create_table_option_summary(
+    MyliteAstCreateTable *create_table) {
+  if (create_table == NULL) {
+    return;
+  }
+  for (size_t i = 0; i < create_table->option_count; i++) {
+    const MyliteAstCreateTableOption *option = &create_table->options[i];
+    switch (option->kind) {
+      case MYLITE_CREATE_TABLE_OPTION_ENGINE:
+        create_table->engine_option = option;
+        break;
+      case MYLITE_CREATE_TABLE_OPTION_CHARSET:
+        create_table->charset_option = option;
+        break;
+      case MYLITE_CREATE_TABLE_OPTION_COLLATE:
+        create_table->collation_option = option;
+        break;
+      case MYLITE_CREATE_TABLE_OPTION_COMMENT:
+        create_table->comment_option = option;
+        break;
+      case MYLITE_CREATE_TABLE_OPTION_AUTO_INCREMENT:
+        create_table->auto_increment_option = option;
+        break;
+      case MYLITE_CREATE_TABLE_OPTION_UNKNOWN:
+      case MYLITE_CREATE_TABLE_OPTION_SECONDARY_ENGINE:
+      case MYLITE_CREATE_TABLE_OPTION_ROW_FORMAT:
+      case MYLITE_CREATE_TABLE_OPTION_KEY_BLOCK_SIZE:
+      case MYLITE_CREATE_TABLE_OPTION_AUTOEXTEND_SIZE:
+      case MYLITE_CREATE_TABLE_OPTION_AVG_ROW_LENGTH:
+      case MYLITE_CREATE_TABLE_OPTION_MAX_ROWS:
+      case MYLITE_CREATE_TABLE_OPTION_MIN_ROWS:
+      case MYLITE_CREATE_TABLE_OPTION_DELAY_KEY_WRITE:
+      case MYLITE_CREATE_TABLE_OPTION_ENCRYPTION:
+      case MYLITE_CREATE_TABLE_OPTION_STATS_PERSISTENT:
+      case MYLITE_CREATE_TABLE_OPTION_PACK_KEYS:
+      case MYLITE_CREATE_TABLE_OPTION_TABLESPACE:
+      case MYLITE_CREATE_TABLE_OPTION_STORAGE:
+      case MYLITE_CREATE_TABLE_OPTION_COMPRESSION:
+      case MYLITE_CREATE_TABLE_OPTION_CONNECTION:
+      case MYLITE_CREATE_TABLE_OPTION_PASSWORD:
+      case MYLITE_CREATE_TABLE_OPTION_INSERT_METHOD:
+      case MYLITE_CREATE_TABLE_OPTION_DATA_DIRECTORY:
+      case MYLITE_CREATE_TABLE_OPTION_INDEX_DIRECTORY:
+      case MYLITE_CREATE_TABLE_OPTION_UNION:
+      case MYLITE_CREATE_TABLE_OPTION_ENGINE_ATTRIBUTE:
+      case MYLITE_CREATE_TABLE_OPTION_SECONDARY_ENGINE_ATTRIBUTE:
+        break;
+    }
+  }
 }
 
 static const MyliteAstStatementTarget *mylite_ast_create_table_target(

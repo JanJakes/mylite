@@ -749,8 +749,8 @@ int main(void) {
   failures += expect_create_table_view(
       "CREATE TABLE `db``x`.`t``y` (id INT(11) UNSIGNED NOT NULL DEFAULT 1 "
       "COMMENT 'pk' CHECK (id > 0), KEY `k``x` (id(3) DESC) COMMENT "
-      "'hello') ENGINE=InnoDB",
-      "`db``x`.`t``y`", "`db``x`", "`t``y`", "db`x", "t`y", 1, 1, 1);
+      "'hello') ENGINE=InnoDB AUTO_INCREMENT=42 COMMENT='table comment'",
+      "`db``x`.`t``y`", "`db``x`", "`t``y`", "db`x", "t`y", 1, 1, 3);
   {
     const ExpectedCreateTableColumn columns[] = {
         {"id INT NOT NULL AUTO_INCREMENT", "id", "INT",
@@ -1727,6 +1727,16 @@ static int expect_create_table_view(const char *sql, const char *target,
       mylite_ast_create_table_view_column_count(create_table) != column_count ||
       mylite_ast_create_table_view_key_count(create_table) != key_count ||
       mylite_ast_create_table_view_option_count(create_table) != option_count ||
+      !value_matches_when_expected(
+          mylite_ast_create_table_view_engine_value(create_table),
+          mylite_ast_create_table_view_engine_value_length(create_table),
+          "InnoDB") ||
+      !mylite_ast_create_table_view_has_auto_increment_value(create_table) ||
+      mylite_ast_create_table_view_auto_increment_value(create_table) != 42 ||
+      !value_matches_when_expected(
+          mylite_ast_create_table_view_comment_value(create_table),
+          mylite_ast_create_table_view_comment_value_length(create_table),
+          "table comment") ||
       (column_count > 0 &&
        (first_column == NULL ||
         mylite_ast_create_table_column_view_type_kind(first_column) !=

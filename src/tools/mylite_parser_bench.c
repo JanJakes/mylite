@@ -63,6 +63,9 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_table_views = 0;
   size_t create_table_view_schema_values = 0;
   size_t create_table_view_name_values = 0;
+  size_t create_table_view_summary_engines = 0;
+  size_t create_table_view_summary_comments = 0;
+  size_t create_table_view_summary_auto_increments = 0;
   size_t create_table_view_columns = 0;
   size_t create_table_view_keys = 0;
   size_t create_table_view_options = 0;
@@ -166,6 +169,18 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
               if (mylite_ast_create_table_view_name_value(create_table) !=
                   NULL) {
                 create_table_view_name_values++;
+              }
+              if (mylite_ast_create_table_view_engine_value(create_table) !=
+                  NULL) {
+                create_table_view_summary_engines++;
+              }
+              if (mylite_ast_create_table_view_comment_value(create_table) !=
+                  NULL) {
+                create_table_view_summary_comments++;
+              }
+              if (mylite_ast_create_table_view_has_auto_increment_value(
+                      create_table)) {
+                create_table_view_summary_auto_increments++;
               }
               create_table_view_columns +=
                   mylite_ast_create_table_view_column_count(create_table);
@@ -497,6 +512,9 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_table_views=%.2f "
            "avg_create_table_view_schema_values=%.2f "
            "avg_create_table_view_name_values=%.2f "
+           "avg_create_table_view_summary_engines=%.2f "
+           "avg_create_table_view_summary_comments=%.2f "
+           "avg_create_table_view_summary_auto_increments=%.2f "
            "avg_create_table_view_columns=%.2f "
            "avg_create_table_view_keys=%.2f "
            "avg_create_table_view_options=%.2f "
@@ -543,6 +561,9 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)create_table_views / (double)parsed,
            (double)create_table_view_schema_values / (double)parsed,
            (double)create_table_view_name_values / (double)parsed,
+           (double)create_table_view_summary_engines / (double)parsed,
+           (double)create_table_view_summary_comments / (double)parsed,
+           (double)create_table_view_summary_auto_increments / (double)parsed,
            (double)create_table_view_columns / (double)parsed,
            (double)create_table_view_keys / (double)parsed,
            (double)create_table_view_options / (double)parsed,

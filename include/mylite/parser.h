@@ -400,6 +400,37 @@ size_t mylite_ast_create_table_view_key_count(
     const MyliteAstCreateTable *create_table);
 size_t mylite_ast_create_table_view_option_count(
     const MyliteAstCreateTable *create_table);
+const MyliteAstCreateTableOption *mylite_ast_create_table_view_engine_option(
+    const MyliteAstCreateTable *create_table);
+const char *mylite_ast_create_table_view_engine_value(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_engine_value_length(
+    const MyliteAstCreateTable *create_table);
+const MyliteAstCreateTableOption *mylite_ast_create_table_view_charset_option(
+    const MyliteAstCreateTable *create_table);
+const char *mylite_ast_create_table_view_charset_value(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_charset_value_length(
+    const MyliteAstCreateTable *create_table);
+const MyliteAstCreateTableOption *mylite_ast_create_table_view_collation_option(
+    const MyliteAstCreateTable *create_table);
+const char *mylite_ast_create_table_view_collation_value(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_collation_value_length(
+    const MyliteAstCreateTable *create_table);
+const MyliteAstCreateTableOption *mylite_ast_create_table_view_comment_option(
+    const MyliteAstCreateTable *create_table);
+const char *mylite_ast_create_table_view_comment_value(
+    const MyliteAstCreateTable *create_table);
+size_t mylite_ast_create_table_view_comment_value_length(
+    const MyliteAstCreateTable *create_table);
+const MyliteAstCreateTableOption *
+mylite_ast_create_table_view_auto_increment_option(
+    const MyliteAstCreateTable *create_table);
+int mylite_ast_create_table_view_has_auto_increment_value(
+    const MyliteAstCreateTable *create_table);
+unsigned long long mylite_ast_create_table_view_auto_increment_value(
+    const MyliteAstCreateTable *create_table);
 const MyliteAstCreateTableColumn *mylite_ast_create_table_view_column_at(
     const MyliteAstCreateTable *create_table, size_t column_index);
 const MyliteAstCreateTableKey *mylite_ast_create_table_view_key_at(

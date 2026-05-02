@@ -1620,7 +1620,7 @@ alter_table_charset_after_comma ::= alter_table_union_action.
 alter_table_charset_after_comma ::= alter_table_reorganize_action.
 alter_table_charset_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
 
-alter_table_charset_action ::= database_default_tail alter_table_character_set_kind drop_index_option_equals_tail alter_table_charset_name alter_table_collate_tail.
+alter_table_charset_action ::= database_default_tail alter_table_character_set_kind drop_index_option_equals_tail set_charset_name alter_table_collate_tail.
 alter_table_charset_action ::= CONVERT TO alter_table_character_set_kind drop_index_option_equals_tail alter_table_charset_name alter_table_collate_tail.
 
 alter_table_character_set_kind ::= CHARACTER SET.

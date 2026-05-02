@@ -13092,10 +13092,11 @@ static int validate_column_temporal_precision_list(MyliteParseContext *ctx,
 
 static int column_definition_charset_name_token(int token_id,
                                                 MyliteToken token) {
-  return token_id == ML_BINARY || token_id == ML_DEFAULT ||
+  return token_id == ML_BINARY ||
          token_id == ML_DOUBLE_QUOTED_STRING ||
          token_id == ML_STRING_LITERAL ||
-         dml_row_alias_token(token_id) || token_ascii_equal(token, "ascii") ||
+         (token_id != ML_DEFAULT && dml_row_alias_token(token_id)) ||
+         token_ascii_equal(token, "ascii") ||
          token_ascii_equal(token, "unicode");
 }
 

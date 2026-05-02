@@ -3362,6 +3362,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int values_state = DML_VALUES_NONE;
   int set_alias_state = DML_SET_ALIAS_NONE;
   int update_table_condition_started = 0;
+  int update_table_alias_pending = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -4140,6 +4141,11 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     }
 
     if (kind == MYLITE_STATEMENT_UPDATE && token_id == ML_SET) {
+      if (update_table_alias_pending) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete UPDATE table alias");
+        return;
+      }
       assignment_state = DML_ASSIGN_TARGET;
       assignment_mode = DML_ASSIGNMENT_UPDATE;
       assignment_value_started = 0;
@@ -4149,6 +4155,20 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
 
     if (kind == MYLITE_STATEMENT_UPDATE &&
         assignment_state == DML_ASSIGN_NONE) {
+      if (update_table_alias_pending) {
+        if (!dml_row_alias_token(token_id)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "incomplete UPDATE table alias");
+          return;
+        }
+        update_table_alias_pending = 0;
+        continue;
+      }
+      if (token_id == ML_AS) {
+        update_table_alias_pending = 1;
+        pending_token = token;
+        continue;
+      }
       if (token_id == ML_ON || token_id == ML_USING) {
         update_table_condition_started = 1;
       } else if (!update_table_condition_started &&
@@ -4338,6 +4358,9 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
                          "incomplete DML parenthesized query LIMIT");
   } else if (limit_state == DML_LIMIT_AFTER_LIMIT) {
     mylite_parser_reject(ctx, pending_token, "incomplete DML LIMIT clause");
+  } else if (update_table_alias_pending) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete UPDATE table alias");
   }
 }
 

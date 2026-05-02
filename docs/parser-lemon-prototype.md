@@ -80,7 +80,7 @@ token sink:
   assignment value adjacent operands and dangling operators, adjacent operands,
   dangling operators, and trailing separators inside plain parenthesized
   assignment/`WHERE`/`ORDER BY` expression groups, plus `WHERE`, `ORDER BY`, and
-  `LIMIT` tails.
+  `LIMIT` tails, and rejects `AS` without a following table alias before `SET`.
 - Single-table `DELETE` recognizes table aliases before optional partition
   lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails, rejecting incomplete
   DML clause tails, invalid top-level `ORDER BY` direction sequences, malformed

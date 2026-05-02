@@ -322,7 +322,8 @@ static int create_table_tail_option_size_number_token(int token_id,
 static int create_table_tail_option_default_boolean_token(int token_id);
 static int create_table_tail_option_stats_sample_pages_token(
     int token_id, MyliteToken token);
-static int create_table_tail_option_string_token(int token_id);
+static int create_table_tail_option_string_token(int token_id,
+                                                 MyliteToken token);
 static int create_table_tail_option_insert_method_token(int token_id);
 static int create_table_tail_option_row_format_token(MyliteToken token);
 static int create_table_tail_option_storage_token(int token_id,
@@ -331,6 +332,7 @@ static int token_is_unsigned_decimal_literal(MyliteToken token);
 static int token_is_unsigned_size_literal(MyliteToken token);
 static int token_is_plain_unsigned_integer(MyliteToken token,
                                            unsigned long *value);
+static int token_is_quoted_hex_or_bit_literal(MyliteToken token);
 static int token_has_leading_sign(MyliteToken token);
 static int create_table_column_name_needs_type_check(int token_id,
                                                      MyliteToken token);
@@ -7620,7 +7622,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
           add_index_option_equals = 1;
           continue;
         }
-        if (!create_table_tail_option_string_token(token_id)) {
+        if (!create_table_tail_option_string_token(token_id, token)) {
           mylite_parser_reject(ctx, pending_token,
                                "invalid ALTER TABLE index option");
           return;
@@ -8352,6 +8354,33 @@ static void validate_alter_table_option_values(MyliteParseContext *ctx,
           !create_table_tail_option_storage_token(token_id, token)) {
         mylite_parser_reject(ctx, token_id > 0 ? token : pending_token,
                              "invalid ALTER TABLE storage option");
+        return;
+      }
+      option_allowed = 1;
+      continue;
+    }
+
+    if (token_id == ML_COMMENT || token_id == ML_COMPRESSION ||
+        token_id == ML_CONNECTION || token_id == ML_ENCRYPTION ||
+        token_id == ML_ENGINE_ATTRIBUTE || token_id == ML_PASSWORD ||
+        token_id == ML_SECONDARY_ENGINE_ATTRIBUTE) {
+      if (!validate_alter_table_option_value(
+              ctx, &lexer, token, CREATE_TABLE_OPTION_VALUE_STRING)) {
+        return;
+      }
+      option_allowed = 1;
+      continue;
+    }
+
+    if (token_id == ML_DATA || token_id == ML_INDEX) {
+      MyliteToken option = token;
+      token_id = mylite_lexer_next(&lexer, &token);
+      if (token_id != ML_DIRECTORY) {
+        option_allowed = 0;
+        continue;
+      }
+      if (!validate_alter_table_option_value(
+              ctx, &lexer, option, CREATE_TABLE_OPTION_VALUE_STRING)) {
         return;
       }
       option_allowed = 1;
@@ -12076,14 +12105,14 @@ static int create_table_tail_option_value_token(
     return create_table_tail_option_stats_sample_pages_token(token_id, token);
   }
   if (kind == CREATE_TABLE_OPTION_VALUE_STRING) {
-    return create_table_tail_option_string_token(token_id);
+    return create_table_tail_option_string_token(token_id, token);
   }
   if (kind == CREATE_TABLE_OPTION_VALUE_ENCRYPTION) {
-    return create_table_tail_option_string_token(token_id);
+    return create_table_tail_option_string_token(token_id, token);
   }
   if (kind == CREATE_TABLE_OPTION_VALUE_NAME) {
     return dml_row_alias_token(token_id) ||
-           create_table_tail_option_string_token(token_id);
+           create_table_tail_option_string_token(token_id, token);
   }
   if (kind == CREATE_TABLE_OPTION_VALUE_CHARSET) {
     return column_definition_charset_name_token(token_id, token);
@@ -12148,10 +12177,12 @@ static int create_table_tail_option_stats_sample_pages_token(
   return value >= 1 && value <= 65535;
 }
 
-static int create_table_tail_option_string_token(int token_id) {
-  return token_id == ML_DOUBLE_QUOTED_STRING ||
-         token_id == ML_ENCRYPTION_VALUE || token_id == ML_SQLSTATE_VALUE ||
-         token_id == ML_STRING_LITERAL;
+static int create_table_tail_option_string_token(int token_id,
+                                                 MyliteToken token) {
+  return !token_is_quoted_hex_or_bit_literal(token) &&
+         (token_id == ML_DOUBLE_QUOTED_STRING ||
+          token_id == ML_ENCRYPTION_VALUE || token_id == ML_SQLSTATE_VALUE ||
+          token_id == ML_STRING_LITERAL);
 }
 
 static int create_table_tail_option_insert_method_token(int token_id) {
@@ -12226,6 +12257,15 @@ static int token_is_plain_unsigned_integer(MyliteToken token,
   }
   *value = parsed;
   return 1;
+}
+
+static int token_is_quoted_hex_or_bit_literal(MyliteToken token) {
+  if (token.length < 3 || token.start[1] != '\'') {
+    return 0;
+  }
+
+  return token.start[0] == 'B' || token.start[0] == 'X' ||
+         token.start[0] == 'b' || token.start[0] == 'x';
 }
 
 static int token_has_leading_sign(MyliteToken token) {
@@ -13066,7 +13106,7 @@ static int column_definition_tail_token(
   }
 
   if (*state == COLUMN_DEFINITION_TAIL_AFTER_COMMENT) {
-    if (!create_table_tail_option_string_token(token_id)) {
+    if (!create_table_tail_option_string_token(token_id, token)) {
       mylite_parser_reject(ctx, *pending_token, message);
       return 0;
     }
@@ -13356,9 +13396,7 @@ static int column_definition_tail_token(
       *pending_token = token;
       return 1;
     }
-    if (column_definition_attribute_start(token_id, token, allow_position)) {
-      *state = COLUMN_DEFINITION_TAIL_READY;
-    } else if (dml_row_alias_token(token_id)) {
+    if (dml_row_alias_token(token_id)) {
       *state = COLUMN_DEFINITION_TAIL_AFTER_CONSTRAINT_NAME;
     } else {
       mylite_parser_reject(ctx, *pending_token, message);
@@ -13375,11 +13413,8 @@ static int column_definition_tail_token(
       *pending_token = token;
       return 1;
     }
-    if (!column_definition_attribute_start(token_id, token, allow_position)) {
-      mylite_parser_reject(ctx, *pending_token, message);
-      return 0;
-    }
-    *state = COLUMN_DEFINITION_TAIL_READY;
+    mylite_parser_reject(ctx, *pending_token, message);
+    return 0;
   }
 
   if (*state == COLUMN_DEFINITION_TAIL_AFTER_SERIAL_ATTRIBUTE) {

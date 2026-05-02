@@ -216,10 +216,11 @@ token sink:
   generated-column storage modifiers to follow generated expressions, reject
   repeated generated-column storage modifiers and repeated column `COLLATE`
   clauses, accept repeated column `COMMENT` attributes with MySQL string-token
-  variants, reject `DEFAULT` as a column charset/collation value, validate
-  parenthesized default/generated expression bodies for dangling operators and
-  scalar comma lists, validate temporal precision lists for `DEFAULT`/`ON
-  UPDATE` functions, reject stray attribute parentheses, and
+  variants while rejecting quoted hex/bit literals in text-string positions,
+  restrict column-level `CONSTRAINT` prefixes to `CHECK`, reject `DEFAULT` as
+  a column charset/collation value, validate parenthesized default/generated
+  expression bodies for dangling operators and scalar comma lists, validate
+  temporal precision lists for `DEFAULT`/`ON UPDATE` functions, reject stray attribute parentheses, and
   column-level `REFERENCES` clauses validate optional referenced column-list
   envelopes plus referential-action tails, duplicate `MATCH`/`ON UPDATE`/`ON
   DELETE` rejection, and MySQL's `MATCH`-before-actions order. Trailing table options
@@ -282,8 +283,9 @@ token sink:
   MySQL's `DOUBLE PRECISION` modifier placement, column-definition attribute
   starts and selected closed attribute values including generated-column head
   validation, repeated `COLLATE` rejection, repeated column `COMMENT`
-  attributes, `DEFAULT` charset/collation value rejection, and storage modifier
-  context and repetition checks, index key-part prefix lengths,
+  attributes, quoted hex/bit literal rejection for text options,
+  column-level `CONSTRAINT CHECK` restriction, `DEFAULT` charset/collation
+  value rejection, and storage modifier context and repetition checks, index key-part prefix lengths,
   `ASC`/`DESC` tails, and index option values including closed index
   `USING`/`TYPE` values. `ADD FOREIGN KEY` child lists, referenced table names,
   optional parent column-list envelopes, and referential-action tails are also

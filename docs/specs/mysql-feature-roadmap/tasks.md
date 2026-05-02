@@ -42,7 +42,7 @@ level application surfaces.
 16. [x] Expression operator foundation: comparison, logical, bitwise, `IS NULL`,
        `BETWEEN`, `LIKE`, `IN`, arithmetic, precedence, and type conversion.
 17. [ ] `WHERE`: predicate evaluation, three-valued logic, conversion warnings,
-       and name resolution.
+       and name resolution. Spec: [WHERE clause](../where-clause/specs.md).
 18. [ ] `ORDER BY`, `LIMIT`, and `OFFSET`: aliases, ordinals, collations,
        integer conversion, prepared markers, and error cases.
 19. [ ] Single-table `UPDATE`: assignment order, expressions, `WHERE`,

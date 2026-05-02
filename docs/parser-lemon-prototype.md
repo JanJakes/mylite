@@ -206,8 +206,9 @@ token sink:
   type-family start, validate common numeric and `ENUM`/`SET` type-parameter
   lists, accept hex literals in `ENUM`/`SET` values, preserve MySQL's
   `DOUBLE PRECISION` modifier without accepting `PRECISION` after other types,
-  and accept common attribute
-  starts and selected closed attribute values, require generated-column storage
+  require lengths for `VARCHAR`, `VARBINARY`, `NVARCHAR`, and `CHAR VARYING`
+  forms while preserving `LONG VARCHAR`/`LONG VARBINARY`, and accept common
+  attribute starts and selected closed attribute values, require generated-column storage
   modifiers to follow generated
   expressions, reject repeated generated-column storage modifiers, validate
   parenthesized default/generated expression bodies for dangling operators and

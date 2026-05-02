@@ -10,6 +10,7 @@
 // NOLINTBEGIN(misc-no-recursion, readability-implicit-bool-conversion)
 
 enum {
+    MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS = 1210,
     MYLITE_WARNING_TRUNCATED_WRONG_VALUE = 1292,
     MYLITE_WARNING_DIVISION_BY_ZERO = 1365,
     MYLITE_EXPRESSION_TEXT_BUFFER_SIZE = 64,
@@ -34,25 +35,48 @@ struct between_truth {
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
+                     const struct mylite_expression_eval_context *context,
                      struct mylite_expression_warnings *warnings,
                      struct mylite_expression_value *out_value);
 static int eval_unary(const struct mylite_sql_ast_node *node,
+                      const struct mylite_expression_eval_context *context,
                       struct mylite_expression_warnings *warnings,
                       struct mylite_expression_value *out_value);
 static int eval_binary(const struct mylite_sql_ast_node *node,
+                       const struct mylite_expression_eval_context *context,
                        struct mylite_expression_warnings *warnings,
                        struct mylite_expression_value *out_value);
+static int eval_logical_and(const struct mylite_sql_ast_node *node,
+                            const struct mylite_expression_eval_context *context,
+                            struct mylite_expression_warnings *warnings,
+                            struct mylite_expression_value *out_value);
+static int eval_logical_or(const struct mylite_sql_ast_node *node,
+                           const struct mylite_expression_eval_context *context,
+                           struct mylite_expression_warnings *warnings,
+                           struct mylite_expression_value *out_value);
+static int validate_boolean_shortcut_operand(const struct mylite_sql_ast_node *node,
+                                             const struct mylite_expression_eval_context *context,
+                                             struct mylite_expression_warnings *warnings);
+static int
+validate_like_escape_before_shortcut(const struct mylite_sql_ast_node *node,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings);
+static bool expression_is_constant_boolean(const struct mylite_sql_ast_node *node,
+                                           bool expected_value);
 static int eval_ternary(const struct mylite_sql_ast_node *node,
+                        const struct mylite_expression_eval_context *context,
                         struct mylite_expression_warnings *warnings,
                         struct mylite_expression_value *out_value);
 static int eval_literal(const struct mylite_sql_ast_node *node,
                         struct mylite_expression_value *out_value);
 static int eval_is_expression(enum mylite_sql_ast_operator operator_kind,
                               const struct mylite_sql_ast_node *operand,
+                              const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
                               struct mylite_expression_value *out_value);
 static int eval_between(enum mylite_sql_ast_operator operator_kind,
                         const struct mylite_sql_ast_node *node,
+                        const struct mylite_expression_eval_context *context,
                         struct mylite_expression_warnings *warnings,
                         struct mylite_expression_value *out_value);
 static int eval_between_bound_truth(const struct mylite_expression_value *value,
@@ -63,10 +87,12 @@ static void set_between_result(enum mylite_sql_ast_operator operator_kind,
                                struct mylite_expression_value *out_value);
 static int eval_like(enum mylite_sql_ast_operator operator_kind,
                      const struct mylite_sql_ast_node *node,
+                     const struct mylite_expression_eval_context *context,
                      struct mylite_expression_warnings *warnings,
                      struct mylite_expression_value *out_value);
 static int eval_in(enum mylite_sql_ast_operator operator_kind,
                    const struct mylite_sql_ast_node *node,
+                   const struct mylite_expression_eval_context *context,
                    struct mylite_expression_warnings *warnings,
                    struct mylite_expression_value *out_value);
 static int eval_numeric_unary(enum mylite_sql_ast_operator operator_kind,
@@ -143,12 +169,20 @@ int mylite_expression_eval(const struct mylite_sql_ast_node *expression,
                            struct mylite_expression_warnings *warnings,
                            struct mylite_expression_value *out_value)
 {
+    return mylite_expression_eval_with_context(expression, NULL, warnings, out_value);
+}
+
+int mylite_expression_eval_with_context(const struct mylite_sql_ast_node *expression,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        struct mylite_expression_value *out_value)
+{
     if (out_value == NULL) {
         return -1;
     }
 
     *out_value = (struct mylite_expression_value){0};
-    return eval_node(expression, warnings, out_value);
+    return eval_node(expression, context, warnings, out_value);
 }
 
 int mylite_expression_value_copy(const struct mylite_expression_value *value,
@@ -209,6 +243,15 @@ int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *v
                : strtoll(value->text_value, NULL, MYLITE_EXPRESSION_DECIMAL_BASE);
 }
 
+int mylite_expression_value_truth(const struct mylite_expression_value *value,
+                                  struct mylite_expression_warnings *warnings, int *out_truth)
+{
+    if (out_truth == NULL) {
+        return -1;
+    }
+    return truth_value(value, warnings, out_truth);
+}
+
 bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *expression)
 {
     if (expression == NULL) {
@@ -237,6 +280,7 @@ bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *e
 }
 
 static int eval_node(const struct mylite_sql_ast_node *node,
+                     const struct mylite_expression_eval_context *context,
                      struct mylite_expression_warnings *warnings,
                      struct mylite_expression_value *out_value)
 {
@@ -249,22 +293,33 @@ static int eval_node(const struct mylite_sql_ast_node *node,
             return -1;
         }
     }
+    if (context != NULL && context->eval_constant != NULL &&
+        mylite_expression_is_supported_no_table(node)) {
+        return context->eval_constant(context->user_data, node, warnings, out_value);
+    }
 
     switch (node->kind) {
     case MYLITE_SQL_AST_LITERAL:
         return eval_literal(node, out_value);
+    case MYLITE_SQL_AST_IDENTIFIER:
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+        if (context != NULL && context->resolve_identifier != NULL) {
+            return context->resolve_identifier(context->user_data, node, out_value);
+        }
+        return -1;
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
-        return eval_unary(node, warnings, out_value);
+        return eval_unary(node, context, warnings, out_value);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
-        return eval_binary(node, warnings, out_value);
+        return eval_binary(node, context, warnings, out_value);
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
-        return eval_ternary(node, warnings, out_value);
+        return eval_ternary(node, context, warnings, out_value);
     default:
         return -1;
     }
 }
 
 static int eval_unary(const struct mylite_sql_ast_node *node,
+                      const struct mylite_expression_eval_context *context,
                       struct mylite_expression_warnings *warnings,
                       struct mylite_expression_value *out_value)
 {
@@ -280,12 +335,13 @@ static int eval_unary(const struct mylite_sql_ast_node *node,
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
     case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
-        return eval_is_expression(node->operator_kind, child_at(node, 0U), warnings, out_value);
+        return eval_is_expression(node->operator_kind, child_at(node, 0U), context, warnings,
+                                  out_value);
     default:
         break;
     }
 
-    status = eval_node(child_at(node, 0U), warnings, &operand);
+    status = eval_node(child_at(node, 0U), context, warnings, &operand);
     if (status != 0) {
         return status;
     }
@@ -295,6 +351,7 @@ static int eval_unary(const struct mylite_sql_ast_node *node,
 }
 
 static int eval_binary(const struct mylite_sql_ast_node *node,
+                       const struct mylite_expression_eval_context *context,
                        struct mylite_expression_warnings *warnings,
                        struct mylite_expression_value *out_value)
 {
@@ -304,16 +361,22 @@ static int eval_binary(const struct mylite_sql_ast_node *node,
 
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_IN ||
         node->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_IN) {
-        return eval_in(node->operator_kind, node, warnings, out_value);
+        return eval_in(node->operator_kind, node, context, warnings, out_value);
     }
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE ||
         node->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_LIKE) {
-        return eval_like(node->operator_kind, node, warnings, out_value);
+        return eval_like(node->operator_kind, node, context, warnings, out_value);
+    }
+    if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND) {
+        return eval_logical_and(node, context, warnings, out_value);
+    }
+    if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR) {
+        return eval_logical_or(node, context, warnings, out_value);
     }
 
-    status = eval_node(child_at(node, 0U), warnings, &left);
+    status = eval_node(child_at(node, 0U), context, warnings, &left);
     if (status == 0) {
-        status = eval_node(child_at(node, 1U), warnings, &right);
+        status = eval_node(child_at(node, 1U), context, warnings, &right);
     }
     if (status != 0) {
         goto cleanup;
@@ -360,17 +423,239 @@ cleanup:
     return status;
 }
 
+static int eval_logical_and(const struct mylite_sql_ast_node *node,
+                            const struct mylite_expression_eval_context *context,
+                            struct mylite_expression_warnings *warnings,
+                            struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value left = {0};
+    struct mylite_expression_value right = {0};
+    int left_truth = -1;
+    int right_truth = -1;
+    int status = 0;
+
+    if (context != NULL && !mylite_expression_is_supported_no_table(child_at(node, 0U)) &&
+        expression_is_constant_boolean(child_at(node, 1U), false)) {
+        status = validate_boolean_shortcut_operand(child_at(node, 0U), context, warnings);
+        if (status != 0) {
+            return status;
+        }
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = 0};
+        return 0;
+    }
+
+    status = eval_node(child_at(node, 0U), context, warnings, &left);
+    if (status == 0) {
+        status = truth_value(&left, warnings, &left_truth);
+    }
+    if (status != 0 || left_truth == 0) {
+        mylite_expression_value_deinit(&left);
+        if (status == 0) {
+            status = validate_boolean_shortcut_operand(child_at(node, 1U), context, warnings);
+        }
+        if (status == 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                          .int64_value = 0};
+        }
+        return status;
+    }
+
+    status = eval_node(child_at(node, 1U), context, warnings, &right);
+    if (status == 0) {
+        status = truth_value(&right, warnings, &right_truth);
+    }
+    if (status == 0) {
+        if (right_truth == 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                          .int64_value = 0};
+        } else if (left_truth < 0 || right_truth < 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        } else {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                          .int64_value = 1};
+        }
+    }
+
+    mylite_expression_value_deinit(&left);
+    mylite_expression_value_deinit(&right);
+    return status;
+}
+
+static int eval_logical_or(const struct mylite_sql_ast_node *node,
+                           const struct mylite_expression_eval_context *context,
+                           struct mylite_expression_warnings *warnings,
+                           struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value left = {0};
+    struct mylite_expression_value right = {0};
+    int left_truth = -1;
+    int right_truth = -1;
+    int status = 0;
+
+    if (context != NULL && !mylite_expression_is_supported_no_table(child_at(node, 0U)) &&
+        expression_is_constant_boolean(child_at(node, 1U), true)) {
+        status = validate_boolean_shortcut_operand(child_at(node, 0U), context, warnings);
+        if (status != 0) {
+            return status;
+        }
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = 1};
+        return 0;
+    }
+
+    status = eval_node(child_at(node, 0U), context, warnings, &left);
+    if (status == 0) {
+        status = truth_value(&left, warnings, &left_truth);
+    }
+    if (status != 0 || left_truth == 1) {
+        mylite_expression_value_deinit(&left);
+        if (status == 0) {
+            status = validate_boolean_shortcut_operand(child_at(node, 1U), context, warnings);
+        }
+        if (status == 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                          .int64_value = 1};
+        }
+        return status;
+    }
+
+    status = eval_node(child_at(node, 1U), context, warnings, &right);
+    if (status == 0) {
+        status = truth_value(&right, warnings, &right_truth);
+    }
+    if (status == 0) {
+        if (right_truth == 1) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                          .int64_value = 1};
+        } else if (left_truth < 0 || right_truth < 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        } else {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                          .int64_value = 0};
+        }
+    }
+
+    mylite_expression_value_deinit(&left);
+    mylite_expression_value_deinit(&right);
+    return status;
+}
+
+static int validate_boolean_shortcut_operand(const struct mylite_sql_ast_node *node,
+                                             const struct mylite_expression_eval_context *context,
+                                             struct mylite_expression_warnings *warnings)
+{
+    int status = 0;
+
+    if (node == NULL) {
+        return 0;
+    }
+    while (node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        node = child_at(node, 0U);
+        if (node == NULL) {
+            return 0;
+        }
+    }
+    if ((node->kind == MYLITE_SQL_AST_BINARY_EXPRESSION ||
+         node->kind == MYLITE_SQL_AST_TERNARY_EXPRESSION) &&
+        (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE ||
+         node->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_LIKE)) {
+        status = validate_like_escape_before_shortcut(node, context, warnings);
+        if (status != 0) {
+            return status;
+        }
+    }
+
+    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
+         child = child->next_sibling) {
+        status = validate_boolean_shortcut_operand(child, context, warnings);
+        if (status != 0) {
+            return status;
+        }
+    }
+    return 0;
+}
+
+static int
+validate_like_escape_before_shortcut(const struct mylite_sql_ast_node *node,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings)
+{
+    const struct mylite_sql_ast_node *escape = child_at(node, 2U);
+    struct mylite_expression_value escape_value = {0};
+    char *escape_text = NULL;
+    int status = 0;
+
+    if (escape == NULL) {
+        return 0;
+    }
+    status = eval_node(escape, context, warnings, &escape_value);
+    if (status != 0 || is_null(&escape_value)) {
+        mylite_expression_value_deinit(&escape_value);
+        return status;
+    }
+
+    status = value_to_string(&escape_value, &escape_text);
+    if (status == 0 && strlen(escape_text) != 1U) {
+        status = append_warning(warnings, MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS,
+                                "Incorrect arguments to ESCAPE");
+        if (status == 0) {
+            status = -1;
+        }
+    }
+
+    free(escape_text);
+    mylite_expression_value_deinit(&escape_value);
+    return status;
+}
+
+static bool expression_is_constant_boolean(const struct mylite_sql_ast_node *node,
+                                           bool expected_value)
+{
+    while (node != NULL && node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        node = child_at(node, 0U);
+    }
+    if (node == NULL || node->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+    if (node->literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        return expected_value;
+    }
+    if (node->literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        return !expected_value;
+    }
+    if (node->literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        char *text = copy_span_text(node->span.text, node->span.length);
+        char *end = NULL;
+        long long value = 0;
+        bool matches = false;
+
+        if (text == NULL) {
+            return false;
+        }
+        errno = 0;
+        value = strtoll(text, &end, MYLITE_EXPRESSION_DECIMAL_BASE);
+        if (errno == 0 && end != text && *end == '\0') {
+            matches = (value != 0) == expected_value;
+        }
+        free(text);
+        return matches;
+    }
+    return false;
+}
+
 static int eval_ternary(const struct mylite_sql_ast_node *node,
+                        const struct mylite_expression_eval_context *context,
                         struct mylite_expression_warnings *warnings,
                         struct mylite_expression_value *out_value)
 {
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_BETWEEN ||
         node->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN) {
-        return eval_between(node->operator_kind, node, warnings, out_value);
+        return eval_between(node->operator_kind, node, context, warnings, out_value);
     }
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE ||
         node->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_LIKE) {
-        return eval_like(node->operator_kind, node, warnings, out_value);
+        return eval_like(node->operator_kind, node, context, warnings, out_value);
     }
     return -1;
 }
@@ -439,13 +724,14 @@ static int eval_literal(const struct mylite_sql_ast_node *node,
 
 static int eval_is_expression(enum mylite_sql_ast_operator operator_kind,
                               const struct mylite_sql_ast_node *operand,
+                              const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
                               struct mylite_expression_value *out_value)
 {
     struct mylite_expression_value value = {0};
     int truth = -1;
     int result = 0;
-    int status = eval_node(operand, warnings, &value);
+    int status = eval_node(operand, context, warnings, &value);
 
     if (status != 0) {
         return status;
@@ -493,6 +779,7 @@ static int eval_is_expression(enum mylite_sql_ast_operator operator_kind,
 
 static int eval_between(enum mylite_sql_ast_operator operator_kind,
                         const struct mylite_sql_ast_node *node,
+                        const struct mylite_expression_eval_context *context,
                         struct mylite_expression_warnings *warnings,
                         struct mylite_expression_value *out_value)
 {
@@ -500,13 +787,13 @@ static int eval_between(enum mylite_sql_ast_operator operator_kind,
     struct mylite_expression_value low = {0};
     struct mylite_expression_value high = {0};
     struct between_truth truth = {.low = -1, .high = -1};
-    int status = eval_node(child_at(node, 0U), warnings, &value);
+    int status = eval_node(child_at(node, 0U), context, warnings, &value);
 
     if (status == 0) {
-        status = eval_node(child_at(node, 1U), warnings, &low);
+        status = eval_node(child_at(node, 1U), context, warnings, &low);
     }
     if (status == 0) {
-        status = eval_node(child_at(node, 2U), warnings, &high);
+        status = eval_node(child_at(node, 2U), context, warnings, &high);
     }
     if (status != 0) {
         goto cleanup;
@@ -565,6 +852,7 @@ static void set_between_result(enum mylite_sql_ast_operator operator_kind,
 
 static int eval_like(enum mylite_sql_ast_operator operator_kind,
                      const struct mylite_sql_ast_node *node,
+                     const struct mylite_expression_eval_context *context,
                      struct mylite_expression_warnings *warnings,
                      struct mylite_expression_value *out_value)
 {
@@ -575,13 +863,13 @@ static int eval_like(enum mylite_sql_ast_operator operator_kind,
     char *pattern_text = NULL;
     char *escape_text = NULL;
     char escape = '\\';
-    int status = eval_node(child_at(node, 0U), warnings, &value);
+    int status = eval_node(child_at(node, 0U), context, warnings, &value);
 
     if (status == 0) {
-        status = eval_node(child_at(node, 1U), warnings, &pattern);
+        status = eval_node(child_at(node, 1U), context, warnings, &pattern);
     }
     if (status == 0 && child_at(node, 2U) != NULL) {
-        status = eval_node(child_at(node, 2U), warnings, &escape_value);
+        status = eval_node(child_at(node, 2U), context, warnings, &escape_value);
     }
     if (status != 0) {
         goto cleanup;
@@ -599,7 +887,11 @@ static int eval_like(enum mylite_sql_ast_operator operator_kind,
     if (status == 0 && child_at(node, 2U) != NULL) {
         status = value_to_string(&escape_value, &escape_text);
         if (status == 0 && strlen(escape_text) != 1U) {
-            status = -1;
+            status = append_warning(warnings, MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS,
+                                    "Incorrect arguments to ESCAPE");
+            if (status == 0) {
+                status = -1;
+            }
         }
         if (status == 0) {
             escape = escape_text[0];
@@ -626,13 +918,14 @@ cleanup:
 
 static int eval_in(enum mylite_sql_ast_operator operator_kind,
                    const struct mylite_sql_ast_node *node,
+                   const struct mylite_expression_eval_context *context,
                    struct mylite_expression_warnings *warnings,
                    struct mylite_expression_value *out_value)
 {
     struct mylite_expression_value value = {0};
     const struct mylite_sql_ast_node *list = child_at(node, 1U);
     bool saw_null = false;
-    int status = eval_node(child_at(node, 0U), warnings, &value);
+    int status = eval_node(child_at(node, 0U), context, warnings, &value);
 
     if (status != 0) {
         return status;
@@ -648,7 +941,7 @@ static int eval_in(enum mylite_sql_ast_operator operator_kind,
         struct mylite_expression_value candidate = {0};
         int comparison = 0;
 
-        status = eval_node(item, warnings, &candidate);
+        status = eval_node(item, context, warnings, &candidate);
         if (status != 0) {
             mylite_expression_value_deinit(&candidate);
             break;

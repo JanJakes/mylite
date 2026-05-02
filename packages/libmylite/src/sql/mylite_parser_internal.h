@@ -93,7 +93,12 @@ mylite_sql_parser_append_statement(struct mylite_sql_parser_state *state,
                                    struct mylite_sql_ast_node *statement);
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token select_token,
-    struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause);
+    struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause,
+    struct mylite_sql_ast_node *where_clause);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_where_clause(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_token where_token,
+                                    struct mylite_sql_ast_node *expression);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_use_statement(struct mylite_sql_parser_state *state,
                                      struct mylite_sql_token use_token,

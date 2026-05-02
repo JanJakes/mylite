@@ -267,7 +267,8 @@ mylite_sql_parser_append_statement(struct mylite_sql_parser_state *state,
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token select_token,
-    struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause)
+    struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause,
+    struct mylite_sql_ast_node *where_clause)
 {
     struct mylite_sql_source_span span = span_from_token(&select_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -278,6 +279,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     if (from_clause != NULL) {
         span = span_join(span, from_clause->span);
     }
+    if (where_clause != NULL) {
+        span = span_join(span, where_clause->span);
+    }
 
     statement = make_node(state, MYLITE_SQL_AST_SELECT_STATEMENT, span);
     if (statement == NULL) {
@@ -286,7 +290,29 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
 
     mylite_sql_ast_node_append_child(statement, select_list);
     mylite_sql_ast_node_append_child(statement, from_clause);
+    mylite_sql_ast_node_append_child(statement, where_clause);
     return statement;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_where_clause(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_token where_token,
+                                    struct mylite_sql_ast_node *expression)
+{
+    struct mylite_sql_source_span span = span_from_token(&where_token);
+    struct mylite_sql_ast_node *where_clause = NULL;
+
+    if (expression != NULL) {
+        span = span_join(span, expression->span);
+    }
+
+    where_clause = make_node(state, MYLITE_SQL_AST_WHERE_CLAUSE, span);
+    if (where_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(where_clause, expression);
+    return where_clause;
 }
 
 struct mylite_sql_ast_node *
@@ -2602,6 +2628,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"VALUES", MYLITE_SQL_PARSE_VALUES},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
         {"VARYING", MYLITE_SQL_PARSE_VARYING},
+        {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"VISIBLE", MYLITE_SQL_PARSE_VISIBLE},
         {"XOR", MYLITE_SQL_PARSE_XOR},
         {"YEAR", MYLITE_SQL_PARSE_YEAR},

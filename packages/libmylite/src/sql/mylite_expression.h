@@ -33,16 +33,36 @@ struct mylite_expression_value {
     char *text_value;
 };
 
+typedef int (*mylite_expression_resolve_identifier_fn)(void *user_data,
+                                                       const struct mylite_sql_ast_node *identifier,
+                                                       struct mylite_expression_value *out_value);
+typedef int (*mylite_expression_eval_constant_fn)(void *user_data,
+                                                  const struct mylite_sql_ast_node *expression,
+                                                  struct mylite_expression_warnings *warnings,
+                                                  struct mylite_expression_value *out_value);
+
+struct mylite_expression_eval_context {
+    void *user_data;
+    mylite_expression_resolve_identifier_fn resolve_identifier;
+    mylite_expression_eval_constant_fn eval_constant;
+};
+
 void mylite_expression_value_deinit(struct mylite_expression_value *value);
 void mylite_expression_warnings_deinit(struct mylite_expression_warnings *warnings);
 
 int mylite_expression_eval(const struct mylite_sql_ast_node *expression,
                            struct mylite_expression_warnings *warnings,
                            struct mylite_expression_value *out_value);
+int mylite_expression_eval_with_context(const struct mylite_sql_ast_node *expression,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        struct mylite_expression_value *out_value);
 int mylite_expression_value_copy(const struct mylite_expression_value *value,
                                  struct mylite_expression_value *out_value);
 char *mylite_expression_value_to_text(const struct mylite_expression_value *value);
 int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *value);
+int mylite_expression_value_truth(const struct mylite_expression_value *value,
+                                  struct mylite_expression_warnings *warnings, int *out_truth);
 bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *expression);
 
 #endif

@@ -1237,29 +1237,42 @@ opt_equal ::= .
 opt_equal ::= EQ.
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {
-    A = mylite_sql_parser_make_select_statement(state, T, B, NULL);
+    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_dual(state, F, D));
+        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL);
 }
-select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(C) opt_table_alias(D). {
+select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(C) opt_table_alias(D)
+        opt_where_clause(E). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, C, D));
+        state, T, B, mylite_sql_parser_make_from_table(state, F, C, D), E);
 }
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL);
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D));
+        mylite_sql_parser_make_from_dual(state, F, D), NULL);
 }
-select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(C) opt_table_alias(D). {
+select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(C) opt_table_alias(D)
+        opt_where_clause(E). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, C, D));
+        mylite_sql_parser_make_from_table(state, F, C, D), E);
+}
+
+opt_where_clause(A) ::= . {
+    A = NULL;
+}
+opt_where_clause(A) ::= where_clause(B). {
+    A = B;
+}
+
+where_clause(A) ::= WHERE(T) expression(B). {
+    A = mylite_sql_parser_make_where_clause(state, T, B);
 }
 
 table_name(A) ::= qualified_identifier(B). {
@@ -1454,7 +1467,7 @@ comparison_expression(A) ::= comparison_expression(B) NOT(T) IN LPAREN expressio
 opt_like_escape(A) ::= . {
     A = NULL;
 }
-opt_like_escape(A) ::= ESCAPE expression(B). {
+opt_like_escape(A) ::= ESCAPE bit_or_expression(B). {
     A = B;
 }
 

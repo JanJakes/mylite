@@ -23,6 +23,7 @@ static int test_select_expression_list(void);
 static int test_expression_operator_foundation_syntax(void);
 static int test_information_schema_select(void);
 static int test_select_table_core_syntax(void);
+static int test_select_where_clause_syntax(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -89,6 +90,7 @@ int main(void)
     failures += test_expression_operator_foundation_syntax();
     failures += test_information_schema_select();
     failures += test_select_table_core_syntax();
+    failures += test_select_where_clause_syntax();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -2457,7 +2459,9 @@ static int test_information_schema_select(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT * FROM INFORMATION_SCHEMA.SCHEMATA WHERE TRUE;",
-                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(child_at(child_at(result.root, 0U), 2U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "information schema where clause");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -2529,9 +2533,6 @@ static int test_select_table_core_syntax(void)
     failures += parse_sql("SELECT a, * FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT a FROM t WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parse_sql("SELECT a FROM t ORDER BY a;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
@@ -2548,6 +2549,96 @@ static int test_select_table_core_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT a INTO @x FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_where_clause_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT id FROM t WHERE 1;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    where_clause = child_at(select, 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_SELECT_STATEMENT, "where select statement");
+    failures += expect_child_count(select, 3U, "where select child count");
+    failures +=
+        expect_node(child_at(select, 0U), MYLITE_SQL_AST_SELECT_LIST, "where select list child");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "where from child");
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "where clause child");
+    failures += expect_span_text(where_clause, "WHERE 1", "where clause span");
+    failures += expect_literal(predicate, MYLITE_SQL_AST_LITERAL_INTEGER, "where literal");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM t WHERE n;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures +=
+        expect_node(child_at(select, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "wildcard where clause");
+    failures += expect_span_text(child_at(child_at(select, 2U), 0U), "n", "wildcard predicate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT t.* FROM t WHERE t.n = 1;", MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_EQUAL, "qualified where equality");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM t AS tt WHERE tt.n = 1;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_span_text(child_at(child_at(child_at(result.root, 0U), 1U), 1U), "tt",
+                                 "AS where alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM t tt WHERE tt.n = 1;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_span_text(child_at(child_at(child_at(result.root, 0U), 1U), 1U), "tt",
+                                 "bare where alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE n BETWEEN 1 AND 2;", MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_BETWEEN, "where between");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE s LIKE 'a%' ESCAPE '!';", MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_LIKE, "where like escape");
+    failures += expect_child_count(predicate, 3U, "where like escape child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM t WHERE s LIKE 'a%' ESCAPE '!' OR 1;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_LOGICAL_OR,
+                                "where like escape before or");
+    failures += expect_operator(child_at(predicate, 0U), MYLITE_SQL_AST_OPERATOR_LIKE,
+                                "where like escape left of or");
+    failures +=
+        expect_child_count(child_at(predicate, 0U), 3U, "where like escape left child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE n IN (1, 2, NULL);", MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_IN, "where in");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE n IN ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM t WHERE n = 1 ORDER BY id;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM t JOIN t AS u WHERE t.id = u.id;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -31,6 +31,7 @@ enum mylite_stmt_kind {
     MYLITE_STMT_INSERT_VALUES = 9,
     MYLITE_STMT_INSERT_SET = 10,
     MYLITE_STMT_SCALAR_SELECT = 11,
+    MYLITE_STMT_TABLE_SELECT = 12,
 };
 
 enum mylite_information_schema_table {
@@ -39,6 +40,11 @@ enum mylite_information_schema_table {
     MYLITE_INFORMATION_SCHEMA_TABLES = 2,
     MYLITE_INFORMATION_SCHEMA_COLUMNS = 3,
     MYLITE_INFORMATION_SCHEMA_STATISTICS = 4,
+};
+
+enum mylite_mysql_condition_code {
+    MYLITE_MYSQL_ER_BAD_FIELD_ERROR = 1054,
+    MYLITE_MYSQL_ER_WRONG_ARGUMENTS = 1210,
 };
 
 struct mylite_schema_options {
@@ -300,6 +306,17 @@ struct mylite_scalar_result {
     bool has_row;
 };
 
+struct mylite_cached_expression_value {
+    const struct mylite_sql_ast_node *expression;
+    struct mylite_expression_value value;
+    bool evaluated;
+    int status;
+};
+
+struct mylite_table_select_expression_context {
+    mylite_stmt *stmt;
+};
+
 struct mylite_connection_charset_request {
     const char *character_set_name;
     const char *collation_name;
@@ -330,8 +347,16 @@ struct mylite_stmt {
     struct mylite_drop_table_plan drop_table;
     struct mylite_insert_values_plan insert_values;
     struct mylite_insert_set_plan insert_set;
+    struct mylite_select_plan select_plan;
     struct mylite_result_metadata result_metadata;
     struct mylite_scalar_result scalar_result;
+    struct mylite_sql_ast select_predicate_ast;
+    const struct mylite_sql_ast_node *select_predicate;
+    char *select_sql_text;
+    struct mylite_cached_expression_value *select_constant_values;
+    size_t select_constant_value_count;
+    bool select_constant_predicate_evaluated;
+    bool select_constant_predicate_matches;
     char *character_set_name;
     char *collation_name;
     int64_t affected_rows;
@@ -529,7 +554,7 @@ static int initialize_schema_catalog(mylite_db *database);
 static int seed_system_schema(mylite_db *database, const char *name, const char *character_set,
                               const char *collation);
 static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
-                                    mylite_stmt **out_stmt);
+                                    const char *sql, size_t sql_length, mylite_stmt **out_stmt);
 static int prepare_schema_lifecycle_statement(mylite_db *database,
                                               const struct mylite_sql_ast_node *statement,
                                               mylite_stmt **out_stmt);
@@ -554,6 +579,7 @@ static int prepare_information_schema_select_statement(mylite_db *database,
                                                        mylite_stmt **out_stmt);
 static int prepare_table_select_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
+                                          const char *sql, size_t sql_length,
                                           mylite_stmt **out_stmt);
 static int prepare_scalar_select_statement(mylite_db *database,
                                            const struct mylite_sql_ast_node *statement,
@@ -574,6 +600,17 @@ static int load_select_column_from_catalog_row(struct mylite_select_table *table
 static bool select_column_extra_is_visible(const char *extra);
 static int build_select_outputs(mylite_db *database, const struct mylite_sql_ast_node *select_list,
                                 struct mylite_select_plan *plan);
+static int prepare_table_select_where_statement(mylite_db *database,
+                                                const struct mylite_sql_ast_node *where_clause,
+                                                const char *sql, size_t sql_length,
+                                                struct mylite_select_plan *plan,
+                                                mylite_stmt **out_stmt);
+static int bind_select_where_clause(mylite_db *database,
+                                    const struct mylite_sql_ast_node *where_clause,
+                                    const struct mylite_select_plan *plan);
+static int bind_select_predicate_expression(mylite_db *database,
+                                            const struct mylite_sql_ast_node *expression,
+                                            const struct mylite_select_plan *plan);
 static int append_select_item_outputs(mylite_db *database,
                                       const struct mylite_sql_ast_node *select_item,
                                       struct mylite_select_plan *plan);
@@ -601,9 +638,21 @@ static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node
 static char *copy_select_reference_name(const struct mylite_sql_ast_node *identifier);
 static char *copy_select_wildcard_qualifier_name(const struct mylite_sql_ast_node *wildcard);
 static int set_select_unknown_column_error(mylite_db *database, const char *column_name);
+static int set_select_unknown_where_column_error(mylite_db *database, const char *column_name);
 static int set_select_unknown_table_error(mylite_db *database, const char *table_name);
 static int set_select_unsupported_projection_error(mylite_db *database);
+static int set_select_unsupported_where_error(mylite_db *database);
 static char *build_select_physical_sql(mylite_db *database, const struct mylite_select_plan *plan);
+static char *build_select_scan_sql(mylite_db *database, const struct mylite_select_plan *plan);
+static int clone_table_select_predicate(mylite_stmt *stmt,
+                                        const struct mylite_sql_ast_node *where_clause,
+                                        const char *sql, size_t sql_length);
+static int clone_sql_ast_subtree(struct mylite_sql_ast *ast, const struct mylite_sql_ast_node *node,
+                                 const char *source_sql, const char *sql_copy, size_t sql_length,
+                                 struct mylite_sql_ast_node **out_node);
+static struct mylite_sql_source_span remap_source_span(struct mylite_sql_source_span span,
+                                                       const char *source_sql, const char *sql_copy,
+                                                       size_t sql_length);
 static int prepare_sqlite_statement(mylite_db *database, const char *sqlite_sql,
                                     mylite_stmt **out_stmt);
 static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind kind,
@@ -621,6 +670,18 @@ static int execute_drop_table_statement(mylite_stmt *stmt);
 static int execute_insert_values_statement(mylite_stmt *stmt);
 static int execute_insert_set_statement(mylite_stmt *stmt);
 static int execute_scalar_select_statement(mylite_stmt *stmt);
+static int execute_table_select_statement(mylite_stmt *stmt);
+static int evaluate_table_select_constant_predicate(mylite_stmt *stmt);
+static int evaluate_table_select_row_predicate(mylite_stmt *stmt, bool *out_matches);
+static int evaluate_table_select_cached_constant_expression(
+    void *user_data, const struct mylite_sql_ast_node *expression,
+    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
+static int resolve_table_select_expression_identifier(void *user_data,
+                                                      const struct mylite_sql_ast_node *identifier,
+                                                      struct mylite_expression_value *out_value);
+static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index,
+                                          struct mylite_expression_value *out_value);
+static int set_where_predicate_eval_error(mylite_stmt *stmt);
 static int validate_create_table_plan(mylite_stmt *stmt, const char *schema_name,
                                       struct mylite_schema_default *schema_default);
 static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
@@ -1023,6 +1084,7 @@ static void result_metadata_deinit(struct mylite_result_metadata *metadata);
 static void scalar_result_deinit(struct mylite_scalar_result *result);
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata);
 static void select_plan_deinit(struct mylite_select_plan *plan);
+static void select_constant_values_deinit(mylite_stmt *stmt);
 static void select_table_deinit(struct mylite_select_table *table);
 static void select_column_deinit(struct mylite_select_column *column);
 static void select_output_column_deinit(struct mylite_select_output_column *column);
@@ -1044,6 +1106,7 @@ static void clear_warnings(mylite_db *database);
 static int set_error_message(mylite_db *database, const char *message);
 static int set_error_message_parts(mylite_db *database, const char *prefix, const char *value,
                                    const char *suffix);
+static int append_database_warning(mylite_db *database, unsigned int code, const char *message);
 static void clear_error_message(mylite_db *database);
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
@@ -1153,7 +1216,7 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
         return status;
     }
 
-    status = prepare_parsed_statement(database, parse_result.root, out_stmt);
+    status = prepare_parsed_statement(database, parse_result.root, sql, length, out_stmt);
     mylite_sql_parse_result_deinit(&parse_result);
     return status;
 }
@@ -1173,8 +1236,12 @@ void mylite_finalize(mylite_stmt *stmt)
     drop_table_plan_deinit(&stmt->drop_table);
     insert_values_plan_deinit(&stmt->insert_values);
     insert_set_plan_deinit(&stmt->insert_set);
+    select_plan_deinit(&stmt->select_plan);
     result_metadata_deinit(&stmt->result_metadata);
     scalar_result_deinit(&stmt->scalar_result);
+    mylite_sql_ast_deinit(&stmt->select_predicate_ast);
+    free(stmt->select_sql_text);
+    select_constant_values_deinit(stmt);
     free(stmt);
 }
 
@@ -1255,6 +1322,9 @@ int mylite_column_count(const mylite_stmt *stmt)
     if (stmt->kind == MYLITE_STMT_SCALAR_SELECT) {
         return (int)stmt->scalar_result.value_count;
     }
+    if (stmt->kind == MYLITE_STMT_TABLE_SELECT) {
+        return (int)stmt->result_metadata.column_count;
+    }
     if (stmt->sqlite_stmt == NULL) {
         return 0;
     }
@@ -1311,6 +1381,12 @@ const char *mylite_column_origin_name(const mylite_stmt *stmt, int column)
 
 int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
 {
+    if (stmt != NULL && stmt->sqlite_stmt != NULL && stmt->kind == MYLITE_STMT_TABLE_SELECT &&
+        column >= 0 && (size_t)column < stmt->select_plan.output_count) {
+        size_t physical_column = stmt->select_plan.outputs[column].column_index;
+
+        return (int64_t)sqlite3_column_int64(stmt->sqlite_stmt, (int)physical_column);
+    }
     if (stmt == NULL || stmt->sqlite_stmt == NULL || column < 0 ||
         column >= sqlite3_column_count(stmt->sqlite_stmt)) {
         if (stmt != NULL && stmt->kind == MYLITE_STMT_SCALAR_SELECT && column >= 0 &&
@@ -1325,6 +1401,12 @@ int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
 
 const char *mylite_column_text(const mylite_stmt *stmt, int column)
 {
+    if (stmt != NULL && stmt->sqlite_stmt != NULL && stmt->kind == MYLITE_STMT_TABLE_SELECT &&
+        column >= 0 && (size_t)column < stmt->select_plan.output_count) {
+        size_t physical_column = stmt->select_plan.outputs[column].column_index;
+
+        return (const char *)sqlite3_column_text(stmt->sqlite_stmt, (int)physical_column);
+    }
     if (stmt == NULL || stmt->sqlite_stmt == NULL || column < 0 ||
         column >= sqlite3_column_count(stmt->sqlite_stmt)) {
         if (stmt != NULL && stmt->kind == MYLITE_STMT_SCALAR_SELECT && column >= 0 &&
@@ -1457,7 +1539,7 @@ static int seed_system_schema(mylite_db *database, const char *name, const char 
 }
 
 static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
-                                    mylite_stmt **out_stmt)
+                                    const char *sql, size_t sql_length, mylite_stmt **out_stmt)
 {
     struct mylite_sqlite_translate_result translate_result;
     enum mylite_sqlite_translate_status translate_status = MYLITE_SQLITE_TRANSLATE_OK;
@@ -1489,7 +1571,7 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             if (status != MYLITE_UNSUPPORTED) {
                 return status;
             }
-            status = prepare_table_select_statement(database, statement, out_stmt);
+            status = prepare_table_select_statement(database, statement, sql, sql_length, out_stmt);
             if (status != MYLITE_UNSUPPORTED || database->error_message != NULL) {
                 return status;
             }
@@ -1511,6 +1593,7 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_BINARY_EXPRESSION:
         case MYLITE_SQL_AST_TERNARY_EXPRESSION:
         case MYLITE_SQL_AST_EXPRESSION_LIST:
+        case MYLITE_SQL_AST_WHERE_CLAUSE:
         case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
         case MYLITE_SQL_AST_IF_EXISTS:
         case MYLITE_SQL_AST_IF_NOT_EXISTS:
@@ -1588,6 +1671,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
+    case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
@@ -1653,6 +1737,7 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
+    case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
     case MYLITE_SQL_AST_WILDCARD:
@@ -1760,10 +1845,12 @@ static int prepare_information_schema_select_statement(mylite_db *database,
 
 static int prepare_table_select_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
+                                          const char *sql, size_t sql_length,
                                           mylite_stmt **out_stmt)
 {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *where_clause = child_at(statement, 2U);
     struct mylite_select_plan plan = {0};
     char *sqlite_sql = NULL;
     int status = MYLITE_OK;
@@ -1782,17 +1869,26 @@ static int prepare_table_select_statement(mylite_db *database,
     if (status == MYLITE_OK) {
         status = build_select_outputs(database, select_list, &plan);
     }
+    if (status == MYLITE_OK && where_clause != NULL) {
+        status = bind_select_where_clause(database, where_clause, &plan);
+    }
+    if (status == MYLITE_OK && where_clause != NULL) {
+        status = prepare_table_select_where_statement(database, where_clause, sql, sql_length,
+                                                      &plan, out_stmt);
+    }
     if (status == MYLITE_OK) {
-        sqlite_sql = build_select_physical_sql(database, &plan);
-        if (sqlite_sql == NULL) {
-            (void)set_error_message(database, "out of memory");
-            status = MYLITE_NOMEM;
+        if (where_clause == NULL) {
+            sqlite_sql = build_select_physical_sql(database, &plan);
+            if (sqlite_sql == NULL) {
+                (void)set_error_message(database, "out of memory");
+                status = MYLITE_NOMEM;
+            }
         }
     }
-    if (status == MYLITE_OK) {
+    if (status == MYLITE_OK && where_clause == NULL) {
         status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
     }
-    if (status == MYLITE_OK) {
+    if (status == MYLITE_OK && where_clause == NULL) {
         status = attach_select_result_metadata(*out_stmt, &plan);
         if (status != MYLITE_OK) {
             mylite_finalize(*out_stmt);
@@ -2102,6 +2198,172 @@ static int build_select_outputs(mylite_db *database, const struct mylite_sql_ast
         return set_select_unsupported_projection_error(database);
     }
     return MYLITE_OK;
+}
+
+static int prepare_table_select_where_statement(mylite_db *database,
+                                                const struct mylite_sql_ast_node *where_clause,
+                                                const char *sql, size_t sql_length,
+                                                struct mylite_select_plan *plan,
+                                                mylite_stmt **out_stmt)
+{
+    sqlite3_stmt *sqlite_stmt = NULL;
+    mylite_stmt *stmt = NULL;
+    char *scan_sql = build_select_scan_sql(database, plan);
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    if (scan_sql == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(database->sqlite, scan_sql, -1, SQLITE_PREPARE_PERSISTENT, &sqlite_stmt,
+                            NULL);
+    sqlite3_free(scan_sql);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(database);
+    }
+
+    stmt = calloc(1U, sizeof(*stmt));
+    if (stmt == NULL) {
+        sqlite3_finalize(sqlite_stmt);
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    *stmt = (mylite_stmt){
+        .database = database,
+        .kind = MYLITE_STMT_TABLE_SELECT,
+        .sqlite_stmt = sqlite_stmt,
+        .affected_rows = -1,
+    };
+
+    status = attach_select_result_metadata(stmt, plan);
+    if (status == MYLITE_OK) {
+        status = clone_table_select_predicate(stmt, where_clause, sql, sql_length);
+    }
+    if (status == MYLITE_OK) {
+        stmt->select_plan = *plan;
+        *plan = (struct mylite_select_plan){0};
+        *out_stmt = stmt;
+        return MYLITE_OK;
+    }
+
+    mylite_finalize(stmt);
+    return status;
+}
+
+static int bind_select_where_clause(mylite_db *database,
+                                    const struct mylite_sql_ast_node *where_clause,
+                                    const struct mylite_select_plan *plan)
+{
+    const struct mylite_sql_ast_node *predicate = child_at(where_clause, 0U);
+
+    if (where_clause == NULL || where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE ||
+        predicate == NULL) {
+        return set_select_unsupported_where_error(database);
+    }
+    return bind_select_predicate_expression(database, predicate, plan);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_select_predicate_expression(mylite_db *database,
+                                            const struct mylite_sql_ast_node *expression,
+                                            const struct mylite_select_plan *plan)
+{
+    if (expression == NULL) {
+        return set_select_unsupported_where_error(database);
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_IDENTIFIER:
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
+        size_t column_index = plan->table.column_count;
+        int status = resolve_select_column_reference(&plan->table, expression, &column_index);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (column_index == plan->table.column_count) {
+            char *reference = copy_select_reference_name(expression);
+
+            if (reference == NULL) {
+                (void)set_error_message(database, "out of memory");
+                return MYLITE_NOMEM;
+            }
+            status = set_select_unknown_where_column_error(database, reference);
+            free(reference);
+            return status;
+        }
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+    case MYLITE_SQL_AST_EXPRESSION_LIST:
+        for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
+             child = child->next_sibling) {
+            int status = bind_select_predicate_expression(database, child, plan);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_SCRIPT:
+    case MYLITE_SQL_AST_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_USE_STATEMENT:
+    case MYLITE_SQL_AST_SELECT_LIST:
+    case MYLITE_SQL_AST_SELECT_ITEM:
+    case MYLITE_SQL_AST_FROM_DUAL:
+    case MYLITE_SQL_AST_FROM_TABLE:
+    case MYLITE_SQL_AST_WILDCARD:
+    case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
+    case MYLITE_SQL_AST_IF_EXISTS:
+    case MYLITE_SQL_AST_IF_NOT_EXISTS:
+    case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
+    case MYLITE_SQL_AST_SCHEMA_OPTION:
+    case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
+    case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
+    case MYLITE_SQL_AST_DEFAULT:
+    case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION:
+    case MYLITE_SQL_AST_COLUMN_TYPE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
+    case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
+    case MYLITE_SQL_AST_KEY_PART_LIST:
+    case MYLITE_SQL_AST_KEY_PART:
+    case MYLITE_SQL_AST_INDEX_TYPE:
+    case MYLITE_SQL_AST_INDEX_OPTION_LIST:
+    case MYLITE_SQL_AST_INDEX_OPTION:
+    case MYLITE_SQL_AST_SECONDARY_INDEX:
+    case MYLITE_SQL_AST_UNIQUE_INDEX:
+    case MYLITE_SQL_AST_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_TABLE_OPTION:
+    case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TABLE_NAME_LIST:
+    case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_COLUMN_LIST:
+    case MYLITE_SQL_AST_INSERT_ROW_LIST:
+    case MYLITE_SQL_AST_INSERT_ROW:
+    case MYLITE_SQL_AST_INSERT_VALUE_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_WHERE_CLAUSE:
+        return set_select_unsupported_where_error(database);
+    }
+
+    return set_select_unsupported_where_error(database);
 }
 
 static int append_select_item_outputs(mylite_db *database,
@@ -2507,6 +2769,19 @@ static int set_select_unknown_column_error(mylite_db *database, const char *colu
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
+static int set_select_unknown_where_column_error(mylite_db *database, const char *column_name)
+{
+    int status =
+        set_error_message_parts(database, "Unknown column '", column_name, "' in 'where clause'");
+
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = append_database_warning(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                     mylite_error_message(database));
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
 static int set_select_unknown_table_error(mylite_db *database, const char *table_name)
 {
     int status = set_error_message_parts(database, "Unknown table '", table_name, "'");
@@ -2517,6 +2792,14 @@ static int set_select_unknown_table_error(mylite_db *database, const char *table
 static int set_select_unsupported_projection_error(mylite_db *database)
 {
     if (set_error_message(database, "Unsupported SELECT projection") == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
+static int set_select_unsupported_where_error(mylite_db *database)
+{
+    if (set_error_message(database, "Unsupported WHERE predicate") == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_UNSUPPORTED;
@@ -2542,6 +2825,121 @@ static char *build_select_physical_sql(mylite_db *database, const struct mylite_
     }
     sqlite3_str_appendf(sql, " FROM \"%w\"", plan->table.physical_name);
     return sqlite3_str_finish(sql);
+}
+
+static char *build_select_scan_sql(mylite_db *database, const struct mylite_select_plan *plan)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_append(sql, "SELECT ", (int)strlen("SELECT "));
+    for (size_t index = 0U; index < plan->table.column_count; ++index) {
+        const struct mylite_select_column *column = &plan->table.columns[index];
+
+        if (index != 0U) {
+            sqlite3_str_append(sql, ",", 1);
+        }
+        sqlite3_str_appendf(sql, "\"%w\"", column->name);
+    }
+    sqlite3_str_appendf(sql, " FROM \"%w\"", plan->table.physical_name);
+    return sqlite3_str_finish(sql);
+}
+
+static int clone_table_select_predicate(mylite_stmt *stmt,
+                                        const struct mylite_sql_ast_node *where_clause,
+                                        const char *sql, size_t sql_length)
+{
+    const struct mylite_sql_ast_node *predicate = child_at(where_clause, 0U);
+    struct mylite_sql_ast_node *clone = NULL;
+    int status = MYLITE_OK;
+
+    stmt->select_sql_text = copy_span_text(sql, sql_length);
+    if (stmt->select_sql_text == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = clone_sql_ast_subtree(&stmt->select_predicate_ast, predicate, sql,
+                                   stmt->select_sql_text, sql_length, &clone);
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(stmt->database, "out of memory");
+        }
+        return status;
+    }
+    stmt->select_predicate = clone;
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int clone_sql_ast_subtree(struct mylite_sql_ast *ast, const struct mylite_sql_ast_node *node,
+                                 const char *source_sql, const char *sql_copy, size_t sql_length,
+                                 struct mylite_sql_ast_node **out_node)
+{
+    struct mylite_sql_ast_node *clone = NULL;
+
+    *out_node = NULL;
+    if (node == NULL) {
+        return MYLITE_OK;
+    }
+
+    clone = mylite_sql_ast_new_node(
+        ast, node->kind, remap_source_span(node->span, source_sql, sql_copy, sql_length));
+    if (clone == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    {
+        struct mylite_sql_ast_node *next_allocated = clone->next_allocated;
+
+        *clone = *node;
+        clone->first_child = NULL;
+        clone->last_child = NULL;
+        clone->next_sibling = NULL;
+        clone->next_allocated = next_allocated;
+        clone->span = remap_source_span(node->span, source_sql, sql_copy, sql_length);
+        clone->column_character_set =
+            remap_source_span(node->column_character_set, source_sql, sql_copy, sql_length);
+        clone->column_collation =
+            remap_source_span(node->column_collation, source_sql, sql_copy, sql_length);
+    }
+
+    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
+         child = child->next_sibling) {
+        struct mylite_sql_ast_node *child_clone = NULL;
+        int status =
+            clone_sql_ast_subtree(ast, child, source_sql, sql_copy, sql_length, &child_clone);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        mylite_sql_ast_node_append_child(clone, child_clone);
+    }
+
+    *out_node = clone;
+    return MYLITE_OK;
+}
+
+static struct mylite_sql_source_span remap_source_span(struct mylite_sql_source_span span,
+                                                       const char *source_sql, const char *sql_copy,
+                                                       size_t sql_length)
+{
+    uintptr_t base = (uintptr_t)source_sql;
+    uintptr_t end = base + sql_length;
+    uintptr_t text = (uintptr_t)span.text;
+
+    if (span.text == NULL || source_sql == NULL || sql_copy == NULL) {
+        return span;
+    }
+    if (text < base || text > end || span.length > (size_t)(end - text)) {
+        return span;
+    }
+
+    span.text = sql_copy + (text - base);
+    return span;
 }
 
 static int prepare_sqlite_statement(mylite_db *database, const char *sqlite_sql,
@@ -2620,6 +3018,7 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     case MYLITE_STMT_SCALAR_SELECT:
         status = copy_scalar_select_statement(statement, stmt);
         break;
+    case MYLITE_STMT_TABLE_SELECT:
     case MYLITE_STMT_SQLITE:
         status = MYLITE_UNSUPPORTED;
         break;
@@ -2660,6 +3059,9 @@ static int execute_custom_statement(mylite_stmt *stmt)
     if (stmt->kind == MYLITE_STMT_SCALAR_SELECT) {
         return execute_scalar_select_statement(stmt);
     }
+    if (stmt->kind == MYLITE_STMT_TABLE_SELECT) {
+        return execute_table_select_statement(stmt);
+    }
     if (stmt->executed) {
         return MYLITE_DONE;
     }
@@ -2698,6 +3100,8 @@ static int execute_custom_statement(mylite_stmt *stmt)
         break;
     case MYLITE_STMT_SCALAR_SELECT:
         return execute_scalar_select_statement(stmt);
+    case MYLITE_STMT_TABLE_SELECT:
+        return execute_table_select_statement(stmt);
     case MYLITE_STMT_SQLITE:
         status = MYLITE_MISUSE;
         break;
@@ -3564,6 +3968,216 @@ static int execute_scalar_select_statement(mylite_stmt *stmt)
     stmt->scalar_result.warnings = (struct mylite_expression_warnings){0};
     stmt->affected_rows = -1;
     return MYLITE_ROW;
+}
+
+static int execute_table_select_statement(mylite_stmt *stmt)
+{
+    int status = MYLITE_OK;
+    int rc = SQLITE_OK;
+
+    if (stmt->sqlite_stmt == NULL || stmt->select_predicate == NULL) {
+        return MYLITE_MISUSE;
+    }
+    stmt->executed = true;
+    stmt->affected_rows = -1;
+
+    status = evaluate_table_select_constant_predicate(stmt);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (stmt->select_constant_predicate_evaluated && !stmt->select_constant_predicate_matches) {
+        return MYLITE_DONE;
+    }
+
+    while ((rc = sqlite3_step(stmt->sqlite_stmt)) == SQLITE_ROW) {
+        bool matches = false;
+
+        if (stmt->select_constant_predicate_evaluated) {
+            return MYLITE_ROW;
+        }
+
+        status = evaluate_table_select_row_predicate(stmt, &matches);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (matches) {
+            return MYLITE_ROW;
+        }
+    }
+    if (rc == SQLITE_DONE) {
+        return MYLITE_DONE;
+    }
+    return set_sqlite_error(stmt->database);
+}
+
+static int evaluate_table_select_constant_predicate(mylite_stmt *stmt)
+{
+    struct mylite_expression_value value = {0};
+    int truth = -1;
+    int status = 0;
+
+    if (stmt->select_constant_predicate_evaluated ||
+        !mylite_expression_is_supported_no_table(stmt->select_predicate)) {
+        return MYLITE_OK;
+    }
+
+    status = mylite_expression_eval(stmt->select_predicate, &stmt->database->warnings, &value);
+    if (status == 0) {
+        status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
+    }
+    if (status != 0) {
+        mylite_expression_value_deinit(&value);
+        return set_where_predicate_eval_error(stmt);
+    }
+
+    stmt->select_constant_predicate_evaluated = true;
+    stmt->select_constant_predicate_matches = truth == 1;
+    mylite_expression_value_deinit(&value);
+    return MYLITE_OK;
+}
+
+static int evaluate_table_select_row_predicate(mylite_stmt *stmt, bool *out_matches)
+{
+    struct mylite_table_select_expression_context user_context = {.stmt = stmt};
+    struct mylite_expression_eval_context context = {
+        .user_data = &user_context,
+        .resolve_identifier = resolve_table_select_expression_identifier,
+        .eval_constant = evaluate_table_select_cached_constant_expression,
+    };
+    struct mylite_expression_value value = {0};
+    int truth = -1;
+    int status = mylite_expression_eval_with_context(stmt->select_predicate, &context,
+                                                     &stmt->database->warnings, &value);
+
+    *out_matches = false;
+    if (status == 0) {
+        status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
+    }
+    mylite_expression_value_deinit(&value);
+    if (status != 0) {
+        return set_where_predicate_eval_error(stmt);
+    }
+
+    *out_matches = truth == 1;
+    return MYLITE_OK;
+}
+
+static int evaluate_table_select_cached_constant_expression(
+    void *user_data, const struct mylite_sql_ast_node *expression,
+    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
+{
+    struct mylite_table_select_expression_context *context = user_data;
+    mylite_stmt *stmt = context == NULL ? NULL : context->stmt;
+    struct mylite_cached_expression_value *entry = NULL;
+
+    if (stmt == NULL || expression == NULL) {
+        return -1;
+    }
+
+    for (size_t index = 0U; index < stmt->select_constant_value_count; ++index) {
+        if (stmt->select_constant_values[index].expression == expression) {
+            entry = &stmt->select_constant_values[index];
+            break;
+        }
+    }
+    if (entry == NULL) {
+        struct mylite_cached_expression_value *values =
+            realloc(stmt->select_constant_values, (stmt->select_constant_value_count + 1U) *
+                                                      sizeof(*stmt->select_constant_values));
+
+        if (values == NULL) {
+            return -1;
+        }
+        stmt->select_constant_values = values;
+        entry = &stmt->select_constant_values[stmt->select_constant_value_count++];
+        *entry = (struct mylite_cached_expression_value){.expression = expression};
+    }
+
+    if (!entry->evaluated) {
+        entry->status = mylite_expression_eval(expression, warnings, &entry->value);
+        entry->evaluated = true;
+    }
+    if (entry->status != 0) {
+        return entry->status;
+    }
+    return mylite_expression_value_copy(&entry->value, out_value);
+}
+
+static int resolve_table_select_expression_identifier(void *user_data,
+                                                      const struct mylite_sql_ast_node *identifier,
+                                                      struct mylite_expression_value *out_value)
+{
+    struct mylite_table_select_expression_context *context = user_data;
+    size_t column_index = 0U;
+    int status = MYLITE_OK;
+
+    if (context == NULL || context->stmt == NULL) {
+        return -1;
+    }
+
+    status = resolve_select_column_reference(&context->stmt->select_plan.table, identifier,
+                                             &column_index);
+    if (status != MYLITE_OK || column_index == context->stmt->select_plan.table.column_count) {
+        return -1;
+    }
+    return copy_table_select_column_value(context->stmt, column_index, out_value);
+}
+
+static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index,
+                                          struct mylite_expression_value *out_value)
+{
+    int sqlite_type = SQLITE_NULL;
+
+    if (stmt == NULL || stmt->sqlite_stmt == NULL ||
+        column_index >= stmt->select_plan.table.column_count) {
+        return -1;
+    }
+
+    sqlite_type = sqlite3_column_type(stmt->sqlite_stmt, (int)column_index);
+    switch (sqlite_type) {
+    case SQLITE_NULL:
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    case SQLITE_INTEGER:
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = sqlite3_column_int64(stmt->sqlite_stmt, (int)column_index)};
+        return 0;
+    case SQLITE_FLOAT:
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_REAL,
+            .real_value = sqlite3_column_double(stmt->sqlite_stmt, (int)column_index)};
+        return 0;
+    case SQLITE_TEXT:
+    case SQLITE_BLOB: {
+        const unsigned char *text = sqlite3_column_text(stmt->sqlite_stmt, (int)column_index);
+        int bytes = sqlite3_column_bytes(stmt->sqlite_stmt, (int)column_index);
+
+        out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+        out_value->text_value = copy_span_text((const char *)text, bytes < 0 ? 0U : (size_t)bytes);
+        return out_value->text_value == NULL ? -1 : 0;
+    }
+    default:
+        break;
+    }
+    return -1;
+}
+
+static int set_where_predicate_eval_error(mylite_stmt *stmt)
+{
+    mylite_db *database = stmt->database;
+
+    if (database->warnings.count != 0U) {
+        const struct mylite_expression_warning *warning =
+            &database->warnings.items[database->warnings.count - 1U];
+
+        if (warning->code == MYLITE_MYSQL_ER_WRONG_ARGUMENTS) {
+            int status = set_error_message(database, warning->message);
+
+            return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+        }
+    }
+    return set_select_unsupported_where_error(database);
 }
 
 static int validate_insert_values_target(mylite_stmt *stmt, const char **out_schema_name)
@@ -5708,6 +6322,9 @@ static int information_schema_table_from_select(const struct mylite_sql_ast_node
     if (table == MYLITE_INFORMATION_SCHEMA_NONE) {
         return MYLITE_OK;
     }
+    if (child_at(statement, 2U) != NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
     if (!select_list_is_wildcard(select_list)) {
         return MYLITE_UNSUPPORTED;
     }
@@ -5855,6 +6472,7 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
     case MYLITE_STMT_INSERT_VALUES:
     case MYLITE_STMT_INSERT_SET:
     case MYLITE_STMT_SCALAR_SELECT:
+    case MYLITE_STMT_TABLE_SELECT:
     case MYLITE_STMT_SQLITE:
         return MYLITE_OK;
     }
@@ -6262,6 +6880,7 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
+    case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_USE_STATEMENT:
@@ -8320,6 +8939,20 @@ static void select_plan_deinit(struct mylite_select_plan *plan)
     *plan = (struct mylite_select_plan){0};
 }
 
+static void select_constant_values_deinit(mylite_stmt *stmt)
+{
+    if (stmt == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < stmt->select_constant_value_count; ++index) {
+        mylite_expression_value_deinit(&stmt->select_constant_values[index].value);
+    }
+    free(stmt->select_constant_values);
+    stmt->select_constant_values = NULL;
+    stmt->select_constant_value_count = 0U;
+}
+
 static void select_table_deinit(struct mylite_select_table *table)
 {
     if (table == NULL) {
@@ -8572,6 +9205,34 @@ static int set_error_message_parts(mylite_db *database, const char *prefix, cons
     status = set_error_message(database, message);
     free(message);
     return status;
+}
+
+static int append_database_warning(mylite_db *database, unsigned int code, const char *message)
+{
+    struct mylite_expression_warning *items = NULL;
+    char *copy = NULL;
+
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    copy = copy_span_text(message == NULL ? "" : message, message == NULL ? 0U : strlen(message));
+    if (copy == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    items = realloc(database->warnings.items,
+                    (database->warnings.count + 1U) * sizeof(*database->warnings.items));
+    if (items == NULL) {
+        free(copy);
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    database->warnings.items = items;
+    database->warnings.items[database->warnings.count++] =
+        (struct mylite_expression_warning){.code = code, .message = copy};
+    return MYLITE_OK;
 }
 
 static void clear_error_message(mylite_db *database)

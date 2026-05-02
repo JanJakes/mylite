@@ -63,6 +63,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT = 52,
     MYLITE_SQL_AST_TERNARY_EXPRESSION = 53,
     MYLITE_SQL_AST_EXPRESSION_LIST = 54,
+    MYLITE_SQL_AST_WHERE_CLAUSE = 55,
 };
 
 enum mylite_sql_ast_literal_kind {

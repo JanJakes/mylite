@@ -67,6 +67,10 @@ enum {
     simple_create_amount_precision = 10,
     simple_create_column_count = 6,
     simple_create_statistics_count = 3,
+    mysql_warning_unknown_column = 1054,
+    mysql_warning_incorrect_escape_arguments = 1210,
+    mysql_warning_truncated_wrong_value = 1292,
+    mysql_warning_division_by_zero = 1365,
 };
 
 struct expected_schemata_row {
@@ -120,6 +124,7 @@ static int test_drop_table_base_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_select_table_core_execution(void);
+static int test_select_where_execution(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -208,6 +213,7 @@ int main(void)
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_select_table_core_execution();
+    failures += test_select_where_execution();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -626,7 +632,7 @@ static int test_core_metadata_catalog(void)
         stmt = NULL;
     }
     failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.SCHEMATA WHERE TRUE",
-                            MYLITE_PARSE_ERROR, &stmt);
+                            MYLITE_UNSUPPORTED, &stmt);
     if (stmt != NULL) {
         fprintf(stderr, "unsupported information_schema filter returned a statement handle\n");
         failures = 1;
@@ -2833,6 +2839,301 @@ static int test_select_table_core_execution(void)
                              "select last insert id unchanged");
     mylite_finalize(stmt);
 
+    mylite_close(database);
+    return failures;
+}
+
+static int test_select_where_execution(void)
+{
+    static const char *const id_column[] = {"id"};
+    static const char *const all_ids[] = {"1", "2", "3", "4"};
+    static const char *const id_2[] = {"2"};
+    static const char *const id_3[] = {"3"};
+    static const char *const id_4[] = {"4"};
+    static const char *const ids_1_2[] = {"1", "2"};
+    static const char *const ids_1_2_3[] = {"1", "2", "3"};
+    static const char *const ids_1_3[] = {"1", "3"};
+    static const char *const ids_2_3[] = {"2", "3"};
+    static const char *const metadata_columns[] = {"x", "s"};
+    static const char *const metadata_values[] = {"0", "alpha", "1", "beta"};
+    static const struct expected_column_metadata metadata[] = {
+        {"x", "mylite_task17_where", "t", "t", "n"},
+        {"s", "mylite_task17_where", "t", "t", "s"},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    uint64_t last_insert_id = 0U;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open where database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_task17_where", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE mylite_task17_where.t ("
+                            "id INT PRIMARY KEY, n INT, s VARCHAR(20), z VARCHAR(20), "
+                            "nullable INT NULL, CamelCase INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO mylite_task17_where.t VALUES "
+                            "(1, 0, 'alpha', '2', NULL, 10), "
+                            "(2, 1, 'beta', '2a', 5, 20), "
+                            "(3, 2, 'ALPHA', 'a', NULL, 30), "
+                            "(4, NULL, 'gamma', '10', 0, 40)",
+                            MYLITE_DONE);
+    last_insert_id = mylite_last_insert_id(database);
+    failures += execute_sql(database, "USE mylite_task17_where", MYLITE_DONE);
+
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE 1", id_column, 1, all_ids, 4,
+                                   "where constant true");
+    failures += expect_int(mylite_warning_count(database), 0, "where constant true warnings");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE 0", id_column, 1, NULL, 0,
+                                   "where constant false");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE NULL", id_column, 1, NULL, 0,
+                                   "where constant null");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE 'abc'", id_column, 1, NULL, 0,
+                                   "where string truthiness");
+    failures += expect_int(mylite_warning_count(database), 1, "where string warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "where string warning code");
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "abc", "where string warning message");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE n", id_column, 1, ids_2_3, 2,
+                                   "where column truthiness");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE nullable", id_column, 1, id_2,
+                                   1, "where nullable truthiness");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE nullable IS NULL", id_column,
+                                   1, ids_1_3, 2, "where is null");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE nullable <=> NULL", id_column,
+                                   1, ids_1_3, 2, "where null-safe equality");
+
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE t.n = 1", id_column, 1, id_2,
+                                   1, "where table-qualified column");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE mylite_task17_where.t.n = 2",
+                                   id_column, 1, id_3, 1, "where schema-qualified column");
+    failures += expect_select_rows(database, "SELECT id FROM t AS tt WHERE tt.n = 1", id_column, 1,
+                                   id_2, 1, "where alias-qualified column");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE camelcase = 20", id_column, 1,
+                                   id_2, 1, "where case-insensitive column");
+    failures += expect_prepare_error(database, "SELECT id FROM t AS tt WHERE t.n = 1",
+                                     MYLITE_EXEC_ERROR, "Unknown column 't.n' in 'where clause'",
+                                     "where alias hides base table");
+    failures += expect_int(mylite_warning_count(database), 1, "where alias error warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "where alias error warning code");
+    failures += expect_prepare_error(database, "SELECT n AS x FROM t WHERE x = 1",
+                                     MYLITE_EXEC_ERROR, "Unknown column 'x' in 'where clause'",
+                                     "where projection alias invisible");
+    failures += expect_prepare_error(
+        database, "SELECT id FROM t WHERE missing_col = 1", MYLITE_EXEC_ERROR,
+        "Unknown column 'missing_col' in 'where clause'", "where missing column");
+    failures += expect_prepare_error(
+        database, "SELECT id FROM t WHERE missing_alias.n = 1", MYLITE_EXEC_ERROR,
+        "Unknown column 'missing_alias.n' in 'where clause'", "where missing qualifier");
+
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE n BETWEEN 1 AND 2", id_column,
+                                   1, ids_2_3, 2, "where between");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE n NOT BETWEEN 3 AND NULL",
+                                   id_column, 1, ids_1_2_3, 3, "where not between null");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE s LIKE 'alpha'", id_column, 1,
+                                   ids_1_3, 2, "where like");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE nullable NOT LIKE '5'",
+                                   id_column, 1, id_4, 1, "where not like");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE n IN (1, 2, NULL)", id_column,
+                                   1, ids_2_3, 2, "where in");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE n NOT IN (1, 2, NULL)",
+                                   id_column, 1, NULL, 0, "where not in null");
+    failures += prepare_sql(database, "SELECT id FROM t WHERE n IN ()", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "where empty in list");
+
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE z = 2", id_column, 1, ids_1_2,
+                                   2, "where conversion equality");
+    failures += expect_int(mylite_warning_count(database), 2, "where conversion warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "where conversion warning code 0");
+    failures += expect_contains(mylite_warning_message(database, 0), "2a",
+                                "where conversion warning message 0");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_truncated_wrong_value, "where conversion warning code 1");
+    failures += expect_contains(mylite_warning_message(database, 1), "a",
+                                "where conversion warning message 1");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE z < 2", id_column, 1, id_3, 1,
+                                   "where conversion less");
+    failures += expect_int(mylite_warning_count(database), 2, "where less warning count");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE 1 / 0", id_column, 1, NULL, 0,
+                                   "where division by zero");
+    failures += expect_int(mylite_warning_count(database), 1, "where division warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "where division warning code");
+    failures += expect_string(mylite_warning_message(database, 0), "Division by 0",
+                              "where division warning message");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE 1 / 0 OR 1", id_column, 1,
+                                   all_ids, 4, "where constant division or true");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "where constant division or true warnings");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE 1 / 0 AND 0", id_column, 1,
+                                   NULL, 0, "where constant division and false");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "where constant division and false warnings");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE 1 / 0 OR n = 1", id_column, 1,
+                                   id_2, 1, "where cached constant division left or");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "where cached constant division left or warnings");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE n = 1 OR 1 / 0", id_column, 1,
+                                   id_2, 1, "where cached constant division right or");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "where cached constant division right or warnings");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE 1 / 0 AND n = 1", id_column, 1,
+                                   NULL, 0, "where cached constant division left and");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "where cached constant division left and warnings");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE n = 1 AND 1 / 0", id_column, 1,
+                                   NULL, 0, "where cached constant division right and");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "where cached constant division right and warnings");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE n = 1 AND z = 2", id_column, 1,
+                                   id_2, 1, "where and short circuit");
+    failures += expect_int(mylite_warning_count(database), 1, "where and warning count");
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "2a", "where and warning message");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE z = 2 OR n = 1", id_column, 1,
+                                   ids_1_2, 2, "where left or conversion");
+    failures += expect_int(mylite_warning_count(database), 2, "where left or warning count");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE n = 1 OR z = 2", id_column, 1,
+                                   ids_1_2, 2, "where right or conversion");
+    failures += expect_int(mylite_warning_count(database), 1, "where right or warning count");
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "a", "where right or warning message");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE 0 AND z = 2", id_column, 1,
+                                   NULL, 0, "where constant false and");
+    failures += expect_int(mylite_warning_count(database), 0, "where constant false and warnings");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE z = 2 AND 0", id_column, 1,
+                                   NULL, 0, "where right constant false and");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "where right constant false and warnings");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE 1 OR z = 2", id_column, 1,
+                                   all_ids, 4, "where constant true or");
+    failures += expect_int(mylite_warning_count(database), 0, "where constant true or warnings");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE z = 2 OR 1", id_column, 1,
+                                   all_ids, 4, "where right constant true or");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "where right constant true or warnings");
+
+    failures +=
+        prepare_sql(database, "SELECT id FROM t WHERE s LIKE 'a%' ESCAPE 'xx'", MYLITE_OK, &stmt);
+    failures += expect_int(mylite_warning_count(database), 0, "where escape before step warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "where invalid escape step");
+    failures += expect_contains(mylite_error_message(database), "Incorrect arguments to ESCAPE",
+                                "where invalid escape error");
+    failures += expect_int(mylite_warning_count(database), 1, "where escape warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_incorrect_escape_arguments, "where escape warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT id FROM t WHERE s LIKE 'a%' ESCAPE 'xx' OR 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "where invalid escape before constant or");
+    failures += expect_contains(mylite_error_message(database), "Incorrect arguments to ESCAPE",
+                                "where invalid escape before constant or error");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "where invalid escape before constant or warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_escape_arguments,
+                   "where invalid escape before constant or warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT id FROM t WHERE s LIKE 'a%' ESCAPE 'xx' AND 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "where invalid escape before constant and");
+    failures += expect_contains(mylite_error_message(database), "Incorrect arguments to ESCAPE",
+                                "where invalid escape before constant and error");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "where invalid escape before constant and warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_escape_arguments,
+                   "where invalid escape before constant and warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT id FROM t WHERE 1 OR s LIKE 'a%' ESCAPE 'xx'",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "where invalid escape after constant or");
+    failures += expect_contains(mylite_error_message(database), "Incorrect arguments to ESCAPE",
+                                "where invalid escape after constant or error");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "where invalid escape after constant or warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_escape_arguments,
+                   "where invalid escape after constant or warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT id FROM t WHERE 0 AND s LIKE 'a%' ESCAPE 'xx'",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "where invalid escape after constant and");
+    failures += expect_contains(mylite_error_message(database), "Incorrect arguments to ESCAPE",
+                                "where invalid escape after constant and error");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "where invalid escape after constant and warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_escape_arguments,
+                   "where invalid escape after constant and warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_select_rows(database, "SELECT id FROM t WHERE s LIKE 'a%' ESCAPE (1 / 0) OR 1",
+                           id_column, 1, all_ids, 4, "where escaped null before constant or");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "where escaped null before constant or warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "where escaped null before constant or warning");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM t WHERE 1 OR s LIKE 'a%' ESCAPE (1 / 0)",
+                           id_column, 1, all_ids, 4, "where escaped null after constant or");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "where escaped null after constant or warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "where escaped null after constant or warning");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM t WHERE 0 AND s LIKE 'a%' ESCAPE (1 / 0)",
+                           id_column, 1, NULL, 0, "where escaped null after constant and");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "where escaped null after constant and warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "where escaped null after constant and warning");
+
+    failures += prepare_sql(database, "SELECT n AS x, s FROM t WHERE z = 2", MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, metadata_columns, 2, "where metadata names");
+    failures += expect_column_metadata(stmt, metadata, 2, "where metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "where metadata first row");
+    failures += expect_string(mylite_column_text(stmt, 0), metadata_values[0],
+                              "where metadata first value");
+    failures += expect_string(mylite_column_text(stmt, 1), metadata_values[1],
+                              "where metadata second value");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "where metadata second row");
+    failures += expect_string(mylite_column_text(stmt, 0), metadata_values[2],
+                              "where metadata third value");
+    failures += expect_string(mylite_column_text(stmt, 1), metadata_values[3],
+                              "where metadata fourth value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "where metadata done");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "where affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT 1", MYLITE_OK, &stmt);
+    failures += expect_int(mylite_warning_count(database), 0, "where warnings cleared on prepare");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "where warning lifecycle row");
+    failures += expect_int(mylite_warning_count(database), 0, "where warnings cleared after row");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), (int64_t)last_insert_id,
+                             "where last insert id unchanged");
     mylite_close(database);
     return failures;
 }

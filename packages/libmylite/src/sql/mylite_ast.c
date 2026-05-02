@@ -460,6 +460,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "ternary_expression";
     case MYLITE_SQL_AST_EXPRESSION_LIST:
         return "expression_list";
+    case MYLITE_SQL_AST_WHERE_CLAUSE:
+        return "where_clause";
     }
 
     return "unknown";

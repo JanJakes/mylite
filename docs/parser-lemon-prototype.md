@@ -134,6 +134,9 @@ token sink:
   `GROUP BY`, `HAVING`, `WINDOW`, `QUALIFY`, `ORDER BY`, `LIMIT`, and locking
   tails.
 - Top-level `SELECT` validates named `WINDOW name AS (...)` clause lists.
+- Top-level and query-body `SELECT` list tails preserve window-function
+  `RESPECT NULLS` and `IGNORE NULLS` continuations for `LEAD`, `LAG`,
+  `FIRST_VALUE`, `LAST_VALUE`, and `NTH_VALUE` before `OVER`.
 - Top-level `SELECT` rejects missing operands after `QUALIFY`.
 - Top-level `SELECT` requires complete `LOCK IN SHARE MODE` locking tails.
 - Top-level `SELECT` validates `FOR UPDATE`/`FOR SHARE` locking tails including
@@ -151,7 +154,11 @@ token sink:
 - Top-level `SELECT` rejects adjacent bare operands and dangling operators in
   `ORDER BY` expression lists.
 - Top-level and query-body `SELECT` list tails reject incomplete `AS` aliases
-  and stray tokens after explicit aliases.
+  and stray tokens after explicit or implicit aliases.
+- Top-level and query-body `SELECT` list tails preserve MySQL's implicit alias
+  tokens while rejecting pure numeric aliases, numeric-literal prefixes such as
+  `2e3abc`, quoted hex/bit literals, charset-introduced string literals, and
+  removed `SQL_CACHE` modifier forms.
 - Top-level and query-body `SELECT` list tails allow bare `*` only as the
   first select item while preserving qualified `table.*` items later in the
   list.

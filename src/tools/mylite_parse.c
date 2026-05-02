@@ -210,7 +210,7 @@ static void dump_statements(const MyliteAst *ast) {
         const MyliteAstCreateTableKey *key =
             mylite_ast_alter_table_spec_view_key(spec);
         printf("    alter_spec[%zu] kind=%s span=%zu..%zu if_exists=%d "
-               "if_not_exists=%d column=%d key=%d name=",
+               "if_not_exists=%d columns=%zu keys=%zu name=",
                j,
                mylite_alter_table_spec_kind_name(
                    mylite_ast_alter_table_spec_view_kind(spec)),
@@ -218,7 +218,8 @@ static void dump_statements(const MyliteAst *ast) {
                mylite_ast_alter_table_spec_view_end(spec),
                mylite_ast_alter_table_spec_view_has_if_exists(spec),
                mylite_ast_alter_table_spec_view_has_if_not_exists(spec),
-               column != NULL, key != NULL);
+               mylite_ast_alter_table_spec_view_column_count(spec),
+               mylite_ast_alter_table_spec_view_key_count(spec));
         const char *spec_name =
             mylite_ast_alter_table_spec_view_name_value(spec);
         size_t spec_name_length =

@@ -74,10 +74,11 @@ next typed AST layer. The `ALTER TABLE` view currently covers decoded target
 tables, ordered coarse operation specs, operation names, nested rename/exchange
 table targets, reused table-option handles, and reused column/key descriptor
 payloads for single-column add/modify/change specs and add-constraint/index
-specs. Column, key, and DDL descriptors include CST node anchors for the next
-semantic AST builder, but the parser does not yet build the final typed MyLite
-AST and does not imply runtime support for the statement rows below. The current
-prototype parses the WordPress MySQL server query corpus with
+specs, including multi-item `ADD (...)` descriptor arrays. Column, key, and DDL
+descriptors include CST node anchors for the next semantic AST builder, but the
+parser does not yet build the final typed MyLite AST and does not imply runtime
+support for the statement rows below. The current prototype parses the
+WordPress MySQL server query corpus with
 `parsed=69541 skipped=36 failed=0`. See
 [docs/parser/lemon-tidb-port.md](docs/parser/lemon-tidb-port.md) and
 [docs/parser/ast-construction.md](docs/parser/ast-construction.md).

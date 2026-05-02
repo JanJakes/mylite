@@ -2944,6 +2944,8 @@ static int expect_alter_table_view(void) {
       add == NULL ||
       mylite_ast_alter_table_spec_view_kind(add) !=
           MYLITE_ALTER_TABLE_SPEC_ADD_COLUMN ||
+      mylite_ast_alter_table_spec_view_column_count(add) != 1 ||
+      mylite_ast_alter_table_spec_view_key_count(add) != 0 ||
       add_column == NULL ||
       mylite_ast_create_table_column_view_type_kind(add_column) !=
           MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT ||
@@ -2956,6 +2958,8 @@ static int expect_alter_table_view(void) {
       add_key == NULL ||
       mylite_ast_alter_table_spec_view_kind(add_key) !=
           MYLITE_ALTER_TABLE_SPEC_ADD_CONSTRAINT ||
+      mylite_ast_alter_table_spec_view_column_count(add_key) != 0 ||
+      mylite_ast_alter_table_spec_view_key_count(add_key) != 1 ||
       add_constraint == NULL ||
       mylite_ast_create_table_key_view_kind(add_constraint) !=
           MYLITE_CREATE_TABLE_KEY_UNIQUE ||
@@ -3085,6 +3089,62 @@ static int expect_alter_table_view(void) {
                "t2");
   if (failed) {
     fprintf(stderr, "ALTER TABLE rename view failed: %s\n", sql);
+  }
+
+  mylite_ast_free(ast);
+  if (failed) {
+    return failed;
+  }
+
+  sql = "ALTER TABLE db1.t1 ADD (a INT, b VARCHAR(5), KEY k (a), UNIQUE KEY "
+        "uk (b))";
+  ast = NULL;
+  status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "ALTER TABLE add-list parse failed: status=%s offset=%zu "
+            "token=%d message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  view = mylite_ast_alter_table_view(ast, 0);
+  const MyliteAstAlterTableSpec *add_list =
+      mylite_ast_alter_table_view_spec_at(view, 0);
+  const MyliteAstCreateTableColumn *second_column =
+      mylite_ast_alter_table_spec_view_column_at(add_list, 1);
+  const MyliteAstCreateTableKey *first_key =
+      mylite_ast_alter_table_spec_view_key_at(add_list, 0);
+  const MyliteAstCreateTableKey *second_key =
+      mylite_ast_alter_table_spec_view_key_at(add_list, 1);
+  failed = add_list == NULL ||
+           mylite_ast_alter_table_spec_view_kind(add_list) !=
+               MYLITE_ALTER_TABLE_SPEC_ADD_TABLE_ELEMENTS ||
+           mylite_ast_alter_table_spec_view_column_count(add_list) != 2 ||
+           mylite_ast_alter_table_spec_view_key_count(add_list) != 2 ||
+           second_column == NULL ||
+           mylite_ast_create_table_column_view_type_kind(second_column) !=
+               MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARCHAR ||
+           !mylite_ast_create_table_column_view_type_has_length(
+               second_column) ||
+           mylite_ast_create_table_column_view_type_length(second_column) != 5 ||
+           first_key == NULL ||
+           mylite_ast_create_table_key_view_kind(first_key) !=
+               MYLITE_CREATE_TABLE_KEY_INDEX ||
+           !value_matches_when_expected(
+               mylite_ast_create_table_key_view_name_value(first_key),
+               mylite_ast_create_table_key_view_name_value_length(first_key),
+               "k") ||
+           second_key == NULL ||
+           mylite_ast_create_table_key_view_kind(second_key) !=
+               MYLITE_CREATE_TABLE_KEY_UNIQUE ||
+           !value_matches_when_expected(
+               mylite_ast_create_table_key_view_name_value(second_key),
+               mylite_ast_create_table_key_view_name_value_length(second_key),
+               "uk");
+  if (failed) {
+    fprintf(stderr, "ALTER TABLE add-list view failed: %s\n", sql);
   }
 
   mylite_ast_free(ast);

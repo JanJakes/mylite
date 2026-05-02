@@ -506,6 +506,14 @@ const MyliteAstCreateTableColumn *mylite_ast_alter_table_spec_view_column(
     const MyliteAstAlterTableSpec *spec);
 const MyliteAstCreateTableKey *mylite_ast_alter_table_spec_view_key(
     const MyliteAstAlterTableSpec *spec);
+size_t mylite_ast_alter_table_spec_view_column_count(
+    const MyliteAstAlterTableSpec *spec);
+const MyliteAstCreateTableColumn *mylite_ast_alter_table_spec_view_column_at(
+    const MyliteAstAlterTableSpec *spec, size_t column_index);
+size_t mylite_ast_alter_table_spec_view_key_count(
+    const MyliteAstAlterTableSpec *spec);
+const MyliteAstCreateTableKey *mylite_ast_alter_table_spec_view_key_at(
+    const MyliteAstAlterTableSpec *spec, size_t key_index);
 MyliteAlterTableSpecKind mylite_ast_alter_table_spec_view_kind(
     const MyliteAstAlterTableSpec *spec);
 size_t mylite_ast_alter_table_spec_view_start(

@@ -500,19 +500,23 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                     NULL) {
                   alter_table_renamed_tables++;
                 }
-                const MyliteAstCreateTableColumn *column =
-                    mylite_ast_alter_table_spec_view_column(spec);
-                if (column != NULL) {
-                  alter_table_column_payloads++;
+                size_t alter_column_count =
+                    mylite_ast_alter_table_spec_view_column_count(spec);
+                alter_table_column_payloads += alter_column_count;
+                for (size_t k = 0; k < alter_column_count; k++) {
+                  const MyliteAstCreateTableColumn *column =
+                      mylite_ast_alter_table_spec_view_column_at(spec, k);
                   if (mylite_ast_create_table_column_view_type_kind(column) !=
                       MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN) {
                     alter_table_column_known_types++;
                   }
                 }
-                const MyliteAstCreateTableKey *key =
-                    mylite_ast_alter_table_spec_view_key(spec);
-                if (key != NULL) {
-                  alter_table_key_payloads++;
+                size_t alter_key_count =
+                    mylite_ast_alter_table_spec_view_key_count(spec);
+                alter_table_key_payloads += alter_key_count;
+                for (size_t k = 0; k < alter_key_count; k++) {
+                  const MyliteAstCreateTableKey *key =
+                      mylite_ast_alter_table_spec_view_key_at(spec, k);
                   alter_table_key_columns +=
                       mylite_ast_create_table_key_view_column_count(key);
                 }

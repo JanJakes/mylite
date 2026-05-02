@@ -28,8 +28,9 @@ expression nodes.
 - `CREATE TABLE` statements expose typed column descriptors for direct column
   definitions, including definition, name, type, option spans, exact type
   name/parameter/attribute spans, exact type kind, parser-level storage class,
-  numeric type parameters, enum/set element counts, selected option detail
-  spans, CST node anchors, coarse type family, and column option flags.
+  numeric type parameters, semantic type-shape fields, enum/set element counts,
+  selected option detail spans, CST node anchors, coarse type family, and column
+  option flags.
 - `CREATE TABLE` statements expose typed table key and constraint descriptors
   for primary keys, secondary indexes, unique indexes, fulltext indexes, spatial
   indexes, foreign keys, and check constraints.
@@ -68,7 +69,8 @@ expression nodes.
   name, type parameters, type attributes, options, defaults, `ON UPDATE`,
   generated expression/storage, comments, inline check, and inline reference
   spans, plus CST node anchors, type family, exact type kind, storage class,
-  numeric type parameters, enum/set element counts, and option flags
+  numeric type parameters, semantic type-shape fields, enum/set element counts,
+  and option flags
 - typed `CREATE TABLE` key descriptors with kind, full constraint/index span,
   constraint name, key name, local key parts, referenced table, referenced
   schema/name, referenced key parts, index options, foreign actions, and check
@@ -110,10 +112,13 @@ MySQL's compatibility mapping to `MEDIUMTEXT` and `MEDIUMBLOB` documented in
 These are still parser-level descriptors, not normalized semantic metadata; the
 column view now decodes unsigned numeric type parameters from the retained SQL
 copy, so `DECIMAL(10,2)`, `VARCHAR(50)`, `DATETIME(6)`, and `VECTOR(3)` expose
-their parsed parameter counts and integer values. `ENUM` and `SET` expose their
-top-level element counts but not yet decoded string values. The next layer must
-resolve exact MySQL type semantics, string literal values, expression trees,
-metadata defaults, partitions, and `CREATE TABLE ... SELECT`.
+their parsed parameter counts and integer values. It also maps those raw
+parameters into semantic type-shape fields: length for integer display width,
+bit/string/binary/vector lengths, precision and scale for decimal and floating
+types, and fractional-seconds precision for temporal types. `ENUM` and `SET`
+expose their top-level element counts but not yet decoded string values. The
+next layer must resolve exact MySQL type semantics, string literal values,
+expression trees, metadata defaults, partitions, and `CREATE TABLE ... SELECT`.
 
 Column descriptors keep direct CST node anchors for the type node, option list,
 default value, `ON UPDATE` value, generated expression/storage, comment option,
@@ -158,8 +163,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.817859 qps=503269 mbps=38.27 avg_us=1.987
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=21.596380 qps=322003 mbps=24.49 avg_us=3.106 avg_nodes=74.5 avg_ast_bytes=10091.7 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_value_roots=0.06
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.803966 qps=503776 mbps=38.31 avg_us=1.985
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=21.922077 qps=317219 mbps=24.12 avg_us=3.152 avg_nodes=74.5 avg_ast_bytes=10103.9 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_value_roots=0.06
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -172,7 +177,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 101K on disk, 67,172 bytes text/data/other
+parser support object: 103K on disk, 68,208 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.2M on disk
 mylite-parse: 1.0M on disk

@@ -148,6 +148,8 @@ static void dump_statements(const MyliteAst *ast) {
              "name=%zu..%zu type=%zu..%zu type_name=%zu..%zu "
              "type_params=%zu..%zu type_numeric_params=%zu:%llu,%llu "
              "type_elements=%zu "
+             "type_length=%d:%llu type_precision=%d:%llu "
+             "type_scale=%d:%llu type_fsp=%d:%llu "
              "type_attrs=%zu..%zu options=%zu..%zu default=%zu..%zu "
              "default_value=%zu..%zu on_update=%zu..%zu "
              "on_update_value=%zu..%zu generated=%zu..%zu "
@@ -182,6 +184,16 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_table_column_type_numeric_parameter_at(ast, i, j,
                                                                       1),
              mylite_ast_create_table_column_type_element_count(ast, i, j),
+             mylite_ast_create_table_column_type_has_length(ast, i, j),
+             mylite_ast_create_table_column_type_length(ast, i, j),
+             mylite_ast_create_table_column_type_has_precision(ast, i, j),
+             mylite_ast_create_table_column_type_precision(ast, i, j),
+             mylite_ast_create_table_column_type_has_scale(ast, i, j),
+             mylite_ast_create_table_column_type_scale(ast, i, j),
+             mylite_ast_create_table_column_type_has_fractional_seconds_precision(
+                 ast, i, j),
+             mylite_ast_create_table_column_type_fractional_seconds_precision(
+                 ast, i, j),
              mylite_ast_create_table_column_type_attributes_start(ast, i, j),
              mylite_ast_create_table_column_type_attributes_end(ast, i, j),
              mylite_ast_create_table_column_options_start(ast, i, j),

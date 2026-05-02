@@ -23,6 +23,14 @@ typedef struct ExpectedCreateTableColumn {
   size_t type_numeric_parameter_count;
   unsigned long long type_numeric_parameters[2];
   size_t type_element_count;
+  int has_type_length;
+  unsigned long long type_length;
+  int has_type_precision;
+  unsigned long long type_precision;
+  int has_type_scale;
+  unsigned long long type_scale;
+  int has_type_fsp;
+  unsigned long long type_fsp;
   const char *type_attributes;
   const char *default_span;
   const char *default_value;
@@ -780,6 +788,10 @@ int main(void) {
          .type_parameters = "(10,2)",
          .type_numeric_parameter_count = 2,
          .type_numeric_parameters = {10, 2},
+         .has_type_precision = 1,
+         .type_precision = 10,
+         .has_type_scale = 1,
+         .type_scale = 2,
          .type_attributes = "UNSIGNED ZEROFILL",
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_DECIMAL,
@@ -813,6 +825,8 @@ int main(void) {
          .type_parameters = "(50)",
          .type_numeric_parameter_count = 1,
          .type_numeric_parameters = {50, 0},
+         .has_type_length = 1,
+         .type_length = 50,
          .type_attributes = "CHARACTER SET utf8mb4 COLLATE utf8mb4_bin",
          .comment = "COMMENT 'x'",
          .comment_value = "'x'",
@@ -826,6 +840,8 @@ int main(void) {
          .type_parameters = "(10)",
          .type_numeric_parameter_count = 1,
          .type_numeric_parameters = {10, 0},
+         .has_type_length = 1,
+         .type_length = 10,
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NVARCHAR,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_VARIABLE_STRING},
         {.definition = "b LONG VARBINARY",
@@ -864,6 +880,16 @@ int main(void) {
          .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYINT,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER},
+        {.definition = "iw INT(11)",
+         .name = "iw",
+         .type = "INT(11)",
+         .type_family = MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
+         .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT,
+         .type_numeric_parameter_count = 1,
+         .type_numeric_parameters = {11, 0},
+         .has_type_length = 1,
+         .type_length = 11,
+         .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_INTEGER},
         {.definition = "i8 INT8",
          .name = "i8",
          .type = "INT8",
@@ -889,6 +915,8 @@ int main(void) {
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIT,
          .type_numeric_parameter_count = 1,
          .type_numeric_parameters = {1, 0},
+         .has_type_length = 1,
+         .type_length = 1,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_BIT},
         {.definition = "bn BINARY(2)",
          .name = "bn",
@@ -897,6 +925,8 @@ int main(void) {
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BINARY,
          .type_numeric_parameter_count = 1,
          .type_numeric_parameters = {2, 0},
+         .has_type_length = 1,
+         .type_length = 2,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_BINARY_STRING},
         {.definition = "tx MEDIUMTEXT",
          .name = "tx",
@@ -911,6 +941,8 @@ int main(void) {
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DATETIME,
          .type_numeric_parameter_count = 1,
          .type_numeric_parameters = {6, 0},
+         .has_type_fsp = 1,
+         .type_fsp = 6,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_TEMPORAL},
         {.definition = "pt POINT",
          .name = "pt",
@@ -931,6 +963,8 @@ int main(void) {
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_CHAR,
          .type_numeric_parameter_count = 1,
          .type_numeric_parameters = {1, 0},
+         .has_type_length = 1,
+         .type_length = 1,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_FIXED_STRING},
         {.definition = "vb VARBINARY(2)",
          .name = "vb",
@@ -939,6 +973,8 @@ int main(void) {
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARBINARY,
          .type_numeric_parameter_count = 1,
          .type_numeric_parameters = {2, 0},
+         .has_type_length = 1,
+         .type_length = 2,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_BINARY_STRING},
         {.definition = "js JSON",
          .name = "js",
@@ -960,9 +996,11 @@ int main(void) {
          .type_kind = MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VECTOR,
          .type_numeric_parameter_count = 1,
          .type_numeric_parameters = {3, 0},
+         .has_type_length = 1,
+         .type_length = 3,
          .storage_class = MYLITE_CREATE_TABLE_COLUMN_STORAGE_VECTOR}};
     failures += expect_create_table_columns(
-        "CREATE TABLE t (ti TINYINT, i8 INT8, bo BOOLEAN, f FLOAT8, "
+        "CREATE TABLE t (ti TINYINT, iw INT(11), i8 INT8, bo BOOLEAN, f FLOAT8, "
         "bt BIT(1), bn BINARY(2), tx MEDIUMTEXT, dt DATETIME(6), "
         "pt POINT, gc GEOMETRYCOLLECTION, ch CHAR(1), vb VARBINARY(2), "
         "js JSON, st SET('x'), ve VECTOR(3))",
@@ -1576,6 +1614,23 @@ static int expect_create_table_columns(const char *sql,
         (columns[i].type_element_count > 0 &&
          mylite_ast_create_table_column_type_element_count(ast, 0, i) !=
              columns[i].type_element_count) ||
+        (columns[i].has_type_length &&
+         (!mylite_ast_create_table_column_type_has_length(ast, 0, i) ||
+          mylite_ast_create_table_column_type_length(ast, 0, i) !=
+              columns[i].type_length)) ||
+        (columns[i].has_type_precision &&
+         (!mylite_ast_create_table_column_type_has_precision(ast, 0, i) ||
+          mylite_ast_create_table_column_type_precision(ast, 0, i) !=
+              columns[i].type_precision)) ||
+        (columns[i].has_type_scale &&
+         (!mylite_ast_create_table_column_type_has_scale(ast, 0, i) ||
+          mylite_ast_create_table_column_type_scale(ast, 0, i) !=
+              columns[i].type_scale)) ||
+        (columns[i].has_type_fsp &&
+         (!mylite_ast_create_table_column_type_has_fractional_seconds_precision(
+              ast, 0, i) ||
+          mylite_ast_create_table_column_type_fractional_seconds_precision(
+              ast, 0, i) != columns[i].type_fsp)) ||
         !span_matches_when_expected(
             sql, mylite_ast_create_table_column_type_attributes_start(ast, 0, i),
             mylite_ast_create_table_column_type_attributes_end(ast, 0, i),
@@ -1645,6 +1700,8 @@ static int expect_create_table_columns(const char *sql,
               "flags=0x%x\n"
               "type_name=%zu..%zu type_params=%zu..%zu "
               "type_numeric_params=%zu:%llu,%llu type_elements=%zu "
+              "type_length=%d:%llu type_precision=%d:%llu "
+              "type_scale=%d:%llu type_fsp=%d:%llu "
               "type_attrs=%zu..%zu "
               "default=%zu..%zu default_value=%zu..%zu on_update=%zu..%zu "
               "on_update_value=%zu..%zu generated=%zu..%zu "
@@ -1678,6 +1735,16 @@ static int expect_create_table_columns(const char *sql,
               mylite_ast_create_table_column_type_numeric_parameter_at(ast, 0, i,
                                                                        1),
               mylite_ast_create_table_column_type_element_count(ast, 0, i),
+              mylite_ast_create_table_column_type_has_length(ast, 0, i),
+              mylite_ast_create_table_column_type_length(ast, 0, i),
+              mylite_ast_create_table_column_type_has_precision(ast, 0, i),
+              mylite_ast_create_table_column_type_precision(ast, 0, i),
+              mylite_ast_create_table_column_type_has_scale(ast, 0, i),
+              mylite_ast_create_table_column_type_scale(ast, 0, i),
+              mylite_ast_create_table_column_type_has_fractional_seconds_precision(
+                  ast, 0, i),
+              mylite_ast_create_table_column_type_fractional_seconds_precision(
+                  ast, 0, i),
               mylite_ast_create_table_column_type_attributes_start(ast, 0, i),
               mylite_ast_create_table_column_type_attributes_end(ast, 0, i),
               mylite_ast_create_table_column_default_start(ast, 0, i),

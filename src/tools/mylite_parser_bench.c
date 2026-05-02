@@ -63,6 +63,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t column_known_storage_classes = 0;
   size_t column_type_numeric_parameters = 0;
   size_t column_type_elements = 0;
+  size_t column_type_lengths = 0;
+  size_t column_type_precisions = 0;
+  size_t column_type_scales = 0;
+  size_t column_type_fsps = 0;
   size_t column_value_roots = 0;
   size_t column_defaults = 0;
   size_t column_on_updates = 0;
@@ -107,6 +111,19 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                       ast, i, j);
               column_type_elements +=
                   mylite_ast_create_table_column_type_element_count(ast, i, j);
+              if (mylite_ast_create_table_column_type_has_length(ast, i, j)) {
+                column_type_lengths++;
+              }
+              if (mylite_ast_create_table_column_type_has_precision(ast, i, j)) {
+                column_type_precisions++;
+              }
+              if (mylite_ast_create_table_column_type_has_scale(ast, i, j)) {
+                column_type_scales++;
+              }
+              if (mylite_ast_create_table_column_type_has_fractional_seconds_precision(
+                      ast, i, j)) {
+                column_type_fsps++;
+              }
               if (mylite_ast_create_table_column_default_value_node(ast, i, j) !=
                   NULL) {
                 column_value_roots++;
@@ -183,7 +200,9 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_column_references=%.2f avg_column_known_types=%.2f "
            "avg_column_storage_classes=%.2f "
            "avg_column_type_numeric_params=%.2f "
-           "avg_column_type_elements=%.2f avg_column_value_roots=%.2f",
+           "avg_column_type_elements=%.2f avg_column_type_lengths=%.2f "
+           "avg_column_type_precisions=%.2f avg_column_type_scales=%.2f "
+           "avg_column_type_fsps=%.2f avg_column_value_roots=%.2f",
            (double)column_defaults / (double)parsed,
            (double)column_on_updates / (double)parsed,
            (double)column_generated / (double)parsed,
@@ -193,6 +212,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)column_known_storage_classes / (double)parsed,
            (double)column_type_numeric_parameters / (double)parsed,
            (double)column_type_elements / (double)parsed,
+           (double)column_type_lengths / (double)parsed,
+           (double)column_type_precisions / (double)parsed,
+           (double)column_type_scales / (double)parsed,
+           (double)column_type_fsps / (double)parsed,
            (double)column_value_roots / (double)parsed);
   }
   printf("\n");

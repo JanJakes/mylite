@@ -28,10 +28,22 @@ typedef struct MyliteAstStatementTarget {
   size_t name_end;
 } MyliteAstStatementTarget;
 
+typedef enum MyliteAstCreateTableColumnTypeShapeFlag {
+  MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_LENGTH = 1u << 0,
+  MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_PRECISION = 1u << 1,
+  MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_SCALE = 1u << 2,
+  MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_FSP = 1u << 3
+} MyliteAstCreateTableColumnTypeShapeFlag;
+
 typedef struct MyliteAstCreateTableColumn {
+  unsigned long long type_length;
+  unsigned long long type_precision;
+  unsigned long long type_scale;
+  unsigned long long type_fractional_seconds_precision;
   MyliteCreateTableColumnTypeFamily type_family;
   MyliteCreateTableColumnTypeKind type_kind;
   MyliteCreateTableColumnStorageClass storage_class;
+  unsigned int type_shape_flags;
   unsigned int flags;
   size_t start;
   size_t end;
@@ -297,6 +309,14 @@ static size_t mylite_ast_parse_unsigned_parameters(
     size_t value_capacity);
 static size_t mylite_ast_count_parenthesized_items(const char *source,
                                                    size_t start, size_t end);
+static void mylite_ast_set_create_table_column_type_shape(
+    MyliteAstCreateTableColumn *column);
+static void mylite_ast_set_create_table_column_type_length(
+    MyliteAstCreateTableColumn *column, size_t parameter_index);
+static void mylite_ast_set_create_table_column_type_precision_scale(
+    MyliteAstCreateTableColumn *column);
+static void mylite_ast_set_create_table_column_type_fsp(
+    MyliteAstCreateTableColumn *column);
 static int mylite_ast_is_column_type_name_continuation(const MyliteAstNode *node);
 static int mylite_ast_is_column_type_parameter_child(const MyliteAstNode *node);
 static int mylite_ast_is_column_type_attribute_child(const MyliteAstNode *node);
@@ -1197,6 +1217,71 @@ size_t mylite_ast_create_table_column_type_element_count(
   const MyliteAstCreateTableColumn *column =
       mylite_ast_create_table_column_at(ast, statement_index, column_index);
   return column == NULL ? 0 : column->type_element_count;
+}
+
+int mylite_ast_create_table_column_type_has_length(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column != NULL &&
+         (column->type_shape_flags &
+          MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_LENGTH) != 0;
+}
+
+unsigned long long mylite_ast_create_table_column_type_length(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_length;
+}
+
+int mylite_ast_create_table_column_type_has_precision(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column != NULL &&
+         (column->type_shape_flags &
+          MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_PRECISION) != 0;
+}
+
+unsigned long long mylite_ast_create_table_column_type_precision(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_precision;
+}
+
+int mylite_ast_create_table_column_type_has_scale(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column != NULL &&
+         (column->type_shape_flags &
+          MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_SCALE) != 0;
+}
+
+unsigned long long mylite_ast_create_table_column_type_scale(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_scale;
+}
+
+int mylite_ast_create_table_column_type_has_fractional_seconds_precision(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column != NULL &&
+         (column->type_shape_flags &
+          MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_FSP) != 0;
+}
+
+unsigned long long
+mylite_ast_create_table_column_type_fractional_seconds_precision(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->type_fractional_seconds_precision;
 }
 
 size_t mylite_ast_create_table_column_type_attributes_start(
@@ -3136,6 +3221,7 @@ static void mylite_ast_set_create_table_column_type_parameter_values(
       column->type_numeric_parameters,
       sizeof(column->type_numeric_parameters) /
           sizeof(column->type_numeric_parameters[0]));
+  mylite_ast_set_create_table_column_type_shape(column);
 }
 
 static size_t mylite_ast_parse_unsigned_parameters(
@@ -3226,6 +3312,109 @@ static size_t mylite_ast_count_parenthesized_items(const char *source,
   }
 
   return count;
+}
+
+static void mylite_ast_set_create_table_column_type_shape(
+    MyliteAstCreateTableColumn *column) {
+  if (column == NULL || column->type_numeric_parameter_count == 0) {
+    return;
+  }
+
+  switch (column->type_kind) {
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_FLOAT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_REAL:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DOUBLE:
+      mylite_ast_set_create_table_column_type_precision_scale(column);
+      break;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TIME:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DATETIME:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TIMESTAMP:
+      mylite_ast_set_create_table_column_type_fsp(column);
+      break;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_SMALLINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIGINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BOOL:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BIT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_CHAR:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARCHAR:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NCHAR:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_NVARCHAR:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BINARY:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VARBINARY:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_BLOB:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TEXT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_YEAR:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_VECTOR:
+      mylite_ast_set_create_table_column_type_length(column, 0);
+      break;
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYBLOB:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMBLOB:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONGBLOB:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_TINYTEXT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MEDIUMTEXT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONGTEXT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_ENUM:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_SET:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_JSON:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARCHAR:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LONG_VARBINARY:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DATE:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRY:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_POINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_LINESTRING:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_POLYGON:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTIPOINT:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTILINESTRING:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_MULTIPOLYGON:
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_GEOMETRYCOLLECTION:
+      break;
+  }
+}
+
+static void mylite_ast_set_create_table_column_type_length(
+    MyliteAstCreateTableColumn *column, size_t parameter_index) {
+  if (column == NULL ||
+      parameter_index >= column->type_numeric_parameter_count ||
+      parameter_index >= sizeof(column->type_numeric_parameters) /
+                             sizeof(column->type_numeric_parameters[0])) {
+    return;
+  }
+
+  column->type_length = column->type_numeric_parameters[parameter_index];
+  column->type_shape_flags |=
+      MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_LENGTH;
+}
+
+static void mylite_ast_set_create_table_column_type_precision_scale(
+    MyliteAstCreateTableColumn *column) {
+  if (column == NULL || column->type_numeric_parameter_count == 0) {
+    return;
+  }
+
+  column->type_precision = column->type_numeric_parameters[0];
+  column->type_shape_flags |=
+      MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_PRECISION;
+  if (column->type_numeric_parameter_count > 1) {
+    column->type_scale = column->type_numeric_parameters[1];
+    column->type_shape_flags |=
+        MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_SCALE;
+  }
+}
+
+static void mylite_ast_set_create_table_column_type_fsp(
+    MyliteAstCreateTableColumn *column) {
+  if (column == NULL || column->type_numeric_parameter_count == 0) {
+    return;
+  }
+
+  column->type_fractional_seconds_precision = column->type_numeric_parameters[0];
+  column->type_shape_flags |= MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_FSP;
 }
 
 static int mylite_ast_is_column_type_name_continuation(const MyliteAstNode *node) {

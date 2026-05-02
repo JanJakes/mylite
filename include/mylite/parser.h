@@ -368,6 +368,23 @@ unsigned long long mylite_ast_create_table_column_type_numeric_parameter_at(
     size_t parameter_index);
 size_t mylite_ast_create_table_column_type_element_count(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
+int mylite_ast_create_table_column_type_has_length(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+unsigned long long mylite_ast_create_table_column_type_length(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+int mylite_ast_create_table_column_type_has_precision(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+unsigned long long mylite_ast_create_table_column_type_precision(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+int mylite_ast_create_table_column_type_has_scale(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+unsigned long long mylite_ast_create_table_column_type_scale(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+int mylite_ast_create_table_column_type_has_fractional_seconds_precision(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+unsigned long long
+mylite_ast_create_table_column_type_fractional_seconds_precision(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
 size_t mylite_ast_create_table_column_type_attributes_start(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
 size_t mylite_ast_create_table_column_type_attributes_end(

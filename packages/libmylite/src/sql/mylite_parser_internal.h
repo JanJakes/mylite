@@ -251,6 +251,18 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_rollback_statement(struct mylite_sql_parser_state *state,
                                           struct mylite_sql_parser_statement_tokens tokens,
                                           struct mylite_sql_ast_node *completion);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_savepoint_statement(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_token savepoint_token,
+                                           struct mylite_sql_ast_node *name);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_rollback_to_savepoint_statement(struct mylite_sql_parser_state *state,
+                                                       struct mylite_sql_token rollback_token,
+                                                       struct mylite_sql_ast_node *name);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_release_savepoint_statement(struct mylite_sql_parser_state *state,
+                                                   struct mylite_sql_token release_token,
+                                                   struct mylite_sql_ast_node *name);
 struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_completion(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_completion_tokens tokens,
     enum mylite_sql_ast_transaction_chain chain, enum mylite_sql_ast_transaction_release release);

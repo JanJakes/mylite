@@ -543,6 +543,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "rollback_statement";
     case MYLITE_SQL_AST_TRANSACTION_COMPLETION:
         return "transaction_completion";
+    case MYLITE_SQL_AST_SAVEPOINT_STATEMENT:
+        return "savepoint_statement";
+    case MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT:
+        return "rollback_to_savepoint_statement";
+    case MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT:
+        return "release_savepoint_statement";
     }
 
     return "unknown";

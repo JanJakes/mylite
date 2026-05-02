@@ -55,8 +55,9 @@ level application surfaces.
 21. [x] Transaction statements: `START TRANSACTION`, `BEGIN`, `COMMIT`,
        `ROLLBACK`, access modes, chaining, release options, and diagnostics.
        Spec: [transaction statements](../transaction-statements/specs.md).
-22. [ ] Savepoints: `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`,
+22. [x] Savepoints: `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`,
        `RELEASE SAVEPOINT`, replacement, nesting, and error behavior.
+       Spec: [savepoints](../savepoints/specs.md).
 23. [ ] Result metadata and expression labels: type, length, flags, origin
        metadata, alias labels, duplicate labels, and nullability.
 24. [ ] Scalar built-in functions used by common applications: string, numeric,

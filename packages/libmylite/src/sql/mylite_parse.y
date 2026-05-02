@@ -8,6 +8,7 @@
 %type insert_values_keyword { struct mylite_sql_token }
 %type opt_order_direction { struct mylite_sql_token }
 %type opt_work { struct mylite_sql_token }
+%type opt_savepoint_keyword { struct mylite_sql_token }
 %type opt_like_escape { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
 
@@ -51,7 +52,7 @@
 %fallback IDENTIFIER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLUMN_FORMAT COMMENT
     COMMIT CONSISTENT DATE DATETIME DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION FIXED HASH
     INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR NO NVARCHAR OFFSET ONLY ROLLBACK
-    SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE TEMPORARY TEXT TIME TIMESTAMP
+    SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE TEMPORARY TEXT TIME TIMESTAMP
     TRANSACTION VISIBLE VALUE WORK YEAR.
 
 input ::= statement_list(A). {
@@ -115,6 +116,15 @@ statement(A) ::= commit_statement(B). {
     A = B;
 }
 statement(A) ::= rollback_statement(B). {
+    A = B;
+}
+statement(A) ::= savepoint_statement(B). {
+    A = B;
+}
+statement(A) ::= rollback_to_savepoint_statement(B). {
+    A = B;
+}
+statement(A) ::= release_savepoint_statement(B). {
     A = B;
 }
 statement(A) ::= show_schemas_statement(B). {
@@ -397,10 +407,29 @@ rollback_statement(A) ::= ROLLBACK(T) opt_work(W) opt_transaction_completion(C).
         state, (struct mylite_sql_parser_statement_tokens){.start = T, .end = W}, C);
 }
 
+savepoint_statement(A) ::= SAVEPOINT(T) identifier(B). {
+    A = mylite_sql_parser_make_savepoint_statement(state, T, B);
+}
+
+rollback_to_savepoint_statement(A) ::= ROLLBACK(T) opt_work TO opt_savepoint_keyword identifier(B). {
+    A = mylite_sql_parser_make_rollback_to_savepoint_statement(state, T, B);
+}
+
+release_savepoint_statement(A) ::= RELEASE(T) SAVEPOINT identifier(B). {
+    A = mylite_sql_parser_make_release_savepoint_statement(state, T, B);
+}
+
 opt_work(A) ::= . {
     A = (struct mylite_sql_token){0};
 }
 opt_work(A) ::= WORK(T). {
+    A = T;
+}
+
+opt_savepoint_keyword(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_savepoint_keyword(A) ::= SAVEPOINT(T). {
     A = T;
 }
 

@@ -22,6 +22,7 @@ static int test_insert_set_syntax(void);
 static int test_update_single_table_syntax(void);
 static int test_delete_single_table_syntax(void);
 static int test_transaction_statement_syntax(void);
+static int test_savepoint_statement_syntax(void);
 static int test_select_expression_list(void);
 static int test_expression_operator_foundation_syntax(void);
 static int test_information_schema_select(void);
@@ -105,6 +106,7 @@ int main(void)
     failures += test_update_single_table_syntax();
     failures += test_delete_single_table_syntax();
     failures += test_transaction_statement_syntax();
+    failures += test_savepoint_statement_syntax();
     failures += test_select_expression_list();
     failures += test_expression_operator_foundation_syntax();
     failures += test_information_schema_select();
@@ -2702,6 +2704,124 @@ static int test_transaction_statement_syntax(void)
     failures += parse_sql("COMMIT AND CHAIN AND RELEASE", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("ROLLBACK AND CHAIN RELEASE", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_savepoint_statement_syntax(void)
+{
+    enum {
+        savepoint_statement_index = 0,
+        savepoint_quoted_reserved_statement_index = 1,
+        savepoint_quoted_dot_statement_index = 2,
+        rollback_to_statement_index = 3,
+        rollback_work_to_statement_index = 4,
+        rollback_to_savepoint_statement_index = 5,
+        rollback_work_to_savepoint_statement_index = 6,
+        release_savepoint_statement_index = 7,
+        rollback_quoted_reserved_statement_index = 8,
+        release_quoted_reserved_statement_index = 9,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SAVEPOINT s; SAVEPOINT `select`; SAVEPOINT `db.sp`; "
+                          "ROLLBACK TO s; ROLLBACK WORK TO s; ROLLBACK TO SAVEPOINT s; "
+                          "ROLLBACK WORK TO SAVEPOINT s; RELEASE SAVEPOINT s; "
+                          "ROLLBACK TO `select`; RELEASE SAVEPOINT `select`",
+                          MYLITE_SQL_PARSE_OK, &result);
+
+    statement = child_at(result.root, savepoint_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_SAVEPOINT_STATEMENT, "savepoint statement");
+    failures += expect_span_text(statement, "SAVEPOINT s", "savepoint statement span");
+    failures += expect_child_count(statement, 1U, "savepoint child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_IDENTIFIER, "savepoint name");
+    failures += expect_span_text(child_at(statement, 0U), "s", "savepoint name span");
+
+    statement = child_at(result.root, savepoint_quoted_reserved_statement_index);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SAVEPOINT_STATEMENT, "quoted reserved savepoint");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "`select`", "quoted reserved savepoint name");
+
+    statement = child_at(result.root, savepoint_quoted_dot_statement_index);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SAVEPOINT_STATEMENT, "quoted dotted savepoint");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "`db.sp`", "quoted dotted savepoint name");
+
+    statement = child_at(result.root, rollback_to_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT,
+                            "rollback to statement");
+    failures += expect_span_text(statement, "ROLLBACK TO s", "rollback to statement span");
+    failures += expect_child_count(statement, 1U, "rollback to child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_IDENTIFIER, "rollback to name");
+    failures += expect_span_text(child_at(statement, 0U), "s", "rollback to name span");
+
+    statement = child_at(result.root, rollback_work_to_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT,
+                            "rollback work to statement");
+    failures += expect_span_text(statement, "ROLLBACK WORK TO s", "rollback work to span");
+
+    statement = child_at(result.root, rollback_to_savepoint_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT,
+                            "rollback to savepoint statement");
+    failures +=
+        expect_span_text(statement, "ROLLBACK TO SAVEPOINT s", "rollback to savepoint span");
+
+    statement = child_at(result.root, rollback_work_to_savepoint_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT,
+                            "rollback work to savepoint statement");
+    failures += expect_span_text(statement, "ROLLBACK WORK TO SAVEPOINT s",
+                                 "rollback work to savepoint span");
+
+    statement = child_at(result.root, release_savepoint_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT,
+                            "release savepoint statement");
+    failures += expect_span_text(statement, "RELEASE SAVEPOINT s", "release savepoint span");
+    failures += expect_child_count(statement, 1U, "release savepoint child count");
+    failures +=
+        expect_node(child_at(statement, 0U), MYLITE_SQL_AST_IDENTIFIER, "release savepoint name");
+    failures += expect_span_text(child_at(statement, 0U), "s", "release savepoint name span");
+
+    statement = child_at(result.root, rollback_quoted_reserved_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT,
+                            "rollback quoted reserved");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "`select`", "rollback quoted reserved name");
+
+    statement = child_at(result.root, release_quoted_reserved_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT,
+                            "release quoted reserved");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "`select`", "release quoted reserved name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SAVEPOINT", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SAVEPOINT select", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SAVEPOINT db.sp", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("ROLLBACK TO", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("ROLLBACK TO SAVEPOINT", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("ROLLBACK TO s AND CHAIN", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("ROLLBACK TO s RELEASE", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("ROLLBACK SAVEPOINT s", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("ROLLBACK TO select", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("RELEASE s", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("RELEASE SAVEPOINT", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("RELEASE SAVEPOINT select", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

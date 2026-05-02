@@ -71,6 +71,7 @@ enum {
     mysql_warning_unknown_column = 1054,
     mysql_warning_incorrect_escape_arguments = 1210,
     mysql_warning_truncated_wrong_value = 1292,
+    mysql_warning_savepoint_does_not_exist = 1305,
     mysql_warning_division_by_zero = 1365,
 };
 
@@ -130,6 +131,7 @@ static int test_select_order_limit_offset_execution(void);
 static int test_update_single_table_execution(void);
 static int test_delete_single_table_execution(void);
 static int test_transaction_statements_execution(void);
+static int test_savepoint_execution(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -137,6 +139,10 @@ static int expect_no_stmt_handle(mylite_stmt **stmt, const char *context);
 static int execute_sql(mylite_db *database, const char *sql, int expected_step_status);
 static int expect_prepare_error(mylite_db *database, const char *sql, int expected_status,
                                 const char *error_fragment, const char *context);
+static int expect_exec_error(mylite_stmt *stmt, mylite_db *database, const char *error_fragment,
+                             const char *context);
+static int expect_savepoint_warning(mylite_db *database, const char *error_fragment,
+                                    const char *context);
 static int execute_sql_expect_done_affected(mylite_db *database, const char *sql,
                                             int64_t expected_affected_rows, const char *context);
 static int expect_select_rows(mylite_db *database, const char *sql, const char *const *columns,
@@ -227,6 +233,7 @@ int main(void)
     failures += test_update_single_table_execution();
     failures += test_delete_single_table_execution();
     failures += test_transaction_statements_execution();
+    failures += test_savepoint_execution();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -4076,6 +4083,213 @@ static int test_transaction_statements_execution(void)
     return failures;
 }
 
+static int test_savepoint_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open savepoint db");
+    failures += execute_sql(database, "CREATE DATABASE sp_db", MYLITE_DONE);
+    failures += execute_sql(database, "USE sp_db", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE tx (id INT PRIMARY KEY, v INT)", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE ai ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT) "
+                            "AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+
+    failures += execute_sql_expect_done_affected(database, "SAVEPOINT outside_sp", 0,
+                                                 "savepoint outside transaction");
+    failures += execute_sql(database, "INSERT INTO tx VALUES (1, 10)", MYLITE_DONE);
+    failures += prepare_sql(database, "ROLLBACK TO SAVEPOINT outside_sp", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "SAVEPOINT outside_sp does not exist",
+                                  "rollback to outside savepoint");
+    failures += expect_savepoint_warning(database, "SAVEPOINT outside_sp does not exist",
+                                         "outside savepoint warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 1", 1,
+                                        "outside savepoint does not start transaction");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (2, 20)", MYLITE_DONE);
+    failures +=
+        execute_sql_expect_done_affected(database, "SAVEPOINT a", 0, "savepoint affected rows");
+    failures += execute_sql(database, "INSERT INTO tx VALUES (3, 30)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database, "ROLLBACK TO a", 0,
+                                                 "rollback to savepoint affected rows");
+    failures += execute_sql(database, "INSERT INTO tx VALUES (4, 40)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK WORK TO SAVEPOINT a", MYLITE_DONE);
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 2", 1,
+                                        "rollback to keeps pre-savepoint row");
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id IN (3,4)", 0,
+                                        "rollback to removes post-savepoint rows");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (5, 50)", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT r", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (6, 60)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database, "RELEASE SAVEPOINT r", 0,
+                                                 "release savepoint affected rows");
+    failures += prepare_sql(database, "ROLLBACK TO r", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "SAVEPOINT r does not exist",
+                                  "rollback released savepoint");
+    failures += expect_savepoint_warning(database, "SAVEPOINT r does not exist",
+                                         "released savepoint warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO tx VALUES (7, 70)", MYLITE_DONE);
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id IN (5,6,7)", 3,
+                                        "missing savepoint error keeps transaction active");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (8, 80)", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT same_name", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (9, 90)", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT middle_name", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (10, 100)", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT same_name", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (11, 110)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK TO middle_name", MYLITE_DONE);
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id IN (8,9)", 2,
+                                        "replacement keeps intervening savepoint");
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id IN (10,11)", 0,
+                                        "rollback to intervening savepoint removes later rows");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT outer_sp", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (12, 120)", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT inner_sp", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (13, 130)", MYLITE_DONE);
+    failures += execute_sql(database, "RELEASE SAVEPOINT outer_sp", MYLITE_DONE);
+    failures += prepare_sql(database, "ROLLBACK TO inner_sp", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "SAVEPOINT inner_sp does not exist",
+                                  "release outer removes inner");
+    failures += expect_savepoint_warning(database, "SAVEPOINT inner_sp does not exist",
+                                         "released nested savepoint warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id IN (12,13)", 2,
+                                        "release does not roll back data");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT MixedCase", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (14, 140)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK TO mixedcase", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT `db.sp`", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (15, 150)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK TO `DB.SP`", MYLITE_DONE);
+    failures += execute_sql(database, "RELEASE SAVEPOINT `db.sp`", MYLITE_DONE);
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id IN (14,15)", 0,
+                                        "savepoint lookup is case-insensitive");
+
+    failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT ro", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK TO SAVEPOINT ro", MYLITE_DONE);
+    failures += execute_sql(database, "RELEASE SAVEPOINT ro", MYLITE_DONE);
+    failures += prepare_sql(database, "UPDATE tx SET v = 200 WHERE id = 2", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "read only transaction rejects update after savepoint");
+    failures += expect_contains(mylite_error_message(database),
+                                "Cannot execute statement in a READ ONLY transaction",
+                                "read only update after savepoint error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT before_ai", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ai (v) VALUES (100),(200)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK TO before_ai", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ai (v) VALUES (300)", MYLITE_DONE);
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+    {
+        static const char *columns[] = {"id", "v"};
+        static const char *values[] = {"12", "300"};
+
+        failures +=
+            expect_select_rows(database, "SELECT id, v FROM ai ORDER BY id", columns, 2, values, 1,
+                               "rollback to preserves consumed auto-increment ids");
+    }
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT commit_clear", MYLITE_DONE);
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+    failures += prepare_sql(database, "ROLLBACK TO commit_clear", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "SAVEPOINT commit_clear does not exist",
+                                  "commit clears savepoints");
+    failures += expect_savepoint_warning(database, "SAVEPOINT commit_clear does not exist",
+                                         "commit cleared savepoint warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT rollback_clear", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += prepare_sql(database, "RELEASE SAVEPOINT rollback_clear", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "SAVEPOINT rollback_clear does not exist",
+                                  "rollback clears savepoints");
+    failures += expect_savepoint_warning(database, "SAVEPOINT rollback_clear does not exist",
+                                         "rollback cleared savepoint warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT start_clear", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (16, 160)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += prepare_sql(database, "ROLLBACK TO start_clear", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "SAVEPOINT start_clear does not exist",
+                                  "repeated start clears savepoints");
+    failures += expect_savepoint_warning(database, "SAVEPOINT start_clear does not exist",
+                                         "repeated start cleared savepoint warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 16", 1,
+                                        "repeated start commits preexisting transaction");
+
+    failures += execute_sql(database, "BEGIN", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT begin_clear", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (17, 170)", MYLITE_DONE);
+    failures += execute_sql(database, "BEGIN", MYLITE_DONE);
+    failures += prepare_sql(database, "RELEASE SAVEPOINT begin_clear", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "SAVEPOINT begin_clear does not exist",
+                                  "repeated begin clears savepoints");
+    failures += expect_savepoint_warning(database, "SAVEPOINT begin_clear does not exist",
+                                         "repeated begin cleared savepoint warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id = 17", 1,
+                                        "repeated begin commits preexisting transaction");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "SAVEPOINT mylite_statement_atomicity", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx VALUES (20, 200)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "INSERT INTO tx VALUES (21, 210),(21, 211)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry '21'",
+                                  "failed statement inside user savepoint");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "ROLLBACK TO mylite_statement_atomicity", MYLITE_DONE);
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+    failures += expect_select_row_count(database, "SELECT id FROM tx WHERE id IN (20,21)", 0,
+                                        "user savepoint does not collide with statement atomicity");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
 static int test_parse_error(void)
 {
     mylite_db *database = NULL;
@@ -4116,6 +4330,29 @@ static int expect_prepare_error(mylite_db *database, const char *sql, int expect
 
     failures += expect_no_stmt_handle(&stmt, context);
     failures += expect_contains(mylite_error_message(database), error_fragment, context);
+    return failures;
+}
+
+static int expect_exec_error(mylite_stmt *stmt, mylite_db *database, const char *error_fragment,
+                             const char *context)
+{
+    int failures = 0;
+
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, context);
+    failures += expect_int64(mylite_affected_rows(stmt), -1, context);
+    failures += expect_contains(mylite_error_message(database), error_fragment, context);
+    return failures;
+}
+
+static int expect_savepoint_warning(mylite_db *database, const char *error_fragment,
+                                    const char *context)
+{
+    int failures = 0;
+
+    failures += expect_int(mylite_warning_count(database), 1, context);
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_savepoint_does_not_exist, context);
+    failures += expect_contains(mylite_warning_message(database, 0), error_fragment, context);
     return failures;
 }
 

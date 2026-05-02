@@ -1173,6 +1173,69 @@ mylite_sql_parser_make_rollback_statement(struct mylite_sql_parser_state *state,
     return statement;
 }
 
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_savepoint_statement(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_token savepoint_token,
+                                           struct mylite_sql_ast_node *name)
+{
+    struct mylite_sql_source_span span = span_from_token(&savepoint_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (name != NULL) {
+        span = span_join(span, name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SAVEPOINT_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, name);
+    return statement;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_rollback_to_savepoint_statement(struct mylite_sql_parser_state *state,
+                                                       struct mylite_sql_token rollback_token,
+                                                       struct mylite_sql_ast_node *name)
+{
+    struct mylite_sql_source_span span = span_from_token(&rollback_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (name != NULL) {
+        span = span_join(span, name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, name);
+    return statement;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_release_savepoint_statement(struct mylite_sql_parser_state *state,
+                                                   struct mylite_sql_token release_token,
+                                                   struct mylite_sql_ast_node *name)
+{
+    struct mylite_sql_source_span span = span_from_token(&release_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (name != NULL) {
+        span = span_join(span, name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_completion(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_completion_tokens tokens,
     enum mylite_sql_ast_transaction_chain chain, enum mylite_sql_ast_transaction_release release)
@@ -3148,6 +3211,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"ROW", MYLITE_SQL_PARSE_ROW},
         {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
         {"SCHEMAS", MYLITE_SQL_PARSE_SCHEMAS},
+        {"SAVEPOINT", MYLITE_SQL_PARSE_SAVEPOINT},
         {"SECONDARY_ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_SECONDARY_ENGINE_ATTRIBUTE},
         {"SELECT", MYLITE_SQL_PARSE_SELECT},
         {"SET", MYLITE_SQL_PARSE_SET},
@@ -3165,6 +3229,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"TINYBLOB", MYLITE_SQL_PARSE_TINYBLOB},
         {"TINYINT", MYLITE_SQL_PARSE_TINYINT},
         {"TINYTEXT", MYLITE_SQL_PARSE_TINYTEXT},
+        {"TO", MYLITE_SQL_PARSE_TO},
         {"TRANSACTION", MYLITE_SQL_PARSE_TRANSACTION},
         {"TRUE", MYLITE_SQL_PARSE_TRUE},
         {"UNIQUE", MYLITE_SQL_PARSE_UNIQUE},

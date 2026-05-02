@@ -215,7 +215,7 @@ token sink:
   index options including parser plugins, string-literal comments, visibility,
   string-literal attributes, numeric and quoted-hex `KEY_BLOCK_SIZE`, quoted
   hex/bit rejection in text-string options, closed `USING`/`TYPE` values, and
-  identifier-valued `ALGORITHM`/`LOCK`,
+  identifier-valued `ALGORITHM`/`LOCK` with duplicate option rejection,
   while validating standalone key-part prefix lengths and `ASC`/`DESC` tails.
 - `CREATE TABLE` table-definition bodies require non-empty comma-separated
   elements while preserving nested token bodies for column and constraint
@@ -265,8 +265,9 @@ token sink:
 - `CREATE TABLESPACE` and `ALTER TABLESPACE` recognize documented
   string-literal data files, numeric size including quoted hex, `WAIT`,
   string-literal encryption, optional-equals engine/storage-engine options, and
-  string-literal attribute clauses, while rejecting quoted hex/bit literals in
-  text-string positions. UNDO tablespaces use MySQL's narrower option list: required
+  string-literal attribute clauses, including repeated simple `ALTER TABLESPACE`
+  option lists, while rejecting quoted hex/bit literals in text-string
+  positions. UNDO tablespaces use MySQL's narrower option list: required
   string-literal create data files plus optional `ENGINE`/`STORAGE ENGINE`.
   Drop tablespace/logfile tails recognize MySQL option lists including `ENGINE`,
   `STORAGE ENGINE`,
@@ -297,12 +298,14 @@ token sink:
   binlog modifiers, CHECK/REPAIR maintenance options, and numeric coalesce counts,
   tablespace/storage/union changes with closed storage values,
   secondary-engine load/unload actions,
-  table option changes with numeric/boolean/default value domains, closed
-  `INSERT_METHOD` and `ROW_FORMAT` values, string-literal data/index
+  table option changes with charset/collation continuations,
+  numeric/boolean/default value domains, closed `INSERT_METHOD` and
+  `ROW_FORMAT` values, string-literal data/index
   directories, string-literal compression/password/connection/engine
   attributes, `AUTOEXTEND_SIZE`, `TABLE_CHECKSUM`, `START TRANSACTION`,
   decimal-versus-size number domains, `STATS_SAMPLE_PAGES` bounds, storage
   option equality rejection, identifier-valued `ALGORITHM`/`LOCK` options,
+  invalid table-option continuation rejection,
   tablespace discard/import forms, and validated `ADD`/`CHANGE`/`MODIFY`
   column type starts plus
   MySQL's `DOUBLE PRECISION` modifier placement, column-definition attribute

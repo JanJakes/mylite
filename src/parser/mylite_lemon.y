@@ -1587,6 +1587,8 @@ alter_table_table_option ::= ROW_FORMAT drop_index_option_equals_tail alter_tabl
 alter_table_table_option ::= SECONDARY_ENGINE drop_index_option_equals_tail alter_table_table_option_value.
 alter_table_table_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail text_string_literal.
 alter_table_table_option ::= START TRANSACTION.
+alter_table_table_option ::= database_default_tail database_character_set_option.
+alter_table_table_option ::= database_default_tail database_collate_option.
 
 alter_table_number_table_option ::= AUTO_INCREMENT.
 alter_table_number_table_option ::= AVG_ROW_LENGTH.
@@ -1651,7 +1653,6 @@ alter_table_charset_after_comma ::= alter_table_union_action.
 alter_table_charset_after_comma ::= alter_table_reorganize_action.
 alter_table_charset_after_comma ::= alter_table_keys_action alter_table_force_option_tail.
 
-alter_table_charset_action ::= database_default_tail alter_table_character_set_kind drop_index_option_equals_tail set_charset_name alter_table_collate_tail.
 alter_table_charset_action ::= CONVERT TO alter_table_character_set_kind drop_index_option_equals_tail alter_table_charset_name alter_table_collate_tail.
 
 alter_table_character_set_kind ::= CHARACTER SET.
@@ -1811,11 +1812,16 @@ alter_resource_group_force_tail ::= FORCE.
 alter_tablespace_action ::= RENAME TO cache_name_part.
 alter_tablespace_action ::= ADD create_datafile text_string_literal alter_tablespace_datafile_options_tail.
 alter_tablespace_action ::= DROP create_datafile text_string_literal alter_tablespace_datafile_options_tail.
-alter_tablespace_action ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
-alter_tablespace_action ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
-alter_tablespace_action ::= tablespace_engine_option.
-alter_tablespace_action ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail text_string_literal.
-alter_tablespace_action ::= WAIT.
+alter_tablespace_action ::= alter_tablespace_options.
+
+alter_tablespace_options ::= alter_tablespace_option.
+alter_tablespace_options ::= alter_tablespace_options alter_tablespace_option.
+
+alter_tablespace_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
+alter_tablespace_option ::= ENCRYPTION drop_index_option_equals_tail encryption_value.
+alter_tablespace_option ::= tablespace_engine_option.
+alter_tablespace_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail text_string_literal.
+alter_tablespace_option ::= WAIT.
 
 alter_tablespace_datafile_options_tail ::= .
 alter_tablespace_datafile_options_tail ::= alter_tablespace_datafile_options_tail alter_tablespace_datafile_option.

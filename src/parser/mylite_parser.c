@@ -74,6 +74,11 @@ enum {
   QUERY_EXPRESSION_ALLOW_BARE_DEFAULT = 1 << 0
 };
 
+enum {
+  CREATE_INDEX_OPTION_FLAG_ALGORITHM = 1 << 0,
+  CREATE_INDEX_OPTION_FLAG_LOCK = 1 << 1
+};
+
 typedef enum ColumnTypeParameterKind {
   COLUMN_TYPE_PARAMETER_NONE = 0,
   COLUMN_TYPE_PARAMETER_NUMERIC_ONE,
@@ -316,10 +321,6 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
                                                MyliteToken start);
 static void validate_alter_table_option_values(MyliteParseContext *ctx,
                                                MyliteToken start);
-static int validate_alter_table_option_value(MyliteParseContext *ctx,
-                                             MyliteLexer *lexer,
-                                             MyliteToken option,
-                                             int value_kind);
 static int create_table_tail_option_value_token(
     int kind, int token_id, MyliteToken token);
 static int create_table_tail_option_value_allows_equals(int kind);
@@ -457,6 +458,7 @@ static int create_index_option_number_token(int token_id, MyliteToken token);
 static int index_using_type_token(MyliteToken token);
 static int alter_table_add_index_marker(int token_id);
 static int alter_table_add_non_index_marker(int token_id);
+static int alter_table_action_start_token(int token_id);
 static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
                                                   MyliteToken start);
 static void validate_alter_table_order_by_from(MyliteParseContext *ctx,
@@ -7095,6 +7097,7 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
   int create_index_name_seen = 0;
   int index_using_pending = 0;
   int index_option_state = CREATE_INDEX_OPTION_READY;
+  int index_option_flags = 0;
   int index_option_equals = 0;
   int depth = 0;
   int key_state = INDEX_KEY_NEED_PART;
@@ -7186,6 +7189,24 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
           index_option_state = CREATE_INDEX_OPTION_NUMBER;
           index_option_equals = 0;
           pending_token = token;
+          continue;
+        }
+        if (token_id == ML_ALGORITHM) {
+          if ((index_option_flags & CREATE_INDEX_OPTION_FLAG_ALGORITHM) != 0) {
+            mylite_parser_reject(ctx, token,
+                                 "duplicate CREATE INDEX ALGORITHM option");
+            return;
+          }
+          index_option_flags |= CREATE_INDEX_OPTION_FLAG_ALGORITHM;
+          continue;
+        }
+        if (token_id == ML_LOCK) {
+          if ((index_option_flags & CREATE_INDEX_OPTION_FLAG_LOCK) != 0) {
+            mylite_parser_reject(ctx, token,
+                                 "duplicate CREATE INDEX LOCK option");
+            return;
+          }
+          index_option_flags |= CREATE_INDEX_OPTION_FLAG_LOCK;
           continue;
         }
         if (token_id == ML_COMMENT || token_id == ML_ENGINE_ATTRIBUTE ||
@@ -8579,6 +8600,17 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
 
 static void validate_alter_table_option_values(MyliteParseContext *ctx,
                                                MyliteToken start) {
+  enum {
+    ALTER_TABLE_OPTION_READY,
+    ALTER_TABLE_OPTION_AFTER_DEFAULT,
+    ALTER_TABLE_OPTION_AFTER_CHARACTER,
+    ALTER_TABLE_OPTION_AFTER_DATA,
+    ALTER_TABLE_OPTION_AFTER_INDEX,
+    ALTER_TABLE_OPTION_AFTER_START,
+    ALTER_TABLE_OPTION_EXPECT_VALUE,
+    ALTER_TABLE_OPTION_AFTER_UNION,
+    ALTER_TABLE_OPTION_UNION_BODY
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token = start;
@@ -8590,7 +8622,12 @@ static void validate_alter_table_option_values(MyliteParseContext *ctx,
   int table_dot_pending = 0;
   int depth = 0;
   int previous_comma = 0;
+  int after_comma = 0;
   int option_allowed = 1;
+  int in_table_options = 0;
+  int state = ALTER_TABLE_OPTION_READY;
+  int value_kind = CREATE_TABLE_OPTION_VALUE_NONE;
+  int value_saw_equals = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -8637,7 +8674,111 @@ static void validate_alter_table_option_values(MyliteParseContext *ctx,
         depth++;
       } else if (token_closes_nested_expression(token_id)) {
         depth--;
+        if (depth == 0 && state == ALTER_TABLE_OPTION_UNION_BODY) {
+          state = ALTER_TABLE_OPTION_READY;
+          in_table_options = 1;
+          option_allowed = 1;
+        }
       }
+      continue;
+    }
+
+    if (state == ALTER_TABLE_OPTION_EXPECT_VALUE) {
+      if (token_id == ML_EQUALS && !value_saw_equals &&
+          create_table_tail_option_value_allows_equals(value_kind)) {
+        value_saw_equals = 1;
+        continue;
+      }
+      if (!create_table_tail_option_value_token(value_kind, token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "invalid ALTER TABLE table option");
+        return;
+      }
+      state = ALTER_TABLE_OPTION_READY;
+      value_kind = CREATE_TABLE_OPTION_VALUE_NONE;
+      value_saw_equals = 0;
+      in_table_options = 1;
+      option_allowed = 1;
+      previous_comma = 0;
+      continue;
+    }
+
+    if (state == ALTER_TABLE_OPTION_AFTER_DEFAULT) {
+      if (token_id == ML_CHARACTER) {
+        state = ALTER_TABLE_OPTION_AFTER_CHARACTER;
+        pending_token = token;
+        previous_comma = 0;
+        continue;
+      }
+      if (token_id == ML_CHARSET || token_id == ML_COLLATE) {
+        state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+        value_kind = CREATE_TABLE_OPTION_VALUE_CHARSET;
+        value_saw_equals = 0;
+        pending_token = token;
+        previous_comma = 0;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "invalid ALTER TABLE table option");
+      return;
+    }
+
+    if (state == ALTER_TABLE_OPTION_AFTER_CHARACTER) {
+      if (token_id != ML_SET) {
+        mylite_parser_reject(ctx, pending_token,
+                             "invalid ALTER TABLE table option");
+        return;
+      }
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = CREATE_TABLE_OPTION_VALUE_CHARSET;
+      value_saw_equals = 0;
+      pending_token = token;
+      previous_comma = 0;
+      continue;
+    }
+
+    if (state == ALTER_TABLE_OPTION_AFTER_DATA ||
+        state == ALTER_TABLE_OPTION_AFTER_INDEX) {
+      if (token_id != ML_DIRECTORY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "invalid ALTER TABLE table option");
+        return;
+      }
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = CREATE_TABLE_OPTION_VALUE_STRING;
+      value_saw_equals = 0;
+      pending_token = token;
+      previous_comma = 0;
+      continue;
+    }
+
+    if (state == ALTER_TABLE_OPTION_AFTER_START) {
+      if (token_id != ML_TRANSACTION) {
+        mylite_parser_reject(ctx, pending_token,
+                             "invalid ALTER TABLE table option");
+        return;
+      }
+      state = ALTER_TABLE_OPTION_READY;
+      in_table_options = 1;
+      option_allowed = 1;
+      previous_comma = 0;
+      continue;
+    }
+
+    if (state == ALTER_TABLE_OPTION_AFTER_UNION) {
+      if (token_id == ML_EQUALS && !value_saw_equals) {
+        value_saw_equals = 1;
+        continue;
+      }
+      if (token_id != ML_LP) {
+        mylite_parser_reject(ctx, pending_token,
+                             "invalid ALTER TABLE table option");
+        return;
+      }
+      state = ALTER_TABLE_OPTION_UNION_BODY;
+      depth = 1;
+      value_saw_equals = 0;
+      previous_comma = 0;
       continue;
     }
 
@@ -8659,9 +8800,55 @@ static void validate_alter_table_option_values(MyliteParseContext *ctx,
       pending_token = token;
       continue;
     }
+    after_comma = previous_comma;
     previous_comma = 0;
 
     if (!option_allowed) {
+      continue;
+    }
+
+    if (token_id == ML_DEFAULT) {
+      state = ALTER_TABLE_OPTION_AFTER_DEFAULT;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_CHARACTER) {
+      state = ALTER_TABLE_OPTION_AFTER_CHARACTER;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_CHARSET || token_id == ML_COLLATE) {
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = CREATE_TABLE_OPTION_VALUE_CHARSET;
+      value_saw_equals = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_DATA) {
+      state = ALTER_TABLE_OPTION_AFTER_DATA;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_INDEX) {
+      state = ALTER_TABLE_OPTION_AFTER_INDEX;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_START) {
+      state = ALTER_TABLE_OPTION_AFTER_START;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_UNION) {
+      state = ALTER_TABLE_OPTION_AFTER_UNION;
+      value_saw_equals = 0;
+      pending_token = token;
       continue;
     }
 
@@ -8670,53 +8857,35 @@ static void validate_alter_table_option_values(MyliteParseContext *ctx,
         token_id == ML_DELAY_KEY_WRITE ||
         token_id == ML_KEY_BLOCK_SIZE || token_id == ML_MAX_ROWS ||
         token_id == ML_MIN_ROWS) {
-      if (!validate_alter_table_option_value(
-              ctx, &lexer, token,
-              CREATE_TABLE_OPTION_VALUE_DECIMAL_NUMBER)) {
-        return;
-      }
-      option_allowed = 1;
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = CREATE_TABLE_OPTION_VALUE_DECIMAL_NUMBER;
+      value_saw_equals = 0;
+      pending_token = token;
       continue;
     }
 
     if (token_id == ML_AUTOEXTEND_SIZE) {
-      if (!validate_alter_table_option_value(
-              ctx, &lexer, token,
-              CREATE_TABLE_OPTION_VALUE_SIZE_NUMBER)) {
-        return;
-      }
-      option_allowed = 1;
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = CREATE_TABLE_OPTION_VALUE_SIZE_NUMBER;
+      value_saw_equals = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_PACK_KEYS || token_id == ML_STATS_AUTO_RECALC ||
+        token_id == ML_STATS_PERSISTENT) {
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = CREATE_TABLE_OPTION_VALUE_DEFAULT_BOOLEAN;
+      value_saw_equals = 0;
+      pending_token = token;
       continue;
     }
 
     if (token_id == ML_STATS_SAMPLE_PAGES) {
-      if (!validate_alter_table_option_value(
-              ctx, &lexer, token,
-              CREATE_TABLE_OPTION_VALUE_STATS_SAMPLE_PAGES)) {
-        return;
-      }
-      option_allowed = 1;
-      continue;
-    }
-
-    if (token_id == ML_TABLESPACE) {
-      token_id = mylite_lexer_next(&lexer, &token);
-      if (token_id <= 0) {
-        return;
-      }
-      option_allowed = 1;
-      continue;
-    }
-
-    if (token_id == ML_STORAGE) {
-      token_id = mylite_lexer_next(&lexer, &token);
-      if (token_id <= 0 ||
-          !create_table_tail_option_storage_token(token_id, token)) {
-        mylite_parser_reject(ctx, token_id > 0 ? token : pending_token,
-                             "invalid ALTER TABLE storage option");
-        return;
-      }
-      option_allowed = 1;
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = CREATE_TABLE_OPTION_VALUE_STATS_SAMPLE_PAGES;
+      value_saw_equals = 0;
+      pending_token = token;
       continue;
     }
 
@@ -8724,49 +8893,67 @@ static void validate_alter_table_option_values(MyliteParseContext *ctx,
         token_id == ML_CONNECTION || token_id == ML_ENCRYPTION ||
         token_id == ML_ENGINE_ATTRIBUTE || token_id == ML_PASSWORD ||
         token_id == ML_SECONDARY_ENGINE_ATTRIBUTE) {
-      if (!validate_alter_table_option_value(
-              ctx, &lexer, token, CREATE_TABLE_OPTION_VALUE_STRING)) {
-        return;
-      }
-      option_allowed = 1;
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = token_id == ML_ENCRYPTION
+                       ? CREATE_TABLE_OPTION_VALUE_ENCRYPTION
+                       : CREATE_TABLE_OPTION_VALUE_STRING;
+      value_saw_equals = 0;
+      pending_token = token;
       continue;
     }
 
-    if (token_id == ML_DATA || token_id == ML_INDEX) {
-      MyliteToken option = token;
-      token_id = mylite_lexer_next(&lexer, &token);
-      if (token_id != ML_DIRECTORY) {
+    if (token_id == ML_ENGINE || token_id == ML_SECONDARY_ENGINE ||
+        token_id == ML_TABLESPACE) {
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = CREATE_TABLE_OPTION_VALUE_NAME;
+      value_saw_equals = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_INSERT_METHOD) {
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = CREATE_TABLE_OPTION_VALUE_INSERT_METHOD;
+      value_saw_equals = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_ROW_FORMAT) {
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = CREATE_TABLE_OPTION_VALUE_ROW_FORMAT;
+      value_saw_equals = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_id == ML_STORAGE) {
+      state = ALTER_TABLE_OPTION_EXPECT_VALUE;
+      value_kind = CREATE_TABLE_OPTION_VALUE_STORAGE;
+      value_saw_equals = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (in_table_options) {
+      if (!after_comma && token_id == ML_PARTITION) {
+        in_table_options = 0;
         option_allowed = 0;
         continue;
       }
-      if (!validate_alter_table_option_value(
-              ctx, &lexer, option, CREATE_TABLE_OPTION_VALUE_STRING)) {
+      if (!after_comma || !alter_table_action_start_token(token_id)) {
+        mylite_parser_reject(ctx, token, "invalid ALTER TABLE table option");
         return;
       }
-      option_allowed = 1;
-      continue;
+      in_table_options = 0;
     }
-
     option_allowed = 0;
   }
-}
 
-static int validate_alter_table_option_value(MyliteParseContext *ctx,
-                                             MyliteLexer *lexer,
-                                             MyliteToken option,
-                                             int value_kind) {
-  MyliteToken token;
-  int token_id = mylite_lexer_next(lexer, &token);
-
-  if (token_id == ML_EQUALS) {
-    token_id = mylite_lexer_next(lexer, &token);
+  if (state != ALTER_TABLE_OPTION_READY) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete ALTER TABLE table option");
   }
-  if (token_id <= 0 ||
-      !create_table_tail_option_value_token(value_kind, token_id, token)) {
-    mylite_parser_reject(ctx, option, "invalid ALTER TABLE table option");
-    return 0;
-  }
-  return 1;
 }
 
 static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
@@ -14574,6 +14761,25 @@ static int alter_table_add_index_marker(int token_id) {
 static int alter_table_add_non_index_marker(int token_id) {
   return token_id == ML_CHECK || token_id == ML_COLUMN ||
          token_id == ML_FOREIGN || token_id == ML_PARTITION;
+}
+
+static int alter_table_action_start_token(int token_id) {
+  return token_id == ML_ADD || token_id == ML_ALGORITHM ||
+         token_id == ML_ALTER || token_id == ML_ANALYZE ||
+         token_id == ML_CHANGE || token_id == ML_CHECK ||
+         token_id == ML_COALESCE || token_id == ML_CONVERT ||
+         token_id == ML_DISABLE || token_id == ML_DISCARD ||
+         token_id == ML_DROP || token_id == ML_ENABLE ||
+         token_id == ML_EXCHANGE || token_id == ML_FORCE ||
+         token_id == ML_IMPORT || token_id == ML_LOCK ||
+         token_id == ML_MODIFY || token_id == ML_OPTIMIZE ||
+         token_id == ML_ORDER || token_id == ML_PARTITION ||
+         token_id == ML_REBUILD || token_id == ML_REMOVE ||
+         token_id == ML_RENAME || token_id == ML_REORGANIZE ||
+         token_id == ML_REPAIR || token_id == ML_SECONDARY_LOAD ||
+         token_id == ML_SECONDARY_UNLOAD || token_id == ML_STORAGE ||
+         token_id == ML_TABLESPACE || token_id == ML_TRUNCATE ||
+         token_id == ML_UNION;
 }
 
 static int event_interval_unit_token(MyliteToken token) {

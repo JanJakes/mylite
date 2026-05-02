@@ -24,7 +24,8 @@ expression nodes.
   multi-target statements such as `DROP TABLE`, `RENAME TABLE`, multi-table
   `DELETE`, and joined `UPDATE`.
 - `CREATE TABLE` statements expose typed column descriptors for direct column
-  definitions, including definition, name, type, and option spans.
+  definitions, including definition, name, type, option spans, coarse type
+  family, and column option flags.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
   still cover the full current corpus.
 - The AST is opaque in the public API and freed with `mylite_ast_free()`.
@@ -51,7 +52,7 @@ expression nodes.
 - indexed target descriptors with role, kind, full span, schema span, and name
   span
 - typed `CREATE TABLE` column descriptors with definition, name, type, and
-  options spans
+  options spans, type family, and option flags
 
 The original single-target accessors remain compatibility helpers and mirror
 the first indexed target. The indexed API should be used by new analyzer and
@@ -67,9 +68,13 @@ parse tree with a typed statement classification and target descriptor layer
 suitable for measuring cost and for guiding typed-node work.
 
 The `CREATE TABLE` column view is the first typed statement-specific layer. It
-does not yet classify MySQL data types, default expressions, constraints, keys,
-generated columns, table options, partitions, or `CREATE TABLE ... SELECT`; it
-only exposes stable source spans for the analyzer to consume incrementally.
+now classifies the coarse type family (`numeric`, `string`, `temporal`, `json`,
+`enum`, `set`, or `spatial`) and exposes flags for common column attributes:
+nullability, defaults, auto-increment, inline key markers, comments, generated
+columns, `ON UPDATE`, references, checks, unsigned, zerofill, character set, and
+collation. It does not yet classify exact MySQL data type names, default
+expressions, table constraints, standalone indexes, table options, partitions,
+or `CREATE TABLE ... SELECT`.
 
 For development inspection:
 
@@ -87,11 +92,11 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul syntax 100
 build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 ```
 
-Release benchmark result on May 1, 2026:
+Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.007430 qps=496458 mbps=37.76 avg_us=2.014
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=19.337334 qps=359620 mbps=27.35 avg_us=2.781 avg_nodes=74.5 avg_ast_bytes=9863.6 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.854240 qps=501947 mbps=38.17 avg_us=1.992
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=19.715159 qps=352729 mbps=26.83 avg_us=2.835 avg_nodes=74.5 avg_ast_bytes=9866.7 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -104,7 +109,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 52K on disk, 37,683 bytes text/data/other
+parser support object: 55K on disk, 39,248 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.1M on disk
 mylite-parse: 992K on disk

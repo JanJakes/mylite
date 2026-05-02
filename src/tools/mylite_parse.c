@@ -139,9 +139,12 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_statement_target_name_end_at(ast, i, j));
     }
     for (size_t j = 0; j < column_count; j++) {
-      printf("  column[%zu] span=%zu..%zu name=%zu..%zu type=%zu..%zu "
-             "options=%zu..%zu\n",
+      printf("  column[%zu] family=%s flags=0x%x span=%zu..%zu name=%zu..%zu "
+             "type=%zu..%zu options=%zu..%zu\n",
              j,
+             mylite_create_table_column_type_family_name(
+                 mylite_ast_create_table_column_type_family(ast, i, j)),
+             mylite_ast_create_table_column_flags(ast, i, j),
              mylite_ast_create_table_column_start(ast, i, j),
              mylite_ast_create_table_column_end(ast, i, j),
              mylite_ast_create_table_column_name_start(ast, i, j),

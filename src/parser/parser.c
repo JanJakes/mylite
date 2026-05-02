@@ -27,6 +27,8 @@ typedef struct MyliteAstStatementTarget {
 } MyliteAstStatementTarget;
 
 typedef struct MyliteAstCreateTableColumn {
+  MyliteCreateTableColumnTypeFamily type_family;
+  unsigned int flags;
   size_t start;
   size_t end;
   size_t name_start;
@@ -143,12 +145,20 @@ static void mylite_ast_fill_create_table_columns(MyliteAstStatement *statement,
                                                  size_t *index);
 static void mylite_ast_fill_create_table_column(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *node);
+static MyliteCreateTableColumnTypeFamily mylite_ast_classify_column_type(
+    const MyliteAstNode *type);
+static unsigned int mylite_ast_collect_column_flags(const MyliteAstNode *type,
+                                                    const MyliteAstNode *options);
+static unsigned int mylite_ast_collect_column_type_flags(const MyliteAstNode *type);
+static unsigned int mylite_ast_collect_column_option_flags(
+    const MyliteAstNode *node);
 static const MyliteAstCreateTableColumn *mylite_ast_create_table_column_at(
     const MyliteAst *ast, size_t statement_index, size_t column_index);
 static const MyliteAstNode *mylite_ast_find_first_symbol(const MyliteAstNode *node,
                                                          const char *symbol_name);
 static const MyliteAstNode *mylite_ast_find_first_token(const MyliteAstNode *node,
                                                         int token);
+static int mylite_ast_first_token(const MyliteAstNode *node);
 static int mylite_ast_is_nested_target_boundary(const MyliteAstNode *node);
 static void mylite_ast_set_table_name_parts(MyliteAstStatementTarget *target,
                                             const MyliteAstNode *node);
@@ -297,6 +307,29 @@ const char *mylite_statement_target_role_name(MyliteStatementTargetRole role) {
       return "source";
     case MYLITE_STATEMENT_TARGET_ROLE_DESTINATION:
       return "destination";
+  }
+  return "unknown";
+}
+
+const char *mylite_create_table_column_type_family_name(
+    MyliteCreateTableColumnTypeFamily family) {
+  switch (family) {
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN:
+      return "unknown";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC:
+      return "numeric";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING:
+      return "string";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_TEMPORAL:
+      return "temporal";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_JSON:
+      return "json";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_ENUM:
+      return "enum";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_SET:
+      return "set";
+    case MYLITE_CREATE_TABLE_COLUMN_TYPE_SPATIAL:
+      return "spatial";
   }
   return "unknown";
 }
@@ -527,6 +560,22 @@ size_t mylite_ast_create_table_column_options_end(const MyliteAst *ast,
   const MyliteAstCreateTableColumn *column =
       mylite_ast_create_table_column_at(ast, statement_index, column_index);
   return column == NULL ? 0 : column->options_end;
+}
+
+MyliteCreateTableColumnTypeFamily mylite_ast_create_table_column_type_family(
+    const MyliteAst *ast, size_t statement_index, size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN
+                        : column->type_family;
+}
+
+unsigned int mylite_ast_create_table_column_flags(const MyliteAst *ast,
+                                                  size_t statement_index,
+                                                  size_t column_index) {
+  const MyliteAstCreateTableColumn *column =
+      mylite_ast_create_table_column_at(ast, statement_index, column_index);
+  return column == NULL ? 0 : column->flags;
 }
 
 MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node) {
@@ -1380,6 +1429,7 @@ static void mylite_ast_fill_create_table_column(
 
   const MyliteAstNode *type = mylite_ast_find_first_symbol(node, "nt_type");
   if (type != NULL) {
+    column->type_family = mylite_ast_classify_column_type(type);
     column->type_start = mylite_ast_node_start(type);
     column->type_end = mylite_ast_node_end(type);
   }
@@ -1390,6 +1440,132 @@ static void mylite_ast_fill_create_table_column(
     column->options_start = mylite_ast_node_start(options);
     column->options_end = mylite_ast_node_end(options);
   }
+  column->flags = mylite_ast_collect_column_flags(type, options);
+}
+
+static MyliteCreateTableColumnTypeFamily mylite_ast_classify_column_type(
+    const MyliteAstNode *type) {
+  if (type == NULL) {
+    return MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN;
+  }
+  if (mylite_ast_find_first_symbol(type, "nt_numeric_type") != NULL) {
+    return MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC;
+  }
+  if (mylite_ast_find_first_symbol(type, "nt_time_type") != NULL) {
+    return MYLITE_CREATE_TABLE_COLUMN_TYPE_TEMPORAL;
+  }
+  if (mylite_ast_find_first_symbol(type, "nt_date_and_time_type") != NULL) {
+    return MYLITE_CREATE_TABLE_COLUMN_TYPE_TEMPORAL;
+  }
+  int first_token = mylite_ast_first_token(type);
+  if (first_token == MYLITE_TOK_DATE_TYPE ||
+      first_token == MYLITE_TOK_DATETIME_TYPE ||
+      first_token == MYLITE_TOK_TIME_TYPE ||
+      first_token == MYLITE_TOK_TIMESTAMP_TYPE ||
+      first_token == MYLITE_TOK_YEAR_TYPE) {
+    return MYLITE_CREATE_TABLE_COLUMN_TYPE_TEMPORAL;
+  }
+  if (mylite_ast_find_first_symbol(type, "nt_mysql_spatial_type") != NULL) {
+    return MYLITE_CREATE_TABLE_COLUMN_TYPE_SPATIAL;
+  }
+  if (mylite_ast_find_first_symbol(type, "nt_string_type") != NULL) {
+    if (first_token == MYLITE_TOK_JSON_TYPE) {
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_JSON;
+    }
+    if (first_token == MYLITE_TOK_ENUM) {
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_ENUM;
+    }
+    if (first_token == MYLITE_TOK_SET) {
+      return MYLITE_CREATE_TABLE_COLUMN_TYPE_SET;
+    }
+    return MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING;
+  }
+  return MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN;
+}
+
+static unsigned int mylite_ast_collect_column_flags(const MyliteAstNode *type,
+                                                    const MyliteAstNode *options) {
+  return mylite_ast_collect_column_type_flags(type) |
+         mylite_ast_collect_column_option_flags(options);
+}
+
+static unsigned int mylite_ast_collect_column_type_flags(const MyliteAstNode *type) {
+  unsigned int flags = 0;
+  if (mylite_ast_find_first_token(type, MYLITE_TOK_UNSIGNED) != NULL) {
+    flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_UNSIGNED;
+  }
+  if (mylite_ast_find_first_token(type, MYLITE_TOK_ZEROFILL) != NULL) {
+    flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_ZEROFILL;
+  }
+  if (mylite_ast_find_first_symbol(type, "nt_charset_kw") != NULL ||
+      mylite_ast_find_first_token(type, MYLITE_TOK_CHARSET_KWD) != NULL) {
+    flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_CHARACTER_SET;
+  }
+  if (mylite_ast_find_first_token(type, MYLITE_TOK_COLLATE) != NULL) {
+    flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_COLLATE;
+  }
+  return flags;
+}
+
+static unsigned int mylite_ast_collect_column_option_flags(
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_column_option") == 0) {
+    unsigned int flags = 0;
+    int has_not = mylite_ast_find_first_token(node, MYLITE_TOK_NOT) != NULL;
+    int has_null = mylite_ast_find_first_token(node, MYLITE_TOK_NULL) != NULL;
+    int has_default =
+        mylite_ast_find_first_token(node, MYLITE_TOK_DEFAULT_KWD) != NULL;
+    if (has_not && has_null) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_NOT_NULL;
+    } else if (has_null && !has_default) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_NULL;
+    }
+    if (has_default) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_DEFAULT;
+    }
+    if (mylite_ast_find_first_token(node, MYLITE_TOK_AUTO_INCREMENT) != NULL) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_AUTO_INCREMENT;
+    }
+    if (mylite_ast_find_first_token(node, MYLITE_TOK_PRIMARY) != NULL) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_PRIMARY_KEY;
+    }
+    if (mylite_ast_find_first_token(node, MYLITE_TOK_UNIQUE) != NULL) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_UNIQUE_KEY;
+    }
+    if (mylite_ast_find_first_token(node, MYLITE_TOK_COMMENT) != NULL) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_COMMENT;
+    }
+    if (mylite_ast_find_first_token(node, MYLITE_TOK_GENERATED) != NULL) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_GENERATED;
+    }
+    if (mylite_ast_find_first_token(node, MYLITE_TOK_VIRTUAL) != NULL) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_VIRTUAL;
+    }
+    if (mylite_ast_find_first_token(node, MYLITE_TOK_STORED) != NULL) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_STORED;
+    }
+    if (mylite_ast_find_first_token(node, MYLITE_TOK_ON) != NULL &&
+        mylite_ast_find_first_token(node, MYLITE_TOK_UPDATE) != NULL) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_ON_UPDATE;
+    }
+    if (mylite_ast_find_first_token(node, MYLITE_TOK_REFERENCES) != NULL) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_REFERENCES;
+    }
+    if (mylite_ast_find_first_token(node, MYLITE_TOK_CHECK) != NULL) {
+      flags |= MYLITE_CREATE_TABLE_COLUMN_FLAG_CHECK;
+    }
+    return flags;
+  }
+
+  unsigned int flags = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    flags |= mylite_ast_collect_column_option_flags(node->children[i]);
+  }
+  return flags;
 }
 
 static const MyliteAstNode *mylite_ast_find_first_symbol(const MyliteAstNode *node,
@@ -1425,6 +1601,22 @@ static const MyliteAstNode *mylite_ast_find_first_token(const MyliteAstNode *nod
     }
   }
   return NULL;
+}
+
+static int mylite_ast_first_token(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (node->kind == MYLITE_AST_NODE_TOKEN) {
+    return node->token;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    int token = mylite_ast_first_token(node->children[i]);
+    if (token != 0) {
+      return token;
+    }
+  }
+  return 0;
 }
 
 static int mylite_ast_is_nested_target_boundary(const MyliteAstNode *node) {

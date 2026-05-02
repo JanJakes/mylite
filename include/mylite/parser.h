@@ -73,6 +73,38 @@ typedef enum MyliteStatementTargetRole {
   MYLITE_STATEMENT_TARGET_ROLE_DESTINATION
 } MyliteStatementTargetRole;
 
+typedef enum MyliteCreateTableColumnTypeFamily {
+  MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN = 0,
+  MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
+  MYLITE_CREATE_TABLE_COLUMN_TYPE_STRING,
+  MYLITE_CREATE_TABLE_COLUMN_TYPE_TEMPORAL,
+  MYLITE_CREATE_TABLE_COLUMN_TYPE_JSON,
+  MYLITE_CREATE_TABLE_COLUMN_TYPE_ENUM,
+  MYLITE_CREATE_TABLE_COLUMN_TYPE_SET,
+  MYLITE_CREATE_TABLE_COLUMN_TYPE_SPATIAL
+} MyliteCreateTableColumnTypeFamily;
+
+typedef enum MyliteCreateTableColumnFlag {
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_NONE = 0,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_NOT_NULL = 1u << 0,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_NULL = 1u << 1,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_DEFAULT = 1u << 2,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_AUTO_INCREMENT = 1u << 3,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_PRIMARY_KEY = 1u << 4,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_UNIQUE_KEY = 1u << 5,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_COMMENT = 1u << 6,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_GENERATED = 1u << 7,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_VIRTUAL = 1u << 8,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_STORED = 1u << 9,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_ON_UPDATE = 1u << 10,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_REFERENCES = 1u << 11,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_CHECK = 1u << 12,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_UNSIGNED = 1u << 13,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_ZEROFILL = 1u << 14,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_CHARACTER_SET = 1u << 15,
+  MYLITE_CREATE_TABLE_COLUMN_FLAG_COLLATE = 1u << 16
+} MyliteCreateTableColumnFlag;
+
 MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result);
 MyliteParseStatus mylite_parse_sql_ast(const char *sql, MyliteAst **ast,
                                        MyliteParseResult *result);
@@ -80,6 +112,8 @@ const char *mylite_parse_status_name(MyliteParseStatus status);
 const char *mylite_statement_kind_name(MyliteStatementKind kind);
 const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
 const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
+const char *mylite_create_table_column_type_family_name(
+    MyliteCreateTableColumnTypeFamily family);
 
 void mylite_ast_free(MyliteAst *ast);
 const MyliteAstNode *mylite_ast_root(const MyliteAst *ast);
@@ -146,6 +180,11 @@ size_t mylite_ast_create_table_column_options_start(const MyliteAst *ast,
                                                     size_t statement_index,
                                                     size_t column_index);
 size_t mylite_ast_create_table_column_options_end(const MyliteAst *ast,
+                                                  size_t statement_index,
+                                                  size_t column_index);
+MyliteCreateTableColumnTypeFamily mylite_ast_create_table_column_type_family(
+    const MyliteAst *ast, size_t statement_index, size_t column_index);
+unsigned int mylite_ast_create_table_column_flags(const MyliteAst *ast,
                                                   size_t statement_index,
                                                   size_t column_index);
 MyliteAstNodeKind mylite_ast_node_kind(const MyliteAstNode *node);

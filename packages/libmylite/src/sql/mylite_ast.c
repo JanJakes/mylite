@@ -876,6 +876,10 @@ const char *mylite_sql_ast_join_type_name(enum mylite_sql_ast_join_type join_typ
         return "cross";
     case MYLITE_SQL_AST_JOIN_COMMA:
         return "comma";
+    case MYLITE_SQL_AST_JOIN_LEFT:
+        return "left";
+    case MYLITE_SQL_AST_JOIN_RIGHT:
+        return "right";
     }
 
     return "unknown";

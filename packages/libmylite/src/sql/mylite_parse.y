@@ -10,6 +10,7 @@
 %type opt_work { struct mylite_sql_token }
 %type opt_savepoint_keyword { struct mylite_sql_token }
 %type inner_join_operator { struct mylite_sql_parser_join_operator }
+%type outer_join_operator { struct mylite_sql_parser_join_operator }
 %type opt_like_escape { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
 
@@ -1588,6 +1589,10 @@ joined_table_reference(A) ::= joined_table_reference(B) inner_join_operator(C) t
         opt_inner_join_condition(E). {
     A = mylite_sql_parser_make_join_expression(state, B, C, D, E);
 }
+joined_table_reference(A) ::= joined_table_reference(B) outer_join_operator(C) table_factor(D)
+        outer_join_condition(E). {
+    A = mylite_sql_parser_make_join_expression(state, B, C, D, E);
+}
 
 inner_join_operator(A) ::= JOIN(T). {
     A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_INNER);
@@ -1599,6 +1604,19 @@ inner_join_operator(A) ::= CROSS(T) JOIN. {
     A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_CROSS);
 }
 
+outer_join_operator(A) ::= LEFT(T) JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_LEFT);
+}
+outer_join_operator(A) ::= LEFT(T) OUTER JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_LEFT);
+}
+outer_join_operator(A) ::= RIGHT(T) JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_RIGHT);
+}
+outer_join_operator(A) ::= RIGHT(T) OUTER JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_RIGHT);
+}
+
 opt_inner_join_condition(A) ::= . {
     A = NULL;
 }
@@ -1606,6 +1624,13 @@ opt_inner_join_condition(A) ::= ON(T) expression(B). {
     A = mylite_sql_parser_make_join_on_condition(state, T, B);
 }
 opt_inner_join_condition(A) ::= USING(T) LPAREN using_column_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_join_using_condition(state, T, B, R);
+}
+
+outer_join_condition(A) ::= ON(T) expression(B). {
+    A = mylite_sql_parser_make_join_on_condition(state, T, B);
+}
+outer_join_condition(A) ::= USING(T) LPAREN using_column_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_join_using_condition(state, T, B, R);
 }
 

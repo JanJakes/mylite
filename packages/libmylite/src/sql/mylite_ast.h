@@ -302,6 +302,8 @@ enum mylite_sql_ast_join_type {
     MYLITE_SQL_AST_JOIN_INNER = 1,
     MYLITE_SQL_AST_JOIN_CROSS = 2,
     MYLITE_SQL_AST_JOIN_COMMA = 3,
+    MYLITE_SQL_AST_JOIN_LEFT = 4,
+    MYLITE_SQL_AST_JOIN_RIGHT = 5,
 };
 
 enum mylite_sql_ast_join_condition_type {

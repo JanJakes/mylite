@@ -3873,6 +3873,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"ONLY", MYLITE_SQL_PARSE_ONLY},
         {"OR", MYLITE_SQL_PARSE_OR},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
+        {"OUTER", MYLITE_SQL_PARSE_OUTER},
         {"PRECISION", MYLITE_SQL_PARSE_PRECISION},
         {"PRIMARY", MYLITE_SQL_PARSE_PRIMARY},
         {"READ", MYLITE_SQL_PARSE_READ},

@@ -31,6 +31,7 @@ static int test_cast_expression_syntax(void);
 static int test_information_schema_select(void);
 static int test_select_table_core_syntax(void);
 static int test_select_inner_join_syntax(void);
+static int test_select_outer_join_syntax(void);
 static int test_select_where_clause_syntax(void);
 static int test_select_order_limit_offset_syntax(void);
 static int test_aggregate_grouping_syntax(void);
@@ -135,6 +136,7 @@ int main(void)
     failures += test_information_schema_select();
     failures += test_select_table_core_syntax();
     failures += test_select_inner_join_syntax();
+    failures += test_select_outer_join_syntax();
     failures += test_select_where_clause_syntax();
     failures += test_select_order_limit_offset_syntax();
     failures += test_aggregate_grouping_syntax();
@@ -3487,6 +3489,12 @@ static int test_select_inner_join_syntax(void)
     failures += expect_child_count(join, 2U, "INNER JOIN without condition child count");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT * FROM l CROSS JOIN r;", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_CROSS, "CROSS JOIN type");
+    failures += expect_child_count(join, 2U, "CROSS JOIN without condition child count");
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("SELECT * FROM l CROSS JOIN r ON l.id = r.id;", MYLITE_SQL_PARSE_OK, &result);
     join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
@@ -3555,6 +3563,101 @@ static int test_select_inner_join_syntax(void)
 
     failures +=
         parse_sql("SELECT * FROM l, r ON l.id = r.id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_outer_join_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *references = NULL;
+    const struct mylite_sql_ast_node *join = NULL;
+    const struct mylite_sql_ast_node *condition = NULL;
+    const struct mylite_sql_ast_node *using_columns = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("SELECT * FROM l LEFT JOIN r ON l.id = r.id;", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    predicate = child_at(condition, 0U);
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_LEFT, "LEFT JOIN type");
+    failures += expect_child_count(join, 3U, "LEFT JOIN condition child count");
+    failures += expect_join_condition_type(condition, MYLITE_SQL_AST_JOIN_CONDITION_ON,
+                                           "LEFT JOIN ON condition type");
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_EQUAL, "LEFT JOIN predicate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM l LEFT OUTER JOIN r USING (id, shared);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    using_columns = child_at(condition, 0U);
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_LEFT, "LEFT OUTER JOIN type");
+    failures += expect_join_condition_type(condition, MYLITE_SQL_AST_JOIN_CONDITION_USING,
+                                           "LEFT OUTER JOIN USING condition type");
+    failures +=
+        expect_node(using_columns, MYLITE_SQL_AST_USING_COLUMN_LIST, "LEFT OUTER USING list");
+    failures += expect_child_count(using_columns, 2U, "LEFT OUTER USING column count");
+    failures += expect_span_text(child_at(child_at(using_columns, 0U), 0U), "id",
+                                 "LEFT OUTER first USING column");
+    failures += expect_span_text(child_at(child_at(using_columns, 1U), 0U), "shared",
+                                 "LEFT OUTER second USING column");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM l RIGHT JOIN r ON l.id = r.id;", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    predicate = child_at(condition, 0U);
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_RIGHT, "RIGHT JOIN type");
+    failures += expect_join_condition_type(condition, MYLITE_SQL_AST_JOIN_CONDITION_ON,
+                                           "RIGHT JOIN ON condition type");
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_EQUAL, "RIGHT JOIN predicate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM l RIGHT OUTER JOIN r USING (id);", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    using_columns = child_at(condition, 0U);
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_RIGHT, "RIGHT OUTER JOIN type");
+    failures += expect_join_condition_type(condition, MYLITE_SQL_AST_JOIN_CONDITION_USING,
+                                           "RIGHT OUTER JOIN USING condition type");
+    failures += expect_child_count(using_columns, 1U, "RIGHT OUTER USING column count");
+    failures += expect_span_text(child_at(child_at(using_columns, 0U), 0U), "id",
+                                 "RIGHT OUTER first USING column");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM l, r LEFT JOIN p USING (id);", MYLITE_SQL_PARSE_OK, &result);
+    references = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    join = child_at(references, 1U);
+    failures += expect_child_count(references, 2U, "comma outer precedence list count");
+    failures +=
+        expect_node(child_at(references, 0U), MYLITE_SQL_AST_FROM_TABLE, "comma outer left table");
+    failures += expect_node(join, MYLITE_SQL_AST_JOIN_EXPRESSION, "comma outer join subtree");
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_LEFT, "comma outer join type");
+    failures += expect_span_text(child_at(child_at(join, 0U), 0U), "r", "comma outer join left");
+    failures += expect_span_text(child_at(child_at(join, 1U), 0U), "p", "comma outer join right");
+    failures += expect_join_condition_type(child_at(join, 2U), MYLITE_SQL_AST_JOIN_CONDITION_USING,
+                                           "comma outer USING belongs to explicit join");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM l LEFT JOIN r;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM l LEFT OUTER JOIN r;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM l RIGHT JOIN r;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM l RIGHT OUTER JOIN r;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -437,6 +437,9 @@ static void dump_statements(const MyliteAst *ast) {
       }
     }
     for (size_t j = 0; j < key_count; j++) {
+      const MyliteAstCreateTableKey *key_view =
+          create_table == NULL ? NULL : mylite_ast_create_table_view_key_at(
+                                           create_table, j);
       size_t column_count_for_key =
           mylite_ast_create_table_key_column_count(ast, i, j);
       size_t referenced_column_count =
@@ -508,6 +511,35 @@ static void dump_statements(const MyliteAst *ast) {
         fputs("none", stdout);
       } else {
         print_escaped_bytes(key_name_value, key_name_value_length);
+      }
+      fputc('\n', stdout);
+      printf("    key[%zu].summary index_type=%s visibility=%s "
+             "key_block_size=%d:%llu comment=",
+             j,
+             mylite_create_table_index_type_name(
+                 mylite_ast_create_table_key_view_index_type_kind(key_view)),
+             mylite_create_table_key_visibility_name(
+                 mylite_ast_create_table_key_view_visibility(key_view)),
+             mylite_ast_create_table_key_view_has_key_block_size_value(key_view),
+             mylite_ast_create_table_key_view_key_block_size_value(key_view));
+      const char *key_comment_value =
+          mylite_ast_create_table_key_view_comment_value(key_view);
+      size_t key_comment_value_length =
+          mylite_ast_create_table_key_view_comment_value_length(key_view);
+      if (key_comment_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(key_comment_value, key_comment_value_length);
+      }
+      fputs(" parser=", stdout);
+      const char *parser_value =
+          mylite_ast_create_table_key_view_parser_value(key_view);
+      size_t parser_value_length =
+          mylite_ast_create_table_key_view_parser_value_length(key_view);
+      if (parser_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(parser_value, parser_value_length);
       }
       fputc('\n', stdout);
       const char *referenced_schema_value =
@@ -607,8 +639,12 @@ static void dump_statements(const MyliteAst *ast) {
         fputc('\n', stdout);
       }
       for (size_t k = 0; k < key_option_count; k++) {
+        const MyliteAstCreateTableKeyOption *option_view =
+            key_view == NULL ? NULL
+                             : mylite_ast_create_table_key_view_option_at(
+                                   key_view, k);
         printf("    key_option[%zu] kind=%s span=%zu..%zu name=%zu..%zu "
-               "value=%zu..%zu\n",
+               "value=%zu..%zu value_kind=%s index_type=%s unsigned=%d:%llu\n",
                k,
                mylite_create_table_key_option_kind_name(
                    mylite_ast_create_table_key_option_kind(ast, i, j, k)),
@@ -617,7 +653,28 @@ static void dump_statements(const MyliteAst *ast) {
                mylite_ast_create_table_key_option_name_start(ast, i, j, k),
                mylite_ast_create_table_key_option_name_end(ast, i, j, k),
                mylite_ast_create_table_key_option_value_start(ast, i, j, k),
-               mylite_ast_create_table_key_option_value_end(ast, i, j, k));
+               mylite_ast_create_table_key_option_value_end(ast, i, j, k),
+               mylite_create_table_key_option_value_kind_name(
+                   mylite_ast_create_table_key_option_view_value_kind(
+                       option_view)),
+               mylite_create_table_index_type_name(
+                   mylite_ast_create_table_key_option_view_index_type_kind(
+                       option_view)),
+               mylite_ast_create_table_key_option_view_has_unsigned_integer(
+                   option_view),
+               mylite_ast_create_table_key_option_view_unsigned_integer_value(
+                   option_view));
+        const char *value =
+            mylite_ast_create_table_key_option_view_value(option_view);
+        size_t value_length =
+            mylite_ast_create_table_key_option_view_value_length(option_view);
+        printf("      key_option[%zu].value len=%zu value=", k, value_length);
+        if (value == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(value, value_length);
+        }
+        fputc('\n', stdout);
       }
     }
     for (size_t j = 0; j < option_count; j++) {

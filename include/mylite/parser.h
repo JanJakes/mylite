@@ -225,6 +225,19 @@ typedef enum MyliteCreateTableKeyPartOrder {
   MYLITE_CREATE_TABLE_KEY_PART_ORDER_DESC
 } MyliteCreateTableKeyPartOrder;
 
+typedef enum MyliteCreateTableIndexType {
+  MYLITE_CREATE_TABLE_INDEX_TYPE_UNSPECIFIED = 0,
+  MYLITE_CREATE_TABLE_INDEX_TYPE_BTREE,
+  MYLITE_CREATE_TABLE_INDEX_TYPE_HASH,
+  MYLITE_CREATE_TABLE_INDEX_TYPE_RTREE
+} MyliteCreateTableIndexType;
+
+typedef enum MyliteCreateTableKeyVisibility {
+  MYLITE_CREATE_TABLE_KEY_VISIBILITY_UNSPECIFIED = 0,
+  MYLITE_CREATE_TABLE_KEY_VISIBILITY_VISIBLE,
+  MYLITE_CREATE_TABLE_KEY_VISIBILITY_INVISIBLE
+} MyliteCreateTableKeyVisibility;
+
 typedef enum MyliteCreateTableKeyOptionKind {
   MYLITE_CREATE_TABLE_KEY_OPTION_UNKNOWN = 0,
   MYLITE_CREATE_TABLE_KEY_OPTION_INDEX_TYPE,
@@ -236,6 +249,15 @@ typedef enum MyliteCreateTableKeyOptionKind {
   MYLITE_CREATE_TABLE_KEY_OPTION_SECONDARY_ENGINE_ATTRIBUTE,
   MYLITE_CREATE_TABLE_KEY_OPTION_WHERE
 } MyliteCreateTableKeyOptionKind;
+
+typedef enum MyliteCreateTableKeyOptionValueKind {
+  MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_UNKNOWN = 0,
+  MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_RAW,
+  MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_IDENTIFIER,
+  MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_STRING,
+  MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_UNSIGNED_INTEGER,
+  MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_INDEX_TYPE
+} MyliteCreateTableKeyOptionValueKind;
 
 typedef enum MyliteCreateTableForeignMatchKind {
   MYLITE_CREATE_TABLE_FOREIGN_MATCH_UNSPECIFIED = 0,
@@ -323,8 +345,14 @@ const char *mylite_create_table_key_part_kind_name(
     MyliteCreateTableKeyPartKind kind);
 const char *mylite_create_table_key_part_order_name(
     MyliteCreateTableKeyPartOrder order);
+const char *mylite_create_table_index_type_name(
+    MyliteCreateTableIndexType type);
+const char *mylite_create_table_key_visibility_name(
+    MyliteCreateTableKeyVisibility visibility);
 const char *mylite_create_table_key_option_kind_name(
     MyliteCreateTableKeyOptionKind kind);
+const char *mylite_create_table_key_option_value_kind_name(
+    MyliteCreateTableKeyOptionValueKind kind);
 const char *mylite_create_table_foreign_match_kind_name(
     MyliteCreateTableForeignMatchKind kind);
 const char *mylite_create_table_foreign_action_name(
@@ -719,6 +747,10 @@ size_t mylite_ast_create_table_key_view_index_type_start(
     const MyliteAstCreateTableKey *key);
 size_t mylite_ast_create_table_key_view_index_type_end(
     const MyliteAstCreateTableKey *key);
+MyliteCreateTableIndexType mylite_ast_create_table_key_view_index_type_kind(
+    const MyliteAstCreateTableKey *key);
+MyliteCreateTableKeyVisibility mylite_ast_create_table_key_view_visibility(
+    const MyliteAstCreateTableKey *key);
 size_t mylite_ast_create_table_key_view_column_count(
     const MyliteAstCreateTableKey *key);
 size_t mylite_ast_create_table_key_view_referenced_column_count(
@@ -785,6 +817,27 @@ size_t mylite_ast_create_table_key_view_check_enforcement_end(
 const MyliteAstCreateTableKeyOption *
 mylite_ast_create_table_key_view_option_at(
     const MyliteAstCreateTableKey *key, size_t option_index);
+const MyliteAstCreateTableKeyOption *
+mylite_ast_create_table_key_view_comment_option(
+    const MyliteAstCreateTableKey *key);
+const char *mylite_ast_create_table_key_view_comment_value(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_comment_value_length(
+    const MyliteAstCreateTableKey *key);
+const MyliteAstCreateTableKeyOption *
+mylite_ast_create_table_key_view_parser_option(
+    const MyliteAstCreateTableKey *key);
+const char *mylite_ast_create_table_key_view_parser_value(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_parser_value_length(
+    const MyliteAstCreateTableKey *key);
+const MyliteAstCreateTableKeyOption *
+mylite_ast_create_table_key_view_key_block_size_option(
+    const MyliteAstCreateTableKey *key);
+int mylite_ast_create_table_key_view_has_key_block_size_value(
+    const MyliteAstCreateTableKey *key);
+unsigned long long mylite_ast_create_table_key_view_key_block_size_value(
+    const MyliteAstCreateTableKey *key);
 MyliteCreateTableKeyPartKind mylite_ast_create_table_key_part_view_kind(
     const MyliteAstCreateTableKeyPart *part);
 size_t mylite_ast_create_table_key_part_view_start(
@@ -830,6 +883,21 @@ size_t mylite_ast_create_table_key_option_view_name_end(
 size_t mylite_ast_create_table_key_option_view_value_start(
     const MyliteAstCreateTableKeyOption *option);
 size_t mylite_ast_create_table_key_option_view_value_end(
+    const MyliteAstCreateTableKeyOption *option);
+MyliteCreateTableKeyOptionValueKind
+mylite_ast_create_table_key_option_view_value_kind(
+    const MyliteAstCreateTableKeyOption *option);
+const char *mylite_ast_create_table_key_option_view_value(
+    const MyliteAstCreateTableKeyOption *option);
+size_t mylite_ast_create_table_key_option_view_value_length(
+    const MyliteAstCreateTableKeyOption *option);
+int mylite_ast_create_table_key_option_view_has_unsigned_integer(
+    const MyliteAstCreateTableKeyOption *option);
+unsigned long long
+mylite_ast_create_table_key_option_view_unsigned_integer_value(
+    const MyliteAstCreateTableKeyOption *option);
+MyliteCreateTableIndexType
+mylite_ast_create_table_key_option_view_index_type_kind(
     const MyliteAstCreateTableKeyOption *option);
 MyliteCreateTableOptionKind mylite_ast_create_table_option_view_kind(
     const MyliteAstCreateTableOption *option);

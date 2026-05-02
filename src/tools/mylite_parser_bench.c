@@ -92,6 +92,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_table_view_column_options_nodes = 0;
   size_t create_table_view_key_handles = 0;
   size_t create_table_view_named_keys = 0;
+  size_t create_table_view_key_index_types = 0;
+  size_t create_table_view_key_visibilities = 0;
+  size_t create_table_view_key_comments = 0;
+  size_t create_table_view_key_parsers = 0;
+  size_t create_table_view_key_block_sizes = 0;
   size_t create_table_view_key_column_handles = 0;
   size_t create_table_view_named_key_columns = 0;
   size_t create_table_view_ordered_key_columns = 0;
@@ -100,6 +105,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_table_view_referenced_column_handles = 0;
   size_t create_table_view_named_referenced_columns = 0;
   size_t create_table_view_key_option_handles = 0;
+  size_t create_table_view_key_option_values = 0;
+  size_t create_table_view_key_option_identifier_values = 0;
+  size_t create_table_view_key_option_string_values = 0;
+  size_t create_table_view_key_option_unsigned_integer_values = 0;
+  size_t create_table_view_key_option_index_type_values = 0;
   size_t create_table_view_option_handles = 0;
   size_t create_table_view_option_values = 0;
   size_t create_table_view_option_identifier_values = 0;
@@ -307,6 +317,26 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 if (mylite_ast_create_table_key_view_name_value(key) != NULL) {
                   create_table_view_named_keys++;
                 }
+                if (mylite_ast_create_table_key_view_index_type_kind(key) !=
+                    MYLITE_CREATE_TABLE_INDEX_TYPE_UNSPECIFIED) {
+                  create_table_view_key_index_types++;
+                }
+                if (mylite_ast_create_table_key_view_visibility(key) !=
+                    MYLITE_CREATE_TABLE_KEY_VISIBILITY_UNSPECIFIED) {
+                  create_table_view_key_visibilities++;
+                }
+                if (mylite_ast_create_table_key_view_comment_value(key) !=
+                    NULL) {
+                  create_table_view_key_comments++;
+                }
+                if (mylite_ast_create_table_key_view_parser_value(key) !=
+                    NULL) {
+                  create_table_view_key_parsers++;
+                }
+                if (mylite_ast_create_table_key_view_has_key_block_size_value(
+                        key)) {
+                  create_table_view_key_block_sizes++;
+                }
                 for (size_t l = 0;
                      l < mylite_ast_create_table_key_view_column_count(key);
                      l++) {
@@ -355,9 +385,32 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 for (size_t l = 0;
                      l < mylite_ast_create_table_key_view_option_count(key);
                      l++) {
-                  if (mylite_ast_create_table_key_view_option_at(key, l) !=
-                      NULL) {
+                  const MyliteAstCreateTableKeyOption *option =
+                      mylite_ast_create_table_key_view_option_at(key, l);
+                  if (option != NULL) {
                     create_table_view_key_option_handles++;
+                  }
+                  if (mylite_ast_create_table_key_option_view_value(option) !=
+                      NULL) {
+                    create_table_view_key_option_values++;
+                  }
+                  switch (mylite_ast_create_table_key_option_view_value_kind(
+                      option)) {
+                    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_IDENTIFIER:
+                      create_table_view_key_option_identifier_values++;
+                      break;
+                    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_STRING:
+                      create_table_view_key_option_string_values++;
+                      break;
+                    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_UNSIGNED_INTEGER:
+                      create_table_view_key_option_unsigned_integer_values++;
+                      break;
+                    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_INDEX_TYPE:
+                      create_table_view_key_option_index_type_values++;
+                      break;
+                    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_UNKNOWN:
+                    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_RAW:
+                      break;
                   }
                 }
               }
@@ -582,6 +635,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_table_view_column_options_nodes=%.2f "
            "avg_create_table_view_key_handles=%.2f "
            "avg_create_table_view_named_keys=%.2f "
+           "avg_create_table_view_key_index_types=%.2f "
+           "avg_create_table_view_key_visibilities=%.2f "
+           "avg_create_table_view_key_comments=%.2f "
+           "avg_create_table_view_key_parsers=%.2f "
+           "avg_create_table_view_key_block_sizes=%.2f "
            "avg_create_table_view_key_column_handles=%.2f "
            "avg_create_table_view_named_key_columns=%.2f "
            "avg_create_table_view_ordered_key_columns=%.2f "
@@ -590,6 +648,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_table_view_referenced_column_handles=%.2f "
            "avg_create_table_view_named_referenced_columns=%.2f "
            "avg_create_table_view_key_option_handles=%.2f "
+           "avg_create_table_view_key_option_values=%.2f "
+           "avg_create_table_view_key_option_identifier_values=%.2f "
+           "avg_create_table_view_key_option_string_values=%.2f "
+           "avg_create_table_view_key_option_unsigned_integer_values=%.2f "
+           "avg_create_table_view_key_option_index_type_values=%.2f "
            "avg_create_table_view_option_handles=%.2f "
            "avg_create_table_view_option_values=%.2f "
            "avg_create_table_view_option_identifier_values=%.2f "
@@ -648,6 +711,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)create_table_view_column_options_nodes / (double)parsed,
            (double)create_table_view_key_handles / (double)parsed,
            (double)create_table_view_named_keys / (double)parsed,
+           (double)create_table_view_key_index_types / (double)parsed,
+           (double)create_table_view_key_visibilities / (double)parsed,
+           (double)create_table_view_key_comments / (double)parsed,
+           (double)create_table_view_key_parsers / (double)parsed,
+           (double)create_table_view_key_block_sizes / (double)parsed,
            (double)create_table_view_key_column_handles / (double)parsed,
            (double)create_table_view_named_key_columns / (double)parsed,
            (double)create_table_view_ordered_key_columns / (double)parsed,
@@ -657,6 +725,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                (double)parsed,
            (double)create_table_view_named_referenced_columns / (double)parsed,
            (double)create_table_view_key_option_handles / (double)parsed,
+           (double)create_table_view_key_option_values / (double)parsed,
+           (double)create_table_view_key_option_identifier_values /
+               (double)parsed,
+           (double)create_table_view_key_option_string_values /
+               (double)parsed,
+           (double)create_table_view_key_option_unsigned_integer_values /
+               (double)parsed,
+           (double)create_table_view_key_option_index_type_values /
+               (double)parsed,
            (double)create_table_view_option_handles / (double)parsed,
            (double)create_table_view_option_values / (double)parsed,
            (double)create_table_view_option_identifier_values /

@@ -171,16 +171,24 @@ struct MyliteAstCreateTableKeyPart {
 
 struct MyliteAstCreateTableKeyOption {
   MyliteCreateTableKeyOptionKind kind;
+  MyliteCreateTableKeyOptionValueKind value_kind;
+  MyliteCreateTableIndexType index_type_kind;
+  unsigned long long unsigned_integer_value;
+  int has_unsigned_integer_value;
   size_t start;
   size_t end;
   size_t name_start;
   size_t name_end;
   size_t value_start;
   size_t value_end;
+  const char *value;
+  size_t value_length;
 };
 
 struct MyliteAstCreateTableKey {
   MyliteCreateTableKeyKind kind;
+  MyliteCreateTableIndexType index_type_kind;
+  MyliteCreateTableKeyVisibility visibility;
   size_t start;
   size_t end;
   size_t constraint_name_start;
@@ -223,6 +231,9 @@ struct MyliteAstCreateTableKey {
   size_t check_enforcement_end;
   MyliteAstCreateTableKeyOption *options;
   size_t option_count;
+  const MyliteAstCreateTableKeyOption *comment_option;
+  const MyliteAstCreateTableKeyOption *parser_option;
+  const MyliteAstCreateTableKeyOption *key_block_size_option;
 };
 
 struct MyliteAstCreateTableOption {
@@ -524,6 +535,8 @@ static void mylite_ast_fill_create_table_keys(MyliteAst *ast,
 static int mylite_ast_fill_create_table_key(MyliteAst *ast,
                                             MyliteAstCreateTableKey *key,
                                             const MyliteAstNode *constraint);
+static void mylite_ast_set_create_table_key_summary(
+    MyliteAstCreateTableKey *key);
 static MyliteCreateTableKeyKind mylite_ast_classify_create_table_key(
     const MyliteAstNode *constraint_elem);
 static void mylite_ast_set_create_table_key_names(MyliteAstCreateTableKey *key,
@@ -532,6 +545,8 @@ static int mylite_ast_set_create_table_key_name_values(
     MyliteAst *ast, MyliteAstCreateTableKey *key);
 static void mylite_ast_set_create_table_key_index_type(
     MyliteAstCreateTableKey *key, const MyliteAstNode *constraint_elem);
+static MyliteCreateTableIndexType mylite_ast_classify_index_type(
+    const MyliteAstNode *node);
 static int mylite_ast_set_create_table_key_reference(
     MyliteAst *ast, MyliteAstCreateTableKey *key,
     const MyliteAstNode *constraint_elem);
@@ -565,9 +580,15 @@ static size_t mylite_ast_count_index_options(const MyliteAstNode *node);
 static void mylite_ast_fill_index_options(MyliteAstCreateTableKeyOption *options,
                                           size_t count,
                                           const MyliteAstNode *node,
-                                          size_t *index);
-static void mylite_ast_fill_key_option(MyliteAstCreateTableKeyOption *option,
-                                       const MyliteAstNode *node);
+                                          size_t *index, int *ok, MyliteAst *ast);
+static int mylite_ast_fill_key_option(MyliteAst *ast,
+                                      MyliteAstCreateTableKeyOption *option,
+                                      const MyliteAstNode *node);
+static int mylite_ast_set_key_option_value_metadata(
+    MyliteAst *ast, MyliteAstCreateTableKeyOption *option,
+    const MyliteAstNode *node);
+static const MyliteAstNode *mylite_ast_find_key_option_value_token(
+    const MyliteAstNode *node, size_t min_start);
 static MyliteCreateTableKeyOptionKind mylite_ast_classify_key_option(
     const MyliteAstNode *node);
 static const MyliteAstNode *mylite_ast_find_key_option_name(
@@ -1050,6 +1071,34 @@ const char *mylite_create_table_key_part_order_name(
   return "unspecified";
 }
 
+const char *mylite_create_table_index_type_name(
+    MyliteCreateTableIndexType type) {
+  switch (type) {
+    case MYLITE_CREATE_TABLE_INDEX_TYPE_UNSPECIFIED:
+      return "unspecified";
+    case MYLITE_CREATE_TABLE_INDEX_TYPE_BTREE:
+      return "btree";
+    case MYLITE_CREATE_TABLE_INDEX_TYPE_HASH:
+      return "hash";
+    case MYLITE_CREATE_TABLE_INDEX_TYPE_RTREE:
+      return "rtree";
+  }
+  return "unspecified";
+}
+
+const char *mylite_create_table_key_visibility_name(
+    MyliteCreateTableKeyVisibility visibility) {
+  switch (visibility) {
+    case MYLITE_CREATE_TABLE_KEY_VISIBILITY_UNSPECIFIED:
+      return "unspecified";
+    case MYLITE_CREATE_TABLE_KEY_VISIBILITY_VISIBLE:
+      return "visible";
+    case MYLITE_CREATE_TABLE_KEY_VISIBILITY_INVISIBLE:
+      return "invisible";
+  }
+  return "unspecified";
+}
+
 const char *mylite_create_table_key_option_kind_name(
     MyliteCreateTableKeyOptionKind kind) {
   switch (kind) {
@@ -1071,6 +1120,25 @@ const char *mylite_create_table_key_option_kind_name(
       return "secondary_engine_attribute";
     case MYLITE_CREATE_TABLE_KEY_OPTION_WHERE:
       return "where";
+  }
+  return "unknown";
+}
+
+const char *mylite_create_table_key_option_value_kind_name(
+    MyliteCreateTableKeyOptionValueKind kind) {
+  switch (kind) {
+    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_UNKNOWN:
+      return "unknown";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_RAW:
+      return "raw";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_IDENTIFIER:
+      return "identifier";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_STRING:
+      return "string";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_UNSIGNED_INTEGER:
+      return "unsigned_integer";
+    case MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_INDEX_TYPE:
+      return "index_type";
   }
   return "unknown";
 }
@@ -2266,6 +2334,18 @@ size_t mylite_ast_create_table_key_view_index_type_end(
   return key == NULL ? 0 : key->index_type_end;
 }
 
+MyliteCreateTableIndexType mylite_ast_create_table_key_view_index_type_kind(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? MYLITE_CREATE_TABLE_INDEX_TYPE_UNSPECIFIED
+                     : key->index_type_kind;
+}
+
+MyliteCreateTableKeyVisibility mylite_ast_create_table_key_view_visibility(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? MYLITE_CREATE_TABLE_KEY_VISIBILITY_UNSPECIFIED
+                     : key->visibility;
+}
+
 size_t mylite_ast_create_table_key_view_column_count(
     const MyliteAstCreateTableKey *key) {
   return key == NULL ? 0 : key->column_count;
@@ -2435,6 +2515,66 @@ mylite_ast_create_table_key_view_option_at(
   return &key->options[option_index];
 }
 
+const MyliteAstCreateTableKeyOption *
+mylite_ast_create_table_key_view_comment_option(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? NULL : key->comment_option;
+}
+
+const char *mylite_ast_create_table_key_view_comment_value(
+    const MyliteAstCreateTableKey *key) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_view_comment_option(key);
+  return option == NULL ? NULL : option->value;
+}
+
+size_t mylite_ast_create_table_key_view_comment_value_length(
+    const MyliteAstCreateTableKey *key) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_view_comment_option(key);
+  return option == NULL ? 0 : option->value_length;
+}
+
+const MyliteAstCreateTableKeyOption *
+mylite_ast_create_table_key_view_parser_option(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? NULL : key->parser_option;
+}
+
+const char *mylite_ast_create_table_key_view_parser_value(
+    const MyliteAstCreateTableKey *key) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_view_parser_option(key);
+  return option == NULL ? NULL : option->value;
+}
+
+size_t mylite_ast_create_table_key_view_parser_value_length(
+    const MyliteAstCreateTableKey *key) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_view_parser_option(key);
+  return option == NULL ? 0 : option->value_length;
+}
+
+const MyliteAstCreateTableKeyOption *
+mylite_ast_create_table_key_view_key_block_size_option(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? NULL : key->key_block_size_option;
+}
+
+int mylite_ast_create_table_key_view_has_key_block_size_value(
+    const MyliteAstCreateTableKey *key) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_view_key_block_size_option(key);
+  return option != NULL && option->has_unsigned_integer_value;
+}
+
+unsigned long long mylite_ast_create_table_key_view_key_block_size_value(
+    const MyliteAstCreateTableKey *key) {
+  const MyliteAstCreateTableKeyOption *option =
+      mylite_ast_create_table_key_view_key_block_size_option(key);
+  return option == NULL ? 0 : option->unsigned_integer_value;
+}
+
 MyliteCreateTableKeyPartKind mylite_ast_create_table_key_part_view_kind(
     const MyliteAstCreateTableKeyPart *part) {
   return part == NULL ? MYLITE_CREATE_TABLE_KEY_PART_UNKNOWN : part->kind;
@@ -2550,6 +2690,41 @@ size_t mylite_ast_create_table_key_option_view_value_start(
 size_t mylite_ast_create_table_key_option_view_value_end(
     const MyliteAstCreateTableKeyOption *option) {
   return option == NULL ? 0 : option->value_end;
+}
+
+MyliteCreateTableKeyOptionValueKind
+mylite_ast_create_table_key_option_view_value_kind(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_UNKNOWN
+                        : option->value_kind;
+}
+
+const char *mylite_ast_create_table_key_option_view_value(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? NULL : option->value;
+}
+
+size_t mylite_ast_create_table_key_option_view_value_length(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? 0 : option->value_length;
+}
+
+int mylite_ast_create_table_key_option_view_has_unsigned_integer(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option != NULL && option->has_unsigned_integer_value;
+}
+
+unsigned long long
+mylite_ast_create_table_key_option_view_unsigned_integer_value(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? 0 : option->unsigned_integer_value;
+}
+
+MyliteCreateTableIndexType
+mylite_ast_create_table_key_option_view_index_type_kind(
+    const MyliteAstCreateTableKeyOption *option) {
+  return option == NULL ? MYLITE_CREATE_TABLE_INDEX_TYPE_UNSPECIFIED
+                        : option->index_type_kind;
 }
 
 MyliteCreateTableOptionKind mylite_ast_create_table_option_view_kind(
@@ -6521,12 +6696,51 @@ static int mylite_ast_fill_create_table_key(MyliteAst *ast,
     return 0;
   }
   if (key->kind == MYLITE_CREATE_TABLE_KEY_FOREIGN) {
-    return mylite_ast_set_create_table_key_reference(ast, key, elem);
-  }
-  if (key->kind == MYLITE_CREATE_TABLE_KEY_CHECK) {
+    if (!mylite_ast_set_create_table_key_reference(ast, key, elem)) {
+      return 0;
+    }
+  } else if (key->kind == MYLITE_CREATE_TABLE_KEY_CHECK) {
     mylite_ast_set_create_table_key_check(key, elem);
   }
+  mylite_ast_set_create_table_key_summary(key);
   return 1;
+}
+
+static void mylite_ast_set_create_table_key_summary(
+    MyliteAstCreateTableKey *key) {
+  if (key == NULL) {
+    return;
+  }
+  for (size_t i = 0; i < key->option_count; i++) {
+    const MyliteAstCreateTableKeyOption *option = &key->options[i];
+    switch (option->kind) {
+      case MYLITE_CREATE_TABLE_KEY_OPTION_INDEX_TYPE:
+        if (option->index_type_kind !=
+            MYLITE_CREATE_TABLE_INDEX_TYPE_UNSPECIFIED) {
+          key->index_type_kind = option->index_type_kind;
+        }
+        break;
+      case MYLITE_CREATE_TABLE_KEY_OPTION_COMMENT:
+        key->comment_option = option;
+        break;
+      case MYLITE_CREATE_TABLE_KEY_OPTION_WITH_PARSER:
+        key->parser_option = option;
+        break;
+      case MYLITE_CREATE_TABLE_KEY_OPTION_KEY_BLOCK_SIZE:
+        key->key_block_size_option = option;
+        break;
+      case MYLITE_CREATE_TABLE_KEY_OPTION_VISIBLE:
+        key->visibility = MYLITE_CREATE_TABLE_KEY_VISIBILITY_VISIBLE;
+        break;
+      case MYLITE_CREATE_TABLE_KEY_OPTION_INVISIBLE:
+        key->visibility = MYLITE_CREATE_TABLE_KEY_VISIBILITY_INVISIBLE;
+        break;
+      case MYLITE_CREATE_TABLE_KEY_OPTION_UNKNOWN:
+      case MYLITE_CREATE_TABLE_KEY_OPTION_SECONDARY_ENGINE_ATTRIBUTE:
+      case MYLITE_CREATE_TABLE_KEY_OPTION_WHERE:
+        break;
+    }
+  }
 }
 
 static MyliteCreateTableKeyKind mylite_ast_classify_create_table_key(
@@ -6599,7 +6813,22 @@ static void mylite_ast_set_create_table_key_index_type(
   if (index_type != NULL && index_type->has_span) {
     key->index_type_start = mylite_ast_node_start(index_type);
     key->index_type_end = mylite_ast_node_end(index_type);
+    key->index_type_kind = mylite_ast_classify_index_type(index_type);
   }
+}
+
+static MyliteCreateTableIndexType mylite_ast_classify_index_type(
+    const MyliteAstNode *node) {
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_BTREE) != NULL) {
+    return MYLITE_CREATE_TABLE_INDEX_TYPE_BTREE;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_HASH) != NULL) {
+    return MYLITE_CREATE_TABLE_INDEX_TYPE_HASH;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_RTREE) != NULL) {
+    return MYLITE_CREATE_TABLE_INDEX_TYPE_RTREE;
+  }
+  return MYLITE_CREATE_TABLE_INDEX_TYPE_UNSPECIFIED;
 }
 
 static int mylite_ast_set_create_table_key_reference(
@@ -6796,10 +7025,11 @@ static int mylite_ast_set_create_table_key_options(MyliteAst *ast,
   }
 
   size_t index = 0;
-  mylite_ast_fill_index_options(options, count, list, &index);
+  int ok = 1;
+  mylite_ast_fill_index_options(options, count, list, &index, &ok, ast);
   key->options = options;
   key->option_count = count;
-  return index == count;
+  return ok && index == count;
 }
 
 static size_t mylite_ast_count_index_part_specs(const MyliteAstNode *node) {
@@ -6917,24 +7147,33 @@ static size_t mylite_ast_count_index_options(const MyliteAstNode *node) {
 static void mylite_ast_fill_index_options(MyliteAstCreateTableKeyOption *options,
                                           size_t count,
                                           const MyliteAstNode *node,
-                                          size_t *index) {
-  if (options == NULL || node == NULL || index == NULL || *index >= count) {
+                                          size_t *index, int *ok,
+                                          MyliteAst *ast) {
+  if (options == NULL || node == NULL || index == NULL || ok == NULL ||
+      !*ok || *index >= count) {
     return;
   }
   if (node->symbol_name != NULL &&
       strcmp(node->symbol_name, "nt_index_option") == 0) {
-    mylite_ast_fill_key_option(&options[*index], node);
-    (*index)++;
+    *ok = mylite_ast_fill_key_option(ast, &options[*index], node);
+    if (*ok) {
+      (*index)++;
+    }
     return;
   }
 
   for (size_t i = 0; i < node->child_count; i++) {
-    mylite_ast_fill_index_options(options, count, node->children[i], index);
+    mylite_ast_fill_index_options(options, count, node->children[i], index, ok,
+                                  ast);
+    if (!*ok) {
+      return;
+    }
   }
 }
 
-static void mylite_ast_fill_key_option(MyliteAstCreateTableKeyOption *option,
-                                       const MyliteAstNode *node) {
+static int mylite_ast_fill_key_option(MyliteAst *ast,
+                                      MyliteAstCreateTableKeyOption *option,
+                                      const MyliteAstNode *node) {
   option->kind = mylite_ast_classify_key_option(node);
   option->start = mylite_ast_node_start(node);
   option->end = mylite_ast_node_end(node);
@@ -6957,6 +7196,78 @@ static void mylite_ast_fill_key_option(MyliteAstCreateTableKeyOption *option,
                                         &option->value_start,
                                         &option->value_end);
   }
+  return mylite_ast_set_key_option_value_metadata(ast, option, node);
+}
+
+static int mylite_ast_set_key_option_value_metadata(
+    MyliteAst *ast, MyliteAstCreateTableKeyOption *option,
+    const MyliteAstNode *node) {
+  if (ast == NULL || ast->source == NULL || option == NULL ||
+      option->value_start >= option->value_end ||
+      option->value_end > ast->source_length) {
+    return 1;
+  }
+
+  option->value = ast->source + option->value_start;
+  option->value_length = option->value_end - option->value_start;
+
+  const MyliteAstNode *token =
+      mylite_ast_find_key_option_value_token(node, option->name_end);
+  if (token == NULL) {
+    option->value_kind = MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_RAW;
+    return 1;
+  }
+
+  if (option->kind == MYLITE_CREATE_TABLE_KEY_OPTION_INDEX_TYPE) {
+    option->index_type_kind = mylite_ast_classify_index_type(node);
+    option->value_kind = MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_INDEX_TYPE;
+    return 1;
+  }
+  if (option->kind == MYLITE_CREATE_TABLE_KEY_OPTION_KEY_BLOCK_SIZE) {
+    unsigned long long value = 0;
+    if (mylite_ast_parse_unsigned_integer_value(ast->source,
+                                                option->value_start,
+                                                option->value_end, &value)) {
+      option->value_kind =
+          MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_UNSIGNED_INTEGER;
+      option->unsigned_integer_value = value;
+      option->has_unsigned_integer_value = 1;
+      return 1;
+    }
+  }
+  if (token->token == MYLITE_TOK_STRING_LIT) {
+    option->value_kind = MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_STRING;
+    return mylite_ast_decode_sql_string_literal(ast, token->start, token->end,
+                                                &option->value,
+                                                &option->value_length);
+  }
+  if (token->start == option->value_start && token->end == option->value_end) {
+    option->value_kind = MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_IDENTIFIER;
+    return mylite_ast_decode_identifier(ast, token->start, token->end,
+                                        &option->value,
+                                        &option->value_length);
+  }
+  option->value_kind = MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_RAW;
+  return 1;
+}
+
+static const MyliteAstNode *mylite_ast_find_key_option_value_token(
+    const MyliteAstNode *node, size_t min_start) {
+  if (node == NULL || !node->has_span || node->end <= min_start) {
+    return NULL;
+  }
+  if (node->kind == MYLITE_AST_NODE_TOKEN) {
+    return node->start >= min_start && node->token != MYLITE_TOK_EQ ? node
+                                                                    : NULL;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    const MyliteAstNode *found =
+        mylite_ast_find_key_option_value_token(node->children[i], min_start);
+    if (found != NULL) {
+      return found;
+    }
+  }
+  return NULL;
 }
 
 static MyliteCreateTableKeyOptionKind mylite_ast_classify_key_option(

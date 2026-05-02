@@ -102,6 +102,11 @@ typedef struct ExpectedCreateTableKeyOption {
   const char *definition;
   const char *name;
   const char *value;
+  MyliteCreateTableKeyOptionValueKind value_kind;
+  const char *decoded_value;
+  int has_unsigned_integer;
+  unsigned long long unsigned_integer;
+  MyliteCreateTableIndexType index_type_kind;
 } ExpectedCreateTableKeyOption;
 
 typedef struct ExpectedCreateTableKey {
@@ -132,6 +137,12 @@ typedef struct ExpectedCreateTableKey {
   const char *name_value;
   const char *referenced_schema_value;
   const char *referenced_name_value;
+  MyliteCreateTableIndexType index_type_kind;
+  MyliteCreateTableKeyVisibility visibility;
+  const char *comment_value;
+  const char *parser_value;
+  int has_key_block_size;
+  unsigned long long key_block_size;
 } ExpectedCreateTableKey;
 
 typedef struct ExpectedCreateTableOption {
@@ -1434,15 +1445,37 @@ int main(void) {
   {
     const ExpectedCreateTableKeyPart columns[] = {{"a", "a"}};
     const ExpectedCreateTableKeyOption options[] = {
-        {MYLITE_CREATE_TABLE_KEY_OPTION_INDEX_TYPE, "USING BTREE", "USING",
-         "BTREE"},
-        {MYLITE_CREATE_TABLE_KEY_OPTION_COMMENT, "COMMENT 'idx'", "COMMENT",
-         "'idx'"},
-        {MYLITE_CREATE_TABLE_KEY_OPTION_KEY_BLOCK_SIZE, "KEY_BLOCK_SIZE=8",
-         "KEY_BLOCK_SIZE", "8"},
-        {MYLITE_CREATE_TABLE_KEY_OPTION_WITH_PARSER, "WITH PARSER ngram",
-         "WITH PARSER", "ngram"},
-        {MYLITE_CREATE_TABLE_KEY_OPTION_VISIBLE, "VISIBLE", "VISIBLE", NULL}};
+        {.kind = MYLITE_CREATE_TABLE_KEY_OPTION_INDEX_TYPE,
+         .definition = "USING BTREE",
+         .name = "USING",
+         .value = "BTREE",
+         .value_kind = MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_INDEX_TYPE,
+         .decoded_value = "BTREE",
+         .index_type_kind = MYLITE_CREATE_TABLE_INDEX_TYPE_BTREE},
+        {.kind = MYLITE_CREATE_TABLE_KEY_OPTION_COMMENT,
+         .definition = "COMMENT 'idx'",
+         .name = "COMMENT",
+         .value = "'idx'",
+         .value_kind = MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_STRING,
+         .decoded_value = "idx"},
+        {.kind = MYLITE_CREATE_TABLE_KEY_OPTION_KEY_BLOCK_SIZE,
+         .definition = "KEY_BLOCK_SIZE=8",
+         .name = "KEY_BLOCK_SIZE",
+         .value = "8",
+         .value_kind =
+             MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_UNSIGNED_INTEGER,
+         .decoded_value = "8",
+         .has_unsigned_integer = 1,
+         .unsigned_integer = 8},
+        {.kind = MYLITE_CREATE_TABLE_KEY_OPTION_WITH_PARSER,
+         .definition = "WITH PARSER ngram",
+         .name = "WITH PARSER",
+         .value = "ngram",
+         .value_kind = MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_IDENTIFIER,
+         .decoded_value = "ngram"},
+        {.kind = MYLITE_CREATE_TABLE_KEY_OPTION_VISIBLE,
+         .definition = "VISIBLE",
+         .name = "VISIBLE"}};
     const ExpectedCreateTableKey keys[] = {{
         .kind = MYLITE_CREATE_TABLE_KEY_INDEX,
         .definition =
@@ -1454,6 +1487,12 @@ int main(void) {
         .index_type = "USING BTREE",
         .options = options,
         .option_count = sizeof(options) / sizeof(options[0]),
+        .index_type_kind = MYLITE_CREATE_TABLE_INDEX_TYPE_BTREE,
+        .visibility = MYLITE_CREATE_TABLE_KEY_VISIBILITY_VISIBLE,
+        .comment_value = "idx",
+        .parser_value = "ngram",
+        .has_key_block_size = 1,
+        .key_block_size = 8,
     }};
     failures += expect_create_table_keys(
         "CREATE TABLE t (a INT, KEY k (a) USING BTREE COMMENT 'idx' "
@@ -2376,6 +2415,12 @@ static int expect_create_table_keys(const char *sql,
 
   size_t actual_count = mylite_ast_create_table_key_count(ast, 0);
   for (size_t i = 0; i < key_count && i < actual_count; i++) {
+    const MyliteAstCreateTable *create_table =
+        mylite_ast_create_table_view(ast, 0);
+    const MyliteAstCreateTableKey *key =
+        create_table == NULL ? NULL
+                             : mylite_ast_create_table_view_key_at(create_table,
+                                                                   i);
     if (mylite_ast_create_table_key_kind(ast, 0, i) != keys[i].kind ||
         !span_matches(sql, mylite_ast_create_table_key_start(ast, 0, i),
                       mylite_ast_create_table_key_end(ast, 0, i),
@@ -2401,6 +2446,26 @@ static int expect_create_table_keys(const char *sql,
                        mylite_ast_create_table_key_index_type_start(ast, 0, i),
                        mylite_ast_create_table_key_index_type_end(ast, 0, i),
                        keys[i].index_type)) ||
+        (keys[i].index_type_kind !=
+             MYLITE_CREATE_TABLE_INDEX_TYPE_UNSPECIFIED &&
+         mylite_ast_create_table_key_view_index_type_kind(key) !=
+             keys[i].index_type_kind) ||
+        (keys[i].visibility !=
+             MYLITE_CREATE_TABLE_KEY_VISIBILITY_UNSPECIFIED &&
+         mylite_ast_create_table_key_view_visibility(key) !=
+             keys[i].visibility) ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_key_view_comment_value(key),
+            mylite_ast_create_table_key_view_comment_value_length(key),
+            keys[i].comment_value) ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_key_view_parser_value(key),
+            mylite_ast_create_table_key_view_parser_value_length(key),
+            keys[i].parser_value) ||
+        (keys[i].has_key_block_size &&
+         (!mylite_ast_create_table_key_view_has_key_block_size_value(key) ||
+          mylite_ast_create_table_key_view_key_block_size_value(key) !=
+              keys[i].key_block_size)) ||
         !span_matches(sql,
                       mylite_ast_create_table_key_referenced_table_start(ast, 0,
                                                                         i),
@@ -2688,6 +2753,14 @@ static int expect_create_table_key_options(
 
   int failed = 0;
   for (size_t i = 0; i < option_count; i++) {
+    const MyliteAstCreateTable *create_table =
+        mylite_ast_create_table_view(ast, 0);
+    const MyliteAstCreateTableKey *key =
+        create_table == NULL
+            ? NULL
+            : mylite_ast_create_table_view_key_at(create_table, key_index);
+    const MyliteAstCreateTableKeyOption *option =
+        key == NULL ? NULL : mylite_ast_create_table_key_view_option_at(key, i);
     if (mylite_ast_create_table_key_option_kind(ast, 0, key_index, i) !=
             options[i].kind ||
         !span_matches(sql,
@@ -2707,10 +2780,27 @@ static int expect_create_table_key_options(
                           ast, 0, key_index, i),
                       mylite_ast_create_table_key_option_value_end(
                           ast, 0, key_index, i),
-                      options[i].value)) {
+                      options[i].value) ||
+        (options[i].value_kind !=
+             MYLITE_CREATE_TABLE_KEY_OPTION_VALUE_UNKNOWN &&
+         mylite_ast_create_table_key_option_view_value_kind(option) !=
+             options[i].value_kind) ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_key_option_view_value(option),
+            mylite_ast_create_table_key_option_view_value_length(option),
+            options[i].decoded_value) ||
+        (options[i].has_unsigned_integer &&
+         (!mylite_ast_create_table_key_option_view_has_unsigned_integer(
+              option) ||
+          mylite_ast_create_table_key_option_view_unsigned_integer_value(
+              option) != options[i].unsigned_integer)) ||
+        (options[i].index_type_kind !=
+             MYLITE_CREATE_TABLE_INDEX_TYPE_UNSPECIFIED &&
+         mylite_ast_create_table_key_option_view_index_type_kind(option) !=
+             options[i].index_type_kind)) {
       fprintf(stderr,
               "CREATE TABLE key[%zu] option[%zu] failed: %s\nkind=%s "
-              "span=%zu..%zu name=%zu..%zu value=%zu..%zu\n",
+              "span=%zu..%zu name=%zu..%zu value=%zu..%zu value_kind=%s\n",
               key_index, i, sql,
               mylite_create_table_key_option_kind_name(
                   mylite_ast_create_table_key_option_kind(ast, 0, key_index,
@@ -2724,7 +2814,9 @@ static int expect_create_table_key_options(
               mylite_ast_create_table_key_option_value_start(ast, 0, key_index,
                                                              i),
               mylite_ast_create_table_key_option_value_end(ast, 0, key_index,
-                                                           i));
+                                                           i),
+              mylite_create_table_key_option_value_kind_name(
+                  mylite_ast_create_table_key_option_view_value_kind(option)));
       failed = 1;
     }
   }

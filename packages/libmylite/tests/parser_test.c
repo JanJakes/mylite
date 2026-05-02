@@ -20,6 +20,7 @@ static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
 static int test_update_single_table_syntax(void);
+static int test_delete_single_table_syntax(void);
 static int test_select_expression_list(void);
 static int test_expression_operator_foundation_syntax(void);
 static int test_information_schema_select(void);
@@ -94,6 +95,7 @@ int main(void)
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
     failures += test_update_single_table_syntax();
+    failures += test_delete_single_table_syntax();
     failures += test_select_expression_list();
     failures += test_expression_operator_foundation_syntax();
     failures += test_information_schema_select();
@@ -2414,6 +2416,119 @@ static int test_update_single_table_syntax(void)
 
     failures += parse_sql("UPDATE t SET a = 1 WHERE id = 1 LIMIT 1 ORDER BY id",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_delete_single_table_syntax(void)
+{
+    enum { full_delete_child_count = 4U };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *order_by = NULL;
+    const struct mylite_sql_ast_node *order_items = NULL;
+    const struct mylite_sql_ast_node *limit = NULL;
+    int failures = 0;
+
+    failures += parse_sql("DELETE FROM t", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DELETE_STATEMENT, "delete statement");
+    failures += expect_child_count(statement, 1U, "delete base child count");
+    failures += expect_node(target, MYLITE_SQL_AST_DELETE_TARGET, "delete target");
+    failures += expect_span_text(child_at(target, 0U), "t", "delete target table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM app.t WHERE app.t.id = 1", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target = child_at(statement, 0U);
+    where_clause = child_at(statement, 1U);
+    failures += expect_node(child_at(target, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "schema-qualified delete target");
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "delete where clause");
+    failures += expect_operator(child_at(where_clause, 0U), MYLITE_SQL_AST_OPERATOR_EQUAL,
+                                "delete schema-qualified predicate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t AS tt WHERE tt.id = 1", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target = child_at(statement, 0U);
+    failures += expect_span_text(child_at(target, 1U), "tt", "delete AS alias");
+    failures += expect_operator(child_at(child_at(statement, 1U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_EQUAL, "delete alias predicate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t tt WHERE tt.id = 1", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(child_at(statement, 0U), 1U), "tt", "delete bare alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t WHERE category = 1 ORDER BY v DESC, id ASC LIMIT 2",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    where_clause = child_at(statement, 1U);
+    order_by = child_at(statement, 2U);
+    limit = child_at(statement, 3U);
+    failures += expect_child_count(statement, full_delete_child_count, "full delete child count");
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "full delete where");
+    failures += expect_node(order_by, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "full delete order");
+    order_items = child_at(order_by, 0U);
+    failures += expect_child_count(order_items, 2U, "delete order item count");
+    failures += expect_order_item_direction(
+        child_at(order_items, 0U), MYLITE_SQL_AST_KEY_PART_ORDER_DESC, "delete desc order");
+    failures += expect_order_item_direction(child_at(order_items, 1U),
+                                            MYLITE_SQL_AST_KEY_PART_ORDER_ASC, "delete asc order");
+    failures += expect_node(limit, MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE, "delete limit clause");
+    failures += expect_limit_bound(child_at(limit, 0U), 2U, "delete limit row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t LIMIT 0", MYLITE_SQL_PARSE_OK, &result);
+    limit = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_limit_bound(child_at(limit, 0U), 0U, "delete zero limit");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t LIMIT 18446744073709551615", MYLITE_SQL_PARSE_OK, &result);
+    limit = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_limit_bound(child_at(limit, 0U), UINT64_MAX, "delete max limit");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t LIMIT 1 OFFSET 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t LIMIT 1,1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t LIMIT -1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t LIMIT '1'", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t LIMIT 18446744073709551616", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE LOW_PRIORITY FROM t", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE QUICK FROM t", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE IGNORE FROM t", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t PARTITION (p0)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("WITH c AS (SELECT 1) DELETE FROM t", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DELETE t FROM t JOIN u ON t.id = u.id", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

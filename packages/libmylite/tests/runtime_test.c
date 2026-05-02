@@ -128,6 +128,7 @@ static int test_select_table_core_execution(void);
 static int test_select_where_execution(void);
 static int test_select_order_limit_offset_execution(void);
 static int test_update_single_table_execution(void);
+static int test_delete_single_table_execution(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -221,6 +222,7 @@ int main(void)
     failures += test_select_where_execution();
     failures += test_select_order_limit_offset_execution();
     failures += test_update_single_table_execution();
+    failures += test_delete_single_table_execution();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -3605,6 +3607,252 @@ static int test_update_single_table_execution(void)
     failures +=
         prepare_sql(database, "UPDATE t SET a = 1 LIMIT 1 OFFSET 1", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "update offset limit parse error");
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_delete_single_table_execution(void)
+{
+    enum {
+        ai_delete_first_insert_id = 100,
+        ai_delete_after_max_delete_id = 103,
+        ai_delete_after_all_delete_id = 104,
+    };
+    static const char *const id_v_columns[] = {"id", "v"};
+    static const char *const after_null_delete_values[] = {
+        "11", "30", "13", "40", "14", "50",
+    };
+    static const char *const after_alias_delete_values[] = {
+        "13",
+        "40",
+        "14",
+        "50",
+    };
+    static const char *const after_order_delete_values[] = {
+        "13",
+        "40",
+    };
+    static const char *const strict_warning_values[] = {
+        "1", "10", "2", "20", "3", "30", "4", "40",
+    };
+    static const char *const ai_values[] = {"104", "5"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    uint64_t last_insert_id = 0U;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+
+    failures += prepare_sql(database, "DELETE FROM t", MYLITE_OK, &stmt);
+    failures += expect_int(mylite_column_count(stmt), 0, "delete has no result columns");
+    failures += expect_int64(mylite_affected_rows(stmt), 0, "prepared delete affected rows");
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete no database");
+    failures +=
+        expect_contains(mylite_error_message(database), "No database selected", "delete no db");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "delete no database affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_task20_delete", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_task20_delete", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE t ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "category INT, "
+                            "v INT, "
+                            "s VARCHAR(20), "
+                            "nullable INT, "
+                            "CamelCase INT) AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO t (category,v,s,nullable,CamelCase) VALUES "
+                            "(1,10,'alpha',NULL,100), "
+                            "(1,30,'beta',5,200), "
+                            "(1,20,'gamma',NULL,300), "
+                            "(2,40,'delta',0,400), "
+                            "(3,50,'epsilon',7,500)",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database, "DELETE FROM t WHERE nullable IS NULL", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "delete where null");
+    failures += expect_int64(mylite_affected_rows(stmt), 2, "delete where null affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, v FROM t ORDER BY id", id_v_columns, 2,
+                                   after_null_delete_values, 3, "delete where null rows");
+
+    failures += prepare_sql(database,
+                            "DELETE FROM mylite_task20_delete.t AS tt "
+                            "WHERE tt.CamelCase = 200",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "delete alias qualified");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "delete alias qualified affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, v FROM t ORDER BY id", id_v_columns, 2,
+                                   after_alias_delete_values, 2, "delete alias qualified rows");
+
+    failures += prepare_sql(database, "DELETE FROM t WHERE category = 999", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "delete no match");
+    failures += expect_int64(mylite_affected_rows(stmt), 0, "delete no match affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "DELETE FROM t WHERE category >= 2 "
+                            "ORDER BY v DESC, id ASC LIMIT 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "delete order limit");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "delete order limit affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, v FROM t ORDER BY id", id_v_columns, 2,
+                                   after_order_delete_values, 1, "delete order limit rows");
+
+    failures += prepare_sql(database, "DELETE FROM t LIMIT 0", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "delete limit zero");
+    failures += expect_int64(mylite_affected_rows(stmt), 0, "delete limit zero affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "DELETE FROM t WHERE NULL", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "delete where null truth");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 0, "delete where null truth affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "DELETE FROM t AS tt WHERE t.id = 13", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete alias hides where");
+    failures +=
+        expect_contains(mylite_error_message(database), "Unknown column 't.id' in 'where clause'",
+                        "delete alias hides where error");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "delete alias hides where affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "DELETE FROM t AS tt ORDER BY t.v LIMIT 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete alias hides order");
+    failures +=
+        expect_contains(mylite_error_message(database), "Unknown column 't.v' in 'order clause'",
+                        "delete alias hides order error");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "delete alias hides order affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "DELETE FROM t WHERE missing_col = 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete unknown where");
+    failures += expect_contains(mylite_error_message(database),
+                                "Unknown column 'missing_col' in 'where clause'",
+                                "delete unknown where error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "DELETE FROM t ORDER BY missing_col LIMIT 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete unknown order");
+    failures += expect_contains(mylite_error_message(database),
+                                "Unknown column 'missing_col' in 'order clause'",
+                                "delete unknown order error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "DELETE FROM missing_schema.t WHERE id = 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete missing schema");
+    failures += expect_contains(mylite_error_message(database), "Unknown database 'missing_schema'",
+                                "delete missing schema error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "DELETE FROM mylite_task20_delete.missing WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete missing table");
+    failures += expect_contains(mylite_error_message(database),
+                                "Table 'mylite_task20_delete.missing' doesn't exist",
+                                "delete missing table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "DELETE FROM information_schema.tables", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete system schema");
+    failures +=
+        expect_contains(mylite_error_message(database), "system schema", "delete system error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "DELETE FROM t LIMIT 1 OFFSET 1", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "delete offset limit parse error");
+
+    failures += execute_sql(database, "CREATE TABLE w (id INT PRIMARY KEY, v INT, z VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO w VALUES "
+                            "(1,10,'2'),(2,20,'2a'),(3,30,'a'),(4,40,'10')",
+                            MYLITE_DONE);
+    failures += prepare_sql(database, "DELETE FROM w WHERE z = 2", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "delete strict predicate warning error");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect DOUBLE value: '2a'",
+                        "delete strict predicate warning message");
+    failures += expect_int64(mylite_affected_rows(stmt), -1,
+                             "delete strict predicate warning affected rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "delete strict predicate warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "delete strict predicate warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id, v FROM w ORDER BY id", id_v_columns, 2,
+                           strict_warning_values, 4, "delete strict predicate rollback rows");
+
+    failures += prepare_sql(database, "DELETE FROM w ORDER BY z + 0, id LIMIT 1", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete strict order warning error");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect DOUBLE value: '2a'",
+                        "delete strict order warning message");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), -1, "delete strict order warning affected rows");
+    failures += expect_int(mylite_warning_count(database), 1, "delete strict order warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "delete strict order warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, v FROM w ORDER BY id", id_v_columns, 2,
+                                   strict_warning_values, 4, "delete strict order rollback rows");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ai_delete ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT) "
+                            "AUTO_INCREMENT=100",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ai_delete (v) VALUES (1),(2),(3)", MYLITE_DONE);
+    last_insert_id = mylite_last_insert_id(database);
+    failures += expect_int64((int64_t)last_insert_id, ai_delete_first_insert_id,
+                             "delete auto first insert id");
+    failures += prepare_sql(database, "DELETE FROM ai_delete WHERE id = 102", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "delete auto max id");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "delete auto max affected rows");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), (int64_t)last_insert_id,
+                             "delete leaves last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO ai_delete (v) VALUES (4)", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database),
+                             ai_delete_after_max_delete_id, "delete auto next generated id");
+    failures += prepare_sql(database, "DELETE FROM ai_delete", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "delete all auto rows");
+    failures += expect_int64(mylite_affected_rows(stmt), 3, "delete all auto affected rows");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database),
+                             ai_delete_after_max_delete_id, "delete all leaves last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO ai_delete (v) VALUES (5)", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database),
+                             ai_delete_after_all_delete_id, "delete all preserves auto sequence");
+    failures += expect_select_rows(database, "SELECT id, v FROM ai_delete", id_v_columns, 2,
+                                   ai_values, 1, "delete auto sequence row");
 
     mylite_close(database);
     return failures;

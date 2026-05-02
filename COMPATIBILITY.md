@@ -107,7 +107,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | `CALL` | ❌ | medium | Procedure invocation, result sets, OUT/INOUT parameters, and diagnostics. |  |
-| `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. |  |
+| `DELETE` (single-table) | 🟡 | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. | Executable for one user base table created by the supported `CREATE TABLE` subset, including selected-schema and schema-qualified target resolution, aliases, `WHERE`, `ORDER BY`, `LIMIT row_count`, physical deletion, affected rows, deterministic diagnostics, rollback, default strict-mode expression warning promotion, and `AUTO_INCREMENT` sequence preservation. `LOW_PRIORITY`, `QUICK`, `IGNORE`, partitions, CTEs, multi-table forms, subqueries, broad expressions, trigger/foreign-key/generated-column effects, and full SQL-mode warning-demotion behavior remain deferred. See [single-table DELETE spec](docs/specs/delete-single-table/specs.md). |
 | `DELETE` (multi-table) | ❌ | high | Multi-table delete forms using FROM and USING, join semantics, and affected rows. |  |
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. |  |
 | `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. |  |

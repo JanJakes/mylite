@@ -209,6 +209,18 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_update_limit_clause(struct mylite_sql_parser_state *state,
                                            struct mylite_sql_token limit_token,
                                            struct mylite_sql_ast_node *row_count_bound);
+struct mylite_sql_ast_node *mylite_sql_parser_make_delete_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token delete_token,
+    struct mylite_sql_ast_node *target, struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *order_by_clause, struct mylite_sql_ast_node *limit_clause);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_delete_target(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_ast_node *table_name,
+                                     struct mylite_sql_ast_node *alias);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_delete_limit_clause(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_token limit_token,
+                                           struct mylite_sql_ast_node *row_count_bound);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
                                               struct mylite_sql_token show_token,

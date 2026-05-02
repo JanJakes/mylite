@@ -33,6 +33,7 @@ enum mylite_stmt_kind {
     MYLITE_STMT_SCALAR_SELECT = 11,
     MYLITE_STMT_TABLE_SELECT = 12,
     MYLITE_STMT_UPDATE = 13,
+    MYLITE_STMT_DELETE = 14,
 };
 
 enum mylite_information_schema_table {
@@ -238,6 +239,19 @@ struct mylite_update_plan {
     struct mylite_update_target target;
     struct mylite_update_assignment *assignments;
     size_t assignment_count;
+    const struct mylite_sql_ast_node *where_clause;
+    const struct mylite_sql_ast_node *order_by_clause;
+    const struct mylite_sql_ast_node *limit_clause;
+};
+
+struct mylite_delete_target {
+    char *schema_name;
+    char *table_name;
+    char *alias;
+};
+
+struct mylite_delete_plan {
+    struct mylite_delete_target target;
     const struct mylite_sql_ast_node *where_clause;
     const struct mylite_sql_ast_node *order_by_clause;
     const struct mylite_sql_ast_node *limit_clause;
@@ -467,15 +481,18 @@ struct mylite_stmt {
     struct mylite_insert_values_plan insert_values;
     struct mylite_insert_set_plan insert_set;
     struct mylite_update_plan update;
+    struct mylite_delete_plan delete_plan;
     struct mylite_select_plan select_plan;
     struct mylite_result_metadata result_metadata;
     struct mylite_scalar_result scalar_result;
     struct mylite_table_select_result select_result;
     struct mylite_sql_ast select_predicate_ast;
     struct mylite_sql_ast update_ast;
+    struct mylite_sql_ast delete_ast;
     const struct mylite_sql_ast_node *select_predicate;
     char *select_sql_text;
     char *update_sql_text;
+    char *delete_sql_text;
     struct mylite_cached_expression_value *select_constant_values;
     size_t select_constant_value_count;
     bool select_constant_predicate_evaluated;
@@ -700,6 +717,9 @@ static int prepare_insert_set_statement(mylite_db *database,
 static int prepare_update_statement(mylite_db *database,
                                     const struct mylite_sql_ast_node *statement, const char *sql,
                                     size_t sql_length, mylite_stmt **out_stmt);
+static int prepare_delete_statement(mylite_db *database,
+                                    const struct mylite_sql_ast_node *statement, const char *sql,
+                                    size_t sql_length, mylite_stmt **out_stmt);
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt);
 static int prepare_information_schema_select_statement(mylite_db *database,
                                                        const struct mylite_sql_ast_node *statement,
@@ -815,6 +835,11 @@ static int clone_update_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_as
 static int clone_update_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_node *node,
                                  const char *source_sql, size_t sql_length,
                                  const struct mylite_sql_ast_node **out_node);
+static int clone_delete_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_ast_node *statement,
+                                   const char *sql, size_t sql_length);
+static int clone_delete_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_node *node,
+                                 const char *source_sql, size_t sql_length,
+                                 const struct mylite_sql_ast_node **out_node);
 static int clone_sql_ast_subtree(struct mylite_sql_ast *ast, const struct mylite_sql_ast_node *node,
                                  const char *source_sql, const char *sql_copy, size_t sql_length,
                                  struct mylite_sql_ast_node **out_node);
@@ -838,6 +863,7 @@ static int execute_drop_table_statement(mylite_stmt *stmt);
 static int execute_insert_values_statement(mylite_stmt *stmt);
 static int execute_insert_set_statement(mylite_stmt *stmt);
 static int execute_update_statement(mylite_stmt *stmt);
+static int execute_delete_statement(mylite_stmt *stmt);
 static int copy_update_target_to_select_table(mylite_stmt *stmt, struct mylite_select_table *table);
 static int bind_update_subset(mylite_stmt *stmt, const struct mylite_select_table *table,
                               struct mylite_update_bound_assignment **out_assignments);
@@ -987,6 +1013,39 @@ static char *copy_update_duplicate_entry_value(const struct mylite_insert_unique
 static int set_update_unsupported_expression_error(mylite_db *database, const char *clause_context);
 static int set_update_unsupported_clause_error(mylite_db *database);
 static int set_update_unsupported_assignment_error(mylite_db *database);
+static int copy_delete_target_to_select_table(mylite_stmt *stmt, struct mylite_select_table *table);
+static int bind_delete_subset(mylite_stmt *stmt, const struct mylite_select_table *table);
+static int reject_deferred_delete_clauses(mylite_stmt *stmt);
+static int bind_delete_where_clause(mylite_stmt *stmt, const struct mylite_select_table *table);
+static int bind_delete_predicate_expression(mylite_stmt *stmt,
+                                            const struct mylite_select_table *table,
+                                            const struct mylite_sql_ast_node *expression,
+                                            const char *clause_context);
+static int bind_delete_order_by_clause(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                       struct mylite_update_order_plan *order_plan);
+static int bind_delete_order_expression(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                        const struct mylite_sql_ast_node *expression);
+static int materialize_delete_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                   const struct mylite_update_order_plan *order_plan,
+                                   struct mylite_update_rowset *rowset);
+static int evaluate_delete_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                       const struct mylite_update_row *row, bool *out_matches);
+static int evaluate_delete_order_values(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                        const struct mylite_update_order_plan *order_plan,
+                                        struct mylite_update_row *row);
+static int evaluate_delete_order_key(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                     const struct mylite_update_row *row,
+                                     const struct mylite_select_order_key *order_key,
+                                     struct mylite_expression_value *out_value);
+static int promote_delete_expression_warnings(mylite_stmt *stmt, size_t warning_start);
+static int execute_delete_rows_transaction(mylite_stmt *stmt,
+                                           const struct mylite_select_table *table,
+                                           const struct mylite_update_rowset *rowset);
+static char *build_delete_physical_sql(mylite_db *database,
+                                       const struct mylite_select_table *table);
+static int set_delete_unknown_column_error(mylite_db *database, const char *column_name,
+                                           const char *clause_context);
+static int set_delete_unsupported_clause_error(mylite_db *database);
 static int execute_scalar_select_statement(mylite_stmt *stmt);
 static int execute_table_select_statement(mylite_stmt *stmt);
 static int materialize_table_select_result(mylite_stmt *stmt);
@@ -1296,6 +1355,7 @@ static int copy_insert_values_statement(const struct mylite_sql_ast_node *statem
 static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement,
                                      mylite_stmt *stmt);
 static int copy_update_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt);
+static int copy_delete_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt);
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt);
 static int copy_create_table_name(const struct mylite_sql_ast_node *table_name,
@@ -1348,6 +1408,10 @@ static int copy_update_column_reference(const struct mylite_sql_ast_node *identi
                                         struct mylite_update_column_reference *out_reference);
 static int copy_update_column_reference_parts(const struct mylite_sql_ast_node *identifier,
                                               char **parts, size_t *part_count);
+static int copy_delete_target(const struct mylite_sql_ast_node *target,
+                              struct mylite_delete_target *out_target);
+static int copy_delete_table_name(const struct mylite_sql_ast_node *table_name,
+                                  struct mylite_delete_target *target);
 static int copy_create_table_elements(const struct mylite_sql_ast_node *elements,
                                       struct mylite_create_table_plan *plan);
 static int copy_create_table_column(const struct mylite_sql_ast_node *column_node,
@@ -1462,6 +1526,8 @@ static void update_column_reference_deinit(struct mylite_update_column_reference
 static void update_order_plan_deinit(struct mylite_update_order_plan *plan);
 static void update_rowset_deinit(struct mylite_update_rowset *rowset);
 static void update_row_deinit(struct mylite_update_row *row);
+static void delete_plan_deinit(struct mylite_delete_plan *plan);
+static void delete_target_deinit(struct mylite_delete_target *target);
 static void insert_row_deinit(struct mylite_insert_row *row);
 static void insert_value_deinit(struct mylite_insert_value *value);
 static void insert_value_child_deinit(struct mylite_insert_value *value);
@@ -1627,14 +1693,17 @@ void mylite_finalize(mylite_stmt *stmt)
     insert_values_plan_deinit(&stmt->insert_values);
     insert_set_plan_deinit(&stmt->insert_set);
     update_plan_deinit(&stmt->update);
+    delete_plan_deinit(&stmt->delete_plan);
     select_plan_deinit(&stmt->select_plan);
     result_metadata_deinit(&stmt->result_metadata);
     scalar_result_deinit(&stmt->scalar_result);
     table_select_result_deinit(&stmt->select_result);
     mylite_sql_ast_deinit(&stmt->select_predicate_ast);
     mylite_sql_ast_deinit(&stmt->update_ast);
+    mylite_sql_ast_deinit(&stmt->delete_ast);
     free(stmt->select_sql_text);
     free(stmt->update_sql_text);
+    free(stmt->delete_sql_text);
     select_constant_values_deinit(stmt);
     free(stmt);
 }
@@ -1969,6 +2038,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_insert_set_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_UPDATE_STATEMENT:
             return prepare_update_statement(database, statement, sql, sql_length, out_stmt);
+        case MYLITE_SQL_AST_DELETE_STATEMENT:
+            return prepare_delete_statement(database, statement, sql, sql_length, out_stmt);
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
             return prepare_show_schemas_statement(database, out_stmt);
         case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -2038,6 +2109,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
         case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
         case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
+        case MYLITE_SQL_AST_DELETE_TARGET:
+        case MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE:
             break;
         }
     }
@@ -2133,6 +2206,9 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_DELETE_TARGET:
+    case MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE:
         return MYLITE_UNSUPPORTED;
     }
 
@@ -2216,6 +2292,9 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_DELETE_TARGET:
+    case MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE:
         return MYLITE_UNSUPPORTED;
     }
 
@@ -2271,6 +2350,40 @@ static int prepare_update_statement(mylite_db *database,
     status = copy_update_statement(statement, stmt);
     if (status == MYLITE_OK) {
         status = clone_update_plan_nodes(stmt, statement, sql, sql_length);
+    }
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(database, "out of memory");
+        }
+        mylite_finalize(stmt);
+        return status;
+    }
+
+    *out_stmt = stmt;
+    return MYLITE_OK;
+}
+
+static int prepare_delete_statement(mylite_db *database,
+                                    const struct mylite_sql_ast_node *statement, const char *sql,
+                                    size_t sql_length, mylite_stmt **out_stmt)
+{
+    mylite_stmt *stmt = calloc(1U, sizeof(*stmt));
+    int status = MYLITE_OK;
+
+    if (stmt == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    *stmt = (mylite_stmt){
+        .database = database,
+        .kind = MYLITE_STMT_DELETE,
+        .affected_rows = 0,
+    };
+
+    status = copy_delete_statement(statement, stmt);
+    if (status == MYLITE_OK) {
+        status = clone_delete_plan_nodes(stmt, statement, sql, sql_length);
     }
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
@@ -2853,6 +2966,9 @@ static int bind_select_predicate_expression(mylite_db *database,
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_DELETE_TARGET:
+    case MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE:
         return set_select_unsupported_where_error(database);
     }
 
@@ -3068,6 +3184,9 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_DELETE_TARGET:
+    case MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE:
         return set_select_unsupported_order_error(database);
     }
 
@@ -3906,6 +4025,47 @@ static int clone_update_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_
     return status;
 }
 
+static int clone_delete_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_ast_node *statement,
+                                   const char *sql, size_t sql_length)
+{
+    int status = MYLITE_OK;
+
+    stmt->delete_sql_text = copy_span_text(sql, sql_length);
+    if (stmt->delete_sql_text == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = clone_delete_ast_node(stmt, find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE),
+                                   sql, sql_length, &stmt->delete_plan.where_clause);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    status = clone_delete_ast_node(stmt, find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE),
+                                   sql, sql_length, &stmt->delete_plan.order_by_clause);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return clone_delete_ast_node(stmt,
+                                 find_child_kind(statement, MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE),
+                                 sql, sql_length, &stmt->delete_plan.limit_clause);
+}
+
+static int clone_delete_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_node *node,
+                                 const char *source_sql, size_t sql_length,
+                                 const struct mylite_sql_ast_node **out_node)
+{
+    struct mylite_sql_ast_node *clone = NULL;
+    int status = clone_sql_ast_subtree(&stmt->delete_ast, node, source_sql, stmt->delete_sql_text,
+                                       sql_length, &clone);
+
+    if (status == MYLITE_NOMEM) {
+        (void)set_error_message(stmt->database, "out of memory");
+    }
+    *out_node = clone;
+    return status;
+}
+
 // NOLINTNEXTLINE(misc-no-recursion)
 static int clone_sql_ast_subtree(struct mylite_sql_ast *ast, const struct mylite_sql_ast_node *node,
                                  const char *source_sql, const char *sql_copy, size_t sql_length,
@@ -4048,6 +4208,7 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
         status = copy_insert_set_statement(statement, stmt);
         break;
     case MYLITE_STMT_UPDATE:
+    case MYLITE_STMT_DELETE:
         status = MYLITE_UNSUPPORTED;
         break;
     case MYLITE_STMT_SCALAR_SELECT:
@@ -4135,6 +4296,9 @@ static int execute_custom_statement(mylite_stmt *stmt)
         break;
     case MYLITE_STMT_UPDATE:
         status = execute_update_statement(stmt);
+        break;
+    case MYLITE_STMT_DELETE:
+        status = execute_delete_statement(stmt);
         break;
     case MYLITE_STMT_SCALAR_SELECT:
         return execute_scalar_select_statement(stmt);
@@ -5299,6 +5463,9 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_DELETE_TARGET:
+    case MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE:
         return set_update_unsupported_expression_error(stmt->database, clause_context);
     }
 
@@ -6422,6 +6589,529 @@ static int set_update_unsupported_clause_error(mylite_db *database)
 static int set_update_unsupported_assignment_error(mylite_db *database)
 {
     if (set_error_message(database, "Unsupported UPDATE assignment") == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_EXEC_ERROR;
+}
+
+static int execute_delete_statement(mylite_stmt *stmt)
+{
+    struct mylite_select_table table = {0};
+    struct mylite_update_order_plan order_plan = {0};
+    struct mylite_update_rowset rowset = {0};
+    int status = MYLITE_OK;
+
+    stmt->affected_rows = 0;
+
+    status = copy_delete_target_to_select_table(stmt, &table);
+    if (status == MYLITE_OK) {
+        status = resolve_select_table_target(stmt->database, &table);
+        if (status == MYLITE_UNSUPPORTED && table.schema_name != NULL &&
+            select_schema_name_is_system(table.schema_name)) {
+            (void)set_error_message_parts(stmt->database, "Access to system schema '",
+                                          table.schema_name, "' is rejected.");
+            status = MYLITE_EXEC_ERROR;
+        }
+    }
+    if (status == MYLITE_OK) {
+        status = load_select_columns(stmt->database, &table);
+    }
+    if (status == MYLITE_OK) {
+        status = bind_delete_subset(stmt, &table);
+    }
+    if (status == MYLITE_OK) {
+        status = bind_delete_order_by_clause(stmt, &table, &order_plan);
+    }
+    if (status == MYLITE_OK) {
+        status = materialize_delete_rows(stmt, &table, &order_plan, &rowset);
+    }
+    if (status == MYLITE_OK) {
+        status = sort_update_rowset(&rowset, &order_plan);
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(stmt->database, "out of memory");
+        }
+    }
+    if (status == MYLITE_OK) {
+        apply_update_limit(stmt->delete_plan.limit_clause, &rowset);
+        status = execute_delete_rows_transaction(stmt, &table, &rowset);
+    }
+
+    update_rowset_deinit(&rowset);
+    update_order_plan_deinit(&order_plan);
+    select_table_deinit(&table);
+    if (status != MYLITE_OK) {
+        stmt->affected_rows = -1;
+    }
+    return status;
+}
+
+static int copy_delete_target_to_select_table(mylite_stmt *stmt, struct mylite_select_table *table)
+{
+    const struct mylite_delete_target *target = &stmt->delete_plan.target;
+
+    if (target->schema_name != NULL) {
+        table->schema_name = copy_span_text(target->schema_name, strlen(target->schema_name));
+        if (table->schema_name == NULL) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    table->table_name = copy_span_text(target->table_name, strlen(target->table_name));
+    if (table->table_name == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    if (target->alias != NULL) {
+        table->alias = copy_span_text(target->alias, strlen(target->alias));
+        if (table->alias == NULL) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int bind_delete_subset(mylite_stmt *stmt, const struct mylite_select_table *table)
+{
+    int status = reject_deferred_delete_clauses(stmt);
+
+    if (status == MYLITE_OK) {
+        status = bind_delete_where_clause(stmt, table);
+    }
+    return status;
+}
+
+static int reject_deferred_delete_clauses(mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *limit = stmt->delete_plan.limit_clause;
+
+    if (limit == NULL) {
+        return MYLITE_OK;
+    }
+    if (limit->kind != MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE || child_at(limit, 0U) == NULL ||
+        child_at(limit, 0U)->kind != MYLITE_SQL_AST_LIMIT_BOUND ||
+        !child_at(limit, 0U)->has_limit_bound_value) {
+        return set_delete_unsupported_clause_error(stmt->database);
+    }
+    return MYLITE_OK;
+}
+
+static int bind_delete_where_clause(mylite_stmt *stmt, const struct mylite_select_table *table)
+{
+    const struct mylite_sql_ast_node *predicate = child_at(stmt->delete_plan.where_clause, 0U);
+
+    if (stmt->delete_plan.where_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (stmt->delete_plan.where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE || predicate == NULL) {
+        return set_delete_unsupported_clause_error(stmt->database);
+    }
+    return bind_delete_predicate_expression(stmt, table, predicate, "where clause");
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_delete_predicate_expression(mylite_stmt *stmt,
+                                            const struct mylite_select_table *table,
+                                            const struct mylite_sql_ast_node *expression,
+                                            const char *clause_context)
+{
+    if (expression == NULL) {
+        return set_delete_unsupported_clause_error(stmt->database);
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_IDENTIFIER:
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
+        size_t column_index = table->column_count;
+        int status = resolve_select_column_reference(table, expression, &column_index);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (column_index == table->column_count) {
+            char *reference = copy_select_reference_name(expression);
+
+            if (reference == NULL) {
+                (void)set_error_message(stmt->database, "out of memory");
+                return MYLITE_NOMEM;
+            }
+            status = set_delete_unknown_column_error(stmt->database, reference, clause_context);
+            free(reference);
+            return status;
+        }
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+    case MYLITE_SQL_AST_EXPRESSION_LIST:
+        for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
+             child = child->next_sibling) {
+            int status = bind_delete_predicate_expression(stmt, table, child, clause_context);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_DEFAULT:
+    case MYLITE_SQL_AST_SCRIPT:
+    case MYLITE_SQL_AST_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_USE_STATEMENT:
+    case MYLITE_SQL_AST_SELECT_LIST:
+    case MYLITE_SQL_AST_SELECT_ITEM:
+    case MYLITE_SQL_AST_FROM_DUAL:
+    case MYLITE_SQL_AST_FROM_TABLE:
+    case MYLITE_SQL_AST_WILDCARD:
+    case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
+    case MYLITE_SQL_AST_IF_EXISTS:
+    case MYLITE_SQL_AST_IF_NOT_EXISTS:
+    case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
+    case MYLITE_SQL_AST_SCHEMA_OPTION:
+    case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
+    case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION:
+    case MYLITE_SQL_AST_COLUMN_TYPE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
+    case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
+    case MYLITE_SQL_AST_KEY_PART_LIST:
+    case MYLITE_SQL_AST_KEY_PART:
+    case MYLITE_SQL_AST_INDEX_TYPE:
+    case MYLITE_SQL_AST_INDEX_OPTION_LIST:
+    case MYLITE_SQL_AST_INDEX_OPTION:
+    case MYLITE_SQL_AST_SECONDARY_INDEX:
+    case MYLITE_SQL_AST_UNIQUE_INDEX:
+    case MYLITE_SQL_AST_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_TABLE_OPTION:
+    case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TABLE_NAME_LIST:
+    case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_COLUMN_LIST:
+    case MYLITE_SQL_AST_INSERT_ROW_LIST:
+    case MYLITE_SQL_AST_INSERT_ROW:
+    case MYLITE_SQL_AST_INSERT_VALUE_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_UPDATE_TARGET:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_WHERE_CLAUSE:
+    case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
+    case MYLITE_SQL_AST_ORDER_ITEM_LIST:
+    case MYLITE_SQL_AST_ORDER_ITEM:
+    case MYLITE_SQL_AST_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_LIMIT_BOUND:
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_DELETE_TARGET:
+    case MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE:
+        return set_delete_unsupported_clause_error(stmt->database);
+    }
+
+    return set_delete_unsupported_clause_error(stmt->database);
+}
+
+static int bind_delete_order_by_clause(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                       struct mylite_update_order_plan *order_plan)
+{
+    const struct mylite_sql_ast_node *items = child_at(stmt->delete_plan.order_by_clause, 0U);
+
+    if (stmt->delete_plan.order_by_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (stmt->delete_plan.order_by_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE ||
+        items == NULL || items->kind != MYLITE_SQL_AST_ORDER_ITEM_LIST) {
+        return set_delete_unsupported_clause_error(stmt->database);
+    }
+
+    for (const struct mylite_sql_ast_node *item = items->first_child; item != NULL;
+         item = item->next_sibling) {
+        const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+        struct mylite_select_order_key order_key = {
+            .kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION,
+            .direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC,
+            .expression = expression,
+        };
+        int status = MYLITE_OK;
+
+        if (item->kind != MYLITE_SQL_AST_ORDER_ITEM || expression == NULL) {
+            return set_delete_unsupported_clause_error(stmt->database);
+        }
+        if (item->key_part_order == MYLITE_SQL_AST_KEY_PART_ORDER_DESC) {
+            order_key.direction = MYLITE_SQL_AST_KEY_PART_ORDER_DESC;
+        }
+        status = bind_delete_order_expression(stmt, table, expression);
+        if (status == MYLITE_OK) {
+            status = add_update_order_key(order_plan, &order_key);
+            if (status == MYLITE_NOMEM) {
+                (void)set_error_message(stmt->database, "out of memory");
+            }
+        }
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return order_plan->order_key_count == 0U ? set_delete_unsupported_clause_error(stmt->database)
+                                             : MYLITE_OK;
+}
+
+static int bind_delete_order_expression(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                        const struct mylite_sql_ast_node *expression)
+{
+    return bind_delete_predicate_expression(stmt, table, expression, "order clause");
+}
+
+static int materialize_delete_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                   const struct mylite_update_order_plan *order_plan,
+                                   struct mylite_update_rowset *rowset)
+{
+    sqlite3_stmt *scan = NULL;
+    char *scan_sql = build_update_scan_sql(stmt->database, table);
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    if (scan_sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, scan_sql, -1, SQLITE_PREPARE_PERSISTENT, &scan,
+                            NULL);
+    sqlite3_free(scan_sql);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    while ((rc = sqlite3_step(scan)) == SQLITE_ROW) {
+        struct mylite_update_row row = {0};
+        bool matches = false;
+
+        status = copy_update_sqlite_row(stmt, table, scan, &row);
+        if (status == MYLITE_OK) {
+            status = evaluate_delete_row_matches(stmt, table, &row, &matches);
+        }
+        if (status == MYLITE_OK && matches) {
+            status = evaluate_delete_order_values(stmt, table, order_plan, &row);
+        }
+        if (status == MYLITE_OK && matches) {
+            status = append_update_row(stmt, rowset, &row);
+        }
+        update_row_deinit(&row);
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(scan);
+            return status;
+        }
+    }
+    sqlite3_finalize(scan);
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static int evaluate_delete_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                       const struct mylite_update_row *row, bool *out_matches)
+{
+    struct mylite_update_expression_context user_context = {
+        .table = table,
+        .row = row,
+    };
+    struct mylite_expression_eval_context context = {
+        .user_data = &user_context,
+        .resolve_identifier = resolve_update_expression_identifier,
+    };
+    struct mylite_expression_value value = {0};
+    size_t warning_start = stmt->database->warnings.count;
+    int truth = -1;
+    int status = 0;
+
+    *out_matches = true;
+    if (stmt->delete_plan.where_clause == NULL) {
+        return MYLITE_OK;
+    }
+
+    status = mylite_expression_eval_with_context(child_at(stmt->delete_plan.where_clause, 0U),
+                                                 &context, &stmt->database->warnings, &value);
+    if (status == 0) {
+        status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
+    }
+    mylite_expression_value_deinit(&value);
+    if (status != 0) {
+        return set_where_predicate_eval_error(stmt);
+    }
+    status = promote_delete_expression_warnings(stmt, warning_start);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    *out_matches = truth == 1;
+    return MYLITE_OK;
+}
+
+static int evaluate_delete_order_values(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                        const struct mylite_update_order_plan *order_plan,
+                                        struct mylite_update_row *row)
+{
+    if (order_plan->order_key_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    row->order_values = calloc(order_plan->order_key_count, sizeof(*row->order_values));
+    if (row->order_values == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    row->order_value_count = order_plan->order_key_count;
+
+    for (size_t index = 0U; index < order_plan->order_key_count; ++index) {
+        int status = evaluate_delete_order_key(stmt, table, row, &order_plan->order_keys[index],
+                                               &row->order_values[index]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_delete_order_key(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                     const struct mylite_update_row *row,
+                                     const struct mylite_select_order_key *order_key,
+                                     struct mylite_expression_value *out_value)
+{
+    struct mylite_update_expression_context user_context = {
+        .table = table,
+        .row = row,
+    };
+    struct mylite_expression_eval_context context = {
+        .user_data = &user_context,
+        .resolve_identifier = resolve_update_expression_identifier,
+    };
+    size_t warning_start = stmt->database->warnings.count;
+    int status = mylite_expression_eval_with_context(order_key->expression, &context,
+                                                     &stmt->database->warnings, out_value);
+
+    if (status != 0) {
+        return set_delete_unsupported_clause_error(stmt->database);
+    }
+    return promote_delete_expression_warnings(stmt, warning_start);
+}
+
+static int promote_delete_expression_warnings(mylite_stmt *stmt, size_t warning_start)
+{
+    mylite_db *database = stmt->database;
+
+    if (warning_start >= database->warnings.count) {
+        return MYLITE_OK;
+    }
+
+    const struct mylite_expression_warning *warning = &database->warnings.items[warning_start];
+    int status = set_error_message(database, warning->message);
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int execute_delete_rows_transaction(mylite_stmt *stmt,
+                                           const struct mylite_select_table *table,
+                                           const struct mylite_update_rowset *rowset)
+{
+    sqlite3_stmt *delete_stmt = NULL;
+    char *delete_sql = NULL;
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    if (rowset->row_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    status = begin_sqlite_transaction(stmt->database);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    delete_sql = build_delete_physical_sql(stmt->database, table);
+    if (delete_sql == NULL) {
+        rollback_sqlite_transaction(stmt->database);
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, delete_sql, -1, SQLITE_PREPARE_PERSISTENT,
+                            &delete_stmt, NULL);
+    sqlite3_free(delete_sql);
+    if (rc != SQLITE_OK) {
+        rollback_sqlite_transaction(stmt->database);
+        return set_sqlite_error(stmt->database);
+    }
+
+    for (size_t index = 0U; index < rowset->row_count; ++index) {
+        sqlite3_reset(delete_stmt);
+        sqlite3_clear_bindings(delete_stmt);
+        rc = sqlite3_bind_int64(delete_stmt, 1, rowset->rows[index].rowid);
+        if (rc == SQLITE_OK) {
+            rc = sqlite3_step(delete_stmt);
+        }
+        if (rc != SQLITE_DONE) {
+            status = set_sqlite_error(stmt->database);
+            break;
+        }
+        ++stmt->affected_rows;
+    }
+    sqlite3_finalize(delete_stmt);
+
+    if (status == MYLITE_OK) {
+        status = commit_sqlite_transaction(stmt->database);
+        if (status == MYLITE_OK) {
+            return MYLITE_OK;
+        }
+    }
+
+    rollback_sqlite_transaction(stmt->database);
+    stmt->affected_rows = 0;
+    return status;
+}
+
+static char *build_delete_physical_sql(mylite_db *database, const struct mylite_select_table *table)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+    sqlite3_str_appendf(sql, "DELETE FROM \"%w\" WHERE rowid = ?", table->physical_name);
+    return sqlite3_str_finish(sql);
+}
+
+static int set_delete_unknown_column_error(mylite_db *database, const char *column_name,
+                                           const char *clause_context)
+{
+    char *message = sqlite3_mprintf("Unknown column '%q' in '%q'", column_name,
+                                    clause_context == NULL ? "where clause" : clause_context);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = set_error_message(database, message);
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_delete_unsupported_clause_error(mylite_db *database)
+{
+    if (set_error_message(database, "Unsupported DELETE clause") == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_EXEC_ERROR;
@@ -9525,6 +10215,7 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
     case MYLITE_STMT_INSERT_VALUES:
     case MYLITE_STMT_INSERT_SET:
     case MYLITE_STMT_UPDATE:
+    case MYLITE_STMT_DELETE:
     case MYLITE_STMT_SCALAR_SELECT:
     case MYLITE_STMT_TABLE_SELECT:
     case MYLITE_STMT_SQLITE:
@@ -9706,6 +10397,13 @@ static int copy_update_statement(const struct mylite_sql_ast_node *statement, my
         status = copy_update_assignments(assignments, &stmt->update);
     }
     return status;
+}
+
+static int copy_delete_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *target = child_at(statement, 0U);
+
+    return copy_delete_target(target, &stmt->delete_plan.target);
 }
 
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
@@ -9957,6 +10655,9 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_DELETE_TARGET:
+    case MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_USE_STATEMENT:
@@ -10256,6 +10957,56 @@ static int copy_update_target(const struct mylite_sql_ast_node *target,
 
 static int copy_update_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_update_target *target)
+{
+    if (table_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        target->table_name = copy_identifier_span(table_name);
+        return target->table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
+    }
+    if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
+        child_at(table_name, 0U) != NULL && child_at(table_name, 1U) != NULL &&
+        child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        target->schema_name = copy_identifier_span(child_at(table_name, 0U));
+        target->table_name = copy_identifier_span(child_at(table_name, 1U));
+        if (target->schema_name == NULL || target->table_name == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return MYLITE_OK;
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
+static int copy_delete_target(const struct mylite_sql_ast_node *target,
+                              struct mylite_delete_target *out_target)
+{
+    const struct mylite_sql_ast_node *table_name = NULL;
+    const struct mylite_sql_ast_node *alias = NULL;
+    int status = MYLITE_OK;
+
+    if (target == NULL || target->kind != MYLITE_SQL_AST_DELETE_TARGET) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    table_name = child_at(target, 0U);
+    alias = child_at(target, 1U);
+    status = copy_delete_table_name(table_name, out_target);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (alias != NULL) {
+        out_target->alias = copy_identifier_span(alias);
+        if (out_target->alias == NULL) {
+            return MYLITE_NOMEM;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int copy_delete_table_name(const struct mylite_sql_ast_node *table_name,
+                                  struct mylite_delete_target *target)
 {
     if (table_name == NULL) {
         return MYLITE_NOMEM;
@@ -12134,6 +12885,28 @@ static void update_row_deinit(struct mylite_update_row *row)
     free(row->values);
     free(row->order_values);
     *row = (struct mylite_update_row){0};
+}
+
+static void delete_plan_deinit(struct mylite_delete_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    delete_target_deinit(&plan->target);
+    *plan = (struct mylite_delete_plan){0};
+}
+
+static void delete_target_deinit(struct mylite_delete_target *target)
+{
+    if (target == NULL) {
+        return;
+    }
+
+    free(target->schema_name);
+    free(target->table_name);
+    free(target->alias);
+    *target = (struct mylite_delete_target){0};
 }
 
 static void insert_row_deinit(struct mylite_insert_row *row)

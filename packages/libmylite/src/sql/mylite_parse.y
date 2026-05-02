@@ -100,6 +100,9 @@ statement(A) ::= insert_set_statement(B). {
 statement(A) ::= update_statement(B). {
     A = B;
 }
+statement(A) ::= delete_statement(B). {
+    A = B;
+}
 statement(A) ::= show_schemas_statement(B). {
     A = B;
 }
@@ -310,6 +313,29 @@ opt_update_limit_clause(A) ::= . {
 }
 opt_update_limit_clause(A) ::= LIMIT(T) limit_bound(B). {
     A = mylite_sql_parser_make_update_limit_clause(state, T, B);
+}
+
+delete_statement(A) ::= DELETE(T) FROM single_delete_target(B) opt_where_clause(C)
+        opt_order_by_clause(D) opt_delete_limit_clause(E). {
+    A = mylite_sql_parser_make_delete_statement(state, T, B, C, D, E);
+}
+
+single_delete_target(A) ::= delete_table_name(B) opt_table_alias(C). {
+    A = mylite_sql_parser_make_delete_target(state, B, C);
+}
+
+delete_table_name(A) ::= identifier(B). {
+    A = B;
+}
+delete_table_name(A) ::= identifier(B) DOT identifier(C). {
+    A = mylite_sql_parser_make_qualified_identifier(state, B, C);
+}
+
+opt_delete_limit_clause(A) ::= . {
+    A = NULL;
+}
+opt_delete_limit_clause(A) ::= LIMIT(T) limit_bound(B). {
+    A = mylite_sql_parser_make_delete_limit_clause(state, T, B);
 }
 
 show_schemas_statement(A) ::= SHOW(T) DATABASES(D). {

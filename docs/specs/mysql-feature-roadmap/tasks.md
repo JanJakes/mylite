@@ -49,8 +49,9 @@ level application surfaces.
 19. [x] Single-table `UPDATE`: assignment order, expressions, `WHERE`,
        `ORDER BY`, `LIMIT`, generated/default columns, affected rows, and
        warnings. Spec: [single-table UPDATE](../update-single-table/specs.md).
-20. [ ] Single-table `DELETE`: aliases, `WHERE`, `ORDER BY`, `LIMIT`,
-       affected rows, and warnings.
+20. [x] Single-table `DELETE`: aliases, `WHERE`, `ORDER BY`, `LIMIT`,
+       affected rows, and warnings. Spec:
+       [single-table DELETE](../delete-single-table/specs.md).
 21. [ ] Transaction statements: `START TRANSACTION`, `BEGIN`, `COMMIT`,
        `ROLLBACK`, access modes, chaining, release options, and diagnostics.
 22. [ ] Savepoints: `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`,

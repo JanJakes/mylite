@@ -979,6 +979,82 @@ mylite_sql_parser_make_update_limit_clause(struct mylite_sql_parser_state *state
     return limit_clause;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_delete_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token delete_token,
+    struct mylite_sql_ast_node *target, struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *order_by_clause, struct mylite_sql_ast_node *limit_clause)
+{
+    struct mylite_sql_source_span span = span_from_token(&delete_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (target != NULL) {
+        span = span_join(span, target->span);
+    }
+    if (where_clause != NULL) {
+        span = span_join(span, where_clause->span);
+    }
+    if (order_by_clause != NULL) {
+        span = span_join(span, order_by_clause->span);
+    }
+    if (limit_clause != NULL) {
+        span = span_join(span, limit_clause->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_DELETE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, target);
+    mylite_sql_ast_node_append_child(statement, where_clause);
+    mylite_sql_ast_node_append_child(statement, order_by_clause);
+    mylite_sql_ast_node_append_child(statement, limit_clause);
+    return statement;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_delete_target(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_ast_node *table_name,
+                                     struct mylite_sql_ast_node *alias)
+{
+    struct mylite_sql_source_span span =
+        table_name == NULL ? (struct mylite_sql_source_span){0} : table_name->span;
+    struct mylite_sql_ast_node *target = NULL;
+
+    if (alias != NULL) {
+        span = span_join(span, alias->span);
+    }
+
+    target = make_node(state, MYLITE_SQL_AST_DELETE_TARGET, span);
+    if (target == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(target, table_name);
+    mylite_sql_ast_node_append_child(target, alias);
+    return target;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_delete_limit_clause(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_token limit_token,
+                                           struct mylite_sql_ast_node *row_count_bound)
+{
+    struct mylite_sql_source_span span = span_from_token(&limit_token);
+    struct mylite_sql_ast_node *limit_clause = NULL;
+
+    if (row_count_bound != NULL) {
+        span = span_join(span, row_count_bound->span);
+    }
+
+    limit_clause = make_node(state, MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE, span);
+    if (limit_clause == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(limit_clause, row_count_bound);
+    return limit_clause;
+}
+
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
                                               struct mylite_sql_token show_token,
@@ -2814,6 +2890,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"DEC", MYLITE_SQL_PARSE_DEC},
         {"DECIMAL", MYLITE_SQL_PARSE_DECIMALKW},
         {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
+        {"DELETE", MYLITE_SQL_PARSE_DELETE},
         {"DESC", MYLITE_SQL_PARSE_DESC},
         {"DIV", MYLITE_SQL_PARSE_DIV},
         {"DISK", MYLITE_SQL_PARSE_DISK},

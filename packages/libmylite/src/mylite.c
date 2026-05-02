@@ -32,6 +32,7 @@ enum mylite_stmt_kind {
     MYLITE_STMT_INSERT_SET = 10,
     MYLITE_STMT_SCALAR_SELECT = 11,
     MYLITE_STMT_TABLE_SELECT = 12,
+    MYLITE_STMT_UPDATE = 13,
 };
 
 enum mylite_information_schema_table {
@@ -43,9 +44,18 @@ enum mylite_information_schema_table {
 };
 
 enum mylite_mysql_condition_code {
+    MYLITE_MYSQL_ER_NO_DB_ERROR = 1046,
+    MYLITE_MYSQL_ER_BAD_NULL_ERROR = 1048,
+    MYLITE_MYSQL_ER_BAD_DB_ERROR = 1049,
     MYLITE_MYSQL_ER_NON_UNIQ_ERROR = 1052,
     MYLITE_MYSQL_ER_BAD_FIELD_ERROR = 1054,
+    MYLITE_MYSQL_ER_DUP_ENTRY = 1062,
+    MYLITE_MYSQL_ER_NO_SUCH_TABLE = 1146,
     MYLITE_MYSQL_ER_WRONG_ARGUMENTS = 1210,
+    MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE = 1292,
+    MYLITE_MYSQL_ER_NO_DEFAULT_FOR_FIELD = 1364,
+    MYLITE_MYSQL_ER_DIVISION_BY_ZERO = 1365,
+    MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE_FOR_FIELD = 1366,
 };
 
 struct mylite_schema_options {
@@ -205,6 +215,32 @@ struct mylite_insert_set_assignment {
 struct mylite_insert_set_plan {
     struct mylite_insert_set_assignment *assignments;
     size_t assignment_count;
+};
+
+struct mylite_update_target {
+    char *schema_name;
+    char *table_name;
+    char *alias;
+};
+
+struct mylite_update_column_reference {
+    char *schema_name;
+    char *table_name;
+    char *column_name;
+};
+
+struct mylite_update_assignment {
+    struct mylite_update_column_reference target;
+    const struct mylite_sql_ast_node *value;
+};
+
+struct mylite_update_plan {
+    struct mylite_update_target target;
+    struct mylite_update_assignment *assignments;
+    size_t assignment_count;
+    const struct mylite_sql_ast_node *where_clause;
+    const struct mylite_sql_ast_node *order_by_clause;
+    const struct mylite_sql_ast_node *limit_clause;
 };
 
 struct mylite_insert_table_column {
@@ -372,6 +408,34 @@ struct mylite_table_select_expression_context {
     bool order_resolution;
 };
 
+struct mylite_update_bound_assignment {
+    size_t column_index;
+    const struct mylite_sql_ast_node *value;
+};
+
+struct mylite_update_order_plan {
+    struct mylite_select_order_key *order_keys;
+    size_t order_key_count;
+};
+
+struct mylite_update_row {
+    sqlite3_int64 rowid;
+    struct mylite_expression_value *values;
+    struct mylite_expression_value *order_values;
+    size_t value_count;
+    size_t order_value_count;
+};
+
+struct mylite_update_rowset {
+    struct mylite_update_row *rows;
+    size_t row_count;
+};
+
+struct mylite_update_expression_context {
+    const struct mylite_select_table *table;
+    const struct mylite_update_row *row;
+};
+
 struct mylite_connection_charset_request {
     const char *character_set_name;
     const char *collation_name;
@@ -402,13 +466,16 @@ struct mylite_stmt {
     struct mylite_drop_table_plan drop_table;
     struct mylite_insert_values_plan insert_values;
     struct mylite_insert_set_plan insert_set;
+    struct mylite_update_plan update;
     struct mylite_select_plan select_plan;
     struct mylite_result_metadata result_metadata;
     struct mylite_scalar_result scalar_result;
     struct mylite_table_select_result select_result;
     struct mylite_sql_ast select_predicate_ast;
+    struct mylite_sql_ast update_ast;
     const struct mylite_sql_ast_node *select_predicate;
     char *select_sql_text;
+    char *update_sql_text;
     struct mylite_cached_expression_value *select_constant_values;
     size_t select_constant_value_count;
     bool select_constant_predicate_evaluated;
@@ -416,6 +483,7 @@ struct mylite_stmt {
     char *character_set_name;
     char *collation_name;
     int64_t affected_rows;
+    uint64_t matched_rows;
     bool use_default_connection_charset;
 };
 
@@ -629,6 +697,9 @@ static int prepare_insert_values_statement(mylite_db *database,
 static int prepare_insert_set_statement(mylite_db *database,
                                         const struct mylite_sql_ast_node *statement,
                                         mylite_stmt **out_stmt);
+static int prepare_update_statement(mylite_db *database,
+                                    const struct mylite_sql_ast_node *statement, const char *sql,
+                                    size_t sql_length, mylite_stmt **out_stmt);
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt);
 static int prepare_information_schema_select_statement(mylite_db *database,
                                                        const struct mylite_sql_ast_node *statement,
@@ -739,6 +810,11 @@ static int clone_table_select_expression_node(mylite_stmt *stmt,
                                               const struct mylite_sql_ast_node *expression,
                                               const char *source_sql, size_t sql_length,
                                               struct mylite_sql_ast_node **out_node);
+static int clone_update_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_ast_node *statement,
+                                   const char *sql, size_t sql_length);
+static int clone_update_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_node *node,
+                                 const char *source_sql, size_t sql_length,
+                                 const struct mylite_sql_ast_node **out_node);
 static int clone_sql_ast_subtree(struct mylite_sql_ast *ast, const struct mylite_sql_ast_node *node,
                                  const char *source_sql, const char *sql_copy, size_t sql_length,
                                  struct mylite_sql_ast_node **out_node);
@@ -761,6 +837,156 @@ static int execute_create_table_statement(mylite_stmt *stmt);
 static int execute_drop_table_statement(mylite_stmt *stmt);
 static int execute_insert_values_statement(mylite_stmt *stmt);
 static int execute_insert_set_statement(mylite_stmt *stmt);
+static int execute_update_statement(mylite_stmt *stmt);
+static int copy_update_target_to_select_table(mylite_stmt *stmt, struct mylite_select_table *table);
+static int bind_update_subset(mylite_stmt *stmt, const struct mylite_select_table *table,
+                              struct mylite_update_bound_assignment **out_assignments);
+static int reject_deferred_update_clauses(mylite_stmt *stmt);
+static int bind_update_assignment_targets(mylite_stmt *stmt,
+                                          const struct mylite_select_table *table,
+                                          struct mylite_update_bound_assignment *assignments,
+                                          size_t assignment_count);
+static int bind_update_assignment_values(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                         struct mylite_update_bound_assignment *assignments,
+                                         size_t assignment_count);
+static int bind_update_assignment_expression(mylite_stmt *stmt,
+                                             const struct mylite_select_table *table,
+                                             const struct mylite_sql_ast_node *expression);
+static int bind_update_where_clause(mylite_stmt *stmt, const struct mylite_select_table *table);
+static int bind_update_predicate_expression(mylite_stmt *stmt,
+                                            const struct mylite_select_table *table,
+                                            const struct mylite_sql_ast_node *expression,
+                                            const char *clause_context);
+static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                       struct mylite_update_order_plan *order_plan);
+static int bind_update_order_expression(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                        const struct mylite_sql_ast_node *expression);
+static int add_update_order_key(struct mylite_update_order_plan *plan,
+                                const struct mylite_select_order_key *order_key);
+static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                   const struct mylite_update_order_plan *order_plan,
+                                   struct mylite_update_rowset *rowset);
+static char *build_update_scan_sql(mylite_db *database, const struct mylite_select_table *table);
+static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                  sqlite3_stmt *scan, struct mylite_update_row *out_row);
+static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
+                                           struct mylite_expression_value *out_value);
+static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                       const struct mylite_update_row *row, bool *out_matches);
+static int evaluate_update_order_values(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                        const struct mylite_update_order_plan *order_plan,
+                                        struct mylite_update_row *row);
+static int evaluate_update_order_key(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                     const struct mylite_update_row *row,
+                                     const struct mylite_select_order_key *order_key,
+                                     struct mylite_expression_value *out_value);
+static int append_update_row(mylite_stmt *stmt, struct mylite_update_rowset *rowset,
+                             struct mylite_update_row *row);
+static int sort_update_rowset(struct mylite_update_rowset *rowset,
+                              const struct mylite_update_order_plan *order_plan);
+// NOLINTNEXTLINE(misc-no-recursion)
+static int merge_sort_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
+                                  size_t first, size_t last,
+                                  const struct mylite_update_order_plan *order_plan);
+static void merge_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
+                              size_t first, size_t middle, size_t last,
+                              const struct mylite_update_order_plan *order_plan);
+static int compare_update_rows(const struct mylite_update_row *left,
+                               const struct mylite_update_row *right,
+                               const struct mylite_update_order_plan *order_plan);
+static void apply_update_limit(const struct mylite_sql_ast_node *limit_clause,
+                               struct mylite_update_rowset *rowset);
+static int execute_update_rows_transaction(mylite_stmt *stmt,
+                                           const struct mylite_select_table *table,
+                                           const struct mylite_insert_table *write_table,
+                                           const struct mylite_update_bound_assignment *assignments,
+                                           size_t assignment_count,
+                                           const struct mylite_update_rowset *rowset);
+static int execute_update_row(mylite_stmt *stmt, sqlite3_stmt *update,
+                              const struct mylite_select_table *table,
+                              const struct mylite_insert_table *write_table,
+                              const struct mylite_update_bound_assignment *assignments,
+                              size_t assignment_count, const struct mylite_update_row *stored,
+                              uint64_t *next_auto_increment);
+static int write_update_candidate(mylite_stmt *stmt, sqlite3_stmt *update,
+                                  const struct mylite_select_table *table,
+                                  const struct mylite_insert_table *write_table,
+                                  const struct mylite_update_row *candidate,
+                                  uint64_t *next_auto_increment);
+static char *build_update_physical_sql(mylite_db *database,
+                                       const struct mylite_select_table *table);
+static int copy_update_candidate_values(mylite_stmt *stmt, const struct mylite_update_row *row,
+                                        struct mylite_update_row *candidate);
+static int apply_update_assignments(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                    const struct mylite_insert_table *write_table,
+                                    const struct mylite_update_bound_assignment *assignments,
+                                    size_t assignment_count, struct mylite_update_row *candidate);
+static int evaluate_update_assignment_value(mylite_stmt *stmt,
+                                            const struct mylite_select_table *table,
+                                            const struct mylite_insert_table *write_table,
+                                            const struct mylite_update_row *candidate,
+                                            size_t target_column,
+                                            const struct mylite_sql_ast_node *expression,
+                                            struct mylite_expression_value *out_value);
+static int resolve_update_default_value(mylite_stmt *stmt,
+                                        const struct mylite_insert_table_column *column,
+                                        struct mylite_expression_value *out_value);
+static int copy_insert_bound_value_to_expression(const struct mylite_insert_bound_value *value,
+                                                 struct mylite_expression_value *out_value);
+static int validate_update_assignment_value(mylite_stmt *stmt,
+                                            const struct mylite_insert_table_column *column,
+                                            struct mylite_expression_value *value);
+static int validate_update_unique_indexes(mylite_stmt *stmt,
+                                          const struct mylite_select_table *table,
+                                          const struct mylite_insert_table *write_table,
+                                          const struct mylite_update_row *candidate);
+static int update_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                         const struct mylite_insert_table *write_table,
+                                         const struct mylite_insert_unique_index *index,
+                                         const struct mylite_update_row *candidate,
+                                         bool *out_conflicts);
+static char *build_update_unique_check_sql(mylite_db *database,
+                                           const struct mylite_select_table *table,
+                                           const struct mylite_insert_table *write_table,
+                                           const struct mylite_insert_unique_index *index);
+static int bind_update_unique_check_values(mylite_db *database, sqlite3_stmt *check,
+                                           const struct mylite_insert_unique_index *index,
+                                           const struct mylite_update_row *candidate);
+static int bind_update_row_values(mylite_db *database, sqlite3_stmt *update,
+                                  const struct mylite_update_row *candidate);
+static int bind_update_value(sqlite3_stmt *stmt, int index,
+                             const struct mylite_expression_value *value);
+static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                         const struct mylite_insert_table *write_table,
+                                         const struct mylite_update_row *candidate,
+                                         uint64_t *next_auto_increment);
+static bool update_expression_value_positive_uint64(const struct mylite_expression_value *value,
+                                                    uint64_t *out_value);
+static bool update_row_changed(const struct mylite_update_row *stored,
+                               const struct mylite_update_row *candidate);
+static bool update_values_equal(const struct mylite_expression_value *left,
+                                const struct mylite_expression_value *right);
+static int resolve_update_expression_identifier(void *user_data,
+                                                const struct mylite_sql_ast_node *identifier,
+                                                struct mylite_expression_value *out_value);
+static size_t update_column_reference_index(const struct mylite_select_table *table,
+                                            const struct mylite_update_column_reference *reference);
+static bool
+update_column_reference_qualifiers_match(const struct mylite_select_table *table,
+                                         const struct mylite_update_column_reference *reference);
+static char *
+copy_update_column_reference_name(const struct mylite_update_column_reference *reference);
+static int set_update_unknown_column_error(mylite_db *database, const char *column_name,
+                                           const char *clause_context);
+static int set_update_unknown_field_error(mylite_db *database, const char *column_name);
+static int set_update_duplicate_entry_error(mylite_db *database, const char *table_name,
+                                            const struct mylite_insert_unique_index *index,
+                                            const struct mylite_update_row *candidate);
+static char *copy_update_duplicate_entry_value(const struct mylite_insert_unique_index *index,
+                                               const struct mylite_update_row *candidate);
+static int set_update_unsupported_expression_error(mylite_db *database, const char *clause_context);
+static int set_update_unsupported_clause_error(mylite_db *database);
+static int set_update_unsupported_assignment_error(mylite_db *database);
 static int execute_scalar_select_statement(mylite_stmt *stmt);
 static int execute_table_select_statement(mylite_stmt *stmt);
 static int materialize_table_select_result(mylite_stmt *stmt);
@@ -854,14 +1080,16 @@ static int delete_table_catalog_row(mylite_db *database, const char *sql,
 static int validate_insert_values_target(mylite_stmt *stmt, const char **out_schema_name);
 static int load_insert_table(mylite_stmt *stmt, const char *schema_name,
                              struct mylite_insert_table *out_table);
-static int load_insert_columns(mylite_stmt *stmt, const char *schema_name,
+static int load_write_table(mylite_stmt *stmt, const char *schema_name, const char *table_name,
+                            struct mylite_insert_table *out_table);
+static int load_insert_columns(mylite_stmt *stmt, const char *schema_name, const char *table_name,
                                struct mylite_insert_table *table);
 static int load_insert_column_from_catalog_row(mylite_stmt *stmt, sqlite3_stmt *select,
                                                struct mylite_insert_table *table);
 static int add_insert_table_column(struct mylite_insert_table *table,
                                    struct mylite_insert_table_column column);
 static int load_insert_unique_indexes(mylite_stmt *stmt, const char *schema_name,
-                                      struct mylite_insert_table *table);
+                                      const char *table_name, struct mylite_insert_table *table);
 static int add_insert_unique_index_part(struct mylite_db *database,
                                         struct mylite_insert_table *table,
                                         const struct mylite_insert_unique_index_part_name *part);
@@ -1004,6 +1232,8 @@ static int bind_insert_unique_check_values(mylite_db *database, sqlite3_stmt *ch
                                            const struct mylite_insert_bound_value *values);
 static int update_insert_auto_increment(mylite_stmt *stmt, const char *schema_name,
                                         uint64_t next_auto_increment);
+static int update_table_auto_increment(mylite_stmt *stmt, const char *schema_name,
+                                       const char *table_name, uint64_t next_auto_increment);
 static bool insert_row_uses_all_defaults(const struct mylite_insert_values_plan *plan,
                                          size_t row_index);
 static size_t insert_row_target_column_count(const struct mylite_insert_values_plan *plan,
@@ -1065,6 +1295,7 @@ static int copy_insert_values_statement(const struct mylite_sql_ast_node *statem
                                         mylite_stmt *stmt);
 static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement,
                                      mylite_stmt *stmt);
+static int copy_update_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt);
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt);
 static int copy_create_table_name(const struct mylite_sql_ast_node *table_name,
@@ -1103,6 +1334,20 @@ static int copy_insert_set_assignment(const struct mylite_sql_ast_node *assignme
                                       struct mylite_insert_set_plan *plan);
 static int add_insert_set_assignment(struct mylite_insert_set_plan *plan,
                                      struct mylite_insert_set_assignment assignment);
+static int copy_update_target(const struct mylite_sql_ast_node *target,
+                              struct mylite_update_target *out_target);
+static int copy_update_table_name(const struct mylite_sql_ast_node *table_name,
+                                  struct mylite_update_target *target);
+static int copy_update_assignments(const struct mylite_sql_ast_node *assignments,
+                                   struct mylite_update_plan *plan);
+static int copy_update_assignment(const struct mylite_sql_ast_node *assignment,
+                                  struct mylite_update_plan *plan);
+static int add_update_assignment(struct mylite_update_plan *plan,
+                                 struct mylite_update_assignment assignment);
+static int copy_update_column_reference(const struct mylite_sql_ast_node *identifier,
+                                        struct mylite_update_column_reference *out_reference);
+static int copy_update_column_reference_parts(const struct mylite_sql_ast_node *identifier,
+                                              char **parts, size_t *part_count);
 static int copy_create_table_elements(const struct mylite_sql_ast_node *elements,
                                       struct mylite_create_table_plan *plan);
 static int copy_create_table_column(const struct mylite_sql_ast_node *column_node,
@@ -1210,6 +1455,13 @@ static void insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
 static void insert_set_plan_deinit(struct mylite_insert_set_plan *plan);
 static void insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment);
 static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference);
+static void update_plan_deinit(struct mylite_update_plan *plan);
+static void update_target_deinit(struct mylite_update_target *target);
+static void update_assignment_deinit(struct mylite_update_assignment *assignment);
+static void update_column_reference_deinit(struct mylite_update_column_reference *reference);
+static void update_order_plan_deinit(struct mylite_update_order_plan *plan);
+static void update_rowset_deinit(struct mylite_update_rowset *rowset);
+static void update_row_deinit(struct mylite_update_row *row);
 static void insert_row_deinit(struct mylite_insert_row *row);
 static void insert_value_deinit(struct mylite_insert_value *value);
 static void insert_value_child_deinit(struct mylite_insert_value *value);
@@ -1374,12 +1626,15 @@ void mylite_finalize(mylite_stmt *stmt)
     drop_table_plan_deinit(&stmt->drop_table);
     insert_values_plan_deinit(&stmt->insert_values);
     insert_set_plan_deinit(&stmt->insert_set);
+    update_plan_deinit(&stmt->update);
     select_plan_deinit(&stmt->select_plan);
     result_metadata_deinit(&stmt->result_metadata);
     scalar_result_deinit(&stmt->scalar_result);
     table_select_result_deinit(&stmt->select_result);
     mylite_sql_ast_deinit(&stmt->select_predicate_ast);
+    mylite_sql_ast_deinit(&stmt->update_ast);
     free(stmt->select_sql_text);
+    free(stmt->update_sql_text);
     select_constant_values_deinit(stmt);
     free(stmt);
 }
@@ -1712,6 +1967,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_insert_values_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
             return prepare_insert_set_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_UPDATE_STATEMENT:
+            return prepare_update_statement(database, statement, sql, sql_length, out_stmt);
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
             return prepare_show_schemas_statement(database, out_stmt);
         case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -1777,6 +2034,10 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_INSERT_VALUE_LIST:
         case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
         case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+        case MYLITE_SQL_AST_UPDATE_TARGET:
+        case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
+        case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+        case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
             break;
         }
     }
@@ -1838,6 +2099,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
     case MYLITE_SQL_AST_DEFAULT:
     case MYLITE_SQL_AST_IF_EXISTS:
     case MYLITE_SQL_AST_IF_NOT_EXISTS:
@@ -1867,6 +2129,10 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_VALUE_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_UPDATE_TARGET:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
         return MYLITE_UNSUPPORTED;
     }
 
@@ -1916,6 +2182,7 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
     case MYLITE_SQL_AST_IF_EXISTS:
     case MYLITE_SQL_AST_IF_NOT_EXISTS:
     case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
@@ -1945,6 +2212,10 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_VALUE_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_UPDATE_TARGET:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
         return MYLITE_UNSUPPORTED;
     }
 
@@ -1977,6 +2248,40 @@ static int prepare_insert_set_statement(mylite_db *database,
                                         mylite_stmt **out_stmt)
 {
     return prepare_custom_statement(database, MYLITE_STMT_INSERT_SET, statement, out_stmt);
+}
+
+static int prepare_update_statement(mylite_db *database,
+                                    const struct mylite_sql_ast_node *statement, const char *sql,
+                                    size_t sql_length, mylite_stmt **out_stmt)
+{
+    mylite_stmt *stmt = calloc(1U, sizeof(*stmt));
+    int status = MYLITE_OK;
+
+    if (stmt == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    *stmt = (mylite_stmt){
+        .database = database,
+        .kind = MYLITE_STMT_UPDATE,
+        .affected_rows = 0,
+    };
+
+    status = copy_update_statement(statement, stmt);
+    if (status == MYLITE_OK) {
+        status = clone_update_plan_nodes(stmt, statement, sql, sql_length);
+    }
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(database, "out of memory");
+        }
+        mylite_finalize(stmt);
+        return status;
+    }
+
+    *out_stmt = stmt;
+    return MYLITE_OK;
 }
 
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt)
@@ -2543,6 +2848,11 @@ static int bind_select_predicate_expression(mylite_db *database,
     case MYLITE_SQL_AST_ORDER_ITEM:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
     case MYLITE_SQL_AST_LIMIT_BOUND:
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_UPDATE_TARGET:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
         return set_select_unsupported_where_error(database);
     }
 
@@ -2753,6 +3063,11 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_ORDER_ITEM:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
     case MYLITE_SQL_AST_LIMIT_BOUND:
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_UPDATE_TARGET:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
         return set_select_unsupported_order_error(database);
     }
 
@@ -3530,6 +3845,67 @@ static int clone_table_select_expression_node(mylite_stmt *stmt,
     return status;
 }
 
+static int clone_update_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_ast_node *statement,
+                                   const char *sql, size_t sql_length)
+{
+    const struct mylite_sql_ast_node *assignments = child_at(statement, 1U);
+    size_t assignment_index = 0U;
+    int status = MYLITE_OK;
+
+    stmt->update_sql_text = copy_span_text(sql, sql_length);
+    if (stmt->update_sql_text == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    for (const struct mylite_sql_ast_node *assignment =
+             assignments == NULL ? NULL : assignments->first_child;
+         assignment != NULL; assignment = assignment->next_sibling, ++assignment_index) {
+        const struct mylite_sql_ast_node *clone = NULL;
+
+        if (assignment_index >= stmt->update.assignment_count) {
+            return MYLITE_UNSUPPORTED;
+        }
+        status = clone_update_ast_node(stmt, child_at(assignment, 1U), sql, sql_length, &clone);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        stmt->update.assignments[assignment_index].value = clone;
+    }
+    if (assignment_index != stmt->update.assignment_count) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = clone_update_ast_node(stmt, find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE),
+                                   sql, sql_length, &stmt->update.where_clause);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    status = clone_update_ast_node(stmt, find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE),
+                                   sql, sql_length, &stmt->update.order_by_clause);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return clone_update_ast_node(stmt,
+                                 find_child_kind(statement, MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE),
+                                 sql, sql_length, &stmt->update.limit_clause);
+}
+
+static int clone_update_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_node *node,
+                                 const char *source_sql, size_t sql_length,
+                                 const struct mylite_sql_ast_node **out_node)
+{
+    struct mylite_sql_ast_node *clone = NULL;
+    int status = clone_sql_ast_subtree(&stmt->update_ast, node, source_sql, stmt->update_sql_text,
+                                       sql_length, &clone);
+
+    if (status == MYLITE_NOMEM) {
+        (void)set_error_message(stmt->database, "out of memory");
+    }
+    *out_node = clone;
+    return status;
+}
+
 // NOLINTNEXTLINE(misc-no-recursion)
 static int clone_sql_ast_subtree(struct mylite_sql_ast *ast, const struct mylite_sql_ast_node *node,
                                  const char *source_sql, const char *sql_copy, size_t sql_length,
@@ -3671,6 +4047,9 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     case MYLITE_STMT_INSERT_SET:
         status = copy_insert_set_statement(statement, stmt);
         break;
+    case MYLITE_STMT_UPDATE:
+        status = MYLITE_UNSUPPORTED;
+        break;
     case MYLITE_STMT_SCALAR_SELECT:
         status = copy_scalar_select_statement(statement, stmt);
         break;
@@ -3753,6 +4132,9 @@ static int execute_custom_statement(mylite_stmt *stmt)
         break;
     case MYLITE_STMT_INSERT_SET:
         status = execute_insert_set_statement(stmt);
+        break;
+    case MYLITE_STMT_UPDATE:
+        status = execute_update_statement(stmt);
         break;
     case MYLITE_STMT_SCALAR_SELECT:
         return execute_scalar_select_statement(stmt);
@@ -4612,6 +4994,1439 @@ static int execute_insert_set_statement(mylite_stmt *stmt)
     return status;
 }
 
+static int execute_update_statement(mylite_stmt *stmt)
+{
+    struct mylite_select_table table = {0};
+    struct mylite_insert_table write_table = {0};
+    struct mylite_update_order_plan order_plan = {0};
+    struct mylite_update_bound_assignment *assignments = NULL;
+    struct mylite_update_rowset rowset = {0};
+    int status = MYLITE_OK;
+
+    stmt->affected_rows = 0;
+    stmt->matched_rows = 0U;
+
+    status = copy_update_target_to_select_table(stmt, &table);
+    if (status == MYLITE_OK) {
+        status = resolve_select_table_target(stmt->database, &table);
+    }
+    if (status == MYLITE_OK) {
+        status = load_select_columns(stmt->database, &table);
+    }
+    if (status == MYLITE_OK) {
+        status = load_write_table(stmt, table.schema_name, table.table_name, &write_table);
+    }
+    if (status == MYLITE_OK) {
+        status = bind_update_subset(stmt, &table, &assignments);
+    }
+    if (status == MYLITE_OK) {
+        status = bind_update_order_by_clause(stmt, &table, &order_plan);
+    }
+    if (status == MYLITE_OK) {
+        status = materialize_update_rows(stmt, &table, &order_plan, &rowset);
+    }
+    if (status == MYLITE_OK) {
+        status = sort_update_rowset(&rowset, &order_plan);
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(stmt->database, "out of memory");
+        }
+    }
+    if (status == MYLITE_OK) {
+        apply_update_limit(stmt->update.limit_clause, &rowset);
+        stmt->matched_rows = rowset.row_count;
+        status = execute_update_rows_transaction(stmt, &table, &write_table, assignments,
+                                                 stmt->update.assignment_count, &rowset);
+    }
+
+    free(assignments);
+    update_rowset_deinit(&rowset);
+    update_order_plan_deinit(&order_plan);
+    insert_table_deinit(&write_table);
+    select_table_deinit(&table);
+    if (status != MYLITE_OK) {
+        stmt->affected_rows = -1;
+    }
+    return status;
+}
+
+static int copy_update_target_to_select_table(mylite_stmt *stmt, struct mylite_select_table *table)
+{
+    const struct mylite_update_target *target = &stmt->update.target;
+
+    if (target->schema_name != NULL) {
+        table->schema_name = copy_span_text(target->schema_name, strlen(target->schema_name));
+        if (table->schema_name == NULL) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    table->table_name = copy_span_text(target->table_name, strlen(target->table_name));
+    if (table->table_name == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    if (target->alias != NULL) {
+        table->alias = copy_span_text(target->alias, strlen(target->alias));
+        if (table->alias == NULL) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int bind_update_subset(mylite_stmt *stmt, const struct mylite_select_table *table,
+                              struct mylite_update_bound_assignment **out_assignments)
+{
+    size_t assignment_count = stmt->update.assignment_count;
+    struct mylite_update_bound_assignment *assignments = NULL;
+    int status = reject_deferred_update_clauses(stmt);
+
+    *out_assignments = NULL;
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (assignment_count == 0U) {
+        return set_update_unsupported_assignment_error(stmt->database);
+    }
+
+    assignments = calloc(assignment_count, sizeof(*assignments));
+    if (assignments == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = bind_update_assignment_targets(stmt, table, assignments, assignment_count);
+    if (status == MYLITE_OK) {
+        status = bind_update_assignment_values(stmt, table, assignments, assignment_count);
+    }
+    if (status == MYLITE_OK) {
+        status = bind_update_where_clause(stmt, table);
+    }
+    if (status != MYLITE_OK) {
+        free(assignments);
+        return status;
+    }
+
+    *out_assignments = assignments;
+    return MYLITE_OK;
+}
+
+static int reject_deferred_update_clauses(mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *limit = stmt->update.limit_clause;
+
+    if (limit == NULL) {
+        return MYLITE_OK;
+    }
+    if (limit->kind != MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE || child_at(limit, 0U) == NULL ||
+        child_at(limit, 0U)->kind != MYLITE_SQL_AST_LIMIT_BOUND ||
+        !child_at(limit, 0U)->has_limit_bound_value) {
+        return set_update_unsupported_clause_error(stmt->database);
+    }
+    return MYLITE_OK;
+}
+
+static int bind_update_assignment_targets(mylite_stmt *stmt,
+                                          const struct mylite_select_table *table,
+                                          struct mylite_update_bound_assignment *assignments,
+                                          size_t assignment_count)
+{
+    for (size_t index = 0U; index < assignment_count; ++index) {
+        const struct mylite_update_assignment *assignment = &stmt->update.assignments[index];
+        size_t column_index = update_column_reference_index(table, &assignment->target);
+
+        if (column_index == table->column_count) {
+            char *reference = copy_update_column_reference_name(&assignment->target);
+            int status = MYLITE_OK;
+
+            if (reference == NULL) {
+                (void)set_error_message(stmt->database, "out of memory");
+                return MYLITE_NOMEM;
+            }
+            status = set_update_unknown_field_error(stmt->database, reference);
+            free(reference);
+            return status;
+        }
+        assignments[index] = (struct mylite_update_bound_assignment){
+            .column_index = column_index,
+            .value = assignment->value,
+        };
+    }
+    return MYLITE_OK;
+}
+
+static int bind_update_assignment_values(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                         struct mylite_update_bound_assignment *assignments,
+                                         size_t assignment_count)
+{
+    for (size_t index = 0U; index < assignment_count; ++index) {
+        int status = bind_update_assignment_expression(stmt, table, assignments[index].value);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int bind_update_assignment_expression(mylite_stmt *stmt,
+                                             const struct mylite_select_table *table,
+                                             const struct mylite_sql_ast_node *expression)
+{
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT) {
+        return MYLITE_OK;
+    }
+    return bind_update_predicate_expression(stmt, table, expression, "field list");
+}
+
+static int bind_update_where_clause(mylite_stmt *stmt, const struct mylite_select_table *table)
+{
+    const struct mylite_sql_ast_node *predicate = child_at(stmt->update.where_clause, 0U);
+
+    if (stmt->update.where_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (stmt->update.where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE || predicate == NULL) {
+        return set_update_unsupported_clause_error(stmt->database);
+    }
+    return bind_update_predicate_expression(stmt, table, predicate, "where clause");
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_update_predicate_expression(mylite_stmt *stmt,
+                                            const struct mylite_select_table *table,
+                                            const struct mylite_sql_ast_node *expression,
+                                            const char *clause_context)
+{
+    if (expression == NULL) {
+        return set_update_unsupported_clause_error(stmt->database);
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_IDENTIFIER:
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
+        size_t column_index = table->column_count;
+        int status = resolve_select_column_reference(table, expression, &column_index);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (column_index == table->column_count) {
+            char *reference = copy_select_reference_name(expression);
+
+            if (reference == NULL) {
+                (void)set_error_message(stmt->database, "out of memory");
+                return MYLITE_NOMEM;
+            }
+            status = set_update_unknown_column_error(stmt->database, reference, clause_context);
+            free(reference);
+            return status;
+        }
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+    case MYLITE_SQL_AST_EXPRESSION_LIST:
+        for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
+             child = child->next_sibling) {
+            int status = bind_update_predicate_expression(stmt, table, child, clause_context);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_DEFAULT:
+    case MYLITE_SQL_AST_SCRIPT:
+    case MYLITE_SQL_AST_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_USE_STATEMENT:
+    case MYLITE_SQL_AST_SELECT_LIST:
+    case MYLITE_SQL_AST_SELECT_ITEM:
+    case MYLITE_SQL_AST_FROM_DUAL:
+    case MYLITE_SQL_AST_FROM_TABLE:
+    case MYLITE_SQL_AST_WILDCARD:
+    case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
+    case MYLITE_SQL_AST_IF_EXISTS:
+    case MYLITE_SQL_AST_IF_NOT_EXISTS:
+    case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
+    case MYLITE_SQL_AST_SCHEMA_OPTION:
+    case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
+    case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION:
+    case MYLITE_SQL_AST_COLUMN_TYPE:
+    case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
+    case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
+    case MYLITE_SQL_AST_KEY_PART_LIST:
+    case MYLITE_SQL_AST_KEY_PART:
+    case MYLITE_SQL_AST_INDEX_TYPE:
+    case MYLITE_SQL_AST_INDEX_OPTION_LIST:
+    case MYLITE_SQL_AST_INDEX_OPTION:
+    case MYLITE_SQL_AST_SECONDARY_INDEX:
+    case MYLITE_SQL_AST_UNIQUE_INDEX:
+    case MYLITE_SQL_AST_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_TABLE_OPTION:
+    case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TABLE_NAME_LIST:
+    case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_COLUMN_LIST:
+    case MYLITE_SQL_AST_INSERT_ROW_LIST:
+    case MYLITE_SQL_AST_INSERT_ROW:
+    case MYLITE_SQL_AST_INSERT_VALUE_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_WHERE_CLAUSE:
+    case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
+    case MYLITE_SQL_AST_ORDER_ITEM_LIST:
+    case MYLITE_SQL_AST_ORDER_ITEM:
+    case MYLITE_SQL_AST_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_LIMIT_BOUND:
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_UPDATE_TARGET:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
+        return set_update_unsupported_expression_error(stmt->database, clause_context);
+    }
+
+    return set_update_unsupported_expression_error(stmt->database, clause_context);
+}
+
+static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                       struct mylite_update_order_plan *order_plan)
+{
+    const struct mylite_sql_ast_node *items = child_at(stmt->update.order_by_clause, 0U);
+
+    if (stmt->update.order_by_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (stmt->update.order_by_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE || items == NULL ||
+        items->kind != MYLITE_SQL_AST_ORDER_ITEM_LIST) {
+        return set_update_unsupported_clause_error(stmt->database);
+    }
+
+    for (const struct mylite_sql_ast_node *item = items->first_child; item != NULL;
+         item = item->next_sibling) {
+        const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+        struct mylite_select_order_key order_key = {
+            .kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION,
+            .direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC,
+            .expression = expression,
+        };
+        int status = MYLITE_OK;
+
+        if (item->kind != MYLITE_SQL_AST_ORDER_ITEM || expression == NULL) {
+            return set_update_unsupported_clause_error(stmt->database);
+        }
+        if (item->key_part_order == MYLITE_SQL_AST_KEY_PART_ORDER_DESC) {
+            order_key.direction = MYLITE_SQL_AST_KEY_PART_ORDER_DESC;
+        }
+        status = bind_update_order_expression(stmt, table, expression);
+        if (status == MYLITE_OK) {
+            status = add_update_order_key(order_plan, &order_key);
+            if (status == MYLITE_NOMEM) {
+                (void)set_error_message(stmt->database, "out of memory");
+            }
+        }
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return order_plan->order_key_count == 0U ? set_update_unsupported_clause_error(stmt->database)
+                                             : MYLITE_OK;
+}
+
+static int bind_update_order_expression(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                        const struct mylite_sql_ast_node *expression)
+{
+    return bind_update_predicate_expression(stmt, table, expression, "order clause");
+}
+
+static int add_update_order_key(struct mylite_update_order_plan *plan,
+                                const struct mylite_select_order_key *order_key)
+{
+    struct mylite_select_order_key *keys =
+        realloc(plan->order_keys, (plan->order_key_count + 1U) * sizeof(*plan->order_keys));
+
+    if (keys == NULL) {
+        return MYLITE_NOMEM;
+    }
+    plan->order_keys = keys;
+    plan->order_keys[plan->order_key_count++] = *order_key;
+    return MYLITE_OK;
+}
+
+static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                   const struct mylite_update_order_plan *order_plan,
+                                   struct mylite_update_rowset *rowset)
+{
+    sqlite3_stmt *scan = NULL;
+    char *scan_sql = build_update_scan_sql(stmt->database, table);
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    if (scan_sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, scan_sql, -1, SQLITE_PREPARE_PERSISTENT, &scan,
+                            NULL);
+    sqlite3_free(scan_sql);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    while ((rc = sqlite3_step(scan)) == SQLITE_ROW) {
+        struct mylite_update_row row = {0};
+        bool matches = false;
+
+        status = copy_update_sqlite_row(stmt, table, scan, &row);
+        if (status == MYLITE_OK) {
+            status = evaluate_update_row_matches(stmt, table, &row, &matches);
+        }
+        if (status == MYLITE_OK && matches) {
+            status = evaluate_update_order_values(stmt, table, order_plan, &row);
+        }
+        if (status == MYLITE_OK && matches) {
+            status = append_update_row(stmt, rowset, &row);
+        }
+        update_row_deinit(&row);
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(scan);
+            return status;
+        }
+    }
+    sqlite3_finalize(scan);
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static char *build_update_scan_sql(mylite_db *database, const struct mylite_select_table *table)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_append(sql, "SELECT rowid", (int)strlen("SELECT rowid"));
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        sqlite3_str_appendf(sql, ",\"%w\"", table->columns[index].name);
+    }
+    sqlite3_str_appendf(sql, " FROM \"%w\"", table->physical_name);
+    return sqlite3_str_finish(sql);
+}
+
+static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                  sqlite3_stmt *scan, struct mylite_update_row *out_row)
+{
+    out_row->rowid = sqlite3_column_int64(scan, 0);
+    out_row->values = calloc(table->column_count, sizeof(*out_row->values));
+    if (out_row->values == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    out_row->value_count = table->column_count;
+
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        if (copy_update_sqlite_column_value(scan, (int)index + 1, &out_row->values[index]) != 0) {
+            update_row_deinit(out_row);
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
+                                           struct mylite_expression_value *out_value)
+{
+    int sqlite_type = sqlite3_column_type(scan, column);
+
+    switch (sqlite_type) {
+    case SQLITE_NULL:
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    case SQLITE_INTEGER:
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = sqlite3_column_int64(scan, column),
+        };
+        return 0;
+    case SQLITE_FLOAT:
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_REAL,
+            .real_value = sqlite3_column_double(scan, column),
+        };
+        return 0;
+    case SQLITE_TEXT:
+    case SQLITE_BLOB: {
+        const unsigned char *text = sqlite3_column_text(scan, column);
+        int bytes = sqlite3_column_bytes(scan, column);
+
+        out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+        out_value->text_value = copy_span_text((const char *)text, bytes < 0 ? 0U : (size_t)bytes);
+        return out_value->text_value == NULL ? -1 : 0;
+    }
+    default:
+        break;
+    }
+    return -1;
+}
+
+static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                       const struct mylite_update_row *row, bool *out_matches)
+{
+    struct mylite_update_expression_context user_context = {
+        .table = table,
+        .row = row,
+    };
+    struct mylite_expression_eval_context context = {
+        .user_data = &user_context,
+        .resolve_identifier = resolve_update_expression_identifier,
+    };
+    struct mylite_expression_value value = {0};
+    int truth = -1;
+    int status = 0;
+
+    *out_matches = true;
+    if (stmt->update.where_clause == NULL) {
+        return MYLITE_OK;
+    }
+
+    status = mylite_expression_eval_with_context(child_at(stmt->update.where_clause, 0U), &context,
+                                                 &stmt->database->warnings, &value);
+    if (status == 0) {
+        status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
+    }
+    mylite_expression_value_deinit(&value);
+    if (status != 0) {
+        return set_where_predicate_eval_error(stmt);
+    }
+
+    *out_matches = truth == 1;
+    return MYLITE_OK;
+}
+
+static int evaluate_update_order_values(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                        const struct mylite_update_order_plan *order_plan,
+                                        struct mylite_update_row *row)
+{
+    if (order_plan->order_key_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    row->order_values = calloc(order_plan->order_key_count, sizeof(*row->order_values));
+    if (row->order_values == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    row->order_value_count = order_plan->order_key_count;
+
+    for (size_t index = 0U; index < order_plan->order_key_count; ++index) {
+        int status = evaluate_update_order_key(stmt, table, row, &order_plan->order_keys[index],
+                                               &row->order_values[index]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_update_order_key(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                     const struct mylite_update_row *row,
+                                     const struct mylite_select_order_key *order_key,
+                                     struct mylite_expression_value *out_value)
+{
+    struct mylite_update_expression_context user_context = {
+        .table = table,
+        .row = row,
+    };
+    struct mylite_expression_eval_context context = {
+        .user_data = &user_context,
+        .resolve_identifier = resolve_update_expression_identifier,
+    };
+    int status = mylite_expression_eval_with_context(order_key->expression, &context,
+                                                     &stmt->database->warnings, out_value);
+
+    return status == 0 ? MYLITE_OK : set_update_unsupported_clause_error(stmt->database);
+}
+
+static int append_update_row(mylite_stmt *stmt, struct mylite_update_rowset *rowset,
+                             struct mylite_update_row *row)
+{
+    struct mylite_update_row *rows =
+        realloc(rowset->rows, (rowset->row_count + 1U) * sizeof(*rowset->rows));
+
+    if (rows == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rowset->rows = rows;
+    rowset->rows[rowset->row_count++] = *row;
+    *row = (struct mylite_update_row){0};
+    return MYLITE_OK;
+}
+
+static int sort_update_rowset(struct mylite_update_rowset *rowset,
+                              const struct mylite_update_order_plan *order_plan)
+{
+    struct mylite_update_row *scratch = NULL;
+    int status = MYLITE_OK;
+
+    if (order_plan->order_key_count == 0U || rowset->row_count < 2U) {
+        return MYLITE_OK;
+    }
+
+    scratch = calloc(rowset->row_count, sizeof(*scratch));
+    if (scratch == NULL) {
+        return MYLITE_NOMEM;
+    }
+    status = merge_sort_update_rows(rowset->rows, scratch, 0U, rowset->row_count, order_plan);
+    free(scratch);
+    return status;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int merge_sort_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
+                                  size_t first, size_t last,
+                                  const struct mylite_update_order_plan *order_plan)
+{
+    size_t count = last - first;
+    size_t middle = first + (count / 2U);
+    int status = MYLITE_OK;
+
+    if (count < 2U) {
+        return MYLITE_OK;
+    }
+
+    status = merge_sort_update_rows(rows, scratch, first, middle, order_plan);
+    if (status == MYLITE_OK) {
+        status = merge_sort_update_rows(rows, scratch, middle, last, order_plan);
+    }
+    if (status == MYLITE_OK) {
+        merge_update_rows(rows, scratch, first, middle, last, order_plan);
+    }
+    return status;
+}
+
+static void merge_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
+                              size_t first, size_t middle, size_t last,
+                              const struct mylite_update_order_plan *order_plan)
+{
+    size_t left = first;
+    size_t right = middle;
+    size_t output = first;
+
+    while (left < middle && right < last) {
+        if (compare_update_rows(&rows[left], &rows[right], order_plan) <= 0) {
+            scratch[output++] = rows[left++];
+        } else {
+            scratch[output++] = rows[right++];
+        }
+    }
+    while (left < middle) {
+        scratch[output++] = rows[left++];
+    }
+    while (right < last) {
+        scratch[output++] = rows[right++];
+    }
+    for (size_t index = first; index < last; ++index) {
+        rows[index] = scratch[index];
+    }
+}
+
+static int compare_update_rows(const struct mylite_update_row *left,
+                               const struct mylite_update_row *right,
+                               const struct mylite_update_order_plan *order_plan)
+{
+    for (size_t index = 0U; index < order_plan->order_key_count; ++index) {
+        int comparison =
+            compare_table_select_values(&left->order_values[index], &right->order_values[index]);
+
+        if (comparison != 0) {
+            if (order_plan->order_keys[index].direction == MYLITE_SQL_AST_KEY_PART_ORDER_DESC) {
+                comparison = -comparison;
+            }
+            return comparison;
+        }
+    }
+    return 0;
+}
+
+static void apply_update_limit(const struct mylite_sql_ast_node *limit_clause,
+                               struct mylite_update_rowset *rowset)
+{
+    const struct mylite_sql_ast_node *bound = child_at(limit_clause, 0U);
+    size_t keep_count = 0U;
+
+    if (limit_clause == NULL) {
+        return;
+    }
+    if (bound == NULL || !bound->has_limit_bound_value) {
+        return;
+    }
+    if (bound->limit_bound_value > (uint64_t)SIZE_MAX) {
+        return;
+    }
+
+    keep_count = (size_t)bound->limit_bound_value;
+    if (keep_count >= rowset->row_count) {
+        return;
+    }
+    for (size_t index = keep_count; index < rowset->row_count; ++index) {
+        update_row_deinit(&rowset->rows[index]);
+    }
+    rowset->row_count = keep_count;
+}
+
+static int execute_update_rows_transaction(mylite_stmt *stmt,
+                                           const struct mylite_select_table *table,
+                                           const struct mylite_insert_table *write_table,
+                                           const struct mylite_update_bound_assignment *assignments,
+                                           size_t assignment_count,
+                                           const struct mylite_update_rowset *rowset)
+{
+    sqlite3_stmt *update = NULL;
+    char *update_sql = NULL;
+    uint64_t next_auto_increment = write_table->next_auto_increment;
+    int status = begin_sqlite_transaction(stmt->database);
+    int rc = SQLITE_OK;
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    update_sql = build_update_physical_sql(stmt->database, table);
+    if (update_sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        rollback_sqlite_transaction(stmt->database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, update_sql, -1, SQLITE_PREPARE_PERSISTENT,
+                            &update, NULL);
+    sqlite3_free(update_sql);
+    if (rc != SQLITE_OK) {
+        rollback_sqlite_transaction(stmt->database);
+        return set_sqlite_error(stmt->database);
+    }
+
+    for (size_t index = 0U; index < rowset->row_count; ++index) {
+        status = execute_update_row(stmt, update, table, write_table, assignments, assignment_count,
+                                    &rowset->rows[index], &next_auto_increment);
+        if (status != MYLITE_OK) {
+            break;
+        }
+    }
+    sqlite3_finalize(update);
+
+    if (status == MYLITE_OK && write_table->has_auto_increment &&
+        next_auto_increment > write_table->next_auto_increment) {
+        status = update_table_auto_increment(stmt, table->schema_name, table->table_name,
+                                             next_auto_increment);
+    }
+    if (status == MYLITE_OK) {
+        status = commit_sqlite_transaction(stmt->database);
+        if (status == MYLITE_OK) {
+            return MYLITE_OK;
+        }
+    }
+
+    rollback_sqlite_transaction(stmt->database);
+    stmt->affected_rows = 0;
+    return status;
+}
+
+static int execute_update_row(mylite_stmt *stmt, sqlite3_stmt *update,
+                              const struct mylite_select_table *table,
+                              const struct mylite_insert_table *write_table,
+                              const struct mylite_update_bound_assignment *assignments,
+                              size_t assignment_count, const struct mylite_update_row *stored,
+                              uint64_t *next_auto_increment)
+{
+    struct mylite_update_row candidate = {0};
+    int status = copy_update_candidate_values(stmt, stored, &candidate);
+
+    if (status == MYLITE_OK) {
+        status = apply_update_assignments(stmt, table, write_table, assignments, assignment_count,
+                                          &candidate);
+    }
+    if (status == MYLITE_OK) {
+        status = validate_update_unique_indexes(stmt, table, write_table, &candidate);
+    }
+    if (status == MYLITE_OK && update_row_changed(stored, &candidate)) {
+        status = write_update_candidate(stmt, update, table, write_table, &candidate,
+                                        next_auto_increment);
+    }
+
+    update_row_deinit(&candidate);
+    return status;
+}
+
+static int write_update_candidate(mylite_stmt *stmt, sqlite3_stmt *update,
+                                  const struct mylite_select_table *table,
+                                  const struct mylite_insert_table *write_table,
+                                  const struct mylite_update_row *candidate,
+                                  uint64_t *next_auto_increment)
+{
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    sqlite3_reset(update);
+    sqlite3_clear_bindings(update);
+    status = bind_update_row_values(stmt->database, update, candidate);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    rc = sqlite3_bind_int64(update, (int)candidate->value_count + 1, candidate->rowid);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    rc = sqlite3_step(update);
+    if (rc != SQLITE_DONE) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    ++stmt->affected_rows;
+    return advance_update_auto_increment(stmt, table, write_table, candidate, next_auto_increment);
+}
+
+static char *build_update_physical_sql(mylite_db *database, const struct mylite_select_table *table)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_appendf(sql, "UPDATE \"%w\" SET ", table->physical_name);
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        if (index != 0U) {
+            sqlite3_str_append(sql, ",", 1);
+        }
+        sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[index].name);
+    }
+    sqlite3_str_append(sql, " WHERE rowid = ?", (int)strlen(" WHERE rowid = ?"));
+    return sqlite3_str_finish(sql);
+}
+
+static int copy_update_candidate_values(mylite_stmt *stmt, const struct mylite_update_row *row,
+                                        struct mylite_update_row *candidate)
+{
+    candidate->rowid = row->rowid;
+    candidate->values = calloc(row->value_count, sizeof(*candidate->values));
+    if (candidate->values == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    candidate->value_count = row->value_count;
+
+    for (size_t index = 0U; index < row->value_count; ++index) {
+        if (mylite_expression_value_copy(&row->values[index], &candidate->values[index]) != 0) {
+            update_row_deinit(candidate);
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int apply_update_assignments(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                    const struct mylite_insert_table *write_table,
+                                    const struct mylite_update_bound_assignment *assignments,
+                                    size_t assignment_count, struct mylite_update_row *candidate)
+{
+    for (size_t index = 0U; index < assignment_count; ++index) {
+        size_t column_index = assignments[index].column_index;
+        struct mylite_expression_value value = {0};
+        int status = evaluate_update_assignment_value(
+            stmt, table, write_table, candidate, column_index, assignments[index].value, &value);
+
+        if (status != MYLITE_OK) {
+            mylite_expression_value_deinit(&value);
+            return status;
+        }
+
+        mylite_expression_value_deinit(&candidate->values[column_index]);
+        candidate->values[column_index] = value;
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_update_assignment_value(mylite_stmt *stmt,
+                                            const struct mylite_select_table *table,
+                                            const struct mylite_insert_table *write_table,
+                                            const struct mylite_update_row *candidate,
+                                            size_t target_column,
+                                            const struct mylite_sql_ast_node *expression,
+                                            struct mylite_expression_value *out_value)
+{
+    const struct mylite_insert_table_column *column = &write_table->columns[target_column];
+    struct mylite_update_expression_context user_context = {
+        .table = table,
+        .row = candidate,
+    };
+    struct mylite_expression_eval_context context = {
+        .user_data = &user_context,
+        .resolve_identifier = resolve_update_expression_identifier,
+    };
+    int status = MYLITE_OK;
+
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT) {
+        status = resolve_update_default_value(stmt, column, out_value);
+    } else {
+        status = mylite_expression_eval_with_context(expression, &context,
+                                                     &stmt->database->warnings, out_value) == 0
+                     ? MYLITE_OK
+                     : set_update_unsupported_assignment_error(stmt->database);
+    }
+    if (status == MYLITE_OK) {
+        status = validate_update_assignment_value(stmt, column, out_value);
+    }
+    return status;
+}
+
+static int resolve_update_default_value(mylite_stmt *stmt,
+                                        const struct mylite_insert_table_column *column,
+                                        struct mylite_expression_value *out_value)
+{
+    struct mylite_insert_bound_value value = {0};
+    int status = MYLITE_OK;
+
+    if (column->auto_increment) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 0,
+        };
+        return MYLITE_OK;
+    }
+    if (column->default_text == NULL) {
+        if (column->nullable) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+            return MYLITE_OK;
+        }
+        return set_insert_no_default_error(stmt->database, column->name);
+    }
+    if (column_default_is_current_timestamp(column->default_text)) {
+        char *timestamp = insert_current_timestamp_text();
+
+        if (timestamp == NULL) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_TEXT,
+            .text_value = timestamp,
+        };
+        return MYLITE_OK;
+    }
+    if (column->generated_default) {
+        return set_insert_unsupported_generated_default_error(stmt->database, column->name);
+    }
+
+    status = resolve_insert_text_value(stmt, column, column->default_text, NULL, &value);
+    if (status == MYLITE_OK) {
+        status = copy_insert_bound_value_to_expression(&value, out_value);
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(stmt->database, "out of memory");
+        }
+    }
+    insert_bound_value_deinit(&value);
+    return status;
+}
+
+static int copy_insert_bound_value_to_expression(const struct mylite_insert_bound_value *value,
+                                                 struct mylite_expression_value *out_value)
+{
+    switch (value->kind) {
+    case MYLITE_INSERT_BOUND_NULL:
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return MYLITE_OK;
+    case MYLITE_INSERT_BOUND_INTEGER:
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = value->integer_value,
+        };
+        return MYLITE_OK;
+    case MYLITE_INSERT_BOUND_REAL:
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_REAL,
+            .real_value = value->real_value,
+        };
+        return MYLITE_OK;
+    case MYLITE_INSERT_BOUND_TEXT:
+        out_value->text_value = copy_span_text(
+            value->text_value, value->text_value == NULL ? 0U : strlen(value->text_value));
+        if (out_value->text_value == NULL) {
+            return MYLITE_NOMEM;
+        }
+        out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+        return MYLITE_OK;
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
+static int validate_update_assignment_value(mylite_stmt *stmt,
+                                            const struct mylite_insert_table_column *column,
+                                            struct mylite_expression_value *value)
+{
+    int64_t integer_value = 0;
+
+    if (value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
+        if (column->nullable) {
+            return MYLITE_OK;
+        }
+        return set_insert_null_error(stmt->database, column->name);
+    }
+    if (!column->auto_increment) {
+        return MYLITE_OK;
+    }
+
+    if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
+        return MYLITE_OK;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64 &&
+        value->uint64_value <= (uint64_t)INT64_MAX) {
+        value->kind = MYLITE_EXPRESSION_VALUE_INT64;
+        value->int64_value = (int64_t)value->uint64_value;
+        return MYLITE_OK;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
+        parse_insert_integer_text(value->text_value, &integer_value)) {
+        mylite_expression_value_deinit(value);
+        *value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = integer_value,
+        };
+        return MYLITE_OK;
+    }
+    return set_update_unsupported_assignment_error(stmt->database);
+}
+
+static int validate_update_unique_indexes(mylite_stmt *stmt,
+                                          const struct mylite_select_table *table,
+                                          const struct mylite_insert_table *write_table,
+                                          const struct mylite_update_row *candidate)
+{
+    for (size_t index = 0U; index < write_table->unique_index_count; ++index) {
+        bool conflicts = false;
+        int status = update_unique_index_conflicts(
+            stmt, table, write_table, &write_table->unique_indexes[index], candidate, &conflicts);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (conflicts) {
+            return set_update_duplicate_entry_error(stmt->database, table->table_name,
+                                                    &write_table->unique_indexes[index], candidate);
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int update_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                         const struct mylite_insert_table *write_table,
+                                         const struct mylite_insert_unique_index *index,
+                                         const struct mylite_update_row *candidate,
+                                         bool *out_conflicts)
+{
+    char *sql = NULL;
+    sqlite3_stmt *check = NULL;
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    *out_conflicts = false;
+    for (size_t part = 0U; part < index->column_count; ++part) {
+        if (candidate->values[index->column_indexes[part]].kind == MYLITE_EXPRESSION_VALUE_NULL) {
+            return MYLITE_OK;
+        }
+    }
+
+    sql = build_update_unique_check_sql(stmt->database, table, write_table, index);
+    if (sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &check,
+                            NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    status = bind_update_unique_check_values(stmt->database, check, index, candidate);
+    if (status == MYLITE_OK) {
+        rc = sqlite3_step(check);
+        if (rc == SQLITE_ROW) {
+            *out_conflicts = true;
+        } else if (rc != SQLITE_DONE) {
+            status = set_sqlite_error(stmt->database);
+        }
+    }
+    sqlite3_finalize(check);
+    return status;
+}
+
+static char *build_update_unique_check_sql(mylite_db *database,
+                                           const struct mylite_select_table *table,
+                                           const struct mylite_insert_table *write_table,
+                                           const struct mylite_insert_unique_index *index)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_appendf(sql, "SELECT 1 FROM \"%w\" WHERE ", table->physical_name);
+    for (size_t part = 0U; part < index->column_count; ++part) {
+        size_t column_index = index->column_indexes[part];
+
+        if (part != 0U) {
+            sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
+        }
+        sqlite3_str_appendf(sql, "\"%w\" = ?", write_table->columns[column_index].name);
+    }
+    sqlite3_str_append(sql, " AND rowid <> ? LIMIT 1", (int)strlen(" AND rowid <> ? LIMIT 1"));
+    return sqlite3_str_finish(sql);
+}
+
+static int bind_update_unique_check_values(mylite_db *database, sqlite3_stmt *check,
+                                           const struct mylite_insert_unique_index *index,
+                                           const struct mylite_update_row *candidate)
+{
+    for (size_t part = 0U; part < index->column_count; ++part) {
+        int rc = bind_update_value(check, (int)part + 1,
+                                   &candidate->values[index->column_indexes[part]]);
+
+        if (rc != SQLITE_OK) {
+            return set_sqlite_error(database);
+        }
+    }
+
+    {
+        int rc = sqlite3_bind_int64(check, (int)index->column_count + 1, candidate->rowid);
+
+        if (rc != SQLITE_OK) {
+            return set_sqlite_error(database);
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int bind_update_row_values(mylite_db *database, sqlite3_stmt *update,
+                                  const struct mylite_update_row *candidate)
+{
+    for (size_t index = 0U; index < candidate->value_count; ++index) {
+        int rc = bind_update_value(update, (int)index + 1, &candidate->values[index]);
+
+        if (rc != SQLITE_OK) {
+            return set_sqlite_error(database);
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int bind_update_value(sqlite3_stmt *stmt, int index,
+                             const struct mylite_expression_value *value)
+{
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        return sqlite3_bind_null(stmt, index);
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        return sqlite3_bind_int64(stmt, index, value->int64_value);
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        if (value->uint64_value > (uint64_t)INT64_MAX) {
+            return SQLITE_RANGE;
+        }
+        return sqlite3_bind_int64(stmt, index, (sqlite3_int64)value->uint64_value);
+    case MYLITE_EXPRESSION_VALUE_REAL:
+        return sqlite3_bind_double(stmt, index, value->real_value);
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        return sqlite3_bind_text(stmt, index, value->text_value, -1, sqlite_transient_destructor());
+    }
+    return SQLITE_MISUSE;
+}
+
+static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                         const struct mylite_insert_table *write_table,
+                                         const struct mylite_update_row *candidate,
+                                         uint64_t *next_auto_increment)
+{
+    uint64_t value = 0U;
+
+    (void)table;
+    if (!write_table->has_auto_increment ||
+        !update_expression_value_positive_uint64(
+            &candidate->values[write_table->auto_increment_column_index], &value)) {
+        return MYLITE_OK;
+    }
+    if (value == UINT64_MAX) {
+        (void)set_error_message(stmt->database, "AUTO_INCREMENT value is out of range");
+        return MYLITE_EXEC_ERROR;
+    }
+    if (value >= *next_auto_increment) {
+        *next_auto_increment = value + 1U;
+    }
+    return MYLITE_OK;
+}
+
+static bool update_expression_value_positive_uint64(const struct mylite_expression_value *value,
+                                                    uint64_t *out_value)
+{
+    if (value->kind == MYLITE_EXPRESSION_VALUE_INT64 && value->int64_value > 0) {
+        *out_value = (uint64_t)value->int64_value;
+        return true;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64 && value->uint64_value > 0U) {
+        *out_value = value->uint64_value;
+        return true;
+    }
+    return false;
+}
+
+static bool update_row_changed(const struct mylite_update_row *stored,
+                               const struct mylite_update_row *candidate)
+{
+    if (stored->value_count != candidate->value_count) {
+        return true;
+    }
+    for (size_t index = 0U; index < stored->value_count; ++index) {
+        if (!update_values_equal(&stored->values[index], &candidate->values[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool update_values_equal(const struct mylite_expression_value *left,
+                                const struct mylite_expression_value *right)
+{
+    if (left->kind != right->kind) {
+        return false;
+    }
+    switch (left->kind) {
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        return true;
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        return left->int64_value == right->int64_value;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        return left->uint64_value == right->uint64_value;
+    case MYLITE_EXPRESSION_VALUE_REAL:
+        return left->real_value == right->real_value;
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        if (left->text_value == NULL || right->text_value == NULL) {
+            return left->text_value == right->text_value;
+        }
+        return strcmp(left->text_value, right->text_value) == 0;
+    }
+    return false;
+}
+
+static int resolve_update_expression_identifier(void *user_data,
+                                                const struct mylite_sql_ast_node *identifier,
+                                                struct mylite_expression_value *out_value)
+{
+    struct mylite_update_expression_context *context = user_data;
+    size_t column_index = 0U;
+    int status = MYLITE_OK;
+
+    if (context == NULL || context->table == NULL || context->row == NULL) {
+        return -1;
+    }
+
+    status = resolve_select_column_reference(context->table, identifier, &column_index);
+    if (status != MYLITE_OK || column_index == context->table->column_count ||
+        column_index >= context->row->value_count) {
+        return -1;
+    }
+    return mylite_expression_value_copy(&context->row->values[column_index], out_value);
+}
+
+static size_t update_column_reference_index(const struct mylite_select_table *table,
+                                            const struct mylite_update_column_reference *reference)
+{
+    if (!update_column_reference_qualifiers_match(table, reference)) {
+        return table->column_count;
+    }
+    return select_column_index(table, reference->column_name);
+}
+
+static bool
+update_column_reference_qualifiers_match(const struct mylite_select_table *table,
+                                         const struct mylite_update_column_reference *reference)
+{
+    if (reference->schema_name != NULL) {
+        if (table->alias != NULL || reference->table_name == NULL) {
+            return false;
+        }
+        if (strcmp(reference->schema_name, table->schema_name) != 0) {
+            return false;
+        }
+        if (strcmp(reference->table_name, table->table_name) != 0) {
+            return false;
+        }
+        return true;
+    }
+    if (reference->table_name != NULL) {
+        const char *visible_table = table->alias == NULL ? table->table_name : table->alias;
+
+        if (strcmp(reference->table_name, visible_table) != 0) {
+            return false;
+        }
+        return true;
+    }
+    return true;
+}
+
+static char *
+copy_update_column_reference_name(const struct mylite_update_column_reference *reference)
+{
+    sqlite3_str *text = sqlite3_str_new(NULL);
+
+    if (text == NULL) {
+        return NULL;
+    }
+    if (reference->schema_name != NULL) {
+        sqlite3_str_appendf(text, "%s.", reference->schema_name);
+    }
+    if (reference->table_name != NULL) {
+        sqlite3_str_appendf(text, "%s.", reference->table_name);
+    }
+    sqlite3_str_append(text, reference->column_name == NULL ? "" : reference->column_name,
+                       reference->column_name == NULL ? 0 : (int)strlen(reference->column_name));
+    return sqlite3_str_finish(text);
+}
+
+static int set_update_unknown_column_error(mylite_db *database, const char *column_name,
+                                           const char *clause_context)
+{
+    char *message = sqlite3_mprintf("Unknown column '%q' in '%q'", column_name,
+                                    clause_context == NULL ? "field list" : clause_context);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = set_error_message(database, message);
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_update_unknown_field_error(mylite_db *database, const char *column_name)
+{
+    return set_update_unknown_column_error(database, column_name, "field list");
+}
+
+static int set_update_duplicate_entry_error(mylite_db *database, const char *table_name,
+                                            const struct mylite_insert_unique_index *index,
+                                            const struct mylite_update_row *candidate)
+{
+    char *entry = copy_update_duplicate_entry_value(index, candidate);
+    char *message = NULL;
+    int status = MYLITE_OK;
+
+    if (entry == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    message =
+        sqlite3_mprintf("Duplicate entry '%q' for key '%q.%q'", entry, table_name, index->name);
+    free(entry);
+    if (message == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = set_error_message(database, message);
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static char *copy_update_duplicate_entry_value(const struct mylite_insert_unique_index *index,
+                                               const struct mylite_update_row *candidate)
+{
+    sqlite3_str *text = sqlite3_str_new(NULL);
+
+    if (text == NULL) {
+        return NULL;
+    }
+
+    for (size_t part = 0U; part < index->column_count; ++part) {
+        const struct mylite_expression_value *value =
+            &candidate->values[index->column_indexes[part]];
+
+        if (part != 0U) {
+            sqlite3_str_append(text, "-", 1);
+        }
+        switch (value->kind) {
+        case MYLITE_EXPRESSION_VALUE_NULL:
+            sqlite3_str_append(text, "NULL", (int)strlen("NULL"));
+            break;
+        case MYLITE_EXPRESSION_VALUE_INT64:
+            sqlite3_str_appendf(text, "%lld", (long long)value->int64_value);
+            break;
+        case MYLITE_EXPRESSION_VALUE_UINT64:
+            sqlite3_str_appendf(text, "%llu", (unsigned long long)value->uint64_value);
+            break;
+        case MYLITE_EXPRESSION_VALUE_REAL:
+            sqlite3_str_appendf(text, "%.15g", value->real_value);
+            break;
+        case MYLITE_EXPRESSION_VALUE_TEXT:
+            sqlite3_str_append(text, value->text_value == NULL ? "" : value->text_value,
+                               value->text_value == NULL ? 0 : (int)strlen(value->text_value));
+            break;
+        }
+    }
+    return sqlite3_str_finish(text);
+}
+
+static int set_update_unsupported_expression_error(mylite_db *database, const char *clause_context)
+{
+    if (clause_context != NULL && strcmp(clause_context, "field list") == 0) {
+        return set_update_unsupported_assignment_error(database);
+    }
+    return set_update_unsupported_clause_error(database);
+}
+
+static int set_update_unsupported_clause_error(mylite_db *database)
+{
+    if (set_error_message(database, "Unsupported UPDATE clause") == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_EXEC_ERROR;
+}
+
+static int set_update_unsupported_assignment_error(mylite_db *database)
+{
+    if (set_error_message(database, "Unsupported UPDATE assignment") == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_EXEC_ERROR;
+}
+
 static int execute_scalar_select_statement(mylite_stmt *stmt)
 {
     if (stmt->scalar_result.has_row) {
@@ -5450,6 +7265,12 @@ static int validate_insert_values_target(mylite_stmt *stmt, const char **out_sch
 static int load_insert_table(mylite_stmt *stmt, const char *schema_name,
                              struct mylite_insert_table *out_table)
 {
+    return load_write_table(stmt, schema_name, stmt->insert_values.table_name, out_table);
+}
+
+static int load_write_table(mylite_stmt *stmt, const char *schema_name, const char *table_name,
+                            struct mylite_insert_table *out_table)
+{
     sqlite3_stmt *select = NULL;
     uint64_t catalog_auto_increment = 0U;
     bool has_catalog_auto_increment = false;
@@ -5466,7 +7287,7 @@ static int load_insert_table(mylite_stmt *stmt, const char *schema_name,
     }
 
     sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(select, 2, stmt->insert_values.table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, table_name, -1, sqlite_transient_destructor());
     rc = sqlite3_step(select);
     if (rc == SQLITE_ROW && sqlite3_column_type(select, 0) != SQLITE_NULL) {
         sqlite3_int64 value = sqlite3_column_int64(select, 0);
@@ -5478,20 +7299,20 @@ static int load_insert_table(mylite_stmt *stmt, const char *schema_name,
     }
     sqlite3_finalize(select);
     if (rc != SQLITE_ROW) {
-        return rc == SQLITE_DONE ? set_table_doesnt_exist_error(stmt->database, schema_name,
-                                                                stmt->insert_values.table_name)
-                                 : set_sqlite_error(stmt->database);
+        return rc == SQLITE_DONE
+                   ? set_table_doesnt_exist_error(stmt->database, schema_name, table_name)
+                   : set_sqlite_error(stmt->database);
     }
 
-    out_table->physical_name = physical_table_name(schema_name, stmt->insert_values.table_name);
+    out_table->physical_name = physical_table_name(schema_name, table_name);
     if (out_table->physical_name == NULL) {
         (void)set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = load_insert_columns(stmt, schema_name, out_table);
+    status = load_insert_columns(stmt, schema_name, table_name, out_table);
     if (status == MYLITE_OK) {
-        status = load_insert_unique_indexes(stmt, schema_name, out_table);
+        status = load_insert_unique_indexes(stmt, schema_name, table_name, out_table);
     }
     if (status == MYLITE_OK) {
         status = initialize_insert_auto_increment(stmt, out_table, catalog_auto_increment,
@@ -5500,7 +7321,7 @@ static int load_insert_table(mylite_stmt *stmt, const char *schema_name,
     return status;
 }
 
-static int load_insert_columns(mylite_stmt *stmt, const char *schema_name,
+static int load_insert_columns(mylite_stmt *stmt, const char *schema_name, const char *table_name,
                                struct mylite_insert_table *table)
 {
     sqlite3_stmt *select = NULL;
@@ -5516,7 +7337,7 @@ static int load_insert_columns(mylite_stmt *stmt, const char *schema_name,
     }
 
     sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(select, 2, stmt->insert_values.table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, table_name, -1, sqlite_transient_destructor());
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
         int status = load_insert_column_from_catalog_row(stmt, select, table);
 
@@ -5597,7 +7418,7 @@ static int add_insert_table_column(struct mylite_insert_table *table,
 }
 
 static int load_insert_unique_indexes(mylite_stmt *stmt, const char *schema_name,
-                                      struct mylite_insert_table *table)
+                                      const char *table_name, struct mylite_insert_table *table)
 {
     sqlite3_stmt *select = NULL;
     static const char sql[] = "SELECT index_name, column_name FROM __mylite_index_catalog "
@@ -5611,7 +7432,7 @@ static int load_insert_unique_indexes(mylite_stmt *stmt, const char *schema_name
     }
 
     sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(select, 2, stmt->insert_values.table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, table_name, -1, sqlite_transient_destructor());
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
         const struct mylite_insert_unique_index_part_name part = {
             .index_name = (const char *)sqlite3_column_text(select, 0),
@@ -6997,6 +8818,13 @@ static int bind_insert_unique_check_values(mylite_db *database, sqlite3_stmt *ch
 static int update_insert_auto_increment(mylite_stmt *stmt, const char *schema_name,
                                         uint64_t next_auto_increment)
 {
+    return update_table_auto_increment(stmt, schema_name, stmt->insert_values.table_name,
+                                       next_auto_increment);
+}
+
+static int update_table_auto_increment(mylite_stmt *stmt, const char *schema_name,
+                                       const char *table_name, uint64_t next_auto_increment)
+{
     sqlite3_stmt *update = NULL;
     static const char sql[] = "UPDATE __mylite_table_catalog SET auto_increment = ? "
                               "WHERE table_schema = ? AND table_name = ?";
@@ -7009,7 +8837,7 @@ static int update_insert_auto_increment(mylite_stmt *stmt, const char *schema_na
 
     sqlite3_bind_int64(update, 1, (sqlite3_int64)next_auto_increment);
     sqlite3_bind_text(update, 2, schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(update, 3, stmt->insert_values.table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(update, 3, table_name, -1, sqlite_transient_destructor());
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
     return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
@@ -7696,6 +9524,7 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_INSERT_VALUES:
     case MYLITE_STMT_INSERT_SET:
+    case MYLITE_STMT_UPDATE:
     case MYLITE_STMT_SCALAR_SELECT:
     case MYLITE_STMT_TABLE_SELECT:
     case MYLITE_STMT_SQLITE:
@@ -7863,6 +9692,18 @@ static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement
 
     if (status == MYLITE_OK) {
         status = copy_insert_set_assignments(assignments, &stmt->insert_set);
+    }
+    return status;
+}
+
+static int copy_update_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *target = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *assignments = child_at(statement, 1U);
+    int status = copy_update_target(target, &stmt->update.target);
+
+    if (status == MYLITE_OK) {
+        status = copy_update_assignments(assignments, &stmt->update);
     }
     return status;
 }
@@ -8111,6 +9952,11 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_ORDER_ITEM:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
     case MYLITE_SQL_AST_LIMIT_BOUND:
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_UPDATE_TARGET:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_USE_STATEMENT:
@@ -8381,6 +10227,180 @@ static int add_insert_set_assignment(struct mylite_insert_set_plan *plan,
 
     plan->assignments = assignments;
     plan->assignments[plan->assignment_count++] = assignment;
+    return MYLITE_OK;
+}
+
+static int copy_update_target(const struct mylite_sql_ast_node *target,
+                              struct mylite_update_target *out_target)
+{
+    const struct mylite_sql_ast_node *table_name = child_at(target, 0U);
+    const struct mylite_sql_ast_node *alias = child_at(target, 1U);
+    int status = MYLITE_OK;
+
+    if (target == NULL || target->kind != MYLITE_SQL_AST_UPDATE_TARGET) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = copy_update_table_name(table_name, out_target);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (alias != NULL) {
+        out_target->alias = copy_identifier_span(alias);
+        if (out_target->alias == NULL) {
+            return MYLITE_NOMEM;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int copy_update_table_name(const struct mylite_sql_ast_node *table_name,
+                                  struct mylite_update_target *target)
+{
+    if (table_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        target->table_name = copy_identifier_span(table_name);
+        return target->table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
+    }
+    if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
+        child_at(table_name, 0U) != NULL && child_at(table_name, 1U) != NULL &&
+        child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        target->schema_name = copy_identifier_span(child_at(table_name, 0U));
+        target->table_name = copy_identifier_span(child_at(table_name, 1U));
+        if (target->schema_name == NULL || target->table_name == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return MYLITE_OK;
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
+static int copy_update_assignments(const struct mylite_sql_ast_node *assignments,
+                                   struct mylite_update_plan *plan)
+{
+    if (assignments == NULL || assignments->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    for (const struct mylite_sql_ast_node *assignment = assignments->first_child;
+         assignment != NULL; assignment = assignment->next_sibling) {
+        int status = copy_update_assignment(assignment, plan);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return plan->assignment_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
+}
+
+static int copy_update_assignment(const struct mylite_sql_ast_node *assignment,
+                                  struct mylite_update_plan *plan)
+{
+    struct mylite_update_assignment update_assignment = {0};
+    int status = MYLITE_OK;
+
+    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = copy_update_column_reference(child_at(assignment, 0U), &update_assignment.target);
+    if (status == MYLITE_OK) {
+        status = add_update_assignment(plan, update_assignment);
+    }
+    if (status != MYLITE_OK) {
+        update_assignment_deinit(&update_assignment);
+    }
+    return status;
+}
+
+static int add_update_assignment(struct mylite_update_plan *plan,
+                                 struct mylite_update_assignment assignment)
+{
+    struct mylite_update_assignment *assignments =
+        realloc(plan->assignments, (plan->assignment_count + 1U) * sizeof(*plan->assignments));
+
+    if (assignments == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->assignments = assignments;
+    plan->assignments[plan->assignment_count++] = assignment;
+    return MYLITE_OK;
+}
+
+static int copy_update_column_reference(const struct mylite_sql_ast_node *identifier,
+                                        struct mylite_update_column_reference *out_reference)
+{
+    char *parts[3] = {0};
+    size_t part_count = 0U;
+    int status = copy_update_column_reference_parts(identifier, parts, &part_count);
+
+    if (status != MYLITE_OK) {
+        for (size_t index = 0U; index < part_count; ++index) {
+            free(parts[index]);
+        }
+        return status;
+    }
+
+    if (part_count == 1U) {
+        out_reference->column_name = parts[0];
+        return MYLITE_OK;
+    }
+    if (part_count == 2U) {
+        out_reference->table_name = parts[0];
+        out_reference->column_name = parts[1];
+        return MYLITE_OK;
+    }
+    if (part_count == 3U) {
+        out_reference->schema_name = parts[0];
+        out_reference->table_name = parts[1];
+        out_reference->column_name = parts[2];
+        return MYLITE_OK;
+    }
+
+    return MYLITE_UNSUPPORTED;
+}
+
+static int copy_update_column_reference_parts(const struct mylite_sql_ast_node *identifier,
+                                              char **parts, size_t *part_count)
+{
+    const struct mylite_sql_ast_node *segments[3] = {0};
+    const struct mylite_sql_ast_node *current = identifier;
+    size_t segment_count = 0U;
+
+    *part_count = 0U;
+    while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (segment_count >= 3U) {
+            return MYLITE_UNSUPPORTED;
+        }
+        segments[segment_count++] = child_at(current, 1U);
+        current = child_at(current, 0U);
+    }
+    if (current == NULL || current->kind != MYLITE_SQL_AST_IDENTIFIER || segment_count >= 3U) {
+        return MYLITE_UNSUPPORTED;
+    }
+    segments[segment_count++] = current;
+
+    for (size_t index = 0U; index < segment_count; ++index) {
+        const struct mylite_sql_ast_node *segment = segments[segment_count - index - 1U];
+
+        if (segment == NULL || segment->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            return MYLITE_UNSUPPORTED;
+        }
+        parts[index] = copy_identifier_span(segment);
+        if (parts[index] == NULL) {
+            for (size_t previous = 0U; previous < index; ++previous) {
+                free(parts[previous]);
+                parts[previous] = NULL;
+            }
+            *part_count = 0U;
+            return MYLITE_NOMEM;
+        }
+        *part_count += 1U;
+    }
     return MYLITE_OK;
 }
 
@@ -10026,6 +12046,94 @@ static void insert_column_reference_deinit(struct mylite_insert_column_reference
     free(reference->table_name);
     free(reference->column_name);
     *reference = (struct mylite_insert_column_reference){0};
+}
+
+static void update_plan_deinit(struct mylite_update_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    update_target_deinit(&plan->target);
+    for (size_t index = 0U; index < plan->assignment_count; ++index) {
+        update_assignment_deinit(&plan->assignments[index]);
+    }
+    free(plan->assignments);
+    *plan = (struct mylite_update_plan){0};
+}
+
+static void update_target_deinit(struct mylite_update_target *target)
+{
+    if (target == NULL) {
+        return;
+    }
+
+    free(target->schema_name);
+    free(target->table_name);
+    free(target->alias);
+    *target = (struct mylite_update_target){0};
+}
+
+static void update_assignment_deinit(struct mylite_update_assignment *assignment)
+{
+    if (assignment == NULL) {
+        return;
+    }
+
+    update_column_reference_deinit(&assignment->target);
+    *assignment = (struct mylite_update_assignment){0};
+}
+
+static void update_column_reference_deinit(struct mylite_update_column_reference *reference)
+{
+    if (reference == NULL) {
+        return;
+    }
+
+    free(reference->schema_name);
+    free(reference->table_name);
+    free(reference->column_name);
+    *reference = (struct mylite_update_column_reference){0};
+}
+
+static void update_order_plan_deinit(struct mylite_update_order_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->order_keys);
+    *plan = (struct mylite_update_order_plan){0};
+}
+
+static void update_rowset_deinit(struct mylite_update_rowset *rowset)
+{
+    if (rowset == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < rowset->row_count; ++index) {
+        update_row_deinit(&rowset->rows[index]);
+    }
+    free(rowset->rows);
+    *rowset = (struct mylite_update_rowset){0};
+}
+
+static void update_row_deinit(struct mylite_update_row *row)
+{
+    if (row == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < row->value_count; ++index) {
+        mylite_expression_value_deinit(&row->values[index]);
+    }
+    for (size_t index = 0U; index < row->order_value_count; ++index) {
+        mylite_expression_value_deinit(&row->order_values[index]);
+    }
+    free(row->values);
+    free(row->order_values);
+    *row = (struct mylite_update_row){0};
 }
 
 static void insert_row_deinit(struct mylite_insert_row *row)

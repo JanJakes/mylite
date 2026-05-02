@@ -46,7 +46,7 @@ level application surfaces.
 18. [x] `ORDER BY`, `LIMIT`, and `OFFSET`: aliases, ordinals, collations,
        integer conversion, prepared markers, and error cases. Spec:
        [ORDER BY, LIMIT, and OFFSET](../order-limit-offset/specs.md).
-19. [ ] Single-table `UPDATE`: assignment order, expressions, `WHERE`,
+19. [x] Single-table `UPDATE`: assignment order, expressions, `WHERE`,
        `ORDER BY`, `LIMIT`, generated/default columns, affected rows, and
        warnings. Spec: [single-table UPDATE](../update-single-table/specs.md).
 20. [ ] Single-table `DELETE`: aliases, `WHERE`, `ORDER BY`, `LIMIT`,

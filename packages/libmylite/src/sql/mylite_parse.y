@@ -97,6 +97,9 @@ statement(A) ::= insert_values_statement(B). {
 statement(A) ::= insert_set_statement(B). {
     A = B;
 }
+statement(A) ::= update_statement(B). {
+    A = B;
+}
 statement(A) ::= show_schemas_statement(B). {
     A = B;
 }
@@ -266,6 +269,47 @@ insert_set_value(A) ::= expression(B). {
 }
 insert_set_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_default(state, T);
+}
+
+update_statement(A) ::= UPDATE(T) single_update_target(B) SET update_assignment_list(C)
+        opt_where_clause(D) opt_order_by_clause(E) opt_update_limit_clause(F). {
+    A = mylite_sql_parser_make_update_statement(state, T, B, C, D, E, F);
+}
+
+single_update_target(A) ::= update_table_name(B) opt_table_alias(C). {
+    A = mylite_sql_parser_make_update_target(state, B, C);
+}
+
+update_table_name(A) ::= identifier(B). {
+    A = B;
+}
+update_table_name(A) ::= identifier(B) DOT identifier(C). {
+    A = mylite_sql_parser_make_qualified_identifier(state, B, C);
+}
+
+update_assignment_list(A) ::= update_assignment(B). {
+    A = mylite_sql_parser_make_update_assignment_list(state, B);
+}
+update_assignment_list(A) ::= update_assignment_list(B) COMMA update_assignment(C). {
+    A = mylite_sql_parser_append_update_assignment(state, B, C);
+}
+
+update_assignment(A) ::= qualified_identifier(B) EQ(T) update_assignment_value(C). {
+    A = mylite_sql_parser_make_update_assignment(state, B, T, C);
+}
+
+update_assignment_value(A) ::= expression(B). {
+    A = B;
+}
+update_assignment_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_default(state, T);
+}
+
+opt_update_limit_clause(A) ::= . {
+    A = NULL;
+}
+opt_update_limit_clause(A) ::= LIMIT(T) limit_bound(B). {
+    A = mylite_sql_parser_make_update_limit_clause(state, T, B);
 }
 
 show_schemas_statement(A) ::= SHOW(T) DATABASES(D). {

@@ -482,6 +482,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "limit_clause";
     case MYLITE_SQL_AST_LIMIT_BOUND:
         return "limit_bound";
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
+        return "update_statement";
+    case MYLITE_SQL_AST_UPDATE_TARGET:
+        return "update_target";
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
+        return "update_assignment_list";
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+        return "update_assignment";
+    case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
+        return "update_limit_clause";
     }
 
     return "unknown";

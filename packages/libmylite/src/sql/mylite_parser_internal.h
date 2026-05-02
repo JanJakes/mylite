@@ -186,6 +186,29 @@ mylite_sql_parser_append_insert_set_assignment(struct mylite_sql_parser_state *s
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_assignment(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *target,
     struct mylite_sql_token equal_token, struct mylite_sql_ast_node *value);
+struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token update_token,
+    struct mylite_sql_ast_node *target, struct mylite_sql_ast_node *assignments,
+    struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *limit_clause);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_update_target(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_ast_node *table_name,
+                                     struct mylite_sql_ast_node *alias);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_update_assignment_list(struct mylite_sql_parser_state *state,
+                                              struct mylite_sql_ast_node *assignment);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_update_assignment(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *list,
+                                           struct mylite_sql_ast_node *assignment);
+struct mylite_sql_ast_node *mylite_sql_parser_make_update_assignment(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *target,
+    struct mylite_sql_token equal_token, struct mylite_sql_ast_node *value);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_update_limit_clause(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_token limit_token,
+                                           struct mylite_sql_ast_node *row_count_bound);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
                                               struct mylite_sql_token show_token,

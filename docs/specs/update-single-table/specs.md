@@ -31,9 +31,9 @@ In scope:
   and default-expression hooks for columns whose defaults are already modeled
 - `AUTO_INCREMENT` updates, next-sequence effects, and session last insert id
   side effects
-- strict-mode conversion errors and non-strict warning target behavior for the
-  currently supported value types
-- statement warning and diagnostic lifecycle
+- nullability, default, duplicate-key, unsupported-expression, and rollback
+  diagnostics for the currently supported value types
+- statement warning and diagnostic lifecycle hooks
 - storage, catalog, and transaction effects for single-table updates
 
 Out of scope for Task 19:
@@ -53,11 +53,14 @@ Out of scope for Task 19:
   columns are implemented
 - triggers, foreign keys, cascading actions, check constraints, views,
   privileges, binary logging, replication safety, and optimizer plan details
+- full strict/non-strict assignment and predicate conversion behavior beyond
+  the existing expression/value foundations
 - full SQL-mode management beyond the verified default strict mode and the
   documented non-strict warning baseline
 
-Task 19 is a design/spec task in this branch. It does not mark `UPDATE` as
-implemented.
+Task 19 is implemented for the executable single-table subset described above.
+The remaining out-of-scope forms stay deferred and are tracked in the
+compatibility matrix.
 
 ## Sources
 
@@ -391,9 +394,9 @@ With an empty SQL mode, observed non-strict behavior includes:
 | `UPDATE w SET a = z + 0 WHERE id IN (2,3)` | succeeds with two 1292 warnings; one row changes because `'a'` converts to `0` and was already `0` |
 | `UPDATE w SET nn = NULL WHERE id = 1` | succeeds with warning 1048 and stores implicit default `0` |
 
-Task 19 should implement default strict behavior first. If SQL-mode state is
-already available when implementation starts, non-strict warning tests should
-be added at the same time; otherwise they remain documented target behavior.
+Task 19 documents these MySQL behaviors but defers full conversion promotion
+and non-strict warning demotion until the value/type and SQL-mode foundations
+can support them consistently.
 
 ### Conflict handling and atomicity
 
@@ -615,10 +618,10 @@ assignment:
   stores the column's implicit type default and records a warning.
 
 Expression evaluation should use the Task 16 value model and conversion rules.
-For default strict mode, assignment or predicate conversions that MySQL upgrades
-to data-change errors must abort and roll back the statement. If SQL-mode state
-is not yet implemented, Task 19 should document that only default strict
-behavior is supported.
+Full strict-mode promotion of assignment, predicate, and order-expression
+conversion warnings to data-change errors is deferred until the value/type
+foundations can support it consistently. Non-strict warning demotion depends on
+future SQL-mode state.
 
 ### ORDER BY and LIMIT execution
 
@@ -920,8 +923,6 @@ Runtime tests:
 - repeated assignment targets
 - unknown assignment targets and unknown expression columns
 - `WHERE` filtering with true, false, and `NULL` predicates
-- strict-mode predicate and assignment conversion errors
-- non-strict conversion warnings when SQL-mode support is available
 - order-sensitive primary-key and unique-key updates
 - `LIMIT` rows-matched behavior, including no-op limited updates
 - no-order tests only where final results are order-insensitive
@@ -933,13 +934,18 @@ Runtime tests:
 - generated-column target diagnostics once generated columns exist
 - warning-list lifecycle after successful warning-producing and failed updates
 - affected rows, matched rows, warning count, and failure `ROW_COUNT()`
-- atomic rollback after duplicate-key, conversion, nullability, unsupported
-  expression, and SQLite binding failures
+- atomic rollback after duplicate-key, nullability, unsupported expression, and
+  SQLite binding failures
 
-## Implementation handoff notes
+Deferred conversion tests before closing the documented conversion gap:
 
-- Implement parser/AST support first with no runtime code in this Task 19 spec
-  commit.
+- strict-mode predicate, assignment, and order-expression conversion errors
+- non-strict conversion warnings when SQL-mode support is available
+
+## Implementation notes
+
+- Parser/AST support landed before runtime execution, matching this feature's
+  grammar snippets.
 - Reuse the table resolution and row context from Tasks 15 through 18, but keep
   update binding separate because assignment target diagnostics use
   `field list`.
@@ -949,10 +955,10 @@ Runtime tests:
   row changes, but it should not decide UPDATE semantics.
 - Track matched rows separately from changed rows from the first
   implementation.
-- Add strict-mode conversion tests before adding any SQLite pushdown or
+- Add broader strict-mode conversion tests before adding any SQLite pushdown or
   top-N optimization.
-- Use statement savepoints so failed updates roll back physical changes without
-  damaging future explicit transaction support.
+- Use statement-scoped atomic execution so failed updates roll back physical
+  changes without damaging future explicit transaction support.
 - Keep generated-column, `ON UPDATE`, function-call, and non-default SQL-mode
   behavior explicit in unsupported/deferred diagnostics until those foundations
   land.

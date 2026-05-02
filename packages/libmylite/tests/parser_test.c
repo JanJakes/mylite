@@ -19,6 +19,7 @@ static int test_create_table_base_execution_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
+static int test_update_single_table_syntax(void);
 static int test_select_expression_list(void);
 static int test_expression_operator_foundation_syntax(void);
 static int test_information_schema_select(void);
@@ -92,6 +93,7 @@ int main(void)
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
+    failures += test_update_single_table_syntax();
     failures += test_select_expression_list();
     failures += test_expression_operator_foundation_syntax();
     failures += test_information_schema_select();
@@ -2284,6 +2286,133 @@ static int test_insert_set_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("INSERT INTO t SET a = 1 ON DUPLICATE KEY UPDATE a = 2",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_update_single_table_syntax(void)
+{
+    enum { full_update_child_count = 5U };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *assignments = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *order_by = NULL;
+    const struct mylite_sql_ast_node *order_items = NULL;
+    const struct mylite_sql_ast_node *limit = NULL;
+    int failures = 0;
+
+    failures += parse_sql("UPDATE t SET a = 1", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target = child_at(statement, 0U);
+    assignments = child_at(statement, 1U);
+    failures += expect_node(statement, MYLITE_SQL_AST_UPDATE_STATEMENT, "update statement");
+    failures += expect_child_count(statement, 2U, "update base child count");
+    failures += expect_node(target, MYLITE_SQL_AST_UPDATE_TARGET, "update target");
+    failures += expect_span_text(child_at(target, 0U), "t", "update target table");
+    failures +=
+        expect_node(assignments, MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST, "update assignment list");
+    failures += expect_child_count(assignments, 1U, "update assignment count");
+    assignment = child_at(assignments, 0U);
+    failures += expect_node(assignment, MYLITE_SQL_AST_UPDATE_ASSIGNMENT, "update assignment");
+    failures += expect_span_text(child_at(assignment, 0U), "a", "update assignment target");
+    failures +=
+        expect_literal(child_at(assignment, 1U), MYLITE_SQL_AST_LITERAL_INTEGER, "update value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE app.t AS tt SET tt.a = tt.a + 1, app.t.b = DEFAULT "
+                          "WHERE tt.id = 1 ORDER BY tt.b DESC, tt.id ASC LIMIT 2",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target = child_at(statement, 0U);
+    assignments = child_at(statement, 1U);
+    where_clause = child_at(statement, 2U);
+    order_by = child_at(statement, 3U);
+    limit = child_at(statement, 4U);
+    failures += expect_child_count(statement, full_update_child_count, "full update child count");
+    failures += expect_node(child_at(target, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "schema-qualified update target");
+    failures += expect_span_text(child_at(target, 1U), "tt", "update AS alias");
+    failures += expect_child_count(assignments, 2U, "qualified update assignment count");
+    assignment = child_at(assignments, 0U);
+    failures += expect_node(child_at(assignment, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "alias-qualified assignment target");
+    failures += expect_operator(child_at(assignment, 1U), MYLITE_SQL_AST_OPERATOR_ADD,
+                                "assignment arithmetic value");
+    assignment = child_at(assignments, 1U);
+    failures += expect_node(child_at(assignment, 1U), MYLITE_SQL_AST_DEFAULT, "update DEFAULT");
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "update where clause");
+    failures += expect_operator(child_at(where_clause, 0U), MYLITE_SQL_AST_OPERATOR_EQUAL,
+                                "update where predicate");
+    failures += expect_node(order_by, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "update order clause");
+    order_items = child_at(order_by, 0U);
+    failures += expect_child_count(order_items, 2U, "update order item count");
+    failures += expect_order_item_direction(
+        child_at(order_items, 0U), MYLITE_SQL_AST_KEY_PART_ORDER_DESC, "update desc order");
+    failures += expect_order_item_direction(child_at(order_items, 1U),
+                                            MYLITE_SQL_AST_KEY_PART_ORDER_ASC, "update asc order");
+    failures += expect_node(limit, MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE, "update limit clause");
+    failures += expect_limit_bound(child_at(limit, 0U), 2U, "update limit row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE app.t tt SET tt.a = 100, tt.a = tt.a + 1 WHERE tt.id IN (1,2)",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignments = child_at(statement, 1U);
+    failures += expect_span_text(child_at(child_at(statement, 0U), 1U), "tt", "update bare alias");
+    failures += expect_child_count(assignments, 2U, "duplicate update assignment count");
+    failures +=
+        expect_span_text(child_at(child_at(assignments, 0U), 0U), "tt.a", "first duplicate target");
+    failures += expect_span_text(child_at(child_at(assignments, 1U), 0U), "tt.a",
+                                 "second duplicate target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("UPDATE t SET a = 1 LIMIT 18446744073709551615", MYLITE_SQL_PARSE_OK, &result);
+    limit = child_at(child_at(result.root, 0U), 2U);
+    failures += expect_limit_bound(child_at(limit, 0U), UINT64_MAX, "update max limit");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("UPDATE t SET a = 1 LIMIT 1 OFFSET 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE t SET a = 1 LIMIT 1,1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE t SET a = 1 LIMIT -1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE t SET a = 1 LIMIT '1'", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE t SET a = 1 LIMIT NULL", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE t SET a = 1 LIMIT 18446744073709551616",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("UPDATE LOW_PRIORITY t SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE IGNORE t SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE t JOIN u ON t.id = u.id SET t.a = u.a",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("UPDATE t SET a = LAST_INSERT_ID(a + 1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE t SET a = 1 WHERE id = 1 LIMIT 1 ORDER BY id",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

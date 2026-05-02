@@ -127,6 +127,7 @@ static int test_insert_set_execution(void);
 static int test_select_table_core_execution(void);
 static int test_select_where_execution(void);
 static int test_select_order_limit_offset_execution(void);
+static int test_update_single_table_execution(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
                        mylite_stmt **out_stmt);
@@ -219,6 +220,7 @@ int main(void)
     failures += test_select_table_core_execution();
     failures += test_select_where_execution();
     failures += test_select_order_limit_offset_execution();
+    failures += test_update_single_table_execution();
     failures += test_parse_error();
 
     return failures == 0 ? 0 : 1;
@@ -3361,6 +3363,249 @@ static int test_select_order_limit_offset_execution(void)
 
     failures += expect_int64((int64_t)mylite_last_insert_id(database), (int64_t)last_insert_id,
                              "order last insert id unchanged");
+    mylite_close(database);
+    return failures;
+}
+
+static int test_update_single_table_execution(void)
+{
+    static const char *const ab_columns[] = {"a", "b"};
+    static const char *const assignment_order_values[] = {"2", "2"};
+    static const char *const repeated_values[] = {"101"};
+    static const char *const default_columns[] = {"a", "nn"};
+    static const char *const default_values[] = {"3", "7"};
+    static const char *const camel_values[] = {"12"};
+    static const char *const limited_columns[] = {"id", "s"};
+    static const char *const limited_values[] = {
+        "10", "alpha", "11", "beta", "12", "limited", "13", "limited",
+    };
+    static const char *const u_columns[] = {"id", "u"};
+    static const char *const u_values[] = {
+        "10", "1", "11", "2", "12", "3", "13", "4",
+    };
+    static const char *const shift_columns[] = {"id", "v"};
+    static const char *const shift_values[] = {
+        "2", "10", "3", "20", "4", "30",
+    };
+    static const char *const shift_fail_values[] = {
+        "1", "10", "2", "20", "3", "30",
+    };
+    static const char *const ai_values[] = {"20", "1", "21", "3"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    uint64_t last_insert_id = 0U;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+
+    failures += prepare_sql(database, "UPDATE t SET a = 1", MYLITE_OK, &stmt);
+    failures += expect_int(mylite_column_count(stmt), 0, "update has no result columns");
+    failures += expect_int64(mylite_affected_rows(stmt), 0, "prepared update affected rows");
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update no database");
+    failures +=
+        expect_contains(mylite_error_message(database), "No database selected", "update no db");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_task19_update", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_task19_update", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE t ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "a INT DEFAULT 3, "
+                            "b INT DEFAULT 4, "
+                            "c INT NULL, "
+                            "s VARCHAR(20), "
+                            "u INT UNIQUE, "
+                            "nn INT NOT NULL DEFAULT 7, "
+                            "must INT NOT NULL, "
+                            "CamelCase INT) AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO t (a,b,c,s,u,nn,must,CamelCase) VALUES "
+                            "(1,10,NULL,'alpha',1,7,100,11), "
+                            "(2,20,5,'beta',2,7,200,22), "
+                            "(3,30,NULL,'gamma',3,7,300,33), "
+                            "(4,40,0,'delta',4,7,400,44)",
+                            MYLITE_DONE);
+
+    failures +=
+        prepare_sql(database, "UPDATE t SET a = a + 1, b = a WHERE id = 10", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update assignment order");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "update assignment order affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT a, b FROM t WHERE id = 10", ab_columns, 2,
+                                   assignment_order_values, 1, "update assignment order values");
+
+    failures +=
+        prepare_sql(database, "UPDATE t SET a = 100, a = a + 1 WHERE id = 11", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update repeated target");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "update repeated target affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT a FROM t WHERE id = 11", (const char *[]){"a"},
+                                   1, repeated_values, 1, "update repeated target value");
+
+    failures += prepare_sql(database, "UPDATE t SET a = a WHERE id IN (10, 11)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update no-op");
+    failures += expect_int64(mylite_affected_rows(stmt), 0, "update no-op affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "UPDATE t SET a = DEFAULT, c = DEFAULT, nn = DEFAULT WHERE id = 13",
+                    MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update defaults");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "update defaults affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT a, nn FROM t WHERE id = 13", default_columns,
+                                   2, default_values, 1, "update defaults values");
+    failures += prepare_sql(database, "SELECT c FROM t WHERE id = 13", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "update nullable default row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "update nullable default value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update nullable default done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "UPDATE mylite_task19_update.t AS tt "
+                            "SET tt.CamelCase = tt.CamelCase + 1 WHERE tt.id = 10",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update alias qualified target");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "update alias qualified affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT CamelCase FROM t WHERE id = 10",
+                                   (const char *[]){"CamelCase"}, 1, camel_values, 1,
+                                   "update alias qualified value");
+
+    failures +=
+        prepare_sql(database, "UPDATE t SET s = 'limited' WHERE id >= 10 ORDER BY id DESC LIMIT 2",
+                    MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update order limit");
+    failures += expect_int64(mylite_affected_rows(stmt), 2, "update order limit affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, s FROM t ORDER BY id", limited_columns, 2,
+                                   limited_values, 4, "update order limit values");
+
+    failures += prepare_sql(database, "UPDATE t SET u = 1 WHERE id IN (11, 12)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update duplicate rollback");
+    failures += expect_contains(mylite_error_message(database), "Duplicate entry '1'",
+                                "update duplicate error");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "update duplicate affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, u FROM t ORDER BY id", u_columns, 2,
+                                   u_values, 4, "update duplicate rollback values");
+
+    failures +=
+        execute_sql(database, "CREATE TABLE shift_pk (id INT PRIMARY KEY, v INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO shift_pk VALUES (1,10),(2,20),(3,30)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "UPDATE shift_pk SET id = id + 1 ORDER BY id DESC", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update ordered primary key shift");
+    failures += expect_int64(mylite_affected_rows(stmt), 3, "ordered primary key shift affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id, v FROM shift_pk ORDER BY id", shift_columns, 2,
+                           shift_values, 3, "ordered primary key shift values");
+
+    failures += execute_sql(database, "CREATE TABLE shift_pk_fail (id INT PRIMARY KEY, v INT)",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO shift_pk_fail VALUES (1,10),(2,20),(3,30)", MYLITE_DONE);
+    failures += prepare_sql(database, "UPDATE shift_pk_fail SET id = id + 1", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "unordered primary key shift conflict");
+    failures += expect_contains(mylite_error_message(database), "Duplicate entry '2'",
+                                "unordered primary key shift conflict error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id, v FROM shift_pk_fail ORDER BY id", shift_columns,
+                           2, shift_fail_values, 3, "unordered primary key shift rollback");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ai_update ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT) "
+                            "AUTO_INCREMENT=5",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ai_update (v) VALUES (1),(2)", MYLITE_DONE);
+    last_insert_id = mylite_last_insert_id(database);
+    failures += prepare_sql(database, "UPDATE ai_update SET id = 20 WHERE v = 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update auto increment explicit");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "update auto increment affected");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), (int64_t)last_insert_id,
+                             "update leaves last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO ai_update (v) VALUES (3)", MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, v FROM ai_update WHERE v IN (1,3) "
+                                   "ORDER BY v",
+                                   (const char *[]){"id", "v"}, 2, ai_values, 2,
+                                   "update auto increment next value");
+
+    failures +=
+        prepare_sql(database, "UPDATE t SET missing_col = 1 WHERE id = 10", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update unknown target");
+    failures += expect_contains(mylite_error_message(database),
+                                "Unknown column 'missing_col' in 'field list'",
+                                "update unknown target error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "UPDATE t AS tt SET t.a = 1 WHERE tt.id = 10", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update alias hides assignment base");
+    failures +=
+        expect_contains(mylite_error_message(database), "Unknown column 't.a' in 'field list'",
+                        "update alias hides assignment error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "UPDATE t AS tt SET tt.a = 1 WHERE t.id = 10", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update alias hides where");
+    failures +=
+        expect_contains(mylite_error_message(database), "Unknown column 't.id' in 'where clause'",
+                        "update alias hides where error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "UPDATE t AS tt SET tt.a = 1 ORDER BY t.id LIMIT 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update alias hides order");
+    failures +=
+        expect_contains(mylite_error_message(database), "Unknown column 't.id' in 'order clause'",
+                        "update alias hides order error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "UPDATE t SET must = NULL WHERE id = 10", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update null not null");
+    failures += expect_contains(mylite_error_message(database), "cannot be null",
+                                "update null not null error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "UPDATE t SET must = DEFAULT WHERE id = 10", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update default missing");
+    failures += expect_contains(mylite_error_message(database), "doesn't have a default value",
+                                "update default missing error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "UPDATE t SET a = 1 LIMIT 1 OFFSET 1", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "update offset limit parse error");
+
     mylite_close(database);
     return failures;
 }

@@ -10845,6 +10845,11 @@ void mylite_parser_require_identifier_atom(MyliteParseContext *ctx,
 
 void mylite_parser_require_charset_name_atom(MyliteParseContext *ctx,
                                              MyliteToken token) {
+  if (token_is_quoted_hex_or_bit_literal(token)) {
+    mylite_parser_reject(ctx, token, "invalid character set name");
+    return;
+  }
+
   if (token_is_invalid_identifier_atom(token, 1)) {
     mylite_parser_reject(ctx, token, "invalid character set name");
   }
@@ -11659,8 +11664,13 @@ static int select_tablesample_percentage_token(int token_id) {
 }
 
 static int select_charset_name_token(int token_id, MyliteToken token) {
+  if (token_is_quoted_hex_or_bit_literal(token)) {
+    return 0;
+  }
+
   return token_id == ML_ATOM || token_id == ML_BINARY ||
-         token_id == ML_QUOTED_ID || token_ascii_equal(token, "binary");
+         token_id == ML_DOUBLE_QUOTED_STRING || token_id == ML_QUOTED_ID ||
+         token_id == ML_STRING_LITERAL || token_ascii_equal(token, "binary");
 }
 
 static int select_limit_option_token(int token_id) {

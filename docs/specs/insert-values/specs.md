@@ -31,8 +31,9 @@ Out of scope:
 
 - `INSERT ... SET`
 - `INSERT ... SELECT`, `INSERT ... TABLE`, and standalone `VALUES`
-- `INSERT IGNORE`, priority modifiers, `DELAYED`, partitions, aliases, and
-  `ON DUPLICATE KEY UPDATE`
+- priority modifiers, `DELAYED`, partitions, and insert-from-query sources
+- `INSERT IGNORE`, row aliases, and `ON DUPLICATE KEY UPDATE` are implemented
+  in follow-up scoped feature slices
 - arbitrary expression evaluation in row values
 - arbitrary generated default-expression evaluation, including function calls
   such as `concat('a','b')`
@@ -348,6 +349,9 @@ MyLite intentionally documents these boundaries for Task 13:
   `Records: N Duplicates: 0 Warnings: 0` are deferred.
 - Generated columns are deferred because generated-column DDL and runtime
   support do not exist yet.
+- Row aliases and `ON DUPLICATE KEY UPDATE` are implemented by the scoped ODKU
+  feature. This base `INSERT ... VALUES` slice still owns candidate-row
+  construction and insert-path side effects.
 
 ## MySQL-runtime-verified expectations
 

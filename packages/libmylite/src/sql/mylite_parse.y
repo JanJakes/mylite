@@ -220,20 +220,26 @@ opt_drop_table_mode(A) ::= CASCADE(T). {
     A = T;
 }
 
-insert_values_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_name(B) opt_insert_column_list(C) insert_values_keyword insert_row_list(D). {
+insert_values_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_name(B) opt_insert_column_list(C)
+        insert_values_keyword insert_row_list(D) opt_insert_row_alias(E) opt_insert_duplicate_update(F). {
     A = mylite_sql_parser_make_insert_values_statement(
         state,
         (struct mylite_sql_parser_insert_tokens){.insert = T, .ignore = I},
         B,
         C,
-        D);
+        D,
+        E,
+        F);
 }
-insert_set_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_name(B) SET insert_set_assignment_list(C). {
+insert_set_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_name(B) SET insert_set_assignment_list(C)
+        opt_insert_row_alias(D) opt_insert_duplicate_update(E). {
     A = mylite_sql_parser_make_insert_set_statement(
         state,
         (struct mylite_sql_parser_insert_tokens){.insert = T, .ignore = I},
         B,
-        C);
+        C,
+        D,
+        E);
 }
 
 opt_insert_ignore(A) ::= . {
@@ -306,6 +312,48 @@ insert_value(A) ::= expression(B). {
     A = B;
 }
 insert_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_default(state, T);
+}
+
+opt_insert_row_alias(A) ::= . {
+    A = NULL;
+}
+opt_insert_row_alias(A) ::= AS(T) identifier(B). {
+    A = mylite_sql_parser_make_insert_row_alias(state, T, B, NULL);
+}
+opt_insert_row_alias(A) ::= AS(T) identifier(B) LPAREN insert_alias_column_list(C) RPAREN. {
+    A = mylite_sql_parser_make_insert_row_alias(state, T, B, C);
+}
+
+insert_alias_column_list(A) ::= identifier(B). {
+    A = mylite_sql_parser_make_insert_alias_column_list(state, B);
+}
+insert_alias_column_list(A) ::= insert_alias_column_list(B) COMMA identifier(C). {
+    A = mylite_sql_parser_append_insert_alias_column(state, B, C);
+}
+
+opt_insert_duplicate_update(A) ::= . {
+    A = NULL;
+}
+opt_insert_duplicate_update(A) ::= ON(T) DUPLICATE KEY UPDATE insert_update_assignment_list(B). {
+    A = mylite_sql_parser_make_insert_duplicate_update_clause(state, T, B);
+}
+
+insert_update_assignment_list(A) ::= insert_update_assignment(B). {
+    A = mylite_sql_parser_make_insert_update_assignment_list(state, B);
+}
+insert_update_assignment_list(A) ::= insert_update_assignment_list(B) COMMA insert_update_assignment(C). {
+    A = mylite_sql_parser_append_insert_update_assignment(state, B, C);
+}
+
+insert_update_assignment(A) ::= qualified_identifier(B) EQ(T) insert_update_value(C). {
+    A = mylite_sql_parser_make_insert_update_assignment(state, B, T, C);
+}
+
+insert_update_value(A) ::= expression(B). {
+    A = B;
+}
+insert_update_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_default(state, T);
 }
 
@@ -2405,6 +2453,9 @@ function_name(A) ::= UTC_TIME(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 function_name(A) ::= UTC_TIMESTAMP(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+function_name(A) ::= VALUES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 

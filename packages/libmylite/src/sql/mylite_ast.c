@@ -685,6 +685,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "union_expression";
     case MYLITE_SQL_AST_QUERY_PRIMARY:
         return "query_primary";
+    case MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE:
+        return "insert_duplicate_update_clause";
+    case MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT_LIST:
+        return "insert_update_assignment_list";
+    case MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT:
+        return "insert_update_assignment";
+    case MYLITE_SQL_AST_INSERT_ROW_ALIAS:
+        return "insert_row_alias";
+    case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
+        return "insert_alias_column_list";
     }
 
     return "unknown";

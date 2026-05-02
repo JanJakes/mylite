@@ -87,8 +87,11 @@ level application surfaces.
        conversion/range/truncation/temporal demotion remains deferred. Spec:
        [INSERT IGNORE](../insert-ignore/specs.md).
 32. [ ] `INSERT ... ON DUPLICATE KEY UPDATE`: conflict selection, assignment
-       evaluation, affected rows, insert ids, aliases, and warnings. Started;
-       spec: [INSERT ... ON DUPLICATE KEY UPDATE](../insert-on-duplicate-key-update/specs.md).
+       evaluation, affected rows, insert ids, aliases, and warnings. Partially
+       implemented for supported `VALUES`/`SET` forms and scoped `IGNORE`;
+       insert-select, partitions, generated columns, triggers, foreign keys,
+       full conversion demotion, and broad expressions remain deferred. Spec:
+       [INSERT ... ON DUPLICATE KEY UPDATE](../insert-on-duplicate-key-update/specs.md).
 33. [ ] `REPLACE`: values, set, and select forms; delete-then-insert semantics;
        cascades; triggers; affected rows; and auto-increment behavior.
 34. [ ] `CREATE INDEX` and `DROP INDEX`: standalone index creation/removal,

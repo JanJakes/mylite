@@ -83,6 +83,7 @@ enum {
     mysql_warning_operand_columns = 1241,
     mysql_warning_subquery_no_1_row = 1242,
     mysql_warning_table_name_not_allowed = 1250,
+    mysql_warning_deprecated_syntax = 1287,
     mysql_warning_truncated_wrong_value = 1292,
     mysql_warning_savepoint_does_not_exist = 1305,
     mysql_warning_no_default = 1364,
@@ -161,6 +162,7 @@ static int test_drop_table_base_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_insert_ignore_execution(void);
+static int test_insert_on_duplicate_key_update_execution(void);
 static int test_select_table_core_execution(void);
 static int test_inner_join_execution(void);
 static int test_outer_join_execution(void);
@@ -277,6 +279,7 @@ int main(void)
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_insert_ignore_execution();
+    failures += test_insert_on_duplicate_key_update_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
@@ -4014,6 +4017,261 @@ static int test_insert_ignore_execution(void)
     free(required_physical);
     mylite_close(database);
     remove_runtime_test_files();
+    return failures;
+}
+
+static int test_insert_on_duplicate_key_update_execution(void)
+{
+    // NOLINTBEGIN(readability-function-cognitive-complexity,readability-magic-numbers)
+    static const char *const id_a_b_c_columns[] = {"id", "a", "b", "c"};
+    static const char *const du_seed_values[] = {"1", "10", "100", "1", "2", "20", "200", "2"};
+    static const char *const du_ignore_values[] = {"1",   "10", "100", "1",  "2",   "20",
+                                                   "200", "2",  "4",   "40", "400", "4"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    uint64_t last_insert_id = 0U;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open ODKU database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_odku32", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_odku32", MYLITE_DONE);
+
+    failures += execute_sql(database,
+                            "CREATE TABLE odku_base ("
+                            "id INT PRIMARY KEY, a INT UNIQUE, b INT UNIQUE, "
+                            "c INT DEFAULT 9, d INT DEFAULT 5)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO odku_base VALUES (1,10,100,1,1),(2,20,200,2,2)",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "INSERT INTO odku_base VALUES (3,30,300,3,DEFAULT) "
+                                         "ON DUPLICATE KEY UPDATE c = VALUES(c)",
+                                         1, "ODKU no-conflict insert affected rows");
+    failures += expect_int(mylite_warning_count(database), 1, "ODKU insert path warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_deprecated_syntax,
+                           "ODKU insert path VALUES warning code");
+
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "INSERT INTO odku_base VALUES (4,10,400,4,7) "
+                                         "ON DUPLICATE KEY UPDATE c = VALUES(c), d = VALUES(d)",
+                                         2, "ODKU changed duplicate affected rows");
+    failures += expect_int(mylite_warning_count(database), 2, "ODKU changed VALUES warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_deprecated_syntax,
+                           "ODKU first VALUES warning code");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "INSERT INTO odku_base VALUES (5,10,500,4,7) "
+                                                 "ON DUPLICATE KEY UPDATE c = c, d = d",
+                                                 0, "ODKU no-op duplicate affected rows");
+    failures += expect_select_rows(
+        database, "SELECT id, a, b, c FROM odku_base ORDER BY id", id_a_b_c_columns, 4,
+        (const char *[]){"1", "10", "100", "4", "2", "20", "200", "2", "3", "30", "300", "3"}, 3,
+        "ODKU base rows");
+
+    failures += execute_sql(
+        database, "CREATE TABLE odku_mix (id INT PRIMARY KEY, u INT UNIQUE, v INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO odku_mix VALUES (1,10,100),(2,20,200)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO odku_mix VALUES (3,10,101),(4,40,400),(5,20,200) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        3, "ODKU mixed insert update no-op affected rows");
+    failures += expect_int(mylite_warning_count(database), 1, "ODKU mixed VALUES warnings");
+    failures += expect_select_rows(
+        database, "SELECT id, u, v FROM odku_mix ORDER BY id", (const char *[]){"id", "u", "v"}, 3,
+        (const char *[]){"1", "10", "101", "2", "20", "200", "4", "40", "400"}, 3,
+        "ODKU mixed rows");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE odku_order ("
+                            "id INT PRIMARY KEY, a INT UNIQUE, b INT, c INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO odku_order VALUES (1,10,100,1000)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database,
+                                                 "INSERT INTO odku_order VALUES (2,10,40,400) "
+                                                 "ON DUPLICATE KEY UPDATE b = a + 1, c = b + 1",
+                                                 2, "ODKU assignment order affected rows");
+    failures += expect_select_rows(
+        database, "SELECT a, b, c FROM odku_order WHERE id = 1", (const char *[]){"a", "b", "c"}, 3,
+        (const char *[]){"10", "11", "12"}, 1, "ODKU assignment order row");
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "INSERT INTO odku_order VALUES (3,10,50,500) "
+                                         "ON DUPLICATE KEY UPDATE b = 100, b = b + 1, c = b + 1",
+                                         2, "ODKU repeated target affected rows");
+    failures += expect_select_rows(database, "SELECT b, c FROM odku_order WHERE id = 1",
+                                   (const char *[]){"b", "c"}, 2, (const char *[]){"101", "102"}, 1,
+                                   "ODKU repeated target row");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE odku_default ("
+                            "id INT PRIMARY KEY, u INT UNIQUE, d INT DEFAULT 7, n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO odku_default VALUES (1,1,1,2)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database,
+                                                 "INSERT INTO odku_default VALUES (2,1,3,4) "
+                                                 "ON DUPLICATE KEY UPDATE d = DEFAULT, n = DEFAULT",
+                                                 2, "ODKU DEFAULT affected rows");
+    failures += expect_select_rows(database, "SELECT d, n FROM odku_default WHERE id = 1",
+                                   (const char *[]){"d", "n"}, 2, (const char *[]){"7", NULL}, 1,
+                                   "ODKU DEFAULT row");
+
+    failures +=
+        execute_sql(database, "CREATE TABLE ali (a INT PRIMARY KEY, b INT, c INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ali VALUES (1,2,3)", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "INSERT INTO ali VALUES (1,4,5) AS n(a,b,c) "
+                            "ON DUPLICATE KEY UPDATE b = b, c = n.b",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Column 'b' in field list is ambiguous",
+                                  "ODKU ambiguous alias");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT a, b, c FROM ali", (const char *[]){"a", "b", "c"}, 3,
+                           (const char *[]){"1", "2", "3"}, 1, "ODKU ambiguous alias rollback");
+    failures += prepare_sql(database,
+                            "INSERT INTO ali VALUES (1,4,5) AS n(x,y,z) "
+                            "ON DUPLICATE KEY UPDATE c = q",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "Unknown column 'q'", "ODKU unknown alias reference");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(database,
+                                                 "INSERT INTO ali VALUES (1,6,7) AS n(x,y,z) "
+                                                 "ON DUPLICATE KEY UPDATE b = y, c = y + 1",
+                                                 2, "ODKU non-conflicting aliases affected rows");
+    failures +=
+        expect_select_rows(database, "SELECT a, b, c FROM ali", (const char *[]){"a", "b", "c"}, 3,
+                           (const char *[]){"1", "6", "7"}, 1, "ODKU non-conflicting aliases row");
+    failures += prepare_sql(database,
+                            "INSERT INTO ali(a,b) VALUES (1,8) AS n(x) "
+                            "ON DUPLICATE KEY UPDATE c = x",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "column names list have different column counts",
+                                  "ODKU alias column count mismatch");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database, "CREATE TABLE odku_set (id INT PRIMARY KEY, u INT UNIQUE, v INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO odku_set VALUES (1,1,10)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO odku_set SET id = 2, u = 1, v = 20 AS n(x,y,z) "
+        "ON DUPLICATE KEY UPDATE v = z",
+        2, "ODKU SET alias affected rows");
+    failures += expect_select_rows(database, "SELECT id, u, v FROM odku_set",
+                                   (const char *[]){"id", "u", "v"}, 3,
+                                   (const char *[]){"1", "1", "20"}, 1, "ODKU SET alias row");
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "INSERT INTO odku_set SET v = 30, id = 1 AS n(x,y) "
+                                         "ON DUPLICATE KEY UPDATE v = x",
+                                         2, "ODKU SET alias assignment-order affected rows");
+    failures += expect_select_rows(
+        database, "SELECT id, u, v FROM odku_set", (const char *[]){"id", "u", "v"}, 3,
+        (const char *[]){"1", "1", "30"}, 1, "ODKU SET alias assignment-order row");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE odku_multi ("
+                            "id INT PRIMARY KEY, a INT, b INT, c INT, "
+                            "UNIQUE KEY zb(a), UNIQUE KEY aa(b))",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO odku_multi VALUES (1,1,10,100),(2,2,20,200)",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database,
+                                                 "INSERT INTO odku_multi VALUES (3,1,20,300) "
+                                                 "ON DUPLICATE KEY UPDATE c = VALUES(c)",
+                                                 2, "ODKU multiple unique affected rows");
+    failures += expect_select_rows(
+        database, "SELECT id, c FROM odku_multi ORDER BY id", (const char *[]){"id", "c"}, 2,
+        (const char *[]){"1", "300", "2", "200"}, 2, "ODKU multiple unique catalog order");
+
+    failures += execute_sql(
+        database, "CREATE TABLE odku_null (id INT PRIMARY KEY, u INT UNIQUE, v INT)", MYLITE_DONE);
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "INSERT INTO odku_null VALUES (1,NULL,10),(2,NULL,20) "
+                                         "ON DUPLICATE KEY UPDATE v = 99",
+                                         2, "ODKU nullable unique NULL affected rows");
+    failures += expect_select_rows(
+        database, "SELECT id, u, v FROM odku_null ORDER BY id", (const char *[]){"id", "u", "v"}, 3,
+        (const char *[]){"1", NULL, "10", "2", NULL, "20"}, 2, "ODKU nullable unique NULL rows");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE du ("
+                            "id INT PRIMARY KEY, a INT UNIQUE, b INT UNIQUE, c INT)",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO du VALUES (1,10,100,1),(2,20,200,2)", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "INSERT INTO du VALUES (3,10,300,3) "
+                            "ON DUPLICATE KEY UPDATE b = 200, c = VALUES(c)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry '200' for key 'du.b'",
+                                  "ODKU update-branch duplicate rollback");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id, a, b, c FROM du ORDER BY id", id_a_b_c_columns, 4,
+                           du_seed_values, 2, "ODKU duplicate rollback rows");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE du_ignore ("
+                            "id INT PRIMARY KEY, a INT UNIQUE, b INT UNIQUE, c INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO du_ignore VALUES (1,10,100,1),(2,20,200,2)",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO du_ignore VALUES (3,10,300,3),(4,40,400,4) "
+        "ON DUPLICATE KEY UPDATE b = 200, c = VALUES(c)",
+        1, "ODKU IGNORE update duplicate affected rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "ODKU IGNORE update duplicate warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_deprecated_syntax,
+                           "ODKU IGNORE first warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_duplicate_entry,
+                           "ODKU IGNORE second warning code");
+    failures += expect_contains(mylite_warning_message(database, 1),
+                                "Duplicate entry '200' for key 'du_ignore.b'",
+                                "ODKU IGNORE duplicate warning message");
+    failures += expect_select_rows(database, "SELECT id, a, b, c FROM du_ignore ORDER BY id",
+                                   id_a_b_c_columns, 4, du_ignore_values, 3,
+                                   "ODKU IGNORE continuation rows");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ai_odku ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, u INT UNIQUE, v INT) "
+                            "AUTO_INCREMENT=30",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ai_odku VALUES (5,1,10)", MYLITE_DONE);
+    last_insert_id = mylite_last_insert_id(database);
+    failures += execute_sql_expect_done_affected(
+        database, "INSERT INTO ai_odku(u,v) VALUES (1,11) ON DUPLICATE KEY UPDATE v = VALUES(v)", 2,
+        "ODKU auto-increment duplicate affected rows");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), (int64_t)last_insert_id,
+                             "ODKU duplicate leaves last insert id");
+    failures += execute_sql_expect_done_affected(database, "INSERT INTO ai_odku(u,v) VALUES (2,12)",
+                                                 1, "ODKU auto-increment next affected rows");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), 31,
+                             "ODKU duplicate consumed generated id");
+    failures += execute_sql_expect_done_affected(
+        database, "INSERT INTO ai_odku(u,v) VALUES (3,13) ON DUPLICATE KEY UPDATE v = VALUES(v)", 1,
+        "ODKU generated insert affected rows");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), 32,
+                             "ODKU insert path sets last insert id");
+    failures += expect_select_rows(
+        database, "SELECT id, u, v FROM ai_odku ORDER BY u", (const char *[]){"id", "u", "v"}, 3,
+        (const char *[]){"5", "1", "11", "31", "2", "12", "32", "3", "13"}, 3,
+        "ODKU auto-increment rows");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-cognitive-complexity,readability-magic-numbers)
     return failures;
 }
 

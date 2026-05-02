@@ -322,8 +322,10 @@ Storage and side effects:
 
 MyLite intentionally documents these Task 14 boundaries:
 
-- `INSERT IGNORE`, priority modifiers, `DELAYED`, partitions, aliases, and
-  `ON DUPLICATE KEY UPDATE` remain parse/runtime deferred.
+- `INSERT IGNORE` is implemented separately, and row aliases plus
+  `ON DUPLICATE KEY UPDATE` are implemented for the scoped ODKU surface.
+  Priority modifiers, `DELAYED`, partitions, and insert-from-query sources
+  remain parse/runtime deferred.
 - Warning records and information strings are deferred.
 - Full expression and type-conversion fidelity is deferred. The Task 14 runtime
   only needs the existing parser's small deterministic expression subset plus
@@ -370,8 +372,8 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `INSERT HIGH_PRIORITY ... SET` | MySQL accepts; MyLite parse/runtime deferred. |
 | `INSERT DELAYED ... SET` | MySQL inserts with warning 3005; MyLite parse/runtime deferred. |
 | `INSERT ... PARTITION (p0) SET ...` | MySQL accepts for matching partitioned rows and errors 1748 on mismatch; MyLite deferred. |
-| `INSERT ... SET ... AS new` | MySQL accepts; MyLite deferred. |
-| `INSERT ... SET ... ON DUPLICATE KEY UPDATE ...` | MySQL accepts and can report affected rows `2`; MyLite deferred. |
+| `INSERT ... SET ... AS new` | Accepted for the scoped row-alias surface used by ODKU. |
+| `INSERT ... SET ... ON DUPLICATE KEY UPDATE ...` | Implemented for base tables in the scoped ODKU surface. |
 | empty `SET` list or missing `=` | Fails with syntax error 1064. |
 
 ## Test plan
@@ -386,8 +388,9 @@ Parser tests:
   `CURRENT_TIMESTAMP`, identifier references, and arithmetic expressions
 - malformed empty assignment list, missing `=`, missing value, missing target,
   and trailing comma
-- parse rejection for deferred `IGNORE`, priorities, `DELAYED`, partition,
-  alias, and `ON DUPLICATE KEY UPDATE` forms
+- parse coverage for `IGNORE`, row aliases, and `ON DUPLICATE KEY UPDATE`
+  forms implemented by their follow-up feature specs
+- parse rejection for deferred priorities, `DELAYED`, and partition forms
 
 Runtime tests:
 

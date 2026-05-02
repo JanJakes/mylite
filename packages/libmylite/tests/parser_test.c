@@ -19,6 +19,7 @@ static int test_create_table_base_execution_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
+static int test_insert_on_duplicate_key_update_syntax(void);
 static int test_update_single_table_syntax(void);
 static int test_delete_single_table_syntax(void);
 static int test_transaction_statement_syntax(void);
@@ -137,6 +138,7 @@ int main(void)
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
+    failures += test_insert_on_duplicate_key_update_syntax();
     failures += test_update_single_table_syntax();
     failures += test_delete_single_table_syntax();
     failures += test_transaction_statement_syntax();
@@ -2274,10 +2276,6 @@ static int test_insert_values_syntax(void)
         parse_sql("INSERT DELAYED INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE a = 1;",
-                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     return failures;
 }
 
@@ -2371,10 +2369,133 @@ static int test_insert_set_syntax(void)
         parse_sql("INSERT INTO t PARTITION (p0) SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("INSERT INTO t SET a = 1 AS new", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("INSERT INTO t SET a = 1 AS new", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("INSERT INTO t SET a = 1 ON DUPLICATE KEY UPDATE a = 2",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_insert_on_duplicate_key_update_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *rows = NULL;
+    const struct mylite_sql_ast_node *duplicate_update = NULL;
+    const struct mylite_sql_ast_node *assignments = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    const struct mylite_sql_ast_node *row_alias = NULL;
+    const struct mylite_sql_ast_node *alias_columns = NULL;
+    const struct mylite_sql_ast_node *value = NULL;
+    int failures = 0;
+
+    failures += parse_sql("INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE a = 1;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 1U);
+    duplicate_update = child_at(statement, 2U);
+    assignments = child_at(duplicate_update, 0U);
+    assignment = child_at(assignments, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_VALUES_STATEMENT, "ODKU values statement");
+    failures += expect_node(rows, MYLITE_SQL_AST_INSERT_ROW_LIST, "ODKU values rows");
+    failures += expect_node(duplicate_update, MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE,
+                            "ODKU values clause");
+    failures += expect_child_count(assignments, 1U, "ODKU assignment count");
+    failures += expect_span_text(child_at(assignment, 0U), "a", "ODKU assignment target");
+    failures += expect_literal(child_at(assignment, 1U), MYLITE_SQL_AST_LITERAL_INTEGER,
+                               "ODKU assignment value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUE (1) ON DUPLICATE KEY UPDATE a = DEFAULT;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    duplicate_update = child_at(statement, 2U);
+    assignment = child_at(child_at(duplicate_update, 0U), 0U);
+    failures += expect_node(child_at(assignment, 1U), MYLITE_SQL_AST_DEFAULT, "ODKU DEFAULT");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES ROW(1, 2), ROW(3, 4) "
+                          "ON DUPLICATE KEY UPDATE a = VALUES(a), b = b + 1;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 1U);
+    duplicate_update = child_at(statement, 2U);
+    assignments = child_at(duplicate_update, 0U);
+    failures += expect_child_count(rows, 2U, "ODKU ROW constructor rows");
+    failures += expect_child_count(assignments, 2U, "ODKU ROW assignment count");
+    value = child_at(child_at(assignments, 0U), 1U);
+    failures += expect_function_call(value, "VALUES", 1U, "ODKU VALUES function");
+    value = child_at(child_at(assignments, 1U), 1U);
+    failures += expect_node(value, MYLITE_SQL_AST_BINARY_EXPRESSION, "ODKU arithmetic");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT IGNORE INTO t (a, b) VALUES (1, 2) AS new_row(x, y) "
+                          "ON DUPLICATE KEY UPDATE a = y, b = new_row.x;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    row_alias = child_at(statement, 3U);
+    duplicate_update = child_at(statement, 4U);
+    alias_columns = child_at(row_alias, 1U);
+    assignments = child_at(duplicate_update, 0U);
+    if (statement == NULL || !statement->insert_ignore) {
+        fprintf(stderr, "Expected ODKU INSERT IGNORE flag\n");
+        ++failures;
+    }
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_INSERT_COLUMN_LIST, "ODKU column list");
+    failures += expect_span_text(child_at(row_alias, 0U), "new_row", "ODKU row alias");
+    failures += expect_child_count(alias_columns, 2U, "ODKU column alias count");
+    failures +=
+        expect_span_text(child_at(child_at(assignments, 0U), 1U), "y", "ODKU column alias value");
+    failures += expect_node(child_at(child_at(assignments, 1U), 1U),
+                            MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "ODKU row alias qualified value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t SET a = 1, b = 2 AS n(c1, c2) "
+                          "ON DUPLICATE KEY UPDATE a = c1, a = c2;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    row_alias = child_at(statement, 2U);
+    duplicate_update = child_at(statement, 3U);
+    assignments = child_at(duplicate_update, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_SET_STATEMENT, "ODKU SET statement");
+    failures += expect_span_text(child_at(row_alias, 0U), "n", "ODKU SET row alias");
+    failures += expect_child_count(assignments, 2U, "ODKU repeated targets");
+    failures += expect_span_text(child_at(child_at(assignments, 0U), 0U), "a",
+                                 "ODKU repeated first target");
+    failures += expect_span_text(child_at(child_at(assignments, 1U), 0U), "a",
+                                 "ODKU repeated second target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES (1) ON DUPLICATE UPDATE a = 1",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES (1) ON DUPLICATE KEY a = 1",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES (1) AS n() ON DUPLICATE KEY UPDATE a = 1",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE a",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE a =",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE a = 1,",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

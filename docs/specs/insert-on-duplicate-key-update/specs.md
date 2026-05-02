@@ -13,11 +13,18 @@ specified:
 
 Current implementation status:
 
-- `INSERT ... VALUES`, `INSERT ... SET`, and the first `INSERT IGNORE` slice
-  are implemented separately.
-- `ON DUPLICATE KEY UPDATE` is not implemented by this start phase.
-- This spec defines parser, analyzer, runtime, diagnostic, metadata, and test
-  expectations for a later implementation.
+- Implemented for the currently supported `INSERT ... VALUES`, `VALUE`,
+  `VALUES ROW(...)`, `INSERT ... SET`, and first `INSERT IGNORE` surfaces.
+- The implemented slice includes row aliases, optional column aliases,
+  catalog-order duplicate conflict selection, source-order update assignments,
+  repeated update targets, `DEFAULT`, target-row references, candidate-row
+  references through row aliases/column aliases/`VALUES(col)`, warning 1287 for
+  each syntactic `VALUES(col)` use, update-branch duplicate rollback, and
+  `INSERT IGNORE` demotion/continuation for update-branch duplicate conflicts.
+- Generated columns, triggers, foreign keys, insert-from-query sources,
+  partitions, priority/delayed modifiers, explicit `LAST_INSERT_ID(expr)`, full
+  conversion/range/truncation demotion, and broad expression support remain
+  deferred.
 
 In scope:
 
@@ -131,6 +138,7 @@ Observed alias diagnostics:
 | Statement shape | Diagnostic |
 | --- | --- |
 | row alias same as target table | 1066 / `42000`, not unique table or alias |
+| column alias count does not match insert source width | 1353 / `HY000`, column-count mismatch |
 | duplicate column alias | 1060 / `42S21`, duplicate column name |
 | unqualified name matching both target column and column alias | 1052 / `23000`, ambiguous column |
 
@@ -240,7 +248,8 @@ Observed examples:
 ### Warnings
 
 `VALUES(col)` in an ODKU update expression records warning 1287 in MySQL
-8.4.9. Row-alias and column-alias forms avoid that warning.
+8.4.9 once per syntactic use in the statement, even when every candidate row
+takes the insert path. Row-alias and column-alias forms avoid that warning.
 
 `SHOW WARNINGS` and `SHOW COUNT(*) WARNINGS` expose warnings from the most
 recent nondiagnostic statement. The `mysql` client can also print warnings
@@ -465,6 +474,8 @@ table unless a column alias makes the name ambiguous. Row-alias-qualified
 references resolve against candidate insert values. Column aliases resolve to
 candidate insert values and can be used unqualified only when they do not
 conflict with target-table column names or other visible names.
+For `INSERT ... SET`, column aliases bind to the SET assignments in source
+order rather than target-table ordinal order.
 
 `VALUES(col)` resolves `col` against the target table's insertable column set,
 not against arbitrary expression aliases. It returns the candidate-row value
@@ -571,6 +582,7 @@ and error requirements:
 | --- | --- | --- | --- |
 | `VALUES(col)` in ODKU expression | 1287 | `HY000` | Statement succeeds and records a warning per use. |
 | row alias equals target table alias/name | 1066 | `42000` | Error before mutation. |
+| column alias count does not match insert source width | 1353 | `HY000` | Error before mutation. |
 | duplicate column alias | 1060 | `42S21` | Error before mutation. |
 | ambiguous unqualified reference | 1052 | `23000` | Error before mutation. |
 | unknown ODKU assignment target or expression column | 1054 | `42S22` | Error before mutation. |
@@ -674,6 +686,7 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | row alias reference `new.a` | Candidate-row value used without 1287 warning. |
 | column alias reference `alias_col` | Candidate-row value used when not ambiguous. |
 | row alias same as target table | Error 1066 before mutation. |
+| column alias count mismatch | Error 1353 before mutation. |
 | duplicate column alias | Error 1060 before mutation. |
 | unqualified alias/target ambiguity | Error 1052 before mutation. |
 | unknown ODKU assignment target | Error 1054 before mutation. |
@@ -709,28 +722,36 @@ Parser tests:
 - continued rejection for priority modifiers, `DELAYED`, partitions, and
   insert-from-query ODKU until those specs are implemented
 
-Runtime tests:
+Implemented runtime tests:
 
 - successful insert path with ODKU present but no conflict
 - duplicate update path with changed and unchanged rows
-- mixed multi-row source with insert, update, no-op update, and later conflict
-- conflict detection against primary key, single unique key, composite unique
-  key, and multiple unique keys in different catalog orders
+- mixed multi-row source with insert, update, and no-op update
+- conflict detection against primary key, single unique key, multiple unique
+  keys in MyLite catalog order, and update-branch duplicate rollback
 - nullable unique-key parts containing `NULL`
 - assignment order, repeated target assignments, `DEFAULT`, target-column
   references, `VALUES(col)`, row aliases, and column aliases
 - candidate-row defaults exposed through `VALUES(col)` and aliases
-- alias diagnostics 1066, 1060, and 1052
+- alias diagnostics 1066, 1353, 1060, and 1052
 - unknown ODKU assignment target diagnostics
-- candidate insert validation before update: row arity, unknown insert column,
-  missing required column, explicit `NULL`, explicit generated column, and
-  unsupported generated default expression
+- candidate insert validation before update through the existing insert
+  validation tests plus ODKU rollback probes
 - update-branch duplicate-key error with rollback
 - `INSERT IGNORE` update-branch duplicate-key demotion and continuation
 - warning records for 1287 and demoted 1062, including warning ordering
-- affected rows, duplicate count, warning count, session last insert id, and
-  auto-increment catalog state
+- affected rows, warning count, session last insert id, and auto-increment
+  catalog state
 - fatal error rollback for all rows inserted or updated by the statement
+
+Deferred runtime tests:
+
+- composite unique-key conflict surfaces beyond the current primary/single-key
+  and multiple-index coverage
+- generated-column validation and generated-column `DEFAULT` behavior
+- triggers, foreign keys, views, partitions, priority/delayed modifiers, and
+  insert-from-query ODKU sources
+- full conversion/range/truncation demotion under `IGNORE`
 - explicit `LAST_INSERT_ID(expr)` behavior when the scalar function surface is
   available in ODKU expressions
 

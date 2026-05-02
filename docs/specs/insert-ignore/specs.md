@@ -330,17 +330,19 @@ classification without rewriting insert execution.
 
 ### Unsupported interaction points
 
-`IGNORE` must not accidentally enable unsupported insert features:
+`IGNORE` must not accidentally enable unsupported insert features outside the
+scoped implemented surfaces:
 
-- `INSERT IGNORE ... ON DUPLICATE KEY UPDATE` remains deferred. MySQL supports
-  the combination and can demote errors from the update branch, but that belongs
-  to the ODKU feature.
+- `INSERT IGNORE ... ON DUPLICATE KEY UPDATE` is implemented for the current
+  `VALUES`, `VALUE`, `VALUES ROW(...)`, and `SET` forms by the ODKU feature.
+  It demotes duplicate-key conflicts raised by the update branch to warning
+  1062 and continues with later rows.
 - `INSERT LOW_PRIORITY IGNORE`, `INSERT HIGH_PRIORITY IGNORE`, and
   `INSERT DELAYED IGNORE` remain deferred until insert modifiers are specified.
 - `INSERT IGNORE ... PARTITION (...)` remains deferred until partition routing
   and partition-mismatch diagnostics are specified.
-- `INSERT IGNORE ... AS row_alias[(column_alias,...)]` remains deferred until
-  row aliases are implemented.
+- `INSERT IGNORE ... AS row_alias[(column_alias,...)]` is implemented where it
+  is part of the scoped ODKU surface.
 - Generated columns, triggers, foreign keys, and view checks are future
   demotion surfaces; this task must leave deterministic unsupported diagnostics
   for those features.
@@ -594,8 +596,8 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | unsupported expression during value evaluation | Fatal MyLite diagnostic; statement rows rolled back. |
 | `INSERT LOW_PRIORITY IGNORE ...` | Deferred unsupported form until insert priorities are specified. |
 | `INSERT IGNORE ... PARTITION (...)` | Deferred unsupported form until partitions are specified. |
-| `INSERT IGNORE ... AS new` | Deferred unsupported form until insert aliases are specified. |
-| `INSERT IGNORE ... ON DUPLICATE KEY UPDATE ...` | Deferred unsupported form until ODKU is specified. |
+| `INSERT IGNORE ... AS new` | Accepted for the scoped ODKU insert surfaces; otherwise no runtime effect. |
+| `INSERT IGNORE ... ON DUPLICATE KEY UPDATE ...` | Implemented for current `VALUES`/`SET` forms; update-branch duplicate conflicts are warning-demoted and later rows continue. |
 
 ## Test plan
 
@@ -605,8 +607,8 @@ Parser tests:
   column lists, empty column lists, and omitted `INTO`
 - `IGNORE` on `SET` assignment lists
 - malformed placements such as `INSERT INTO IGNORE t ...`
-- continued parse rejection for priority modifiers, `DELAYED`, partitions,
-  aliases, and ODKU when combined with `IGNORE`
+- continued parse rejection for priority modifiers, `DELAYED`, and partitions
+- scoped alias and ODKU coverage when combined with `IGNORE`
 
 Runtime tests:
 

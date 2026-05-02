@@ -24,7 +24,8 @@ expression nodes.
   statement spans for the analyzer.
 - Statement target descriptors expose all currently known targets for
   multi-target statements such as `DROP TABLE`, `RENAME TABLE`, multi-table
-  `DELETE`, and joined `UPDATE`.
+  `DELETE`, and joined `UPDATE`, including length-aware decoded target
+  schema/name values.
 - `CREATE TABLE` statements expose typed column descriptors for direct column
   definitions, including definition, name, type, option spans, exact type
   name/parameter/attribute spans, decoded column names, exact type kind,
@@ -65,7 +66,7 @@ expression nodes.
 - top-level target kind
 - top-level target, schema, and name spans where the target is known
 - indexed target descriptors with role, kind, full span, schema span, and name
-  span
+  span, plus decoded schema/name values
 - typed `CREATE TABLE` column descriptors with definition, name, type, type
   name, type parameters, type attributes, options, defaults, `ON UPDATE`,
   generated expression/storage, comments, inline check, and inline reference
@@ -83,7 +84,10 @@ expression nodes.
 The original single-target accessors remain compatibility helpers and mirror
 the first indexed target. The indexed API should be used by new analyzer and
 typed-AST code so statements that naturally mention several targets do not lose
-information. Target roles are currently:
+information. Target schema/name values follow the same identifier normalization
+policy as column names: unquoted names point into the retained SQL copy, while
+quoted names are arena-backed and have doubled quote characters collapsed.
+Target roles are currently:
 
 - `primary` for ordinary DDL/DML table, database, view, routine, account, or
   variable targets
@@ -174,8 +178,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.987984 qps=497148 mbps=37.81 avg_us=2.011
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=22.083275 qps=314903 mbps=23.95 avg_us=3.176 avg_nodes=74.5 avg_ast_bytes=10139.0 avg_statements=1.00 avg_targets=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04 avg_column_name_values=0.29 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.077706 qps=493980 mbps=37.57 avg_us=2.024
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=22.051897 qps=315352 mbps=23.98 avg_us=3.171 avg_nodes=74.5 avg_ast_bytes=10144.6 avg_statements=1.00 avg_targets=0.59 avg_target_schema_values=0.02 avg_target_name_values=0.59 avg_columns=0.29 avg_keys=0.06 avg_key_columns=0.09 avg_key_options=0.00 avg_options=0.04 avg_column_name_values=0.29 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -188,7 +192,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 109K on disk, 72,716 bytes text/data/other
+parser support object: 111K on disk, 73,852 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.2M on disk
 mylite-parse: 1.0M on disk

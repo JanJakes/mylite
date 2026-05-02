@@ -306,8 +306,16 @@ size_t mylite_ast_statement_target_start(const MyliteAst *ast, size_t index);
 size_t mylite_ast_statement_target_end(const MyliteAst *ast, size_t index);
 size_t mylite_ast_statement_target_schema_start(const MyliteAst *ast, size_t index);
 size_t mylite_ast_statement_target_schema_end(const MyliteAst *ast, size_t index);
+const char *mylite_ast_statement_target_schema_value(const MyliteAst *ast,
+                                                     size_t index);
+size_t mylite_ast_statement_target_schema_value_length(const MyliteAst *ast,
+                                                       size_t index);
 size_t mylite_ast_statement_target_name_start(const MyliteAst *ast, size_t index);
 size_t mylite_ast_statement_target_name_end(const MyliteAst *ast, size_t index);
+const char *mylite_ast_statement_target_name_value(const MyliteAst *ast,
+                                                   size_t index);
+size_t mylite_ast_statement_target_name_value_length(const MyliteAst *ast,
+                                                     size_t index);
 size_t mylite_ast_statement_target_count(const MyliteAst *ast, size_t statement_index);
 MyliteStatementTargetKind mylite_ast_statement_target_kind_at(
     const MyliteAst *ast, size_t statement_index, size_t target_index);
@@ -325,12 +333,20 @@ size_t mylite_ast_statement_target_schema_start_at(const MyliteAst *ast,
 size_t mylite_ast_statement_target_schema_end_at(const MyliteAst *ast,
                                                  size_t statement_index,
                                                  size_t target_index);
+const char *mylite_ast_statement_target_schema_value_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index);
+size_t mylite_ast_statement_target_schema_value_length_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index);
 size_t mylite_ast_statement_target_name_start_at(const MyliteAst *ast,
                                                  size_t statement_index,
                                                  size_t target_index);
 size_t mylite_ast_statement_target_name_end_at(const MyliteAst *ast,
                                                size_t statement_index,
                                                size_t target_index);
+const char *mylite_ast_statement_target_name_value_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index);
+size_t mylite_ast_statement_target_name_value_length_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index);
 size_t mylite_ast_create_table_column_count(const MyliteAst *ast,
                                             size_t statement_index);
 size_t mylite_ast_create_table_column_start(const MyliteAst *ast,

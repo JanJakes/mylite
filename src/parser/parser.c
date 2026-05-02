@@ -26,6 +26,10 @@ typedef struct MyliteAstStatementTarget {
   size_t schema_end;
   size_t name_start;
   size_t name_end;
+  const char *schema_value;
+  size_t schema_value_length;
+  const char *name_value;
+  size_t name_value_length;
 } MyliteAstStatementTarget;
 
 typedef enum MyliteAstCreateTableColumnTypeShapeFlag {
@@ -303,10 +307,13 @@ static int mylite_ast_append_statement_target(MyliteAst *ast,
                                               MyliteStatementTargetKind kind,
                                               MyliteStatementTargetRole role,
                                               const MyliteAstNode *target);
-static void mylite_ast_fill_statement_target(MyliteAstStatementTarget *target,
-                                             MyliteStatementTargetKind kind,
-                                             MyliteStatementTargetRole role,
-                                             const MyliteAstNode *node);
+static int mylite_ast_fill_statement_target(MyliteAst *ast,
+                                            MyliteAstStatementTarget *target,
+                                            MyliteStatementTargetKind kind,
+                                            MyliteStatementTargetRole role,
+                                            const MyliteAstNode *node);
+static int mylite_ast_set_statement_target_values(MyliteAst *ast,
+                                                  MyliteAstStatementTarget *target);
 static void mylite_ast_mirror_first_statement_target(MyliteAstStatement *statement);
 static int mylite_ast_collect_create_table_columns(MyliteAst *ast,
                                                    MyliteAstStatement *statement,
@@ -1109,6 +1116,20 @@ size_t mylite_ast_statement_target_schema_end(const MyliteAst *ast, size_t index
   return statement == NULL ? 0 : statement->target_schema_end;
 }
 
+const char *mylite_ast_statement_target_schema_value(const MyliteAst *ast,
+                                                     size_t index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, index, 0);
+  return target == NULL ? NULL : target->schema_value;
+}
+
+size_t mylite_ast_statement_target_schema_value_length(const MyliteAst *ast,
+                                                       size_t index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, index, 0);
+  return target == NULL ? 0 : target->schema_value_length;
+}
+
 size_t mylite_ast_statement_target_name_start(const MyliteAst *ast, size_t index) {
   const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
   return statement == NULL ? 0 : statement->target_name_start;
@@ -1117,6 +1138,20 @@ size_t mylite_ast_statement_target_name_start(const MyliteAst *ast, size_t index
 size_t mylite_ast_statement_target_name_end(const MyliteAst *ast, size_t index) {
   const MyliteAstStatement *statement = mylite_ast_statement_at(ast, index);
   return statement == NULL ? 0 : statement->target_name_end;
+}
+
+const char *mylite_ast_statement_target_name_value(const MyliteAst *ast,
+                                                   size_t index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, index, 0);
+  return target == NULL ? NULL : target->name_value;
+}
+
+size_t mylite_ast_statement_target_name_value_length(const MyliteAst *ast,
+                                                     size_t index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, index, 0);
+  return target == NULL ? 0 : target->name_value_length;
 }
 
 size_t mylite_ast_statement_target_count(const MyliteAst *ast,
@@ -1171,6 +1206,20 @@ size_t mylite_ast_statement_target_schema_end_at(const MyliteAst *ast,
   return target == NULL ? 0 : target->schema_end;
 }
 
+const char *mylite_ast_statement_target_schema_value_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? NULL : target->schema_value;
+}
+
+size_t mylite_ast_statement_target_schema_value_length_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? 0 : target->schema_value_length;
+}
+
 size_t mylite_ast_statement_target_name_start_at(const MyliteAst *ast,
                                                  size_t statement_index,
                                                  size_t target_index) {
@@ -1185,6 +1234,20 @@ size_t mylite_ast_statement_target_name_end_at(const MyliteAst *ast,
   const MyliteAstStatementTarget *target =
       mylite_ast_statement_target_at(ast, statement_index, target_index);
   return target == NULL ? 0 : target->name_end;
+}
+
+const char *mylite_ast_statement_target_name_value_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? NULL : target->name_value;
+}
+
+size_t mylite_ast_statement_target_name_value_length_at(
+    const MyliteAst *ast, size_t statement_index, size_t target_index) {
+  const MyliteAstStatementTarget *target =
+      mylite_ast_statement_target_at(ast, statement_index, target_index);
+  return target == NULL ? 0 : target->name_value_length;
 }
 
 size_t mylite_ast_create_table_column_count(const MyliteAst *ast,
@@ -3222,17 +3285,20 @@ static int mylite_ast_append_statement_target(MyliteAst *ast,
     memcpy(targets, statement->targets,
            statement->target_count * sizeof(*targets));
   }
-  mylite_ast_fill_statement_target(&targets[statement->target_count], kind, role,
-                                   target);
+  if (!mylite_ast_fill_statement_target(ast, &targets[statement->target_count],
+                                        kind, role, target)) {
+    return 0;
+  }
   statement->targets = targets;
   statement->target_count = next_count;
   return 1;
 }
 
-static void mylite_ast_fill_statement_target(MyliteAstStatementTarget *target,
-                                             MyliteStatementTargetKind kind,
-                                             MyliteStatementTargetRole role,
-                                             const MyliteAstNode *node) {
+static int mylite_ast_fill_statement_target(MyliteAst *ast,
+                                            MyliteAstStatementTarget *target,
+                                            MyliteStatementTargetKind kind,
+                                            MyliteStatementTargetRole role,
+                                            const MyliteAstNode *node) {
   target->kind = kind;
   target->role = role;
   target->start = mylite_ast_node_start(node);
@@ -3245,6 +3311,29 @@ static void mylite_ast_fill_statement_target(MyliteAstStatementTarget *target,
       kind == MYLITE_STATEMENT_TARGET_ROUTINE) {
     mylite_ast_set_table_name_parts(target, node);
   }
+  return mylite_ast_set_statement_target_values(ast, target);
+}
+
+static int mylite_ast_set_statement_target_values(MyliteAst *ast,
+                                                  MyliteAstStatementTarget *target) {
+  if (ast == NULL || target == NULL) {
+    return 1;
+  }
+  if (target->schema_start < target->schema_end &&
+      target->schema_end <= ast->source_length &&
+      !mylite_ast_decode_identifier(ast, target->schema_start,
+                                    target->schema_end, &target->schema_value,
+                                    &target->schema_value_length)) {
+    return 0;
+  }
+  if (target->name_start < target->name_end &&
+      target->name_end <= ast->source_length &&
+      !mylite_ast_decode_identifier(ast, target->name_start, target->name_end,
+                                    &target->name_value,
+                                    &target->name_value_length)) {
+    return 0;
+  }
+  return 1;
 }
 
 static void mylite_ast_mirror_first_statement_target(MyliteAstStatement *statement) {

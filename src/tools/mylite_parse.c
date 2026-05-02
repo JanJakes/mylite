@@ -142,6 +142,28 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_statement_target_schema_end_at(ast, i, j),
              mylite_ast_statement_target_name_start_at(ast, i, j),
              mylite_ast_statement_target_name_end_at(ast, i, j));
+      const char *schema_value =
+          mylite_ast_statement_target_schema_value_at(ast, i, j);
+      size_t schema_value_length =
+          mylite_ast_statement_target_schema_value_length_at(ast, i, j);
+      const char *name_value =
+          mylite_ast_statement_target_name_value_at(ast, i, j);
+      size_t name_value_length =
+          mylite_ast_statement_target_name_value_length_at(ast, i, j);
+      printf("    target[%zu].schema_value len=%zu value=", j,
+             schema_value_length);
+      if (schema_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(schema_value, schema_value_length);
+      }
+      printf(" name_value len=%zu value=", name_value_length);
+      if (name_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(name_value, name_value_length);
+      }
+      fputc('\n', stdout);
     }
     for (size_t j = 0; j < column_count; j++) {
       printf("  column[%zu] family=%s kind=%s storage=%s flags=0x%x "

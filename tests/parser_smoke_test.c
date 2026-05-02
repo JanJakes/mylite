@@ -9,6 +9,8 @@ typedef struct ExpectedAstTarget {
   const char *target;
   const char *schema;
   const char *name;
+  const char *schema_value;
+  const char *name_value;
 } ExpectedAstTarget;
 
 typedef struct ExpectedCreateTableColumn {
@@ -130,7 +132,8 @@ static int expect_ast_statements(const char *sql, size_t count,
 static int expect_ast_target(const char *sql, MyliteStatementKind statement_kind,
                              MyliteStatementTargetKind target_kind,
                              const char *target, const char *schema,
-                             const char *name);
+                             const char *name, const char *schema_value,
+                             const char *name_value);
 static int expect_ast_targets(const char *sql, MyliteStatementKind statement_kind,
                               const ExpectedAstTarget *targets,
                               size_t target_count);
@@ -628,22 +631,27 @@ int main(void) {
   failures += expect_ast_target("CREATE TABLE db1.t1 (id INT)",
                                 MYLITE_STATEMENT_CREATE,
                                 MYLITE_STATEMENT_TARGET_TABLE, "db1.t1", "db1",
-                                "t1");
+                                "t1", "db1", "t1");
+  failures += expect_ast_target("CREATE TABLE `db``x`.`t``y` (id INT)",
+                                MYLITE_STATEMENT_CREATE,
+                                MYLITE_STATEMENT_TARGET_TABLE,
+                                "`db``x`.`t``y`", "`db``x`", "`t``y`",
+                                "db`x", "t`y");
   failures += expect_ast_target("INSERT INTO db1.t1 (id) VALUES (1)",
                                 MYLITE_STATEMENT_INSERT,
                                 MYLITE_STATEMENT_TARGET_TABLE, "db1.t1", "db1",
-                                "t1");
+                                "t1", "db1", "t1");
   failures += expect_ast_target("UPDATE db1.t1 SET id = 2",
                                 MYLITE_STATEMENT_UPDATE,
                                 MYLITE_STATEMENT_TARGET_TABLE, "db1.t1", "db1",
-                                "t1");
+                                "t1", "db1", "t1");
   failures += expect_ast_target("DELETE FROM db1.t1 WHERE id = 1",
                                 MYLITE_STATEMENT_DELETE,
                                 MYLITE_STATEMENT_TARGET_TABLE, "db1.t1", "db1",
-                                "t1");
+                                "t1", "db1", "t1");
   failures += expect_ast_target("SET @a = 1", MYLITE_STATEMENT_SET,
                                 MYLITE_STATEMENT_TARGET_VARIABLE, "@a", NULL,
-                                "@a");
+                                "@a", NULL, "@a");
   {
     const ExpectedAstTarget targets[] = {
         {MYLITE_STATEMENT_TARGET_ROLE_PRIMARY, MYLITE_STATEMENT_TARGET_TABLE,
@@ -1480,7 +1488,8 @@ static int expect_ast_ok(const char *sql, const char *root_symbol) {
 static int expect_ast_target(const char *sql, MyliteStatementKind statement_kind,
                              MyliteStatementTargetKind target_kind,
                              const char *target, const char *schema,
-                             const char *name) {
+                             const char *name, const char *schema_value,
+                             const char *name_value) {
   MyliteParseResult result;
   MyliteAst *ast = NULL;
   MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
@@ -1505,18 +1514,27 @@ static int expect_ast_target(const char *sql, MyliteStatementKind statement_kind
       !span_matches(sql, mylite_ast_statement_target_schema_start(ast, 0),
                     mylite_ast_statement_target_schema_end(ast, 0), schema) ||
       !span_matches(sql, mylite_ast_statement_target_name_start(ast, 0),
-                    mylite_ast_statement_target_name_end(ast, 0), name)) {
+                    mylite_ast_statement_target_name_end(ast, 0), name) ||
+      !value_matches_when_expected(
+          mylite_ast_statement_target_schema_value(ast, 0),
+          mylite_ast_statement_target_schema_value_length(ast, 0),
+          schema_value) ||
+      !value_matches_when_expected(
+          mylite_ast_statement_target_name_value(ast, 0),
+          mylite_ast_statement_target_name_value_length(ast, 0), name_value)) {
     fprintf(stderr,
             "AST target failed: %s\nkind=%s target_kind=%s target=%zu..%zu "
-            "schema=%zu..%zu name=%zu..%zu target_count=%zu\n",
+            "schema=%zu..%zu:%zu name=%zu..%zu:%zu target_count=%zu\n",
             sql, mylite_statement_kind_name(mylite_ast_statement_kind(ast, 0)),
             mylite_statement_target_kind_name(mylite_ast_statement_target_kind(ast, 0)),
             mylite_ast_statement_target_start(ast, 0),
             mylite_ast_statement_target_end(ast, 0),
             mylite_ast_statement_target_schema_start(ast, 0),
             mylite_ast_statement_target_schema_end(ast, 0),
+            mylite_ast_statement_target_schema_value_length(ast, 0),
             mylite_ast_statement_target_name_start(ast, 0),
             mylite_ast_statement_target_name_end(ast, 0),
+            mylite_ast_statement_target_name_value_length(ast, 0),
             mylite_ast_statement_target_count(ast, 0));
     failed = 1;
   }
@@ -1562,10 +1580,18 @@ static int expect_ast_targets(const char *sql, MyliteStatementKind statement_kin
                       targets[i].schema) ||
         !span_matches(sql, mylite_ast_statement_target_name_start_at(ast, 0, i),
                       mylite_ast_statement_target_name_end_at(ast, 0, i),
-                      targets[i].name)) {
+                      targets[i].name) ||
+        !value_matches_when_expected(
+            mylite_ast_statement_target_schema_value_at(ast, 0, i),
+            mylite_ast_statement_target_schema_value_length_at(ast, 0, i),
+            targets[i].schema_value) ||
+        !value_matches_when_expected(
+            mylite_ast_statement_target_name_value_at(ast, 0, i),
+            mylite_ast_statement_target_name_value_length_at(ast, 0, i),
+            targets[i].name_value)) {
       fprintf(stderr,
               "AST target[%zu] failed: %s\nrole=%s kind=%s target=%zu..%zu "
-              "schema=%zu..%zu name=%zu..%zu\n",
+              "schema=%zu..%zu:%zu name=%zu..%zu:%zu\n",
               i, sql,
               mylite_statement_target_role_name(
                   mylite_ast_statement_target_role_at(ast, 0, i)),
@@ -1575,8 +1601,10 @@ static int expect_ast_targets(const char *sql, MyliteStatementKind statement_kin
               mylite_ast_statement_target_end_at(ast, 0, i),
               mylite_ast_statement_target_schema_start_at(ast, 0, i),
               mylite_ast_statement_target_schema_end_at(ast, 0, i),
+              mylite_ast_statement_target_schema_value_length_at(ast, 0, i),
               mylite_ast_statement_target_name_start_at(ast, 0, i),
-              mylite_ast_statement_target_name_end_at(ast, 0, i));
+              mylite_ast_statement_target_name_end_at(ast, 0, i),
+              mylite_ast_statement_target_name_value_length_at(ast, 0, i));
       failed = 1;
     }
   }

@@ -58,6 +58,8 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t ast_bytes = 0;
   size_t statements = 0;
   size_t targets = 0;
+  size_t target_schema_values = 0;
+  size_t target_name_values = 0;
   size_t columns = 0;
   size_t column_name_values = 0;
   size_t column_known_types = 0;
@@ -100,6 +102,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
           statements += mylite_ast_statement_count(ast);
           for (size_t i = 0; i < mylite_ast_statement_count(ast); i++) {
             targets += mylite_ast_statement_target_count(ast, i);
+            for (size_t j = 0; j < mylite_ast_statement_target_count(ast, i);
+                 j++) {
+              if (mylite_ast_statement_target_schema_value_at(ast, i, j) != NULL) {
+                target_schema_values++;
+              }
+              if (mylite_ast_statement_target_name_value_at(ast, i, j) != NULL) {
+                target_name_values++;
+              }
+            }
             columns += mylite_ast_create_table_column_count(ast, i);
             keys += mylite_ast_create_table_key_count(ast, i);
             options += mylite_ast_create_table_option_count(ast, i);
@@ -227,10 +238,13 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
          (elapsed * 1000000.0) / total_queries);
   if (mode == BENCH_AST && parsed > 0) {
     printf(" avg_nodes=%.1f avg_ast_bytes=%.1f avg_statements=%.2f "
-           "avg_targets=%.2f avg_columns=%.2f avg_keys=%.2f "
+           "avg_targets=%.2f avg_target_schema_values=%.2f "
+           "avg_target_name_values=%.2f avg_columns=%.2f avg_keys=%.2f "
            "avg_key_columns=%.2f avg_key_options=%.2f avg_options=%.2f",
            (double)ast_nodes / (double)parsed, (double)ast_bytes / (double)parsed,
            (double)statements / (double)parsed, (double)targets / (double)parsed,
+           (double)target_schema_values / (double)parsed,
+           (double)target_name_values / (double)parsed,
            (double)columns / (double)parsed, (double)keys / (double)parsed,
            (double)key_columns / (double)parsed,
            (double)key_options / (double)parsed, (double)options / (double)parsed);

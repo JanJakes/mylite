@@ -63,7 +63,8 @@ level application surfaces.
        [result metadata and expression labels](../result-metadata-expression-labels/specs.md).
 24. [ ] Scalar built-in functions used by common applications: string, numeric,
        temporal, conditional, comparison, information, and compatibility
-       functions with MySQL conversion behavior.
+       functions with MySQL conversion behavior. Started; spec:
+       [scalar built-in functions](../scalar-built-in-functions/specs.md).
 25. [ ] Aggregate functions and grouping: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`,
        `GROUP BY`, `HAVING`, aliases, ordinals, and `ONLY_FULL_GROUP_BY`.
 26. [ ] Inner joins and comma joins: join precedence, aliases, `ON`, `USING`,

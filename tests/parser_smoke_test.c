@@ -1682,6 +1682,18 @@ static int expect_create_table_view(const char *sql, const char *target,
 
   const MyliteAstCreateTable *create_table =
       mylite_ast_create_table_view(ast, 0);
+  const MyliteAstCreateTableColumn *first_column = create_table == NULL
+                                                       ? NULL
+                                                       : mylite_ast_create_table_view_column_at(
+                                                             create_table, 0);
+  const MyliteAstCreateTableKey *first_key =
+      create_table == NULL ? NULL
+                           : mylite_ast_create_table_view_key_at(create_table,
+                                                                 0);
+  const MyliteAstCreateTableOption *first_option =
+      create_table == NULL
+          ? NULL
+          : mylite_ast_create_table_view_option_at(create_table, 0);
   int failed = 0;
   if (mylite_ast_statement_count(ast) != 1 ||
       mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_CREATE ||
@@ -1704,7 +1716,27 @@ static int expect_create_table_view(const char *sql, const char *target,
           name_value) ||
       mylite_ast_create_table_view_column_count(create_table) != column_count ||
       mylite_ast_create_table_view_key_count(create_table) != key_count ||
-      mylite_ast_create_table_view_option_count(create_table) != option_count) {
+      mylite_ast_create_table_view_option_count(create_table) != option_count ||
+      (column_count > 0 &&
+       (first_column == NULL ||
+        mylite_ast_create_table_column_view_type_kind(first_column) !=
+            MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_column_view_name_value(first_column),
+            mylite_ast_create_table_column_view_name_value_length(first_column),
+            "id"))) ||
+      (key_count > 0 &&
+       (first_key == NULL ||
+        mylite_ast_create_table_key_view_kind(first_key) !=
+            MYLITE_CREATE_TABLE_KEY_INDEX ||
+        !value_matches_when_expected(
+            mylite_ast_create_table_key_view_name_value(first_key),
+            mylite_ast_create_table_key_view_name_value_length(first_key),
+            "k`x"))) ||
+      (option_count > 0 &&
+       (first_option == NULL ||
+        mylite_ast_create_table_option_view_kind(first_option) !=
+            MYLITE_CREATE_TABLE_OPTION_ENGINE))) {
     const MyliteAstNode *view_node =
         mylite_ast_create_table_view_node(create_table);
     const char *view_symbol =

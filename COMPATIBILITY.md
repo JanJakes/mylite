@@ -65,9 +65,10 @@ parser-level storage-class, decoded column-name, numeric type-parameter,
 semantic type-shape, exact type-attribute span, enum/set element-span/value,
 key/constraint-detail with decoded identifier names, and table-option descriptor
 views. It also builds an initial semantic `CREATE TABLE` view that anchors the
-table target and descriptor collections for the next typed AST layer. Column
-descriptors include CST node anchors for the next semantic AST builder, but the
-parser does not yet build the final typed MyLite AST and does
+table target and exposes opaque column/key/table-option descriptor handles for
+the next typed AST layer. Column descriptors include CST node anchors for the
+next semantic AST builder, but the parser does not yet build the final typed
+MyLite AST and does
 not imply runtime support for the statement rows below. The current prototype
 parses the
 WordPress MySQL server query corpus with

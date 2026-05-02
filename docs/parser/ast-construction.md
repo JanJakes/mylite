@@ -45,7 +45,8 @@ expression nodes.
   auto-increment, tablespace, storage, directory, and attribute clauses.
 - `CREATE TABLE` statements now also build a compact semantic view that anchors
   the decoded table target and the existing column, key, and table-option
-  descriptor collections without duplicating those arrays.
+  descriptor collections without duplicating those arrays. The view exposes
+  opaque handles for navigating those descriptors directly.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
   still cover the full current corpus.
 - The AST is opaque in the public API and freed with `mylite_ast_free()`.
@@ -73,7 +74,7 @@ expression nodes.
   span, plus decoded schema/name values
 - a semantic `CREATE TABLE` view with statement span, table target/schema/name
   spans, decoded schema/name values, the `nt_create_table_stmt` CST anchor, and
-  column/key/table-option descriptor counts
+  column/key/table-option descriptor counts and handles
 - typed `CREATE TABLE` column descriptors with definition, name, type, type
   name, type parameters, type attributes, options, defaults, `ON UPDATE`,
   generated expression/storage, comments, inline check, and inline reference
@@ -107,9 +108,11 @@ suitable for measuring cost and for guiding typed-node work.
 The semantic `CREATE TABLE` view is the first statement-level AST object layered
 on top of the descriptor work. It does not copy column, key, or option
 descriptors; instead it gives the next builder a stable object anchored to
-`nt_create_table_stmt`, with the normalized table name and descriptor counts.
-This keeps construction cheap while separating final DDL AST work from the
-generic CST.
+`nt_create_table_stmt`, with the normalized table name, descriptor counts, and
+opaque descriptor handles. Handle-level accessors expose the core column type,
+storage class, flags, decoded column name, key kind/name counts, and table
+option kind/value spans needed by the next typed AST pass. This keeps
+construction cheap while separating final DDL AST work from the generic CST.
 
 The `CREATE TABLE` column view is the first typed statement-specific layer. It
 now classifies the coarse type family (`numeric`, `string`, `temporal`, `json`,
@@ -196,8 +199,8 @@ build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
 Release benchmark result on May 2, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.045355 qps=495117 mbps=37.65 avg_us=2.020
-mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=22.321605 qps=311541 mbps=23.69 avg_us=3.210 avg_nodes=74.5 avg_ast_bytes=10164.6 avg_statements=1.00 avg_targets=0.59 avg_target_schema_values=0.02 avg_target_name_values=0.59 avg_columns=0.29 avg_keys=0.06 avg_create_table_views=0.13 avg_create_table_view_schema_values=0.00 avg_create_table_view_name_values=0.13 avg_create_table_view_columns=0.29 avg_create_table_view_keys=0.06 avg_create_table_view_options=0.04 avg_key_constraint_name_values=0.00 avg_key_name_values=0.02 avg_key_referenced_table_schema_values=0.00 avg_key_referenced_table_name_values=0.00 avg_key_columns=0.09 avg_key_column_name_values=0.09 avg_key_referenced_column_name_values=0.00 avg_key_options=0.00 avg_options=0.04 avg_column_name_values=0.29 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.174018 qps=490623 mbps=37.31 avg_us=2.038
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=22.313224 qps=311658 mbps=23.70 avg_us=3.209 avg_nodes=74.5 avg_ast_bytes=10164.6 avg_statements=1.00 avg_targets=0.59 avg_target_schema_values=0.02 avg_target_name_values=0.59 avg_columns=0.29 avg_keys=0.06 avg_create_table_views=0.13 avg_create_table_view_schema_values=0.00 avg_create_table_view_name_values=0.13 avg_create_table_view_columns=0.29 avg_create_table_view_keys=0.06 avg_create_table_view_options=0.04 avg_create_table_view_column_handles=0.29 avg_create_table_view_known_column_types=0.29 avg_create_table_view_key_handles=0.06 avg_create_table_view_named_keys=0.02 avg_create_table_view_option_handles=0.04 avg_key_constraint_name_values=0.00 avg_key_name_values=0.02 avg_key_referenced_table_schema_values=0.00 avg_key_referenced_table_name_values=0.00 avg_key_columns=0.09 avg_key_column_name_values=0.09 avg_key_referenced_column_name_values=0.00 avg_key_options=0.00 avg_options=0.04 avg_column_name_values=0.29 avg_column_defaults=0.05 avg_column_on_updates=0.00 avg_column_generated=0.00 avg_column_checks=0.00 avg_column_references=0.00 avg_column_known_types=0.29 avg_column_storage_classes=0.29 avg_column_type_numeric_params=0.11 avg_column_type_elements=0.05 avg_column_type_element_values=0.05 avg_column_type_lengths=0.09 avg_column_type_precisions=0.01 avg_column_type_scales=0.01 avg_column_type_fsps=0.01 avg_column_type_unsigned_attrs=0.01 avg_column_type_zerofill_attrs=0.00 avg_column_type_binary_attrs=0.00 avg_column_type_charsets=0.01 avg_column_type_collations=0.00 avg_column_value_roots=0.06
 ```
 
 Before semantic actions were generated, syntax-only parsing measured about
@@ -210,7 +213,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 116K on disk, 76,600 bytes text/data/other
+parser support object: 119K on disk, 77,784 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.2M on disk
 mylite-parse: 1.0M on disk
@@ -220,9 +223,9 @@ mylite-parse: 1.0M on disk
 
 - Replace temporary recognizer placeholder roots with real grammar productions
   or explicit typed placeholder statements.
-- Extend semantic `CREATE TABLE` AST nodes from the current view into concrete
-  column, key, table-option, default/generated/check expression, and data-type
-  metadata nodes.
+- Extend semantic `CREATE TABLE` AST nodes from the current view handles into
+  concrete column, key, table-option, default/generated/check expression, and
+  data-type metadata nodes.
 - Normalize key/index identifiers and table option descriptor values into MySQL
   metadata-ready structures, including generated names for unnamed constraints.
 - Add typed AST nodes for the next analyzer statement families underneath the

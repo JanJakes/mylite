@@ -66,6 +66,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_table_view_columns = 0;
   size_t create_table_view_keys = 0;
   size_t create_table_view_options = 0;
+  size_t create_table_view_column_handles = 0;
+  size_t create_table_view_known_column_types = 0;
+  size_t create_table_view_key_handles = 0;
+  size_t create_table_view_named_keys = 0;
+  size_t create_table_view_option_handles = 0;
   size_t columns = 0;
   size_t column_name_values = 0;
   size_t column_known_types = 0;
@@ -144,6 +149,39 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                   mylite_ast_create_table_view_key_count(create_table);
               create_table_view_options +=
                   mylite_ast_create_table_view_option_count(create_table);
+              for (size_t k = 0;
+                   k < mylite_ast_create_table_view_column_count(create_table);
+                   k++) {
+                const MyliteAstCreateTableColumn *column =
+                    mylite_ast_create_table_view_column_at(create_table, k);
+                if (column != NULL) {
+                  create_table_view_column_handles++;
+                }
+                if (mylite_ast_create_table_column_view_type_kind(column) !=
+                    MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_UNKNOWN) {
+                  create_table_view_known_column_types++;
+                }
+              }
+              for (size_t k = 0;
+                   k < mylite_ast_create_table_view_key_count(create_table);
+                   k++) {
+                const MyliteAstCreateTableKey *key =
+                    mylite_ast_create_table_view_key_at(create_table, k);
+                if (key != NULL) {
+                  create_table_view_key_handles++;
+                }
+                if (mylite_ast_create_table_key_view_name_value(key) != NULL) {
+                  create_table_view_named_keys++;
+                }
+              }
+              for (size_t k = 0;
+                   k < mylite_ast_create_table_view_option_count(create_table);
+                   k++) {
+                if (mylite_ast_create_table_view_option_at(create_table, k) !=
+                    NULL) {
+                  create_table_view_option_handles++;
+                }
+              }
             }
             for (size_t j = 0; j < mylite_ast_create_table_column_count(ast, i);
                  j++) {
@@ -310,6 +348,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_table_view_columns=%.2f "
            "avg_create_table_view_keys=%.2f "
            "avg_create_table_view_options=%.2f "
+           "avg_create_table_view_column_handles=%.2f "
+           "avg_create_table_view_known_column_types=%.2f "
+           "avg_create_table_view_key_handles=%.2f "
+           "avg_create_table_view_named_keys=%.2f "
+           "avg_create_table_view_option_handles=%.2f "
            "avg_key_constraint_name_values=%.2f avg_key_name_values=%.2f "
            "avg_key_referenced_table_schema_values=%.2f "
            "avg_key_referenced_table_name_values=%.2f "
@@ -327,6 +370,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)create_table_view_columns / (double)parsed,
            (double)create_table_view_keys / (double)parsed,
            (double)create_table_view_options / (double)parsed,
+           (double)create_table_view_column_handles / (double)parsed,
+           (double)create_table_view_known_column_types / (double)parsed,
+           (double)create_table_view_key_handles / (double)parsed,
+           (double)create_table_view_named_keys / (double)parsed,
+           (double)create_table_view_option_handles / (double)parsed,
            (double)key_constraint_name_values / (double)parsed,
            (double)key_name_values / (double)parsed,
            (double)key_referenced_table_schema_values / (double)parsed,

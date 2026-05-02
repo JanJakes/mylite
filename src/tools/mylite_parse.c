@@ -15,6 +15,8 @@ static int parse_stdin(OutputMode mode);
 static int parse_file(const char *path, OutputMode mode);
 static int parse_sql_text(const char *sql, const char *label, OutputMode mode);
 static void dump_statements(const MyliteAst *ast);
+static void dump_create_table_view_handles(
+    const MyliteAstCreateTable *create_table);
 static const char *node_symbol_or_none(const MyliteAstNode *node);
 static void print_escaped_bytes(const char *value, size_t length);
 static void dump_ast_node(const MyliteAstNode *node, unsigned depth);
@@ -206,6 +208,7 @@ static void dump_statements(const MyliteAst *ast) {
         print_escaped_bytes(name_value, name_value_length);
       }
       fputc('\n', stdout);
+      dump_create_table_view_handles(create_table);
     }
     for (size_t j = 0; j < column_count; j++) {
       printf("  column[%zu] family=%s kind=%s storage=%s flags=0x%x "
@@ -560,6 +563,86 @@ static void dump_statements(const MyliteAst *ast) {
 static const char *node_symbol_or_none(const MyliteAstNode *node) {
   const char *symbol = mylite_ast_node_symbol_name(node);
   return symbol == NULL ? "none" : symbol;
+}
+
+static void dump_create_table_view_handles(
+    const MyliteAstCreateTable *create_table) {
+  for (size_t i = 0; i < mylite_ast_create_table_view_column_count(create_table);
+       i++) {
+    const MyliteAstCreateTableColumn *column =
+        mylite_ast_create_table_view_column_at(create_table, i);
+    const char *name_value =
+        mylite_ast_create_table_column_view_name_value(column);
+    size_t name_value_length =
+        mylite_ast_create_table_column_view_name_value_length(column);
+    printf("    create_table.column[%zu] span=%zu..%zu family=%s kind=%s "
+           "storage=%s flags=0x%x name_value_len=%zu value=",
+           i, mylite_ast_create_table_column_view_start(column),
+           mylite_ast_create_table_column_view_end(column),
+           mylite_create_table_column_type_family_name(
+               mylite_ast_create_table_column_view_type_family(column)),
+           mylite_create_table_column_type_kind_name(
+               mylite_ast_create_table_column_view_type_kind(column)),
+           mylite_create_table_column_storage_class_name(
+               mylite_ast_create_table_column_view_storage_class(column)),
+           mylite_ast_create_table_column_view_flags(column),
+           name_value_length);
+    if (name_value == NULL) {
+      fputs("none", stdout);
+    } else {
+      print_escaped_bytes(name_value, name_value_length);
+    }
+    fputc('\n', stdout);
+  }
+  for (size_t i = 0; i < mylite_ast_create_table_view_key_count(create_table);
+       i++) {
+    const MyliteAstCreateTableKey *key =
+        mylite_ast_create_table_view_key_at(create_table, i);
+    const char *constraint_name_value =
+        mylite_ast_create_table_key_view_constraint_name_value(key);
+    size_t constraint_name_value_length =
+        mylite_ast_create_table_key_view_constraint_name_value_length(key);
+    const char *name_value = mylite_ast_create_table_key_view_name_value(key);
+    size_t name_value_length =
+        mylite_ast_create_table_key_view_name_value_length(key);
+    printf("    create_table.key[%zu] kind=%s columns=%zu ref_columns=%zu "
+           "constraint_name_value_len=%zu value=",
+           i,
+           mylite_create_table_key_kind_name(
+               mylite_ast_create_table_key_view_kind(key)),
+           mylite_ast_create_table_key_view_column_count(key),
+           mylite_ast_create_table_key_view_referenced_column_count(key),
+           constraint_name_value_length);
+    if (constraint_name_value == NULL) {
+      fputs("none", stdout);
+    } else {
+      print_escaped_bytes(constraint_name_value,
+                          constraint_name_value_length);
+    }
+    printf(" name_value_len=%zu value=", name_value_length);
+    if (name_value == NULL) {
+      fputs("none", stdout);
+    } else {
+      print_escaped_bytes(name_value, name_value_length);
+    }
+    fputc('\n', stdout);
+  }
+  for (size_t i = 0; i < mylite_ast_create_table_view_option_count(create_table);
+       i++) {
+    const MyliteAstCreateTableOption *option =
+        mylite_ast_create_table_view_option_at(create_table, i);
+    printf("    create_table.option[%zu] kind=%s span=%zu..%zu name=%zu..%zu "
+           "value=%zu..%zu\n",
+           i,
+           mylite_create_table_option_kind_name(
+               mylite_ast_create_table_option_view_kind(option)),
+           mylite_ast_create_table_option_view_start(option),
+           mylite_ast_create_table_option_view_end(option),
+           mylite_ast_create_table_option_view_name_start(option),
+           mylite_ast_create_table_option_view_name_end(option),
+           mylite_ast_create_table_option_view_value_start(option),
+           mylite_ast_create_table_option_view_value_end(option));
+  }
 }
 
 static void print_escaped_bytes(const char *value, size_t length) {

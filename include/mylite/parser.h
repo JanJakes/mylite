@@ -23,6 +23,9 @@ typedef struct MyliteParseResult {
 
 typedef struct MyliteAst MyliteAst;
 typedef struct MyliteAstCreateTable MyliteAstCreateTable;
+typedef struct MyliteAstCreateTableColumn MyliteAstCreateTableColumn;
+typedef struct MyliteAstCreateTableKey MyliteAstCreateTableKey;
+typedef struct MyliteAstCreateTableOption MyliteAstCreateTableOption;
 typedef struct MyliteAstNode MyliteAstNode;
 
 typedef enum MyliteAstNodeKind {
@@ -382,6 +385,57 @@ size_t mylite_ast_create_table_view_key_count(
     const MyliteAstCreateTable *create_table);
 size_t mylite_ast_create_table_view_option_count(
     const MyliteAstCreateTable *create_table);
+const MyliteAstCreateTableColumn *mylite_ast_create_table_view_column_at(
+    const MyliteAstCreateTable *create_table, size_t column_index);
+const MyliteAstCreateTableKey *mylite_ast_create_table_view_key_at(
+    const MyliteAstCreateTable *create_table, size_t key_index);
+const MyliteAstCreateTableOption *mylite_ast_create_table_view_option_at(
+    const MyliteAstCreateTable *create_table, size_t option_index);
+size_t mylite_ast_create_table_column_view_start(
+    const MyliteAstCreateTableColumn *column);
+size_t mylite_ast_create_table_column_view_end(
+    const MyliteAstCreateTableColumn *column);
+const char *mylite_ast_create_table_column_view_name_value(
+    const MyliteAstCreateTableColumn *column);
+size_t mylite_ast_create_table_column_view_name_value_length(
+    const MyliteAstCreateTableColumn *column);
+MyliteCreateTableColumnTypeFamily mylite_ast_create_table_column_view_type_family(
+    const MyliteAstCreateTableColumn *column);
+MyliteCreateTableColumnTypeKind mylite_ast_create_table_column_view_type_kind(
+    const MyliteAstCreateTableColumn *column);
+MyliteCreateTableColumnStorageClass
+mylite_ast_create_table_column_view_storage_class(
+    const MyliteAstCreateTableColumn *column);
+unsigned int mylite_ast_create_table_column_view_flags(
+    const MyliteAstCreateTableColumn *column);
+MyliteCreateTableKeyKind mylite_ast_create_table_key_view_kind(
+    const MyliteAstCreateTableKey *key);
+const char *mylite_ast_create_table_key_view_constraint_name_value(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_constraint_name_value_length(
+    const MyliteAstCreateTableKey *key);
+const char *mylite_ast_create_table_key_view_name_value(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_name_value_length(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_column_count(
+    const MyliteAstCreateTableKey *key);
+size_t mylite_ast_create_table_key_view_referenced_column_count(
+    const MyliteAstCreateTableKey *key);
+MyliteCreateTableOptionKind mylite_ast_create_table_option_view_kind(
+    const MyliteAstCreateTableOption *option);
+size_t mylite_ast_create_table_option_view_start(
+    const MyliteAstCreateTableOption *option);
+size_t mylite_ast_create_table_option_view_end(
+    const MyliteAstCreateTableOption *option);
+size_t mylite_ast_create_table_option_view_name_start(
+    const MyliteAstCreateTableOption *option);
+size_t mylite_ast_create_table_option_view_name_end(
+    const MyliteAstCreateTableOption *option);
+size_t mylite_ast_create_table_option_view_value_start(
+    const MyliteAstCreateTableOption *option);
+size_t mylite_ast_create_table_option_view_value_end(
+    const MyliteAstCreateTableOption *option);
 size_t mylite_ast_create_table_column_count(const MyliteAst *ast,
                                             size_t statement_index);
 size_t mylite_ast_create_table_column_start(const MyliteAst *ast,

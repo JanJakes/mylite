@@ -433,10 +433,11 @@ token sink:
   comma-following variable assignments.
 - `SET` variable assignments recognize comma-separated assignment lists with
   optional per-assignment scopes, whole-value `DEFAULT`, and nested value
-  expressions, reject malformed non-`@@` assignment values with adjacent
-  operands, dangling operators, and invalid plain parenthesized groups, preserve
-  `@@` system-variable values as token tails, and reject repeated top-level
-  `SET` continuations after
+  expressions, reject user-variable-only misuse of system-variable literals such
+  as bare `DEFAULT`, `ON`, and `ALL`, reject malformed non-`@@` assignment
+  values with adjacent operands, dangling operators, and invalid plain
+  parenthesized groups, preserve `@@` system-variable values as token tails, and
+  reject repeated top-level `SET` continuations after
   completed assignment values.
 - `EXPLAIN FORMAT=JSON INTO @var` is recognized as a JSON-only EXPLAIN form
   with user-variable targets, while `INTO` is still rejected for

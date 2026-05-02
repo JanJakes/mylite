@@ -26835,7 +26835,7 @@ static YYACTIONTYPE yy_reduce(
 #line 4132 "src/parser/mylite_lemon.y"
 {
   if (!ctx->permissive) {
-    mylite_parser_validate_default_value_expression_from(
+    mylite_parser_validate_set_assignment_expression_from(
         ctx, yymsp[0].minor.yy0, "malformed SET assignment");
   }
 }
@@ -26848,7 +26848,7 @@ static YYACTIONTYPE yy_reduce(
 #line 4138 "src/parser/mylite_lemon.y"
 {
   if (!ctx->permissive) {
-    mylite_parser_validate_default_value_expression_from(
+    mylite_parser_validate_set_assignment_expression_from(
         ctx, yymsp[0].minor.yy0, "malformed SET assignment");
   }
 }

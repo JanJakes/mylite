@@ -209,6 +209,12 @@ static void validate_expression_tail_from(MyliteParseContext *ctx,
                                           int allow_double_at_assignment,
                                           int flags,
                                           const char *message);
+static int set_user_variable_value_is_invalid(MyliteParseContext *ctx,
+                                              MyliteToken start);
+static int expression_start_follows_user_variable_assignment(
+    MyliteParseContext *ctx, MyliteToken start);
+static int set_assignment_target_is_user_variable(int token_id,
+                                                  MyliteToken token);
 static int expression_start_follows_double_at_assignment(
     MyliteParseContext *ctx, MyliteToken start);
 static void validate_with_statement_from(MyliteParseContext *ctx,
@@ -5126,6 +5132,22 @@ void mylite_parser_validate_default_value_expression_from(
                                 QUERY_EXPRESSION_ALLOW_BARE_DEFAULT, message);
 }
 
+void mylite_parser_validate_set_assignment_expression_from(
+    MyliteParseContext *ctx, MyliteToken start, const char *message) {
+  if (set_user_variable_value_is_invalid(ctx, start)) {
+    mylite_parser_reject(ctx, start, message);
+    return;
+  }
+
+  if (expression_start_follows_user_variable_assignment(ctx, start)) {
+    validate_expression_tail_from(ctx, start, 0, 1, 0, message);
+    return;
+  }
+
+  validate_expression_tail_from(ctx, start, 0, 1,
+                                QUERY_EXPRESSION_ALLOW_BARE_DEFAULT, message);
+}
+
 static void validate_expression_tail_from(MyliteParseContext *ctx,
                                           MyliteToken start,
                                           int boundary_token_id,
@@ -5187,6 +5209,104 @@ static void validate_expression_tail_from(MyliteParseContext *ctx,
       (previous_top_token_id == 0 || previous_was_operator)) {
     mylite_parser_reject(ctx, previous_top_token, message);
   }
+}
+
+static int set_user_variable_value_is_invalid(MyliteParseContext *ctx,
+                                              MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken next;
+  int token_id;
+  int next_id;
+  size_t offset;
+
+  if (!expression_start_follows_user_variable_assignment(ctx, start)) {
+    return 0;
+  }
+
+  offset = start.offset;
+  if (offset >= ctx->length) {
+    return 0;
+  }
+
+  mylite_lexer_init(&lexer, ctx->sql + offset, ctx->length - offset, NULL);
+  token_id = mylite_lexer_next(&lexer, &token);
+  next_id = mylite_lexer_next(&lexer, &next);
+
+  if (token_id == ML_DEFAULT) {
+    return next_id != ML_DOT && next_id != ML_LP;
+  }
+
+  if (token_id == ML_ON || token_id == ML_ALL || token_id == ML_SYSTEM) {
+    return 1;
+  }
+
+  if (token_id == ML_ROW) {
+    return next_id != ML_LP;
+  }
+
+  if (token_id == ML_BINARY) {
+    return next_id <= 0 || next_id == ML_COMMA ||
+           token_is_statement_terminator(next_id, next);
+  }
+
+  return 0;
+}
+
+static int expression_start_follows_user_variable_assignment(
+    MyliteParseContext *ctx, MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken first_target = {0};
+  int token_id;
+  int first_target_id = 0;
+  int depth = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (token.offset >= start.offset) {
+      return 0;
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (token_id == ML_COMMA || token_id == ML_SET) {
+      first_target_id = 0;
+      first_target = token;
+      continue;
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      depth++;
+      continue;
+    }
+
+    if (token_id == ML_ASSIGN || token_id == ML_EQUALS) {
+      return set_assignment_target_is_user_variable(first_target_id,
+                                                    first_target);
+    }
+
+    if (first_target_id == 0) {
+      first_target_id = token_id;
+      first_target = token;
+    }
+  }
+
+  return 0;
+}
+
+static int set_assignment_target_is_user_variable(int token_id,
+                                                  MyliteToken token) {
+  return token_id == ML_AT_SIGN ||
+         (token_id == ML_AT_HOST && token.length > 0 &&
+          token.start[0] == '@');
 }
 
 static int expression_start_follows_double_at_assignment(
@@ -9523,6 +9643,15 @@ static int validate_embedded_set_value(MyliteParseContext *ctx,
   MyliteExpressionStack expression_stack = {0};
   int previous_top_token_id = 0;
   int previous_was_operator = 1;
+  int flags = QUERY_EXPRESSION_ALLOW_BARE_DEFAULT;
+
+  if (set_user_variable_value_is_invalid(ctx, token)) {
+    mylite_parser_reject(ctx, token, "malformed SET assignment");
+    return -1;
+  }
+  if (expression_start_follows_user_variable_assignment(ctx, token)) {
+    flags = 0;
+  }
 
   for (;;) {
     if (depth > 0) {
@@ -9547,8 +9676,7 @@ static int validate_embedded_set_value(MyliteParseContext *ctx,
     } else if (!query_expression_token_with_flags(
                    ctx, token_id, token, &depth, &previous_top_token_id,
                    &previous_top_token, &previous_was_operator,
-                   &expression_stack, QUERY_EXPRESSION_ALLOW_BARE_DEFAULT,
-                   "malformed SET assignment")) {
+                   &expression_stack, flags, "malformed SET assignment")) {
       return -1;
     }
 

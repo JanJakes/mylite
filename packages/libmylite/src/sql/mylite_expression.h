@@ -52,6 +52,10 @@ typedef int (*mylite_expression_eval_in_subquery_fn)(void *user_data,
                                                      const struct mylite_expression_value *left,
                                                      struct mylite_expression_warnings *warnings,
                                                      struct mylite_expression_value *out_value);
+typedef int (*mylite_expression_eval_quantified_subquery_fn)(
+    void *user_data, const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value);
 
 struct mylite_expression_eval_context {
     void *user_data;
@@ -60,6 +64,7 @@ struct mylite_expression_eval_context {
     mylite_expression_eval_aggregate_fn eval_aggregate;
     mylite_expression_eval_subquery_fn eval_subquery;
     mylite_expression_eval_in_subquery_fn eval_in_subquery;
+    mylite_expression_eval_quantified_subquery_fn eval_quantified_subquery;
 };
 
 void mylite_expression_value_deinit(struct mylite_expression_value *value);

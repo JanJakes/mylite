@@ -15,7 +15,7 @@
 %type inner_join_operator { struct mylite_sql_parser_join_operator }
 %type outer_join_operator { struct mylite_sql_parser_join_operator }
 %type subquery { struct mylite_sql_parser_subquery }
-%type comparison_operator { struct mylite_sql_parser_comparison_operator }
+%type quantified_comparison_operator { struct mylite_sql_parser_comparison_operator }
 %type subquery_quantifier { enum mylite_sql_ast_subquery_quantifier }
 %type opt_like_escape { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
@@ -1829,7 +1829,7 @@ comparison_expression(A) ::= comparison_expression(B) NOT(T) IN subquery(C). {
     A = mylite_sql_parser_make_in_subquery_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_IN, C);
 }
-comparison_expression(A) ::= comparison_expression(B) comparison_operator(C)
+comparison_expression(A) ::= comparison_expression(B) quantified_comparison_operator(C)
         subquery_quantifier(D) subquery(E). {
     A = mylite_sql_parser_make_quantified_comparison(state, B, C.token, C.operator_kind, D, E);
 }
@@ -1886,43 +1886,37 @@ comparison_expression(A) ::= comparison_expression(B) NOT(T) IN LPAREN expressio
         state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_IN, C);
 }
 
-comparison_operator(A) ::= EQ(T). {
+quantified_comparison_operator(A) ::= EQ(T). {
     A = (struct mylite_sql_parser_comparison_operator){
         .token = T,
         .operator_kind = MYLITE_SQL_AST_OPERATOR_EQUAL,
     };
 }
-comparison_operator(A) ::= NULL_SAFE_EQ(T). {
-    A = (struct mylite_sql_parser_comparison_operator){
-        .token = T,
-        .operator_kind = MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
-    };
-}
-comparison_operator(A) ::= NE(T). {
+quantified_comparison_operator(A) ::= NE(T). {
     A = (struct mylite_sql_parser_comparison_operator){
         .token = T,
         .operator_kind = MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
     };
 }
-comparison_operator(A) ::= LT(T). {
+quantified_comparison_operator(A) ::= LT(T). {
     A = (struct mylite_sql_parser_comparison_operator){
         .token = T,
         .operator_kind = MYLITE_SQL_AST_OPERATOR_LESS,
     };
 }
-comparison_operator(A) ::= LE(T). {
+quantified_comparison_operator(A) ::= LE(T). {
     A = (struct mylite_sql_parser_comparison_operator){
         .token = T,
         .operator_kind = MYLITE_SQL_AST_OPERATOR_LESS_EQUAL,
     };
 }
-comparison_operator(A) ::= GT(T). {
+quantified_comparison_operator(A) ::= GT(T). {
     A = (struct mylite_sql_parser_comparison_operator){
         .token = T,
         .operator_kind = MYLITE_SQL_AST_OPERATOR_GREATER,
     };
 }
-comparison_operator(A) ::= GE(T). {
+quantified_comparison_operator(A) ::= GE(T). {
     A = (struct mylite_sql_parser_comparison_operator){
         .token = T,
         .operator_kind = MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,

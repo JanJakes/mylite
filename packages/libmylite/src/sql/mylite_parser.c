@@ -4266,7 +4266,6 @@ static bool parser_token_allows_subquery_quantifier(int parser_token)
 {
     switch (parser_token) {
     case MYLITE_SQL_PARSE_EQ:
-    case MYLITE_SQL_PARSE_NULL_SAFE_EQ:
     case MYLITE_SQL_PARSE_NE:
     case MYLITE_SQL_PARSE_LT:
     case MYLITE_SQL_PARSE_LE:

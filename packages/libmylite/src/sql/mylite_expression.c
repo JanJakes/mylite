@@ -224,6 +224,10 @@ static int eval_in(enum mylite_sql_ast_operator operator_kind,
                    const struct mylite_expression_eval_context *context,
                    struct mylite_expression_warnings *warnings,
                    struct mylite_expression_value *out_value);
+static int eval_quantified_comparison(const struct mylite_sql_ast_node *node,
+                                      const struct mylite_expression_eval_context *context,
+                                      struct mylite_expression_warnings *warnings,
+                                      struct mylite_expression_value *out_value);
 static int eval_numeric_unary(enum mylite_sql_ast_operator operator_kind,
                               const struct mylite_expression_value *operand,
                               struct mylite_expression_warnings *warnings,
@@ -611,6 +615,8 @@ static int eval_node(const struct mylite_sql_ast_node *node,
             return context->eval_subquery(context->user_data, node, warnings, out_value);
         }
         return -1;
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+        return eval_quantified_comparison(node, context, warnings, out_value);
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return eval_function_call(node, context, warnings, out_value);
     default:
@@ -2029,6 +2035,25 @@ static int eval_in(enum mylite_sql_ast_operator operator_kind,
         .kind = MYLITE_EXPRESSION_VALUE_INT64,
         .int64_value = operator_kind == MYLITE_SQL_AST_OPERATOR_IN ? 0 : 1};
     return 0;
+}
+
+static int eval_quantified_comparison(const struct mylite_sql_ast_node *node,
+                                      const struct mylite_expression_eval_context *context,
+                                      struct mylite_expression_warnings *warnings,
+                                      struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    int status = eval_node(child_at(node, 0U), context, warnings, &value);
+
+    if (status != 0) {
+        return status;
+    }
+    status = context == NULL || context->eval_quantified_subquery == NULL
+                 ? -1
+                 : context->eval_quantified_subquery(context->user_data, node, &value, warnings,
+                                                     out_value);
+    mylite_expression_value_deinit(&value);
+    return status;
 }
 
 static int eval_numeric_unary(enum mylite_sql_ast_operator operator_kind,

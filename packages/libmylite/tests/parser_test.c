@@ -4167,6 +4167,10 @@ static int test_subquery_expression_syntax(void)
                                            "all quantified quantifier");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT id FROM outer_t WHERE val <=> ANY (SELECT val FROM inner_t);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT id FROM outer_t WHERE (val, grp) IN (SELECT a, b FROM pair_t);",
                           MYLITE_SQL_PARSE_OK, &result);
     predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);

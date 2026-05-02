@@ -341,19 +341,21 @@ Observed metadata from `mysql --column-type-info -vvv`:
 
 ## Existing MyLite State
 
-The parser and AST already represent quantified comparisons. Parser tests cover
-`ANY`, `SOME`, `ALL`, lowercase `any`, and identifier fallback for `any` and
-`some` when they are not followed by a parenthesized select subquery.
+The parser and AST represent quantified comparisons. Parser tests cover `ANY`,
+`SOME`, `ALL`, lowercase `any`, identifier fallback for `any` and `some` when
+they are not followed by a parenthesized select subquery, and MySQL-compatible
+rejection of null-safe quantified comparisons such as `<=> ANY`.
 
-The runtime currently defers execution:
+The first runtime slice executes uncorrelated scalar quantified comparisons in
+no-table scalar `SELECT` and the current table-backed `SELECT` projection,
+`WHERE`, join `ON`, `HAVING`, and `ORDER BY` expression contexts. The evaluator
+handles the MySQL-supported operators `=`, `<>`, `!=`, `<`, `<=`, `>`, and `>=`,
+uses nullable boolean metadata, preserves comparison-warning order through
+short-circuit evaluation, and shares the existing subquery diagnostics for
+multi-column output and inner `LIMIT`.
 
-- `MYLITE_SQL_AST_QUANTIFIED_COMPARISON` is rejected as unsupported in current
-  SELECT predicate, projection, aggregate-aware, and order-expression binding
-- no expression evaluator case exists for quantified comparison nodes
-- runtime tests assert `SELECT 1 = ALL (SELECT 1)` remains unsupported
-
-The implementation phase should replace those deferrals only for this spec's
-first executable slice.
+Row left operands, correlated subqueries, DML contexts, and broader query
+surfaces remain deferred.
 
 ## Parser and AST Design
 
@@ -606,13 +608,12 @@ still passes:
 
 ## Compatibility Status
 
-This spec starts the scalar quantified subquery comparison slice only. Runtime
-behavior remains deferred until implementation lands.
+The scalar quantified subquery comparison first slice is implemented.
 
-The planned slice is uncorrelated scalar `ANY` / `SOME` / `ALL` comparisons in
-no-table scalar `SELECT` and the current table-backed `SELECT` projection,
+Implemented coverage is uncorrelated scalar `ANY` / `SOME` / `ALL` comparisons
+in no-table scalar `SELECT` and the current table-backed `SELECT` projection,
 `WHERE`, join `ON`, `HAVING`, and `ORDER BY` expression contexts.
 
 Row operands, correlation, DML contexts, derived tables, `TABLE`/`VALUES`
-subqueries, CTEs, set operations, null-safe quantified comparison, and
-optimizer-specific behavior remain separate features.
+subqueries, CTEs, set operations, null-safe quantified comparison execution,
+and optimizer-specific behavior remain separate features.

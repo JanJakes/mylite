@@ -829,20 +829,19 @@ Add focused tests for each currently supported outer surface:
 
 Task 29 has the first executable slice implemented. MyLite executes
 uncorrelated scalar subqueries, uncorrelated `EXISTS` / `NOT EXISTS`
-subqueries, and uncorrelated scalar `IN` / `NOT IN` subqueries in no-table
-scalar `SELECT` and the currently supported table-backed `SELECT` expression
-contexts: projection, `WHERE`, join `ON`, `HAVING`, and `ORDER BY`. The
-focused scalar `ANY` / `SOME` / `ALL` quantified-comparison slice has a start
-spec in `docs/specs/quantified-subquery-comparisons/specs.md`, but runtime
-behavior remains deferred until implementation lands.
+subqueries, uncorrelated scalar `IN` / `NOT IN` subqueries, and uncorrelated
+scalar `ANY` / `SOME` / `ALL` quantified comparisons in no-table scalar
+`SELECT` and the currently supported table-backed `SELECT` expression contexts:
+projection, `WHERE`, join `ON`, `HAVING`, and `ORDER BY`.
 
 This slice includes empty scalar-subquery results as `NULL`, one-row value
 return, scalar error 1241 for multi-column operands, scalar error 1242 for
 multi-row operands, scalar `IN` / `NOT IN` error 1235 for inner `LIMIT`,
-warning propagation, first-slice result descriptors, and `EXISTS` checks that
-do not evaluate the subquery select list.
+quantified-comparison error 1235 for inner `LIMIT`, warning propagation,
+first-slice result descriptors, and `EXISTS` checks that do not evaluate the
+subquery select list.
 
 The remaining Task 29 surfaces are deferred: correlated subqueries, row
-subqueries, row `IN` / `NOT IN`, quantified `ANY` / `SOME` / `ALL` execution,
-DML subquery execution, derived-table row sources, CTE/set-operation
-subqueries, and optimizer behavior.
+subqueries, row `IN` / `NOT IN`, row quantified comparisons, DML subquery
+execution, derived-table row sources, CTE/set-operation subqueries, and
+optimizer behavior.

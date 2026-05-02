@@ -9,6 +9,7 @@
 %type opt_order_direction { struct mylite_sql_token }
 %type opt_work { struct mylite_sql_token }
 %type opt_savepoint_keyword { struct mylite_sql_token }
+%type inner_join_operator { struct mylite_sql_parser_join_operator }
 %type opt_like_escape { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
 
@@ -1448,11 +1449,11 @@ select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
 }
-select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(C) opt_table_alias(D)
+select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_references(C)
         opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_order_by_clause(I)
         opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, C, D), E, G, H, I, J);
+        state, T, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
 }
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
@@ -1464,12 +1465,12 @@ select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
 }
-select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(C) opt_table_alias(D)
+select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_references(C)
         opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_order_by_clause(I)
         opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, C, D), E, G, H, I, J);
+        mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
 }
 
 opt_where_clause(A) ::= . {
@@ -1567,6 +1568,56 @@ limit_clause(A) ::= LIMIT(T) limit_bound(B) OFFSET limit_bound(C). {
 
 limit_bound(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_limit_bound(state, T);
+}
+
+table_references(A) ::= table_reference_list(B). {
+    A = B;
+}
+
+table_reference_list(A) ::= joined_table_reference(B). {
+    A = mylite_sql_parser_make_table_reference_list(state, B);
+}
+table_reference_list(A) ::= table_reference_list(B) COMMA joined_table_reference(C). {
+    A = mylite_sql_parser_append_table_reference(state, B, C);
+}
+
+joined_table_reference(A) ::= table_factor(B). {
+    A = B;
+}
+joined_table_reference(A) ::= joined_table_reference(B) inner_join_operator(C) table_factor(D)
+        opt_inner_join_condition(E). {
+    A = mylite_sql_parser_make_join_expression(state, B, C, D, E);
+}
+
+inner_join_operator(A) ::= JOIN(T). {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_INNER);
+}
+inner_join_operator(A) ::= INNER(T) JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_INNER);
+}
+inner_join_operator(A) ::= CROSS(T) JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_CROSS);
+}
+
+opt_inner_join_condition(A) ::= . {
+    A = NULL;
+}
+opt_inner_join_condition(A) ::= ON(T) expression(B). {
+    A = mylite_sql_parser_make_join_on_condition(state, T, B);
+}
+opt_inner_join_condition(A) ::= USING(T) LPAREN using_column_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_join_using_condition(state, T, B, R);
+}
+
+using_column_list(A) ::= identifier(B). {
+    A = mylite_sql_parser_make_using_column_list(state, B);
+}
+using_column_list(A) ::= using_column_list(B) COMMA identifier(C). {
+    A = mylite_sql_parser_append_using_column(state, B, C);
+}
+
+table_factor(A) ::= table_name(B) opt_table_alias(C). {
+    A = mylite_sql_parser_make_table_factor(state, B, C);
 }
 
 table_name(A) ::= qualified_identifier(B). {

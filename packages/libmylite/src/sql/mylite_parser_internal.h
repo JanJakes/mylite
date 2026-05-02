@@ -91,6 +91,11 @@ struct mylite_sql_parser_statement_tokens {
     struct mylite_sql_token end;
 };
 
+struct mylite_sql_parser_join_operator {
+    struct mylite_sql_token token;
+    enum mylite_sql_ast_join_type join_type;
+};
+
 void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
                                       struct mylite_sql_ast_node *root);
 void mylite_sql_parser_state_syntax_error(struct mylite_sql_parser_state *state, int parser_token,
@@ -549,6 +554,46 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_dual(struct mylite_sql_p
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_table(
     struct mylite_sql_parser_state *state, struct mylite_sql_token from_token,
     struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *alias);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_from_table_references(struct mylite_sql_parser_state *state,
+                                             struct mylite_sql_token from_token,
+                                             struct mylite_sql_ast_node *references);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_table_reference_list(struct mylite_sql_parser_state *state,
+                                            struct mylite_sql_ast_node *reference);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_table_reference(struct mylite_sql_parser_state *state,
+                                         struct mylite_sql_ast_node *list,
+                                         struct mylite_sql_ast_node *reference);
+struct mylite_sql_ast_node *mylite_sql_parser_make_join_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
+    struct mylite_sql_parser_join_operator join_operator, struct mylite_sql_ast_node *right,
+    struct mylite_sql_ast_node *condition);
+struct mylite_sql_parser_join_operator
+mylite_sql_parser_make_join_operator(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_token token,
+                                     enum mylite_sql_ast_join_type join_type);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_join_on_condition(struct mylite_sql_parser_state *state,
+                                         struct mylite_sql_token on_token,
+                                         struct mylite_sql_ast_node *expression);
+struct mylite_sql_ast_node *mylite_sql_parser_make_join_using_condition(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token using_token,
+    struct mylite_sql_ast_node *columns, struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_using_column_list(struct mylite_sql_parser_state *state,
+                                         struct mylite_sql_ast_node *column);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_using_column(struct mylite_sql_parser_state *state,
+                                      struct mylite_sql_ast_node *list,
+                                      struct mylite_sql_ast_node *column);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_using_column(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *column);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_table_factor(struct mylite_sql_parser_state *state,
+                                    struct mylite_sql_ast_node *table_name,
+                                    struct mylite_sql_ast_node *alias);
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(struct mylite_sql_parser_state *state,
                                                               struct mylite_sql_token token);
 struct mylite_sql_ast_node *mylite_sql_parser_make_default(struct mylite_sql_parser_state *state,

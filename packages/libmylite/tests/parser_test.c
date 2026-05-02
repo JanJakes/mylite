@@ -30,6 +30,7 @@ static int test_case_expression_syntax(void);
 static int test_cast_expression_syntax(void);
 static int test_information_schema_select(void);
 static int test_select_table_core_syntax(void);
+static int test_select_inner_join_syntax(void);
 static int test_select_where_clause_syntax(void);
 static int test_select_order_limit_offset_syntax(void);
 static int test_aggregate_grouping_syntax(void);
@@ -56,6 +57,11 @@ static int expect_aggregate_call(const struct mylite_sql_ast_node *node,
                                  enum mylite_sql_ast_aggregate_kind expected_kind,
                                  enum mylite_sql_ast_aggregate_argument expected_argument,
                                  const char *expected_name, const char *context);
+static int expect_join_type(const struct mylite_sql_ast_node *node,
+                            enum mylite_sql_ast_join_type expected, const char *context);
+static int expect_join_condition_type(const struct mylite_sql_ast_node *node,
+                                      enum mylite_sql_ast_join_condition_type expected,
+                                      const char *context);
 static int expect_literal(const struct mylite_sql_ast_node *node,
                           enum mylite_sql_ast_literal_kind expected, const char *context);
 static int expect_operator(const struct mylite_sql_ast_node *node,
@@ -128,6 +134,7 @@ int main(void)
     failures += test_cast_expression_syntax();
     failures += test_information_schema_select();
     failures += test_select_table_core_syntax();
+    failures += test_select_inner_join_syntax();
     failures += test_select_where_clause_syntax();
     failures += test_select_order_limit_offset_syntax();
     failures += test_aggregate_grouping_syntax();
@@ -3413,10 +3420,141 @@ static int test_select_table_core_syntax(void)
     failures += parse_sql("SELECT a, * FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT a FROM t JOIN u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT a INTO @x FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT a INTO @x FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    return failures;
+}
+
+static int test_select_inner_join_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *from_clause = NULL;
+    const struct mylite_sql_ast_node *references = NULL;
+    const struct mylite_sql_ast_node *join = NULL;
+    const struct mylite_sql_ast_node *condition = NULL;
+    const struct mylite_sql_ast_node *using_columns = NULL;
+    const struct mylite_sql_ast_node *table = NULL;
+    const struct mylite_sql_ast_node *qualified = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("SELECT id FROM app.t AS alias WHERE id = 1;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_clause = child_at(select, 1U);
+    qualified = child_at(from_clause, 0U);
+    failures +=
+        expect_node(from_clause, MYLITE_SQL_AST_FROM_TABLE, "single table keeps from table node");
+    failures +=
+        expect_node(qualified, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "single table qualified name");
+    failures += expect_span_text(child_at(qualified, 0U), "app", "single table schema");
+    failures += expect_span_text(child_at(qualified, 1U), "t", "single table name");
+    failures += expect_span_text(child_at(from_clause, 1U), "alias", "single table alias");
+    failures +=
+        expect_node(child_at(select, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "single table where child");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM l JOIN r;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_clause = child_at(select, 1U);
+    references = child_at(from_clause, 0U);
+    join = child_at(references, 0U);
+    failures +=
+        expect_node(from_clause, MYLITE_SQL_AST_FROM_TABLE_REFERENCES, "join from references");
+    failures +=
+        expect_node(references, MYLITE_SQL_AST_TABLE_REFERENCE_LIST, "join table reference list");
+    failures += expect_child_count(references, 1U, "single explicit join list count");
+    failures += expect_node(join, MYLITE_SQL_AST_JOIN_EXPRESSION, "bare join expression");
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_INNER, "bare JOIN type");
+    failures += expect_child_count(join, 2U, "join without condition child count");
+    failures += expect_span_text(child_at(child_at(join, 0U), 0U), "l", "join left table");
+    failures += expect_span_text(child_at(child_at(join, 1U), 0U), "r", "join right table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM l, r, p;", MYLITE_SQL_PARSE_OK, &result);
+    references = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    failures += expect_child_count(references, 3U, "comma join table count");
+    failures += expect_span_text(child_at(child_at(references, 0U), 0U), "l", "comma first");
+    failures += expect_span_text(child_at(child_at(references, 1U), 0U), "r", "comma second");
+    failures += expect_span_text(child_at(child_at(references, 2U), 0U), "p", "comma third");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM l INNER JOIN r;", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_INNER, "INNER JOIN type");
+    failures += expect_child_count(join, 2U, "INNER JOIN without condition child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM l CROSS JOIN r ON l.id = r.id;", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    predicate = child_at(condition, 0U);
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_CROSS, "CROSS JOIN type");
+    failures += expect_join_condition_type(condition, MYLITE_SQL_AST_JOIN_CONDITION_ON,
+                                           "CROSS JOIN ON condition type");
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_EQUAL, "CROSS JOIN predicate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM l JOIN r ON l.id = r.l_id;", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    predicate = child_at(condition, 0U);
+    failures += expect_join_condition_type(condition, MYLITE_SQL_AST_JOIN_CONDITION_ON,
+                                           "JOIN ON condition type");
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_EQUAL, "JOIN ON predicate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM l JOIN r USING (id, shared);", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    using_columns = child_at(condition, 0U);
+    failures += expect_join_condition_type(condition, MYLITE_SQL_AST_JOIN_CONDITION_USING,
+                                           "JOIN USING condition type");
+    failures +=
+        expect_node(using_columns, MYLITE_SQL_AST_USING_COLUMN_LIST, "JOIN USING column list");
+    failures += expect_child_count(using_columns, 2U, "JOIN USING column count");
+    failures +=
+        expect_node(child_at(using_columns, 0U), MYLITE_SQL_AST_USING_COLUMN, "first USING item");
+    failures +=
+        expect_span_text(child_at(child_at(using_columns, 0U), 0U), "id", "first USING column");
+    failures += expect_span_text(child_at(child_at(using_columns, 1U), 0U), "shared",
+                                 "second USING column");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM l, r JOIN p ON r.id = p.l_id;", MYLITE_SQL_PARSE_OK, &result);
+    references = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    join = child_at(references, 1U);
+    failures += expect_child_count(references, 2U, "comma explicit precedence list count");
+    failures += expect_node(child_at(references, 0U), MYLITE_SQL_AST_FROM_TABLE,
+                            "comma explicit left table");
+    failures +=
+        expect_node(join, MYLITE_SQL_AST_JOIN_EXPRESSION, "comma explicit right join subtree");
+    failures += expect_span_text(child_at(child_at(join, 0U), 0U), "r", "comma explicit join left");
+    failures +=
+        expect_span_text(child_at(child_at(join, 1U), 0U), "p", "comma explicit join right");
+    failures += expect_join_condition_type(child_at(join, 2U), MYLITE_SQL_AST_JOIN_CONDITION_ON,
+                                           "comma explicit ON belongs to explicit join");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM app.l AS lefty JOIN r righty "
+                          "ON lefty.id = righty.l_id;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    table = child_at(join, 0U);
+    qualified = child_at(table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "app", "aliased join schema");
+    failures += expect_span_text(child_at(qualified, 1U), "l", "aliased join table");
+    failures += expect_span_text(child_at(table, 1U), "lefty", "AS join alias");
+    failures += expect_span_text(child_at(child_at(join, 1U), 1U), "righty", "bare join alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM l, r ON l.id = r.id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -3501,8 +3639,10 @@ static int test_select_where_clause_syntax(void)
         parse_sql("SELECT id FROM t WHERE n IN ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT id FROM t JOIN t AS u WHERE t.id = u.id;",
-                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures +=
+        parse_sql("SELECT id FROM t JOIN t AS u WHERE t.id = u.id;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(child_at(child_at(result.root, 0U), 2U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "join where clause");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -4057,6 +4197,37 @@ static int expect_aggregate_call(const struct mylite_sql_ast_node *node,
                 mylite_sql_ast_aggregate_argument_name(node->aggregate_argument));
         failures = 1;
     }
+    return failures;
+}
+
+static int expect_join_type(const struct mylite_sql_ast_node *node,
+                            enum mylite_sql_ast_join_type expected, const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_JOIN_EXPRESSION, context);
+
+    if (node != NULL && node->join_type != expected) {
+        fprintf(stderr, "%s: expected join type %s, got %s\n", context,
+                mylite_sql_ast_join_type_name(expected),
+                mylite_sql_ast_join_type_name(node->join_type));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_join_condition_type(const struct mylite_sql_ast_node *node,
+                                      enum mylite_sql_ast_join_condition_type expected,
+                                      const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_JOIN_CONDITION, context);
+
+    if (node != NULL && node->join_condition_type != expected) {
+        fprintf(stderr, "%s: expected join condition %s, got %s\n", context,
+                mylite_sql_ast_join_condition_type_name(expected),
+                mylite_sql_ast_join_condition_type_name(node->join_condition_type));
+        failures = 1;
+    }
+
     return failures;
 }
 

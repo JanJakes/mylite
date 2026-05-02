@@ -392,6 +392,26 @@ void mylite_sql_ast_node_set_aggregate(struct mylite_sql_ast_node *node,
     node->aggregate_argument = aggregate_argument;
 }
 
+void mylite_sql_ast_node_set_join_type(struct mylite_sql_ast_node *node,
+                                       enum mylite_sql_ast_join_type join_type)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->join_type = join_type;
+}
+
+void mylite_sql_ast_node_set_join_condition_type(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_join_condition_type condition_type)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->join_condition_type = condition_type;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -411,6 +431,25 @@ size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
 {
+    if (kind == MYLITE_SQL_AST_FROM_TABLE_REFERENCES) {
+        return "from_table_references";
+    }
+    if (kind == MYLITE_SQL_AST_TABLE_REFERENCE_LIST) {
+        return "table_reference_list";
+    }
+    if (kind == MYLITE_SQL_AST_JOIN_EXPRESSION) {
+        return "join_expression";
+    }
+    if (kind == MYLITE_SQL_AST_JOIN_CONDITION) {
+        return "join_condition";
+    }
+    if (kind == MYLITE_SQL_AST_USING_COLUMN_LIST) {
+        return "using_column_list";
+    }
+    if (kind == MYLITE_SQL_AST_USING_COLUMN) {
+        return "using_column";
+    }
+
     switch (kind) {
     case MYLITE_SQL_AST_SCRIPT:
         return "script";
@@ -828,6 +867,37 @@ mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument ag
         return "star";
     case MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION:
         return "expression";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_join_type_name(enum mylite_sql_ast_join_type join_type)
+{
+    switch (join_type) {
+    case MYLITE_SQL_AST_JOIN_NONE:
+        return "none";
+    case MYLITE_SQL_AST_JOIN_INNER:
+        return "inner";
+    case MYLITE_SQL_AST_JOIN_CROSS:
+        return "cross";
+    case MYLITE_SQL_AST_JOIN_COMMA:
+        return "comma";
+    }
+
+    return "unknown";
+}
+
+const char *
+mylite_sql_ast_join_condition_type_name(enum mylite_sql_ast_join_condition_type condition_type)
+{
+    switch (condition_type) {
+    case MYLITE_SQL_AST_JOIN_CONDITION_NONE:
+        return "none";
+    case MYLITE_SQL_AST_JOIN_CONDITION_ON:
+        return "on";
+    case MYLITE_SQL_AST_JOIN_CONDITION_USING:
+        return "using";
     }
 
     return "unknown";

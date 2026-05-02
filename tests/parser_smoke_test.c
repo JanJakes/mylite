@@ -194,6 +194,7 @@ static int expect_drop_database_view(void);
 static int expect_drop_index_view(void);
 static int expect_drop_table_view(void);
 static int expect_drop_view_view(void);
+static int expect_prepared_statement_views(void);
 static int expect_rename_table_view(void);
 static int expect_set_statement_view(void);
 static int expect_truncate_table_view(void);
@@ -793,6 +794,7 @@ int main(void) {
   failures += expect_drop_index_view();
   failures += expect_drop_table_view();
   failures += expect_drop_view_view();
+  failures += expect_prepared_statement_views();
   failures += expect_rename_table_view();
   failures += expect_set_statement_view();
   failures += expect_truncate_table_view();
@@ -3532,6 +3534,184 @@ static int expect_drop_table_view(void) {
   }
 
   mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_prepared_statement_views(void) {
+  int failed = 0;
+  {
+    const char *sql = "PREPARE `stmt``x` FROM 'SELECT ? + ?'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "PREPARE string view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstPrepareStatement *view =
+        mylite_ast_prepare_statement_view(ast, 0);
+    if (view == NULL || mylite_ast_prepare_statement_view_node(view) == NULL ||
+        mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_PREPARE ||
+        !span_matches(sql, mylite_ast_prepare_statement_view_name_start(view),
+                      mylite_ast_prepare_statement_view_name_end(view),
+                      "`stmt``x`") ||
+        !value_matches_when_expected(
+            mylite_ast_prepare_statement_view_name_value(view),
+            mylite_ast_prepare_statement_view_name_value_length(view),
+            "stmt`x") ||
+        mylite_ast_prepare_statement_view_source_kind(view) !=
+            MYLITE_PREPARE_STATEMENT_SOURCE_STRING ||
+        !span_matches(sql, mylite_ast_prepare_statement_view_source_start(view),
+                      mylite_ast_prepare_statement_view_source_end(view),
+                      "'SELECT ? + ?'") ||
+        !value_matches_when_expected(
+            mylite_ast_prepare_statement_view_source_value(view),
+            mylite_ast_prepare_statement_view_source_value_length(view),
+            "SELECT ? + ?")) {
+      fprintf(stderr, "PREPARE string view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  {
+    const char *sql = "PREPARE stmt1 FROM @`sql``x`";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "PREPARE variable view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstPrepareStatement *view =
+        mylite_ast_prepare_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_PREPARE ||
+        !value_matches_when_expected(
+            mylite_ast_prepare_statement_view_name_value(view),
+            mylite_ast_prepare_statement_view_name_value_length(view),
+            "stmt1") ||
+        mylite_ast_prepare_statement_view_source_kind(view) !=
+            MYLITE_PREPARE_STATEMENT_SOURCE_USER_VARIABLE ||
+        !span_matches(sql, mylite_ast_prepare_statement_view_source_start(view),
+                      mylite_ast_prepare_statement_view_source_end(view),
+                      "@`sql``x`") ||
+        !value_matches_when_expected(
+            mylite_ast_prepare_statement_view_source_value(view),
+            mylite_ast_prepare_statement_view_source_value_length(view),
+            "sql`x")) {
+      fprintf(stderr, "PREPARE variable view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  {
+    const char *sql = "EXECUTE `stmt``x` USING @a, @`b``x`";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "EXECUTE view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstExecuteStatement *view =
+        mylite_ast_execute_statement_view(ast, 0);
+    const MyliteAstPreparedStatementVariable *first =
+        view == NULL
+            ? NULL
+            : mylite_ast_execute_statement_view_using_variable_at(view, 0);
+    const MyliteAstPreparedStatementVariable *second =
+        view == NULL
+            ? NULL
+            : mylite_ast_execute_statement_view_using_variable_at(view, 1);
+    if (view == NULL || mylite_ast_execute_statement_view_node(view) == NULL ||
+        mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_EXECUTE ||
+        !value_matches_when_expected(
+            mylite_ast_execute_statement_view_name_value(view),
+            mylite_ast_execute_statement_view_name_value_length(view),
+            "stmt`x") ||
+        mylite_ast_execute_statement_view_using_count(view) != 2 ||
+        first == NULL || second == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_prepared_statement_variable_view_name_value(first),
+            mylite_ast_prepared_statement_variable_view_name_value_length(first),
+            "a") ||
+        !value_matches_when_expected(
+            mylite_ast_prepared_statement_variable_view_name_value(second),
+            mylite_ast_prepared_statement_variable_view_name_value_length(second),
+            "b`x")) {
+      fprintf(stderr, "EXECUTE view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  {
+    const char *sql = "DROP PREPARE `stmt``x`";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "DROP PREPARE view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstDeallocateStatement *view =
+        mylite_ast_deallocate_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_DEALLOCATE ||
+        mylite_ast_deallocate_statement_view_mode(view) !=
+            MYLITE_DEALLOCATE_STATEMENT_MODE_DROP ||
+        !value_matches_when_expected(
+            mylite_ast_deallocate_statement_view_name_value(view),
+            mylite_ast_deallocate_statement_view_name_value_length(view),
+            "stmt`x")) {
+      fprintf(stderr, "DROP PREPARE view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  {
+    const char *sql = "DEALLOCATE PREPARE stmt1";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "DEALLOCATE PREPARE view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstDeallocateStatement *view =
+        mylite_ast_deallocate_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_statement_kind(ast, 0) != MYLITE_STATEMENT_DEALLOCATE ||
+        mylite_ast_deallocate_statement_view_mode(view) !=
+            MYLITE_DEALLOCATE_STATEMENT_MODE_DEALLOCATE ||
+        !value_matches_when_expected(
+            mylite_ast_deallocate_statement_view_name_value(view),
+            mylite_ast_deallocate_statement_view_name_value_length(view),
+            "stmt1")) {
+      fprintf(stderr, "DEALLOCATE PREPARE view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
   return failed;
 }
 

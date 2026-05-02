@@ -130,6 +130,12 @@ static void dump_statements(const MyliteAst *ast) {
     const MyliteAstDropIndex *drop_index = mylite_ast_drop_index_view(ast, i);
     const MyliteAstDropTable *drop_table = mylite_ast_drop_table_view(ast, i);
     const MyliteAstDropView *drop_view = mylite_ast_drop_view_view(ast, i);
+    const MyliteAstPrepareStatement *prepare_statement =
+        mylite_ast_prepare_statement_view(ast, i);
+    const MyliteAstExecuteStatement *execute_statement =
+        mylite_ast_execute_statement_view(ast, i);
+    const MyliteAstDeallocateStatement *deallocate_statement =
+        mylite_ast_deallocate_statement_view(ast, i);
     const MyliteAstRenameTable *rename_table =
         mylite_ast_rename_table_view(ast, i);
     const MyliteAstSetStatement *set_statement =
@@ -584,6 +590,121 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_drop_view_mode_name(
                  mylite_ast_drop_view_view_mode(drop_view)),
              mylite_ast_drop_view_view_view_count(drop_view));
+    }
+    if (prepare_statement != NULL) {
+      printf("  prepare_statement span=%zu..%zu name=%zu..%zu "
+             "source=%s:%zu..%zu name_len=%zu name=",
+             mylite_ast_prepare_statement_view_start(prepare_statement),
+             mylite_ast_prepare_statement_view_end(prepare_statement),
+             mylite_ast_prepare_statement_view_name_start(prepare_statement),
+             mylite_ast_prepare_statement_view_name_end(prepare_statement),
+             mylite_prepare_statement_source_kind_name(
+                 mylite_ast_prepare_statement_view_source_kind(
+                     prepare_statement)),
+             mylite_ast_prepare_statement_view_source_start(prepare_statement),
+             mylite_ast_prepare_statement_view_source_end(prepare_statement),
+             mylite_ast_prepare_statement_view_name_value_length(
+                 prepare_statement));
+      const char *name =
+          mylite_ast_prepare_statement_view_name_value(prepare_statement);
+      size_t name_length =
+          mylite_ast_prepare_statement_view_name_value_length(
+              prepare_statement);
+      if (name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(name, name_length);
+      }
+      fputs(" source_len=", stdout);
+      printf("%zu source=",
+             mylite_ast_prepare_statement_view_source_value_length(
+                 prepare_statement));
+      const char *source =
+          mylite_ast_prepare_statement_view_source_value(prepare_statement);
+      size_t source_length =
+          mylite_ast_prepare_statement_view_source_value_length(
+              prepare_statement);
+      if (source == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(source, source_length);
+      }
+      fputc('\n', stdout);
+    }
+    if (execute_statement != NULL) {
+      printf("  execute_statement span=%zu..%zu name=%zu..%zu "
+             "using=%zu name_len=%zu name=",
+             mylite_ast_execute_statement_view_start(execute_statement),
+             mylite_ast_execute_statement_view_end(execute_statement),
+             mylite_ast_execute_statement_view_name_start(execute_statement),
+             mylite_ast_execute_statement_view_name_end(execute_statement),
+             mylite_ast_execute_statement_view_using_count(execute_statement),
+             mylite_ast_execute_statement_view_name_value_length(
+                 execute_statement));
+      const char *name =
+          mylite_ast_execute_statement_view_name_value(execute_statement);
+      size_t name_length =
+          mylite_ast_execute_statement_view_name_value_length(
+              execute_statement);
+      if (name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(name, name_length);
+      }
+      fputc('\n', stdout);
+      for (size_t j = 0;
+           j < mylite_ast_execute_statement_view_using_count(execute_statement);
+           j++) {
+        const MyliteAstPreparedStatementVariable *variable =
+            mylite_ast_execute_statement_view_using_variable_at(
+                execute_statement, j);
+        printf("    execute_using[%zu] span=%zu..%zu name=%zu..%zu "
+               "name_len=%zu name=",
+               j,
+               mylite_ast_prepared_statement_variable_view_start(variable),
+               mylite_ast_prepared_statement_variable_view_end(variable),
+               mylite_ast_prepared_statement_variable_view_name_start(variable),
+               mylite_ast_prepared_statement_variable_view_name_end(variable),
+               mylite_ast_prepared_statement_variable_view_name_value_length(
+                   variable));
+        const char *variable_name =
+            mylite_ast_prepared_statement_variable_view_name_value(variable);
+        size_t variable_name_length =
+            mylite_ast_prepared_statement_variable_view_name_value_length(
+                variable);
+        if (variable_name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(variable_name, variable_name_length);
+        }
+        fputc('\n', stdout);
+      }
+    }
+    if (deallocate_statement != NULL) {
+      printf("  deallocate_statement span=%zu..%zu mode=%s name=%zu..%zu "
+             "name_len=%zu name=",
+             mylite_ast_deallocate_statement_view_start(deallocate_statement),
+             mylite_ast_deallocate_statement_view_end(deallocate_statement),
+             mylite_deallocate_statement_mode_name(
+                 mylite_ast_deallocate_statement_view_mode(
+                     deallocate_statement)),
+             mylite_ast_deallocate_statement_view_name_start(
+                 deallocate_statement),
+             mylite_ast_deallocate_statement_view_name_end(
+                 deallocate_statement),
+             mylite_ast_deallocate_statement_view_name_value_length(
+                 deallocate_statement));
+      const char *name =
+          mylite_ast_deallocate_statement_view_name_value(deallocate_statement);
+      size_t name_length =
+          mylite_ast_deallocate_statement_view_name_value_length(
+              deallocate_statement);
+      if (name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(name, name_length);
+      }
+      fputc('\n', stdout);
     }
     if (set_statement != NULL) {
       printf("  set_statement span=%zu..%zu form=%s assignments=%zu\n",

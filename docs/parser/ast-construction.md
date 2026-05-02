@@ -68,6 +68,9 @@ expression nodes.
 - SET assignment values now also expose a first parser-level expression summary
   for root literals, identifiers, variables, function calls, and `DEFAULT`.
 - `USE` statements expose a typed decoded default-database view.
+- `PREPARE`, `EXECUTE`, and `DEALLOCATE` statements expose typed decoded
+  prepared-statement handles, source descriptors, ordered `USING` user-variable
+  descriptors, and deallocate/drop mode.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
   still cover the full current corpus.
 - The AST is opaque in the public API and freed with `mylite_ast_free()`.
@@ -132,6 +135,12 @@ expression nodes.
   decoded string/identifier/function-name values, raw values, and parsed
   unsigned integer values where applicable
 - typed `USE` descriptors with decoded database name
+- typed `PREPARE` descriptors with decoded statement name, source kind, source
+  span, and decoded source string or user-variable name
+- typed `EXECUTE` descriptors with decoded statement name and ordered decoded
+  `USING` user variables
+- typed `DEALLOCATE` descriptors with decoded statement name and
+  `DEALLOCATE`/`DROP PREPARE` mode
 - typed view-column descriptors with name spans and decoded identifier values
 - typed `ALTER TABLE` descriptors with decoded target table, ordered operation
   spec handles, coarse operation kind, `IF EXISTS` / `IF NOT EXISTS` flags,
@@ -303,6 +312,15 @@ recursive expression AST; it is the measured bridge between CST anchors and the
 future semantic expression tree. `USE` records the decoded default database
 target.
 
+Prepared-statement views now cover the SQL-level prepared statement surface.
+`PREPARE` records the decoded statement handle and distinguishes string-literal
+sources from user-variable sources, exposing the decoded SQL string or decoded
+user-variable name. `EXECUTE` records the decoded statement handle and ordered
+decoded `USING` user variables. `DEALLOCATE PREPARE` and `DROP PREPARE` record
+the decoded statement handle and mode. These are parser-level descriptors only;
+they do not yet validate parameter marker rules, maintain the per-connection
+prepared-statement registry, or execute prepared statements.
+
 For development inspection:
 
 ```sh
@@ -332,6 +350,13 @@ Latest expression-summary run on the same corpus:
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=23.544499 qps=295360 mbps=22.46 avg_us=3.386 avg_nodes=74.5 avg_ast_bytes=10249.3 avg_set_assignment_value_expressions=0.08 avg_set_assignment_expression_values=0.07 avg_set_assignment_expression_unsigned_integers=0.02 avg_set_assignment_expression_literals=0.05 avg_set_assignment_expression_function_calls=0.00 avg_set_assignment_expression_defaults=0.01
 ```
 
+Latest prepared-statement view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.927726 qps=499299 mbps=37.97 avg_us=2.003
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=23.597245 qps=294700 mbps=22.41 avg_us=3.393 avg_nodes=74.5 avg_ast_bytes=10257.2 avg_prepare_statement_views=0.02 avg_prepare_statement_name_values=0.02 avg_prepare_statement_string_sources=0.02 avg_prepare_statement_user_variable_sources=0.00 avg_prepare_statement_source_values=0.02 avg_execute_statement_views=0.01 avg_execute_statement_name_values=0.01 avg_execute_statement_using_variables=0.01 avg_execute_statement_using_variable_name_values=0.01 avg_deallocate_statement_views=0.00 avg_deallocate_statement_name_values=0.00 avg_deallocate_statement_modes=0.00
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -342,7 +367,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 213K on disk, 126,338 bytes text/data/other
+parser support object: 222K on disk, 131,346 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.3M on disk
 mylite-parse: 1.1M on disk

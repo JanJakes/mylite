@@ -70,9 +70,10 @@ column-detail handles, key-part/key-option handles, table-option
 descriptor/value views, and compact table-option/key/column summaries. It also
 builds semantic parser views for `CREATE TABLE`, `CREATE DATABASE`, `CREATE
 VIEW`, `ALTER TABLE`, `CREATE INDEX`, `DROP DATABASE`, `DROP INDEX`, `DROP
-TABLE`, `DROP VIEW`, `RENAME TABLE`, `TRUNCATE TABLE`, `SET`, and `USE` that
-expose opaque descriptor handles for the next typed AST layer. The `CREATE
-DATABASE` view currently covers decoded database targets, `IF NOT EXISTS`,
+TABLE`, `DROP VIEW`, `RENAME TABLE`, `TRUNCATE TABLE`, `SET`, `USE`,
+`PREPARE`, `EXECUTE`, and `DEALLOCATE` that expose opaque descriptor handles
+for the next typed AST layer. The `CREATE DATABASE` view currently covers
+decoded database targets, `IF NOT EXISTS`,
 `DATABASE`/`SCHEMA` keyword choice, database-option descriptors, and
 charset/collation/encryption summaries. The `CREATE VIEW` view currently covers
 decoded view targets, `OR REPLACE`, algorithm, SQL security, check-option kind,
@@ -81,8 +82,11 @@ The `SET` view currently covers statement form, ordered assignments, assignment
 kind, variable scope, assignment operator, decoded assignment names, value CST
 anchors, `SET NAMES` extended collation spans, and first-pass expression
 summaries for assignment values. The `USE` view currently covers the decoded
-default-database target. The `ALTER TABLE` view currently covers decoded target
-tables, ordered coarse operation specs,
+default-database target. The prepared-statement views currently cover decoded
+statement handles, `PREPARE` source kind and decoded source value, ordered
+`EXECUTE ... USING` user variables, and `DEALLOCATE`/`DROP PREPARE` mode. The
+`ALTER TABLE` view currently covers decoded target tables, ordered coarse
+operation specs,
 operation names, nested rename/exchange table targets, reused table-option
 handles, and reused column/key descriptor payloads for single-column
 add/modify/change specs and add-constraint/index specs, including multi-item
@@ -212,9 +216,9 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. |  |
 | `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. |  |
 | `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. |  |
-| `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. |  |
-| `EXECUTE` | ❌ | high | Prepared-statement execution with USING variables and result metadata. |  |
-| `DEALLOCATE PREPARE` / `DROP PREPARE` | ❌ | high | Prepared statement cleanup. |  |
+| `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. | Parser view exposes decoded statement name, source kind, and decoded source string/user-variable value. |
+| `EXECUTE` | ❌ | high | Prepared-statement execution with USING variables and result metadata. | Parser view exposes decoded statement name and ordered decoded `USING` user variables. |
+| `DEALLOCATE PREPARE` / `DROP PREPARE` | ❌ | high | Prepared statement cleanup. | Parser view exposes decoded statement name and deallocate/drop mode. |
 | `BEGIN ... END` | ❌ | medium | Compound statement block scope for stored programs and events. |  |
 | Statement labels | ❌ | medium | Label declaration, LEAVE/ITERATE binding, and duplicate-label diagnostics. |  |
 | `DECLARE` local variables | ❌ | medium | Stored-program local variable declarations, defaults, and scope. |  |
@@ -1513,7 +1517,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | Last insert id | ❌ | top | LAST_INSERT_ID(), OK packet insert id, explicit LAST_INSERT_ID(expr), and multi-row behavior. |  |
 | Affected rows | ❌ | top | CLIENT_FOUND_ROWS, changed rows vs matched rows, DDL/DML OK packets, and warning counts. |  |
 | Warnings and diagnostics | ❌ | high | SHOW WARNINGS, SHOW ERRORS, GET DIAGNOSTICS, warning count, sql_notes, and truncation warnings. |  |
-| Prepared statement registry | ❌ | top | Per-connection prepared statement namespace and deallocation behavior. |  |
+| Prepared statement registry | ❌ | top | Per-connection prepared statement namespace and deallocation behavior. | Parser views expose statement handles and source/USING/deallocate descriptors; runtime registry semantics are not implemented yet. |
 | Temporary table namespace | ❌ | high | Per-session temporary table metadata and shadowing. |  |
 | Role and privilege state | ❌ | high | CURRENT_ROLE(), CURRENT_USER(), DEFINER/INVOKER, and privilege-check-visible metadata. |  |
 | Locks | ❌ | high | Named locks, table locks, metadata locks, backup locks, and lock diagnostics. |  |

@@ -493,6 +493,55 @@ struct MyliteAstUseDatabase {
   size_t end;
 };
 
+struct MyliteAstPreparedStatementVariable {
+  const MyliteAstNode *node;
+  size_t start;
+  size_t end;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+};
+
+struct MyliteAstPrepareStatement {
+  const MyliteAstNode *node;
+  const MyliteAstNode *source_node;
+  MylitePrepareStatementSourceKind source_kind;
+  size_t start;
+  size_t end;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+  size_t source_start;
+  size_t source_end;
+  const char *source_value;
+  size_t source_value_length;
+};
+
+struct MyliteAstExecuteStatement {
+  const MyliteAstNode *node;
+  MyliteAstPreparedStatementVariable *using_variables;
+  size_t using_count;
+  size_t start;
+  size_t end;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+};
+
+struct MyliteAstDeallocateStatement {
+  const MyliteAstNode *node;
+  MyliteDeallocateStatementMode mode;
+  size_t start;
+  size_t end;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+};
+
 typedef struct MyliteAstStatement {
   const MyliteAstNode *node;
   const char *symbol_name;
@@ -514,6 +563,9 @@ typedef struct MyliteAstStatement {
   MyliteAstDropIndex *drop_index;
   MyliteAstDropTable *drop_table;
   MyliteAstDropView *drop_view;
+  MyliteAstPrepareStatement *prepare_statement;
+  MyliteAstExecuteStatement *execute_statement;
+  MyliteAstDeallocateStatement *deallocate_statement;
   MyliteAstRenameTable *rename_table;
   MyliteAstSetStatement *set_statement;
   MyliteAstTruncateTable *truncate_table;
@@ -679,6 +731,36 @@ static int mylite_ast_set_drop_view_view(MyliteAst *ast,
                                          const MyliteAstNode *payload);
 static MyliteDropViewMode mylite_ast_classify_drop_view_mode(
     const MyliteAstNode *node);
+static int mylite_ast_set_prepare_statement_view(MyliteAst *ast,
+                                                 MyliteAstStatement *statement,
+                                                 const MyliteAstNode *payload);
+static int mylite_ast_set_prepare_statement_source(
+    MyliteAst *ast, MyliteAstPrepareStatement *prepare_statement,
+    const MyliteAstNode *node);
+static int mylite_ast_set_execute_statement_view(MyliteAst *ast,
+                                                 MyliteAstStatement *statement,
+                                                 const MyliteAstNode *payload);
+static int mylite_ast_set_execute_statement_variables(
+    MyliteAst *ast, MyliteAstExecuteStatement *execute_statement,
+    const MyliteAstNode *node);
+static size_t mylite_ast_count_user_variables(const MyliteAstNode *node);
+static void mylite_ast_fill_user_variables(
+    MyliteAst *ast, MyliteAstPreparedStatementVariable *variables,
+    size_t variable_count, const MyliteAstNode *node, size_t *index, int *ok);
+static int mylite_ast_fill_user_variable(
+    MyliteAst *ast, MyliteAstPreparedStatementVariable *variable,
+    const MyliteAstNode *node);
+static int mylite_ast_set_deallocate_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload);
+static MyliteDeallocateStatementMode mylite_ast_classify_deallocate_statement_mode(
+    const MyliteAstNode *node);
+static int mylite_ast_set_prepared_statement_name_value(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
+    size_t *name_end, const char **name_value, size_t *name_value_length);
+static int mylite_ast_set_user_variable_name_value(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
+    size_t *name_end, const char **name_value, size_t *name_value_length);
 static int mylite_ast_set_set_statement_view(MyliteAst *ast,
                                              MyliteAstStatement *statement,
                                              const MyliteAstNode *payload);
@@ -1903,6 +1985,32 @@ const char *mylite_set_assignment_operator_name(
   return "none";
 }
 
+const char *mylite_prepare_statement_source_kind_name(
+    MylitePrepareStatementSourceKind kind) {
+  switch (kind) {
+    case MYLITE_PREPARE_STATEMENT_SOURCE_UNKNOWN:
+      return "unknown";
+    case MYLITE_PREPARE_STATEMENT_SOURCE_STRING:
+      return "string";
+    case MYLITE_PREPARE_STATEMENT_SOURCE_USER_VARIABLE:
+      return "user_variable";
+  }
+  return "unknown";
+}
+
+const char *mylite_deallocate_statement_mode_name(
+    MyliteDeallocateStatementMode mode) {
+  switch (mode) {
+    case MYLITE_DEALLOCATE_STATEMENT_MODE_UNKNOWN:
+      return "unknown";
+    case MYLITE_DEALLOCATE_STATEMENT_MODE_DEALLOCATE:
+      return "deallocate";
+    case MYLITE_DEALLOCATE_STATEMENT_MODE_DROP:
+      return "drop";
+  }
+  return "unknown";
+}
+
 const char *mylite_alter_table_spec_kind_name(MyliteAlterTableSpecKind kind) {
   switch (kind) {
     case MYLITE_ALTER_TABLE_SPEC_UNKNOWN:
@@ -2252,6 +2360,27 @@ const MyliteAstDropView *mylite_ast_drop_view_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->drop_view;
+}
+
+const MyliteAstPrepareStatement *mylite_ast_prepare_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->prepare_statement;
+}
+
+const MyliteAstExecuteStatement *mylite_ast_execute_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->execute_statement;
+}
+
+const MyliteAstDeallocateStatement *mylite_ast_deallocate_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->deallocate_statement;
 }
 
 const MyliteAstRenameTable *mylite_ast_rename_table_view(
@@ -3390,6 +3519,200 @@ size_t mylite_ast_set_assignment_view_extend_value_start(
 size_t mylite_ast_set_assignment_view_extend_value_end(
     const MyliteAstSetAssignment *assignment) {
   return assignment == NULL ? 0 : assignment->extend_value_end;
+}
+
+const MyliteAstNode *mylite_ast_prepare_statement_view_node(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? NULL : prepare_statement->node;
+}
+
+size_t mylite_ast_prepare_statement_view_start(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? 0 : prepare_statement->start;
+}
+
+size_t mylite_ast_prepare_statement_view_end(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? 0 : prepare_statement->end;
+}
+
+size_t mylite_ast_prepare_statement_view_name_start(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? 0 : prepare_statement->name_start;
+}
+
+size_t mylite_ast_prepare_statement_view_name_end(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? 0 : prepare_statement->name_end;
+}
+
+const char *mylite_ast_prepare_statement_view_name_value(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? NULL : prepare_statement->name_value;
+}
+
+size_t mylite_ast_prepare_statement_view_name_value_length(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? 0 : prepare_statement->name_value_length;
+}
+
+MylitePrepareStatementSourceKind
+mylite_ast_prepare_statement_view_source_kind(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? MYLITE_PREPARE_STATEMENT_SOURCE_UNKNOWN
+                                   : prepare_statement->source_kind;
+}
+
+const MyliteAstNode *mylite_ast_prepare_statement_view_source_node(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? NULL : prepare_statement->source_node;
+}
+
+size_t mylite_ast_prepare_statement_view_source_start(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? 0 : prepare_statement->source_start;
+}
+
+size_t mylite_ast_prepare_statement_view_source_end(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? 0 : prepare_statement->source_end;
+}
+
+const char *mylite_ast_prepare_statement_view_source_value(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? NULL : prepare_statement->source_value;
+}
+
+size_t mylite_ast_prepare_statement_view_source_value_length(
+    const MyliteAstPrepareStatement *prepare_statement) {
+  return prepare_statement == NULL ? 0 : prepare_statement->source_value_length;
+}
+
+const MyliteAstNode *mylite_ast_execute_statement_view_node(
+    const MyliteAstExecuteStatement *execute_statement) {
+  return execute_statement == NULL ? NULL : execute_statement->node;
+}
+
+size_t mylite_ast_execute_statement_view_start(
+    const MyliteAstExecuteStatement *execute_statement) {
+  return execute_statement == NULL ? 0 : execute_statement->start;
+}
+
+size_t mylite_ast_execute_statement_view_end(
+    const MyliteAstExecuteStatement *execute_statement) {
+  return execute_statement == NULL ? 0 : execute_statement->end;
+}
+
+size_t mylite_ast_execute_statement_view_name_start(
+    const MyliteAstExecuteStatement *execute_statement) {
+  return execute_statement == NULL ? 0 : execute_statement->name_start;
+}
+
+size_t mylite_ast_execute_statement_view_name_end(
+    const MyliteAstExecuteStatement *execute_statement) {
+  return execute_statement == NULL ? 0 : execute_statement->name_end;
+}
+
+const char *mylite_ast_execute_statement_view_name_value(
+    const MyliteAstExecuteStatement *execute_statement) {
+  return execute_statement == NULL ? NULL : execute_statement->name_value;
+}
+
+size_t mylite_ast_execute_statement_view_name_value_length(
+    const MyliteAstExecuteStatement *execute_statement) {
+  return execute_statement == NULL ? 0 : execute_statement->name_value_length;
+}
+
+size_t mylite_ast_execute_statement_view_using_count(
+    const MyliteAstExecuteStatement *execute_statement) {
+  return execute_statement == NULL ? 0 : execute_statement->using_count;
+}
+
+const MyliteAstPreparedStatementVariable *
+mylite_ast_execute_statement_view_using_variable_at(
+    const MyliteAstExecuteStatement *execute_statement, size_t variable_index) {
+  if (execute_statement == NULL ||
+      variable_index >= execute_statement->using_count) {
+    return NULL;
+  }
+  return &execute_statement->using_variables[variable_index];
+}
+
+const MyliteAstNode *mylite_ast_prepared_statement_variable_view_node(
+    const MyliteAstPreparedStatementVariable *variable) {
+  return variable == NULL ? NULL : variable->node;
+}
+
+size_t mylite_ast_prepared_statement_variable_view_start(
+    const MyliteAstPreparedStatementVariable *variable) {
+  return variable == NULL ? 0 : variable->start;
+}
+
+size_t mylite_ast_prepared_statement_variable_view_end(
+    const MyliteAstPreparedStatementVariable *variable) {
+  return variable == NULL ? 0 : variable->end;
+}
+
+size_t mylite_ast_prepared_statement_variable_view_name_start(
+    const MyliteAstPreparedStatementVariable *variable) {
+  return variable == NULL ? 0 : variable->name_start;
+}
+
+size_t mylite_ast_prepared_statement_variable_view_name_end(
+    const MyliteAstPreparedStatementVariable *variable) {
+  return variable == NULL ? 0 : variable->name_end;
+}
+
+const char *mylite_ast_prepared_statement_variable_view_name_value(
+    const MyliteAstPreparedStatementVariable *variable) {
+  return variable == NULL ? NULL : variable->name_value;
+}
+
+size_t mylite_ast_prepared_statement_variable_view_name_value_length(
+    const MyliteAstPreparedStatementVariable *variable) {
+  return variable == NULL ? 0 : variable->name_value_length;
+}
+
+const MyliteAstNode *mylite_ast_deallocate_statement_view_node(
+    const MyliteAstDeallocateStatement *deallocate_statement) {
+  return deallocate_statement == NULL ? NULL : deallocate_statement->node;
+}
+
+size_t mylite_ast_deallocate_statement_view_start(
+    const MyliteAstDeallocateStatement *deallocate_statement) {
+  return deallocate_statement == NULL ? 0 : deallocate_statement->start;
+}
+
+size_t mylite_ast_deallocate_statement_view_end(
+    const MyliteAstDeallocateStatement *deallocate_statement) {
+  return deallocate_statement == NULL ? 0 : deallocate_statement->end;
+}
+
+MyliteDeallocateStatementMode mylite_ast_deallocate_statement_view_mode(
+    const MyliteAstDeallocateStatement *deallocate_statement) {
+  return deallocate_statement == NULL ? MYLITE_DEALLOCATE_STATEMENT_MODE_UNKNOWN
+                                      : deallocate_statement->mode;
+}
+
+size_t mylite_ast_deallocate_statement_view_name_start(
+    const MyliteAstDeallocateStatement *deallocate_statement) {
+  return deallocate_statement == NULL ? 0 : deallocate_statement->name_start;
+}
+
+size_t mylite_ast_deallocate_statement_view_name_end(
+    const MyliteAstDeallocateStatement *deallocate_statement) {
+  return deallocate_statement == NULL ? 0 : deallocate_statement->name_end;
+}
+
+const char *mylite_ast_deallocate_statement_view_name_value(
+    const MyliteAstDeallocateStatement *deallocate_statement) {
+  return deallocate_statement == NULL ? NULL : deallocate_statement->name_value;
+}
+
+size_t mylite_ast_deallocate_statement_view_name_value_length(
+    const MyliteAstDeallocateStatement *deallocate_statement) {
+  return deallocate_statement == NULL ? 0
+                                      : deallocate_statement->name_value_length;
 }
 
 const MyliteAstNode *mylite_ast_expression_view_node(
@@ -6714,7 +7037,8 @@ static MyliteStatementKind mylite_ast_classify_statement(const char *symbol_name
   if (strcmp(symbol_name, "nt_call_stmt") == 0) {
     return MYLITE_STATEMENT_CALL;
   }
-  if (strcmp(symbol_name, "nt_prepare_stmt") == 0) {
+  if (strcmp(symbol_name, "nt_prepare_stmt") == 0 ||
+      strcmp(symbol_name, "nt_prepared_stmt") == 0) {
     return MYLITE_STATEMENT_PREPARE;
   }
   if (strcmp(symbol_name, "nt_execute_stmt") == 0) {
@@ -6803,6 +7127,16 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   }
   if (strcmp(statement->symbol_name, "nt_drop_view_stmt") == 0) {
     return mylite_ast_set_drop_view_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_prepared_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_prepare_stmt") == 0) {
+    return mylite_ast_set_prepare_statement_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_execute_stmt") == 0) {
+    return mylite_ast_set_execute_statement_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_deallocate_stmt") == 0) {
+    return mylite_ast_set_deallocate_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_set_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_set_role_stmt") == 0 ||
@@ -7949,6 +8283,288 @@ static MyliteDropViewMode mylite_ast_classify_drop_view_mode(
     return MYLITE_DROP_VIEW_MODE_CASCADE;
   }
   return MYLITE_DROP_VIEW_MODE_UNSPECIFIED;
+}
+
+static int mylite_ast_set_prepare_statement_view(MyliteAst *ast,
+                                                 MyliteAstStatement *statement,
+                                                 const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstPrepareStatement *prepare_statement =
+      mylite_ast_alloc(ast, sizeof(*prepare_statement));
+  if (prepare_statement == NULL) {
+    return 0;
+  }
+  prepare_statement->node = payload == NULL ? statement->node : payload;
+  prepare_statement->start = mylite_ast_node_start(prepare_statement->node);
+  prepare_statement->end = mylite_ast_node_end(prepare_statement->node);
+  if (!mylite_ast_set_prepared_statement_name_value(
+          ast, prepare_statement->node, &prepare_statement->name_start,
+          &prepare_statement->name_end, &prepare_statement->name_value,
+          &prepare_statement->name_value_length)) {
+    return 0;
+  }
+  if (!mylite_ast_set_prepare_statement_source(ast, prepare_statement,
+                                               prepare_statement->node)) {
+    return 0;
+  }
+  statement->prepare_statement = prepare_statement;
+  return 1;
+}
+
+static int mylite_ast_set_prepare_statement_source(
+    MyliteAst *ast, MyliteAstPrepareStatement *prepare_statement,
+    const MyliteAstNode *node) {
+  if (ast == NULL || prepare_statement == NULL || node == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *source = mylite_ast_find_first_symbol(node,
+                                                             "nt_prepare_sql");
+  if (source == NULL) {
+    return 1;
+  }
+  if (source->child_count == 1 && source->children[0] != NULL) {
+    source = source->children[0];
+  }
+
+  const MyliteAstNode *string_token =
+      source->kind == MYLITE_AST_NODE_TOKEN &&
+              source->token == MYLITE_TOK_STRING_LIT
+          ? source
+          : mylite_ast_find_first_token(source, MYLITE_TOK_STRING_LIT);
+  if (string_token != NULL) {
+    prepare_statement->source_node = string_token;
+    prepare_statement->source_kind = MYLITE_PREPARE_STATEMENT_SOURCE_STRING;
+    prepare_statement->source_start = mylite_ast_node_start(string_token);
+    prepare_statement->source_end = mylite_ast_node_end(string_token);
+    return mylite_ast_decode_sql_string_literal(
+        ast, prepare_statement->source_start, prepare_statement->source_end,
+        &prepare_statement->source_value,
+        &prepare_statement->source_value_length);
+  }
+
+  const MyliteAstNode *user_variable_token =
+      source->kind == MYLITE_AST_NODE_TOKEN &&
+              source->token == MYLITE_TOK_SINGLE_AT_IDENTIFIER
+          ? source
+          : mylite_ast_find_first_token(source, MYLITE_TOK_SINGLE_AT_IDENTIFIER);
+  if (user_variable_token != NULL) {
+    prepare_statement->source_node = source;
+    prepare_statement->source_kind =
+        MYLITE_PREPARE_STATEMENT_SOURCE_USER_VARIABLE;
+    prepare_statement->source_start = mylite_ast_node_start(source);
+    prepare_statement->source_end = mylite_ast_node_end(source);
+    size_t value_start = 0;
+    size_t value_end = 0;
+    return mylite_ast_set_user_variable_name_value(
+        ast, user_variable_token, &value_start, &value_end,
+        &prepare_statement->source_value,
+        &prepare_statement->source_value_length);
+  }
+
+  prepare_statement->source_node = source;
+  prepare_statement->source_start = mylite_ast_node_start(source);
+  prepare_statement->source_end = mylite_ast_node_end(source);
+  return 1;
+}
+
+static int mylite_ast_set_execute_statement_view(MyliteAst *ast,
+                                                 MyliteAstStatement *statement,
+                                                 const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstExecuteStatement *execute_statement =
+      mylite_ast_alloc(ast, sizeof(*execute_statement));
+  if (execute_statement == NULL) {
+    return 0;
+  }
+  execute_statement->node = payload == NULL ? statement->node : payload;
+  execute_statement->start = mylite_ast_node_start(execute_statement->node);
+  execute_statement->end = mylite_ast_node_end(execute_statement->node);
+  if (!mylite_ast_set_prepared_statement_name_value(
+          ast, execute_statement->node, &execute_statement->name_start,
+          &execute_statement->name_end, &execute_statement->name_value,
+          &execute_statement->name_value_length)) {
+    return 0;
+  }
+  if (!mylite_ast_set_execute_statement_variables(ast, execute_statement,
+                                                  execute_statement->node)) {
+    return 0;
+  }
+  statement->execute_statement = execute_statement;
+  return 1;
+}
+
+static int mylite_ast_set_execute_statement_variables(
+    MyliteAst *ast, MyliteAstExecuteStatement *execute_statement,
+    const MyliteAstNode *node) {
+  if (ast == NULL || execute_statement == NULL || node == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *variables = mylite_ast_find_first_symbol(
+      node, "nt_user_variable_list");
+  if (variables == NULL) {
+    return 1;
+  }
+  execute_statement->using_count = mylite_ast_count_user_variables(variables);
+  if (execute_statement->using_count == 0) {
+    return 1;
+  }
+  execute_statement->using_variables =
+      mylite_ast_alloc(ast, execute_statement->using_count *
+                                sizeof(*execute_statement->using_variables));
+  if (execute_statement->using_variables == NULL) {
+    return 0;
+  }
+
+  size_t index = 0;
+  int ok = 1;
+  mylite_ast_fill_user_variables(ast, execute_statement->using_variables,
+                                 execute_statement->using_count, variables,
+                                 &index, &ok);
+  return ok && index == execute_statement->using_count;
+}
+
+static size_t mylite_ast_count_user_variables(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_user_variable") == 0) {
+    return 1;
+  }
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_user_variables(node->children[i]);
+  }
+  return count;
+}
+
+static void mylite_ast_fill_user_variables(
+    MyliteAst *ast, MyliteAstPreparedStatementVariable *variables,
+    size_t variable_count, const MyliteAstNode *node, size_t *index, int *ok) {
+  if (ok == NULL || !*ok || node == NULL) {
+    return;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_user_variable") == 0) {
+    if (index == NULL || *index >= variable_count ||
+        !mylite_ast_fill_user_variable(ast, &variables[*index], node)) {
+      *ok = 0;
+      return;
+    }
+    (*index)++;
+    return;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    mylite_ast_fill_user_variables(ast, variables, variable_count,
+                                   node->children[i], index, ok);
+  }
+}
+
+static int mylite_ast_fill_user_variable(
+    MyliteAst *ast, MyliteAstPreparedStatementVariable *variable,
+    const MyliteAstNode *node) {
+  if (variable == NULL || node == NULL) {
+    return 1;
+  }
+  variable->node = node;
+  variable->start = mylite_ast_node_start(node);
+  variable->end = mylite_ast_node_end(node);
+  return mylite_ast_set_user_variable_name_value(
+      ast, node, &variable->name_start, &variable->name_end,
+      &variable->name_value, &variable->name_value_length);
+}
+
+static int mylite_ast_set_deallocate_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstDeallocateStatement *deallocate_statement =
+      mylite_ast_alloc(ast, sizeof(*deallocate_statement));
+  if (deallocate_statement == NULL) {
+    return 0;
+  }
+  deallocate_statement->node = payload == NULL ? statement->node : payload;
+  deallocate_statement->start = mylite_ast_node_start(deallocate_statement->node);
+  deallocate_statement->end = mylite_ast_node_end(deallocate_statement->node);
+  deallocate_statement->mode =
+      mylite_ast_classify_deallocate_statement_mode(deallocate_statement->node);
+  if (!mylite_ast_set_prepared_statement_name_value(
+          ast, deallocate_statement->node, &deallocate_statement->name_start,
+          &deallocate_statement->name_end, &deallocate_statement->name_value,
+          &deallocate_statement->name_value_length)) {
+    return 0;
+  }
+  statement->deallocate_statement = deallocate_statement;
+  return 1;
+}
+
+static MyliteDeallocateStatementMode mylite_ast_classify_deallocate_statement_mode(
+    const MyliteAstNode *node) {
+  const MyliteAstNode *symbol = mylite_ast_find_first_symbol(node,
+                                                             "nt_deallocate_sym");
+  if (mylite_ast_find_first_token(symbol, MYLITE_TOK_DEALLOCATE) != NULL) {
+    return MYLITE_DEALLOCATE_STATEMENT_MODE_DEALLOCATE;
+  }
+  if (mylite_ast_find_first_token(symbol, MYLITE_TOK_DROP) != NULL) {
+    return MYLITE_DEALLOCATE_STATEMENT_MODE_DROP;
+  }
+  return MYLITE_DEALLOCATE_STATEMENT_MODE_UNKNOWN;
+}
+
+static int mylite_ast_set_prepared_statement_name_value(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
+    size_t *name_end, const char **name_value, size_t *name_value_length) {
+  if (ast == NULL || node == NULL || name_start == NULL || name_end == NULL ||
+      name_value == NULL || name_value_length == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *name = mylite_ast_find_first_symbol(node,
+                                                           "nt_identifier");
+  if (name == NULL) {
+    return 1;
+  }
+  *name_start = mylite_ast_node_start(name);
+  *name_end = mylite_ast_node_end(name);
+  return mylite_ast_decode_identifier(ast, *name_start, *name_end, name_value,
+                                      name_value_length);
+}
+
+static int mylite_ast_set_user_variable_name_value(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
+    size_t *name_end, const char **name_value, size_t *name_value_length) {
+  if (ast == NULL || node == NULL || name_start == NULL || name_end == NULL ||
+      name_value == NULL || name_value_length == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *token =
+      node->kind == MYLITE_AST_NODE_TOKEN &&
+              node->token == MYLITE_TOK_SINGLE_AT_IDENTIFIER
+          ? node
+          : mylite_ast_find_first_token(node, MYLITE_TOK_SINGLE_AT_IDENTIFIER);
+  if (token == NULL || token->start >= token->end ||
+      token->end > ast->source_length) {
+    return 1;
+  }
+
+  size_t start = token->start;
+  if (ast->source[start] == '@') {
+    start++;
+  }
+  *name_start = start;
+  *name_end = token->end;
+  if (start < token->end &&
+      (ast->source[start] == '`' || ast->source[start] == '"')) {
+    return mylite_ast_decode_identifier(ast, start, token->end, name_value,
+                                        name_value_length);
+  }
+  return mylite_ast_copy_source_span(ast, start, token->end, name_value,
+                                     name_value_length);
 }
 
 static int mylite_ast_set_set_statement_view(MyliteAst *ast,

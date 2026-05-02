@@ -171,6 +171,18 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t drop_view_view_targets = 0;
   size_t drop_view_if_exists = 0;
   size_t drop_view_modes = 0;
+  size_t prepare_statement_views = 0;
+  size_t prepare_statement_name_values = 0;
+  size_t prepare_statement_string_sources = 0;
+  size_t prepare_statement_user_variable_sources = 0;
+  size_t prepare_statement_source_values = 0;
+  size_t execute_statement_views = 0;
+  size_t execute_statement_name_values = 0;
+  size_t execute_statement_using_variables = 0;
+  size_t execute_statement_using_variable_name_values = 0;
+  size_t deallocate_statement_views = 0;
+  size_t deallocate_statement_name_values = 0;
+  size_t deallocate_statement_modes = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t set_statement_views = 0;
@@ -745,6 +757,66 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 drop_view_modes++;
               }
             }
+            const MyliteAstPrepareStatement *prepare_statement =
+                mylite_ast_prepare_statement_view(ast, i);
+            if (prepare_statement != NULL) {
+              prepare_statement_views++;
+              if (mylite_ast_prepare_statement_view_name_value(
+                      prepare_statement) != NULL) {
+                prepare_statement_name_values++;
+              }
+              if (mylite_ast_prepare_statement_view_source_value(
+                      prepare_statement) != NULL) {
+                prepare_statement_source_values++;
+              }
+              switch (mylite_ast_prepare_statement_view_source_kind(
+                  prepare_statement)) {
+                case MYLITE_PREPARE_STATEMENT_SOURCE_STRING:
+                  prepare_statement_string_sources++;
+                  break;
+                case MYLITE_PREPARE_STATEMENT_SOURCE_USER_VARIABLE:
+                  prepare_statement_user_variable_sources++;
+                  break;
+                case MYLITE_PREPARE_STATEMENT_SOURCE_UNKNOWN:
+                  break;
+              }
+            }
+            const MyliteAstExecuteStatement *execute_statement =
+                mylite_ast_execute_statement_view(ast, i);
+            if (execute_statement != NULL) {
+              execute_statement_views++;
+              if (mylite_ast_execute_statement_view_name_value(
+                      execute_statement) != NULL) {
+                execute_statement_name_values++;
+              }
+              size_t using_count =
+                  mylite_ast_execute_statement_view_using_count(
+                      execute_statement);
+              execute_statement_using_variables += using_count;
+              for (size_t j = 0; j < using_count; j++) {
+                const MyliteAstPreparedStatementVariable *variable =
+                    mylite_ast_execute_statement_view_using_variable_at(
+                        execute_statement, j);
+                if (mylite_ast_prepared_statement_variable_view_name_value(
+                        variable) != NULL) {
+                  execute_statement_using_variable_name_values++;
+                }
+              }
+            }
+            const MyliteAstDeallocateStatement *deallocate_statement =
+                mylite_ast_deallocate_statement_view(ast, i);
+            if (deallocate_statement != NULL) {
+              deallocate_statement_views++;
+              if (mylite_ast_deallocate_statement_view_name_value(
+                      deallocate_statement) != NULL) {
+                deallocate_statement_name_values++;
+              }
+              if (mylite_ast_deallocate_statement_view_mode(
+                      deallocate_statement) !=
+                  MYLITE_DEALLOCATE_STATEMENT_MODE_UNKNOWN) {
+                deallocate_statement_modes++;
+              }
+            }
             const MyliteAstSetStatement *set_statement =
                 mylite_ast_set_statement_view(ast, i);
             if (set_statement != NULL) {
@@ -1121,6 +1193,18 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_drop_table_if_exists=%.2f "
            "avg_drop_view_views=%.2f avg_drop_view_view_targets=%.2f "
            "avg_drop_view_if_exists=%.2f avg_drop_view_modes=%.2f "
+           "avg_prepare_statement_views=%.2f "
+           "avg_prepare_statement_name_values=%.2f "
+           "avg_prepare_statement_string_sources=%.2f "
+           "avg_prepare_statement_user_variable_sources=%.2f "
+           "avg_prepare_statement_source_values=%.2f "
+           "avg_execute_statement_views=%.2f "
+           "avg_execute_statement_name_values=%.2f "
+           "avg_execute_statement_using_variables=%.2f "
+           "avg_execute_statement_using_variable_name_values=%.2f "
+           "avg_deallocate_statement_views=%.2f "
+           "avg_deallocate_statement_name_values=%.2f "
+           "avg_deallocate_statement_modes=%.2f "
            "avg_set_statement_views=%.2f "
            "avg_set_statement_assignments=%.2f "
            "avg_set_assignment_name_values=%.2f "
@@ -1283,6 +1367,19 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)drop_view_view_targets / (double)parsed,
            (double)drop_view_if_exists / (double)parsed,
            (double)drop_view_modes / (double)parsed,
+           (double)prepare_statement_views / (double)parsed,
+           (double)prepare_statement_name_values / (double)parsed,
+           (double)prepare_statement_string_sources / (double)parsed,
+           (double)prepare_statement_user_variable_sources / (double)parsed,
+           (double)prepare_statement_source_values / (double)parsed,
+           (double)execute_statement_views / (double)parsed,
+           (double)execute_statement_name_values / (double)parsed,
+           (double)execute_statement_using_variables / (double)parsed,
+           (double)execute_statement_using_variable_name_values /
+               (double)parsed,
+           (double)deallocate_statement_views / (double)parsed,
+           (double)deallocate_statement_name_values / (double)parsed,
+           (double)deallocate_statement_modes / (double)parsed,
            (double)set_statement_views / (double)parsed,
            (double)set_statement_assignments / (double)parsed,
            (double)set_assignment_name_values / (double)parsed,

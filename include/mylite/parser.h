@@ -39,7 +39,12 @@ typedef struct MyliteAstDropDatabase MyliteAstDropDatabase;
 typedef struct MyliteAstDropIndex MyliteAstDropIndex;
 typedef struct MyliteAstDropTable MyliteAstDropTable;
 typedef struct MyliteAstExpression MyliteAstExpression;
+typedef struct MyliteAstDeallocateStatement MyliteAstDeallocateStatement;
+typedef struct MyliteAstExecuteStatement MyliteAstExecuteStatement;
 typedef struct MyliteAstNode MyliteAstNode;
+typedef struct MyliteAstPreparedStatementVariable
+    MyliteAstPreparedStatementVariable;
+typedef struct MyliteAstPrepareStatement MyliteAstPrepareStatement;
 typedef struct MyliteAstRenameTable MyliteAstRenameTable;
 typedef struct MyliteAstSetAssignment MyliteAstSetAssignment;
 typedef struct MyliteAstSetStatement MyliteAstSetStatement;
@@ -440,6 +445,18 @@ typedef enum MyliteSetAssignmentOperator {
   MYLITE_SET_ASSIGNMENT_OPERATOR_ASSIGNMENT_EQ
 } MyliteSetAssignmentOperator;
 
+typedef enum MylitePrepareStatementSourceKind {
+  MYLITE_PREPARE_STATEMENT_SOURCE_UNKNOWN = 0,
+  MYLITE_PREPARE_STATEMENT_SOURCE_STRING,
+  MYLITE_PREPARE_STATEMENT_SOURCE_USER_VARIABLE
+} MylitePrepareStatementSourceKind;
+
+typedef enum MyliteDeallocateStatementMode {
+  MYLITE_DEALLOCATE_STATEMENT_MODE_UNKNOWN = 0,
+  MYLITE_DEALLOCATE_STATEMENT_MODE_DEALLOCATE,
+  MYLITE_DEALLOCATE_STATEMENT_MODE_DROP
+} MyliteDeallocateStatementMode;
+
 typedef enum MyliteAlterTableSpecKind {
   MYLITE_ALTER_TABLE_SPEC_UNKNOWN = 0,
   MYLITE_ALTER_TABLE_SPEC_TABLE_OPTIONS,
@@ -534,6 +551,10 @@ const char *mylite_set_assignment_kind_name(MyliteSetAssignmentKind kind);
 const char *mylite_set_variable_scope_name(MyliteSetVariableScope scope);
 const char *mylite_set_assignment_operator_name(
     MyliteSetAssignmentOperator operator_kind);
+const char *mylite_prepare_statement_source_kind_name(
+    MylitePrepareStatementSourceKind kind);
+const char *mylite_deallocate_statement_mode_name(
+    MyliteDeallocateStatementMode mode);
 const char *mylite_alter_table_spec_kind_name(MyliteAlterTableSpecKind kind);
 
 void mylite_ast_free(MyliteAst *ast);
@@ -610,6 +631,12 @@ const MyliteAstDropIndex *mylite_ast_drop_index_view(
 const MyliteAstDropTable *mylite_ast_drop_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDropView *mylite_ast_drop_view_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstPrepareStatement *mylite_ast_prepare_statement_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstExecuteStatement *mylite_ast_execute_statement_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstDeallocateStatement *mylite_ast_deallocate_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstRenameTable *mylite_ast_rename_table_view(
     const MyliteAst *ast, size_t statement_index);
@@ -1002,6 +1029,82 @@ size_t mylite_ast_set_assignment_view_extend_value_start(
     const MyliteAstSetAssignment *assignment);
 size_t mylite_ast_set_assignment_view_extend_value_end(
     const MyliteAstSetAssignment *assignment);
+const MyliteAstNode *mylite_ast_prepare_statement_view_node(
+    const MyliteAstPrepareStatement *prepare_statement);
+size_t mylite_ast_prepare_statement_view_start(
+    const MyliteAstPrepareStatement *prepare_statement);
+size_t mylite_ast_prepare_statement_view_end(
+    const MyliteAstPrepareStatement *prepare_statement);
+size_t mylite_ast_prepare_statement_view_name_start(
+    const MyliteAstPrepareStatement *prepare_statement);
+size_t mylite_ast_prepare_statement_view_name_end(
+    const MyliteAstPrepareStatement *prepare_statement);
+const char *mylite_ast_prepare_statement_view_name_value(
+    const MyliteAstPrepareStatement *prepare_statement);
+size_t mylite_ast_prepare_statement_view_name_value_length(
+    const MyliteAstPrepareStatement *prepare_statement);
+MylitePrepareStatementSourceKind
+mylite_ast_prepare_statement_view_source_kind(
+    const MyliteAstPrepareStatement *prepare_statement);
+const MyliteAstNode *mylite_ast_prepare_statement_view_source_node(
+    const MyliteAstPrepareStatement *prepare_statement);
+size_t mylite_ast_prepare_statement_view_source_start(
+    const MyliteAstPrepareStatement *prepare_statement);
+size_t mylite_ast_prepare_statement_view_source_end(
+    const MyliteAstPrepareStatement *prepare_statement);
+const char *mylite_ast_prepare_statement_view_source_value(
+    const MyliteAstPrepareStatement *prepare_statement);
+size_t mylite_ast_prepare_statement_view_source_value_length(
+    const MyliteAstPrepareStatement *prepare_statement);
+const MyliteAstNode *mylite_ast_execute_statement_view_node(
+    const MyliteAstExecuteStatement *execute_statement);
+size_t mylite_ast_execute_statement_view_start(
+    const MyliteAstExecuteStatement *execute_statement);
+size_t mylite_ast_execute_statement_view_end(
+    const MyliteAstExecuteStatement *execute_statement);
+size_t mylite_ast_execute_statement_view_name_start(
+    const MyliteAstExecuteStatement *execute_statement);
+size_t mylite_ast_execute_statement_view_name_end(
+    const MyliteAstExecuteStatement *execute_statement);
+const char *mylite_ast_execute_statement_view_name_value(
+    const MyliteAstExecuteStatement *execute_statement);
+size_t mylite_ast_execute_statement_view_name_value_length(
+    const MyliteAstExecuteStatement *execute_statement);
+size_t mylite_ast_execute_statement_view_using_count(
+    const MyliteAstExecuteStatement *execute_statement);
+const MyliteAstPreparedStatementVariable *
+mylite_ast_execute_statement_view_using_variable_at(
+    const MyliteAstExecuteStatement *execute_statement, size_t variable_index);
+const MyliteAstNode *mylite_ast_prepared_statement_variable_view_node(
+    const MyliteAstPreparedStatementVariable *variable);
+size_t mylite_ast_prepared_statement_variable_view_start(
+    const MyliteAstPreparedStatementVariable *variable);
+size_t mylite_ast_prepared_statement_variable_view_end(
+    const MyliteAstPreparedStatementVariable *variable);
+size_t mylite_ast_prepared_statement_variable_view_name_start(
+    const MyliteAstPreparedStatementVariable *variable);
+size_t mylite_ast_prepared_statement_variable_view_name_end(
+    const MyliteAstPreparedStatementVariable *variable);
+const char *mylite_ast_prepared_statement_variable_view_name_value(
+    const MyliteAstPreparedStatementVariable *variable);
+size_t mylite_ast_prepared_statement_variable_view_name_value_length(
+    const MyliteAstPreparedStatementVariable *variable);
+const MyliteAstNode *mylite_ast_deallocate_statement_view_node(
+    const MyliteAstDeallocateStatement *deallocate_statement);
+size_t mylite_ast_deallocate_statement_view_start(
+    const MyliteAstDeallocateStatement *deallocate_statement);
+size_t mylite_ast_deallocate_statement_view_end(
+    const MyliteAstDeallocateStatement *deallocate_statement);
+MyliteDeallocateStatementMode mylite_ast_deallocate_statement_view_mode(
+    const MyliteAstDeallocateStatement *deallocate_statement);
+size_t mylite_ast_deallocate_statement_view_name_start(
+    const MyliteAstDeallocateStatement *deallocate_statement);
+size_t mylite_ast_deallocate_statement_view_name_end(
+    const MyliteAstDeallocateStatement *deallocate_statement);
+const char *mylite_ast_deallocate_statement_view_name_value(
+    const MyliteAstDeallocateStatement *deallocate_statement);
+size_t mylite_ast_deallocate_statement_view_name_value_length(
+    const MyliteAstDeallocateStatement *deallocate_statement);
 const MyliteAstNode *mylite_ast_expression_view_node(
     const MyliteAstExpression *expression);
 MyliteExpressionKind mylite_ast_expression_view_kind(

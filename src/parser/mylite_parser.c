@@ -60,7 +60,8 @@ typedef enum ColumnDefinitionTailState {
 
 enum {
   COLUMN_DEFINITION_FLAG_GENERATED_EXPRESSION = 1 << 0,
-  COLUMN_DEFINITION_FLAG_GENERATED_STORAGE = 1 << 1
+  COLUMN_DEFINITION_FLAG_GENERATED_STORAGE = 1 << 1,
+  COLUMN_DEFINITION_FLAG_COLLATE = 1 << 2
 };
 
 enum {
@@ -12531,6 +12532,9 @@ static int column_definition_tail_token(
       mylite_parser_reject(ctx, *pending_token, message);
       return 0;
     }
+    if (*state == COLUMN_DEFINITION_TAIL_AFTER_COLLATE) {
+      *flags |= COLUMN_DEFINITION_FLAG_COLLATE;
+    }
     *state = COLUMN_DEFINITION_TAIL_READY;
     return 1;
   }
@@ -12880,6 +12884,10 @@ static int column_definition_tail_token(
   }
 
   if (token_id == ML_COLLATE) {
+    if ((*flags & COLUMN_DEFINITION_FLAG_COLLATE) != 0) {
+      mylite_parser_reject(ctx, token, message);
+      return 0;
+    }
     *state = COLUMN_DEFINITION_TAIL_AFTER_COLLATE;
     *pending_token = token;
     return 1;

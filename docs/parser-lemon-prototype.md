@@ -79,7 +79,8 @@ token sink:
   `VALUE(S)`/`SET` row aliases,
   direct query payload `SELECT` list tails, parenthesized query payload
   `SELECT`/`WITH`/`TABLE`/`VALUES` expression tails plus outer `ORDER BY` and
-  `LIMIT` suffixes, malformed `SELECT` operands after set operators, and
+  MySQL-shaped `LIMIT` suffixes, malformed `SELECT` operands after set
+  operators, and
   `ON DUPLICATE KEY UPDATE` assignment tails including whole-value `DEFAULT`,
   malformed post-value continuations, and stray top-level `SELECT`/`FROM`
   suffixes after assignment values.
@@ -87,26 +88,29 @@ token sink:
   assignment value adjacent operands and dangling operators, adjacent operands,
   dangling operators, and trailing separators inside plain parenthesized
   assignment/`WHERE`/`ORDER BY` expression groups, plus `WHERE`, `ORDER BY`, and
-  `LIMIT` tails, and rejects `AS` without a following table alias before `SET`.
+  MySQL-shaped `LIMIT` tails, and rejects `AS` without a following table alias
+  before `SET`.
 - Single-table `DELETE` recognizes table aliases before optional partition
-  lists, plus `WHERE`, `ORDER BY`, and `LIMIT` tails, rejecting incomplete
-  DML clause tails, invalid top-level `ORDER BY` direction sequences, malformed
-  `WHERE`/`ORDER BY` adjacent operands and dangling operators including inside
-  plain parenthesized expression groups, trailing separators inside those
-  groups, and out-of-order top-level DML clauses.
+  lists, plus `WHERE`, `ORDER BY`, and MySQL-shaped `LIMIT` tails, rejecting
+  incomplete DML clause tails, invalid top-level `ORDER BY` direction
+  sequences, malformed `WHERE`/`ORDER BY` adjacent operands and dangling
+  operators including inside plain parenthesized expression groups, trailing
+  separators inside those groups, and out-of-order top-level DML clauses.
 - `VALUES` recognizes comma-separated row contents, whole-value `DEFAULT`, and
   `DEFAULT(column)` while preserving nested expression bodies, rejects adjacent
   operands and dangling operators in row expression lists, applies the same
   checks in CTAS, view, and DML
   set-operation `VALUES` bodies, preserves set operators, validates
-  parenthesized `ORDER BY` expressions plus `ORDER BY`/`LIMIT` tails, supports
-  top-level and CTE-body `INTO` variable lists plus `OUTFILE`/`DUMPFILE`
-  targets, and malformed `SELECT` operands after set operators are rejected.
-- `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`
-  forms, `INTO` variable lists, and file output targets including `OUTFILE`
-  charset, field, and line option tails. Malformed `SELECT` operands after set
-  operators are rejected. Embedded `TABLE` statements reuse a C-side validator
-  for required targets plus dangling `ORDER BY`, `LIMIT`, and `INTO` tails.
+  parenthesized `ORDER BY` expressions plus `ORDER BY` and MySQL-shaped
+  `LIMIT` tails, supports top-level and CTE-body `INTO` variable lists plus
+  `OUTFILE`/`DUMPFILE` targets, and malformed `SELECT` operands after set
+  operators are rejected.
+- `TABLE` recognizes table references, set operators, `ORDER BY`,
+  MySQL-shaped `LIMIT` forms, `INTO` variable lists, and file output targets
+  including `OUTFILE` charset, field, and line option tails. Malformed `SELECT`
+  operands after set operators are rejected. Embedded `TABLE` statements reuse
+  a C-side validator for required targets plus dangling `ORDER BY`, `LIMIT`,
+  and `INTO` tails.
 - Expression-tail validation rejects trailing separators in nested plain
   parenthesized expression groups and empty `EXISTS()` predicates while
   preserving empty ordinary function calls and window `OVER()` clauses. It also
@@ -131,8 +135,8 @@ token sink:
   a preceding joined table, including nested outer-join condition chains.
 - Top-level `SELECT` validates `GROUP BY ... WITH ROLLUP` tails.
 - Top-level `SELECT` validates `ORDER BY` `ASC`/`DESC` direction tails.
-- Top-level `SELECT` validates `LIMIT` comma, `OFFSET`, and adjacent-operand
-  forms.
+- Top-level `SELECT` validates `LIMIT` comma, `OFFSET`, adjacent-operand
+  forms, and MySQL's integer-or-identifier option domain.
 - Top-level `SELECT` rejects duplicate major clauses within one query block,
   including real `FROM` clauses while preserving `NTH_VALUE(... FROM
   FIRST|LAST ... OVER ...)` window-function modifiers.
@@ -189,9 +193,10 @@ token sink:
   is well formed.
 - `HANDLER` recognizes one- and two-part table names, aliases, key names,
   MySQL's table-scan and indexed-read direction sets, equality/range tuple
-  reads, `WHERE`, and numeric or identifier `LIMIT` tails, while rejecting
+  reads, `WHERE`, and integer-or-identifier `LIMIT` tails, while rejecting
   malformed tuple expressions, malformed `WHERE` adjacent operands, dangling
-  operators, and `LIMIT` suffixes after `READ`.
+  operators, non-integer numeric limit values, and `LIMIT` suffixes after
+  `READ`.
 - `USE` recognizes one-part unquoted schema names using the shared identifier
   grammar and unreserved keyword names while rejecting string, numeric,
   variable, operator, and reserved-keyword targets including `CASCADE` and
@@ -432,16 +437,16 @@ token sink:
 - `SHOW INDEX`/`INDEXES`/`KEYS` uses MySQL's narrower parser shape with
   optional `EXTENDED` and `WHERE`, excluding `FULL` and `LIKE`.
 - `SHOW BINLOG EVENTS` and `SHOW RELAYLOG EVENTS` recognize optional
-  text-string log names, numeric `FROM` positions, and numeric or identifier
+  text-string log names, numeric `FROM` positions, and integer-or-identifier
   `LIMIT` tails; relay-log events also recognize MySQL channel clauses.
 - `SHOW BINARY LOG STATUS` is the strict MySQL 8.4 binary-log status form;
   removed `SHOW MASTER STATUS` syntax is permissive-corpus-only.
 - `SHOW BINARY LOGS` is the strict MySQL 8.4 binary-log listing form; removed
   `SHOW MASTER LOGS` syntax is permissive-corpus-only.
 - `SHOW PROFILE` recognizes profile type lists, numeric `FOR QUERY` ids, and
-  numeric or identifier `LIMIT` tails.
-- `SHOW WARNINGS` and `SHOW ERRORS` recognize numeric or identifier `LIMIT`
-  tails.
+  integer-or-identifier `LIMIT` tails.
+- `SHOW WARNINGS` and `SHOW ERRORS` recognize integer-or-identifier `LIMIT`
+  tails while rejecting non-integer numeric literals.
 - `SET ROLE` and `SET DEFAULT ROLE` recognize MySQL role specifiers and account
   lists rather than permissive token tails.
 - `SET PASSWORD` recognizes MySQL 8.4 text-string and random password

@@ -297,7 +297,7 @@ static int select_partition_name_token(int token_id);
 static int select_tablesample_boundary(int token_id, MyliteToken token);
 static int select_tablesample_percentage_token(int token_id);
 static int select_charset_name_token(int token_id, MyliteToken token);
-static int select_limit_option_token(int token_id);
+static int select_limit_option_token(int token_id, MyliteToken token);
 static int select_string_literal_token(int token_id);
 static int do_clause_boundary(int token_id);
 static int do_expression_operator(int token_id, MyliteToken token);
@@ -532,7 +532,7 @@ static int insert_duplicate_clause_follows(MyliteParseContext *ctx,
 static int view_query_order_boundary(int token_id);
 static int dml_query_order_boundary(int token_id);
 static int dml_clause_operand_boundary(int token_id);
-static int dml_limit_option_token(int token_id);
+static int dml_limit_option_token(int token_id, MyliteToken token);
 static int dml_literal_token(int token_id, MyliteToken token);
 static int set_statement_previous_value_terminal(int token_id,
                                                  MyliteToken token);
@@ -544,6 +544,8 @@ static int grant_object_start_token(int token_id, MyliteToken token,
 static int token_opens_nested_expression(int token_id);
 static int token_closes_nested_expression(int token_id);
 static int token_ascii_equal(MyliteToken token, const char *expected);
+static int query_limit_option_token(int token_id, MyliteToken token);
+static int query_limit_number_token(MyliteToken token);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
                                    MyliteParseResult *result) {
@@ -1815,7 +1817,7 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
     if (limit_state == SELECT_LIMIT_AFTER_LIMIT ||
         limit_state == SELECT_LIMIT_AFTER_COMMA ||
         limit_state == SELECT_LIMIT_AFTER_OFFSET) {
-      if (!select_limit_option_token(token_id)) {
+      if (!select_limit_option_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete SELECT LIMIT clause");
         return;
@@ -1838,7 +1840,7 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
         pending_token = token;
         continue;
       }
-      if (select_limit_option_token(token_id)) {
+      if (select_limit_option_token(token_id, token)) {
         mylite_parser_reject(ctx, token, "malformed SELECT LIMIT clause");
         return;
       }
@@ -1846,7 +1848,7 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
     }
     if (limit_state == SELECT_LIMIT_AFTER_FINAL_VALUE) {
       if (token_id == ML_COMMA || token_id == ML_OFFSET ||
-          select_limit_option_token(token_id)) {
+          select_limit_option_token(token_id, token)) {
         mylite_parser_reject(ctx, token, "malformed SELECT LIMIT clause");
         return;
       }
@@ -2732,7 +2734,7 @@ static void validate_table_statement_from(MyliteParseContext *ctx,
 
     if (state == TABLE_AFTER_LIMIT || state == TABLE_AFTER_LIMIT_COMMA ||
         state == TABLE_AFTER_LIMIT_OFFSET) {
-      if (!select_limit_option_token(token_id)) {
+      if (!select_limit_option_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token, "incomplete TABLE LIMIT clause");
         return;
       }
@@ -3070,7 +3072,7 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     if (state == PAREN_QUERY_AFTER_LIMIT ||
         state == PAREN_QUERY_AFTER_LIMIT_COMMA ||
         state == PAREN_QUERY_AFTER_LIMIT_OFFSET) {
-      if (!select_limit_option_token(token_id)) {
+      if (!select_limit_option_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete parenthesized query LIMIT");
         return;
@@ -4260,7 +4262,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     if (query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT ||
         query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT_COMMA ||
         query_tail_state == DML_QUERY_TAIL_AFTER_LIMIT_OFFSET) {
-      if (!dml_limit_option_token(token_id)) {
+      if (!dml_limit_option_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete DML parenthesized query LIMIT");
         return;
@@ -4464,7 +4466,7 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
     }
 
     if (limit_state == DML_LIMIT_AFTER_LIMIT) {
-      if (!dml_limit_option_token(token_id)) {
+      if (!dml_limit_option_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete DML LIMIT clause");
         return;
@@ -4859,7 +4861,7 @@ void mylite_parser_validate_handler_statement(MyliteParseContext *ctx,
     if (limit_state == HANDLER_LIMIT_AFTER_LIMIT ||
         limit_state == HANDLER_LIMIT_AFTER_COMMA ||
         limit_state == HANDLER_LIMIT_AFTER_OFFSET) {
-      if (!dml_limit_option_token(token_id)) {
+      if (!dml_limit_option_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete HANDLER LIMIT clause");
         return;
@@ -9616,7 +9618,7 @@ void mylite_parser_validate_view_statement(MyliteParseContext *ctx,
     if (tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT ||
         tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT_COMMA ||
         tail_state == VIEW_QUERY_TAIL_AFTER_LIMIT_OFFSET) {
-      if (!dml_limit_option_token(token_id)) {
+      if (!dml_limit_option_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token,
                              "incomplete VIEW parenthesized query LIMIT");
         return;
@@ -11235,6 +11237,20 @@ void mylite_parser_require_xid_number(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, token, "invalid XA XID literal");
 }
 
+void mylite_parser_require_limit_option(MyliteParseContext *ctx,
+                                        MyliteToken token) {
+  if (token.length > 0 && token.start[0] != '+' && token.start[0] != '-' &&
+      !ascii_is_digit(token.start[0])) {
+    return;
+  }
+
+  if (query_limit_number_token(token)) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid LIMIT option");
+}
+
 void mylite_parser_require_text_string_literal(MyliteParseContext *ctx,
                                                MyliteToken token) {
   if (!token_is_quoted_hex_or_bit_literal(token)) {
@@ -12152,10 +12168,8 @@ static int select_charset_name_token(int token_id, MyliteToken token) {
          token_id == ML_STRING_LITERAL || token_ascii_equal(token, "binary");
 }
 
-static int select_limit_option_token(int token_id) {
-  return token_id == ML_ATOM || token_id == ML_BOOLEAN_NUMBER ||
-         token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
-         token_id == ML_QUOTED_ID;
+static int select_limit_option_token(int token_id, MyliteToken token) {
+  return query_limit_option_token(token_id, token);
 }
 
 static int select_string_literal_token(int token_id) {
@@ -15106,10 +15120,59 @@ static int dml_clause_operand_boundary(int token_id) {
          token_id == ML_SEMI || token_id == ML_WHERE;
 }
 
-static int dml_limit_option_token(int token_id) {
-  return token_id == ML_ATOM || token_id == ML_BOOLEAN_NUMBER ||
-         token_id == ML_FACTOR_NUMBER || token_id == ML_NUMBER_LITERAL ||
-         token_id == ML_QUOTED_ID;
+static int dml_limit_option_token(int token_id, MyliteToken token) {
+  return query_limit_option_token(token_id, token);
+}
+
+static int query_limit_option_token(int token_id, MyliteToken token) {
+  if (token_id == ML_ATOM || token_id == ML_QUOTED_ID) {
+    return 1;
+  }
+
+  if (token_id == ML_BOOLEAN_NUMBER || token_id == ML_FACTOR_NUMBER ||
+      token_id == ML_NUMBER_LITERAL) {
+    return query_limit_number_token(token);
+  }
+
+  return 0;
+}
+
+static int query_limit_number_token(MyliteToken token) {
+  size_t i = 0;
+
+  if (token.length == 0 || token.start[0] == '+' || token.start[0] == '-') {
+    return 0;
+  }
+
+  if (token_is_hex_literal(token, 0) || token_is_binary_literal(token, 0)) {
+    return 0;
+  }
+
+  while (i < token.length && ascii_is_digit(token.start[i])) {
+    i++;
+  }
+
+  if (i == token.length) {
+    return 1;
+  }
+
+  if (i == 0 || token.start[i] == '.') {
+    return 0;
+  }
+
+  if ((token.start[i] == 'e' || token.start[i] == 'E') &&
+      i + 1 < token.length) {
+    size_t exponent = i + 1;
+    if ((token.start[exponent] == '+' || token.start[exponent] == '-') &&
+        exponent + 1 < token.length) {
+      exponent++;
+    }
+    if (ascii_is_digit(token.start[exponent])) {
+      return 0;
+    }
+  }
+
+  return 1;
 }
 
 static int dml_literal_token(int token_id, MyliteToken token) {

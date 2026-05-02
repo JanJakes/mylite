@@ -2975,10 +2975,18 @@ show_limit_tail ::= LIMIT show_limit_value OFFSET show_limit_value.
 
 show_limit_value ::= parser_limit_option.
 
-parser_limit_option ::= BOOLEAN_NUMBER.
-parser_limit_option ::= FACTOR_NUMBER.
-parser_limit_option ::= NUMBER_LITERAL.
-parser_limit_option ::= cache_name_part.
+parser_limit_option ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_limit_option(ctx, A);
+}
+parser_limit_option ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_limit_option(ctx, A);
+}
+parser_limit_option ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_limit_option(ctx, A);
+}
+parser_limit_option ::= cache_name_part(A). {
+  mylite_parser_require_limit_option(ctx, A);
+}
 
 show_simple_kind ::= ENGINES.
 show_simple_kind ::= PLUGINS.
@@ -3897,9 +3905,9 @@ values_order_direction ::= .
 values_order_direction ::= DESC.
 values_order_direction ::= ASC.
 
-values_limit_tail ::= LIMIT ATOM.
-values_limit_tail ::= LIMIT ATOM import_comma ATOM.
-values_limit_tail ::= LIMIT ATOM OFFSET ATOM.
+values_limit_tail ::= LIMIT parser_limit_option.
+values_limit_tail ::= LIMIT parser_limit_option import_comma parser_limit_option.
+values_limit_tail ::= LIMIT parser_limit_option OFFSET parser_limit_option.
 
 prepare_statement ::= PREPARE prepared_statement_name FROM prepare_source. {
   mylite_parser_record_statement(ctx, MYLITE_STATEMENT_PREPARED);

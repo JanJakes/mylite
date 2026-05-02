@@ -95,8 +95,9 @@ token sink:
   operands and dangling operators in row expression lists, applies the same
   checks in CTAS, view, and DML
   set-operation `VALUES` bodies, preserves set operators, validates
-  parenthesized `ORDER BY` expressions plus `ORDER BY`/`LIMIT` tails, and
-  malformed `SELECT` operands after set operators are rejected.
+  parenthesized `ORDER BY` expressions plus `ORDER BY`/`LIMIT` tails, supports
+  top-level and CTE-body `INTO` variable lists plus `OUTFILE`/`DUMPFILE`
+  targets, and malformed `SELECT` operands after set operators are rejected.
 - `TABLE` recognizes table references, set operators, `ORDER BY`, `LIMIT`
   forms, `INTO` variable lists, and file output targets including `OUTFILE`
   charset, field, and line option tails. Malformed `SELECT` operands after set

@@ -14,6 +14,9 @@
 %fallback ATOM INVISIBLE PARSER VISIBLE.
 %fallback ATOM SQL_NO_CACHE.
 %fallback ATOM ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS GET_MASTER_PUBLIC_KEY GET_SOURCE_PUBLIC_KEY GTID_ONLY IGNORE_SERVER_IDS MASTER_AUTO_POSITION MASTER_BIND MASTER_COMPRESSION_ALGORITHMS MASTER_CONNECT_RETRY MASTER_DELAY MASTER_HEARTBEAT_PERIOD MASTER_HOST MASTER_LOG_FILE MASTER_LOG_POS MASTER_PASSWORD MASTER_PORT MASTER_PUBLIC_KEY_PATH MASTER_RETRY_COUNT MASTER_SSL MASTER_SSL_CA MASTER_SSL_CAPATH MASTER_SSL_CERT MASTER_SSL_CIPHER MASTER_SSL_CRL MASTER_SSL_CRLPATH MASTER_SSL_KEY MASTER_SSL_VERIFY_SERVER_CERT MASTER_TLS_CIPHERSUITES MASTER_TLS_VERSION MASTER_USER MASTER_ZSTD_COMPRESSION_LEVEL NETWORK_NAMESPACE PRIVILEGE_CHECKS_USER REQUIRE_ROW_FORMAT REQUIRE_TABLE_PRIMARY_KEY_CHECK SOURCE_AUTO_POSITION SOURCE_BIND SOURCE_COMPRESSION_ALGORITHMS SOURCE_CONNECT_RETRY SOURCE_CONNECTION_AUTO_FAILOVER SOURCE_DELAY SOURCE_HEARTBEAT_PERIOD SOURCE_HOST SOURCE_PASSWORD SOURCE_PORT SOURCE_PUBLIC_KEY_PATH SOURCE_RETRY_COUNT SOURCE_SSL SOURCE_SSL_CA SOURCE_SSL_CAPATH SOURCE_SSL_CERT SOURCE_SSL_CIPHER SOURCE_SSL_CRL SOURCE_SSL_CRLPATH SOURCE_SSL_KEY SOURCE_SSL_VERIFY_SERVER_CERT SOURCE_TLS_CIPHERSUITES SOURCE_TLS_VERSION SOURCE_USER SOURCE_ZSTD_COMPRESSION_LEVEL.
+
+/* Let query tails shift INTO when it begins a MySQL output or variable target. */
+%right INTO.
 %type labeled_statement_start {MyliteStatementKind}
 %type permissive_start {MyliteStatementKind}
 %type drop_tail {MyliteStatementKind}
@@ -165,6 +168,7 @@ select_statement ::= SELECT select_tail. {
 }
 
 select_tail ::= select_expression_start statement_tail.
+[INTO]
 
 select_expression_start ::= expression_start.
 select_expression_start ::= STAR.
@@ -3382,6 +3386,7 @@ dml_write_payload ::= TABLE table_statement_target table_query_tail.
 dml_write_payload ::= WITH with_recursive_tail with_cte_list with_query_body.
 dml_write_payload ::= dml_write_partition_clause dml_write_payload.
 dml_write_payload ::= dml_write_start required_statement_tail.
+[INTO]
 
 dml_write_column_list ::= dml_write_column_ref.
 dml_write_column_list ::= dml_write_column_list COMMA dml_write_column_ref.
@@ -3403,6 +3408,7 @@ dml_write_column_part ::= XML.
 dml_write_partition_clause ::= PARTITION LP delete_partition_list RP.
 
 dml_write_after_column_list ::= dml_write_start required_statement_tail.
+[INTO]
 dml_write_after_column_list ::= SET update_assignment_start.
 dml_write_after_column_list ::= SELECT select_tail.
 dml_write_after_column_list ::= TABLE table_statement_target table_query_tail.
@@ -3431,7 +3437,9 @@ dml_write_parenthesized_query_token ::= STAR.
 dml_write_after_parenthesized_query ::= .
 dml_write_after_parenthesized_query ::= UNION dml_write_union_tail.
 dml_write_after_parenthesized_query ::= ORDER BY expression_start statement_tail.
+[INTO]
 dml_write_after_parenthesized_query ::= LIMIT ATOM statement_tail.
+[INTO]
 dml_write_after_parenthesized_query ::= ON dml_write_duplicate_tail.
 
 dml_write_union_tail ::= SELECT select_tail.
@@ -3454,7 +3462,9 @@ query_parenthesized_body ::= LP dml_write_query_start dml_write_parenthesized_qu
 query_parenthesized_tail ::= .
 query_parenthesized_tail ::= UNION dml_write_union_tail.
 query_parenthesized_tail ::= ORDER BY expression_start statement_tail.
+[INTO]
 query_parenthesized_tail ::= LIMIT ATOM statement_tail.
+[INTO]
 
 dml_write_duplicate_tail ::= DUPLICATE KEY UPDATE update_assignment_start.
 
@@ -3472,6 +3482,7 @@ update_tail ::= dml_update_table_reference_tokens SET update_assignment_start.
 update_tail ::= dml_update_modifiers dml_update_table_reference_tokens SET update_assignment_start.
 
 update_assignment_start ::= update_assignment_target set_assignment_operator set_value_start statement_tail.
+[INTO]
 
 update_assignment_target ::= update_assignment_part.
 update_assignment_target ::= update_assignment_target DOT update_assignment_part.
@@ -3555,10 +3566,12 @@ dml_delete_modifier ::= QUICK.
 
 delete_core ::= FROM cache_table_ref delete_single_table_tail.
 delete_core ::= dml_delete_table_list FROM dml_delete_source_start statement_tail.
+[INTO]
 delete_core ::= FROM dml_delete_table_list USING delete_using_tail.
 
 delete_using_tail ::= dml_update_table_reference_tokens.
 delete_using_tail ::= dml_update_table_reference_tokens WHERE expression_start statement_tail.
+[INTO]
 
 dml_delete_table_list ::= dml_delete_table_ref.
 dml_delete_table_list ::= dml_delete_table_list import_comma dml_delete_table_ref.
@@ -3582,7 +3595,9 @@ delete_partition_tail ::= delete_partition_clause.
 
 delete_after_from_tail ::= .
 delete_after_from_tail ::= WHERE expression_start statement_tail.
+[INTO]
 delete_after_from_tail ::= ORDER BY expression_start statement_tail.
+[INTO]
 delete_after_from_tail ::= LIMIT ATOM.
 
 delete_partition_clause ::= PARTITION LP delete_partition_list RP.
@@ -3638,7 +3653,14 @@ with_query_body ::= SELECT(A) select_tail. {
 with_query_body ::= TABLE(A) table_statement_target table_query_tail. {
   mylite_parser_validate_table_statement_from(ctx, A);
 }
-with_query_body ::= VALUES(A) values_row_list values_query_tail. {
+with_query_body ::= VALUES(A) values_row_list. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_validate_select_statement_from(ctx, A);
+  }
+}
+[INTO]
+with_query_body ::= VALUES(A) values_row_list values_statement_tail_nonempty. {
   mylite_parser_validate_values_statement_from(ctx, A);
   if (!ctx->failed) {
     mylite_parser_validate_select_statement_from(ctx, A);
@@ -3700,6 +3722,7 @@ table_limit_nonempty_tail ::= LIMIT table_limit_value OFFSET table_limit_value.
 table_limit_value ::= parser_limit_option.
 
 table_into_tail ::= .
+[INTO]
 table_into_tail ::= INTO table_output_target.
 
 table_output_target ::= OUTFILE text_string_literal table_output_charset_tail load_fields_tail load_lines_tail.
@@ -3716,7 +3739,17 @@ table_into_variable_list ::= table_into_variable_list import_comma table_into_va
 table_into_variable ::= user_variable_name.
 table_into_variable ::= cache_name_part.
 
-values_statement ::= VALUES(A) values_row_list values_query_tail. {
+values_statement ::= VALUES(A) values_row_list. {
+  mylite_parser_validate_values_statement_from(ctx, A);
+  if (!ctx->failed) {
+    mylite_parser_validate_select_statement(ctx);
+  }
+  if (!ctx->failed) {
+    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+  }
+}
+[INTO]
+values_statement ::= VALUES(A) values_row_list values_statement_tail_nonempty. {
   mylite_parser_validate_values_statement_from(ctx, A);
   if (!ctx->failed) {
     mylite_parser_validate_select_statement(ctx);
@@ -3771,6 +3804,17 @@ values_query_tail ::= .
 values_query_tail ::= values_set_operator values_union_tail.
 values_query_tail ::= ORDER BY values_order_list values_limit_optional_tail.
 values_query_tail ::= values_limit_tail.
+
+values_statement_tail_nonempty ::= values_set_operator values_union_tail values_into_optional_tail.
+values_statement_tail_nonempty ::= ORDER BY values_order_list values_limit_optional_tail values_into_optional_tail.
+values_statement_tail_nonempty ::= values_limit_tail values_into_optional_tail.
+values_statement_tail_nonempty ::= values_into_tail.
+
+values_into_optional_tail ::= .
+[INTO]
+values_into_optional_tail ::= values_into_tail.
+
+values_into_tail ::= INTO table_output_target.
 
 values_query_tail_nonempty ::= values_set_operator values_union_tail.
 values_query_tail_nonempty ::= ORDER BY values_order_list values_limit_optional_tail.

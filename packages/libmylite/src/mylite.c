@@ -3494,6 +3494,10 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST:
         case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC:
         case MYLITE_SQL_AST_TRANSACTION_COMPLETION:
+        case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+        case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+        case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+        case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
             break;
         }
     }
@@ -3553,6 +3557,10 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
     case MYLITE_SQL_AST_CAST_EXPRESSION:
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:
     case MYLITE_SQL_AST_GROUP_ITEM:
@@ -3676,6 +3684,10 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
     case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
@@ -3881,6 +3893,10 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
     case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
@@ -4291,6 +4307,11 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
         return infer_aggregate_expression_descriptor(database, plan, node, out_descriptor);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return infer_cast_expression_descriptor(database, plan, node, value, out_descriptor);
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+        return MYLITE_UNSUPPORTED;
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
@@ -7040,6 +7061,11 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+        return set_select_unsupported_where_error(database);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return bind_select_predicate_expression_in_clause(database, child_at(expression, 0U), plan,
                                                           clause_context, first_table, table_count);
@@ -7215,6 +7241,10 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_AGGREGATE_CALL:
         return bind_select_aggregate_call(database, expression, plan);
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_USE_STATEMENT:
@@ -7665,6 +7695,11 @@ static int bind_select_order_expression(mylite_db *database,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+        return set_select_unsupported_order_error(database);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return bind_select_order_expression(database, child_at(expression, 0U), plan);
     case MYLITE_SQL_AST_FUNCTION_CALL: {
@@ -8265,6 +8300,10 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
         }
         return true;
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:
     case MYLITE_SQL_AST_GROUP_ITEM:
     case MYLITE_SQL_AST_HAVING_CLAUSE:
@@ -12211,6 +12250,11 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+        return set_update_unsupported_clause_error(stmt->database);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return bind_update_predicate_expression(stmt, table, child_at(expression, 0U),
                                                 clause_context);
@@ -13637,6 +13681,11 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
             }
         }
         return MYLITE_OK;
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+        return set_delete_unsupported_clause_error(stmt->database);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return bind_delete_predicate_expression(stmt, table, child_at(expression, 0U),
                                                 clause_context);
@@ -20412,6 +20461,10 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_CASE_WHEN:
     case MYLITE_SQL_AST_CAST_EXPRESSION:
     case MYLITE_SQL_AST_AGGREGATE_CALL:
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:

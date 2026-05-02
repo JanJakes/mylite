@@ -430,6 +430,16 @@ void mylite_sql_ast_node_set_select_duplicate_mode(
     node->select_duplicate_conflict_span = spans.conflict;
 }
 
+void mylite_sql_ast_node_set_subquery_quantifier(struct mylite_sql_ast_node *node,
+                                                 enum mylite_sql_ast_subquery_quantifier quantifier)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->subquery_quantifier = quantifier;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -642,6 +652,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "having_clause";
     case MYLITE_SQL_AST_AGGREGATE_CALL:
         return "aggregate_call";
+    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+        return "subquery_expression";
+    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
+        return "exists_expression";
+    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+        return "quantified_comparison";
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+        return "row_constructor";
     }
 
     return "unknown";
@@ -928,6 +946,23 @@ mylite_sql_ast_select_duplicate_mode_name(enum mylite_sql_ast_select_duplicate_m
         return "all";
     case MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT:
         return "distinct";
+    }
+
+    return "unknown";
+}
+
+const char *
+mylite_sql_ast_subquery_quantifier_name(enum mylite_sql_ast_subquery_quantifier quantifier)
+{
+    switch (quantifier) {
+    case MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_NONE:
+        return "none";
+    case MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ANY:
+        return "any";
+    case MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_SOME:
+        return "some";
+    case MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ALL:
+        return "all";
     }
 
     return "unknown";

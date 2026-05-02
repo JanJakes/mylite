@@ -36,6 +36,7 @@ static int test_select_where_clause_syntax(void);
 static int test_select_order_limit_offset_syntax(void);
 static int test_select_distinct_syntax(void);
 static int test_aggregate_grouping_syntax(void);
+static int test_subquery_expression_syntax(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -68,6 +69,9 @@ static int expect_select_duplicate_mode(const struct mylite_sql_ast_node *node,
                                         enum mylite_sql_ast_select_duplicate_mode expected,
                                         bool explicit_mode, bool conflict, size_t modifier_count,
                                         const char *context);
+static int expect_subquery_quantifier(const struct mylite_sql_ast_node *node,
+                                      enum mylite_sql_ast_subquery_quantifier expected,
+                                      const char *context);
 static int expect_literal(const struct mylite_sql_ast_node *node,
                           enum mylite_sql_ast_literal_kind expected, const char *context);
 static int expect_operator(const struct mylite_sql_ast_node *node,
@@ -146,6 +150,7 @@ int main(void)
     failures += test_select_order_limit_offset_syntax();
     failures += test_select_distinct_syntax();
     failures += test_aggregate_grouping_syntax();
+    failures += test_subquery_expression_syntax();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -4050,6 +4055,230 @@ static int test_aggregate_grouping_syntax(void)
     return failures;
 }
 
+static int test_subquery_expression_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    const struct mylite_sql_ast_node *row = NULL;
+    const struct mylite_sql_ast_node *join = NULL;
+    const struct mylite_sql_ast_node *condition = NULL;
+    const struct mylite_sql_ast_node *order_items = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT (SELECT 1);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_SUBQUERY_EXPRESSION, "projection scalar subquery");
+    failures += expect_child_count(expression, 1U, "projection scalar subquery child count");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_SELECT_STATEMENT,
+                            "projection scalar subquery select");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE val = "
+                          "(SELECT val FROM inner_t WHERE id = 101);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    expression = child_at(predicate, 1U);
+    failures +=
+        expect_node(predicate, MYLITE_SQL_AST_BINARY_EXPRESSION, "scalar comparison predicate");
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_EQUAL, "scalar comparison operator");
+    failures += expect_node(expression, MYLITE_SQL_AST_SUBQUERY_EXPRESSION,
+                            "scalar comparison right subquery");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_SELECT_STATEMENT,
+                            "scalar comparison inner select");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE EXISTS (SELECT 1 FROM inner_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_EXISTS_EXPRESSION, "exists predicate");
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_NONE, "exists operator");
+    failures += expect_node(child_at(predicate, 0U), MYLITE_SQL_AST_SELECT_STATEMENT,
+                            "exists inner select");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE NOT EXISTS (SELECT 1 FROM inner_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_EXISTS_EXPRESSION, "not exists predicate");
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, "not exists operator");
+    failures += expect_node(child_at(predicate, 0U), MYLITE_SQL_AST_SELECT_STATEMENT,
+                            "not exists inner select");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE val IN (SELECT val FROM inner_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_BINARY_EXPRESSION, "in subquery predicate");
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_IN, "in subquery operator");
+    failures += expect_node(child_at(predicate, 1U), MYLITE_SQL_AST_SELECT_STATEMENT,
+                            "in subquery inner select");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE val NOT IN (SELECT val FROM inner_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_NOT_IN, "not in subquery operator");
+    failures += expect_node(child_at(predicate, 1U), MYLITE_SQL_AST_SELECT_STATEMENT,
+                            "not in subquery inner select");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE val > ANY (SELECT val FROM inner_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures +=
+        expect_node(predicate, MYLITE_SQL_AST_QUANTIFIED_COMPARISON, "any quantified predicate");
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_GREATER, "any quantified operator");
+    failures += expect_subquery_quantifier(predicate, MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ANY,
+                                           "any quantified quantifier");
+    failures += expect_node(child_at(predicate, 1U), MYLITE_SQL_AST_SELECT_STATEMENT,
+                            "any quantified inner select");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE val <> SOME (SELECT val FROM inner_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures +=
+        expect_node(predicate, MYLITE_SQL_AST_QUANTIFIED_COMPARISON, "some quantified predicate");
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, "some quantified operator");
+    failures += expect_subquery_quantifier(predicate, MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_SOME,
+                                           "some quantified quantifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE val >= ALL (SELECT val FROM inner_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures +=
+        expect_node(predicate, MYLITE_SQL_AST_QUANTIFIED_COMPARISON, "all quantified predicate");
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
+                                "all quantified operator");
+    failures += expect_subquery_quantifier(predicate, MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ALL,
+                                           "all quantified quantifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE (val, grp) IN (SELECT a, b FROM pair_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    row = child_at(predicate, 0U);
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_IN, "row in subquery operator");
+    failures += expect_node(row, MYLITE_SQL_AST_ROW_CONSTRUCTOR, "parenthesized row constructor");
+    failures += expect_child_count(row, 2U, "parenthesized row constructor arity");
+    failures += expect_node(child_at(predicate, 1U), MYLITE_SQL_AST_SELECT_STATEMENT,
+                            "row in subquery inner select");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE ROW(val, grp) = "
+                          "(SELECT a, b FROM pair_t WHERE a = 10);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    row = child_at(predicate, 0U);
+    expression = child_at(predicate, 1U);
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_EQUAL, "row scalar comparison operator");
+    failures += expect_node(row, MYLITE_SQL_AST_ROW_CONSTRUCTOR, "ROW row constructor");
+    failures += expect_child_count(row, 2U, "ROW row constructor arity");
+    failures += expect_node(expression, MYLITE_SQL_AST_SUBQUERY_EXPRESSION,
+                            "row scalar comparison subquery");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t JOIN inner_t i ON EXISTS (SELECT 1);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    failures += expect_node(condition, MYLITE_SQL_AST_JOIN_CONDITION, "subquery join condition");
+    failures += expect_node(child_at(condition, 0U), MYLITE_SQL_AST_EXISTS_EXPRESSION,
+                            "subquery join predicate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT grp, COUNT(*) FROM outer_t GROUP BY grp "
+                          "HAVING COUNT(*) > (SELECT 1);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 3U), 0U);
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_GREATER,
+                                "having scalar subquery comparison");
+    failures += expect_node(child_at(predicate, 1U), MYLITE_SQL_AST_SUBQUERY_EXPRESSION,
+                            "having scalar subquery");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t ORDER BY "
+                          "(SELECT val FROM inner_t WHERE id = 101);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    order_items = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_node(child_at(child_at(order_items, 0U), 0U),
+                            MYLITE_SQL_AST_SUBQUERY_EXPRESSION, "order scalar subquery");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT any, some FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures +=
+        expect_span_text(child_at(child_at(select_list, 0U), 0U), "any", "ANY identifier fallback");
+    failures += expect_span_text(child_at(child_at(select_list, 1U), 0U), "some",
+                                 "SOME identifier fallback");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1 = any, 2 <> some FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_operator(expression, MYLITE_SQL_AST_OPERATOR_EQUAL,
+                                "ANY comparison identifier operator");
+    failures += expect_span_text(child_at(expression, 1U), "any", "ANY comparison identifier");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_operator(expression, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+                                "SOME comparison identifier operator");
+    failures += expect_span_text(child_at(expression, 1U), "some", "SOME comparison identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE val > any /* comment */ "
+                          "(SELECT val FROM inner_t);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_QUANTIFIED_COMPARISON,
+                            "lowercase any quantified predicate");
+    failures += expect_subquery_quantifier(predicate, MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ANY,
+                                           "lowercase any quantified quantifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ROW(1) = (SELECT val FROM inner_t);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE val IN ();", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE EXISTS SELECT 1;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM outer_t WHERE val > ANY SELECT val FROM inner_t;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT (TABLE outer_t);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT (VALUES ROW(1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM (SELECT 1) AS dt;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
 static int test_unary_and_parenthesized_expression(void)
 {
     struct mylite_sql_parse_result result;
@@ -4425,6 +4654,26 @@ static int expect_select_duplicate_mode(const struct mylite_sql_ast_node *node,
         failures = 1;
     }
     return failures;
+}
+
+static int expect_subquery_quantifier(const struct mylite_sql_ast_node *node,
+                                      enum mylite_sql_ast_subquery_quantifier expected,
+                                      const char *context)
+{
+    if (node == NULL) {
+        fprintf(stderr, "%s: expected subquery quantifier %s, got null node\n", context,
+                mylite_sql_ast_subquery_quantifier_name(expected));
+        return 1;
+    }
+
+    if (node->subquery_quantifier != expected) {
+        fprintf(stderr, "%s: expected subquery quantifier %s, got %s\n", context,
+                mylite_sql_ast_subquery_quantifier_name(expected),
+                mylite_sql_ast_subquery_quantifier_name(node->subquery_quantifier));
+        return 1;
+    }
+
+    return 0;
 }
 
 static int expect_literal(const struct mylite_sql_ast_node *node,

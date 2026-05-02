@@ -14,6 +14,9 @@
 %type select_duplicate_mode_item { struct mylite_sql_parser_select_duplicate_mode }
 %type inner_join_operator { struct mylite_sql_parser_join_operator }
 %type outer_join_operator { struct mylite_sql_parser_join_operator }
+%type subquery { struct mylite_sql_parser_subquery }
+%type comparison_operator { struct mylite_sql_parser_comparison_operator }
+%type subquery_quantifier { enum mylite_sql_ast_subquery_quantifier }
 %type opt_like_escape { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
 
@@ -1767,6 +1770,9 @@ logical_and_expression(A) ::= logical_and_expression(B) LOGICAL_AND(T) logical_n
 logical_not_expression(A) ::= between_expression(B). [NOT] {
     A = B;
 }
+logical_not_expression(A) ::= EXISTS(T) subquery(B). {
+    A = mylite_sql_parser_make_exists_expression(state, T, B, false);
+}
 logical_not_expression(A) ::= NOT(T) logical_not_expression(B). {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, B);
@@ -1814,6 +1820,18 @@ comparison_expression(A) ::= comparison_expression(B) GT(T) bit_or_expression(C)
 comparison_expression(A) ::= comparison_expression(B) GE(T) bit_or_expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, C);
+}
+comparison_expression(A) ::= comparison_expression(B) IN(T) subquery(C). {
+    A = mylite_sql_parser_make_in_subquery_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_IN, C);
+}
+comparison_expression(A) ::= comparison_expression(B) NOT(T) IN subquery(C). {
+    A = mylite_sql_parser_make_in_subquery_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_IN, C);
+}
+comparison_expression(A) ::= comparison_expression(B) comparison_operator(C)
+        subquery_quantifier(D) subquery(E). {
+    A = mylite_sql_parser_make_quantified_comparison(state, B, C.token, C.operator_kind, D, E);
 }
 comparison_expression(A) ::= comparison_expression(B) IS(T) NULL. {
     A = mylite_sql_parser_make_unary_expression(
@@ -1866,6 +1884,59 @@ comparison_expression(A) ::= comparison_expression(B) IN(T) LPAREN expression_li
 comparison_expression(A) ::= comparison_expression(B) NOT(T) IN LPAREN expression_list(C) RPAREN. {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_IN, C);
+}
+
+comparison_operator(A) ::= EQ(T). {
+    A = (struct mylite_sql_parser_comparison_operator){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_EQUAL,
+    };
+}
+comparison_operator(A) ::= NULL_SAFE_EQ(T). {
+    A = (struct mylite_sql_parser_comparison_operator){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+    };
+}
+comparison_operator(A) ::= NE(T). {
+    A = (struct mylite_sql_parser_comparison_operator){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+    };
+}
+comparison_operator(A) ::= LT(T). {
+    A = (struct mylite_sql_parser_comparison_operator){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_LESS,
+    };
+}
+comparison_operator(A) ::= LE(T). {
+    A = (struct mylite_sql_parser_comparison_operator){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_LESS_EQUAL,
+    };
+}
+comparison_operator(A) ::= GT(T). {
+    A = (struct mylite_sql_parser_comparison_operator){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_GREATER,
+    };
+}
+comparison_operator(A) ::= GE(T). {
+    A = (struct mylite_sql_parser_comparison_operator){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
+    };
+}
+
+subquery_quantifier(A) ::= ANY. {
+    A = MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ANY;
+}
+subquery_quantifier(A) ::= SOME. {
+    A = MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_SOME;
+}
+subquery_quantifier(A) ::= ALL. {
+    A = MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ALL;
 }
 
 opt_like_escape(A) ::= . {
@@ -1998,8 +2069,41 @@ primary_expression(A) ::= current_timestamp_value(B). {
 primary_expression(A) ::= bare_temporal_function(B). {
     A = B;
 }
+primary_expression(A) ::= subquery(B). {
+    A = mylite_sql_parser_make_scalar_subquery_expression(state, B);
+}
+primary_expression(A) ::= row_constructor(B). {
+    A = B;
+}
 primary_expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+subquery(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {
+    A = (struct mylite_sql_parser_subquery){
+        .left_paren = L,
+        .select_statement = B,
+        .right_paren = R,
+    };
+}
+
+row_constructor(A) ::= LPAREN(L) expression(B) COMMA expression_list(C) RPAREN(R). {
+    A = mylite_sql_parser_make_row_constructor(
+        state, L,
+        (struct mylite_sql_parser_row_constructor_elements){
+            .first_expression = B,
+            .remaining_expressions = C,
+        },
+        R);
+}
+row_constructor(A) ::= ROW(T) LPAREN expression(B) COMMA expression_list(C) RPAREN(R). {
+    A = mylite_sql_parser_make_row_constructor(
+        state, T,
+        (struct mylite_sql_parser_row_constructor_elements){
+            .first_expression = B,
+            .remaining_expressions = C,
+        },
+        R);
 }
 
 cast_expression(A) ::= CAST(T) LPAREN expression(B) AS cast_target_type(C) RPAREN(R). {

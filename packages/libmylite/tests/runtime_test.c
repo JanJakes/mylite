@@ -855,8 +855,14 @@ static int test_expression_operator_foundation(void)
 
     failures += prepare_sql(database, "SELECT 1 IN ()", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "empty in list");
-    failures += prepare_sql(database, "SELECT ROW(1,2) IN ((1,2))", MYLITE_PARSE_ERROR, &stmt);
+    failures += prepare_sql(database, "SELECT ROW(1,2) IN ((1,2))", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "row in deferred");
+    failures += prepare_sql(database, "SELECT (SELECT 1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "scalar subquery deferred");
+    failures += prepare_sql(database, "SELECT EXISTS (SELECT 1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "exists subquery deferred");
+    failures += prepare_sql(database, "SELECT 1 = ANY (SELECT 1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "quantified subquery deferred");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

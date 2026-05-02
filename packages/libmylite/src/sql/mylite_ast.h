@@ -104,6 +104,10 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_JOIN_CONDITION = 93,
     MYLITE_SQL_AST_USING_COLUMN_LIST = 94,
     MYLITE_SQL_AST_USING_COLUMN = 95,
+    MYLITE_SQL_AST_SUBQUERY_EXPRESSION = 96,
+    MYLITE_SQL_AST_EXISTS_EXPRESSION = 97,
+    MYLITE_SQL_AST_QUANTIFIED_COMPARISON = 98,
+    MYLITE_SQL_AST_ROW_CONSTRUCTOR = 99,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -318,6 +322,13 @@ enum mylite_sql_ast_select_duplicate_mode {
     MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT = 2,
 };
 
+enum mylite_sql_ast_subquery_quantifier {
+    MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_NONE = 0,
+    MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ANY = 1,
+    MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_SOME = 2,
+    MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ALL = 3,
+};
+
 struct mylite_sql_ast_select_duplicate_mode_spans {
     struct mylite_sql_source_span first;
     struct mylite_sql_source_span last;
@@ -360,6 +371,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_join_type join_type;
     enum mylite_sql_ast_join_condition_type join_condition_type;
     enum mylite_sql_ast_select_duplicate_mode select_duplicate_mode;
+    enum mylite_sql_ast_subquery_quantifier subquery_quantifier;
     unsigned int column_display_width;
     bool column_type_unsigned;
     bool column_type_signed;
@@ -457,6 +469,8 @@ void mylite_sql_ast_node_set_select_duplicate_mode(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_select_duplicate_mode mode,
     bool explicit_mode, bool conflict, size_t modifier_count,
     struct mylite_sql_ast_select_duplicate_mode_spans spans);
+void mylite_sql_ast_node_set_subquery_quantifier(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_subquery_quantifier quantifier);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 
@@ -480,5 +494,7 @@ const char *
 mylite_sql_ast_join_condition_type_name(enum mylite_sql_ast_join_condition_type condition_type);
 const char *
 mylite_sql_ast_select_duplicate_mode_name(enum mylite_sql_ast_select_duplicate_mode mode);
+const char *
+mylite_sql_ast_subquery_quantifier_name(enum mylite_sql_ast_subquery_quantifier quantifier);
 
 #endif

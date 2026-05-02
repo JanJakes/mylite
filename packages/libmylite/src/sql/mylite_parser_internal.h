@@ -111,6 +111,22 @@ struct mylite_sql_parser_using_column_append {
     struct mylite_sql_ast_node *column;
 };
 
+struct mylite_sql_parser_subquery {
+    struct mylite_sql_token left_paren;
+    struct mylite_sql_ast_node *select_statement;
+    struct mylite_sql_token right_paren;
+};
+
+struct mylite_sql_parser_comparison_operator {
+    struct mylite_sql_token token;
+    enum mylite_sql_ast_operator operator_kind;
+};
+
+struct mylite_sql_parser_row_constructor_elements {
+    struct mylite_sql_ast_node *first_expression;
+    struct mylite_sql_ast_node *remaining_expressions;
+};
+
 void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
                                       struct mylite_sql_ast_node *root);
 void mylite_sql_parser_state_syntax_error(struct mylite_sql_parser_state *state, int parser_token,
@@ -690,6 +706,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_binary_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
     struct mylite_sql_token operator_token, enum mylite_sql_ast_operator operator_kind,
     struct mylite_sql_ast_node *right);
+struct mylite_sql_ast_node *mylite_sql_parser_make_in_subquery_expression(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
+    struct mylite_sql_token operator_token, enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_parser_subquery subquery);
+struct mylite_sql_ast_node *mylite_sql_parser_make_quantified_comparison(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
+    struct mylite_sql_token operator_token, enum mylite_sql_ast_operator operator_kind,
+    enum mylite_sql_ast_subquery_quantifier quantifier, struct mylite_sql_parser_subquery subquery);
 struct mylite_sql_ast_node *mylite_sql_parser_make_ternary_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *first,
     struct mylite_sql_token operator_token, enum mylite_sql_ast_operator operator_kind,
@@ -704,5 +728,17 @@ mylite_sql_parser_append_expression(struct mylite_sql_parser_state *state,
 struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_token left_paren,
     struct mylite_sql_ast_node *expression, struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_scalar_subquery_expression(struct mylite_sql_parser_state *state,
+                                                  struct mylite_sql_parser_subquery subquery);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_exists_expression(struct mylite_sql_parser_state *state,
+                                         struct mylite_sql_token start_token,
+                                         struct mylite_sql_parser_subquery subquery, bool negated);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_row_constructor(struct mylite_sql_parser_state *state,
+                                       struct mylite_sql_token start_token,
+                                       struct mylite_sql_parser_row_constructor_elements elements,
+                                       struct mylite_sql_token right_paren);
 
 #endif

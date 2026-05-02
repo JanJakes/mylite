@@ -1102,7 +1102,8 @@ drop_tail(A) ::= UNDO TABLESPACE cache_name_part undo_tablespace_options_tail. {
 drop_tail(A) ::= PREPARE prepared_statement_name. {
   A = MYLITE_STATEMENT_PREPARED;
 }
-drop_tail(A) ::= INDEX drop_index_name ON cache_table_ref drop_index_options_tail. {
+drop_tail(A) ::= INDEX(B) drop_index_name ON cache_table_ref drop_index_options_tail. {
+  mylite_parser_validate_drop_index_statement(ctx, B);
   A = MYLITE_STATEMENT_DDL;
 }
 drop_tail(A) ::= drop_database_kind drop_if_exists_tail cache_name_part. {

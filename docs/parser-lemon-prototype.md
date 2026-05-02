@@ -344,8 +344,8 @@ token sink:
   `OR REPLACE`, bare numeric SRS ids, documented text-string attribute forms
   with quoted hex/bit rejection, and numeric organization authority codes.
 - `DROP INDEX` recognizes MySQL's identifier-valued `ALGORITHM` and `LOCK`
-  option tails and rejects standalone reserved `CASCADE`/`RESTRICT` index
-  names.
+  option tails, rejects duplicate options, and rejects standalone reserved
+  `CASCADE`/`RESTRICT` index names.
 - `TRUNCATE TABLE` recognizes optional `TABLE` and one- or two-part table
   references using the shared identifier grammar, with MySQL's standalone
   reserved-name rejection preserved for `CASCADE` and `RESTRICT`.

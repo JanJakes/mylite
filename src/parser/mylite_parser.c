@@ -75,8 +75,8 @@ enum {
 };
 
 enum {
-  CREATE_INDEX_OPTION_FLAG_ALGORITHM = 1 << 0,
-  CREATE_INDEX_OPTION_FLAG_LOCK = 1 << 1
+  INDEX_OPTION_FLAG_ALGORITHM = 1 << 0,
+  INDEX_OPTION_FLAG_LOCK = 1 << 1
 };
 
 typedef enum ColumnTypeParameterKind {
@@ -7192,21 +7192,21 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
           continue;
         }
         if (token_id == ML_ALGORITHM) {
-          if ((index_option_flags & CREATE_INDEX_OPTION_FLAG_ALGORITHM) != 0) {
+          if ((index_option_flags & INDEX_OPTION_FLAG_ALGORITHM) != 0) {
             mylite_parser_reject(ctx, token,
                                  "duplicate CREATE INDEX ALGORITHM option");
             return;
           }
-          index_option_flags |= CREATE_INDEX_OPTION_FLAG_ALGORITHM;
+          index_option_flags |= INDEX_OPTION_FLAG_ALGORITHM;
           continue;
         }
         if (token_id == ML_LOCK) {
-          if ((index_option_flags & CREATE_INDEX_OPTION_FLAG_LOCK) != 0) {
+          if ((index_option_flags & INDEX_OPTION_FLAG_LOCK) != 0) {
             mylite_parser_reject(ctx, token,
                                  "duplicate CREATE INDEX LOCK option");
             return;
           }
-          index_option_flags |= CREATE_INDEX_OPTION_FLAG_LOCK;
+          index_option_flags |= INDEX_OPTION_FLAG_LOCK;
           continue;
         }
         if (token_id == ML_COMMENT || token_id == ML_ENGINE_ATTRIBUTE ||
@@ -7350,6 +7350,82 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
   } else if (index_option_state != CREATE_INDEX_OPTION_READY) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete CREATE INDEX option");
+  }
+}
+
+void mylite_parser_validate_drop_index_statement(MyliteParseContext *ctx,
+                                                 MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  int token_id;
+  int saw_statement = 0;
+  int saw_on = 0;
+  int table_ref_done = 0;
+  int table_name_parts = 0;
+  int table_dot_pending = 0;
+  int index_option_flags = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (!saw_on) {
+      if (token_id == ML_ON) {
+        saw_on = 1;
+      }
+      if (token_is_statement_terminator(token_id, token)) {
+        return;
+      }
+      continue;
+    }
+
+    if (!table_ref_done) {
+      if (token_is_statement_terminator(token_id, token)) {
+        return;
+      }
+      if (table_dot_pending) {
+        table_name_parts++;
+        table_dot_pending = 0;
+        continue;
+      }
+      if (table_name_parts == 0) {
+        table_name_parts = 1;
+        continue;
+      }
+      if (token_id == ML_DOT && table_name_parts == 1) {
+        table_dot_pending = 1;
+        continue;
+      }
+      table_ref_done = 1;
+    }
+
+    if (token_is_statement_terminator(token_id, token)) {
+      return;
+    }
+
+    if (token_id == ML_ALGORITHM) {
+      if ((index_option_flags & INDEX_OPTION_FLAG_ALGORITHM) != 0) {
+        mylite_parser_reject(ctx, token,
+                             "duplicate DROP INDEX ALGORITHM option");
+        return;
+      }
+      index_option_flags |= INDEX_OPTION_FLAG_ALGORITHM;
+      continue;
+    }
+
+    if (token_id == ML_LOCK) {
+      if ((index_option_flags & INDEX_OPTION_FLAG_LOCK) != 0) {
+        mylite_parser_reject(ctx, token, "duplicate DROP INDEX LOCK option");
+        return;
+      }
+      index_option_flags |= INDEX_OPTION_FLAG_LOCK;
+      continue;
+    }
   }
 }
 

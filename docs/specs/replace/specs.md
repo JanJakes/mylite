@@ -3,8 +3,9 @@
 ## Scope
 
 This feature specifies MySQL-compatible `REPLACE` behavior for MyLite. This
-start phase is documentation only: parser, AST, analyzer, and runtime code
-remain unimplemented.
+feature now has a first executable slice for `VALUES`/`VALUE`/`VALUES ROW(...)`
+and `SET` sources over supported MyLite base tables. Query-source forms and
+advanced table features remain deferred.
 
 In scope for the full feature:
 
@@ -45,7 +46,7 @@ First executable implementation slice:
 - implement explicit MySQL-order duplicate checks and deletes rather than
   lowering directly to SQLite `INSERT OR REPLACE`
 - parse `LOW_PRIORITY` as a no-op modifier and `DELAYED` as a warning-producing
-  normal replace once warning records are available
+  normal replace
 - keep `REPLACE ... SELECT` and `REPLACE ... TABLE` runtime-deferred until
   insert-from-query source execution is specified and implemented
 
@@ -649,11 +650,10 @@ future mode work can add:
 MyLite intentionally documents these first-slice boundaries:
 
 - `REPLACE ... SELECT` and `REPLACE ... TABLE` runtime wait for
-  insert-from-query support, though the grammar and AST should be designed for
-  them now.
+  insert-from-query support.
 - Partition clauses wait for partition metadata and routing.
-- `DELAYED` warning 3005 waits for statement-owned warnings if that API is not
-  available when parser support lands.
+- `DELAYED` warning 3005 is implemented for the executable `VALUES` and `SET`
+  sources.
 - Trigger execution waits for trigger DDL and runtime support.
 - Foreign-key cascades and restrict/no-action behavior wait for foreign-key
   metadata and enforcement.
@@ -734,7 +734,7 @@ Runtime tests for first executable slice:
 - multi-row source order, including later rows replacing earlier inserted rows
 - affected rows, processed records, duplicate count, warning count, and last
   insert id
-- `DELAYED` warning 3005 once warning records exist
+- `DELAYED` warning 3005
 - SET assignment-order behavior and lack of access to deleted-row values
 - auto-increment omitted, `NULL`, `0`, `DEFAULT`, explicit low, explicit high,
   duplicate replacement, sequence consumption, and session last insert id

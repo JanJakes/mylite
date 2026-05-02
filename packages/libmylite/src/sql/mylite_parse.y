@@ -4,6 +4,7 @@
 %default_type { struct mylite_sql_ast_node * }
 %type opt_into { struct mylite_sql_token }
 %type opt_insert_ignore { struct mylite_sql_token }
+%type opt_replace_modifier { struct mylite_sql_parser_replace_modifier }
 %type opt_temporary { struct mylite_sql_token }
 %type opt_drop_table_mode { struct mylite_sql_token }
 %type insert_values_keyword { struct mylite_sql_token }
@@ -111,6 +112,12 @@ statement(A) ::= insert_values_statement(B). {
     A = B;
 }
 statement(A) ::= insert_set_statement(B). {
+    A = B;
+}
+statement(A) ::= replace_values_statement(B). {
+    A = B;
+}
+statement(A) ::= replace_set_statement(B). {
     A = B;
 }
 statement(A) ::= update_statement(B). {
@@ -241,12 +248,39 @@ insert_set_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_name(B
         D,
         E);
 }
+replace_values_statement(A) ::= REPLACE(T) opt_replace_modifier(M) opt_into table_name(B)
+        opt_insert_column_list(C) insert_values_keyword insert_row_list(D). {
+    A = mylite_sql_parser_make_replace_values_statement(
+        state,
+        (struct mylite_sql_parser_replace_tokens){.replace = T, .modifier = M},
+        B,
+        C,
+        D);
+}
+replace_set_statement(A) ::= REPLACE(T) opt_replace_modifier(M) opt_into table_name(B)
+        SET insert_set_assignment_list(C). {
+    A = mylite_sql_parser_make_replace_set_statement(
+        state,
+        (struct mylite_sql_parser_replace_tokens){.replace = T, .modifier = M},
+        B,
+        C);
+}
 
 opt_insert_ignore(A) ::= . {
     A = (struct mylite_sql_token){0};
 }
 opt_insert_ignore(A) ::= IGNORE(T). {
     A = T;
+}
+
+opt_replace_modifier(A) ::= . {
+    A = (struct mylite_sql_parser_replace_modifier){0};
+}
+opt_replace_modifier(A) ::= LOW_PRIORITY(T). {
+    A = (struct mylite_sql_parser_replace_modifier){.low_priority = T};
+}
+opt_replace_modifier(A) ::= DELAYED(T). {
+    A = (struct mylite_sql_parser_replace_modifier){.delayed = T};
 }
 
 opt_into(A) ::= . {

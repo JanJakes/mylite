@@ -349,6 +349,24 @@ void mylite_sql_ast_node_set_insert_ignore(struct mylite_sql_ast_node *node)
     node->insert_ignore = true;
 }
 
+void mylite_sql_ast_node_set_replace_low_priority(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->replace_low_priority = true;
+}
+
+void mylite_sql_ast_node_set_replace_delayed(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->replace_delayed = true;
+}
+
 void mylite_sql_ast_node_set_transaction_access_mode(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_access_mode access_mode)
 {
@@ -695,6 +713,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "insert_row_alias";
     case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
         return "insert_alias_column_list";
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+        return "replace_values_statement";
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
+        return "replace_set_statement";
     }
 
     return "unknown";

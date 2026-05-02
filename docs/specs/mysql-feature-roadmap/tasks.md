@@ -94,8 +94,13 @@ level application surfaces.
        [INSERT ... ON DUPLICATE KEY UPDATE](../insert-on-duplicate-key-update/specs.md).
 33. [ ] `REPLACE`: values, set, and select forms; delete-then-insert semantics;
        cascades; triggers; affected rows; and auto-increment behavior.
-       Started/speced only; no parser or runtime support yet. Spec:
-       [REPLACE](../replace/specs.md).
+       Partially implemented for supported `VALUES`/`VALUE`/`VALUES ROW(...)`
+       and `SET` forms, including optional `INTO`, column lists, explicit
+       conflict delete loop, source-order multi-row semantics, affected rows,
+       `LOW_PRIORITY`, `DELAYED` warning 3005, rollback, and auto-increment/
+       last-insert-id behavior. Query-source replace, partitions, cascades,
+       triggers, generated columns, and broad conversion fidelity remain
+       deferred. Spec: [REPLACE](../replace/specs.md).
 34. [ ] `CREATE INDEX` and `DROP INDEX`: standalone index creation/removal,
        options, metadata, warnings, and implicit commit behavior.
 35. [ ] `ALTER TABLE` column operations: `ADD`, `DROP`, `RENAME`, `CHANGE`,

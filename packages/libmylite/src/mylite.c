@@ -30,18 +30,20 @@ enum mylite_stmt_kind {
     MYLITE_STMT_DROP_TABLE = 8,
     MYLITE_STMT_INSERT_VALUES = 9,
     MYLITE_STMT_INSERT_SET = 10,
-    MYLITE_STMT_SCALAR_SELECT = 11,
-    MYLITE_STMT_TABLE_SELECT = 12,
-    MYLITE_STMT_UNION_QUERY = 13,
-    MYLITE_STMT_UPDATE = 14,
-    MYLITE_STMT_DELETE = 15,
-    MYLITE_STMT_START_TRANSACTION = 16,
-    MYLITE_STMT_BEGIN_TRANSACTION = 17,
-    MYLITE_STMT_COMMIT = 18,
-    MYLITE_STMT_ROLLBACK = 19,
-    MYLITE_STMT_SAVEPOINT = 20,
-    MYLITE_STMT_ROLLBACK_TO_SAVEPOINT = 21,
-    MYLITE_STMT_RELEASE_SAVEPOINT = 22,
+    MYLITE_STMT_REPLACE_VALUES = 11,
+    MYLITE_STMT_REPLACE_SET = 12,
+    MYLITE_STMT_SCALAR_SELECT = 13,
+    MYLITE_STMT_TABLE_SELECT = 14,
+    MYLITE_STMT_UNION_QUERY = 15,
+    MYLITE_STMT_UPDATE = 16,
+    MYLITE_STMT_DELETE = 17,
+    MYLITE_STMT_START_TRANSACTION = 18,
+    MYLITE_STMT_BEGIN_TRANSACTION = 19,
+    MYLITE_STMT_COMMIT = 20,
+    MYLITE_STMT_ROLLBACK = 21,
+    MYLITE_STMT_SAVEPOINT = 22,
+    MYLITE_STMT_ROLLBACK_TO_SAVEPOINT = 23,
+    MYLITE_STMT_RELEASE_SAVEPOINT = 24,
 };
 
 enum mylite_information_schema_table {
@@ -77,6 +79,7 @@ enum mylite_mysql_condition_code {
     MYLITE_MYSQL_ER_NO_DEFAULT_FOR_FIELD = 1364,
     MYLITE_MYSQL_ER_DIVISION_BY_ZERO = 1365,
     MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE_FOR_FIELD = 1366,
+    MYLITE_MYSQL_ER_WARN_LEGACY_SYNTAX_CONVERTED = 3005,
     MYLITE_MYSQL_ER_FIELD_IN_ORDER_NOT_SELECT = 3065,
     MYLITE_MYSQL_ER_CANT_EXECUTE_IN_READ_ONLY_TRANSACTION = 1792,
 };
@@ -294,6 +297,8 @@ struct mylite_insert_values_plan {
     size_t alias_column_count;
     bool has_column_list;
     bool ignore;
+    bool replace_low_priority;
+    bool replace_delayed;
     struct mylite_insert_row *rows;
     size_t row_count;
 };
@@ -1209,6 +1214,12 @@ static int prepare_insert_values_statement(mylite_db *database,
 static int prepare_insert_set_statement(mylite_db *database,
                                         const struct mylite_sql_ast_node *statement,
                                         mylite_stmt **out_stmt);
+static int prepare_replace_values_statement(mylite_db *database,
+                                            const struct mylite_sql_ast_node *statement,
+                                            mylite_stmt **out_stmt);
+static int prepare_replace_set_statement(mylite_db *database,
+                                         const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt **out_stmt);
 static int prepare_update_statement(mylite_db *database,
                                     const struct mylite_sql_ast_node *statement, const char *sql,
                                     size_t sql_length, mylite_stmt **out_stmt);
@@ -2083,6 +2094,8 @@ static int execute_create_table_statement(mylite_stmt *stmt);
 static int execute_drop_table_statement(mylite_stmt *stmt);
 static int execute_insert_values_statement(mylite_stmt *stmt);
 static int execute_insert_set_statement(mylite_stmt *stmt);
+static int execute_replace_values_statement(mylite_stmt *stmt);
+static int execute_replace_set_statement(mylite_stmt *stmt);
 static int execute_update_statement(mylite_stmt *stmt);
 static int execute_delete_statement(mylite_stmt *stmt);
 static int execute_start_transaction_statement(mylite_stmt *stmt);
@@ -2906,6 +2919,38 @@ static int execute_insert_set_row(mylite_stmt *stmt, const struct mylite_insert_
                                   struct mylite_insert_execution_state *state,
                                   struct mylite_insert_bound_value *values,
                                   struct mylite_insert_set_row_state *row_state);
+static int execute_replace_values_transaction(mylite_stmt *stmt, const char *schema_name,
+                                              const struct mylite_insert_table *table,
+                                              const size_t *column_indexes);
+static int execute_replace_row(mylite_stmt *stmt, sqlite3_stmt *insert, sqlite3_stmt *delete_stmt,
+                               const struct mylite_insert_table *table,
+                               const struct mylite_insert_row_column_indexes *column_indexes,
+                               struct mylite_insert_execution_state *state, size_t row_index);
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+static int execute_replace_candidate_row(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                         sqlite3_stmt *delete_stmt,
+                                         const struct mylite_insert_table *table,
+                                         struct mylite_insert_execution_state *state,
+                                         const struct mylite_insert_bound_value *values);
+static int delete_replace_conflict_row(mylite_stmt *stmt, sqlite3_stmt *delete_stmt,
+                                       sqlite3_int64 rowid,
+                                       struct mylite_insert_execution_state *state);
+static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema_name,
+                                           const struct mylite_insert_table *table,
+                                           const size_t *column_indexes);
+static int execute_replace_set_row(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                   sqlite3_stmt *delete_stmt,
+                                   const struct mylite_insert_table *table,
+                                   const size_t *column_indexes,
+                                   struct mylite_insert_execution_state *state,
+                                   struct mylite_insert_bound_value *values,
+                                   struct mylite_insert_set_row_state *row_state);
+static char *build_replace_delete_sql(mylite_db *database, const struct mylite_insert_table *table);
+static int append_replace_delayed_warning(mylite_stmt *stmt);
+static int finish_successful_replace_transaction(mylite_stmt *stmt, const char *schema_name,
+                                                 const struct mylite_insert_table *table,
+                                                 const struct mylite_insert_execution_state *state,
+                                                 struct mylite_statement_atomicity *atomicity);
 static int initialize_insert_set_row_values(mylite_stmt *stmt,
                                             const struct mylite_insert_table *table,
                                             struct mylite_insert_execution_state *state,
@@ -3128,6 +3173,10 @@ static int copy_insert_values_statement(const struct mylite_sql_ast_node *statem
                                         mylite_stmt *stmt);
 static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement,
                                      mylite_stmt *stmt);
+static int copy_replace_values_statement(const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt *stmt);
+static int copy_replace_set_statement(const struct mylite_sql_ast_node *statement,
+                                      mylite_stmt *stmt);
 static int copy_update_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt);
 static int copy_delete_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt);
 static int copy_transaction_statement(const struct mylite_sql_ast_node *statement,
@@ -4122,6 +4171,10 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_insert_values_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
             return prepare_insert_set_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+            return prepare_replace_values_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
+            return prepare_replace_set_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_UPDATE_STATEMENT:
             return prepare_update_statement(database, statement, sql, sql_length, out_stmt);
         case MYLITE_SQL_AST_DELETE_STATEMENT:
@@ -4363,6 +4416,8 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_VALUE_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_TARGET:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
@@ -4488,6 +4543,8 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_VALUE_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_TARGET:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
@@ -4537,6 +4594,20 @@ static int prepare_insert_set_statement(mylite_db *database,
                                         mylite_stmt **out_stmt)
 {
     return prepare_custom_statement(database, MYLITE_STMT_INSERT_SET, statement, out_stmt);
+}
+
+static int prepare_replace_values_statement(mylite_db *database,
+                                            const struct mylite_sql_ast_node *statement,
+                                            mylite_stmt **out_stmt)
+{
+    return prepare_custom_statement(database, MYLITE_STMT_REPLACE_VALUES, statement, out_stmt);
+}
+
+static int prepare_replace_set_statement(mylite_db *database,
+                                         const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt **out_stmt)
+{
+    return prepare_custom_statement(database, MYLITE_STMT_REPLACE_SET, statement, out_stmt);
 }
 
 static int prepare_update_statement(mylite_db *database,
@@ -4706,6 +4777,8 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
     case MYLITE_SQL_AST_FUNCTION_CALL:
@@ -5854,6 +5927,8 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_ITEM_LIST:
@@ -8787,6 +8862,8 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:
@@ -9457,6 +9534,8 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:
@@ -10018,6 +10097,8 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:
@@ -10695,6 +10776,8 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_ITEM_LIST:
@@ -13245,6 +13328,12 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     case MYLITE_STMT_INSERT_SET:
         status = copy_insert_set_statement(statement, stmt);
         break;
+    case MYLITE_STMT_REPLACE_VALUES:
+        status = copy_replace_values_statement(statement, stmt);
+        break;
+    case MYLITE_STMT_REPLACE_SET:
+        status = copy_replace_set_statement(statement, stmt);
+        break;
     case MYLITE_STMT_UPDATE:
     case MYLITE_STMT_DELETE:
         status = MYLITE_UNSUPPORTED;
@@ -13314,6 +13403,13 @@ static int execute_custom_statement(mylite_stmt *stmt)
     if (stmt->executed) {
         return MYLITE_DONE;
     }
+    if (stmt->kind == MYLITE_STMT_REPLACE_VALUES || stmt->kind == MYLITE_STMT_REPLACE_SET) {
+        status = append_replace_delayed_warning(stmt);
+        if (status != MYLITE_OK) {
+            stmt->affected_rows = -1;
+            return status;
+        }
+    }
     if (write_statement_kind(stmt->kind) && stmt->database->transaction_active &&
         stmt->database->transaction_access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY) {
         stmt->affected_rows = -1;
@@ -13351,6 +13447,12 @@ static int execute_custom_statement(mylite_stmt *stmt)
         break;
     case MYLITE_STMT_INSERT_SET:
         status = execute_insert_set_statement(stmt);
+        break;
+    case MYLITE_STMT_REPLACE_VALUES:
+        status = execute_replace_values_statement(stmt);
+        break;
+    case MYLITE_STMT_REPLACE_SET:
+        status = execute_replace_set_statement(stmt);
         break;
     case MYLITE_STMT_UPDATE:
         status = execute_update_statement(stmt);
@@ -14427,6 +14529,62 @@ static int execute_insert_set_statement(mylite_stmt *stmt)
     return status;
 }
 
+static int execute_replace_values_statement(mylite_stmt *stmt)
+{
+    const char *schema_name = NULL;
+    struct mylite_insert_table table = {0};
+    size_t *column_indexes = NULL;
+    int status = validate_insert_values_target(stmt, &schema_name);
+
+    stmt->affected_rows = 0;
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    status = load_insert_table(stmt, schema_name, &table);
+    if (status == MYLITE_OK) {
+        status = validate_insert_column_list(stmt, &table, &column_indexes);
+    }
+    if (status == MYLITE_OK) {
+        status = execute_replace_values_transaction(stmt, schema_name, &table, column_indexes);
+    }
+
+    free(column_indexes);
+    insert_table_deinit(&table);
+    if (status != MYLITE_OK) {
+        stmt->affected_rows = -1;
+    }
+    return status;
+}
+
+static int execute_replace_set_statement(mylite_stmt *stmt)
+{
+    const char *schema_name = NULL;
+    struct mylite_insert_table table = {0};
+    size_t *column_indexes = NULL;
+    int status = validate_insert_values_target(stmt, &schema_name);
+
+    stmt->affected_rows = 0;
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    status = load_insert_table(stmt, schema_name, &table);
+    if (status == MYLITE_OK) {
+        status = validate_insert_set_assignments(stmt, &table, schema_name, &column_indexes);
+    }
+    if (status == MYLITE_OK) {
+        status = execute_replace_set_transaction(stmt, schema_name, &table, column_indexes);
+    }
+
+    free(column_indexes);
+    insert_table_deinit(&table);
+    if (status != MYLITE_OK) {
+        stmt->affected_rows = -1;
+    }
+    return status;
+}
+
 static int execute_update_statement(mylite_stmt *stmt)
 {
     struct mylite_select_table table = {0};
@@ -14765,6 +14923,8 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:
@@ -16204,6 +16364,8 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_TARGET:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
@@ -16732,6 +16894,8 @@ static int execute_union_operand_statement(mylite_stmt *operand)
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_INSERT_VALUES:
     case MYLITE_STMT_INSERT_SET:
+    case MYLITE_STMT_REPLACE_VALUES:
+    case MYLITE_STMT_REPLACE_SET:
     case MYLITE_STMT_UNION_QUERY:
     case MYLITE_STMT_UPDATE:
     case MYLITE_STMT_DELETE:
@@ -22366,6 +22530,297 @@ static int execute_insert_set_row(mylite_stmt *stmt, const struct mylite_insert_
     return write_insert_candidate_row(stmt, insert, table, values, state);
 }
 
+static int execute_replace_values_transaction(mylite_stmt *stmt, const char *schema_name,
+                                              const struct mylite_insert_table *table,
+                                              const size_t *column_indexes)
+{
+    size_t source_column_count = table->column_count;
+    struct mylite_insert_execution_state state = {
+        .next_auto_increment = table->next_auto_increment,
+    };
+    struct mylite_insert_row_column_indexes row_column_indexes = {
+        .insert_columns = column_indexes,
+    };
+    sqlite3_stmt *insert = NULL;
+    sqlite3_stmt *delete_stmt = NULL;
+    char *insert_sql = NULL;
+    char *delete_sql = NULL;
+    struct mylite_statement_atomicity atomicity = {0};
+    int status = begin_statement_atomicity(stmt->database, &atomicity);
+    int rc = SQLITE_OK;
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (stmt->insert_values.has_column_list) {
+        source_column_count = stmt->insert_values.column_count;
+    }
+    row_column_indexes.source_column_count = source_column_count;
+
+    insert_sql = build_insert_physical_sql(stmt->database, table);
+    delete_sql = build_replace_delete_sql(stmt->database, table);
+    if (insert_sql == NULL || delete_sql == NULL) {
+        sqlite3_free(insert_sql);
+        sqlite3_free(delete_sql);
+        rollback_statement_atomicity(stmt->database, &atomicity);
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, insert_sql, -1, SQLITE_PREPARE_PERSISTENT,
+                            &insert, NULL);
+    sqlite3_free(insert_sql);
+    insert_sql = NULL;
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_prepare_v3(stmt->database->sqlite, delete_sql, -1, SQLITE_PREPARE_PERSISTENT,
+                                &delete_stmt, NULL);
+    }
+    sqlite3_free(delete_sql);
+    delete_sql = NULL;
+    if (rc != SQLITE_OK) {
+        sqlite3_finalize(insert);
+        rollback_statement_atomicity(stmt->database, &atomicity);
+        return set_sqlite_error(stmt->database);
+    }
+
+    for (size_t row_index = 0U; row_index < stmt->insert_values.row_count; ++row_index) {
+        status = execute_replace_row(stmt, insert, delete_stmt, table, &row_column_indexes, &state,
+                                     row_index);
+        if (status != MYLITE_OK) {
+            break;
+        }
+    }
+    sqlite3_finalize(delete_stmt);
+    sqlite3_finalize(insert);
+
+    if (status != MYLITE_OK) {
+        return finish_failed_insert_values_transaction(stmt, schema_name, table, &state, &atomicity,
+                                                       status);
+    }
+    return finish_successful_replace_transaction(stmt, schema_name, table, &state, &atomicity);
+}
+
+static int execute_replace_row(mylite_stmt *stmt, sqlite3_stmt *insert, sqlite3_stmt *delete_stmt,
+                               const struct mylite_insert_table *table,
+                               const struct mylite_insert_row_column_indexes *column_indexes,
+                               struct mylite_insert_execution_state *state, size_t row_index)
+{
+    struct mylite_insert_bound_value *values = NULL;
+    int status = MYLITE_OK;
+
+    if (table->column_count == 0U) {
+        (void)set_error_message(stmt->database, "REPLACE target table has no columns");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    values = calloc(table->column_count, sizeof(*values));
+    if (values == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = resolve_insert_row_values(stmt, table, column_indexes->insert_columns, state,
+                                       row_index, values);
+    if (status == MYLITE_OK) {
+        status = execute_replace_candidate_row(stmt, insert, delete_stmt, table, state, values);
+    }
+
+    insert_bound_values_deinit(values, table->column_count);
+    return status;
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+static int execute_replace_candidate_row(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                         sqlite3_stmt *delete_stmt,
+                                         const struct mylite_insert_table *table,
+                                         struct mylite_insert_execution_state *state,
+                                         const struct mylite_insert_bound_value *values)
+{
+    for (;;) {
+        struct mylite_insert_unique_conflict conflict = {0};
+        int status = find_insert_unique_conflict(stmt, table, values, &conflict);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (!conflict.conflicts) {
+            break;
+        }
+        status = delete_replace_conflict_row(stmt, delete_stmt, conflict.rowid, state);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return write_insert_candidate_row(stmt, insert, table, values, state);
+}
+
+static int delete_replace_conflict_row(mylite_stmt *stmt, sqlite3_stmt *delete_stmt,
+                                       sqlite3_int64 rowid,
+                                       struct mylite_insert_execution_state *state)
+{
+    int rc = SQLITE_OK;
+
+    sqlite3_reset(delete_stmt);
+    sqlite3_clear_bindings(delete_stmt);
+    rc = sqlite3_bind_int64(delete_stmt, 1, rowid);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    rc = sqlite3_step(delete_stmt);
+    if (rc != SQLITE_DONE) {
+        return set_sqlite_error(stmt->database);
+    }
+    ++state->duplicate_count;
+    return MYLITE_OK;
+}
+
+static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema_name,
+                                           const struct mylite_insert_table *table,
+                                           const size_t *column_indexes)
+{
+    struct mylite_insert_execution_state state = {
+        .next_auto_increment = table->next_auto_increment,
+    };
+    struct mylite_insert_set_row_state row_state = {0};
+    struct mylite_insert_bound_value *values = NULL;
+    sqlite3_stmt *insert = NULL;
+    sqlite3_stmt *delete_stmt = NULL;
+    char *insert_sql = NULL;
+    char *delete_sql = NULL;
+    struct mylite_statement_atomicity atomicity = {0};
+    int status = MYLITE_OK;
+    int rc = SQLITE_OK;
+
+    if (table->column_count == 0U) {
+        (void)set_error_message(stmt->database, "REPLACE target table has no columns");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    status = begin_statement_atomicity(stmt->database, &atomicity);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    values = calloc(table->column_count, sizeof(*values));
+    row_state.generate_auto_increment =
+        calloc(table->column_count, sizeof(*row_state.generate_auto_increment));
+    row_state.assigned_columns = calloc(table->column_count, sizeof(*row_state.assigned_columns));
+    if (values == NULL || row_state.generate_auto_increment == NULL ||
+        row_state.assigned_columns == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        status = MYLITE_NOMEM;
+        goto cleanup;
+    }
+
+    insert_sql = build_insert_physical_sql(stmt->database, table);
+    delete_sql = build_replace_delete_sql(stmt->database, table);
+    if (insert_sql == NULL || delete_sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        status = MYLITE_NOMEM;
+        goto cleanup;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, insert_sql, -1, SQLITE_PREPARE_PERSISTENT,
+                            &insert, NULL);
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_prepare_v3(stmt->database->sqlite, delete_sql, -1, SQLITE_PREPARE_PERSISTENT,
+                                &delete_stmt, NULL);
+    }
+    if (rc != SQLITE_OK) {
+        status = set_sqlite_error(stmt->database);
+        goto cleanup;
+    }
+
+    status = execute_replace_set_row(stmt, insert, delete_stmt, table, column_indexes, &state,
+                                     values, &row_state);
+
+cleanup:
+    sqlite3_free(insert_sql);
+    sqlite3_free(delete_sql);
+    sqlite3_finalize(delete_stmt);
+    sqlite3_finalize(insert);
+    insert_bound_values_deinit(values, table->column_count);
+    free(row_state.generate_auto_increment);
+    free(row_state.assigned_columns);
+
+    if (status != MYLITE_OK) {
+        return finish_failed_insert_values_transaction(stmt, schema_name, table, &state, &atomicity,
+                                                       status);
+    }
+    return finish_successful_replace_transaction(stmt, schema_name, table, &state, &atomicity);
+}
+
+static int execute_replace_set_row(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                   sqlite3_stmt *delete_stmt,
+                                   const struct mylite_insert_table *table,
+                                   const size_t *column_indexes,
+                                   struct mylite_insert_execution_state *state,
+                                   struct mylite_insert_bound_value *values,
+                                   struct mylite_insert_set_row_state *row_state)
+{
+    int status = initialize_insert_set_row_values(stmt, table, state, values, row_state);
+
+    if (status == MYLITE_OK) {
+        status = apply_insert_set_assignments(stmt, table, column_indexes, values, row_state);
+    }
+    if (status == MYLITE_OK) {
+        status = finish_insert_set_row_values(stmt, table, state, values, row_state);
+    }
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return execute_replace_candidate_row(stmt, insert, delete_stmt, table, state, values);
+}
+
+static char *build_replace_delete_sql(mylite_db *database, const struct mylite_insert_table *table)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_appendf(sql, "DELETE FROM \"%w\" WHERE rowid = ?", table->physical_name);
+    return sqlite3_str_finish(sql);
+}
+
+static int append_replace_delayed_warning(mylite_stmt *stmt)
+{
+    if (!stmt->insert_values.replace_delayed) {
+        return MYLITE_OK;
+    }
+    return append_database_warning(stmt->database, MYLITE_MYSQL_ER_WARN_LEGACY_SYNTAX_CONVERTED,
+                                   "REPLACE DELAYED is no longer supported. The statement was "
+                                   "converted to REPLACE.");
+}
+
+static int finish_successful_replace_transaction(mylite_stmt *stmt, const char *schema_name,
+                                                 const struct mylite_insert_table *table,
+                                                 const struct mylite_insert_execution_state *state,
+                                                 struct mylite_statement_atomicity *atomicity)
+{
+    int status = MYLITE_OK;
+
+    if (table->has_auto_increment) {
+        status = update_insert_auto_increment(stmt, schema_name,
+                                              insert_auto_increment_next_value(state));
+    }
+    if (status == MYLITE_OK) {
+        status = commit_statement_atomicity(stmt->database, atomicity);
+        if (status == MYLITE_OK) {
+            stmt->affected_rows =
+                (int64_t)state->accepted_row_count + (int64_t)state->duplicate_count;
+            if (state->generated_insert_id) {
+                stmt->database->last_insert_id = state->first_insert_id;
+            }
+            return MYLITE_OK;
+        }
+    }
+
+    rollback_statement_atomicity(stmt->database, atomicity);
+    return status;
+}
+
 static int initialize_insert_set_row_values(mylite_stmt *stmt,
                                             const struct mylite_insert_table *table,
                                             struct mylite_insert_execution_state *state,
@@ -23116,7 +23571,7 @@ static int reserve_insert_auto_increment(mylite_stmt *stmt,
 
 static uint64_t insert_statement_row_count(const mylite_stmt *stmt)
 {
-    if (stmt->kind == MYLITE_STMT_INSERT_SET) {
+    if (stmt->kind == MYLITE_STMT_INSERT_SET || stmt->kind == MYLITE_STMT_REPLACE_SET) {
         return 1U;
     }
     return (uint64_t)stmt->insert_values.row_count;
@@ -24253,6 +24708,8 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_INSERT_VALUES:
     case MYLITE_STMT_INSERT_SET:
+    case MYLITE_STMT_REPLACE_VALUES:
+    case MYLITE_STMT_REPLACE_SET:
     case MYLITE_STMT_UPDATE:
     case MYLITE_STMT_DELETE:
     case MYLITE_STMT_START_TRANSACTION:
@@ -24452,6 +24909,48 @@ static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement
     }
     if (status == MYLITE_OK) {
         status = copy_insert_duplicate_update_clause(duplicate_update, &stmt->insert_update);
+    }
+    return status;
+}
+
+static int copy_replace_values_statement(const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *second_child = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *rows = NULL;
+    int status = copy_insert_table_name(table_name, &stmt->insert_values);
+
+    stmt->insert_values.replace_low_priority = statement->replace_low_priority;
+    stmt->insert_values.replace_delayed = statement->replace_delayed;
+    if (second_child != NULL && second_child->kind == MYLITE_SQL_AST_INSERT_COLUMN_LIST) {
+        columns = second_child;
+        rows = child_at(statement, 2U);
+    } else {
+        rows = second_child;
+    }
+
+    if (status == MYLITE_OK) {
+        status = copy_insert_column_list(columns, &stmt->insert_values);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_insert_rows(rows, &stmt->insert_values);
+    }
+    return status;
+}
+
+static int copy_replace_set_statement(const struct mylite_sql_ast_node *statement,
+                                      mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *assignments = child_at(statement, 1U);
+    int status = copy_insert_table_name(table_name, &stmt->insert_values);
+
+    stmt->insert_values.replace_low_priority = statement->replace_low_priority;
+    stmt->insert_values.replace_delayed = statement->replace_delayed;
+    if (status == MYLITE_OK) {
+        status = copy_insert_set_assignments(assignments, &stmt->insert_set);
     }
     return status;
 }
@@ -26816,6 +27315,8 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
     case MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT:
     case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST:
@@ -29146,6 +29647,7 @@ static int set_unknown_table_error(mylite_db *database, const char *schema_name,
 static bool write_statement_kind(enum mylite_stmt_kind kind)
 {
     if (kind == MYLITE_STMT_INSERT_VALUES || kind == MYLITE_STMT_INSERT_SET ||
+        kind == MYLITE_STMT_REPLACE_VALUES || kind == MYLITE_STMT_REPLACE_SET ||
         kind == MYLITE_STMT_UPDATE || kind == MYLITE_STMT_DELETE) {
         return true;
     }

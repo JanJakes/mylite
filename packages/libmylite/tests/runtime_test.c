@@ -88,6 +88,7 @@ enum {
     mysql_warning_savepoint_does_not_exist = 1305,
     mysql_warning_no_default = 1364,
     mysql_warning_division_by_zero = 1365,
+    mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_field_in_order_not_select = 3065,
 };
 
@@ -161,6 +162,7 @@ static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
+static int test_replace_execution(void);
 static int test_insert_ignore_execution(void);
 static int test_insert_on_duplicate_key_update_execution(void);
 static int test_select_table_core_execution(void);
@@ -278,6 +280,7 @@ int main(void)
     failures += test_drop_table_base_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
+    failures += test_replace_execution();
     failures += test_insert_ignore_execution();
     failures += test_insert_on_duplicate_key_update_execution();
     failures += test_select_table_core_execution();
@@ -3759,6 +3762,337 @@ static int test_insert_set_execution(void)
     free(diag_physical);
     free(expr_fail_physical);
     free(duplicate_physical);
+    mylite_close(database);
+    remove_runtime_test_files();
+    return failures;
+}
+
+static int test_replace_execution(void)
+{
+    enum {
+        replace_forms_row_count = 5,
+        replace_default_b = 7,
+        replace_set_assigned_value = 5,
+        replace_set_default_b = 4,
+        replace_required_must = 5,
+        replace_ai_seed_id = 10,
+        replace_ai_generated_id = 11,
+        replace_ai_explicit_id = 20,
+        replace_ai_failed_first_id = 11,
+        replace_ai_failed_next_id = 13,
+    };
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    char *forms_physical = NULL;
+    char *conflict_physical = NULL;
+    char *order_physical = NULL;
+    char *set_physical = NULL;
+    char *required_physical = NULL;
+    char *atomic_physical = NULL;
+    char *null_unique_physical = NULL;
+    char *ai_physical = NULL;
+    char *ai_fail_physical = NULL;
+    int failures = 0;
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &database), MYLITE_OK, "open replace file");
+
+    failures += prepare_sql(database, "REPLACE INTO no_database VALUES (1)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "replace no database");
+    failures += expect_contains(mylite_error_message(database), "No database selected",
+                                "replace no database error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "REPLACE DELAYED INTO no_database VALUES (1)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "replace delayed no database");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "replace delayed error warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_legacy_syntax_converted,
+                   "replace delayed error warning code");
+    failures += expect_string(
+        mylite_warning_message(database, 0),
+        "REPLACE DELAYED is no longer supported. The statement was converted to REPLACE.",
+        "replace delayed error warning message");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_r33", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_r33", MYLITE_DONE);
+
+    failures +=
+        execute_sql(database, "CREATE TABLE replace_forms (a INT, b INT DEFAULT 7)", MYLITE_DONE);
+    forms_physical = expected_physical_table_name("mylite_r33", "replace_forms");
+    if (forms_physical == NULL) {
+        fprintf(stderr, "out of memory while building replace_forms physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql_expect_done_affected(
+        database, "REPLACE replace_forms VALUE (1, DEFAULT)", 1, "replace singular value affected");
+    failures += execute_sql_expect_done_affected(
+        database, "REPLACE INTO replace_forms VALUES ROW(2, 2), ROW(3, 3)", 2,
+        "replace row constructors affected");
+    failures += execute_sql_expect_done_affected(database, "REPLACE INTO replace_forms VALUES ()",
+                                                 1, "replace all-default affected");
+    failures +=
+        execute_sql_expect_done_affected(database, "REPLACE INTO replace_forms () VALUES ()", 1,
+                                         "replace empty column list affected");
+    if (forms_physical != NULL) {
+        failures +=
+            expect_sqlite_physical_int64(path, forms_physical, "COUNT(*)", "",
+                                         replace_forms_row_count, "replace forms row count");
+        failures += expect_sqlite_physical_int64(path, forms_physical, "b", "WHERE a = 1",
+                                                 replace_default_b, "replace DEFAULT value");
+        failures += expect_sqlite_physical_null(
+            path, forms_physical, "a", "WHERE a IS NULL AND b = 7", "replace all-default row");
+    }
+    failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
+    failures += prepare_sql(database, "REPLACE INTO replace_forms VALUES (9, 9)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "read only transaction rejects replace");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "read only replace affected rows");
+    failures += expect_contains(mylite_error_message(database),
+                                "Cannot execute statement in a READ ONLY transaction",
+                                "read only replace error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "COMMIT", MYLITE_DONE);
+    if (forms_physical != NULL) {
+        failures +=
+            expect_sqlite_physical_int64(path, forms_physical, "COUNT(*)", "WHERE a = 9 AND b = 9",
+                                         0, "read only rejected replace absent");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE replace_conflict ("
+                            "id INT PRIMARY KEY, u INT UNIQUE, n INT UNIQUE, v VARCHAR(20))",
+                            MYLITE_DONE);
+    conflict_physical = expected_physical_table_name("mylite_r33", "replace_conflict");
+    if (conflict_physical == NULL) {
+        fprintf(stderr, "out of memory while building replace_conflict physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database,
+                            "INSERT INTO replace_conflict VALUES "
+                            "(1, 10, 100, 'one'), (2, 20, 200, 'two')",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "REPLACE INTO replace_conflict VALUES (3, 10, 200, 'new')", 3,
+        "replace deletes multiple conflicts affected");
+    if (conflict_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, conflict_physical, "COUNT(*)", "", 1,
+                                                 "replace multiple conflict row count");
+        failures += expect_sqlite_physical_text(path, conflict_physical, "v", "WHERE id = 3", "new",
+                                                "replace multiple conflict value");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE replace_order ("
+                            "id INT PRIMARY KEY, u INT UNIQUE, v INT)",
+                            MYLITE_DONE);
+    order_physical = expected_physical_table_name("mylite_r33", "replace_order");
+    if (order_physical == NULL) {
+        fprintf(stderr, "out of memory while building replace_order physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql_expect_done_affected(
+        database, "REPLACE INTO replace_order VALUES (1, 10, 1), (2, 10, 2)", 3,
+        "replace same statement order affected");
+    if (order_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, order_physical, "COUNT(*)", "", 1,
+                                                 "replace same statement row count");
+        failures += expect_sqlite_physical_int64(path, order_physical, "id", "WHERE u = 10", 2,
+                                                 "replace later row survives");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE replace_set ("
+                            "id INT PRIMARY KEY, a INT DEFAULT 3, b INT DEFAULT 4, c INT, n INT)",
+                            MYLITE_DONE);
+    set_physical = expected_physical_table_name("mylite_r33", "replace_set");
+    if (set_physical == NULL) {
+        fprintf(stderr, "out of memory while building replace_set physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database, "INSERT INTO replace_set VALUES (1, 100, 100, 100, 100)",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "REPLACE INTO replace_set SET id = 1, b = a + 1, a = 5, c = b + 1, n = n + 1", 2,
+        "replace set assignment order affected");
+    if (set_physical != NULL) {
+        failures +=
+            expect_sqlite_physical_int64(path, set_physical, "a", "WHERE id = 1",
+                                         replace_set_assigned_value, "replace set assigned value");
+        failures += expect_sqlite_physical_int64(path, set_physical, "b", "WHERE id = 1",
+                                                 replace_set_default_b,
+                                                 "replace set reads candidate default");
+        failures += expect_sqlite_physical_int64(path, set_physical, "c", "WHERE id = 1",
+                                                 replace_set_assigned_value,
+                                                 "replace set reads earlier assignment");
+        failures += expect_sqlite_physical_null(path, set_physical, "n", "WHERE id = 1",
+                                                "replace set reads candidate nullable default");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE replace_required ("
+                            "id INT PRIMARY KEY, u INT UNIQUE, must INT NOT NULL)",
+                            MYLITE_DONE);
+    required_physical = expected_physical_table_name("mylite_r33", "replace_required");
+    if (required_physical == NULL) {
+        fprintf(stderr, "out of memory while building replace_required physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database, "INSERT INTO replace_required VALUES (1, 1, 5)", MYLITE_DONE);
+    failures += prepare_sql(database, "REPLACE INTO replace_required (id, u) VALUES (1, 1)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "replace required validation before delete");
+    failures += expect_contains(mylite_error_message(database), "doesn't have a default value",
+                                "replace required validation error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (required_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, required_physical, "COUNT(*)", "", 1,
+                                                 "replace required keeps row count");
+        failures +=
+            expect_sqlite_physical_int64(path, required_physical, "must", "WHERE id = 1",
+                                         replace_required_must, "replace required keeps old row");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE replace_atomic ("
+                            "id INT PRIMARY KEY, u INT UNIQUE, must INT NOT NULL)",
+                            MYLITE_DONE);
+    atomic_physical = expected_physical_table_name("mylite_r33", "replace_atomic");
+    if (atomic_physical == NULL) {
+        fprintf(stderr, "out of memory while building replace_atomic physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database, "INSERT INTO replace_atomic VALUES (1, 1, 1), (2, 2, 2)",
+                            MYLITE_DONE);
+    failures += prepare_sql(database, "REPLACE INTO replace_atomic VALUES (1, 1, 10), (2, 2, NULL)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "replace atomic failure");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "replace atomic affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (atomic_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, atomic_physical, "must", "WHERE id = 1", 1,
+                                                 "replace atomic rolls back first row");
+        failures += expect_sqlite_physical_int64(path, atomic_physical, "COUNT(*)", "", 2,
+                                                 "replace atomic row count");
+    }
+
+    failures +=
+        execute_sql(database, "CREATE TABLE replace_null_unique (id INT PRIMARY KEY, u INT UNIQUE)",
+                    MYLITE_DONE);
+    null_unique_physical = expected_physical_table_name("mylite_r33", "replace_null_unique");
+    if (null_unique_physical == NULL) {
+        fprintf(stderr, "out of memory while building replace_null_unique physical table name\n");
+        failures = 1;
+    }
+    failures +=
+        execute_sql(database, "INSERT INTO replace_null_unique VALUES (1, NULL)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "REPLACE INTO replace_null_unique VALUES (2, NULL)", 1,
+        "replace nullable unique null affected");
+    if (null_unique_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, null_unique_physical, "COUNT(*)", "", 2,
+                                                 "replace nullable unique null row count");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE replace_ai ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, u INT UNIQUE, v INT) "
+                            "AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    ai_physical = expected_physical_table_name("mylite_r33", "replace_ai");
+    if (ai_physical == NULL) {
+        fprintf(stderr, "out of memory while building replace_ai physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database, "INSERT INTO replace_ai (u, v) VALUES (1, 1)", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), replace_ai_seed_id,
+                             "replace auto seed last insert id");
+    failures +=
+        execute_sql_expect_done_affected(database, "REPLACE INTO replace_ai (u, v) VALUES (1, 2)",
+                                         2, "replace auto generated affected");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), replace_ai_generated_id,
+                             "replace auto generated last insert id");
+    failures += execute_sql_expect_done_affected(
+        database, "REPLACE INTO replace_ai VALUES (20, 1, 3)", 2, "replace explicit auto affected");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), replace_ai_generated_id,
+                             "replace explicit auto leaves last insert id");
+    if (ai_physical != NULL) {
+        failures +=
+            expect_sqlite_physical_int64(path, ai_physical, "id", "WHERE u = 1",
+                                         replace_ai_explicit_id, "replace explicit auto row id");
+    }
+
+    failures += execute_sql(database,
+                            "CREATE TABLE replace_ai_fail ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, u INT UNIQUE, "
+                            "v INT NOT NULL) AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    ai_fail_physical = expected_physical_table_name("mylite_r33", "replace_ai_fail");
+    if (ai_fail_physical == NULL) {
+        fprintf(stderr, "out of memory while building replace_ai_fail physical table name\n");
+        failures = 1;
+    }
+    failures +=
+        execute_sql(database, "INSERT INTO replace_ai_fail (u, v) VALUES (1, 1)", MYLITE_DONE);
+    failures += prepare_sql(
+        database, "REPLACE INTO replace_ai_fail (u, v) VALUES (2, 2), (2, NULL)", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "replace failed auto statement");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), replace_ai_failed_first_id,
+                             "replace failed auto last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        execute_sql(database, "INSERT INTO replace_ai_fail (u, v) VALUES (3, 3)", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), replace_ai_failed_next_id,
+                             "replace failed auto consumed sequence");
+    if (ai_fail_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, ai_fail_physical, "COUNT(*)", "", 2,
+                                                 "replace failed auto rollback row count");
+        failures += expect_sqlite_physical_int64(path, ai_fail_physical, "id", "WHERE u = 3",
+                                                 replace_ai_failed_next_id,
+                                                 "replace failed auto next row id");
+    }
+
+    failures +=
+        prepare_sql(database, "REPLACE DELAYED INTO replace_forms VALUES (8, 8)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "replace delayed warning step");
+    failures += expect_int(mylite_warning_count(database), 1, "replace delayed warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_legacy_syntax_converted, "replace delayed warning code");
+    failures += expect_string(
+        mylite_warning_message(database, 0),
+        "REPLACE DELAYED is no longer supported. The statement was converted to REPLACE.",
+        "replace delayed warning message");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "REPLACE LOW_PRIORITY INTO replace_forms VALUES (9, 9)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "replace low priority step");
+    failures += expect_int(mylite_warning_count(database), 0, "replace low priority warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    free(forms_physical);
+    free(conflict_physical);
+    free(order_physical);
+    free(set_physical);
+    free(required_physical);
+    free(atomic_physical);
+    free(null_unique_physical);
+    free(ai_physical);
+    free(ai_fail_physical);
     mylite_close(database);
     remove_runtime_test_files();
     return failures;

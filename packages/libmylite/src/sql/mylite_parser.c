@@ -1007,6 +1007,83 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_replace_values_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_replace_tokens tokens,
+    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *rows)
+{
+    struct mylite_sql_source_span span = span_from_token(&tokens.replace);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (tokens.modifier.low_priority.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.modifier.low_priority));
+    }
+    if (tokens.modifier.delayed.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.modifier.delayed));
+    }
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+    if (columns != NULL && columns->span.text != NULL) {
+        span = span_join(span, columns->span);
+    }
+    if (rows != NULL) {
+        span = span_join(span, rows->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    if (tokens.modifier.low_priority.text != NULL) {
+        mylite_sql_ast_node_set_replace_low_priority(statement);
+    }
+    if (tokens.modifier.delayed.text != NULL) {
+        mylite_sql_ast_node_set_replace_delayed(statement);
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, columns);
+    mylite_sql_ast_node_append_child(statement, rows);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_replace_set_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_replace_tokens tokens,
+    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *assignments)
+{
+    struct mylite_sql_source_span span = span_from_token(&tokens.replace);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (tokens.modifier.low_priority.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.modifier.low_priority));
+    }
+    if (tokens.modifier.delayed.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.modifier.delayed));
+    }
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+    if (assignments != NULL) {
+        span = span_join(span, assignments->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_REPLACE_SET_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    if (tokens.modifier.low_priority.text != NULL) {
+        mylite_sql_ast_node_set_replace_low_priority(statement);
+    }
+    if (tokens.modifier.delayed.text != NULL) {
+        mylite_sql_ast_node_set_replace_delayed(statement);
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, assignments);
+    return statement;
+}
+
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_insert_column_list(struct mylite_sql_parser_state *state,
                                           struct mylite_sql_ast_node *column)
@@ -4271,6 +4348,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"DEC", MYLITE_SQL_PARSE_DEC},
         {"DECIMAL", MYLITE_SQL_PARSE_DECIMALKW},
         {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
+        {"DELAYED", MYLITE_SQL_PARSE_DELAYED},
         {"DELETE", MYLITE_SQL_PARSE_DELETE},
         {"DESC", MYLITE_SQL_PARSE_DESC},
         {"DISTINCT", MYLITE_SQL_PARSE_DISTINCT},
@@ -4325,6 +4403,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"LOCALTIMESTAMP", MYLITE_SQL_PARSE_LOCALTIMESTAMP},
         {"LIKE", MYLITE_SQL_PARSE_LIKE},
         {"LIMIT", MYLITE_SQL_PARSE_LIMIT},
+        {"LOW_PRIORITY", MYLITE_SQL_PARSE_LOW_PRIORITY},
         {"MEDIUMINT", MYLITE_SQL_PARSE_MEDIUMINT},
         {"MEDIUMBLOB", MYLITE_SQL_PARSE_MEDIUMBLOB},
         {"MEDIUMTEXT", MYLITE_SQL_PARSE_MEDIUMTEXT},

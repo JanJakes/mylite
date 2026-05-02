@@ -116,6 +116,8 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT = 105,
     MYLITE_SQL_AST_INSERT_ROW_ALIAS = 106,
     MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST = 107,
+    MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT = 108,
+    MYLITE_SQL_AST_REPLACE_SET_STATEMENT = 109,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -405,6 +407,8 @@ struct mylite_sql_ast_node {
     bool drop_table_restrict;
     bool drop_table_cascade;
     bool insert_ignore;
+    bool replace_low_priority;
+    bool replace_delayed;
     bool select_duplicate_mode_explicit;
     bool select_duplicate_mode_conflict;
     bool transaction_consistent_snapshot;
@@ -467,6 +471,8 @@ void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *no
 void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_insert_ignore(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_replace_low_priority(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_replace_delayed(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_transaction_access_mode(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_access_mode access_mode);
 void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_ast_node *node);

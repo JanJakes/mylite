@@ -101,6 +101,16 @@ struct mylite_sql_parser_insert_tokens {
     struct mylite_sql_token ignore;
 };
 
+struct mylite_sql_parser_replace_modifier {
+    struct mylite_sql_token low_priority;
+    struct mylite_sql_token delayed;
+};
+
+struct mylite_sql_parser_replace_tokens {
+    struct mylite_sql_token replace;
+    struct mylite_sql_parser_replace_modifier modifier;
+};
+
 struct mylite_sql_parser_completion_tokens {
     struct mylite_sql_token start;
     struct mylite_sql_token end;
@@ -262,6 +272,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_insert_tokens tokens,
     struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *assignments,
     struct mylite_sql_ast_node *row_alias, struct mylite_sql_ast_node *duplicate_update);
+struct mylite_sql_ast_node *mylite_sql_parser_make_replace_values_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_replace_tokens tokens,
+    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *rows);
+struct mylite_sql_ast_node *mylite_sql_parser_make_replace_set_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_replace_tokens tokens,
+    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *assignments);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_insert_column_list(struct mylite_sql_parser_state *state,
                                           struct mylite_sql_ast_node *column);

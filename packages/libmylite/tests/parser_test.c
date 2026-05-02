@@ -19,6 +19,7 @@ static int test_create_table_base_execution_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
+static int test_replace_syntax(void);
 static int test_insert_on_duplicate_key_update_syntax(void);
 static int test_update_single_table_syntax(void);
 static int test_delete_single_table_syntax(void);
@@ -138,6 +139,7 @@ int main(void)
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
+    failures += test_replace_syntax();
     failures += test_insert_on_duplicate_key_update_syntax();
     failures += test_update_single_table_syntax();
     failures += test_delete_single_table_syntax();
@@ -2374,6 +2376,123 @@ static int test_insert_set_syntax(void)
 
     failures += parse_sql("INSERT INTO t SET a = 1 ON DUPLICATE KEY UPDATE a = 2",
                           MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_replace_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *rows = NULL;
+    const struct mylite_sql_ast_node *assignments = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("REPLACE app.t VALUES (1, 'a'), (DEFAULT, NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT, "replace values statement");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "replace qualified table name");
+    failures += expect_child_count(statement, 2U, "replace without column list children");
+    failures += expect_node(rows, MYLITE_SQL_AST_INSERT_ROW_LIST, "replace row list");
+    failures += expect_child_count(rows, 2U, "replace row list count");
+    failures += expect_node(child_at(child_at(rows, 1U), 0U), MYLITE_SQL_AST_DEFAULT,
+                            "replace DEFAULT value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("REPLACE LOW_PRIORITY INTO t (a, `B`) VALUE (DEFAULT, CURRENT_TIMESTAMP);",
+                  MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    rows = child_at(statement, 2U);
+    failures += expect_bool(statement->replace_low_priority, true, "replace low priority flag");
+    failures += expect_bool(statement->replace_delayed, false, "replace low priority no delayed");
+    failures += expect_node(columns, MYLITE_SQL_AST_INSERT_COLUMN_LIST, "replace column list");
+    failures += expect_child_count(columns, 2U, "replace column count");
+    failures += expect_current_timestamp(child_at(child_at(rows, 0U), 1U), false, 0U,
+                                         "replace VALUE current timestamp");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE DELAYED INTO t VALUES ROW(1, 2), ROW(3, 4);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 1U);
+    failures += expect_bool(statement->replace_delayed, true, "replace delayed flag");
+    failures += expect_child_count(rows, 2U, "replace ROW constructor count");
+    failures += expect_child_count(child_at(rows, 0U), 2U, "replace ROW first values");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t () VALUES ();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    rows = child_at(statement, 2U);
+    failures += expect_child_count(columns, 0U, "replace empty column count");
+    failures += expect_child_count(child_at(rows, 0U), 0U, "replace empty row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t VALUES ();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 1U);
+    failures += expect_child_count(child_at(rows, 0U), 0U, "replace all-default row");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE app.t SET a = 1, t.b = DEFAULT, app.t.c = a + 1;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignments = child_at(statement, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_REPLACE_SET_STATEMENT, "replace set statement");
+    failures += expect_node(assignments, MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST,
+                            "replace set assignments");
+    failures += expect_child_count(assignments, 3U, "replace set assignment count");
+    failures += expect_node(child_at(child_at(assignments, 1U), 1U), MYLITE_SQL_AST_DEFAULT,
+                            "replace set DEFAULT");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("REPLACE IGNORE INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE HIGH_PRIORITY INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE LOW_PRIORITY DELAYED INTO t VALUES (1);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE DELAYED LOW_PRIORITY INTO t VALUES (1);",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t VALUES (1,);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t SET a = 1,", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t PARTITION (p0) VALUES (1)", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("REPLACE INTO t VALUES (1) AS new_row", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t VALUES (1) ON DUPLICATE KEY UPDATE a = 1",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t SELECT 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t TABLE src", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

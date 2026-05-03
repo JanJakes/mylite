@@ -258,6 +258,7 @@ static int test_exp_scalar_function_execution(mylite_db *database);
 static int test_logarithm_scalar_function_execution(mylite_db *database);
 static int test_sqrt_scalar_function_execution(mylite_db *database);
 static int test_trigonometric_scalar_function_execution(mylite_db *database);
+static int test_cot_scalar_function_execution(mylite_db *database);
 static int test_angle_conversion_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
@@ -4041,6 +4042,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += test_trigonometric_scalar_function_execution(database);
 
+    failures += test_cot_scalar_function_execution(database);
+
     failures += test_angle_conversion_scalar_function_execution(database);
 
     failures += test_uuid_scalar_functions(database);
@@ -7112,6 +7115,344 @@ static int test_trigonometric_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "TAN zero arity unsupported");
     failures += prepare_sql(database, "SELECT TAN(1,2)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "TAN two arity unsupported");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_cot_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata cot_metadata[] = {
+        {"cot_one", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"cot_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"cot_warn", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata cot_table_metadata[] = {
+        {"cot_x", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"cot_n", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"cot_s", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const cot_columns[] = {
+        "cot_one", "cot_twelve", "cot_neg_one", "cot_null",     "cot_half_pi",  "cot_quarter",
+        "cot_pi",  "cot_neg_pi", "cot_huge",    "cot_tiny_pos", "cot_tiny_neg",
+    };
+    static const char *const cot_values[] = {
+        "0.6420926159343308",
+        "-1.5726734063976895",
+        "-0.6420926159343308",
+        NULL,
+        "6.123233995736766e-17",
+        "1.0000000000000002",
+        "-8165619676597685",
+        "8165619676597685",
+        "-1.9658487799516648",
+        "1e308",
+        "-1e308",
+    };
+    static const char *const warning_columns[] = {
+        "cot_trail", "cot_spaced", "cot_exp", "cot_pos_over", "cot_neg_over",
+    };
+    static const char *const warning_values[] = {
+        "0.6420926159343308", "-7.489155308722675", "-1.702956919426469",
+        "-201.5309957290032", "201.5309957290032",
+    };
+    static const char *const cot_projection_columns[] = {"id", "c"};
+    static const char *const cot_projection_values[] = {
+        "4", "-8165619676597685",  "3", "-0.6420926159343308",
+        "2", "0.6420926159343308", "5", "1e308",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const selected_id_values[] = {"2", "5"};
+    static const char *const updated_id_values[] = {"2", "3"};
+    static const char *const all_id_values[] = {"1", "2", "3", "4", "5"};
+    static const char *const remaining_values[] = {"1", "2", "3", "5"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_select_rows(database,
+                                   "SELECT COT(1) AS cot_one, "
+                                   "COT(12) AS cot_twelve, "
+                                   "COT(-1) AS cot_neg_one, "
+                                   "COT(NULL) AS cot_null, "
+                                   "COT(PI()/2) AS cot_half_pi, "
+                                   "COT(PI()/4) AS cot_quarter, "
+                                   "COT(PI()) AS cot_pi, "
+                                   "COT(-PI()) AS cot_neg_pi, "
+                                   "COT(1e308) AS cot_huge, "
+                                   "COT(1e-308) AS cot_tiny_pos, "
+                                   "COT(-1e-308) AS cot_tiny_neg",
+                                   cot_columns, (int)(sizeof(cot_columns) / sizeof(cot_columns[0])),
+                                   cot_values, 1, "COT scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "COT scalar warning count");
+
+    failures += expect_select_rows(database,
+                                   "SELECT COT('1x') AS cot_trail, "
+                                   "COT('  2.5e1 ') AS cot_spaced, "
+                                   "COT('1e2') AS cot_exp, "
+                                   "COT('1e309') AS cot_pos_over, "
+                                   "COT('-1e309') AS cot_neg_over",
+                                   warning_columns,
+                                   (int)(sizeof(warning_columns) / sizeof(warning_columns[0])),
+                                   warning_values, 1, "COT string warning values");
+    failures += expect_int(mylite_warning_count(database), 3, "COT string warning count");
+    for (int index = 0; index < 3; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "COT string warning code");
+    }
+    failures += expect_contains(mylite_warning_message(database, 0), "1x", "COT trailing warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 1), "1e309", "COT overflow warning");
+    failures += expect_contains(mylite_warning_message(database, 2), "-1e309",
+                                "COT negative overflow warning");
+
+    failures +=
+        expect_prepare_error(database, "SELECT COT(0)", MYLITE_EXEC_ERROR,
+                             "DOUBLE value is out of range in 'cot()'", "COT zero range error");
+    failures += expect_int(mylite_warning_count(database), 1, "COT zero warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "COT zero warning code");
+    failures += expect_prepare_error(database, "SELECT COT(-0.0)", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT negative zero range error");
+    failures += expect_int(mylite_warning_count(database), 1, "COT negative zero warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "COT negative zero warning code");
+    failures += expect_prepare_error(database, "SELECT COT(5e-324)", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT subnormal range error");
+    failures += expect_int(mylite_warning_count(database), 1, "COT subnormal warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "COT subnormal warning code");
+    failures += expect_prepare_error(database, "SELECT COT(-5e-324)", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT negative subnormal range error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "COT negative subnormal warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "COT negative subnormal warning code");
+    failures += expect_prepare_error(database, "SELECT COT(1e-9999)", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT underflow range error");
+    failures += expect_int(mylite_warning_count(database), 1, "COT underflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "COT underflow warning code");
+    failures += expect_prepare_error(database, "SELECT COT('foo')", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT nonnumeric text range error");
+    failures += expect_int(mylite_warning_count(database), 2, "COT nonnumeric warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "COT nonnumeric truncation code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "COT nonnumeric range code");
+    failures += expect_prepare_error(database, "SELECT COT('')", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT empty text range error");
+    failures += expect_int(mylite_warning_count(database), 1, "COT empty warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "COT empty range code");
+    failures += expect_prepare_error(database, "SELECT COT(' ')", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT space text range error");
+    failures += expect_int(mylite_warning_count(database), 1, "COT space warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "COT space range code");
+    failures +=
+        expect_prepare_error(database, "SELECT COT('.')", MYLITE_EXEC_ERROR,
+                             "DOUBLE value is out of range in 'cot()'", "COT dot text range error");
+    failures += expect_int(mylite_warning_count(database), 2, "COT dot warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "COT dot truncation code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "COT dot range code");
+    failures +=
+        expect_prepare_error(database, "SELECT COT('0x10')", MYLITE_EXEC_ERROR,
+                             "DOUBLE value is out of range in 'cot()'", "COT hex text range error");
+    failures += expect_int(mylite_warning_count(database), 2, "COT hex warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "COT hex truncation code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "COT hex range code");
+    failures += expect_prepare_error(database, "SELECT COT('1e-9999')", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT text underflow range error");
+    failures += expect_int(mylite_warning_count(database), 1, "COT text underflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "COT text underflow range code");
+    failures += expect_prepare_error(database, "SELECT COT('-1e-9999')", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT negative text underflow range error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "COT negative text underflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "COT negative text underflow range code");
+    failures += expect_prepare_error(database, "SELECT COT('+')", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT plus text range error");
+    failures += expect_int(mylite_warning_count(database), 2, "COT plus warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "COT plus truncation code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "COT plus range code");
+    failures += expect_prepare_error(database, "SELECT COT('-')", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT minus text range error");
+    failures += expect_int(mylite_warning_count(database), 2, "COT minus warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "COT minus truncation code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "COT minus range code");
+    failures +=
+        expect_prepare_error(database, "SELECT COT('nan')", MYLITE_EXEC_ERROR,
+                             "DOUBLE value is out of range in 'cot()'", "COT nan text range error");
+    failures += expect_int(mylite_warning_count(database), 2, "COT nan warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "COT nan truncation code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "COT nan range code");
+    failures +=
+        expect_prepare_error(database, "SELECT COT('inf')", MYLITE_EXEC_ERROR,
+                             "DOUBLE value is out of range in 'cot()'", "COT inf text range error");
+    failures += expect_int(mylite_warning_count(database), 2, "COT inf warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "COT inf truncation code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "COT inf range code");
+    failures += expect_prepare_error(database, "SELECT COT('-inf')", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'cot()'",
+                                     "COT negative inf text range error");
+    failures += expect_int(mylite_warning_count(database), 2, "COT negative inf warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "COT negative inf truncation code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "COT negative inf range code");
+
+    failures += prepare_sql(database,
+                            "SELECT COT(1) AS cot_one, "
+                            "COT(NULL) AS cot_null, "
+                            "COT('1x') AS cot_warn",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, cot_metadata,
+                                       (int)(sizeof(cot_metadata) / sizeof(cot_metadata[0])),
+                                       "COT scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "COT metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "COT metadata done");
+    failures += expect_int(mylite_warning_count(database), 1, "COT metadata warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE cot_sites ("
+                            "id INT PRIMARY KEY, "
+                            "x DOUBLE NOT NULL, "
+                            "n DOUBLE NULL, "
+                            "s VARCHAR(32) NOT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO cot_sites VALUES "
+                            "(1,0,NULL,'0'),"
+                            "(2,1,1,'1x'),"
+                            "(3,-1,NULL,'foo'),"
+                            "(4,3.141592653589793,0,'bad'),"
+                            "(5,1e-308,NULL,'')",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT COT(x) AS cot_x, COT(n) AS cot_n, COT(s) AS cot_s "
+                            "FROM cot_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, cot_table_metadata, (int)(sizeof(cot_table_metadata) / sizeof(cot_table_metadata[0])),
+        "COT table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "COT table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, COT(x) AS c FROM cot_sites "
+                                   "WHERE id > 1 ORDER BY COT(x), id",
+                                   cot_projection_columns, 2, cot_projection_values, 4,
+                                   "COT table projection order");
+    failures += expect_int(mylite_warning_count(database), 0, "COT table projection warnings");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM cot_sites "
+                                   "WHERE id > 1 AND COT(x) > 0 ORDER BY id",
+                                   id_column, 1, selected_id_values, 2, "COT table WHERE");
+    failures += expect_int(mylite_warning_count(database), 0, "COT table WHERE warnings");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE cot_sites SET x = COT(x) WHERE id IN (2,3)", 2, "COT update assignment");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM cot_sites "
+                                   "WHERE (id = 2 AND x > 0.64 AND x < 0.65) "
+                                   "OR (id = 3 AND x < -0.64 AND x > -0.65) "
+                                   "ORDER BY id",
+                                   id_column, 1, updated_id_values, 2, "COT updated values");
+    failures += expect_int(mylite_warning_count(database), 0, "COT update warning count");
+
+    failures +=
+        prepare_sql(database, "UPDATE cot_sites SET x = COT('1x') WHERE id = 4", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "COT update warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "COT update warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "COT update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM cot_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 5, "COT update warning rollback rows");
+
+    failures +=
+        prepare_sql(database, "UPDATE cot_sites SET x = COT(0) WHERE id = 4", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "DOUBLE value is out of range in 'cot()'",
+                                  "COT update range error");
+    failures += expect_int(mylite_warning_count(database), 1, "COT update range warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "COT update range warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM cot_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 5, "COT update range rollback rows");
+
+    failures += prepare_sql(database, "DELETE FROM cot_sites WHERE id = 2 AND COT(s) > 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "COT delete warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "COT delete warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "COT delete warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM cot_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 5, "COT delete warning rollback rows");
+
+    failures += prepare_sql(database, "DELETE FROM cot_sites WHERE id = 1 AND COT(x) > 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "DOUBLE value is out of range in 'cot()'",
+                                  "COT delete range error");
+    failures += expect_int(mylite_warning_count(database), 1, "COT delete range warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "COT delete range warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM cot_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 5, "COT delete range rollback rows");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM cot_sites WHERE id = 4 AND COT(x) < 0", 1, "COT delete predicate");
+    failures += expect_select_rows(database, "SELECT id FROM cot_sites ORDER BY id", id_column, 1,
+                                   remaining_values, 4, "COT delete remaining rows");
+
+    failures += prepare_sql(database, "SELECT COT()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "COT zero arity unsupported");
+    failures += prepare_sql(database, "SELECT COT(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "COT two arity unsupported");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

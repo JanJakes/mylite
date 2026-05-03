@@ -51,7 +51,7 @@ In scope for the initial implementation:
   - `LN`, `LOG`, `LOG2`, `LOG10`
   - `POW`, `POWER`
   - `SQRT`
-  - `SIN`, `COS`, `TAN`
+  - `SIN`, `COS`, `TAN`, `COT`
   - `DEGREES`, `RADIANS`
   - `MOD`
   - `CONV`
@@ -140,7 +140,7 @@ by common scalar expressions:
   `docs/specs/uuid-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
   `ROUND`, `EXP`, `LN`, `LOG`, `LOG2`, `LOG10`, `POW`, `POWER`, `SQRT`,
-  `SIN`, `COS`, `TAN`, `DEGREES`, `RADIANS`,
+  `SIN`, `COS`, `TAN`, `COT`, `DEGREES`, `RADIANS`,
   `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and
   `PI`; see
   `docs/specs/round-function/specs.md` and
@@ -149,6 +149,7 @@ by common scalar expressions:
   `docs/specs/power-functions/specs.md` and
   `docs/specs/sqrt-function/specs.md` and
   `docs/specs/trigonometric-basic-functions/specs.md` and
+  `docs/specs/cot-function/specs.md` and
   `docs/specs/angle-conversion-functions/specs.md` and
   `docs/specs/numeric-base-conversion-functions/specs.md` and
   `docs/specs/bit-utility-functions/specs.md` and
@@ -187,10 +188,11 @@ UUID text validation, UUID string-to-binary and binary-to-string conversion,
 optional UUID time-part swap flags,
 `MOD(..., 0)` warnings, `EXP()` overflow behavior, logarithm invalid-domain
 warnings, `SQRT()` domain behavior, `SIN()` / `COS()` / `TAN()` radian
-semantics and text conversion, `DEGREES()` / `RADIANS()` conversion semantics,
-`DEGREES()` overflow behavior, table projection, filters, ordering, update
-assignment expressions, delete predicates, unsupported functions, unsupported
-arity, and selected result metadata.
+semantics and text conversion, `COT()` radian semantics and range errors,
+`DEGREES()` / `RADIANS()` conversion semantics, `DEGREES()` overflow behavior,
+table projection, filters, ordering, update assignment expressions, delete
+predicates, unsupported functions, unsupported arity, and selected result
+metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
 `INSERT ... SET` function expressions, temporal functions, information
@@ -353,6 +355,9 @@ Representative runtime results:
 | `COS(1)` | `0.5403023058681398` | none |
 | `TAN(1)` | `1.5574077246549023` | none |
 | `TAN('1x')` | `1.5574077246549023` | warning 1292, truncated incorrect double value |
+| `COT(1)` | `0.6420926159343306` | none |
+| `COT(0)` | error | 1690 / `22003`, out of range |
+| `COT('1x')` | `0.6420926159343306` | warning 1292, truncated incorrect double value |
 | `DEGREES(PI())` | `180` | none |
 | `RADIANS(180)` | `3.141592653589793` | none |
 | `DEGREES(1e308)` | error | 1690 / `22003`, out of range |
@@ -516,6 +521,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `SIN(1) AS sin_value` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `COS(NULL) AS cos_null` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `TAN('1x') AS tan_warn` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
+| `COT(1) AS cot_value` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `DEGREES(1) AS deg_value` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
 | `RADIANS(NULL) AS rad_null` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `IF(1,'yes','no') AS if_value` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
@@ -778,6 +784,7 @@ SELECT
   SIN(1),
   COS(1),
   TAN(1),
+  COT(1),
   DEGREES(PI()),
   RADIANS(180),
   MOD(7, 3);
@@ -787,7 +794,8 @@ Expected row:
 
 ```text
 12.5, -1, 3, 2, 123.46, -2, -1, 1024, 3, NULL,
-0.8414709848078965, 0.5403023058681398, 1.5574077246549023, 1
+0.8414709848078965, 0.5403023058681398, 1.5574077246549023,
+0.6420926159343306, 180, 3.141592653589793, 1
 ```
 
 `ROUND(25E-1)` is approximate-input behavior. Keep a focused MySQL runtime

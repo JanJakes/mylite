@@ -383,11 +383,17 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_SIN = 76,
     MYLITE_SCALAR_FUNCTION_COS = 77,
     MYLITE_SCALAR_FUNCTION_TAN = 78,
-    MYLITE_SCALAR_FUNCTION_DEGREES = 79,
-    MYLITE_SCALAR_FUNCTION_RADIANS = 80,
+    MYLITE_SCALAR_FUNCTION_COT = 79,
+    MYLITE_SCALAR_FUNCTION_DEGREES = 80,
+    MYLITE_SCALAR_FUNCTION_RADIANS = 81,
 };
 
 struct angle_conversion_input {
+    enum mylite_scalar_function_id function_id;
+    double input;
+};
+
+struct trigonometric_input {
     enum mylite_scalar_function_id function_id;
     double input;
 };
@@ -883,6 +889,11 @@ static int eval_trigonometric_function(enum mylite_scalar_function_id function_i
                                        const struct mylite_expression_eval_context *context,
                                        struct mylite_expression_warnings *warnings,
                                        struct mylite_expression_value *out_value);
+static int trigonometric_function_result(struct trigonometric_input input,
+                                         struct mylite_expression_warnings *warnings,
+                                         double *out_result);
+static bool trigonometric_result_is_out_of_range(enum mylite_scalar_function_id function_id,
+                                                 double result);
 static int eval_angle_conversion_function(enum mylite_scalar_function_id function_id,
                                           const struct mylite_sql_ast_node *arguments,
                                           const struct mylite_expression_eval_context *context,
@@ -1105,6 +1116,7 @@ static int append_cast_truncation_warning(struct mylite_expression_warnings *war
                                           const char *type_name, const char *text);
 static int append_power_out_of_range_error(struct mylite_expression_warnings *warnings);
 static int append_exp_out_of_range_error(struct mylite_expression_warnings *warnings);
+static int append_cot_out_of_range_error(struct mylite_expression_warnings *warnings);
 static int append_angle_conversion_out_of_range_error(struct mylite_expression_warnings *warnings,
                                                       const char *function_name);
 static int append_invalid_logarithm_warning(struct mylite_expression_warnings *warnings);
@@ -1426,6 +1438,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_SIN:
     case MYLITE_SCALAR_FUNCTION_COS:
     case MYLITE_SCALAR_FUNCTION_TAN:
+    case MYLITE_SCALAR_FUNCTION_COT:
     case MYLITE_SCALAR_FUNCTION_DEGREES:
     case MYLITE_SCALAR_FUNCTION_RADIANS:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
@@ -2271,6 +2284,7 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_SIN:
     case MYLITE_SCALAR_FUNCTION_COS:
     case MYLITE_SCALAR_FUNCTION_TAN:
+    case MYLITE_SCALAR_FUNCTION_COT:
         return eval_trigonometric_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DEGREES:
     case MYLITE_SCALAR_FUNCTION_RADIANS:
@@ -5291,6 +5305,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_SIN:
     case MYLITE_SCALAR_FUNCTION_COS:
     case MYLITE_SCALAR_FUNCTION_TAN:
+    case MYLITE_SCALAR_FUNCTION_COT:
     case MYLITE_SCALAR_FUNCTION_DEGREES:
     case MYLITE_SCALAR_FUNCTION_RADIANS:
     case MYLITE_SCALAR_FUNCTION_MOD:
@@ -7025,14 +7040,10 @@ static int eval_trigonometric_function(enum mylite_scalar_function_id function_i
         }
     }
 
-    if (function_id == MYLITE_SCALAR_FUNCTION_SIN) {
-        result = sin(number.real_value);
-    } else if (function_id == MYLITE_SCALAR_FUNCTION_COS) {
-        result = cos(number.real_value);
-    } else if (function_id == MYLITE_SCALAR_FUNCTION_TAN) {
-        result = tan(number.real_value);
-    } else {
-        status = -1;
+    status = trigonometric_function_result(
+        (struct trigonometric_input){.function_id = function_id, .input = number.real_value},
+        warnings, &result);
+    if (status != 0) {
         goto cleanup;
     }
     if (result == 0.0) {
@@ -7048,6 +7059,126 @@ static int eval_trigonometric_function(enum mylite_scalar_function_id function_i
 cleanup:
     mylite_expression_value_deinit(&argument);
     return status;
+}
+
+static int trigonometric_function_result(struct trigonometric_input input,
+                                         struct mylite_expression_warnings *warnings,
+                                         double *out_result)
+{
+    double result = 0.0;
+    int status = 0;
+
+    if (out_result == NULL) {
+        return -1;
+    }
+
+    switch (input.function_id) {
+    case MYLITE_SCALAR_FUNCTION_SIN:
+        result = sin(input.input);
+        break;
+    case MYLITE_SCALAR_FUNCTION_COS:
+        result = cos(input.input);
+        break;
+    case MYLITE_SCALAR_FUNCTION_TAN:
+        result = tan(input.input);
+        break;
+    case MYLITE_SCALAR_FUNCTION_COT:
+        result = 1.0 / tan(input.input);
+        break;
+    case MYLITE_SCALAR_FUNCTION_UNKNOWN:
+    case MYLITE_SCALAR_FUNCTION_CONCAT:
+    case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
+    case MYLITE_SCALAR_FUNCTION_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_ASCII:
+    case MYLITE_SCALAR_FUNCTION_ORD:
+    case MYLITE_SCALAR_FUNCTION_LOWER:
+    case MYLITE_SCALAR_FUNCTION_UPPER:
+    case MYLITE_SCALAR_FUNCTION_LEFT:
+    case MYLITE_SCALAR_FUNCTION_RIGHT:
+    case MYLITE_SCALAR_FUNCTION_SUBSTRING:
+    case MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX:
+    case MYLITE_SCALAR_FUNCTION_TRIM:
+    case MYLITE_SCALAR_FUNCTION_LTRIM:
+    case MYLITE_SCALAR_FUNCTION_RTRIM:
+    case MYLITE_SCALAR_FUNCTION_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_INSERT:
+    case MYLITE_SCALAR_FUNCTION_REPEAT:
+    case MYLITE_SCALAR_FUNCTION_SPACE:
+    case MYLITE_SCALAR_FUNCTION_REVERSE:
+    case MYLITE_SCALAR_FUNCTION_LPAD:
+    case MYLITE_SCALAR_FUNCTION_RPAD:
+    case MYLITE_SCALAR_FUNCTION_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_ELT:
+    case MYLITE_SCALAR_FUNCTION_FIELD:
+    case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
+    case MYLITE_SCALAR_FUNCTION_MAKE_SET:
+    case MYLITE_SCALAR_FUNCTION_CHAR:
+    case MYLITE_SCALAR_FUNCTION_CHARSET:
+    case MYLITE_SCALAR_FUNCTION_COLLATION:
+    case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
+    case MYLITE_SCALAR_FUNCTION_HEX:
+    case MYLITE_SCALAR_FUNCTION_UNHEX:
+    case MYLITE_SCALAR_FUNCTION_TO_BASE64:
+    case MYLITE_SCALAR_FUNCTION_FROM_BASE64:
+    case MYLITE_SCALAR_FUNCTION_BIN:
+    case MYLITE_SCALAR_FUNCTION_OCT:
+    case MYLITE_SCALAR_FUNCTION_CONV:
+    case MYLITE_SCALAR_FUNCTION_LOCATE:
+    case MYLITE_SCALAR_FUNCTION_INSTR:
+    case MYLITE_SCALAR_FUNCTION_ABS:
+    case MYLITE_SCALAR_FUNCTION_SIGN:
+    case MYLITE_SCALAR_FUNCTION_FLOOR:
+    case MYLITE_SCALAR_FUNCTION_CEIL:
+    case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_EXP:
+    case MYLITE_SCALAR_FUNCTION_LN:
+    case MYLITE_SCALAR_FUNCTION_LOG:
+    case MYLITE_SCALAR_FUNCTION_LOG2:
+    case MYLITE_SCALAR_FUNCTION_LOG10:
+    case MYLITE_SCALAR_FUNCTION_POWER:
+    case MYLITE_SCALAR_FUNCTION_SQRT:
+    case MYLITE_SCALAR_FUNCTION_DEGREES:
+    case MYLITE_SCALAR_FUNCTION_RADIANS:
+    case MYLITE_SCALAR_FUNCTION_MOD:
+    case MYLITE_SCALAR_FUNCTION_PI:
+    case MYLITE_SCALAR_FUNCTION_IF:
+    case MYLITE_SCALAR_FUNCTION_IFNULL:
+    case MYLITE_SCALAR_FUNCTION_NULLIF:
+    case MYLITE_SCALAR_FUNCTION_COALESCE:
+    case MYLITE_SCALAR_FUNCTION_ISNULL:
+    case MYLITE_SCALAR_FUNCTION_DATABASE:
+    case MYLITE_SCALAR_FUNCTION_SCHEMA:
+    case MYLITE_SCALAR_FUNCTION_VERSION:
+    case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
+    case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
+    case MYLITE_SCALAR_FUNCTION_USER:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
+    case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
+    case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_CRC32:
+    case MYLITE_SCALAR_FUNCTION_INET_ATON:
+    case MYLITE_SCALAR_FUNCTION_INET_NTOA:
+    case MYLITE_SCALAR_FUNCTION_IS_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_TO_BIN:
+    case MYLITE_SCALAR_FUNCTION_BIN_TO_UUID:
+        return -1;
+    }
+
+    if (trigonometric_result_is_out_of_range(input.function_id, result)) {
+        status = append_cot_out_of_range_error(warnings);
+        return status == 0 ? MYLITE_EXEC_ERROR : status;
+    }
+
+    *out_result = result;
+    return 0;
+}
+
+static bool trigonometric_result_is_out_of_range(enum mylite_scalar_function_id function_id,
+                                                 double result)
+{
+    return function_id == MYLITE_SCALAR_FUNCTION_COT && (isnan(result) || isinf(result));
 }
 
 static int eval_angle_conversion_function(enum mylite_scalar_function_id function_id,
@@ -7190,6 +7321,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_SIN:
     case MYLITE_SCALAR_FUNCTION_COS:
     case MYLITE_SCALAR_FUNCTION_TAN:
+    case MYLITE_SCALAR_FUNCTION_COT:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:
@@ -9632,6 +9764,13 @@ static int append_exp_out_of_range_error(struct mylite_expression_warnings *warn
         "DOUBLE value is out of range in 'exp()'");
 }
 
+static int append_cot_out_of_range_error(struct mylite_expression_warnings *warnings)
+{
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_OUT_OF_RANGE,
+        "DOUBLE value is out of range in 'cot()'");
+}
+
 static int append_angle_conversion_out_of_range_error(struct mylite_expression_warnings *warnings,
                                                       const char *function_name)
 {
@@ -9877,6 +10016,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"SIN", MYLITE_SCALAR_FUNCTION_SIN},
         {"COS", MYLITE_SCALAR_FUNCTION_COS},
         {"TAN", MYLITE_SCALAR_FUNCTION_TAN},
+        {"COT", MYLITE_SCALAR_FUNCTION_COT},
         {"DEGREES", MYLITE_SCALAR_FUNCTION_DEGREES},
         {"RADIANS", MYLITE_SCALAR_FUNCTION_RADIANS},
         {"MOD", MYLITE_SCALAR_FUNCTION_MOD},
@@ -9990,6 +10130,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_SIN:
     case MYLITE_SCALAR_FUNCTION_COS:
     case MYLITE_SCALAR_FUNCTION_TAN:
+    case MYLITE_SCALAR_FUNCTION_COT:
     case MYLITE_SCALAR_FUNCTION_DEGREES:
     case MYLITE_SCALAR_FUNCTION_RADIANS:
     case MYLITE_SCALAR_FUNCTION_MOD:

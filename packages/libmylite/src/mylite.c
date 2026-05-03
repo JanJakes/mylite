@@ -12890,7 +12890,7 @@ static bool function_name_is_sqrt(const struct mylite_sql_ast_node *name)
 
 static bool function_name_is_trigonometric(const struct mylite_sql_ast_node *name)
 {
-    static const char *const names[] = {"SIN", "COS", "TAN"};
+    static const char *const names[] = {"SIN", "COS", "TAN", "COT"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

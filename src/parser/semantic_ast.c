@@ -16,6 +16,7 @@ struct MyliteSemanticAstNode {
   MyliteStatementKind statement_kind;
   MyliteStatementTargetKind target_kind;
   MyliteStatementTargetRole target_role;
+  MyliteSemanticDescriptorKind descriptor_kind;
   MyliteExpressionKind expression_kind;
   MyliteExpressionLiteralKind expression_literal_kind;
   MyliteExpressionOperatorKind expression_operator_kind;
@@ -46,6 +47,8 @@ static int mylite_semantic_ast_set_node_child_count(
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_statement(
     MyliteSemanticAst *ast, const MyliteAst *parser_ast,
     size_t statement_index);
+static size_t mylite_semantic_ast_count_statement_descriptors(
+    const MyliteAst *parser_ast, size_t statement_index);
 static size_t mylite_semantic_ast_count_statement_expression_roots(
     const MyliteAst *parser_ast, size_t statement_index);
 static int mylite_semantic_ast_fill_statement_children(
@@ -54,9 +57,22 @@ static int mylite_semantic_ast_fill_statement_children(
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_target(
     MyliteSemanticAst *ast, const MyliteAst *parser_ast,
     size_t statement_index, size_t target_index);
+static int mylite_semantic_ast_fill_statement_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *statement,
+    const MyliteAst *parser_ast, size_t statement_index, size_t *child_index);
 static int mylite_semantic_ast_fill_statement_expression_roots(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *statement,
     const MyliteAst *parser_ast, size_t statement_index, size_t *child_index);
+static int mylite_semantic_ast_append_create_table_key_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *index,
+    const MyliteAstCreateTableKey *key);
+static int mylite_semantic_ast_append_descriptor_child(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *index,
+    MyliteSemanticDescriptorKind kind, size_t start, size_t end,
+    const char *value, size_t value_length);
+static MyliteSemanticAstNode *mylite_semantic_ast_materialize_descriptor(
+    MyliteSemanticAst *ast, MyliteSemanticDescriptorKind kind, size_t start,
+    size_t end, const char *value, size_t value_length);
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_expression(
     MyliteSemanticAst *ast, const MyliteAstExpression *expression);
 static MyliteSemanticAstNode *mylite_semantic_ast_new_node(
@@ -176,6 +192,67 @@ MyliteStatementTargetKind mylite_semantic_ast_node_target_kind(
 MyliteStatementTargetRole mylite_semantic_ast_node_target_role(
     const MyliteSemanticAstNode *node) {
   return node == NULL ? MYLITE_STATEMENT_TARGET_ROLE_NONE : node->target_role;
+}
+
+const char *mylite_semantic_descriptor_kind_name(
+    MyliteSemanticDescriptorKind kind) {
+  switch (kind) {
+  case MYLITE_SEMANTIC_DESCRIPTOR_UNKNOWN:
+    return "unknown";
+  case MYLITE_SEMANTIC_DESCRIPTOR_PROJECTION:
+    return "projection";
+  case MYLITE_SEMANTIC_DESCRIPTOR_VALUE:
+    return "value";
+  case MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT:
+    return "assignment";
+  case MYLITE_SEMANTIC_DESCRIPTOR_COLUMN:
+    return "column";
+  case MYLITE_SEMANTIC_DESCRIPTOR_KEY:
+    return "key";
+  case MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART:
+    return "key_part";
+  case MYLITE_SEMANTIC_DESCRIPTOR_OPTION:
+    return "option";
+  case MYLITE_SEMANTIC_DESCRIPTOR_DATABASE_OPTION:
+    return "database_option";
+  case MYLITE_SEMANTIC_DESCRIPTOR_VIEW_COLUMN:
+    return "view_column";
+  case MYLITE_SEMANTIC_DESCRIPTOR_ALTER_TABLE_SPEC:
+    return "alter_table_spec";
+  case MYLITE_SEMANTIC_DESCRIPTOR_TABLE_LOCK:
+    return "table_lock";
+  case MYLITE_SEMANTIC_DESCRIPTOR_TABLE_MAINTENANCE_TARGET:
+    return "table_maintenance_target";
+  case MYLITE_SEMANTIC_DESCRIPTOR_REPLICATION_OPTION:
+    return "replication_option";
+  case MYLITE_SEMANTIC_DESCRIPTOR_STORED_OBJECT:
+    return "stored_object";
+  case MYLITE_SEMANTIC_DESCRIPTOR_FLUSH_TARGET:
+    return "flush_target";
+  case MYLITE_SEMANTIC_DESCRIPTOR_FLUSH_PLUGIN:
+    return "flush_plugin";
+  case MYLITE_SEMANTIC_DESCRIPTOR_LOAD_ITEM:
+    return "load_item";
+  case MYLITE_SEMANTIC_DESCRIPTOR_LOAD_ASSIGNMENT:
+    return "load_assignment";
+  case MYLITE_SEMANTIC_DESCRIPTOR_LOAD_OPTION:
+    return "load_option";
+  case MYLITE_SEMANTIC_DESCRIPTOR_ACCOUNT:
+    return "account";
+  case MYLITE_SEMANTIC_DESCRIPTOR_PRIVILEGE_ITEM:
+    return "privilege_item";
+  case MYLITE_SEMANTIC_DESCRIPTOR_ROLE:
+    return "role";
+  case MYLITE_SEMANTIC_DESCRIPTOR_PREPARED_VARIABLE:
+    return "prepared_variable";
+  }
+  return "unknown";
+}
+
+MyliteSemanticDescriptorKind mylite_semantic_ast_node_descriptor_kind(
+    const MyliteSemanticAstNode *node) {
+  return node == NULL ? MYLITE_SEMANTIC_DESCRIPTOR_UNKNOWN
+                      : node->descriptor_kind;
 }
 
 MyliteExpressionKind mylite_semantic_ast_node_expression_kind(
@@ -345,6 +422,8 @@ static MyliteSemanticAstNode *mylite_semantic_ast_materialize_statement(
 
   size_t child_count =
       mylite_ast_statement_target_count(parser_ast, statement_index) +
+      mylite_semantic_ast_count_statement_descriptors(parser_ast,
+                                                      statement_index) +
       mylite_semantic_ast_count_statement_expression_roots(parser_ast,
                                                            statement_index);
   if (!mylite_semantic_ast_set_node_child_count(ast, statement, child_count)) {
@@ -355,6 +434,182 @@ static MyliteSemanticAstNode *mylite_semantic_ast_materialize_statement(
     return NULL;
   }
   return statement;
+}
+
+static size_t mylite_semantic_ast_count_statement_descriptors(
+    const MyliteAst *parser_ast, size_t statement_index) {
+  size_t count = 0;
+
+  const MyliteAstSelectStatement *select_statement =
+      mylite_ast_select_statement_view(parser_ast, statement_index);
+  if (select_statement != NULL) {
+    count += mylite_ast_select_statement_view_projection_count(select_statement);
+  }
+
+  const MyliteAstValuesStatement *values_statement =
+      mylite_ast_values_statement_view(parser_ast, statement_index);
+  if (values_statement != NULL) {
+    count += mylite_ast_values_statement_view_value_count(values_statement);
+  }
+
+  const MyliteAstInsertStatement *insert_statement =
+      mylite_ast_insert_statement_view(parser_ast, statement_index);
+  if (insert_statement != NULL) {
+    count += mylite_ast_insert_statement_view_column_count(insert_statement);
+    count += mylite_ast_insert_statement_view_value_count(insert_statement);
+    count +=
+        mylite_ast_insert_statement_view_set_assignment_count(insert_statement);
+    count += mylite_ast_insert_statement_view_duplicate_assignment_count(
+        insert_statement);
+  }
+
+  const MyliteAstReplaceStatement *replace_statement =
+      mylite_ast_replace_statement_view(parser_ast, statement_index);
+  if (replace_statement != NULL) {
+    count += mylite_ast_replace_statement_view_column_count(replace_statement);
+    count += mylite_ast_replace_statement_view_value_count(replace_statement);
+    count += mylite_ast_replace_statement_view_set_assignment_count(
+        replace_statement);
+  }
+
+  const MyliteAstUpdateStatement *update_statement =
+      mylite_ast_update_statement_view(parser_ast, statement_index);
+  if (update_statement != NULL) {
+    count += mylite_ast_update_statement_view_assignment_count(update_statement);
+  }
+
+  const MyliteAstSetStatement *set_statement =
+      mylite_ast_set_statement_view(parser_ast, statement_index);
+  if (set_statement != NULL) {
+    count += mylite_ast_set_statement_view_assignment_count(set_statement);
+  }
+
+  const MyliteAstExecuteStatement *execute_statement =
+      mylite_ast_execute_statement_view(parser_ast, statement_index);
+  if (execute_statement != NULL) {
+    count += mylite_ast_execute_statement_view_using_count(execute_statement);
+  }
+
+  const MyliteAstCreateTable *create_table =
+      mylite_ast_create_table_view(parser_ast, statement_index);
+  if (create_table != NULL) {
+    count += mylite_ast_create_table_view_column_count(create_table);
+    count += mylite_ast_create_table_view_option_count(create_table);
+    for (size_t i = 0; i < mylite_ast_create_table_view_key_count(create_table);
+         i++) {
+      const MyliteAstCreateTableKey *key =
+          mylite_ast_create_table_view_key_at(create_table, i);
+      count++;
+      count += mylite_ast_create_table_key_view_column_count(key);
+      count += mylite_ast_create_table_key_view_option_count(key);
+    }
+  }
+
+  const MyliteAstAlterTable *alter_table =
+      mylite_ast_alter_table_view(parser_ast, statement_index);
+  if (alter_table != NULL) {
+    count += mylite_ast_alter_table_view_spec_count(alter_table);
+    count += mylite_ast_alter_table_view_option_count(alter_table);
+    for (size_t i = 0; i < mylite_ast_alter_table_view_spec_count(alter_table);
+         i++) {
+      const MyliteAstAlterTableSpec *spec =
+          mylite_ast_alter_table_view_spec_at(alter_table, i);
+      count += mylite_ast_alter_table_spec_view_column_count(spec);
+      for (size_t j = 0; j < mylite_ast_alter_table_spec_view_key_count(spec);
+           j++) {
+        const MyliteAstCreateTableKey *key =
+            mylite_ast_alter_table_spec_view_key_at(spec, j);
+        count++;
+        count += mylite_ast_create_table_key_view_column_count(key);
+        count += mylite_ast_create_table_key_view_option_count(key);
+      }
+    }
+  }
+
+  const MyliteAstCreateIndex *create_index =
+      mylite_ast_create_index_view(parser_ast, statement_index);
+  if (create_index != NULL) {
+    count += mylite_ast_create_index_view_column_count(create_index);
+    count += mylite_ast_create_index_view_option_count(create_index);
+  }
+
+  const MyliteAstCreateDatabase *create_database =
+      mylite_ast_create_database_view(parser_ast, statement_index);
+  if (create_database != NULL) {
+    count += mylite_ast_create_database_view_option_count(create_database);
+  }
+
+  const MyliteAstCreateView *create_view =
+      mylite_ast_create_view_view(parser_ast, statement_index);
+  if (create_view != NULL) {
+    count += mylite_ast_create_view_view_column_count(create_view);
+  }
+
+  const MyliteAstLockStatement *lock_statement =
+      mylite_ast_lock_statement_view(parser_ast, statement_index);
+  if (lock_statement != NULL) {
+    count += mylite_ast_lock_statement_view_table_lock_count(lock_statement);
+  }
+
+  const MyliteAstTableMaintenanceStatement *maintenance_statement =
+      mylite_ast_table_maintenance_statement_view(parser_ast, statement_index);
+  if (maintenance_statement != NULL) {
+    count += mylite_ast_table_maintenance_statement_view_target_count(
+        maintenance_statement);
+  }
+
+  const MyliteAstReplicationStatement *replication_statement =
+      mylite_ast_replication_statement_view(parser_ast, statement_index);
+  if (replication_statement != NULL) {
+    count +=
+        mylite_ast_replication_statement_view_option_count(replication_statement);
+  }
+
+  if (mylite_ast_stored_object_statement_view(parser_ast, statement_index) !=
+      NULL) {
+    count++;
+  }
+
+  const MyliteAstFlushStatement *flush_statement =
+      mylite_ast_flush_statement_view(parser_ast, statement_index);
+  if (flush_statement != NULL) {
+    count += mylite_ast_flush_statement_view_target_count(flush_statement);
+    count += mylite_ast_flush_statement_view_plugin_count(flush_statement);
+  }
+
+  const MyliteAstLoadStatement *load_statement =
+      mylite_ast_load_statement_view(parser_ast, statement_index);
+  if (load_statement != NULL) {
+    count += mylite_ast_load_statement_view_item_count(load_statement);
+    count += mylite_ast_load_statement_view_assignment_count(load_statement);
+    count += mylite_ast_load_statement_view_option_count(load_statement);
+  }
+
+  const MyliteAstAccountStatement *account_statement =
+      mylite_ast_account_statement_view(parser_ast, statement_index);
+  if (account_statement != NULL) {
+    count += mylite_ast_account_statement_view_account_count(account_statement);
+  }
+
+  const MyliteAstPrivilegeStatement *privilege_statement =
+      mylite_ast_privilege_statement_view(parser_ast, statement_index);
+  if (privilege_statement != NULL) {
+    count += mylite_ast_privilege_statement_view_item_count(privilege_statement);
+    count += mylite_ast_privilege_statement_view_user_count(privilege_statement);
+    if (mylite_ast_privilege_statement_view_proxy_user(privilege_statement) !=
+        NULL) {
+      count++;
+    }
+  }
+
+  const MyliteAstRoleStatement *role_statement =
+      mylite_ast_role_statement_view(parser_ast, statement_index);
+  if (role_statement != NULL) {
+    count += mylite_ast_role_statement_view_role_count(role_statement);
+    count += mylite_ast_role_statement_view_user_count(role_statement);
+  }
+
+  return count;
 }
 
 static size_t mylite_semantic_ast_count_statement_expression_roots(
@@ -498,6 +753,40 @@ static size_t mylite_semantic_ast_count_statement_expression_roots(
     }
   }
 
+  const MyliteAstShowStatement *show_statement =
+      mylite_ast_show_statement_view(parser_ast, statement_index);
+  if (show_statement != NULL) {
+    count += mylite_semantic_ast_count_expression_root(
+        mylite_ast_show_statement_view_like_expression(show_statement));
+    count += mylite_semantic_ast_count_expression_root(
+        mylite_ast_show_statement_view_where_expression(show_statement));
+  }
+
+  const MyliteAstKillStatement *kill_statement =
+      mylite_ast_kill_statement_view(parser_ast, statement_index);
+  if (kill_statement != NULL) {
+    count += mylite_semantic_ast_count_expression_root(
+        mylite_ast_kill_statement_view_target_expression(kill_statement));
+  }
+
+  const MyliteAstLoadStatement *load_statement =
+      mylite_ast_load_statement_view(parser_ast, statement_index);
+  if (load_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_load_statement_view_assignment_count(load_statement);
+         i++) {
+      count += mylite_semantic_ast_count_expression_root(
+          mylite_ast_load_assignment_view_expression(
+              mylite_ast_load_statement_view_assignment_at(load_statement, i)));
+    }
+    for (size_t i = 0; i < mylite_ast_load_statement_view_option_count(load_statement);
+         i++) {
+      count += mylite_semantic_ast_count_expression_root(
+          mylite_ast_load_option_view_value_expression(
+              mylite_ast_load_statement_view_option_at(load_statement, i)));
+    }
+  }
+
   const MyliteAstCreateTable *create_table =
       mylite_ast_create_table_view(parser_ast, statement_index);
   if (create_table != NULL) {
@@ -561,6 +850,10 @@ static int mylite_semantic_ast_fill_statement_children(
       return 0;
     }
   }
+  if (!mylite_semantic_ast_fill_statement_descriptors(
+          ast, statement, parser_ast, statement_index, &child_index)) {
+    return 0;
+  }
   return mylite_semantic_ast_fill_statement_expression_roots(
              ast, statement, parser_ast, statement_index, &child_index) &&
          child_index == statement->child_count;
@@ -600,6 +893,729 @@ static MyliteSemanticAstNode *mylite_semantic_ast_materialize_target(
     return NULL;
   }
   return target;
+}
+
+static int mylite_semantic_ast_fill_statement_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *statement,
+    const MyliteAst *parser_ast, size_t statement_index, size_t *child_index) {
+  const MyliteAstSelectStatement *select_statement =
+      mylite_ast_select_statement_view(parser_ast, statement_index);
+  if (select_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_select_statement_view_projection_count(select_statement);
+         i++) {
+      const MyliteAstSelectProjection *projection =
+          mylite_ast_select_statement_view_projection_at(select_statement, i);
+      const char *value = mylite_ast_select_projection_view_alias_value(
+          projection);
+      size_t value_length =
+          mylite_ast_select_projection_view_alias_value_length(projection);
+      if (value == NULL) {
+        value = mylite_ast_select_projection_view_qualifier_value(projection);
+        value_length =
+            mylite_ast_select_projection_view_qualifier_value_length(projection);
+      }
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_PROJECTION,
+              mylite_ast_select_projection_view_start(projection),
+              mylite_ast_select_projection_view_end(projection), value,
+              value_length)) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstValuesStatement *values_statement =
+      mylite_ast_values_statement_view(parser_ast, statement_index);
+  if (values_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_values_statement_view_value_count(values_statement);
+         i++) {
+      const MyliteAstValuesValue *value =
+          mylite_ast_values_statement_view_value_at(values_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
+              mylite_ast_values_value_view_start(value),
+              mylite_ast_values_value_view_end(value), NULL, 0)) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstInsertStatement *insert_statement =
+      mylite_ast_insert_statement_view(parser_ast, statement_index);
+  if (insert_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_insert_statement_view_column_count(insert_statement);
+         i++) {
+      const MyliteAstInsertColumn *column =
+          mylite_ast_insert_statement_view_column_at(insert_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN,
+              mylite_ast_insert_column_view_start(column),
+              mylite_ast_insert_column_view_end(column),
+              mylite_ast_insert_column_view_name_value(column),
+              mylite_ast_insert_column_view_name_value_length(column))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0;
+         i < mylite_ast_insert_statement_view_value_count(insert_statement);
+         i++) {
+      const MyliteAstInsertValue *value =
+          mylite_ast_insert_statement_view_value_at(insert_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
+              mylite_ast_insert_value_view_start(value),
+              mylite_ast_insert_value_view_end(value), NULL, 0)) {
+        return 0;
+      }
+    }
+    for (size_t i = 0; i < mylite_ast_insert_statement_view_set_assignment_count(
+                               insert_statement);
+         i++) {
+      const MyliteAstInsertAssignment *assignment =
+          mylite_ast_insert_statement_view_set_assignment_at(insert_statement,
+                                                             i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT,
+              mylite_ast_insert_assignment_view_start(assignment),
+              mylite_ast_insert_assignment_view_end(assignment),
+              mylite_ast_insert_assignment_view_name_value(assignment),
+              mylite_ast_insert_assignment_view_name_value_length(assignment))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0;
+         i < mylite_ast_insert_statement_view_duplicate_assignment_count(
+                 insert_statement);
+         i++) {
+      const MyliteAstInsertAssignment *assignment =
+          mylite_ast_insert_statement_view_duplicate_assignment_at(
+              insert_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT,
+              mylite_ast_insert_assignment_view_start(assignment),
+              mylite_ast_insert_assignment_view_end(assignment),
+              mylite_ast_insert_assignment_view_name_value(assignment),
+              mylite_ast_insert_assignment_view_name_value_length(assignment))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstReplaceStatement *replace_statement =
+      mylite_ast_replace_statement_view(parser_ast, statement_index);
+  if (replace_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_replace_statement_view_column_count(replace_statement);
+         i++) {
+      const MyliteAstReplaceColumn *column =
+          mylite_ast_replace_statement_view_column_at(replace_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN,
+              mylite_ast_replace_column_view_start(column),
+              mylite_ast_replace_column_view_end(column),
+              mylite_ast_replace_column_view_name_value(column),
+              mylite_ast_replace_column_view_name_value_length(column))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0;
+         i < mylite_ast_replace_statement_view_value_count(replace_statement);
+         i++) {
+      const MyliteAstReplaceValue *value =
+          mylite_ast_replace_statement_view_value_at(replace_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
+              mylite_ast_replace_value_view_start(value),
+              mylite_ast_replace_value_view_end(value), NULL, 0)) {
+        return 0;
+      }
+    }
+    for (size_t i = 0;
+         i < mylite_ast_replace_statement_view_set_assignment_count(
+                 replace_statement);
+         i++) {
+      const MyliteAstReplaceAssignment *assignment =
+          mylite_ast_replace_statement_view_set_assignment_at(replace_statement,
+                                                              i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT,
+              mylite_ast_replace_assignment_view_start(assignment),
+              mylite_ast_replace_assignment_view_end(assignment),
+              mylite_ast_replace_assignment_view_name_value(assignment),
+              mylite_ast_replace_assignment_view_name_value_length(
+                  assignment))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstUpdateStatement *update_statement =
+      mylite_ast_update_statement_view(parser_ast, statement_index);
+  if (update_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_update_statement_view_assignment_count(update_statement);
+         i++) {
+      const MyliteAstUpdateAssignment *assignment =
+          mylite_ast_update_statement_view_assignment_at(update_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT,
+              mylite_ast_update_assignment_view_start(assignment),
+              mylite_ast_update_assignment_view_end(assignment),
+              mylite_ast_update_assignment_view_name_value(assignment),
+              mylite_ast_update_assignment_view_name_value_length(assignment))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstSetStatement *set_statement =
+      mylite_ast_set_statement_view(parser_ast, statement_index);
+  if (set_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_set_statement_view_assignment_count(set_statement);
+         i++) {
+      const MyliteAstSetAssignment *assignment =
+          mylite_ast_set_statement_view_assignment_at(set_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT,
+              mylite_ast_set_assignment_view_start(assignment),
+              mylite_ast_set_assignment_view_end(assignment),
+              mylite_ast_set_assignment_view_name_value(assignment),
+              mylite_ast_set_assignment_view_name_value_length(assignment))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstExecuteStatement *execute_statement =
+      mylite_ast_execute_statement_view(parser_ast, statement_index);
+  if (execute_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_execute_statement_view_using_count(execute_statement);
+         i++) {
+      const MyliteAstPreparedStatementVariable *variable =
+          mylite_ast_execute_statement_view_using_variable_at(execute_statement,
+                                                             i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index,
+              MYLITE_SEMANTIC_DESCRIPTOR_PREPARED_VARIABLE,
+              mylite_ast_prepared_statement_variable_view_start(variable),
+              mylite_ast_prepared_statement_variable_view_end(variable),
+              mylite_ast_prepared_statement_variable_view_name_value(variable),
+              mylite_ast_prepared_statement_variable_view_name_value_length(
+                  variable))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstCreateTable *create_table =
+      mylite_ast_create_table_view(parser_ast, statement_index);
+  if (create_table != NULL) {
+    for (size_t i = 0; i < mylite_ast_create_table_view_column_count(create_table);
+         i++) {
+      const MyliteAstCreateTableColumn *column =
+          mylite_ast_create_table_view_column_at(create_table, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN,
+              mylite_ast_create_table_column_view_start(column),
+              mylite_ast_create_table_column_view_end(column),
+              mylite_ast_create_table_column_view_name_value(column),
+              mylite_ast_create_table_column_view_name_value_length(column))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0; i < mylite_ast_create_table_view_key_count(create_table);
+         i++) {
+      if (!mylite_semantic_ast_append_create_table_key_descriptors(
+              ast, statement, child_index,
+              mylite_ast_create_table_view_key_at(create_table, i))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0; i < mylite_ast_create_table_view_option_count(create_table);
+         i++) {
+      const MyliteAstCreateTableOption *option =
+          mylite_ast_create_table_view_option_at(create_table, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_OPTION,
+              mylite_ast_create_table_option_view_start(option),
+              mylite_ast_create_table_option_view_end(option),
+              mylite_ast_create_table_option_view_value(option),
+              mylite_ast_create_table_option_view_value_length(option))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstAlterTable *alter_table =
+      mylite_ast_alter_table_view(parser_ast, statement_index);
+  if (alter_table != NULL) {
+    for (size_t i = 0; i < mylite_ast_alter_table_view_spec_count(alter_table);
+         i++) {
+      const MyliteAstAlterTableSpec *spec =
+          mylite_ast_alter_table_view_spec_at(alter_table, i);
+      const char *value = mylite_ast_alter_table_spec_view_name_value(spec);
+      size_t value_length =
+          mylite_ast_alter_table_spec_view_name_value_length(spec);
+      if (value == NULL) {
+        value = mylite_ast_alter_table_spec_view_secondary_name_value(spec);
+        value_length =
+            mylite_ast_alter_table_spec_view_secondary_name_value_length(spec);
+      }
+      if (value == NULL) {
+        value = mylite_ast_alter_table_spec_view_table_name_value(spec);
+        value_length =
+            mylite_ast_alter_table_spec_view_table_name_value_length(spec);
+      }
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index,
+              MYLITE_SEMANTIC_DESCRIPTOR_ALTER_TABLE_SPEC,
+              mylite_ast_alter_table_spec_view_start(spec),
+              mylite_ast_alter_table_spec_view_end(spec), value,
+              value_length)) {
+        return 0;
+      }
+      for (size_t j = 0;
+           j < mylite_ast_alter_table_spec_view_column_count(spec); j++) {
+        const MyliteAstCreateTableColumn *column =
+            mylite_ast_alter_table_spec_view_column_at(spec, j);
+        if (!mylite_semantic_ast_append_descriptor_child(
+                ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN,
+                mylite_ast_create_table_column_view_start(column),
+                mylite_ast_create_table_column_view_end(column),
+                mylite_ast_create_table_column_view_name_value(column),
+                mylite_ast_create_table_column_view_name_value_length(column))) {
+          return 0;
+        }
+      }
+      for (size_t j = 0; j < mylite_ast_alter_table_spec_view_key_count(spec);
+           j++) {
+        if (!mylite_semantic_ast_append_create_table_key_descriptors(
+                ast, statement, child_index,
+                mylite_ast_alter_table_spec_view_key_at(spec, j))) {
+          return 0;
+        }
+      }
+    }
+    for (size_t i = 0; i < mylite_ast_alter_table_view_option_count(alter_table);
+         i++) {
+      const MyliteAstCreateTableOption *option =
+          mylite_ast_alter_table_view_option_at(alter_table, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_OPTION,
+              mylite_ast_create_table_option_view_start(option),
+              mylite_ast_create_table_option_view_end(option),
+              mylite_ast_create_table_option_view_value(option),
+              mylite_ast_create_table_option_view_value_length(option))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstCreateIndex *create_index =
+      mylite_ast_create_index_view(parser_ast, statement_index);
+  if (create_index != NULL) {
+    for (size_t i = 0; i < mylite_ast_create_index_view_column_count(create_index);
+         i++) {
+      const MyliteAstCreateTableKeyPart *part =
+          mylite_ast_create_index_view_column_at(create_index, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART,
+              mylite_ast_create_table_key_part_view_start(part),
+              mylite_ast_create_table_key_part_view_end(part),
+              mylite_ast_create_table_key_part_view_name_value(part),
+              mylite_ast_create_table_key_part_view_name_value_length(part))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0; i < mylite_ast_create_index_view_option_count(create_index);
+         i++) {
+      const MyliteAstCreateTableKeyOption *option =
+          mylite_ast_create_index_view_option_at(create_index, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_OPTION,
+              mylite_ast_create_table_key_option_view_start(option),
+              mylite_ast_create_table_key_option_view_end(option),
+              mylite_ast_create_table_key_option_view_value(option),
+              mylite_ast_create_table_key_option_view_value_length(option))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstCreateDatabase *create_database =
+      mylite_ast_create_database_view(parser_ast, statement_index);
+  if (create_database != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_create_database_view_option_count(create_database); i++) {
+      const MyliteAstDatabaseOption *option =
+          mylite_ast_create_database_view_option_at(create_database, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index,
+              MYLITE_SEMANTIC_DESCRIPTOR_DATABASE_OPTION,
+              mylite_ast_database_option_view_start(option),
+              mylite_ast_database_option_view_end(option),
+              mylite_ast_database_option_view_value(option),
+              mylite_ast_database_option_view_value_length(option))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstCreateView *create_view =
+      mylite_ast_create_view_view(parser_ast, statement_index);
+  if (create_view != NULL) {
+    for (size_t i = 0; i < mylite_ast_create_view_view_column_count(create_view);
+         i++) {
+      const MyliteAstViewColumn *column =
+          mylite_ast_create_view_view_column_at(create_view, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index,
+              MYLITE_SEMANTIC_DESCRIPTOR_VIEW_COLUMN,
+              mylite_ast_view_column_view_start(column),
+              mylite_ast_view_column_view_end(column),
+              mylite_ast_view_column_view_name_value(column),
+              mylite_ast_view_column_view_name_value_length(column))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstLockStatement *lock_statement =
+      mylite_ast_lock_statement_view(parser_ast, statement_index);
+  if (lock_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_lock_statement_view_table_lock_count(lock_statement);
+         i++) {
+      const MyliteAstTableLock *table_lock =
+          mylite_ast_lock_statement_view_table_lock_at(lock_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_TABLE_LOCK,
+              mylite_ast_table_lock_view_start(table_lock),
+              mylite_ast_table_lock_view_end(table_lock),
+              mylite_ast_table_lock_view_table_name_value(table_lock),
+              mylite_ast_table_lock_view_table_name_value_length(table_lock))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstTableMaintenanceStatement *maintenance_statement =
+      mylite_ast_table_maintenance_statement_view(parser_ast, statement_index);
+  if (maintenance_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_table_maintenance_statement_view_target_count(
+                 maintenance_statement);
+         i++) {
+      const MyliteAstTableMaintenanceTarget *target =
+          mylite_ast_table_maintenance_statement_view_target_at(
+              maintenance_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index,
+              MYLITE_SEMANTIC_DESCRIPTOR_TABLE_MAINTENANCE_TARGET,
+              mylite_ast_table_maintenance_target_view_start(target),
+              mylite_ast_table_maintenance_target_view_end(target),
+              mylite_ast_table_maintenance_target_view_name_value(target),
+              mylite_ast_table_maintenance_target_view_name_value_length(
+                  target))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstReplicationStatement *replication_statement =
+      mylite_ast_replication_statement_view(parser_ast, statement_index);
+  if (replication_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_replication_statement_view_option_count(
+                 replication_statement);
+         i++) {
+      const MyliteAstReplicationOption *option =
+          mylite_ast_replication_statement_view_option_at(replication_statement,
+                                                          i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index,
+              MYLITE_SEMANTIC_DESCRIPTOR_REPLICATION_OPTION,
+              mylite_ast_replication_option_view_start(option),
+              mylite_ast_replication_option_view_end(option),
+              mylite_ast_replication_option_view_name_value(option),
+              mylite_ast_replication_option_view_name_value_length(option))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstStoredObjectStatement *stored_object =
+      mylite_ast_stored_object_statement_view(parser_ast, statement_index);
+  if (stored_object != NULL &&
+      !mylite_semantic_ast_append_descriptor_child(
+          ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_STORED_OBJECT,
+          mylite_ast_stored_object_statement_view_start(stored_object),
+          mylite_ast_stored_object_statement_view_end(stored_object),
+          mylite_ast_stored_object_statement_view_name_value(stored_object),
+          mylite_ast_stored_object_statement_view_name_value_length(
+              stored_object))) {
+    return 0;
+  }
+
+  const MyliteAstFlushStatement *flush_statement =
+      mylite_ast_flush_statement_view(parser_ast, statement_index);
+  if (flush_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_flush_statement_view_target_count(flush_statement);
+         i++) {
+      const MyliteAstFlushTarget *target =
+          mylite_ast_flush_statement_view_target_at(flush_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_FLUSH_TARGET,
+              mylite_ast_flush_target_view_start(target),
+              mylite_ast_flush_target_view_end(target),
+              mylite_ast_flush_target_view_name_value(target),
+              mylite_ast_flush_target_view_name_value_length(target))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0;
+         i < mylite_ast_flush_statement_view_plugin_count(flush_statement);
+         i++) {
+      const MyliteAstFlushPlugin *plugin =
+          mylite_ast_flush_statement_view_plugin_at(flush_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_FLUSH_PLUGIN,
+              mylite_ast_flush_plugin_view_start(plugin),
+              mylite_ast_flush_plugin_view_end(plugin),
+              mylite_ast_flush_plugin_view_name_value(plugin),
+              mylite_ast_flush_plugin_view_name_value_length(plugin))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstLoadStatement *load_statement =
+      mylite_ast_load_statement_view(parser_ast, statement_index);
+  if (load_statement != NULL) {
+    for (size_t i = 0; i < mylite_ast_load_statement_view_item_count(load_statement);
+         i++) {
+      const MyliteAstLoadListItem *item =
+          mylite_ast_load_statement_view_item_at(load_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_LOAD_ITEM,
+              mylite_ast_load_list_item_view_start(item),
+              mylite_ast_load_list_item_view_end(item),
+              mylite_ast_load_list_item_view_value(item),
+              mylite_ast_load_list_item_view_value_length(item))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0;
+         i < mylite_ast_load_statement_view_assignment_count(load_statement);
+         i++) {
+      const MyliteAstLoadAssignment *assignment =
+          mylite_ast_load_statement_view_assignment_at(load_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index,
+              MYLITE_SEMANTIC_DESCRIPTOR_LOAD_ASSIGNMENT,
+              mylite_ast_load_assignment_view_start(assignment),
+              mylite_ast_load_assignment_view_end(assignment),
+              mylite_ast_load_assignment_view_column_value(assignment),
+              mylite_ast_load_assignment_view_column_value_length(
+                  assignment))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0; i < mylite_ast_load_statement_view_option_count(load_statement);
+         i++) {
+      const MyliteAstLoadOption *option =
+          mylite_ast_load_statement_view_option_at(load_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_LOAD_OPTION,
+              mylite_ast_load_option_view_start(option),
+              mylite_ast_load_option_view_end(option),
+              mylite_ast_load_option_view_name_value(option),
+              mylite_ast_load_option_view_name_value_length(option))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstAccountStatement *account_statement =
+      mylite_ast_account_statement_view(parser_ast, statement_index);
+  if (account_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_account_statement_view_account_count(account_statement);
+         i++) {
+      const MyliteAstAccount *account =
+          mylite_ast_account_statement_view_account_at(account_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ACCOUNT,
+              mylite_ast_account_view_start(account),
+              mylite_ast_account_view_end(account),
+              mylite_ast_account_view_user_value(account),
+              mylite_ast_account_view_user_value_length(account))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstPrivilegeStatement *privilege_statement =
+      mylite_ast_privilege_statement_view(parser_ast, statement_index);
+  if (privilege_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_privilege_statement_view_item_count(privilege_statement);
+         i++) {
+      const MyliteAstPrivilegeItem *item =
+          mylite_ast_privilege_statement_view_item_at(privilege_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index,
+              MYLITE_SEMANTIC_DESCRIPTOR_PRIVILEGE_ITEM,
+              mylite_ast_privilege_item_view_start(item),
+              mylite_ast_privilege_item_view_end(item),
+              mylite_ast_privilege_item_view_value(item),
+              mylite_ast_privilege_item_view_value_length(item))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0;
+         i < mylite_ast_privilege_statement_view_user_count(privilege_statement);
+         i++) {
+      const MyliteAstAccount *account =
+          mylite_ast_privilege_statement_view_user_at(privilege_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ACCOUNT,
+              mylite_ast_account_view_start(account),
+              mylite_ast_account_view_end(account),
+              mylite_ast_account_view_user_value(account),
+              mylite_ast_account_view_user_value_length(account))) {
+        return 0;
+      }
+    }
+    const MyliteAstAccount *proxy_user =
+        mylite_ast_privilege_statement_view_proxy_user(privilege_statement);
+    if (proxy_user != NULL &&
+        !mylite_semantic_ast_append_descriptor_child(
+            ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ACCOUNT,
+            mylite_ast_account_view_start(proxy_user),
+            mylite_ast_account_view_end(proxy_user),
+            mylite_ast_account_view_user_value(proxy_user),
+            mylite_ast_account_view_user_value_length(proxy_user))) {
+      return 0;
+    }
+  }
+
+  const MyliteAstRoleStatement *role_statement =
+      mylite_ast_role_statement_view(parser_ast, statement_index);
+  if (role_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_role_statement_view_role_count(role_statement); i++) {
+      const MyliteAstRoleName *role =
+          mylite_ast_role_statement_view_role_at(role_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ROLE,
+              mylite_ast_role_name_view_start(role),
+              mylite_ast_role_name_view_end(role),
+              mylite_ast_role_name_view_name_value(role),
+              mylite_ast_role_name_view_name_value_length(role))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0;
+         i < mylite_ast_role_statement_view_user_count(role_statement); i++) {
+      const MyliteAstAccount *account =
+          mylite_ast_role_statement_view_user_at(role_statement, i);
+      if (!mylite_semantic_ast_append_descriptor_child(
+              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ACCOUNT,
+              mylite_ast_account_view_start(account),
+              mylite_ast_account_view_end(account),
+              mylite_ast_account_view_user_value(account),
+              mylite_ast_account_view_user_value_length(account))) {
+        return 0;
+      }
+    }
+  }
+
+  return 1;
+}
+
+static int mylite_semantic_ast_append_create_table_key_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *index,
+    const MyliteAstCreateTableKey *key) {
+  if (key == NULL) {
+    return 1;
+  }
+
+  const char *value = mylite_ast_create_table_key_view_name_value(key);
+  size_t value_length = mylite_ast_create_table_key_view_name_value_length(key);
+  if (value == NULL) {
+    value = mylite_ast_create_table_key_view_constraint_name_value(key);
+    value_length =
+        mylite_ast_create_table_key_view_constraint_name_value_length(key);
+  }
+  if (!mylite_semantic_ast_append_descriptor_child(
+          ast, parent, index, MYLITE_SEMANTIC_DESCRIPTOR_KEY,
+          mylite_ast_create_table_key_view_start(key),
+          mylite_ast_create_table_key_view_end(key), value, value_length)) {
+    return 0;
+  }
+
+  for (size_t i = 0; i < mylite_ast_create_table_key_view_column_count(key);
+       i++) {
+    const MyliteAstCreateTableKeyPart *part =
+        mylite_ast_create_table_key_view_column_at(key, i);
+    if (!mylite_semantic_ast_append_descriptor_child(
+            ast, parent, index, MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART,
+            mylite_ast_create_table_key_part_view_start(part),
+            mylite_ast_create_table_key_part_view_end(part),
+            mylite_ast_create_table_key_part_view_name_value(part),
+            mylite_ast_create_table_key_part_view_name_value_length(part))) {
+      return 0;
+    }
+  }
+
+  for (size_t i = 0; i < mylite_ast_create_table_key_view_option_count(key);
+       i++) {
+    const MyliteAstCreateTableKeyOption *option =
+        mylite_ast_create_table_key_view_option_at(key, i);
+    if (!mylite_semantic_ast_append_descriptor_child(
+            ast, parent, index, MYLITE_SEMANTIC_DESCRIPTOR_OPTION,
+            mylite_ast_create_table_key_option_view_start(option),
+            mylite_ast_create_table_key_option_view_end(option),
+            mylite_ast_create_table_key_option_view_value(option),
+            mylite_ast_create_table_key_option_view_value_length(option))) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+static int mylite_semantic_ast_append_descriptor_child(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *index,
+    MyliteSemanticDescriptorKind kind, size_t start, size_t end,
+    const char *value, size_t value_length) {
+  return mylite_semantic_ast_append_child(
+      parent, index,
+      mylite_semantic_ast_materialize_descriptor(ast, kind, start, end, value,
+                                                 value_length));
+}
+
+static MyliteSemanticAstNode *mylite_semantic_ast_materialize_descriptor(
+    MyliteSemanticAst *ast, MyliteSemanticDescriptorKind kind, size_t start,
+    size_t end, const char *value, size_t value_length) {
+  MyliteSemanticAstNode *descriptor = mylite_semantic_ast_new_node(
+      ast, MYLITE_SEMANTIC_NODE_DESCRIPTOR, start, end);
+  if (descriptor == NULL) {
+    return NULL;
+  }
+  descriptor->descriptor_kind = kind;
+  if (!mylite_semantic_ast_copy_node_value(ast, descriptor, value,
+                                           value_length)) {
+    return NULL;
+  }
+  return descriptor;
 }
 
 static int mylite_semantic_ast_fill_statement_expression_roots(
@@ -784,6 +1800,54 @@ static int mylite_semantic_ast_fill_statement_expression_roots(
               mylite_ast_set_assignment_view_value_expression(
                   mylite_ast_set_statement_view_assignment_at(set_statement,
                                                               i)))) {
+        return 0;
+      }
+    }
+  }
+
+  const MyliteAstShowStatement *show_statement =
+      mylite_ast_show_statement_view(parser_ast, statement_index);
+  if (show_statement != NULL) {
+    if (!mylite_semantic_ast_append_expression_child(
+            ast, statement, child_index,
+            mylite_ast_show_statement_view_like_expression(show_statement)) ||
+        !mylite_semantic_ast_append_expression_child(
+            ast, statement, child_index,
+            mylite_ast_show_statement_view_where_expression(show_statement))) {
+      return 0;
+    }
+  }
+
+  const MyliteAstKillStatement *kill_statement =
+      mylite_ast_kill_statement_view(parser_ast, statement_index);
+  if (kill_statement != NULL &&
+      !mylite_semantic_ast_append_expression_child(
+          ast, statement, child_index,
+          mylite_ast_kill_statement_view_target_expression(kill_statement))) {
+    return 0;
+  }
+
+  const MyliteAstLoadStatement *load_statement =
+      mylite_ast_load_statement_view(parser_ast, statement_index);
+  if (load_statement != NULL) {
+    for (size_t i = 0;
+         i < mylite_ast_load_statement_view_assignment_count(load_statement);
+         i++) {
+      if (!mylite_semantic_ast_append_expression_child(
+              ast, statement, child_index,
+              mylite_ast_load_assignment_view_expression(
+                  mylite_ast_load_statement_view_assignment_at(load_statement,
+                                                               i)))) {
+        return 0;
+      }
+    }
+    for (size_t i = 0;
+         i < mylite_ast_load_statement_view_option_count(load_statement); i++) {
+      if (!mylite_semantic_ast_append_expression_child(
+              ast, statement, child_index,
+              mylite_ast_load_option_view_value_expression(
+                  mylite_ast_load_statement_view_option_at(load_statement,
+                                                           i)))) {
         return 0;
       }
     }

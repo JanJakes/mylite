@@ -113,8 +113,36 @@ typedef enum MyliteSemanticNodeKind {
   MYLITE_SEMANTIC_NODE_PROGRAM = 1,
   MYLITE_SEMANTIC_NODE_STATEMENT = 2,
   MYLITE_SEMANTIC_NODE_TARGET = 3,
-  MYLITE_SEMANTIC_NODE_EXPRESSION = 4
+  MYLITE_SEMANTIC_NODE_EXPRESSION = 4,
+  MYLITE_SEMANTIC_NODE_DESCRIPTOR = 5
 } MyliteSemanticNodeKind;
+
+typedef enum MyliteSemanticDescriptorKind {
+  MYLITE_SEMANTIC_DESCRIPTOR_UNKNOWN = 0,
+  MYLITE_SEMANTIC_DESCRIPTOR_PROJECTION,
+  MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
+  MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT,
+  MYLITE_SEMANTIC_DESCRIPTOR_COLUMN,
+  MYLITE_SEMANTIC_DESCRIPTOR_KEY,
+  MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART,
+  MYLITE_SEMANTIC_DESCRIPTOR_OPTION,
+  MYLITE_SEMANTIC_DESCRIPTOR_DATABASE_OPTION,
+  MYLITE_SEMANTIC_DESCRIPTOR_VIEW_COLUMN,
+  MYLITE_SEMANTIC_DESCRIPTOR_ALTER_TABLE_SPEC,
+  MYLITE_SEMANTIC_DESCRIPTOR_TABLE_LOCK,
+  MYLITE_SEMANTIC_DESCRIPTOR_TABLE_MAINTENANCE_TARGET,
+  MYLITE_SEMANTIC_DESCRIPTOR_REPLICATION_OPTION,
+  MYLITE_SEMANTIC_DESCRIPTOR_STORED_OBJECT,
+  MYLITE_SEMANTIC_DESCRIPTOR_FLUSH_TARGET,
+  MYLITE_SEMANTIC_DESCRIPTOR_FLUSH_PLUGIN,
+  MYLITE_SEMANTIC_DESCRIPTOR_LOAD_ITEM,
+  MYLITE_SEMANTIC_DESCRIPTOR_LOAD_ASSIGNMENT,
+  MYLITE_SEMANTIC_DESCRIPTOR_LOAD_OPTION,
+  MYLITE_SEMANTIC_DESCRIPTOR_ACCOUNT,
+  MYLITE_SEMANTIC_DESCRIPTOR_PRIVILEGE_ITEM,
+  MYLITE_SEMANTIC_DESCRIPTOR_ROLE,
+  MYLITE_SEMANTIC_DESCRIPTOR_PREPARED_VARIABLE
+} MyliteSemanticDescriptorKind;
 
 typedef enum MyliteExpressionKind {
   MYLITE_EXPRESSION_UNKNOWN = 0,
@@ -977,6 +1005,8 @@ const char *mylite_parse_status_name(MyliteParseStatus status);
 const char *mylite_statement_kind_name(MyliteStatementKind kind);
 const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
 const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
+const char *mylite_semantic_descriptor_kind_name(
+    MyliteSemanticDescriptorKind kind);
 const char *mylite_select_projection_kind_name(
     MyliteSelectProjectionKind kind);
 const char *mylite_insert_source_kind_name(MyliteInsertSourceKind kind);
@@ -1107,6 +1137,8 @@ MyliteStatementKind mylite_semantic_ast_node_statement_kind(
 MyliteStatementTargetKind mylite_semantic_ast_node_target_kind(
     const MyliteSemanticAstNode *node);
 MyliteStatementTargetRole mylite_semantic_ast_node_target_role(
+    const MyliteSemanticAstNode *node);
+MyliteSemanticDescriptorKind mylite_semantic_ast_node_descriptor_kind(
     const MyliteSemanticAstNode *node);
 MyliteExpressionKind mylite_semantic_ast_node_expression_kind(
     const MyliteSemanticAstNode *node);

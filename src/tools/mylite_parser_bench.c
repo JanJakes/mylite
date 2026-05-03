@@ -18,8 +18,9 @@ static void count_expression_tree(const MyliteAstExpression *expression,
                                   size_t *nodes, size_t *operators,
                                   size_t *leaf_values);
 static void count_semantic_tree(const MyliteSemanticAstNode *node,
-                                size_t *targets, size_t *expressions,
-                                size_t *operators, size_t *leaf_values);
+                                size_t *targets, size_t *descriptors,
+                                size_t *expressions, size_t *operators,
+                                size_t *leaf_values);
 static char *read_file(const char *path, size_t *length);
 static double monotonic_seconds(void);
 static int parse_mode(const char *value, BenchMode *mode);
@@ -559,6 +560,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t semantic_bytes = 0;
   size_t semantic_statements = 0;
   size_t semantic_targets = 0;
+  size_t semantic_descriptors = 0;
   size_t semantic_expressions = 0;
   size_t semantic_expression_operators = 0;
   size_t semantic_expression_leaf_values = 0;
@@ -2815,7 +2817,8 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
           semantic_statements +=
               mylite_semantic_ast_statement_count(semantic_ast);
           count_semantic_tree(mylite_semantic_ast_root(semantic_ast),
-                              &semantic_targets, &semantic_expressions,
+                              &semantic_targets, &semantic_descriptors,
+                              &semantic_expressions,
                               &semantic_expression_operators,
                               &semantic_expression_leaf_values);
         }
@@ -3855,6 +3858,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   } else if (mode == BENCH_SEMANTIC && parsed > 0) {
     printf(" avg_semantic_nodes=%.1f avg_semantic_bytes=%.1f "
            "avg_semantic_statements=%.2f avg_semantic_targets=%.2f "
+           "avg_semantic_descriptors=%.2f "
            "avg_semantic_expressions=%.2f "
            "avg_semantic_expression_operators=%.2f "
            "avg_semantic_expression_leaf_values=%.2f",
@@ -3862,6 +3866,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)semantic_bytes / (double)parsed,
            (double)semantic_statements / (double)parsed,
            (double)semantic_targets / (double)parsed,
+           (double)semantic_descriptors / (double)parsed,
            (double)semantic_expressions / (double)parsed,
            (double)semantic_expression_operators / (double)parsed,
            (double)semantic_expression_leaf_values / (double)parsed);
@@ -3900,8 +3905,9 @@ static void count_expression_tree(const MyliteAstExpression *expression,
 }
 
 static void count_semantic_tree(const MyliteSemanticAstNode *node,
-                                size_t *targets, size_t *expressions,
-                                size_t *operators, size_t *leaf_values) {
+                                size_t *targets, size_t *descriptors,
+                                size_t *expressions, size_t *operators,
+                                size_t *leaf_values) {
   if (node == NULL) {
     return;
   }
@@ -3909,6 +3915,11 @@ static void count_semantic_tree(const MyliteSemanticAstNode *node,
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_TARGET &&
       targets != NULL) {
     (*targets)++;
+  }
+  if (mylite_semantic_ast_node_kind(node) ==
+          MYLITE_SEMANTIC_NODE_DESCRIPTOR &&
+      descriptors != NULL) {
+    (*descriptors)++;
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_EXPRESSION) {
     if (expressions != NULL) {
@@ -3928,7 +3939,7 @@ static void count_semantic_tree(const MyliteSemanticAstNode *node,
 
   for (size_t i = 0; i < mylite_semantic_ast_node_child_count(node); i++) {
     count_semantic_tree(mylite_semantic_ast_node_child_at(node, i), targets,
-                        expressions, operators, leaf_values);
+                        descriptors, expressions, operators, leaf_values);
   }
 }
 

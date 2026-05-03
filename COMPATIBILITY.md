@@ -130,7 +130,8 @@ add/modify/change specs and add-constraint/index specs, including multi-item
 `ADD (...)` descriptor arrays. The semantic AST currently groups `CREATE TABLE`,
 `ALTER TABLE`, and `CREATE INDEX` descriptors under table object nodes, groups
 `INSERT`/`REPLACE` explicit target columns under DML table nodes, and keeps
-SELECT/UPDATE/DELETE named table references under table-reference clauses.
+SELECT/UPDATE/DELETE named table references under table-reference clauses. Key
+descriptors now own their key-part and key-option semantic children.
 Column, key, and DDL descriptors include CST node anchors for the next semantic
 AST builder, but the parser does not yet build the final typed MyLite AST and
 does not imply runtime support for the statement rows below. The current

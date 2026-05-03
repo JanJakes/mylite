@@ -8477,6 +8477,12 @@ static int expect_semantic_ast_materialization(void) {
   const MyliteSemanticAstNode *key_descriptor =
       first_semantic_child_with_descriptor_kind(
           table, MYLITE_SEMANTIC_DESCRIPTOR_KEY);
+  const MyliteSemanticAstNode *create_table_key_part_descriptor =
+      first_semantic_child_with_descriptor_kind(
+          key_descriptor, MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART);
+  const MyliteSemanticAstNode *direct_create_table_key_part =
+      first_semantic_child_with_descriptor_kind(
+          table, MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART);
   const MyliteSemanticAstNode *data_type =
       first_semantic_child_with_kind(column_descriptor,
                                     MYLITE_SEMANTIC_NODE_DATA_TYPE);
@@ -8494,7 +8500,7 @@ static int expect_semantic_ast_materialization(void) {
           MYLITE_STATEMENT_TARGET_TABLE ||
       mylite_semantic_ast_node_target_role(table) !=
           MYLITE_STATEMENT_TARGET_ROLE_PRIMARY ||
-      mylite_semantic_ast_node_child_count(table) != 7 ||
+      mylite_semantic_ast_node_child_count(table) != 6 ||
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(table),
           mylite_semantic_ast_node_value_length(table), "t") ||
@@ -8519,9 +8525,12 @@ static int expect_semantic_ast_materialization(void) {
                                        data_type),
                                    "INT") ||
       key_descriptor == NULL ||
+      mylite_semantic_ast_node_child_count(key_descriptor) != 1 ||
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(key_descriptor),
           mylite_semantic_ast_node_value_length(key_descriptor), "k") ||
+      create_table_key_part_descriptor == NULL ||
+      direct_create_table_key_part != NULL ||
       ddl_counts.targets != 1 || ddl_counts.tables != 1 ||
       ddl_counts.descriptors < 7 ||
       ddl_counts.clauses != 0 || ddl_counts.data_types != 4 ||
@@ -8576,6 +8585,9 @@ static int expect_semantic_ast_materialization(void) {
           alter_key_spec, MYLITE_SEMANTIC_DESCRIPTOR_KEY);
   const MyliteSemanticAstNode *alter_key_part_descriptor =
       first_semantic_child_with_descriptor_kind(
+          alter_key_descriptor, MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART);
+  const MyliteSemanticAstNode *direct_alter_key_part =
+      first_semantic_child_with_descriptor_kind(
           alter_key_spec, MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART);
   const MyliteSemanticAstNode *direct_alter_spec =
       first_semantic_child_with_descriptor_kind(
@@ -8618,12 +8630,14 @@ static int expect_semantic_ast_materialization(void) {
       mylite_semantic_ast_node_data_type_kind(alter_data_type) !=
           MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT ||
       alter_key_spec == NULL ||
-      mylite_semantic_ast_node_child_count(alter_key_spec) != 2 ||
+      mylite_semantic_ast_node_child_count(alter_key_spec) != 1 ||
       alter_key_descriptor == NULL ||
+      mylite_semantic_ast_node_child_count(alter_key_descriptor) != 1 ||
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(alter_key_descriptor),
           mylite_semantic_ast_node_value_length(alter_key_descriptor), "k") ||
       alter_key_part_descriptor == NULL ||
+      direct_alter_key_part != NULL ||
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(alter_key_part_descriptor),
           mylite_semantic_ast_node_value_length(alter_key_part_descriptor),

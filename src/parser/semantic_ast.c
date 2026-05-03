@@ -285,6 +285,11 @@ mylite_semantic_ast_materialize_data_type_attribute(
 static int mylite_semantic_ast_append_create_table_key_descriptors(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *index,
     const MyliteAstCreateTableKey *key);
+static size_t mylite_semantic_ast_count_create_table_key_children(
+    const MyliteAstCreateTableKey *key);
+static int mylite_semantic_ast_fill_create_table_key_children(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *descriptor,
+    const MyliteAstCreateTableKey *key);
 static int mylite_semantic_ast_append_descriptor_child(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *index,
     MyliteSemanticDescriptorKind kind, size_t start, size_t end,
@@ -1316,11 +1321,7 @@ static size_t mylite_semantic_ast_count_alter_table_spec_children(
   size_t count = mylite_ast_alter_table_spec_view_column_count(spec);
   for (size_t i = 0; i < mylite_ast_alter_table_spec_view_key_count(spec);
        i++) {
-    const MyliteAstCreateTableKey *key =
-        mylite_ast_alter_table_spec_view_key_at(spec, i);
     count++;
-    count += mylite_ast_create_table_key_view_column_count(key);
-    count += mylite_ast_create_table_key_view_option_count(key);
   }
   return count;
 }
@@ -2585,14 +2586,7 @@ static size_t mylite_semantic_ast_count_create_table_children(
   }
   size_t count = mylite_ast_create_table_view_column_count(create_table) +
                  mylite_ast_create_table_view_option_count(create_table);
-  for (size_t i = 0; i < mylite_ast_create_table_view_key_count(create_table);
-       i++) {
-    const MyliteAstCreateTableKey *key =
-        mylite_ast_create_table_view_key_at(create_table, i);
-    count++;
-    count += mylite_ast_create_table_key_view_column_count(key);
-    count += mylite_ast_create_table_key_view_option_count(key);
-  }
+  count += mylite_ast_create_table_view_key_count(create_table);
   return count;
 }
 
@@ -3276,10 +3270,39 @@ static int mylite_semantic_ast_append_create_table_key_descriptors(
     value_length =
         mylite_ast_create_table_key_view_constraint_name_value_length(key);
   }
-  if (!mylite_semantic_ast_append_descriptor_with_expression_child(
-          ast, parent, index, MYLITE_SEMANTIC_DESCRIPTOR_KEY,
-          mylite_ast_create_table_key_view_start(key),
-          mylite_ast_create_table_key_view_end(key), value, value_length,
+  MyliteSemanticAstNode *descriptor = mylite_semantic_ast_materialize_descriptor(
+      ast, MYLITE_SEMANTIC_DESCRIPTOR_KEY,
+      mylite_ast_create_table_key_view_start(key),
+      mylite_ast_create_table_key_view_end(key), value, value_length,
+      mylite_semantic_ast_count_create_table_key_children(key));
+  if (descriptor == NULL) {
+    return 0;
+  }
+
+  if (!mylite_semantic_ast_fill_create_table_key_children(ast, descriptor,
+                                                          key)) {
+    return 0;
+  }
+  return mylite_semantic_ast_append_child(parent, index, descriptor);
+}
+
+static size_t mylite_semantic_ast_count_create_table_key_children(
+    const MyliteAstCreateTableKey *key) {
+  if (key == NULL) {
+    return 0;
+  }
+  return mylite_semantic_ast_count_expression_root(
+             mylite_ast_create_table_key_view_check_expression(key)) +
+         mylite_ast_create_table_key_view_column_count(key) +
+         mylite_ast_create_table_key_view_option_count(key);
+}
+
+static int mylite_semantic_ast_fill_create_table_key_children(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *descriptor,
+    const MyliteAstCreateTableKey *key) {
+  size_t child_index = 0;
+  if (!mylite_semantic_ast_append_descriptor_expression_child(
+          ast, descriptor, &child_index,
           mylite_ast_create_table_key_view_check_expression(key))) {
     return 0;
   }
@@ -3289,7 +3312,7 @@ static int mylite_semantic_ast_append_create_table_key_descriptors(
     const MyliteAstCreateTableKeyPart *part =
         mylite_ast_create_table_key_view_column_at(key, i);
     if (!mylite_semantic_ast_append_descriptor_with_expression_child(
-            ast, parent, index, MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART,
+            ast, descriptor, &child_index, MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART,
             mylite_ast_create_table_key_part_view_start(part),
             mylite_ast_create_table_key_part_view_end(part),
             mylite_ast_create_table_key_part_view_name_value(part),
@@ -3304,7 +3327,7 @@ static int mylite_semantic_ast_append_create_table_key_descriptors(
     const MyliteAstCreateTableKeyOption *option =
         mylite_ast_create_table_key_view_option_at(key, i);
     if (!mylite_semantic_ast_append_descriptor_child(
-            ast, parent, index, MYLITE_SEMANTIC_DESCRIPTOR_OPTION,
+            ast, descriptor, &child_index, MYLITE_SEMANTIC_DESCRIPTOR_OPTION,
             mylite_ast_create_table_key_option_view_start(option),
             mylite_ast_create_table_key_option_view_end(option),
             mylite_ast_create_table_key_option_view_value(option),
@@ -3313,7 +3336,7 @@ static int mylite_semantic_ast_append_create_table_key_descriptors(
     }
   }
 
-  return 1;
+  return child_index == descriptor->child_count;
 }
 
 static int mylite_semantic_ast_append_descriptor_child(

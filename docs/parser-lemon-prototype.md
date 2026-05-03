@@ -306,7 +306,8 @@ token sink:
   validated `ALTER ... SET DEFAULT` expression tails, validated `ORDER BY`
   expression-list tails, partition definition, maintenance/exchange,
   reorganize forms, validated partition-method expression lists, maintenance
-  binlog modifiers, CHECK/REPAIR maintenance options, and numeric coalesce counts,
+  binlog modifiers, CHECK/REPAIR maintenance options, and unsigned
+  integer/lowercase-hex coalesce/add-partition counts,
   tablespace/storage/union changes with closed storage values,
   secondary-engine load/unload actions,
   table option changes with charset/collation continuations,

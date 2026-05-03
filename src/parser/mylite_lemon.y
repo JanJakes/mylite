@@ -1513,9 +1513,7 @@ alter_table_partition_action ::= TRUNCATE PARTITION load_partition_names.
 alter_table_partition_action ::= REMOVE PARTITIONING.
 alter_table_partition_action ::= EXCHANGE PARTITION alter_table_partition_name WITH TABLE cache_table_ref alter_table_exchange_validation_tail.
 
-alter_table_partition_count ::= BOOLEAN_NUMBER.
-alter_table_partition_count ::= FACTOR_NUMBER.
-alter_table_partition_count ::= NUMBER_LITERAL.
+alter_table_partition_count ::= unsigned_integer_or_lower_hex_value.
 
 alter_table_partition_definition_action ::= PARTITION BY required_statement_tail.
 

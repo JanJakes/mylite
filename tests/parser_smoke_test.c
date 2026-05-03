@@ -8445,7 +8445,7 @@ static int expect_semantic_ast_materialization(void) {
   mylite_semantic_ast_free(semantic_ast);
 
   const char *ddl_sql =
-      "CREATE TABLE t ("
+      "CREATE TABLE db1.t ("
       "a INT DEFAULT (1 + 2), "
       "b INT GENERATED ALWAYS AS (a + 1) STORED, "
       "c INT CHECK (c > 0), "
@@ -8504,6 +8504,9 @@ static int expect_semantic_ast_materialization(void) {
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(table),
           mylite_semantic_ast_node_value_length(table), "t") ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_schema_value(table),
+          mylite_semantic_ast_node_schema_value_length(table), "db1") ||
       column_descriptor == NULL ||
       direct_column_descriptor != NULL ||
       !value_matches_when_expected(

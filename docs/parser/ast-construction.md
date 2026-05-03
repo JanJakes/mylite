@@ -62,9 +62,9 @@ expression nodes.
   opaque handles for navigating those descriptors directly, including nested
   column type elements, key parts, and key options.
 - The separate semantic AST now groups `CREATE TABLE` descriptor children under
-  a semantic table node. The table node keeps the decoded table name and gives
-  DDL analyzers a real object subtree while the generic statement target remains
-  available for uniform target enumeration.
+  a semantic table node. The table node keeps the decoded table schema/name and
+  gives DDL analyzers a real object subtree while the generic statement target
+  remains available for uniform target enumeration.
 - `ALTER TABLE` semantic nodes now mirror that object shape: the statement owns
   a decoded table node, the table node owns operation spec descriptors and table
   option descriptors, and each operation spec owns its column/key payload
@@ -424,7 +424,7 @@ table/schema; explicit target column descriptors live under that table node.
 Duplicate-key assignment descriptors remain statement-scoped.
 `CREATE TABLE` statements own a semantic table node after the generic target
 node. The table node spans the parser-level create-table view, carries the
-decoded table name, and owns the table's column, key, and table-option
+decoded table schema/name, and owns the table's column, key, and table-option
 descriptor children. Key descriptors own their key-part and key-option
 descriptor children. `ALTER TABLE` statements also own a semantic
 table node; it carries the decoded target table/schema, owns operation spec and
@@ -831,10 +831,10 @@ SELECT/UPDATE/DELETE table-reference descriptors and semantic `CREATE TABLE`,
 `ALTER TABLE`, `CREATE INDEX`, `INSERT`, and `REPLACE` table-node grouping:
 
 ```text
-mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.799836 qps=496751 mbps=37.78 avg_us=2.013
-mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.332185 qps=166921 mbps=12.69 avg_us=5.991 avg_nodes=74.5 avg_ast_bytes=11244.6 avg_statements=1.00
-mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.614248 qps=161456 mbps=12.28 avg_us=6.194 avg_nodes=74.5 avg_ast_bytes=11244.6
-mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.891454 qps=156422 mbps=11.90 avg_us=6.393 avg_semantic_nodes=10.5 avg_semantic_bytes=4940.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_query_blocks=0.28 avg_semantic_tables=0.35 avg_semantic_table_references=0.23 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.58 avg_semantic_clauses=0.37 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.69 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
+mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.810965 qps=494784 mbps=37.63 avg_us=2.021
+mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.434768 qps=164891 mbps=12.54 avg_us=6.065 avg_nodes=74.5 avg_ast_bytes=11244.6 avg_statements=1.00
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.727070 qps=159368 mbps=12.12 avg_us=6.275 avg_nodes=74.5 avg_ast_bytes=11244.6
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.902047 qps=156236 mbps=11.88 avg_us=6.401 avg_semantic_nodes=10.5 avg_semantic_bytes=4940.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_query_blocks=0.28 avg_semantic_tables=0.35 avg_semantic_table_references=0.23 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.58 avg_semantic_clauses=0.37 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.69 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
 ```
 
 Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:
@@ -1035,7 +1035,7 @@ Current release build size on the same machine:
 generated parser C: 72,876 lines, 5,639,543 bytes
 generated parser object: 997K on disk, 905,630 bytes text/data/other
 parser support object: 421K on disk, 242,586 bytes text/data/other
-semantic AST object: 78K on disk, 38,167 bytes text/data/other
+semantic AST object: 78K on disk, 38,211 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.6M on disk
 mylite-parse: 1.3M on disk

@@ -2569,6 +2569,10 @@ static MyliteSemanticAstNode *mylite_semantic_ast_materialize_create_table(
         mylite_ast_create_table_view_schema_value_length(create_table);
   }
   if (!mylite_semantic_ast_copy_node_value(ast, table, value, value_length) ||
+      !mylite_semantic_ast_copy_optional_string(
+          ast, &table->schema_value, &table->schema_value_length,
+          mylite_ast_create_table_view_schema_value(create_table),
+          mylite_ast_create_table_view_schema_value_length(create_table)) ||
       !mylite_semantic_ast_set_node_child_count(
           ast, table,
           mylite_semantic_ast_count_create_table_children(create_table)) ||

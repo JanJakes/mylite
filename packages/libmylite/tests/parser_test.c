@@ -23,6 +23,7 @@ static int test_rename_table_syntax(void);
 static int test_truncate_table_syntax(void);
 static int test_show_variables_syntax(void);
 static int test_show_status_syntax(void);
+static int test_show_engines_syntax(void);
 static int test_show_character_set_syntax(void);
 static int test_show_collation_syntax(void);
 static int test_show_tables_syntax(void);
@@ -170,6 +171,7 @@ int main(void)
     failures += test_truncate_table_syntax();
     failures += test_show_variables_syntax();
     failures += test_show_status_syntax();
+    failures += test_show_engines_syntax();
     failures += test_show_character_set_syntax();
     failures += test_show_collation_syntax();
     failures += test_show_tables_syntax();
@@ -3058,6 +3060,62 @@ static int test_show_status_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_engines_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW ENGINES; SHOW STORAGE ENGINES;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 2U, "show engines script count");
+
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT, "show engines");
+    failures += expect_child_count(statement, 0U, "show engines child count");
+
+    statement = child_at(result.root, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT, "show storage engines");
+    failures += expect_child_count(statement, 0U, "show storage engines child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE engines (storage INT, engines INT);", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 1U, "show engines keyword identifiers");
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_span_text(child_at(statement, 0U), "engines", "engines keyword as table name");
+    statement = child_at(statement, 1U);
+    failures += expect_span_text(child_at(child_at(statement, 0U), 0U), "storage",
+                                 "storage keyword as column name");
+    failures += expect_span_text(child_at(child_at(statement, 1U), 0U), "engines",
+                                 "engines keyword as column name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ENGINES LIKE 'InnoDB';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW ENGINES WHERE Engine = 'InnoDB';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ENGINES LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW STORAGE ENGINES LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW STORAGE ENGINES LIKE 'InnoDB';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW STORAGE ENGINES WHERE Engine = 'InnoDB';",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

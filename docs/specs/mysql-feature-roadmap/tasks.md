@@ -154,9 +154,10 @@ level application surfaces.
        privileges, Performance Schema summary-table behavior, and implicit
        commits remain deferred. Spec:
        [TRUNCATE TABLE](../truncate-table/specs.md).
-39. [ ] `SHOW TABLES`, `SHOW COLUMNS`, `SHOW INDEX`, `DESCRIBE`, and
-       `SHOW CREATE TABLE`: result-set shape, filtering, metadata formatting,
-       and warnings. First `SHOW TABLES` slice is implemented for supported
+39. [ ] `SHOW TABLES`, `SHOW COLUMNS`, `SHOW INDEX`, `DESCRIBE`,
+       `SHOW CREATE TABLE`, and `SHOW ENGINES`: result-set shape, filtering,
+       metadata formatting, and warnings. First `SHOW TABLES` slice is
+       implemented for supported
        MyLite base tables and existing `information_schema` metadata views,
        including `EXTENDED`, `FULL`, `FROM`/`IN`, `LIKE`, `WHERE` grammar,
        result column names, table type, empty results, and
@@ -204,12 +205,20 @@ level application surfaces.
        temporary tables, foreign keys, checks, generated columns, partitions,
        functional indexes, storage-engine-specific options, privilege
        filtering, `SHOW CREATE VIEW`, and `sql_quote_show_create = 0` remain
-       deferred. Specs:
+       deferred. The first `SHOW ENGINES` slice is specified for
+       `SHOW [STORAGE] ENGINES`, including exact six-column metadata,
+       nondiagnostic clearing, `InnoDB` as the default MyLite SQLite-backed
+       transactional facade, common unsupported MySQL engines reported as
+       `Support=NO` with nullable capability columns, and MySQL-compatible
+       syntax rejection for `LIKE`, `WHERE`, and `LIMIT`. Full
+       build-dependent engine catalog breadth and `INFORMATION_SCHEMA.ENGINES`
+       remain deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),
        [SHOW INDEX](../show-index/specs.md),
        [DESCRIBE / DESC table metadata](../describe-table/specs.md),
-       [SHOW CREATE TABLE](../show-create-table/specs.md).
+       [SHOW CREATE TABLE](../show-create-table/specs.md),
+       [SHOW ENGINES](../show-engines/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.
        The diagnostic `SHOW WARNINGS` / `SHOW ERRORS` slice is specified for

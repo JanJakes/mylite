@@ -118,6 +118,7 @@ enum mylite_transaction_completion_chain {
 };
 
 static const unsigned int mylite_mysql_binary_charset_id = 63U;
+static const unsigned int mylite_mysql_latin1_swedish_ci_charset_id = 8U;
 static const unsigned int mylite_mysql_utf8mb4_bin_charset_id = 46U;
 static const unsigned int mylite_mysql_utf8mb4_0900_ai_ci_charset_id = 255U;
 static const unsigned int mylite_mysql_not_fixed_decimals = 31U;
@@ -1164,6 +1165,21 @@ struct mylite_show_status_query {
     const char *like_pattern;
 };
 
+struct mylite_storage_engine_row {
+    const char *engine;
+    const char *support;
+    const char *comment;
+    const char *transactions;
+    const char *xa;
+    const char *savepoints;
+};
+
+struct mylite_show_engines_metadata_column {
+    const char *name;
+    uint64_t length;
+    bool nullable;
+};
+
 struct mylite_show_character_set_query {
     const char *like_pattern;
 };
@@ -1563,6 +1579,12 @@ static void append_show_status_row(sqlite3_str *sql, bool *first, const char *na
                                    const char *value);
 static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const char *name,
                                            uint64_t value);
+static int prepare_show_engines_statement(mylite_db *database, mylite_stmt **out_stmt);
+static int show_engines_sql(mylite_db *database, char **out_sql);
+static void append_show_engines_row(sqlite3_str *sql, bool *first,
+                                    const struct mylite_storage_engine_row *engine);
+static int attach_show_engines_result_metadata(mylite_db *database, mylite_stmt *stmt);
+static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable);
 static int prepare_show_character_set_statement(mylite_db *database,
                                                 const struct mylite_sql_ast_node *statement,
                                                 mylite_stmt **out_stmt);
@@ -5045,6 +5067,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_show_variables_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
             return prepare_show_status_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
+            return prepare_show_engines_statement(database, out_stmt);
         case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
             return prepare_show_character_set_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
@@ -5269,6 +5293,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -5419,6 +5444,7 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -5734,6 +5760,7 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -6241,6 +6268,137 @@ static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const 
     sqlite3_str_appendf(sql, "SELECT %Q AS \"Variable_name\", '%llu' AS \"Value\"", name,
                         (unsigned long long)value);
     *first = false;
+}
+
+static int prepare_show_engines_statement(mylite_db *database, mylite_stmt **out_stmt)
+{
+    char *sqlite_sql = NULL;
+    mylite_stmt *stmt = NULL;
+    int status = show_engines_sql(database, &sqlite_sql);
+
+    *out_stmt = NULL;
+    if (status == MYLITE_OK) {
+        status = prepare_sqlite_statement(database, sqlite_sql, &stmt);
+    }
+    if (status == MYLITE_OK) {
+        status = attach_show_engines_result_metadata(database, stmt);
+    }
+
+    if (status == MYLITE_OK) {
+        *out_stmt = stmt;
+    } else {
+        mylite_finalize(stmt);
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(database, "out of memory");
+        }
+    }
+    sqlite3_free(sqlite_sql);
+    return status;
+}
+
+static int show_engines_sql(mylite_db *database, char **out_sql)
+{
+    static const struct mylite_storage_engine_row engines[] = {
+        {"InnoDB", "DEFAULT", "MyLite SQLite-backed transactional engine facade", "YES", "NO",
+         "YES"},
+        {"MEMORY", "NO", "In-memory tables are not supported by MyLite", NULL, NULL, NULL},
+        {"MyISAM", "NO", "MyISAM tables are not supported by MyLite", NULL, NULL, NULL},
+        {"FEDERATED", "NO", "Federated tables are not supported by MyLite", NULL, NULL, NULL},
+        {"MRG_MYISAM", "NO", "Merge MyISAM tables are not supported by MyLite", NULL, NULL, NULL},
+        {"BLACKHOLE", "NO", "Blackhole tables are not supported by MyLite", NULL, NULL, NULL},
+        {"CSV", "NO", "CSV-backed tables are not supported by MyLite", NULL, NULL, NULL},
+        {"ARCHIVE", "NO", "Archive tables are not supported by MyLite", NULL, NULL, NULL},
+    };
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    bool first = true;
+
+    *out_sql = NULL;
+    if (sql == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    sqlite3_str_appendall(sql,
+                          "SELECT Engine, Support, Comment, Transactions, XA, Savepoints FROM (");
+    for (size_t index = 0U; index < sizeof(engines) / sizeof(engines[0]); ++index) {
+        append_show_engines_row(sql, &first, &engines[index]);
+    }
+    sqlite3_str_appendall(sql, ")");
+
+    *out_sql = sqlite3_str_finish(sql);
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static void append_show_engines_row(sqlite3_str *sql, bool *first,
+                                    const struct mylite_storage_engine_row *engine)
+{
+    if (!*first) {
+        sqlite3_str_appendall(sql, " UNION ALL ");
+    }
+
+    sqlite3_str_appendf(sql, "SELECT %Q AS \"Engine\", %Q AS \"Support\", %Q AS \"Comment\", ",
+                        engine->engine, engine->support, engine->comment);
+    if (engine->transactions == NULL) {
+        sqlite3_str_appendall(sql, "NULL AS \"Transactions\", ");
+    } else {
+        sqlite3_str_appendf(sql, "%Q AS \"Transactions\", ", engine->transactions);
+    }
+    if (engine->xa == NULL) {
+        sqlite3_str_appendall(sql, "NULL AS \"XA\", ");
+    } else {
+        sqlite3_str_appendf(sql, "%Q AS \"XA\", ", engine->xa);
+    }
+    if (engine->savepoints == NULL) {
+        sqlite3_str_appendall(sql, "NULL AS \"Savepoints\"");
+    } else {
+        sqlite3_str_appendf(sql, "%Q AS \"Savepoints\"", engine->savepoints);
+    }
+    *first = false;
+}
+
+static int attach_show_engines_result_metadata(mylite_db *database, mylite_stmt *stmt)
+{
+    static const struct mylite_show_engines_metadata_column columns[] = {
+        {"Engine", 64U, false},     {"Support", 8U, false}, {"Comment", 80U, false},
+        {"Transactions", 3U, true}, {"XA", 3U, true},       {"Savepoints", 3U, true},
+    };
+    struct mylite_result_metadata metadata = {0};
+
+    metadata.columns = calloc(sizeof(columns) / sizeof(columns[0]), sizeof(*metadata.columns));
+    if (metadata.columns == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    metadata.column_count = sizeof(columns) / sizeof(columns[0]);
+
+    for (size_t index = 0U; index < metadata.column_count; ++index) {
+        int status =
+            copy_result_metadata_text(database, &metadata.columns[index].name, columns[index].name);
+
+        if (status != MYLITE_OK) {
+            result_metadata_deinit(&metadata);
+            return status;
+        }
+        metadata.columns[index].descriptor =
+            show_engines_field_descriptor(columns[index].length, columns[index].nullable);
+    }
+
+    result_metadata_deinit(&stmt->result_metadata);
+    stmt->result_metadata = metadata;
+    return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable)
+{
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_mysql_latin1_swedish_ci_charset_id,
+        .nullable = nullable,
+    };
+
+    field_descriptor_set_nullable(&descriptor, nullable);
+    return descriptor;
 }
 
 static int prepare_show_character_set_statement(mylite_db *database,
@@ -8894,6 +9052,7 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -11851,6 +12010,7 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -12555,6 +12715,7 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -13119,6 +13280,7 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -13838,6 +14000,7 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -21868,6 +22031,7 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -23339,6 +23503,7 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -34895,6 +35060,7 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:

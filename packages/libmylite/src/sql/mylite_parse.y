@@ -43,6 +43,7 @@
 %type opt_show_variables_filter { struct mylite_sql_ast_node * }
 %type opt_show_status_scope { struct mylite_sql_parser_show_status_scope }
 %type opt_show_status_filter { struct mylite_sql_ast_node * }
+%type opt_show_storage { struct mylite_sql_token }
 %type show_character_set_keyword { struct mylite_sql_token }
 %type opt_show_character_set_filter { struct mylite_sql_ast_node * }
 %type opt_show_collation_filter { struct mylite_sql_ast_node * }
@@ -99,10 +100,10 @@
 %right KEY.
 %fallback IDENTIFIER AFTER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLLATION
     COLUMN_FORMAT COMMENT COMMIT CONSISTENT COUNT DATE DATETIME DISK DYNAMIC ENGINE
-    ENGINE_ATTRIBUTE ENCRYPTION ERRORS FIRST FIXED HASH INSTANT INVISIBLE KEY_BLOCK_SIZE MEMORY
-    MODIFY NCHAR NO NVARCHAR OFFSET ONLY ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE SIGNED
-    SNAPSHOT START STORAGE TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE WARNINGS
-    WORK YEAR.
+    ENGINES ENGINE_ATTRIBUTE ENCRYPTION ERRORS FIRST FIXED HASH INSTANT INVISIBLE KEY_BLOCK_SIZE
+    MEMORY MODIFY NCHAR NO NVARCHAR OFFSET ONLY ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE
+    SIGNED SNAPSHOT START STORAGE TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE
+    WARNINGS WORK YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -201,6 +202,9 @@ statement(A) ::= show_variables_statement(B). {
     A = B;
 }
 statement(A) ::= show_status_statement(B). {
+    A = B;
+}
+statement(A) ::= show_engines_statement(B). {
     A = B;
 }
 statement(A) ::= show_character_set_statement(B). {
@@ -1047,6 +1051,22 @@ opt_show_status_filter(A) ::= LIKE STRING(T). {
 }
 opt_show_status_filter(A) ::= where_clause(B). {
     A = B;
+}
+
+show_engines_statement(A) ::= SHOW(T) opt_show_storage(S) ENGINES(E). {
+    A = mylite_sql_parser_make_show_engines_statement(
+        state, (struct mylite_sql_parser_show_engines_tokens){
+            .show = T,
+            .storage = S,
+            .engines = E,
+        });
+}
+
+opt_show_storage(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_show_storage(A) ::= STORAGE(T). {
+    A = T;
 }
 
 show_character_set_statement(A) ::= SHOW(T) show_character_set_keyword(K)

@@ -2600,6 +2600,16 @@ mylite_sql_parser_make_show_status_scope(struct mylite_sql_token token,
     };
 }
 
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_show_engines_statement(struct mylite_sql_parser_state *state,
+                                              struct mylite_sql_parser_show_engines_tokens tokens)
+{
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&tokens.show), span_from_token(&tokens.engines));
+
+    return make_node(state, MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT, span);
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_character_set_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
     struct mylite_sql_token character_set_token, struct mylite_sql_ast_node *filter)
@@ -5611,6 +5621,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"ELSE", MYLITE_SQL_PARSE_ELSE},
         {"END", MYLITE_SQL_PARSE_END},
         {"ENGINE", MYLITE_SQL_PARSE_ENGINE},
+        {"ENGINES", MYLITE_SQL_PARSE_ENGINES},
         {"ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_ENGINE_ATTRIBUTE},
         {"ENFORCED", MYLITE_SQL_PARSE_ENFORCED},
         {"ENCRYPTION", MYLITE_SQL_PARSE_ENCRYPTION},

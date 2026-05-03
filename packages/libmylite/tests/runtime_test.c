@@ -228,6 +228,7 @@ static int test_rename_table_execution(void);
 static int test_truncate_table_execution(void);
 static int test_show_variables_execution(void);
 static int test_show_status_execution(void);
+static int test_show_engines_execution(void);
 static int test_show_character_set_execution(void);
 static int test_show_collation_execution(void);
 static int test_show_tables_execution(void);
@@ -385,6 +386,7 @@ int main(void)
     failures += test_truncate_table_execution();
     failures += test_show_variables_execution();
     failures += test_show_status_execution();
+    failures += test_show_engines_execution();
     failures += test_show_character_set_execution();
     failures += test_show_collation_execution();
     failures += test_show_tables_execution();
@@ -5143,6 +5145,112 @@ static int expect_show_status_numeric_rows(mylite_db *database,
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, expected->context);
     failures += expect_int64(mylite_affected_rows(stmt), -1, expected->context);
     mylite_finalize(stmt);
+    return failures;
+}
+
+static int test_show_engines_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"Engine",       "Support", "Comment",
+                                          "Transactions", "XA",      "Savepoints"};
+    static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
+    static const char *const warning_count_column[] = {"@@session.warning_count"};
+    static const char *const error_count_column[] = {"@@session.error_count"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const one_count[] = {"1"};
+    static const char *const values[] = {
+        "InnoDB",     "DEFAULT", "MyLite SQLite-backed transactional engine facade",
+        "YES",        "NO",      "YES",
+        "MEMORY",     "NO",      "In-memory tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "MyISAM",     "NO",      "MyISAM tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "FEDERATED",  "NO",      "Federated tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "MRG_MYISAM", "NO",      "Merge MyISAM tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "BLACKHOLE",  "NO",      "Blackhole tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "CSV",        "NO",      "CSV-backed tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "ARCHIVE",    "NO",      "Archive tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+    };
+    static const struct expected_result_metadata metadata[] = {
+        {"Engine", NULL, NULL, NULL, NULL, NULL, 64U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         MYLITE_FIELD_FLAG_NOT_NULL, 0U, 0},
+        {"Support", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         MYLITE_FIELD_FLAG_NOT_NULL, 0U, 0},
+        {"Comment", NULL, NULL, NULL, NULL, NULL, 80U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         MYLITE_FIELD_FLAG_NOT_NULL, 0U, 0},
+        {"Transactions", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"XA", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"Savepoints", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open show engines");
+
+    failures += expect_select_rows(database, "SHOW ENGINES", columns, 6, values, 8,
+                                   "show engines registry");
+    failures += expect_select_rows(database, "SHOW STORAGE ENGINES", columns, 6, values, 8,
+                                   "show storage engines registry");
+
+    failures += prepare_sql(database, "SHOW ENGINES", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, metadata, 6, "show engines metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show engines metadata first row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "InnoDB", "show engines metadata first engine");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "show engines affected rows");
+    mylite_finalize(stmt);
+
+    failures += expect_prepare_error(database, "SHOW ENGINES LIKE 'InnoDB'", MYLITE_PARSE_ERROR,
+                                     "syntax_error", "show engines like syntax");
+    failures +=
+        expect_prepare_error(database, "SHOW ENGINES WHERE Engine = 'InnoDB'", MYLITE_PARSE_ERROR,
+                             "syntax_error", "show engines where syntax");
+    failures += expect_prepare_error(database, "SHOW ENGINES LIMIT 1", MYLITE_PARSE_ERROR,
+                                     "syntax_error", "show engines limit syntax");
+    failures +=
+        expect_prepare_error(database, "SHOW STORAGE ENGINES LIKE 'InnoDB'", MYLITE_PARSE_ERROR,
+                             "syntax_error", "show storage engines like syntax");
+    failures += expect_prepare_error(database, "SHOW STORAGE ENGINES WHERE Engine = 'InnoDB'",
+                                     MYLITE_PARSE_ERROR, "syntax_error",
+                                     "show storage engines where syntax");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_engines", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_engines", MYLITE_DONE);
+    failures +=
+        expect_prepare_error(database, "SELECT * FROM missing_show_engines_table",
+                             MYLITE_EXEC_ERROR, "doesn't exist", "show engines error source");
+    failures += expect_select_rows(database, "SHOW COUNT(*) ERRORS", error_count_column, 1,
+                                   one_count, 1, "show engines source error count");
+    failures += expect_select_rows(database, "SHOW ENGINES", columns, 6, values, 8,
+                                   "show engines clears diagnostics");
+    failures += expect_select_rows(database, "SHOW COUNT(*) ERRORS", error_count_column, 1,
+                                   zero_count, 1, "show engines cleared error count");
+    failures += expect_select_rows(database, "SHOW ERRORS", diagnostics_columns, 3, NULL, 0,
+                                   "show engines cleared diagnostics");
+
+    failures +=
+        expect_select_rows(database, "SELECT 1/0 AS divzero", (const char *const[]){"divzero"}, 1,
+                           (const char *const[]){NULL}, 1, "show engines warning source");
+    failures += expect_select_rows(database, "SHOW COUNT(*) WARNINGS", warning_count_column, 1,
+                                   one_count, 1, "show engines source warning count");
+    failures += expect_select_rows(database, "SHOW ENGINES", columns, 6, values, 8,
+                                   "show engines clears warning diagnostics");
+    failures += expect_select_rows(database, "SHOW COUNT(*) WARNINGS", warning_count_column, 1,
+                                   zero_count, 1, "show engines cleared warning count");
+    failures += expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3, NULL, 0,
+                                   "show engines cleared warnings");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 

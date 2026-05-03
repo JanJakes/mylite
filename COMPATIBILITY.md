@@ -127,8 +127,8 @@ operation specs,
 operation names, nested rename/exchange table targets, reused table-option
 handles, and reused column/key descriptor payloads for single-column
 add/modify/change specs and add-constraint/index specs, including multi-item
-`ADD (...)` descriptor arrays. The semantic AST currently groups `CREATE TABLE`
-and `ALTER TABLE` descriptors under table object nodes, groups
+`ADD (...)` descriptor arrays. The semantic AST currently groups `CREATE TABLE`,
+`ALTER TABLE`, and `CREATE INDEX` descriptors under table object nodes, groups
 `INSERT`/`REPLACE` explicit target columns under DML table nodes, and keeps
 SELECT/UPDATE/DELETE named table references under table-reference clauses.
 Column, key, and DDL descriptors include CST node anchors for the next semantic

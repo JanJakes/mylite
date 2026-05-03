@@ -8646,6 +8646,89 @@ static int expect_semantic_ast_materialization(void) {
   }
   mylite_semantic_ast_free(semantic_ast);
 
+  const char *create_index_sql =
+      "CREATE INDEX `i``x` ON db1.t1 (a, b(3) DESC) USING BTREE COMMENT "
+      "'idx' KEY_BLOCK_SIZE=8 VISIBLE";
+  semantic_ast = NULL;
+  status =
+      mylite_parse_sql_semantic_ast(create_index_sql, &semantic_ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "semantic AST CREATE INDEX parse failed: status=%s offset=%zu "
+            "token=%d message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return failed + 1;
+  }
+
+  root = mylite_semantic_ast_root(semantic_ast);
+  statement = mylite_semantic_ast_node_child_at(root, 0);
+  target = first_semantic_child_with_kind(statement,
+                                         MYLITE_SEMANTIC_NODE_TARGET);
+  const MyliteSemanticAstNode *create_index_table =
+      first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_TABLE);
+  const MyliteSemanticAstNode *create_index_key =
+      first_semantic_child_with_descriptor_kind(
+          create_index_table, MYLITE_SEMANTIC_DESCRIPTOR_KEY);
+  const MyliteSemanticAstNode *create_index_key_part =
+      first_semantic_child_with_descriptor_kind(
+          create_index_key, MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART);
+  const MyliteSemanticAstNode *create_index_option =
+      first_semantic_child_with_descriptor_kind(
+          create_index_key, MYLITE_SEMANTIC_DESCRIPTOR_OPTION);
+  const MyliteSemanticAstNode *direct_create_index_key =
+      first_semantic_child_with_descriptor_kind(
+          statement, MYLITE_SEMANTIC_DESCRIPTOR_KEY);
+  const MyliteSemanticAstNode *direct_create_index_key_part =
+      first_semantic_child_with_descriptor_kind(
+          statement, MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART);
+  const MyliteSemanticAstNode *direct_create_index_option =
+      first_semantic_child_with_descriptor_kind(
+          statement, MYLITE_SEMANTIC_DESCRIPTOR_OPTION);
+  SemanticCounts create_index_counts = {0};
+  count_semantic_nodes(root, &create_index_counts);
+  if (statement == NULL ||
+      mylite_semantic_ast_node_statement_kind(statement) !=
+          MYLITE_STATEMENT_CREATE ||
+      target == NULL ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(target),
+          mylite_semantic_ast_node_value_length(target), "t1") ||
+      create_index_table == NULL ||
+      mylite_semantic_ast_node_child_count(create_index_table) != 1 ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_schema_value(create_index_table),
+          mylite_semantic_ast_node_schema_value_length(create_index_table),
+          "db1") ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(create_index_table),
+          mylite_semantic_ast_node_value_length(create_index_table), "t1") ||
+      create_index_key == NULL ||
+      mylite_semantic_ast_node_child_count(create_index_key) != 6 ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(create_index_key),
+          mylite_semantic_ast_node_value_length(create_index_key), "i`x") ||
+      create_index_key_part == NULL ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(create_index_key_part),
+          mylite_semantic_ast_node_value_length(create_index_key_part), "a") ||
+      create_index_option == NULL ||
+      direct_create_index_key != NULL ||
+      direct_create_index_key_part != NULL ||
+      direct_create_index_option != NULL ||
+      create_index_counts.targets != 1 ||
+      create_index_counts.tables != 1 ||
+      create_index_counts.descriptors != 7) {
+    fprintf(stderr,
+            "semantic AST CREATE INDEX shape mismatch: nodes=%zu targets=%zu "
+            "tables=%zu descriptors=%zu\n",
+            mylite_semantic_ast_node_count(semantic_ast),
+            create_index_counts.targets, create_index_counts.tables,
+            create_index_counts.descriptors);
+    failed = 1;
+  }
+  mylite_semantic_ast_free(semantic_ast);
+
   const char *type_sql =
       "CREATE TABLE type_t ("
       "a DECIMAL(10,2) UNSIGNED ZEROFILL, "

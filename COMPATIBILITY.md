@@ -95,8 +95,13 @@ tables, source-form classification for `VALUES`, `SET`, and `SELECT`, priority
 and `IGNORE` modifiers, partition and `ON DUPLICATE KEY UPDATE` markers,
 optional column lists, VALUES row/value descriptors with recursive expression
 views, SET assignment descriptors, SELECT source anchors, and duplicate-update
-assignment descriptors. The prepared-statement views currently cover decoded
-statement handles, `PREPARE` source kind and decoded source value, ordered
+assignment descriptors. The `UPDATE` view currently covers `WITH` markers,
+single-table versus joined/multi-table target references, priority and `IGNORE`
+modifiers, ordered assignment descriptors with decoded names and recursive value
+expression views, statement-level `WHERE` predicate expression views, and
+`ORDER BY` / `LIMIT` anchors for forms that allow them. The
+prepared-statement views currently cover decoded statement handles, `PREPARE`
+source kind and decoded source value, ordered
 `EXECUTE ... USING` user variables, and `DEALLOCATE`/`DROP PREPARE` mode.
 Transaction-control views currently cover begin form, access mode, consistency
 modifiers, completion modifiers, `WORK`, and decoded savepoint names. The
@@ -194,8 +199,8 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. |  |
 | `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. |  |
 | `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. |  |
-| `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. |  |
-| `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. |  |
+| `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. | Parser prototype exposes target table-reference spans, priority and `IGNORE` modifiers, ordered assignment descriptors with decoded names and recursive value expression views, statement-level `WHERE` predicate views, and `ORDER BY` / `LIMIT` anchors. Runtime semantics are not implemented yet. |
+| `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. | Parser prototype marks joined/multi-table target references, records all currently discovered table targets, exposes ordered assignments, and anchors the statement-level `WHERE` predicate. Runtime semantics are not implemented yet. |
 | `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. |  |
 
 ### 1.3 Transactional, Locking, Replication, Prepared, and Compound Statements

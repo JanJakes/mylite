@@ -102,6 +102,19 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t insert_statement_expression_tree_nodes = 0;
   size_t insert_statement_expression_tree_operators = 0;
   size_t insert_statement_expression_tree_leaf_values = 0;
+  size_t update_statement_views = 0;
+  size_t update_statement_with_clauses = 0;
+  size_t update_statement_multi_table = 0;
+  size_t update_statement_priorities = 0;
+  size_t update_statement_ignores = 0;
+  size_t update_statement_assignments = 0;
+  size_t update_statement_assignment_name_values = 0;
+  size_t update_statement_where_expressions = 0;
+  size_t update_statement_order_by_clauses = 0;
+  size_t update_statement_limit_clauses = 0;
+  size_t update_statement_expression_tree_nodes = 0;
+  size_t update_statement_expression_tree_operators = 0;
+  size_t update_statement_expression_tree_leaf_values = 0;
   size_t create_table_views = 0;
   size_t create_table_view_schema_values = 0;
   size_t create_table_view_name_values = 0;
@@ -1084,6 +1097,66 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                     &insert_statement_expression_tree_leaf_values);
               }
             }
+            const MyliteAstUpdateStatement *update_statement =
+                mylite_ast_update_statement_view(ast, i);
+            if (update_statement != NULL) {
+              update_statement_views++;
+              if (mylite_ast_update_statement_view_has_with_clause(
+                      update_statement)) {
+                update_statement_with_clauses++;
+              }
+              if (mylite_ast_update_statement_view_is_multi_table(
+                      update_statement)) {
+                update_statement_multi_table++;
+              }
+              if (mylite_ast_update_statement_view_priority(update_statement) !=
+                  MYLITE_UPDATE_PRIORITY_NONE) {
+                update_statement_priorities++;
+              }
+              if (mylite_ast_update_statement_view_has_ignore(
+                      update_statement)) {
+                update_statement_ignores++;
+              }
+              if (mylite_ast_update_statement_view_where_expression(
+                      update_statement) != NULL) {
+                update_statement_where_expressions++;
+                count_expression_tree(
+                    mylite_ast_update_statement_view_where_expression(
+                        update_statement),
+                    &update_statement_expression_tree_nodes,
+                    &update_statement_expression_tree_operators,
+                    &update_statement_expression_tree_leaf_values);
+              }
+              if (mylite_ast_update_statement_view_order_by_end(
+                      update_statement) != 0) {
+                update_statement_order_by_clauses++;
+              }
+              if (mylite_ast_update_statement_view_limit_end(
+                      update_statement) != 0) {
+                update_statement_limit_clauses++;
+              }
+              update_statement_assignments +=
+                  mylite_ast_update_statement_view_assignment_count(
+                      update_statement);
+              for (size_t j = 0;
+                   j < mylite_ast_update_statement_view_assignment_count(
+                           update_statement);
+                   j++) {
+                const MyliteAstUpdateAssignment *assignment =
+                    mylite_ast_update_statement_view_assignment_at(
+                        update_statement, j);
+                if (mylite_ast_update_assignment_view_name_value(assignment) !=
+                    NULL) {
+                  update_statement_assignment_name_values++;
+                }
+                count_expression_tree(
+                    mylite_ast_update_assignment_view_value_expression(
+                        assignment),
+                    &update_statement_expression_tree_nodes,
+                    &update_statement_expression_tree_operators,
+                    &update_statement_expression_tree_leaf_values);
+              }
+            }
             const MyliteAstPrepareStatement *prepare_statement =
                 mylite_ast_prepare_statement_view(ast, i);
             if (prepare_statement != NULL) {
@@ -1512,6 +1585,19 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_insert_statement_expression_tree_nodes=%.2f "
            "avg_insert_statement_expression_tree_operators=%.2f "
            "avg_insert_statement_expression_tree_leaf_values=%.2f "
+           "avg_update_statement_views=%.2f "
+           "avg_update_statement_with_clauses=%.2f "
+           "avg_update_statement_multi_table=%.2f "
+           "avg_update_statement_priorities=%.2f "
+           "avg_update_statement_ignores=%.2f "
+           "avg_update_statement_assignments=%.2f "
+           "avg_update_statement_assignment_name_values=%.2f "
+           "avg_update_statement_where_expressions=%.2f "
+           "avg_update_statement_order_by_clauses=%.2f "
+           "avg_update_statement_limit_clauses=%.2f "
+           "avg_update_statement_expression_tree_nodes=%.2f "
+           "avg_update_statement_expression_tree_operators=%.2f "
+           "avg_update_statement_expression_tree_leaf_values=%.2f "
            "avg_create_table_views=%.2f "
            "avg_create_table_view_schema_values=%.2f "
            "avg_create_table_view_name_values=%.2f "
@@ -1731,6 +1817,21 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)insert_statement_expression_tree_operators /
                (double)parsed,
            (double)insert_statement_expression_tree_leaf_values /
+               (double)parsed,
+           (double)update_statement_views / (double)parsed,
+           (double)update_statement_with_clauses / (double)parsed,
+           (double)update_statement_multi_table / (double)parsed,
+           (double)update_statement_priorities / (double)parsed,
+           (double)update_statement_ignores / (double)parsed,
+           (double)update_statement_assignments / (double)parsed,
+           (double)update_statement_assignment_name_values / (double)parsed,
+           (double)update_statement_where_expressions / (double)parsed,
+           (double)update_statement_order_by_clauses / (double)parsed,
+           (double)update_statement_limit_clauses / (double)parsed,
+           (double)update_statement_expression_tree_nodes / (double)parsed,
+           (double)update_statement_expression_tree_operators /
+               (double)parsed,
+           (double)update_statement_expression_tree_leaf_values /
                (double)parsed,
            (double)create_table_views / (double)parsed,
            (double)create_table_view_schema_values / (double)parsed,

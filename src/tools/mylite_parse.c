@@ -150,6 +150,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_truncate_table_view(ast, i);
     const MyliteAstTransactionStatement *transaction_statement =
         mylite_ast_transaction_statement_view(ast, i);
+    const MyliteAstUpdateStatement *update_statement =
+        mylite_ast_update_statement_view(ast, i);
     const MyliteAstUseDatabase *use_database =
         mylite_ast_use_database_view(ast, i);
     printf("statement[%zu] kind=%s symbol=%s span=%zu..%zu targets=%zu "
@@ -896,6 +898,73 @@ static void dump_statements(const MyliteAst *ast) {
             mylite_ast_insert_assignment_view_value_expression(assignment);
         if (expression != NULL) {
           printf("      insert_duplicate_assignment[%zu].expression\n", j);
+          dump_expression_tree(expression, 4);
+        }
+      }
+    }
+    if (update_statement != NULL) {
+      printf("  update_statement span=%zu..%zu with=%d multi_table=%d "
+             "priority=%s ignore=%d table_refs=%zu..%zu assignments=%zu "
+             "where=%zu..%zu order=%zu..%zu limit=%zu..%zu node=%s\n",
+             mylite_ast_update_statement_view_start(update_statement),
+             mylite_ast_update_statement_view_end(update_statement),
+             mylite_ast_update_statement_view_has_with_clause(
+                 update_statement),
+             mylite_ast_update_statement_view_is_multi_table(
+                 update_statement),
+             mylite_update_priority_name(
+                 mylite_ast_update_statement_view_priority(update_statement)),
+             mylite_ast_update_statement_view_has_ignore(update_statement),
+             mylite_ast_update_statement_view_table_reference_start(
+                 update_statement),
+             mylite_ast_update_statement_view_table_reference_end(
+                 update_statement),
+             mylite_ast_update_statement_view_assignment_count(
+                 update_statement),
+             mylite_ast_update_statement_view_where_start(update_statement),
+             mylite_ast_update_statement_view_where_end(update_statement),
+             mylite_ast_update_statement_view_order_by_start(update_statement),
+             mylite_ast_update_statement_view_order_by_end(update_statement),
+             mylite_ast_update_statement_view_limit_start(update_statement),
+             mylite_ast_update_statement_view_limit_end(update_statement),
+             node_symbol_or_none(
+                 mylite_ast_update_statement_view_node(update_statement)));
+      const MyliteAstExpression *where_expression =
+          mylite_ast_update_statement_view_where_expression(update_statement);
+      if (where_expression != NULL) {
+        fputs("    update_statement.where_expression\n", stdout);
+        dump_expression_tree(where_expression, 3);
+      }
+      for (size_t j = 0;
+           j < mylite_ast_update_statement_view_assignment_count(
+                   update_statement);
+           j++) {
+        const MyliteAstUpdateAssignment *assignment =
+            mylite_ast_update_statement_view_assignment_at(update_statement, j);
+        printf("    update_assignment[%zu] span=%zu..%zu name=%zu..%zu "
+               "value=%zu..%zu name_len=%zu name=",
+               j, mylite_ast_update_assignment_view_start(assignment),
+               mylite_ast_update_assignment_view_end(assignment),
+               mylite_ast_update_assignment_view_name_start(assignment),
+               mylite_ast_update_assignment_view_name_end(assignment),
+               mylite_ast_update_assignment_view_value_start(assignment),
+               mylite_ast_update_assignment_view_value_end(assignment),
+               mylite_ast_update_assignment_view_name_value_length(
+                   assignment));
+        const char *assignment_name =
+            mylite_ast_update_assignment_view_name_value(assignment);
+        if (assignment_name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              assignment_name,
+              mylite_ast_update_assignment_view_name_value_length(assignment));
+        }
+        fputc('\n', stdout);
+        const MyliteAstExpression *expression =
+            mylite_ast_update_assignment_view_value_expression(assignment);
+        if (expression != NULL) {
+          printf("      update_assignment[%zu].expression\n", j);
           dump_expression_tree(expression, 4);
         }
       }

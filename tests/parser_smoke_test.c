@@ -203,6 +203,7 @@ static int expect_set_expression_tree_view(void);
 static int expect_set_statement_view(void);
 static int expect_truncate_table_view(void);
 static int expect_transaction_statement_views(void);
+static int expect_update_statement_view(void);
 static int expect_use_database_view(void);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
@@ -808,6 +809,7 @@ int main(void) {
   failures += expect_set_expression_tree_view();
   failures += expect_truncate_table_view();
   failures += expect_transaction_statement_views();
+  failures += expect_update_statement_view();
   failures += expect_use_database_view();
   {
     const ExpectedCreateTableColumn columns[] = {
@@ -4729,6 +4731,164 @@ static int expect_transaction_statement_views(void) {
     }
     mylite_ast_free(ast);
   }
+  return failed;
+}
+
+static int expect_update_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "UPDATE t SET a = 1, b = b + 1 WHERE id = ? ORDER BY b DESC LIMIT 10";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "UPDATE statement view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstUpdateStatement *view =
+        mylite_ast_update_statement_view(ast, 0);
+    const MyliteAstUpdateAssignment *assignment0 =
+        view == NULL ? NULL
+                     : mylite_ast_update_statement_view_assignment_at(view, 0);
+    const MyliteAstUpdateAssignment *assignment1 =
+        view == NULL ? NULL
+                     : mylite_ast_update_statement_view_assignment_at(view, 1);
+    const MyliteAstExpression *assignment1_expression =
+        mylite_ast_update_assignment_view_value_expression(assignment1);
+    const MyliteAstExpression *where_expression =
+        mylite_ast_update_statement_view_where_expression(view);
+    if (view == NULL || mylite_ast_statement_kind(ast, 0) !=
+                            MYLITE_STATEMENT_UPDATE ||
+        mylite_ast_update_statement_view_has_with_clause(view) ||
+        mylite_ast_update_statement_view_is_multi_table(view) ||
+        mylite_ast_update_statement_view_assignment_count(view) != 2 ||
+        !span_matches(sql,
+                      mylite_ast_update_statement_view_table_reference_start(
+                          view),
+                      mylite_ast_update_statement_view_table_reference_end(view),
+                      "t") ||
+        !span_matches(sql, mylite_ast_update_statement_view_where_start(view),
+                      mylite_ast_update_statement_view_where_end(view),
+                      "WHERE id = ?") ||
+        !span_matches(sql, mylite_ast_update_statement_view_order_by_start(view),
+                      mylite_ast_update_statement_view_order_by_end(view),
+                      "ORDER BY b DESC") ||
+        !span_matches(sql, mylite_ast_update_statement_view_limit_start(view),
+                      mylite_ast_update_statement_view_limit_end(view),
+                      "LIMIT 10") ||
+        assignment0 == NULL ||
+        !span_matches(sql, mylite_ast_update_assignment_view_start(assignment0),
+                      mylite_ast_update_assignment_view_end(assignment0),
+                      "a = 1") ||
+        !value_matches_when_expected(
+            mylite_ast_update_assignment_view_name_value(assignment0),
+            mylite_ast_update_assignment_view_name_value_length(assignment0),
+            "a") ||
+        assignment1 == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_update_assignment_view_name_value(assignment1),
+            mylite_ast_update_assignment_view_name_value_length(assignment1),
+            "b") ||
+        assignment1_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(assignment1_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_ADD ||
+        where_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(where_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_EQ) {
+      fprintf(stderr, "UPDATE statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "UPDATE LOW_PRIORITY IGNORE db1.t AS t JOIN s ON t.id = s.id "
+        "SET t.a = s.a, t.b = DEFAULT WHERE s.a > 0";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "joined UPDATE statement view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstUpdateStatement *view =
+        mylite_ast_update_statement_view(ast, 0);
+    const MyliteAstUpdateAssignment *assignment1 =
+        view == NULL ? NULL
+                     : mylite_ast_update_statement_view_assignment_at(view, 1);
+    const MyliteAstExpression *assignment1_expression =
+        mylite_ast_update_assignment_view_value_expression(assignment1);
+    if (view == NULL ||
+        mylite_ast_update_statement_view_priority(view) !=
+            MYLITE_UPDATE_PRIORITY_LOW ||
+        !mylite_ast_update_statement_view_has_ignore(view) ||
+        !mylite_ast_update_statement_view_is_multi_table(view) ||
+        mylite_ast_statement_target_count(ast, 0) != 2 ||
+        !span_matches(sql,
+                      mylite_ast_update_statement_view_table_reference_start(
+                          view),
+                      mylite_ast_update_statement_view_table_reference_end(view),
+                      "db1.t AS t JOIN s ON t.id = s.id") ||
+        mylite_ast_update_statement_view_assignment_count(view) != 2 ||
+        assignment1 == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_update_assignment_view_name_value(assignment1),
+            mylite_ast_update_assignment_view_name_value_length(assignment1),
+            "t.b") ||
+        assignment1_expression == NULL ||
+        mylite_ast_expression_view_kind(assignment1_expression) !=
+            MYLITE_EXPRESSION_DEFAULT) {
+      fprintf(stderr, "joined UPDATE statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "WITH cte AS (SELECT 1 AS id) UPDATE t JOIN cte ON t.id = cte.id "
+        "SET a = 2 WHERE cte.id = 1";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "WITH UPDATE statement view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstUpdateStatement *view =
+        mylite_ast_update_statement_view(ast, 0);
+    const MyliteAstExpression *where_expression =
+        mylite_ast_update_statement_view_where_expression(view);
+    if (view == NULL ||
+        !mylite_ast_update_statement_view_has_with_clause(view) ||
+        !mylite_ast_update_statement_view_is_multi_table(view) ||
+        mylite_ast_update_statement_view_assignment_count(view) != 1 ||
+        where_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(where_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_EQ) {
+      fprintf(stderr, "WITH UPDATE statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
   return failed;
 }
 

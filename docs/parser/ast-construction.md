@@ -75,6 +75,11 @@ expression nodes.
   lists, VALUES row/value descriptors, SET assignment descriptors, SELECT source
   anchors, and duplicate-update assignment descriptors. INSERT values and
   assignments reuse the recursive expression view.
+- `UPDATE` statements expose parser-level views for `WITH` markers,
+  single-table versus joined/multi-table target references, priority and
+  `IGNORE` modifiers, ordered assignment descriptors, statement-level `WHERE`
+  predicate expressions, and `ORDER BY` / `LIMIT` anchors. UPDATE assignments
+  reuse the recursive expression view.
 - `SET` statements expose typed statement-form and assignment descriptors for
   variable assignments, `SET NAMES`, `SET CHARACTER SET`, `SET TRANSACTION`,
   and TiDB `SET CONFIG` syntax, including value-expression CST anchors.
@@ -153,6 +158,13 @@ expression nodes.
 - typed `SELECT` projection descriptors with expression/wildcard/table-wildcard
   kind, source spans, expression spans, decoded aliases, table-wildcard
   qualifier spans, and recursive expression views where present
+- typed `UPDATE` descriptors with `WITH` and multi-table markers, priority and
+  `IGNORE` modifiers, table-reference spans, ordered assignment handles,
+  statement-level `WHERE` predicate expression handles, and `ORDER BY` / `LIMIT`
+  spans
+- typed `UPDATE` assignment descriptors with assignment/name/value spans,
+  decoded assignment names, value CST anchors, and recursive value-expression
+  handles
 - typed `SET` descriptors with statement form, assignment kind, variable scope,
   operator kind, decoded assignment names, value CST anchors/spans, and optional
   extended value spans for `SET NAMES ... COLLATE ...`, plus expression-view
@@ -364,6 +376,16 @@ counts, warnings, insert ids, and row-alias ODKU semantics remain runtime work.
 Newer INSERT row-alias forms that currently use the temporary recognized
 statement placeholder do not yet have structured descriptors.
 
+The first parser-level `UPDATE` view covers the statement shape needed before
+semantic update execution. It records whether a `WITH` clause is present,
+anchors the table-reference subtree, marks joined/multi-table references,
+records `LOW_PRIORITY` and `IGNORE`, exposes ordered assignments with decoded
+left-hand names, and anchors statement-level `WHERE`, `ORDER BY`, and `LIMIT`
+clauses. Assignment values and the `WHERE` predicate reuse the recursive
+expression view. The view does not yet implement assignment evaluation order,
+generated-column validation, joined-update target filtering, affected rows,
+warning demotion, or runtime diagnostics.
+
 Session-level statement views now cover `SET` and `USE`. `SET` records the
 statement form, ordered assignments, assignment kind, variable scope, assignment
 operator, decoded assignment name, value CST anchor/span, and optional extended
@@ -466,6 +488,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.6396
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=36.629721 qps=189849 mbps=14.44 avg_us=5.267 avg_nodes=74.5 avg_ast_bytes=10870.9 avg_insert_statement_views=0.19 avg_insert_statement_values_sources=0.18 avg_insert_statement_set_sources=0.00 avg_insert_statement_select_sources=0.01 avg_insert_statement_columns=0.04 avg_insert_statement_value_rows=0.58 avg_insert_statement_values=1.27 avg_insert_statement_set_assignments=0.01 avg_insert_statement_duplicate_assignments=0.00 avg_insert_statement_expression_tree_nodes=1.34 avg_insert_statement_expression_tree_operators=0.01 avg_insert_statement_expression_tree_leaf_values=1.29
 ```
 
+Latest UPDATE parser-view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.970734 qps=497762 mbps=37.86 avg_us=2.009
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=36.136379 qps=192440 mbps=14.64 avg_us=5.196 avg_nodes=74.5 avg_ast_bytes=10876.5 avg_update_statement_views=0.03 avg_update_statement_with_clauses=0.00 avg_update_statement_multi_table=0.00 avg_update_statement_priorities=0.00 avg_update_statement_ignores=0.00 avg_update_statement_assignments=0.03 avg_update_statement_assignment_name_values=0.03 avg_update_statement_where_expressions=0.02 avg_update_statement_order_by_clauses=0.00 avg_update_statement_limit_clauses=0.00 avg_update_statement_expression_tree_nodes=0.10 avg_update_statement_expression_tree_operators=0.02 avg_update_statement_expression_tree_leaf_values=0.07
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -476,9 +505,9 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 262K on disk, 153,564 bytes text/data/other
+parser support object: 269K on disk, 157,293 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
-libmylite_parser.a: 1.3M on disk
+libmylite_parser.a: 1.4M on disk
 mylite-parse: 1.2M on disk
 ```
 
@@ -500,9 +529,9 @@ mylite-parse: 1.2M on disk
 - Split the parser-level `SELECT` view into semantic query-expression,
   query-block, table-reference, projection, and clause objects with scoped name
   resolution.
-- Extend executable-statement parser views beyond `INSERT` into `REPLACE`,
-  `UPDATE`, and `DELETE`, reusing the expression-view infrastructure where
-  statement payloads carry assignments, predicates, ordering, and limits.
+- Extend executable-statement parser views beyond `UPDATE` into `DELETE` and
+  `REPLACE`, reusing the expression-view infrastructure where statement
+  payloads carry targets, assignments, predicates, ordering, and limits.
 - Decide whether syntax-only builds should use a separate no-action generated
   parser if the action overhead matters.
 - Add tree-shape tests for representative DDL, DML, expressions, stored

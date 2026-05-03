@@ -41,6 +41,10 @@ typedef struct MyliteAstDropTable MyliteAstDropTable;
 typedef struct MyliteAstExpression MyliteAstExpression;
 typedef struct MyliteAstDeallocateStatement MyliteAstDeallocateStatement;
 typedef struct MyliteAstExecuteStatement MyliteAstExecuteStatement;
+typedef struct MyliteAstInsertAssignment MyliteAstInsertAssignment;
+typedef struct MyliteAstInsertColumn MyliteAstInsertColumn;
+typedef struct MyliteAstInsertStatement MyliteAstInsertStatement;
+typedef struct MyliteAstInsertValue MyliteAstInsertValue;
 typedef struct MyliteAstNode MyliteAstNode;
 typedef struct MyliteAstPreparedStatementVariable
     MyliteAstPreparedStatementVariable;
@@ -174,6 +178,20 @@ typedef enum MyliteSelectProjectionKind {
   MYLITE_SELECT_PROJECTION_WILDCARD,
   MYLITE_SELECT_PROJECTION_TABLE_WILDCARD
 } MyliteSelectProjectionKind;
+
+typedef enum MyliteInsertSourceKind {
+  MYLITE_INSERT_SOURCE_UNKNOWN = 0,
+  MYLITE_INSERT_SOURCE_VALUES,
+  MYLITE_INSERT_SOURCE_SET,
+  MYLITE_INSERT_SOURCE_SELECT
+} MyliteInsertSourceKind;
+
+typedef enum MyliteInsertPriority {
+  MYLITE_INSERT_PRIORITY_NONE = 0,
+  MYLITE_INSERT_PRIORITY_LOW,
+  MYLITE_INSERT_PRIORITY_HIGH,
+  MYLITE_INSERT_PRIORITY_DELAYED
+} MyliteInsertPriority;
 
 typedef enum MyliteCreateTableColumnTypeFamily {
   MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN = 0,
@@ -579,6 +597,8 @@ const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
 const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
 const char *mylite_select_projection_kind_name(
     MyliteSelectProjectionKind kind);
+const char *mylite_insert_source_kind_name(MyliteInsertSourceKind kind);
+const char *mylite_insert_priority_name(MyliteInsertPriority priority);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
     MyliteExpressionLiteralKind kind);
@@ -720,6 +740,8 @@ const MyliteAstDropTable *mylite_ast_drop_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDropView *mylite_ast_drop_view_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstInsertStatement *mylite_ast_insert_statement_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstPrepareStatement *mylite_ast_prepare_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstExecuteStatement *mylite_ast_execute_statement_view(
@@ -738,6 +760,122 @@ const MyliteAstTransactionStatement *mylite_ast_transaction_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstUseDatabase *mylite_ast_use_database_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstNode *mylite_ast_insert_statement_view_node(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_start(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_end(
+    const MyliteAstInsertStatement *insert_statement);
+MyliteInsertSourceKind mylite_ast_insert_statement_view_source_kind(
+    const MyliteAstInsertStatement *insert_statement);
+MyliteInsertPriority mylite_ast_insert_statement_view_priority(
+    const MyliteAstInsertStatement *insert_statement);
+int mylite_ast_insert_statement_view_has_ignore(
+    const MyliteAstInsertStatement *insert_statement);
+int mylite_ast_insert_statement_view_has_into(
+    const MyliteAstInsertStatement *insert_statement);
+int mylite_ast_insert_statement_view_has_partition_clause(
+    const MyliteAstInsertStatement *insert_statement);
+int mylite_ast_insert_statement_view_has_on_duplicate_key_update(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_target_start(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_target_end(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_target_schema_start(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_target_schema_end(
+    const MyliteAstInsertStatement *insert_statement);
+const char *mylite_ast_insert_statement_view_target_schema_value(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_target_schema_value_length(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_target_name_start(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_target_name_end(
+    const MyliteAstInsertStatement *insert_statement);
+const char *mylite_ast_insert_statement_view_target_name_value(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_target_name_value_length(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_partition_start(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_partition_end(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_source_start(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_source_end(
+    const MyliteAstInsertStatement *insert_statement);
+const MyliteAstNode *mylite_ast_insert_statement_view_source_node(
+    const MyliteAstInsertStatement *insert_statement);
+const MyliteAstNode *mylite_ast_insert_statement_view_select_source_node(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_column_count(
+    const MyliteAstInsertStatement *insert_statement);
+const MyliteAstInsertColumn *mylite_ast_insert_statement_view_column_at(
+    const MyliteAstInsertStatement *insert_statement, size_t column_index);
+size_t mylite_ast_insert_statement_view_value_row_count(
+    const MyliteAstInsertStatement *insert_statement);
+size_t mylite_ast_insert_statement_view_value_count(
+    const MyliteAstInsertStatement *insert_statement);
+const MyliteAstInsertValue *mylite_ast_insert_statement_view_value_at(
+    const MyliteAstInsertStatement *insert_statement, size_t value_index);
+size_t mylite_ast_insert_statement_view_set_assignment_count(
+    const MyliteAstInsertStatement *insert_statement);
+const MyliteAstInsertAssignment *
+mylite_ast_insert_statement_view_set_assignment_at(
+    const MyliteAstInsertStatement *insert_statement, size_t assignment_index);
+size_t mylite_ast_insert_statement_view_duplicate_assignment_count(
+    const MyliteAstInsertStatement *insert_statement);
+const MyliteAstInsertAssignment *
+mylite_ast_insert_statement_view_duplicate_assignment_at(
+    const MyliteAstInsertStatement *insert_statement, size_t assignment_index);
+const MyliteAstNode *mylite_ast_insert_column_view_node(
+    const MyliteAstInsertColumn *column);
+size_t mylite_ast_insert_column_view_start(
+    const MyliteAstInsertColumn *column);
+size_t mylite_ast_insert_column_view_end(
+    const MyliteAstInsertColumn *column);
+const char *mylite_ast_insert_column_view_name_value(
+    const MyliteAstInsertColumn *column);
+size_t mylite_ast_insert_column_view_name_value_length(
+    const MyliteAstInsertColumn *column);
+const MyliteAstNode *mylite_ast_insert_value_view_node(
+    const MyliteAstInsertValue *value);
+size_t mylite_ast_insert_value_view_row_index(
+    const MyliteAstInsertValue *value);
+size_t mylite_ast_insert_value_view_value_index(
+    const MyliteAstInsertValue *value);
+size_t mylite_ast_insert_value_view_start(
+    const MyliteAstInsertValue *value);
+size_t mylite_ast_insert_value_view_end(const MyliteAstInsertValue *value);
+int mylite_ast_insert_value_view_is_default(
+    const MyliteAstInsertValue *value);
+const MyliteAstExpression *mylite_ast_insert_value_view_expression(
+    const MyliteAstInsertValue *value);
+const MyliteAstNode *mylite_ast_insert_assignment_view_node(
+    const MyliteAstInsertAssignment *assignment);
+size_t mylite_ast_insert_assignment_view_start(
+    const MyliteAstInsertAssignment *assignment);
+size_t mylite_ast_insert_assignment_view_end(
+    const MyliteAstInsertAssignment *assignment);
+size_t mylite_ast_insert_assignment_view_name_start(
+    const MyliteAstInsertAssignment *assignment);
+size_t mylite_ast_insert_assignment_view_name_end(
+    const MyliteAstInsertAssignment *assignment);
+const char *mylite_ast_insert_assignment_view_name_value(
+    const MyliteAstInsertAssignment *assignment);
+size_t mylite_ast_insert_assignment_view_name_value_length(
+    const MyliteAstInsertAssignment *assignment);
+const MyliteAstNode *mylite_ast_insert_assignment_view_value_node(
+    const MyliteAstInsertAssignment *assignment);
+size_t mylite_ast_insert_assignment_view_value_start(
+    const MyliteAstInsertAssignment *assignment);
+size_t mylite_ast_insert_assignment_view_value_end(
+    const MyliteAstInsertAssignment *assignment);
+const MyliteAstExpression *
+mylite_ast_insert_assignment_view_value_expression(
+    const MyliteAstInsertAssignment *assignment);
 const MyliteAstNode *mylite_ast_select_statement_view_node(
     const MyliteAstSelectStatement *select_statement);
 size_t mylite_ast_select_statement_view_start(

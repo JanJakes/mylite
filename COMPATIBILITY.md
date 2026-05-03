@@ -90,7 +90,12 @@ anchors, `SET NAMES` extended collation spans, and recursive parser-level
 expression views for assignment values, including common literal, identifier,
 variable, parameter, function-call, unary, binary, parenthesized, and function
 argument shapes. The `USE` view currently covers the decoded
-default-database target. The prepared-statement views currently cover decoded
+default-database target. The `INSERT` view currently covers decoded target
+tables, source-form classification for `VALUES`, `SET`, and `SELECT`, priority
+and `IGNORE` modifiers, partition and `ON DUPLICATE KEY UPDATE` markers,
+optional column lists, VALUES row/value descriptors with recursive expression
+views, SET assignment descriptors, SELECT source anchors, and duplicate-update
+assignment descriptors. The prepared-statement views currently cover decoded
 statement handles, `PREPARE` source kind and decoded source value, ordered
 `EXECUTE ... USING` user variables, and `DEALLOCATE`/`DROP PREPARE` mode.
 Transaction-control views currently cover begin form, access mode, consistency
@@ -169,13 +174,13 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. |  |
 | `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. |  |
 | `IMPORT TABLE` | ❌ | low | Transportable tablespace import syntax and diagnostics. |  |
-| `INSERT ... VALUES` | ❌ | top | Multi-row values, defaults, generated columns, warnings, affected rows, and insert ids. |  |
-| `INSERT ... SET` | ❌ | top | MySQL SET-form insert semantics. |  |
-| `INSERT ... SELECT` | ❌ | high | Insert from query expression with locking, defaults, and metadata inference. |  |
-| `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | top | Conflict target resolution, VALUES()/row aliases, affected rows, and warnings. |  |
-| `INSERT IGNORE` | ❌ | top | Duplicate, conversion, and constraint warning demotion rules. |  |
+| `INSERT ... VALUES` | ❌ | top | Multi-row values, defaults, generated columns, warnings, affected rows, and insert ids. | Parser prototype exposes target table, optional column list, row/value descriptors, `DEFAULT` markers, and recursive value expression views. Runtime semantics are not implemented yet. |
+| `INSERT ... SET` | ❌ | top | MySQL SET-form insert semantics. | Parser prototype exposes ordered assignment descriptors with decoded column names and recursive value expression views. Runtime semantics are not implemented yet. |
+| `INSERT ... SELECT` | ❌ | high | Insert from query expression with locking, defaults, and metadata inference. | Parser prototype classifies the source as SELECT, preserves the optional column list, and anchors the SELECT CST source. Semantic query/insert integration is not implemented yet. |
+| `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | top | Conflict target resolution, VALUES()/row aliases, affected rows, and warnings. | Parser prototype exposes duplicate-update assignment descriptors with decoded names and recursive value expression views for grammar-parsed forms. Newer row-alias forms are still accepted only by a temporary placeholder recognizer. |
+| `INSERT IGNORE` | ❌ | top | Duplicate, conversion, and constraint warning demotion rules. | Parser prototype records the `IGNORE` modifier. Runtime warning demotion is not implemented yet. |
 | `INSERT DELAYED` | ❌ | low | Deprecated delayed insert syntax and MySQL-compatible diagnostics. |  |
-| `INSERT LOW_PRIORITY` / `HIGH_PRIORITY` | ❌ | low | Priority modifiers and embedded-compatible treatment. |  |
+| `INSERT LOW_PRIORITY` / `HIGH_PRIORITY` | ❌ | low | Priority modifiers and embedded-compatible treatment. | Parser prototype records low/high/delayed priority modifiers. Runtime behavior is not implemented yet. |
 | `LOAD DATA INFILE` | ❌ | high | Server-side text import syntax, field/line options, user variables, SET clause, warnings, and security restrictions. |  |
 | `LOAD DATA LOCAL INFILE` | ❌ | high | Client-side LOCAL INFILE request flow, security controls, warnings, and protocol interaction. |  |
 | `LOAD XML INFILE` | ❌ | low | Server-side XML import syntax, row matching, namespaces, SET clause, warnings, and security restrictions. |  |

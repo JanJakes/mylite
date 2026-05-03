@@ -69,6 +69,12 @@ expression nodes.
   markers, query-block counts, projection descriptors, common clause spans, and
   recursive expression views for projection, `WHERE`, and `HAVING`
   expressions.
+- `INSERT` statements expose parser-level views for decoded target tables,
+  source-form classification (`VALUES`, `SET`, or `SELECT`), priority and
+  `IGNORE` modifiers, partition and duplicate-update markers, optional column
+  lists, VALUES row/value descriptors, SET assignment descriptors, SELECT source
+  anchors, and duplicate-update assignment descriptors. INSERT values and
+  assignments reuse the recursive expression view.
 - `SET` statements expose typed statement-form and assignment descriptors for
   variable assignments, `SET NAMES`, `SET CHARACTER SET`, `SET TRANSACTION`,
   and TiDB `SET CONFIG` syntax, including value-expression CST anchors.
@@ -344,6 +350,20 @@ projections in statement order for now; the later semantic query AST must split
 them into query-expression and query-block objects with scope-aware name
 resolution.
 
+The first parser-level `INSERT` view covers the statement forms needed before
+semantic insert execution can be built. It records the decoded target table,
+classifies the source as `VALUES`, `SET`, or `SELECT`, records priority and
+`IGNORE`, preserves partition and `ON DUPLICATE KEY UPDATE` markers, decodes
+optional column lists, exposes VALUES row/value coordinates, exposes SET and
+duplicate-update assignments, and anchors INSERT SELECT sources. Value and
+assignment payloads reuse the recursive expression view, so defaults, literals,
+parameters, identifiers, binary/unary operators, and common function calls are
+available without a second CST traversal. The view is still parser-level:
+generated-column handling, defaults, duplicate-key resolution, affected-row
+counts, warnings, insert ids, and row-alias ODKU semantics remain runtime work.
+Newer INSERT row-alias forms that currently use the temporary recognized
+statement placeholder do not yet have structured descriptors.
+
 Session-level statement views now cover `SET` and `USE`. `SET` records the
 statement form, ordered assignments, assignment kind, variable scope, assignment
 operator, decoded assignment name, value CST anchor/span, and optional extended
@@ -439,6 +459,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.5894
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=33.844687 qps=205471 mbps=15.63 avg_us=4.867 avg_nodes=74.5 avg_ast_bytes=10654.3 avg_select_statement_views=0.25 avg_select_statement_query_blocks=0.27 avg_select_statement_projections=0.41 avg_select_statement_projection_expressions=0.36 avg_select_statement_where_expressions=0.06 avg_select_statement_having_expressions=0.01 avg_select_statement_expression_tree_nodes=1.02 avg_select_statement_expression_tree_operators=0.16 avg_select_statement_expression_tree_leaf_values=0.51
 ```
 
+Latest INSERT parser-view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.639612 qps=475019 mbps=36.13 avg_us=2.105
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=36.629721 qps=189849 mbps=14.44 avg_us=5.267 avg_nodes=74.5 avg_ast_bytes=10870.9 avg_insert_statement_views=0.19 avg_insert_statement_values_sources=0.18 avg_insert_statement_set_sources=0.00 avg_insert_statement_select_sources=0.01 avg_insert_statement_columns=0.04 avg_insert_statement_value_rows=0.58 avg_insert_statement_values=1.27 avg_insert_statement_set_assignments=0.01 avg_insert_statement_duplicate_assignments=0.00 avg_insert_statement_expression_tree_nodes=1.34 avg_insert_statement_expression_tree_operators=0.01 avg_insert_statement_expression_tree_leaf_values=1.29
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -449,10 +476,10 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 246K on disk, 144,127 bytes text/data/other
+parser support object: 262K on disk, 153,564 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.3M on disk
-mylite-parse: 1.1M on disk
+mylite-parse: 1.2M on disk
 ```
 
 ## Next Work
@@ -473,6 +500,9 @@ mylite-parse: 1.1M on disk
 - Split the parser-level `SELECT` view into semantic query-expression,
   query-block, table-reference, projection, and clause objects with scoped name
   resolution.
+- Extend executable-statement parser views beyond `INSERT` into `REPLACE`,
+  `UPDATE`, and `DELETE`, reusing the expression-view infrastructure where
+  statement payloads carry assignments, predicates, ordering, and limits.
 - Decide whether syntax-only builds should use a separate no-action generated
   parser if the action overhead matters.
 - Add tree-shape tests for representative DDL, DML, expressions, stored

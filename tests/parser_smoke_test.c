@@ -195,6 +195,7 @@ static int expect_drop_database_view(void);
 static int expect_drop_index_view(void);
 static int expect_drop_table_view(void);
 static int expect_drop_view_view(void);
+static int expect_insert_statement_view(void);
 static int expect_prepared_statement_views(void);
 static int expect_rename_table_view(void);
 static int expect_select_statement_view(void);
@@ -799,6 +800,7 @@ int main(void) {
   failures += expect_drop_index_view();
   failures += expect_drop_table_view();
   failures += expect_drop_view_view();
+  failures += expect_insert_statement_view();
   failures += expect_prepared_statement_views();
   failures += expect_rename_table_view();
   failures += expect_select_statement_view();
@@ -3681,6 +3683,238 @@ static int expect_drop_table_view(void) {
   }
 
   mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_insert_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "INSERT INTO `db``x`.`t``y` (a,b) VALUES (1 + 2, DEFAULT), (3, ?)";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "INSERT VALUES statement view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstInsertStatement *view =
+        mylite_ast_insert_statement_view(ast, 0);
+    const MyliteAstInsertColumn *column0 =
+        view == NULL ? NULL
+                     : mylite_ast_insert_statement_view_column_at(view, 0);
+    const MyliteAstInsertColumn *column1 =
+        view == NULL ? NULL
+                     : mylite_ast_insert_statement_view_column_at(view, 1);
+    const MyliteAstInsertValue *value0 =
+        view == NULL ? NULL
+                     : mylite_ast_insert_statement_view_value_at(view, 0);
+    const MyliteAstInsertValue *value1 =
+        view == NULL ? NULL
+                     : mylite_ast_insert_statement_view_value_at(view, 1);
+    const MyliteAstInsertValue *value3 =
+        view == NULL ? NULL
+                     : mylite_ast_insert_statement_view_value_at(view, 3);
+    const MyliteAstExpression *value0_expression =
+        mylite_ast_insert_value_view_expression(value0);
+    const MyliteAstExpression *value1_expression =
+        mylite_ast_insert_value_view_expression(value1);
+    const MyliteAstExpression *value3_expression =
+        mylite_ast_insert_value_view_expression(value3);
+    if (view == NULL || mylite_ast_statement_kind(ast, 0) !=
+                            MYLITE_STATEMENT_INSERT ||
+        mylite_ast_insert_statement_view_source_kind(view) !=
+            MYLITE_INSERT_SOURCE_VALUES ||
+        !mylite_ast_insert_statement_view_has_into(view) ||
+        mylite_ast_insert_statement_view_column_count(view) != 2 ||
+        mylite_ast_insert_statement_view_value_row_count(view) != 2 ||
+        mylite_ast_insert_statement_view_value_count(view) != 4 ||
+        !value_matches_when_expected(
+            mylite_ast_insert_statement_view_target_schema_value(view),
+            mylite_ast_insert_statement_view_target_schema_value_length(view),
+            "db`x") ||
+        !value_matches_when_expected(
+            mylite_ast_insert_statement_view_target_name_value(view),
+            mylite_ast_insert_statement_view_target_name_value_length(view),
+            "t`y") ||
+        column0 == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_insert_column_view_name_value(column0),
+            mylite_ast_insert_column_view_name_value_length(column0), "a") ||
+        column1 == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_insert_column_view_name_value(column1),
+            mylite_ast_insert_column_view_name_value_length(column1), "b") ||
+        value0 == NULL ||
+        mylite_ast_insert_value_view_row_index(value0) != 0 ||
+        mylite_ast_insert_value_view_value_index(value0) != 0 ||
+        !span_matches(sql, mylite_ast_insert_value_view_start(value0),
+                      mylite_ast_insert_value_view_end(value0), "1 + 2") ||
+        value0_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(value0_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_ADD ||
+        value1 == NULL ||
+        !mylite_ast_insert_value_view_is_default(value1) ||
+        value1_expression == NULL ||
+        mylite_ast_expression_view_kind(value1_expression) !=
+            MYLITE_EXPRESSION_DEFAULT ||
+        value3 == NULL ||
+        mylite_ast_insert_value_view_row_index(value3) != 1 ||
+        mylite_ast_insert_value_view_value_index(value3) != 1 ||
+        value3_expression == NULL ||
+        mylite_ast_expression_view_kind(value3_expression) !=
+            MYLITE_EXPRESSION_PARAMETER) {
+      fprintf(stderr, "INSERT VALUES statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "INSERT INTO t SET a = 1, b = DEFAULT";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "INSERT SET statement view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstInsertStatement *view =
+        mylite_ast_insert_statement_view(ast, 0);
+    const MyliteAstInsertAssignment *assignment0 =
+        view == NULL ? NULL
+                     : mylite_ast_insert_statement_view_set_assignment_at(view,
+                                                                          0);
+    const MyliteAstInsertAssignment *assignment1 =
+        view == NULL ? NULL
+                     : mylite_ast_insert_statement_view_set_assignment_at(view,
+                                                                          1);
+    const MyliteAstExpression *assignment1_expression =
+        mylite_ast_insert_assignment_view_value_expression(assignment1);
+    if (view == NULL ||
+        mylite_ast_insert_statement_view_source_kind(view) !=
+            MYLITE_INSERT_SOURCE_SET ||
+        mylite_ast_insert_statement_view_set_assignment_count(view) != 2 ||
+        assignment0 == NULL ||
+        !span_matches(sql, mylite_ast_insert_assignment_view_start(assignment0),
+                      mylite_ast_insert_assignment_view_end(assignment0),
+                      "a = 1") ||
+        !value_matches_when_expected(
+            mylite_ast_insert_assignment_view_name_value(assignment0),
+            mylite_ast_insert_assignment_view_name_value_length(assignment0),
+            "a") ||
+        assignment1 == NULL ||
+        !span_matches(sql, mylite_ast_insert_assignment_view_start(assignment1),
+                      mylite_ast_insert_assignment_view_end(assignment1),
+                      "b = DEFAULT") ||
+        !value_matches_when_expected(
+            mylite_ast_insert_assignment_view_name_value(assignment1),
+            mylite_ast_insert_assignment_view_name_value_length(assignment1),
+            "b") ||
+        assignment1_expression == NULL ||
+        mylite_ast_expression_view_kind(assignment1_expression) !=
+            MYLITE_EXPRESSION_DEFAULT) {
+      fprintf(stderr, "INSERT SET statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "INSERT HIGH_PRIORITY INTO t (a,b) SELECT a,b FROM s WHERE a > 0";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "INSERT SELECT statement view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstInsertStatement *view =
+        mylite_ast_insert_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_insert_statement_view_source_kind(view) !=
+            MYLITE_INSERT_SOURCE_SELECT ||
+        mylite_ast_insert_statement_view_priority(view) !=
+            MYLITE_INSERT_PRIORITY_HIGH ||
+        mylite_ast_insert_statement_view_column_count(view) != 2 ||
+        mylite_ast_insert_statement_view_select_source_node(view) == NULL ||
+        !span_matches(sql, mylite_ast_insert_statement_view_source_start(view),
+                      mylite_ast_insert_statement_view_source_end(view),
+                      "(a,b) SELECT a,b FROM s WHERE a > 0")) {
+      fprintf(stderr, "INSERT SELECT statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "INSERT LOW_PRIORITY IGNORE INTO db1.t PARTITION (p0,p1) "
+        "(a,b) VALUES ROW(1,2) ON DUPLICATE KEY UPDATE a = a + 1";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "INSERT ODKU statement view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstInsertStatement *view =
+        mylite_ast_insert_statement_view(ast, 0);
+    const MyliteAstInsertAssignment *assignment =
+        view == NULL
+            ? NULL
+            : mylite_ast_insert_statement_view_duplicate_assignment_at(view, 0);
+    const MyliteAstExpression *assignment_expression =
+        mylite_ast_insert_assignment_view_value_expression(assignment);
+    if (view == NULL ||
+        mylite_ast_insert_statement_view_source_kind(view) !=
+            MYLITE_INSERT_SOURCE_VALUES ||
+        mylite_ast_insert_statement_view_priority(view) !=
+            MYLITE_INSERT_PRIORITY_LOW ||
+        !mylite_ast_insert_statement_view_has_ignore(view) ||
+        !mylite_ast_insert_statement_view_has_partition_clause(view) ||
+        !mylite_ast_insert_statement_view_has_on_duplicate_key_update(view) ||
+        !span_matches(sql, mylite_ast_insert_statement_view_partition_start(view),
+                      mylite_ast_insert_statement_view_partition_end(view),
+                      "PARTITION (p0,p1)") ||
+        mylite_ast_insert_statement_view_value_row_count(view) != 1 ||
+        mylite_ast_insert_statement_view_value_count(view) != 2 ||
+        mylite_ast_insert_statement_view_duplicate_assignment_count(view) != 1 ||
+        assignment == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_insert_assignment_view_name_value(assignment),
+            mylite_ast_insert_assignment_view_name_value_length(assignment),
+            "a") ||
+        assignment_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(assignment_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_ADD) {
+      fprintf(stderr, "INSERT ODKU statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
   return failed;
 }
 

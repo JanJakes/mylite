@@ -1749,7 +1749,7 @@ alter_table_secondary_action ::= SECONDARY_LOAD alter_table_secondary_partition_
 alter_table_secondary_action ::= SECONDARY_UNLOAD alter_table_secondary_partition_tail.
 
 alter_table_secondary_partition_tail ::= .
-alter_table_secondary_partition_tail ::= PARTITION LP load_partition_names RP.
+alter_table_secondary_partition_tail ::= PARTITION LP alter_table_partition_names RP.
 
 alter_table_partition_names ::= alter_table_partition_name.
 alter_table_partition_names ::= alter_table_partition_names COMMA alter_table_partition_name.
@@ -2022,7 +2022,12 @@ load_assignment ::= update_assignment_target set_assignment_operator set_assignm
 }
 
 load_partition_tail ::= .
-load_partition_tail ::= load_partition LP load_partition_names RP.
+load_partition_tail ::= load_partition LP load_data_partition_names RP.
+
+load_data_partition_names ::= load_data_partition_name.
+load_data_partition_names ::= load_data_partition_names import_comma load_data_partition_name.
+
+load_data_partition_name ::= cache_name_part.
 
 load_character_set_tail ::= .
 load_character_set_tail ::= CHARACTER SET set_charset_name.

@@ -329,7 +329,7 @@ token sink:
   binlog modifiers, CHECK/REPAIR maintenance options, and unsigned
   integer/lowercase-hex coalesce/add-partition counts,
   tablespace/storage/union changes with closed storage values,
-  secondary-engine load/unload actions,
+  secondary-engine load/unload actions with optional concrete partition lists,
   table option changes with charset/collation continuations,
   unsigned decimal, boolean, and default-boolean value domains, closed `INSERT_METHOD` and
   `ROW_FORMAT` values, string-literal data/index
@@ -365,8 +365,10 @@ token sink:
   optional `IF EXISTS` and validated object-name shapes.
 - `RENAME TABLE` recognizes `TABLE`/`TABLES` plus comma-separated source/target
   table pairs.
-  `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;
-  `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body.
+  `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` and secondary-engine partition
+  lists require concrete partition names; `DISCARD`/`IMPORT PARTITION`
+  accept MySQL's `ALL` form, and `REORGANIZE PARTITION` also requires a
+  non-empty `INTO (...)` body.
   Table-level `ENGINE_ATTRIBUTE` and `SECONDARY_ENGINE_ATTRIBUTE` changes
   require string literals.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize schema names, charset,
@@ -446,7 +448,8 @@ token sink:
   algorithm options where they are unambiguous with `SET` assignment tails.
   Source and compression strings reject quoted hex/bit literals while field and
   line option strings still allow MySQL's accepted string-literal forms.
-  `LOAD DATA` partition names use the shared identifier grammar.
+  `LOAD DATA` partition clauses require concrete partition names and reject
+  the `ALL` form that MySQL reserves for key-cache partition clauses.
 - `LOAD INDEX INTO CACHE` recognizes MySQL's single-table partition form,
   `ALL`, optional empty or named key/index lists, comma-separated non-partition
   table lists, and `IGNORE LEAVES`.

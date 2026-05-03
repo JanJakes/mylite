@@ -9,6 +9,8 @@ def main() -> int:
     parser.add_argument("--parser", required=True)
     args = parser.parse_args()
 
+    failures = 0
+
     sql = "INSERT INTO t (a) VALUES (1)\n"
     completed = subprocess.run(
         [args.parser, "--semantic"],
@@ -35,9 +37,35 @@ def main() -> int:
         if needle not in completed.stdout:
             sys.stderr.write(f"missing semantic dump fragment: {needle}\n")
             sys.stderr.write(completed.stdout)
-            return 1
+            failures += 1
 
-    return 0
+    sql = "SELECT a FROM t WHERE a = 1\n"
+    completed = subprocess.run(
+        [args.parser, "--semantic"],
+        input=sql,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        sys.stderr.write(completed.stderr)
+        return completed.returncode
+
+    required = (
+        "semantic_statements=1",
+        "statement_kind=select",
+        "semantic kind=clause",
+        "clause_kind=where",
+        "expression_kind=binary",
+        "operator=eq",
+    )
+    for needle in required:
+        if needle not in completed.stdout:
+            sys.stderr.write(f"missing semantic dump fragment: {needle}\n")
+            sys.stderr.write(completed.stdout)
+            failures += 1
+
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

@@ -155,6 +155,7 @@ typedef struct ExpectedCreateTableOption {
 typedef struct SemanticCounts {
   size_t targets;
   size_t descriptors;
+  size_t clauses;
   size_t expressions;
   size_t operators;
   size_t leaf_values;
@@ -231,6 +232,9 @@ static int expect_transaction_statement_views(void);
 static int expect_update_statement_view(void);
 static int expect_use_database_view(void);
 static int expect_semantic_ast_materialization(void);
+static int expect_semantic_clauses(const char *label, const char *sql,
+                                   const MyliteSemanticClauseKind *kinds,
+                                   size_t kind_count);
 static void count_semantic_nodes(const MyliteSemanticAstNode *node,
                                  SemanticCounts *counts);
 static const MyliteSemanticAstNode *first_semantic_child_with_kind(
@@ -7454,7 +7458,7 @@ static int expect_semantic_ast_materialization(void) {
           statement, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
   const MyliteSemanticAstNode *direct_expression =
       first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_EXPRESSION);
-  SemanticCounts counts = {0, 0, 0, 0, 0};
+  SemanticCounts counts = {0};
   count_semantic_nodes(root, &counts);
 
   if (root == NULL ||
@@ -7488,19 +7492,19 @@ static int expect_semantic_ast_materialization(void) {
       value_descriptor == NULL ||
       mylite_semantic_ast_node_child_count(value_descriptor) != 1 ||
       direct_expression != NULL ||
-      counts.targets != 1 || counts.descriptors < 7 ||
+      counts.targets != 1 || counts.descriptors < 7 || counts.clauses != 0 ||
       counts.expressions < 7 || counts.operators < 1 ||
       counts.leaf_values < 5 ||
       mylite_semantic_ast_node_count(semantic_ast) < 10 ||
       mylite_semantic_ast_allocated_bytes(semantic_ast) == 0) {
     fprintf(stderr,
             "semantic AST DML shape mismatch: nodes=%zu bytes=%zu "
-            "targets=%zu descriptors=%zu expressions=%zu operators=%zu "
-            "leaf_values=%zu\n",
+            "targets=%zu descriptors=%zu clauses=%zu expressions=%zu "
+            "operators=%zu leaf_values=%zu\n",
             mylite_semantic_ast_node_count(semantic_ast),
             mylite_semantic_ast_allocated_bytes(semantic_ast), counts.targets,
-            counts.descriptors, counts.expressions, counts.operators,
-            counts.leaf_values);
+            counts.descriptors, counts.clauses, counts.expressions,
+            counts.operators, counts.leaf_values);
     failed = 1;
   }
   mylite_semantic_ast_free(semantic_ast);
@@ -7533,7 +7537,7 @@ static int expect_semantic_ast_materialization(void) {
   const MyliteSemanticAstNode *key_descriptor =
       first_semantic_child_with_descriptor_kind(
           statement, MYLITE_SEMANTIC_DESCRIPTOR_KEY);
-  SemanticCounts ddl_counts = {0, 0, 0, 0, 0};
+  SemanticCounts ddl_counts = {0};
   count_semantic_nodes(root, &ddl_counts);
   if (statement == NULL ||
       mylite_semantic_ast_node_statement_kind(statement) !=
@@ -7552,13 +7556,16 @@ static int expect_semantic_ast_materialization(void) {
           mylite_semantic_ast_node_value(key_descriptor),
           mylite_semantic_ast_node_value_length(key_descriptor), "k") ||
       ddl_counts.targets != 1 || ddl_counts.descriptors < 7 ||
+      ddl_counts.clauses != 0 ||
       ddl_counts.expressions < 6 || ddl_counts.operators < 5 ||
       ddl_counts.leaf_values < 8) {
     fprintf(stderr,
             "semantic AST DDL shape mismatch: nodes=%zu targets=%zu "
-            "descriptors=%zu expressions=%zu operators=%zu leaf_values=%zu\n",
+            "descriptors=%zu clauses=%zu expressions=%zu operators=%zu "
+            "leaf_values=%zu\n",
             mylite_semantic_ast_node_count(semantic_ast), ddl_counts.targets,
-            ddl_counts.descriptors, ddl_counts.expressions, ddl_counts.operators,
+            ddl_counts.descriptors, ddl_counts.clauses,
+            ddl_counts.expressions, ddl_counts.operators,
             ddl_counts.leaf_values);
     failed = 1;
   }
@@ -7583,7 +7590,7 @@ static int expect_semantic_ast_materialization(void) {
   const MyliteSemanticAstNode *replication_descriptor =
       first_semantic_child_with_descriptor_kind(
           statement, MYLITE_SEMANTIC_DESCRIPTOR_REPLICATION_OPTION);
-  SemanticCounts admin_counts = {0, 0, 0, 0, 0};
+  SemanticCounts admin_counts = {0};
   count_semantic_nodes(root, &admin_counts);
   if (statement == NULL ||
       mylite_semantic_ast_node_statement_kind(statement) !=
@@ -7593,12 +7600,137 @@ static int expect_semantic_ast_materialization(void) {
           mylite_semantic_ast_node_value(replication_descriptor),
           mylite_semantic_ast_node_value_length(replication_descriptor),
           "SOURCE_HOST") ||
-      admin_counts.descriptors != 2) {
+      admin_counts.descriptors != 2 || admin_counts.clauses != 0) {
     fprintf(stderr,
-            "semantic AST admin shape mismatch: nodes=%zu descriptors=%zu\n",
+            "semantic AST admin shape mismatch: nodes=%zu descriptors=%zu "
+            "clauses=%zu\n",
             mylite_semantic_ast_node_count(semantic_ast),
-            admin_counts.descriptors);
+            admin_counts.descriptors, admin_counts.clauses);
     failed = 1;
+  }
+  mylite_semantic_ast_free(semantic_ast);
+
+  const MyliteSemanticClauseKind select_clauses[] = {
+      MYLITE_SEMANTIC_CLAUSE_WHERE,
+      MYLITE_SEMANTIC_CLAUSE_HAVING,
+  };
+  failed += expect_semantic_clauses(
+      "SELECT clauses",
+      "SELECT a FROM t WHERE a > 1 GROUP BY a HAVING a < 10",
+      select_clauses, sizeof(select_clauses) / sizeof(select_clauses[0]));
+
+  const MyliteSemanticClauseKind update_clauses[] = {
+      MYLITE_SEMANTIC_CLAUSE_WHERE,
+  };
+  failed += expect_semantic_clauses(
+      "UPDATE clauses", "UPDATE t SET a = 1 WHERE b = 2", update_clauses,
+      sizeof(update_clauses) / sizeof(update_clauses[0]));
+
+  const MyliteSemanticClauseKind delete_clauses[] = {
+      MYLITE_SEMANTIC_CLAUSE_WHERE,
+  };
+  failed += expect_semantic_clauses(
+      "DELETE clauses", "DELETE FROM t WHERE a = 1", delete_clauses,
+      sizeof(delete_clauses) / sizeof(delete_clauses[0]));
+
+  const MyliteSemanticClauseKind show_like_clauses[] = {
+      MYLITE_SEMANTIC_CLAUSE_SHOW_LIKE,
+  };
+  failed += expect_semantic_clauses(
+      "SHOW LIKE clauses", "SHOW TABLES LIKE 't%'", show_like_clauses,
+      sizeof(show_like_clauses) / sizeof(show_like_clauses[0]));
+
+  const MyliteSemanticClauseKind show_where_clauses[] = {
+      MYLITE_SEMANTIC_CLAUSE_SHOW_WHERE,
+  };
+  failed += expect_semantic_clauses(
+      "SHOW WHERE clauses",
+      "SHOW TABLES WHERE Tables_in_mysql != 'ndb_binlog_index'",
+      show_where_clauses,
+      sizeof(show_where_clauses) / sizeof(show_where_clauses[0]));
+
+  const MyliteSemanticClauseKind call_clauses[] = {
+      MYLITE_SEMANTIC_CLAUSE_CALL_ARGUMENT,
+      MYLITE_SEMANTIC_CLAUSE_CALL_ARGUMENT,
+  };
+  failed += expect_semantic_clauses(
+      "CALL clauses", "CALL p(1, a + 2)", call_clauses,
+      sizeof(call_clauses) / sizeof(call_clauses[0]));
+
+  const MyliteSemanticClauseKind do_clauses[] = {
+      MYLITE_SEMANTIC_CLAUSE_DO_EXPRESSION,
+      MYLITE_SEMANTIC_CLAUSE_DO_EXPRESSION,
+  };
+  failed += expect_semantic_clauses(
+      "DO clauses", "DO 1, a + 2", do_clauses,
+      sizeof(do_clauses) / sizeof(do_clauses[0]));
+
+  const MyliteSemanticClauseKind kill_clauses[] = {
+      MYLITE_SEMANTIC_CLAUSE_KILL_TARGET,
+  };
+  failed += expect_semantic_clauses(
+      "KILL clauses", "KILL CONNECTION_ID()", kill_clauses,
+      sizeof(kill_clauses) / sizeof(kill_clauses[0]));
+  return failed;
+}
+
+static int expect_semantic_clauses(const char *label, const char *sql,
+                                   const MyliteSemanticClauseKind *kinds,
+                                   size_t kind_count) {
+  MyliteParseResult result;
+  MyliteSemanticAst *semantic_ast = NULL;
+  MyliteParseStatus status =
+      mylite_parse_sql_semantic_ast(sql, &semantic_ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "%s parse failed: status=%s offset=%zu token=%d message=%s\n",
+            label, mylite_parse_status_name(status), result.offset,
+            result.token, result.message);
+    return 1;
+  }
+
+  const MyliteSemanticAstNode *root = mylite_semantic_ast_root(semantic_ast);
+  const MyliteSemanticAstNode *statement =
+      mylite_semantic_ast_node_child_at(root, 0);
+  const MyliteSemanticAstNode *direct_expression =
+      first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_EXPRESSION);
+  SemanticCounts counts = {0};
+  count_semantic_nodes(root, &counts);
+
+  int failed = 0;
+  size_t clause_index = 0;
+  for (size_t i = 0; statement != NULL &&
+                     i < mylite_semantic_ast_node_child_count(statement);
+       i++) {
+    const MyliteSemanticAstNode *child =
+        mylite_semantic_ast_node_child_at(statement, i);
+    if (mylite_semantic_ast_node_kind(child) != MYLITE_SEMANTIC_NODE_CLAUSE) {
+      continue;
+    }
+    if (clause_index >= kind_count ||
+        mylite_semantic_ast_node_clause_kind(child) != kinds[clause_index] ||
+        mylite_semantic_ast_node_child_count(child) != 1 ||
+        mylite_semantic_ast_node_kind(
+            mylite_semantic_ast_node_child_at(child, 0)) !=
+            MYLITE_SEMANTIC_NODE_EXPRESSION) {
+      failed = 1;
+      break;
+    }
+    clause_index++;
+  }
+
+  if (root == NULL || statement == NULL || direct_expression != NULL ||
+      clause_index != kind_count || counts.clauses != kind_count ||
+      counts.expressions < kind_count) {
+    failed = 1;
+  }
+
+  if (failed) {
+    fprintf(stderr,
+            "%s shape mismatch: clauses=%zu/%zu total_clauses=%zu "
+            "expressions=%zu sql=%s\n",
+            label, clause_index, kind_count, counts.clauses,
+            counts.expressions, sql);
   }
   mylite_semantic_ast_free(semantic_ast);
   return failed;
@@ -7614,6 +7746,9 @@ static void count_semantic_nodes(const MyliteSemanticAstNode *node,
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_DESCRIPTOR) {
     counts->descriptors++;
+  }
+  if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_CLAUSE) {
+    counts->clauses++;
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_EXPRESSION) {
     counts->expressions++;

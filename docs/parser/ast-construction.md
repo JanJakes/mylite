@@ -366,18 +366,19 @@ descriptor layers suitable for measuring cost and for guiding typed-node work.
 
 `mylite_parse_sql_semantic_ast()` now returns the first separate semantic graph
 as an opaque `MyliteSemanticAst`. This graph materializes program -> statement
--> target/descriptor/expression nodes, copies decoded target, descriptor, and
-expression values into its own arena, and frees the parser CST. Callers can
-inspect semantic node kind, statement kind, target kind/role, descriptor kind,
-expression kind/literal/operator, spans, copied values, children, node count,
-statement count, and allocated bytes. Descriptor nodes own the obvious
-expression payload for their parser-view item, including projection, VALUES,
-assignment, column default/generated/check, key check/key-part, LOAD
-assignment, and LOAD option expressions. Statement-level clause expressions
-such as `WHERE`, `HAVING`, `SHOW ... LIKE/WHERE`, and `KILL CONNECTION_ID()`
-remain direct statement children until clause nodes exist. Statement-specific
-typed AST objects, name resolution, query-block objects, table-reference
-objects, DDL metadata nodes, and execution semantics remain future layers.
+-> target/descriptor/clause/expression nodes, copies decoded target,
+descriptor, clause expression, and expression values into its own arena, and
+frees the parser CST. Callers can inspect semantic node kind, statement kind,
+target kind/role, descriptor kind, clause kind, expression kind/literal/operator,
+spans, copied values, children, node count, statement count, and allocated
+bytes. Descriptor nodes own the obvious expression payload for their parser-view
+item, including projection, VALUES, assignment, column default/generated/check,
+key check/key-part, LOAD assignment, and LOAD option expressions. Clause nodes
+now own statement-level expression roots for `WHERE`, `HAVING`, `SHOW ...
+LIKE/WHERE`, `KILL CONNECTION_ID()`, `CALL` arguments, and `DO` expressions.
+Statement-specific typed AST objects, name resolution, query-block objects,
+table-reference objects, DDL metadata nodes, and execution semantics remain
+future layers.
 
 The parser-level semantic `CREATE TABLE` view was the first statement-level AST
 object layered on top of the descriptor work. It does not copy column, key, or
@@ -762,7 +763,7 @@ Latest semantic-AST construction run on May 3, 2026:
 mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.769838 qps=502130 mbps=38.19 avg_us=1.992
 mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.157245 qps=194323 mbps=14.78 avg_us=5.146 avg_nodes=74.5 avg_ast_bytes=11091.3 avg_statements=1.00
 mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.286471 qps=190877 mbps=14.52 avg_us=5.239 avg_nodes=74.5 avg_ast_bytes=11091.3
-mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.710065 qps=180390 mbps=13.72 avg_us=5.544 avg_semantic_nodes=7.9 avg_semantic_bytes=4344.3 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_descriptors=2.57 avg_semantic_expressions=2.68 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_statement_expressions=0.11
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.731962 qps=179879 mbps=13.68 avg_us=5.559 avg_semantic_nodes=8.0 avg_semantic_bytes=4363.1 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_descriptors=2.57 avg_semantic_clauses=0.11 avg_semantic_expressions=2.68 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
 ```
 
 Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:
@@ -963,7 +964,7 @@ Current release build size on the same machine:
 generated parser C: 72,876 lines, 5,639,543 bytes
 generated parser object: 997K on disk, 905,630 bytes text/data/other
 parser support object: 408K on disk, 235,023 bytes text/data/other
-semantic AST object: 44K on disk, 19,250 bytes text/data/other
+semantic AST object: 47K on disk, 20,116 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.6M on disk
 mylite-parse: 1.3M on disk
@@ -985,9 +986,9 @@ mylite-parser-bench: 1.3M on disk
   clauses, and final metadata operations.
 - Add typed AST nodes for the next analyzer statement families underneath the
   statement classification and indexed target descriptor layer.
-- Split the parser-level `SELECT` view into semantic query-expression,
-  query-block, table-reference, projection, and clause objects with scoped name
-  resolution.
+- Split the parser-level `SELECT` view beyond the current semantic clause nodes
+  into semantic query-expression, query-block, table-reference, and projection
+  objects with scoped name resolution.
 - Extend executable-statement parser views into the next high-value DML and
   utility statements, reusing the expression-view infrastructure where
   statement payloads carry targets, assignments, predicates, ordering, and

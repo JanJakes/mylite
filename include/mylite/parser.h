@@ -114,8 +114,20 @@ typedef enum MyliteSemanticNodeKind {
   MYLITE_SEMANTIC_NODE_STATEMENT = 2,
   MYLITE_SEMANTIC_NODE_TARGET = 3,
   MYLITE_SEMANTIC_NODE_EXPRESSION = 4,
-  MYLITE_SEMANTIC_NODE_DESCRIPTOR = 5
+  MYLITE_SEMANTIC_NODE_DESCRIPTOR = 5,
+  MYLITE_SEMANTIC_NODE_CLAUSE = 6
 } MyliteSemanticNodeKind;
+
+typedef enum MyliteSemanticClauseKind {
+  MYLITE_SEMANTIC_CLAUSE_UNKNOWN = 0,
+  MYLITE_SEMANTIC_CLAUSE_WHERE,
+  MYLITE_SEMANTIC_CLAUSE_HAVING,
+  MYLITE_SEMANTIC_CLAUSE_SHOW_LIKE,
+  MYLITE_SEMANTIC_CLAUSE_SHOW_WHERE,
+  MYLITE_SEMANTIC_CLAUSE_KILL_TARGET,
+  MYLITE_SEMANTIC_CLAUSE_CALL_ARGUMENT,
+  MYLITE_SEMANTIC_CLAUSE_DO_EXPRESSION
+} MyliteSemanticClauseKind;
 
 typedef enum MyliteSemanticDescriptorKind {
   MYLITE_SEMANTIC_DESCRIPTOR_UNKNOWN = 0,
@@ -1005,6 +1017,7 @@ const char *mylite_parse_status_name(MyliteParseStatus status);
 const char *mylite_statement_kind_name(MyliteStatementKind kind);
 const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
 const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
+const char *mylite_semantic_clause_kind_name(MyliteSemanticClauseKind kind);
 const char *mylite_semantic_descriptor_kind_name(
     MyliteSemanticDescriptorKind kind);
 const char *mylite_select_projection_kind_name(
@@ -1137,6 +1150,8 @@ MyliteStatementKind mylite_semantic_ast_node_statement_kind(
 MyliteStatementTargetKind mylite_semantic_ast_node_target_kind(
     const MyliteSemanticAstNode *node);
 MyliteStatementTargetRole mylite_semantic_ast_node_target_role(
+    const MyliteSemanticAstNode *node);
+MyliteSemanticClauseKind mylite_semantic_ast_node_clause_kind(
     const MyliteSemanticAstNode *node);
 MyliteSemanticDescriptorKind mylite_semantic_ast_node_descriptor_kind(
     const MyliteSemanticAstNode *node);

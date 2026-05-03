@@ -3190,6 +3190,10 @@ static void dump_semantic_node(const MyliteSemanticAstNode *node,
     printf(" descriptor_kind=%s",
            mylite_semantic_descriptor_kind_name(
                mylite_semantic_ast_node_descriptor_kind(node)));
+  } else if (kind == MYLITE_SEMANTIC_NODE_CLAUSE) {
+    printf(" clause_kind=%s",
+           mylite_semantic_clause_kind_name(
+               mylite_semantic_ast_node_clause_kind(node)));
   } else if (kind == MYLITE_SEMANTIC_NODE_EXPRESSION) {
     printf(" expression_kind=%s literal=%s operator=%s",
            mylite_expression_kind_name(
@@ -3229,6 +3233,8 @@ static const char *semantic_node_kind_name(MyliteSemanticNodeKind kind) {
     return "expression";
   case MYLITE_SEMANTIC_NODE_DESCRIPTOR:
     return "descriptor";
+  case MYLITE_SEMANTIC_NODE_CLAUSE:
+    return "clause";
   }
   return "unknown";
 }

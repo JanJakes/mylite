@@ -2719,6 +2719,7 @@ change_source_option ::= RELAY_LOG_POS diagnostics_equals replication_relay_log_
 change_source_option ::= change_shared_boolean_option_name diagnostics_equals change_option_boolean_value.
 change_source_option ::= change_source_string_option_name diagnostics_equals change_option_string_value.
 change_source_option ::= SOURCE_LOG_POS diagnostics_equals replication_source_log_position_value.
+change_source_option ::= SOURCE_HEARTBEAT_PERIOD diagnostics_equals unsigned_decimal_value.
 change_source_option ::= change_source_number_option_name diagnostics_equals change_option_number_value.
 change_source_option ::= change_source_boolean_option_name diagnostics_equals change_option_boolean_value.
 
@@ -2740,7 +2741,6 @@ change_source_string_option_name ::= SOURCE_TLS_CIPHERSUITES.
 change_source_string_option_name ::= SOURCE_PUBLIC_KEY_PATH.
 
 change_source_number_option_name ::= SOURCE_PORT.
-change_source_number_option_name ::= SOURCE_HEARTBEAT_PERIOD.
 change_source_number_option_name ::= SOURCE_CONNECT_RETRY.
 change_source_number_option_name ::= SOURCE_RETRY_COUNT.
 change_source_number_option_name ::= SOURCE_DELAY.
@@ -2763,6 +2763,7 @@ change_master_option ::= RELAY_LOG_POS diagnostics_equals replication_relay_log_
 change_master_option ::= change_shared_boolean_option_name diagnostics_equals change_option_boolean_value.
 change_master_option ::= change_master_string_option_name diagnostics_equals change_option_string_value.
 change_master_option ::= MASTER_LOG_POS diagnostics_equals replication_source_log_position_value.
+change_master_option ::= MASTER_HEARTBEAT_PERIOD diagnostics_equals unsigned_decimal_value.
 change_master_option ::= change_master_number_option_name diagnostics_equals change_option_number_value.
 change_master_option ::= change_master_boolean_option_name diagnostics_equals change_option_boolean_value.
 
@@ -2784,7 +2785,6 @@ change_master_string_option_name ::= MASTER_TLS_CIPHERSUITES.
 change_master_string_option_name ::= MASTER_PUBLIC_KEY_PATH.
 
 change_master_number_option_name ::= MASTER_PORT.
-change_master_number_option_name ::= MASTER_HEARTBEAT_PERIOD.
 change_master_number_option_name ::= MASTER_CONNECT_RETRY.
 change_master_number_option_name ::= MASTER_RETRY_COUNT.
 change_master_number_option_name ::= MASTER_DELAY.
@@ -2802,9 +2802,10 @@ change_shared_boolean_option_name ::= GTID_ONLY.
 change_shared_boolean_option_name ::= REQUIRE_ROW_FORMAT.
 change_shared_boolean_option_name ::= SOURCE_CONNECTION_AUTO_FAILOVER.
 
-change_option_number_value ::= BOOLEAN_NUMBER.
-change_option_number_value ::= FACTOR_NUMBER.
-change_option_number_value ::= NUMBER_LITERAL.
+change_option_number_value ::= unsigned_decimal_or_lower_hex_value.
+change_option_number_value ::= STRING_LITERAL(A). {
+  mylite_parser_require_quoted_hex_literal(ctx, A);
+}
 
 change_option_boolean_value ::= BOOLEAN_NUMBER.
 

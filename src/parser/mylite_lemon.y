@@ -936,14 +936,12 @@ resource_group_vcpu_list ::= resource_group_vcpu_spec.
 resource_group_vcpu_list ::= resource_group_vcpu_list import_comma resource_group_vcpu_spec.
 resource_group_vcpu_list ::= resource_group_vcpu_list resource_group_vcpu_spec.
 
-resource_group_vcpu_spec ::= resource_group_number_value.
-resource_group_vcpu_spec ::= resource_group_number_value MINUS resource_group_number_value.
-resource_group_vcpu_spec ::= resource_group_number_value resource_group_vcpu_range_end.
+resource_group_vcpu_spec ::= resource_group_unsigned_integer_value.
+resource_group_vcpu_spec ::= resource_group_unsigned_integer_value MINUS resource_group_unsigned_integer_value.
+resource_group_vcpu_spec ::= resource_group_unsigned_integer_value resource_group_vcpu_range_end.
 
 resource_group_vcpu_range_end ::= SIGNED_NUMBER_LITERAL(A). {
-  if (A.length == 0 || A.start[0] != '-') {
-    mylite_parser_reject(ctx, A, "invalid resource group VCPU range");
-  }
+  mylite_parser_require_negative_integer_literal(ctx, A);
 }
 
 resource_group_thread_priority_tail ::= .
@@ -958,7 +956,27 @@ resource_group_state_tail ::= DISABLE.
 resource_group_optional_equals ::= .
 resource_group_optional_equals ::= diagnostics_equals.
 
-resource_group_signed_atom ::= resource_group_number_value.
+resource_group_signed_atom ::= resource_group_signed_integer_value.
+
+resource_group_unsigned_integer_value ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
+resource_group_unsigned_integer_value ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
+resource_group_unsigned_integer_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
+
+resource_group_signed_integer_value ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_signed_integer_literal(ctx, A);
+}
+resource_group_signed_integer_value ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_signed_integer_literal(ctx, A);
+}
+resource_group_signed_integer_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_signed_integer_literal(ctx, A);
+}
 
 resource_group_number_value ::= BOOLEAN_NUMBER.
 resource_group_number_value ::= FACTOR_NUMBER.

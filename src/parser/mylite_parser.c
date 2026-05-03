@@ -11265,6 +11265,40 @@ void mylite_parser_require_unsigned_integer_literal(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, token, "invalid integer literal");
 }
 
+void mylite_parser_require_signed_integer_literal(MyliteParseContext *ctx,
+                                                  MyliteToken token) {
+  unsigned long value;
+
+  if (token.length > 0 && token.start[0] == '-') {
+    MyliteToken tail = token;
+    tail.start++;
+    tail.length--;
+    if (token_is_plain_unsigned_integer(tail, &value)) {
+      return;
+    }
+  } else if (token_is_plain_unsigned_integer(token, &value)) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid integer literal");
+}
+
+void mylite_parser_require_negative_integer_literal(MyliteParseContext *ctx,
+                                                    MyliteToken token) {
+  unsigned long value;
+  MyliteToken tail = token;
+
+  if (tail.length > 1 && tail.start[0] == '-') {
+    tail.start++;
+    tail.length--;
+    if (token_is_plain_unsigned_integer(tail, &value)) {
+      return;
+    }
+  }
+
+  mylite_parser_reject(ctx, token, "invalid integer literal");
+}
+
 void mylite_parser_require_unsigned_decimal_literal(MyliteParseContext *ctx,
                                                     MyliteToken token) {
   if (token_is_show_log_position_literal(token)) {

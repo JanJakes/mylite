@@ -105,6 +105,10 @@ void mylite_parser_require_limit_option(MyliteParseContext *ctx,
                                         MyliteToken token);
 void mylite_parser_require_unsigned_integer_literal(MyliteParseContext *ctx,
                                                     MyliteToken token);
+void mylite_parser_require_signed_integer_literal(MyliteParseContext *ctx,
+                                                  MyliteToken token);
+void mylite_parser_require_negative_integer_literal(MyliteParseContext *ctx,
+                                                    MyliteToken token);
 void mylite_parser_require_unsigned_decimal_literal(MyliteParseContext *ctx,
                                                     MyliteToken token);
 void mylite_parser_require_unsigned_decimal_or_lower_hex_literal(

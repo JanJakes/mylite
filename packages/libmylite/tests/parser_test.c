@@ -21,6 +21,7 @@ static int test_alter_table_column_operations_syntax(void);
 static int test_alter_table_key_constraint_operations_syntax(void);
 static int test_rename_table_syntax(void);
 static int test_truncate_table_syntax(void);
+static int test_show_tables_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
@@ -158,6 +159,7 @@ int main(void)
     failures += test_alter_table_key_constraint_operations_syntax();
     failures += test_rename_table_syntax();
     failures += test_truncate_table_syntax();
+    failures += test_show_tables_syntax();
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
@@ -2833,6 +2835,102 @@ static int test_truncate_table_syntax(void)
     failures += parse_sql("TRUNCATE TABLE t TO u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    return failures;
+}
+
+static int test_show_tables_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW TABLES; SHOW FULL TABLES; SHOW TABLES FROM app; "
+                          "SHOW TABLES IN app LIKE 'alpha%'; "
+                          "SHOW FULL TABLES FROM `select` LIKE 'beta\\_%'; "
+                          "SHOW TABLES LIKE 'solo%'; SHOW EXTENDED TABLES; "
+                          "SHOW EXTENDED FULL TABLES; "
+                          "SHOW FULL TABLES WHERE Table_type = 'BASE TABLE';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 9U, "show tables script count");
+
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, "show tables");
+    failures += expect_bool(statement->show_tables_full, false, "show tables full marker");
+    failures += expect_child_count(statement, 0U, "show tables child count");
+
+    statement = child_at(result.root, 1U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, "show full tables");
+    failures += expect_bool(statement->show_tables_full, true, "show full tables full marker");
+    failures += expect_child_count(statement, 0U, "show full tables child count");
+
+    statement = child_at(result.root, 2U);
+    failures +=
+        expect_node(child_at(statement, 0U), MYLITE_SQL_AST_IDENTIFIER, "show tables from schema");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show tables from schema name");
+
+    statement = child_at(result.root, 3U);
+    failures += expect_child_count(statement, 2U, "show tables in like child count");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show tables in schema name");
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "show tables like pattern");
+    failures +=
+        expect_span_text(child_at(statement, 1U), "'alpha%'", "show tables like pattern text");
+
+    statement = child_at(result.root, 4U);
+    failures +=
+        expect_bool(statement->show_tables_full, true, "show full tables qualified full marker");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "`select`", "show full tables quoted schema");
+    failures +=
+        expect_span_text(child_at(statement, 1U), "'beta\\_%'", "show full tables escaped pattern");
+
+    statement = child_at(result.root, 5U);
+    failures += expect_child_count(statement, 1U, "show tables like-only child count");
+    failures += expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "show tables like-only pattern");
+
+    statement = child_at(result.root, 6U);
+    failures += expect_bool(statement->show_tables_extended, true, "show extended tables marker");
+    failures += expect_bool(statement->show_tables_full, false, "show extended tables full marker");
+    failures += expect_child_count(statement, 0U, "show extended tables child count");
+
+    statement = child_at(result.root, 7U);
+    failures +=
+        expect_bool(statement->show_tables_extended, true, "show extended full tables marker");
+    failures += expect_bool(statement->show_tables_full, true, "show extended full tables marker");
+    failures += expect_child_count(statement, 0U, "show extended full tables child count");
+
+    statement = child_at(result.root, 8U);
+    failures += expect_bool(statement->show_tables_full, true, "show full tables where marker");
+    failures += expect_child_count(statement, 1U, "show full tables where child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "show full tables where clause");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE tables (id INT); CREATE TABLE full (id INT); "
+                          "CREATE TABLE extended (id INT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 3U, "show tables keyword identifiers");
+    failures += expect_span_text(child_at(child_at(result.root, 0U), 0U), "tables",
+                                 "tables keyword as table name");
+    failures += expect_span_text(child_at(child_at(result.root, 1U), 0U), "full",
+                                 "full keyword as table name");
+    failures += expect_span_text(child_at(child_at(result.root, 2U), 0U), "extended",
+                                 "extended keyword as table name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLES LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW TABLES LIKE 'a%' WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL FULL TABLES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

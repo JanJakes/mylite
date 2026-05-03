@@ -196,6 +196,7 @@ static int test_alter_table_column_operations_execution(void);
 static int test_alter_table_key_operations_execution(void);
 static int test_rename_table_execution(void);
 static int test_truncate_table_execution(void);
+static int test_show_tables_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_replace_execution(void);
@@ -331,6 +332,7 @@ int main(void)
     failures += test_alter_table_key_operations_execution();
     failures += test_rename_table_execution();
     failures += test_truncate_table_execution();
+    failures += test_show_tables_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_replace_execution();
@@ -4586,6 +4588,123 @@ static int test_truncate_table_execution(void)
     }
     free(physical_name);
     remove_runtime_test_files();
+
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_tables_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const show_a_columns[] = {"Tables_in_mylite_show_tables_a"};
+    static const char *const show_full_a_columns[] = {"Tables_in_mylite_show_tables_a",
+                                                      "Table_type"};
+    static const char *const alpha_columns[] = {"Tables_in_mylite_show_tables_a (alpha%)"};
+    static const char *const beta_columns[] = {"Tables_in_mylite_show_tables_a (beta\\_%)"};
+    static const char *const camel_columns[] = {"Tables_in_mylite_show_tables_a (Camel%)"};
+    static const char *const camel_lower_columns[] = {"Tables_in_mylite_show_tables_a (camel%)"};
+    static const char *const show_b_columns[] = {"Tables_in_mylite_show_tables_b"};
+    static const char *const show_empty_columns[] = {"Tables_in_mylite_show_tables_empty"};
+    static const char *const keyword_tables_columns[] = {"Tables_in_mylite_show_tables_keywords "
+                                                         "(tables)"};
+    static const char *const keyword_full_columns[] = {"Tables_in_mylite_show_tables_keywords "
+                                                       "(full)"};
+    static const char *const keyword_extended_columns[] = {"Tables_in_mylite_show_tables_keywords "
+                                                           "(extended)"};
+    static const char *const info_columns[] = {"Tables_in_information_schema (TABLES)"};
+    static const char *const info_full_columns[] = {"Tables_in_information_schema (TABLES)",
+                                                    "Table_type"};
+    static const char *const info_mixed_columns[] = {"Tables_in_information_schema (TABLES)"};
+    static const char *const show_a_values[] = {"alpha", "alpha_extra", "beta_1"};
+    static const char *const show_full_a_values[] = {
+        "alpha", "BASE TABLE", "alpha_extra", "BASE TABLE", "beta_1", "BASE TABLE",
+    };
+    static const char *const alpha_values[] = {"alpha", "alpha_extra"};
+    static const char *const beta_values[] = {"beta_1"};
+    static const char *const camel_values[] = {"CamelCase"};
+    static const char *const show_b_values[] = {"in_table"};
+    static const char *const keyword_tables_values[] = {"tables"};
+    static const char *const keyword_full_values[] = {"full"};
+    static const char *const keyword_extended_values[] = {"extended"};
+    static const char *const info_values[] = {"TABLES"};
+    static const char *const info_full_values[] = {"TABLES", "SYSTEM VIEW"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open show tables database");
+    failures +=
+        expect_prepare_error(database, "SHOW TABLES", MYLITE_EXEC_ERROR, "No database selected",
+                             "show tables requires selected schema");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_tables_a", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_tables_b", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_tables_empty", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_tables_keywords", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_tables_a", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE alpha (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE alpha_extra (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE beta_1 (id INT)", MYLITE_DONE);
+
+    failures += expect_select_rows(database, "SHOW TABLES", show_a_columns, 1, show_a_values, 3,
+                                   "show tables selected schema");
+    failures += expect_select_rows(database, "SHOW FULL TABLES", show_full_a_columns, 2,
+                                   show_full_a_values, 3, "show full tables selected schema");
+    failures += expect_select_rows(database, "SHOW EXTENDED TABLES", show_a_columns, 1,
+                                   show_a_values, 3, "show extended tables selected schema");
+    failures +=
+        expect_select_rows(database, "SHOW EXTENDED FULL TABLES", show_full_a_columns, 2,
+                           show_full_a_values, 3, "show extended full tables selected schema");
+    failures += expect_select_rows(database, "SHOW TABLES LIKE 'alpha%'", alpha_columns, 1,
+                                   alpha_values, 2, "show tables like alpha");
+    failures +=
+        expect_select_rows(database, "SHOW TABLES FROM mylite_show_tables_a LIKE 'beta\\_%'",
+                           beta_columns, 1, beta_values, 1, "show tables escaped underscore");
+    failures += expect_prepare_error(database, "SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'",
+                                     MYLITE_UNSUPPORTED, "SHOW TABLES WHERE is not supported",
+                                     "show tables where is parsed but unsupported");
+
+    failures += execute_sql(database, "CREATE TABLE CamelCase (id INT)", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW TABLES LIKE 'camel%'", camel_lower_columns, 1,
+                                   NULL, 0, "show tables like is case-sensitive");
+    failures += expect_select_rows(database, "SHOW TABLES LIKE 'Camel%'", camel_columns, 1,
+                                   camel_values, 1, "show tables like uppercase pattern");
+
+    failures +=
+        execute_sql(database, "CREATE TABLE mylite_show_tables_b.in_table (id INT)", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW TABLES FROM mylite_show_tables_b",
+                                   show_b_columns, 1, show_b_values, 1, "show tables from schema");
+    failures += expect_select_rows(database, "SHOW TABLES IN mylite_show_tables_b", show_b_columns,
+                                   1, show_b_values, 1, "show tables in schema");
+    failures += expect_select_rows(database, "SHOW TABLES FROM mylite_show_tables_empty",
+                                   show_empty_columns, 1, NULL, 0, "show tables empty schema");
+
+    failures += execute_sql(database, "USE mylite_show_tables_keywords", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE tables (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE full (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE extended (id INT)", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW TABLES LIKE 'tables'", keyword_tables_columns, 1,
+                                   keyword_tables_values, 1, "show tables keyword table name");
+    failures += expect_select_rows(database, "SHOW TABLES LIKE 'full'", keyword_full_columns, 1,
+                                   keyword_full_values, 1, "show tables full table name");
+    failures +=
+        expect_select_rows(database, "SHOW TABLES LIKE 'extended'", keyword_extended_columns, 1,
+                           keyword_extended_values, 1, "show tables extended table name");
+
+    failures +=
+        expect_select_rows(database, "SHOW TABLES FROM information_schema LIKE 'TABLES'",
+                           info_columns, 1, info_values, 1, "show tables information schema");
+    failures += expect_select_rows(
+        database, "SHOW FULL TABLES FROM information_schema LIKE 'tables'", info_full_columns, 2,
+        info_full_values, 1, "show full tables information schema lower-case pattern");
+    failures += expect_select_rows(database, "SHOW TABLES FROM Information_Schema LIKE 'tables'",
+                                   info_mixed_columns, 1, info_values, 1,
+                                   "show tables information schema mixed-case schema");
+    failures += expect_prepare_error(database, "SHOW TABLES FROM missing_show_tables_schema",
+                                     MYLITE_EXEC_ERROR, "Unknown database",
+                                     "show tables rejects missing schema");
+
+    mylite_close(database);
 
     // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;

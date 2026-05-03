@@ -156,7 +156,16 @@ level application surfaces.
        [TRUNCATE TABLE](../truncate-table/specs.md).
 39. [ ] `SHOW TABLES`, `SHOW COLUMNS`, `SHOW INDEX`, `DESCRIBE`, and
        `SHOW CREATE TABLE`: result-set shape, filtering, metadata formatting,
-       and warnings.
+       and warnings. First `SHOW TABLES` slice is implemented for supported
+       MyLite base tables and existing `information_schema` metadata views,
+       including `EXTENDED`, `FULL`, `FROM`/`IN`, `LIKE`, `WHERE` grammar,
+       result column names, table type, empty results, and
+       selected/missing-schema diagnostics. `EXTENDED` is currently a no-op
+       because MyLite has no hidden failed-ALTER table catalog; `WHERE`
+       filtering is parsed and rejected as unsupported until SHOW expression
+       filtering lands. Temporary tables, user views, privilege filtering, and
+       broader metadata statements remain deferred. Spec:
+       [SHOW TABLES](../show-tables/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable

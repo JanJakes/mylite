@@ -2536,6 +2536,36 @@ mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *st
                      span_join(span_from_token(&show_token), span_from_token(&schemas_token)));
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_tables_tokens tokens,
+    struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *filter)
+{
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&tokens.show), span_from_token(&tokens.tables));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (schema_name != NULL) {
+        span = span_join(span, schema_name->span);
+    }
+    if (filter != NULL) {
+        span = span_join(span, filter->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    if (tokens.extended.text != NULL) {
+        mylite_sql_ast_node_set_show_tables_extended(statement);
+    }
+    if (tokens.full.text != NULL) {
+        mylite_sql_ast_node_set_show_tables_full(statement);
+    }
+    mylite_sql_ast_node_append_child(statement, schema_name);
+    mylite_sql_ast_node_append_child(statement, filter);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token set_token,
     struct mylite_sql_ast_node *character_set, struct mylite_sql_ast_node *collation)
@@ -5319,6 +5349,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"ESCAPE", MYLITE_SQL_PARSE_ESCAPE},
         {"EXCLUSIVE", MYLITE_SQL_PARSE_EXCLUSIVE},
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
+        {"EXTENDED", MYLITE_SQL_PARSE_EXTENDED},
         {"FALSE", MYLITE_SQL_PARSE_FALSE},
         {"FIRST", MYLITE_SQL_PARSE_FIRST},
         {"FIXED", MYLITE_SQL_PARSE_FIXED},
@@ -5417,6 +5448,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"START", MYLITE_SQL_PARSE_START},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
+        {"TABLES", MYLITE_SQL_PARSE_TABLES},
         {"TEMPORARY", MYLITE_SQL_PARSE_TEMPORARY},
         {"TEXT", MYLITE_SQL_PARSE_TEXT},
         {"THEN", MYLITE_SQL_PARSE_THEN},

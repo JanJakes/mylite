@@ -579,6 +579,24 @@ void mylite_sql_ast_node_set_subquery_quantifier(struct mylite_sql_ast_node *nod
     node->subquery_quantifier = quantifier;
 }
 
+void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->show_tables_extended = true;
+}
+
+void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->show_tables_full = true;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -843,6 +861,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "rename_table_pair";
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
         return "truncate_table_statement";
+    case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
+        return "show_tables_statement";
     }
 
     return "unknown";

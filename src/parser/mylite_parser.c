@@ -11514,6 +11514,14 @@ void mylite_parser_require_identifier_atom(MyliteParseContext *ctx,
   }
 }
 
+void mylite_parser_require_numeric_identifier_atom(MyliteParseContext *ctx,
+                                                   MyliteToken token) {
+  if (token.length == 0 || !ascii_is_digit(token.start[0]) ||
+      token_starts_numeric_literal(token)) {
+    mylite_parser_reject(ctx, token, "invalid identifier");
+  }
+}
+
 void mylite_parser_require_account_principal_atom(MyliteParseContext *ctx,
                                                   MyliteToken token) {
   if (token_ascii_equal(token, "cascade") ||

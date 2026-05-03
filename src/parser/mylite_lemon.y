@@ -817,7 +817,17 @@ account_registration_option ::= account_factor INITIATE REGISTRATION.
 account_registration_option ::= account_factor FINISH REGISTRATION SET CHALLENGE_RESPONSE AS user_auth_string_value.
 account_registration_option ::= account_factor UNREGISTER.
 
-account_factor ::= FACTOR_NUMBER FACTOR.
+account_factor ::= account_factor_number FACTOR.
+
+account_factor_number ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
+account_factor_number ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
+account_factor_number ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_integer_literal(ctx, A);
+}
 
 user_auth_value ::= user_auth_string_value.
 user_auth_value ::= RANDOM PASSWORD.
@@ -825,6 +835,7 @@ user_auth_value ::= RANDOM PASSWORD.
 user_auth_string_value ::= text_string_literal.
 
 user_auth_plugin ::= user_option_value.
+user_auth_plugin ::= text_string_literal.
 
 account_management_options ::= account_default_role_tail account_require_tail account_resource_tail account_password_lock_options account_comment_attribute_tail.
 
@@ -909,9 +920,15 @@ account_password_number_value ::= unsigned_integer_or_lower_hex_value.
 account_lock_option ::= ACCOUNT LOCK.
 account_lock_option ::= ACCOUNT UNLOCK.
 
-user_option_value ::= ATOM.
-user_option_value ::= FACTOR_NUMBER.
-user_option_value ::= LABEL.
+user_option_value ::= ATOM(A). {
+  mylite_parser_require_identifier_atom(ctx, A);
+}
+user_option_value ::= LABEL(A). {
+  mylite_parser_require_identifier_atom(ctx, A);
+}
+user_option_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_numeric_identifier_atom(ctx, A);
+}
 
 %fallback ATOM ATTRIBUTE AUTHENTICATION CHALLENGE_RESPONSE CIPHER DAY EXPIRE FAILED_LOGIN_ATTEMPTS FINISH HISTORY INITIAL INITIATE INTERVAL ISSUER MAX_CONNECTIONS_PER_HOUR MAX_QUERIES_PER_HOUR MAX_UPDATES_PER_HOUR MAX_USER_CONNECTIONS NEVER OLD OPTIONAL PASSWORD_LOCK_TIME REGISTRATION REUSE SUBJECT UNBOUNDED UNREGISTER X509.
 

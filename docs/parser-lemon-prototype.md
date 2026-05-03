@@ -213,8 +213,9 @@ token sink:
   quoted hex/bit rejection in text-string positions, and
   default-role clauses rather than generic token tails, including unsigned
   decimal/lowercase-hex resource limits, unsigned integer/lowercase-hex
-  password policy counts, MFA, initial-authentication, and WebAuthn
-  registration syntax.
+  password policy counts, string-literal and numeric-start identifier
+  authentication plugin names, unsigned decimal MFA factor numbers,
+  initial-authentication, and WebAuthn registration syntax.
 - `GRANT` and `REVOKE` recognize grant/admin options, proxy forms, recipient
   authentication/resource clauses with unsigned decimal/lowercase-hex resource
   limits, `AS ... WITH ROLE`, and

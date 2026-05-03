@@ -1066,9 +1066,7 @@ create_reference ::= REFERENCE.
 
 create_system ::= SYSTEM.
 
-srs_id ::= BOOLEAN_NUMBER.
-srs_id ::= FACTOR_NUMBER.
-srs_id ::= NUMBER_LITERAL.
+srs_id ::= unsigned_integer_or_lower_hex_value.
 
 create_srs_attributes ::= create_srs_attribute.
 create_srs_attributes ::= create_srs_attributes create_srs_attribute.
@@ -1078,9 +1076,7 @@ create_srs_attribute ::= DEFINITION text_string_literal.
 create_srs_attribute ::= DESCRIPTION text_string_literal.
 create_srs_attribute ::= ORGANIZATION text_string_literal IDENTIFIED BY create_srs_authority_code.
 
-create_srs_authority_code ::= BOOLEAN_NUMBER.
-create_srs_authority_code ::= FACTOR_NUMBER.
-create_srs_authority_code ::= NUMBER_LITERAL.
+create_srs_authority_code ::= unsigned_integer_or_lower_hex_value.
 
 drop_statement ::= DROP drop_tail(A). {
   mylite_parser_record_statement(ctx, A);

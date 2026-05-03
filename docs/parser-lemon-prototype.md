@@ -349,8 +349,9 @@ token sink:
   text-string validation, `LANGUAGE SQL`, SQL data access, and SQL security.
 - Loadable `CREATE FUNCTION` requires text-string `SONAME` values.
 - Spatial reference system DDL recognizes the MySQL 8.4 `IF [NOT] EXISTS`,
-  `OR REPLACE`, bare numeric SRS ids, documented text-string attribute forms
-  with quoted hex/bit rejection, and numeric organization authority codes.
+  `OR REPLACE`, bare unsigned integer/lowercase-hex SRS ids, documented
+  text-string attribute forms with quoted hex/bit rejection, and unsigned
+  integer/lowercase-hex organization authority codes.
 - `DROP INDEX` recognizes MySQL's identifier-valued `ALGORITHM` and `LOCK`
   option tails, rejects duplicate options, and rejects standalone reserved
   `CASCADE`/`RESTRICT` index names.

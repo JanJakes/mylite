@@ -2633,6 +2633,29 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_index_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_describe_table_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_describe_table_tokens tokens,
+    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *filter)
+{
+    struct mylite_sql_source_span span = span_from_token(&tokens.keyword);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+    if (filter != NULL) {
+        span = span_join(span, filter->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, filter);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token set_token,
     struct mylite_sql_ast_node *character_set, struct mylite_sql_ast_node *collation)
@@ -5399,6 +5422,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"DELAYED", MYLITE_SQL_PARSE_DELAYED},
         {"DELETE", MYLITE_SQL_PARSE_DELETE},
         {"DESC", MYLITE_SQL_PARSE_DESC},
+        {"DESCRIBE", MYLITE_SQL_PARSE_DESCRIBE},
         {"DISTINCT", MYLITE_SQL_PARSE_DISTINCT},
         {"DISTINCTROW", MYLITE_SQL_PARSE_DISTINCTROW},
         {"DIV", MYLITE_SQL_PARSE_DIV},
@@ -5417,6 +5441,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"ESCAPE", MYLITE_SQL_PARSE_ESCAPE},
         {"EXCLUSIVE", MYLITE_SQL_PARSE_EXCLUSIVE},
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
+        {"EXPLAIN", MYLITE_SQL_PARSE_EXPLAIN},
         {"EXTENDED", MYLITE_SQL_PARSE_EXTENDED},
         {"FALSE", MYLITE_SQL_PARSE_FALSE},
         {"FIELDS", MYLITE_SQL_PARSE_FIELDS},

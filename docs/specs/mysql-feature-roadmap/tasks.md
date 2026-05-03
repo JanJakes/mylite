@@ -184,10 +184,19 @@ level application surfaces.
        storage-engine key parts exist. Temporary tables, user views, privilege
        filtering, hidden storage-engine columns, generated invisible primary key
        rows, functional key parts, and broader metadata statements remain
-       deferred. Specs:
+       deferred. The first `DESCRIBE` / `DESC` slice is specified and
+       implemented for supported persistent base tables, including the
+       `EXPLAIN tbl_name [col_name | wild]` table-description synonym,
+       schema-qualified targets, optional identifier/string-literal column and
+       wildcard filtering, the standard six-column `SHOW COLUMNS` result shape,
+       catalog-backed values, and selected-schema, missing-schema,
+       missing-table, and unknown-system-table diagnostics. `information_schema`
+       table descriptions currently return an unsupported diagnostic, and
+       broader query-plan `EXPLAIN` syntax remains deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),
-       [SHOW INDEX](../show-index/specs.md).
+       [SHOW INDEX](../show-index/specs.md),
+       [DESCRIBE / DESC table metadata](../describe-table/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable

@@ -199,6 +199,7 @@ static int test_truncate_table_execution(void);
 static int test_show_tables_execution(void);
 static int test_show_columns_execution(void);
 static int test_show_index_execution(void);
+static int test_describe_table_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_replace_execution(void);
@@ -337,6 +338,7 @@ int main(void)
     failures += test_show_tables_execution();
     failures += test_show_columns_execution();
     failures += test_show_index_execution();
+    failures += test_describe_table_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_replace_execution();
@@ -4882,6 +4884,105 @@ static int test_show_columns_execution(void)
     failures +=
         expect_select_rows(database, "SHOW FIELDS FROM columns LIKE 'columns'", standard_columns, 6,
                            keyword_columns_values, 1, "show fields keyword column name");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_describe_table_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const standard_columns[] = {"Field", "Type",    "Null",
+                                                   "Key",   "Default", "Extra"};
+    static const char *const meta_values[] = {
+        "id",      "int",         "NO",  "PRI", NULL, "auto_increment",
+        "name",    "varchar(20)", "NO",  "MUL", "",   "",
+        "NameTwo", "int",         "YES", "",    NULL, "",
+        "a_1",     "int",         "YES", "",    NULL, "",
+        "ax1",     "int",         "YES", "",    NULL, "",
+        "ab",      "int",         "YES", "",    NULL, "",
+        "aX",      "int",         "YES", "",    NULL, "",
+    };
+    static const char *const name_values[] = {"name", "varchar(20)", "NO", "MUL", "", ""};
+    static const char *const escaped_values[] = {"a_1", "int", "YES", "", NULL, ""};
+    static const char *const identifier_underscore_values[] = {
+        "a_1", "int", "YES", "", NULL, "", "ax1", "int", "YES", "", NULL, "",
+    };
+    static const char *const wildcard_underscore_values[] = {
+        "ab", "int", "YES", "", NULL, "", "aX", "int", "YES", "", NULL, "",
+    };
+    static const char *const b_values[] = {"code", "int", "YES", "", NULL, ""};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open describe table database");
+    failures += expect_prepare_error(database, "DESCRIBE meta", MYLITE_EXEC_ERROR,
+                                     "No database selected", "describe requires selected schema");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_describe_a", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE DATABASE mylite_describe_b", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_describe_a", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE meta ("
+                            "id INT NOT NULL AUTO_INCREMENT, "
+                            "name VARCHAR(20) NOT NULL DEFAULT '', "
+                            "NameTwo INT, "
+                            "a_1 INT, "
+                            "ax1 INT, "
+                            "ab INT, "
+                            "aX INT, "
+                            "PRIMARY KEY (id), KEY name_idx (name))",
+                            MYLITE_DONE);
+
+    failures += expect_select_rows(database, "DESCRIBE meta", standard_columns, 6, meta_values, 7,
+                                   "describe selected schema");
+    failures += expect_select_rows(database, "DESC meta", standard_columns, 6, meta_values, 7,
+                                   "desc synonym");
+    failures += expect_select_rows(database, "EXPLAIN meta", standard_columns, 6, meta_values, 7,
+                                   "explain table synonym");
+    failures += expect_select_rows(database, "DESCRIBE meta name", standard_columns, 6, name_values,
+                                   1, "describe identifier filter");
+    failures += expect_select_rows(database, "DESCRIBE meta Name", standard_columns, 6, name_values,
+                                   1, "describe identifier filter case");
+    failures += expect_select_rows(database, "DESCRIBE meta `name`", standard_columns, 6,
+                                   name_values, 1, "describe quoted identifier filter");
+    failures += expect_select_rows(database, "DESCRIBE meta `a_1`", standard_columns, 6,
+                                   identifier_underscore_values, 2,
+                                   "describe quoted identifier underscore wildcard");
+    failures += expect_select_rows(database, "DESCRIBE meta 'Name'", standard_columns, 6,
+                                   name_values, 1, "describe literal filter case");
+    failures += expect_select_rows(database, "DESCRIBE meta 'a\\_%'", standard_columns, 6,
+                                   escaped_values, 1, "describe escaped underscore");
+    failures += expect_select_rows(database, "DESCRIBE meta a_1", standard_columns, 6,
+                                   identifier_underscore_values, 2,
+                                   "describe identifier underscore wildcard");
+    failures +=
+        expect_select_rows(database, "DESCRIBE meta 'a_'", standard_columns, 6,
+                           wildcard_underscore_values, 2, "describe literal underscore wildcard");
+    failures += expect_select_rows(database, "EXPLAIN meta name", standard_columns, 6, name_values,
+                                   1, "explain table filtered synonym");
+    failures += expect_select_rows(database, "DESCRIBE meta 'missing%'", standard_columns, 6, NULL,
+                                   0, "describe empty wildcard result");
+
+    failures +=
+        execute_sql(database, "CREATE TABLE mylite_describe_b.meta (code INT)", MYLITE_DONE);
+    failures += expect_select_rows(database, "DESCRIBE mylite_describe_b.meta", standard_columns, 6,
+                                   b_values, 1, "describe schema qualified target");
+    failures +=
+        expect_prepare_error(database, "DESCRIBE missing_describe_db.meta", MYLITE_EXEC_ERROR,
+                             "Unknown database", "describe rejects missing schema");
+    failures += expect_prepare_error(database, "DESCRIBE missing_describe_table", MYLITE_EXEC_ERROR,
+                                     "doesn't exist", "describe rejects missing table");
+    failures +=
+        expect_prepare_error(database, "DESCRIBE information_schema.TABLES", MYLITE_UNSUPPORTED,
+                             "DESCRIBE for information_schema tables is not supported",
+                             "describe information schema unsupported");
+    failures += expect_prepare_error(database, "DESCRIBE information_schema.missing_info",
+                                     MYLITE_EXEC_ERROR,
+                                     "Unknown table 'MISSING_INFO' in information_schema",
+                                     "describe unknown information schema table");
 
     mylite_close(database);
     // NOLINTEND(readability-function-size,readability-magic-numbers)

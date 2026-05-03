@@ -233,8 +233,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `RESET PERSIST` | ❌ | low | Persisted system variable reset syntax. |  |
 | `RESTART` | ❌ | low | Server restart syntax and embedded-compatible diagnostics. |  |
 | `SHUTDOWN` | ❌ | low | Server shutdown syntax and embedded-compatible diagnostics. |  |
-| `DESCRIBE` / `DESC` | ❌ | top | Table, column, and statement description semantics. |  |
-| `EXPLAIN` | ❌ | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. |  |
+| `DESCRIBE` / `DESC` | 🟡 | top | Table, column, and statement description semantics. | First table-description slice is implemented for supported persistent base tables, including `DESCRIBE`, `DESC`, schema-qualified names, optional column/wild filtering with identifier and string-literal arguments, MySQL-compatible six-column `SHOW COLUMNS` shape, catalog-backed values, and selected-schema, missing-schema, missing-table, and unknown-system-table diagnostics. `information_schema` table descriptions are parsed but currently return an unsupported diagnostic, matching the current `SHOW COLUMNS` system-view policy. Query-plan `DESCRIBE`/`DESC` forms remain deferred. See [DESCRIBE / DESC table metadata spec](docs/specs/describe-table/specs.md). |
+| `EXPLAIN` | 🟡 | high | Explain SELECT/TABLE/INSERT/UPDATE/DELETE, formats, ANALYZE, and FOR CONNECTION. | The table-description synonym form `EXPLAIN tbl_name [col_name \| wild]` is implemented through the `DESCRIBE` table metadata slice. Query-plan `EXPLAIN` for `SELECT`, `TABLE`, DML, `FORMAT`, `ANALYZE`, and `FOR CONNECTION` remains unsupported and is not claimed by this status. See [DESCRIBE / DESC table metadata spec](docs/specs/describe-table/specs.md). |
 | `HELP` | ❌ | low | Server help lookup result-set semantics. |  |
 | `USE` | 🟡 | top | Default schema selection in the embedded single-file model. | Implemented as handle-owned session state over the MyLite schema catalog; schema-qualified object execution and privilege checks are deferred. See [schema lifecycle spec](docs/specs/schema-lifecycle/specs.md). |
 

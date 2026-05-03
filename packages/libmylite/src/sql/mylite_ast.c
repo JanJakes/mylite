@@ -894,6 +894,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "show_columns_statement";
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
         return "show_index_statement";
+    case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
+        return "describe_table_statement";
     }
 
     return "unknown";

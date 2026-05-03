@@ -24,6 +24,7 @@ static int test_truncate_table_syntax(void);
 static int test_show_tables_syntax(void);
 static int test_show_columns_syntax(void);
 static int test_show_index_syntax(void);
+static int test_describe_table_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
@@ -164,6 +165,7 @@ int main(void)
     failures += test_show_tables_syntax();
     failures += test_show_columns_syntax();
     failures += test_show_index_syntax();
+    failures += test_describe_table_syntax();
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
@@ -3164,6 +3166,84 @@ static int test_show_index_syntax(void)
 
     failures +=
         parse_sql("SHOW INDEX FROM t FROM app FROM other;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_describe_table_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+    int failures = 0;
+
+    failures += parse_sql("DESCRIBE t; DESC t; EXPLAIN t; DESCRIBE app.t; "
+                          "DESC app.t name; DESCRIBE t `name`; "
+                          "DESCRIBE t 'a%'; EXPLAIN t 'a\\_%';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 8U, "describe table script count");
+
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT, "describe table");
+    failures += expect_child_count(statement, 1U, "describe table child count");
+    failures += expect_span_text(child_at(statement, 0U), "t", "describe table name");
+
+    statement = child_at(result.root, 1U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT, "desc table");
+    failures += expect_child_count(statement, 1U, "desc table child count");
+
+    statement = child_at(result.root, 2U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT, "explain table");
+    failures += expect_child_count(statement, 1U, "explain table child count");
+
+    statement = child_at(result.root, 3U);
+    table_name = child_at(statement, 0U);
+    failures +=
+        expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "describe qualified table");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "describe qualified schema");
+    failures += expect_span_text(child_at(table_name, 1U), "t", "describe qualified table");
+
+    statement = child_at(result.root, 4U);
+    failures += expect_child_count(statement, 2U, "desc column child count");
+    table_name = child_at(statement, 0U);
+    failures += expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "desc qualified table with column");
+    failures += expect_span_text(child_at(statement, 1U), "name", "desc column filter");
+
+    statement = child_at(result.root, 5U);
+    failures += expect_child_count(statement, 2U, "describe quoted column child count");
+    failures += expect_span_text(child_at(statement, 1U), "`name`", "describe quoted column");
+
+    statement = child_at(result.root, 6U);
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "describe literal wildcard");
+    failures += expect_span_text(child_at(statement, 1U), "'a%'", "describe wildcard text");
+
+    statement = child_at(result.root, 7U);
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "explain literal wildcard");
+    failures += expect_span_text(child_at(statement, 1U), "'a\\_%'", "explain wildcard text");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DESCRIBE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DESCRIBE t WHERE Field = 'name';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("EXPLAIN FORMAT=TREE SELECT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t ORDER BY a DESC; "
+                          "CREATE TABLE order_desc (a INT, KEY idx_a (a DESC)); "
+                          "UPDATE t SET a = 1 ORDER BY a DESC LIMIT 1; "
+                          "DELETE FROM t ORDER BY a DESC LIMIT 1;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 4U, "desc order direction regressions");
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)

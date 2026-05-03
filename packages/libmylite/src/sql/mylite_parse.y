@@ -47,6 +47,8 @@
 %type show_index_keyword { struct mylite_sql_token }
 %type opt_show_index_schema { struct mylite_sql_ast_node * }
 %type opt_show_index_filter { struct mylite_sql_ast_node * }
+%type describe_table_keyword { struct mylite_sql_token }
+%type opt_describe_column_filter { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
 
 %include {
@@ -192,6 +194,9 @@ statement(A) ::= show_columns_statement(B). {
     A = B;
 }
 statement(A) ::= show_index_statement(B). {
+    A = B;
+}
+statement(A) ::= describe_table_statement(B). {
     A = B;
 }
 statement(A) ::= set_names_statement(B). {
@@ -1049,6 +1054,32 @@ show_index_statement(A) ::= SHOW(T) opt_extended(E) show_index_keyword(K)
         state, (struct mylite_sql_parser_show_index_tokens){
                    .show = T, .extended = E, .index = K},
         B, D, W);
+}
+
+describe_table_statement(A) ::= describe_table_keyword(T) table_name(B)
+        opt_describe_column_filter(F). {
+    A = mylite_sql_parser_make_describe_table_statement(
+        state, (struct mylite_sql_parser_describe_table_tokens){.keyword = T}, B, F);
+}
+
+describe_table_keyword(A) ::= DESCRIBE(T). {
+    A = T;
+}
+describe_table_keyword(A) ::= DESC(T). {
+    A = T;
+}
+describe_table_keyword(A) ::= EXPLAIN(T). {
+    A = T;
+}
+
+opt_describe_column_filter(A) ::= . {
+    A = NULL;
+}
+opt_describe_column_filter(A) ::= identifier(B). {
+    A = B;
+}
+opt_describe_column_filter(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
 show_index_keyword(A) ::= INDEX(T). {

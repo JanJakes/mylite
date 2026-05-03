@@ -80,6 +80,11 @@ expression nodes.
   lists, VALUES row/value descriptors, SET assignment descriptors, SELECT source
   anchors, and duplicate-update assignment descriptors. INSERT values and
   assignments reuse the recursive expression view.
+- `REPLACE` statements expose parser-level views for decoded target tables,
+  source-form classification (`VALUES`, `SET`, or `SELECT`), priority and
+  `INTO` modifiers, partition markers, optional column lists, VALUES row/value
+  descriptors, SET assignment descriptors, and SELECT source anchors. REPLACE
+  values and assignments reuse the recursive expression view.
 - `UPDATE` statements expose parser-level views for `WITH` markers,
   single-table versus joined/multi-table target references, priority and
   `IGNORE` modifiers, ordered assignment descriptors, statement-level `WHERE`
@@ -169,6 +174,12 @@ expression nodes.
   expression handles, and `ORDER BY` / `LIMIT` spans
 - typed `DELETE` target descriptors with target/schema/name spans, decoded
   schema/name values, and wildcard markers for `tbl.*`
+- typed `REPLACE` descriptors with decoded target table, source form, priority,
+  `INTO`, partition, source spans, optional column handles, VALUES row/value
+  handles, SET assignment handles, and SELECT source anchors
+- typed `REPLACE` column, value, and assignment descriptors with decoded names,
+  row/value coordinates, `DEFAULT` markers, and recursive value-expression
+  handles
 - typed `UPDATE` descriptors with `WITH` and multi-table markers, priority and
   `IGNORE` modifiers, table-reference spans, ordered assignment handles,
   statement-level `WHERE` predicate expression handles, and `ORDER BY` / `LIMIT`
@@ -398,6 +409,15 @@ counts, warnings, insert ids, and row-alias ODKU semantics remain runtime work.
 Newer INSERT row-alias forms that currently use the temporary recognized
 statement placeholder do not yet have structured descriptors.
 
+The first parser-level `REPLACE` view mirrors the INSERT source forms that
+MySQL accepts for REPLACE while keeping a statement-specific API. It records the
+decoded target table, source kind (`VALUES`, `SET`, or `SELECT`), priority,
+`INTO`, partition spans, optional column list, VALUES row/value coordinates,
+SET assignments, and SELECT source anchor. Value and assignment payloads reuse
+the recursive expression view. The view does not yet implement delete-then-insert
+semantics, cascades, triggers, affected rows, warnings, auto-increment behavior,
+or query/replace metadata integration.
+
 The first parser-level `UPDATE` view covers the statement shape needed before
 semantic update execution. It records whether a `WITH` clause is present,
 anchors the table-reference subtree, marks joined/multi-table references,
@@ -524,6 +544,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.8474
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=35.768205 qps=194421 mbps=14.79 avg_us=5.143 avg_nodes=74.5 avg_ast_bytes=10879.6 avg_delete_statement_views=0.01 avg_delete_statement_with_clauses=0.00 avg_delete_statement_multi_table=0.00 avg_delete_statement_multi_table_from=0.00 avg_delete_statement_multi_table_using=0.00 avg_delete_statement_priorities=0.00 avg_delete_statement_quicks=0.00 avg_delete_statement_ignores=0.00 avg_delete_statement_targets=0.01 avg_delete_statement_target_schema_values=0.00 avg_delete_statement_target_name_values=0.01 avg_delete_statement_target_wildcards=0.00 avg_delete_statement_where_expressions=0.01 avg_delete_statement_order_by_clauses=0.00 avg_delete_statement_limit_clauses=0.00 avg_delete_statement_expression_tree_nodes=0.02 avg_delete_statement_expression_tree_operators=0.01 avg_delete_statement_expression_tree_leaf_values=0.01
 ```
 
+Latest REPLACE parser-view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.965277 qps=497956 mbps=37.87 avg_us=2.008
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=34.939524 qps=199032 mbps=15.14 avg_us=5.024 avg_nodes=74.5 avg_ast_bytes=10885.9 avg_replace_statement_views=0.00 avg_replace_statement_values_sources=0.00 avg_replace_statement_set_sources=0.00 avg_replace_statement_select_sources=0.00 avg_replace_statement_priorities=0.00 avg_replace_statement_into_clauses=0.00 avg_replace_statement_partition_clauses=0.00 avg_replace_statement_columns=0.00 avg_replace_statement_column_name_values=0.00 avg_replace_statement_value_rows=0.00 avg_replace_statement_values=0.00 avg_replace_statement_default_values=0.00 avg_replace_statement_set_assignments=0.00 avg_replace_statement_assignment_name_values=0.00 avg_replace_statement_expression_tree_nodes=0.00 avg_replace_statement_expression_tree_operators=0.00 avg_replace_statement_expression_tree_leaf_values=0.00
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -534,7 +561,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 278K on disk, 162,470 bytes text/data/other
+parser support object: 288K on disk, 168,302 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.4M on disk
 mylite-parse: 1.2M on disk
@@ -558,9 +585,10 @@ mylite-parse: 1.2M on disk
 - Split the parser-level `SELECT` view into semantic query-expression,
   query-block, table-reference, projection, and clause objects with scoped name
   resolution.
-- Extend executable-statement parser views beyond `DELETE` into `REPLACE`,
-  reusing the expression-view infrastructure where statement payloads carry
-  targets, assignments, predicates, ordering, and limits.
+- Extend executable-statement parser views into the next high-value DML and
+  utility statements, reusing the expression-view infrastructure where
+  statement payloads carry targets, assignments, predicates, ordering, and
+  limits.
 - Decide whether syntax-only builds should use a separate no-action generated
   parser if the action overhead matters.
 - Add tree-shape tests for representative DDL, DML, expressions, stored

@@ -198,6 +198,7 @@ static int expect_drop_view_view(void);
 static int expect_delete_statement_view(void);
 static int expect_insert_statement_view(void);
 static int expect_prepared_statement_views(void);
+static int expect_replace_statement_view(void);
 static int expect_rename_table_view(void);
 static int expect_select_statement_view(void);
 static int expect_set_expression_tree_view(void);
@@ -805,6 +806,7 @@ int main(void) {
   failures += expect_delete_statement_view();
   failures += expect_insert_statement_view();
   failures += expect_prepared_statement_views();
+  failures += expect_replace_statement_view();
   failures += expect_rename_table_view();
   failures += expect_select_statement_view();
   failures += expect_set_statement_view();
@@ -3914,6 +3916,140 @@ static int expect_insert_statement_view(void) {
         mylite_ast_expression_view_operator_kind(assignment_expression) !=
             MYLITE_EXPRESSION_OPERATOR_ADD) {
       fprintf(stderr, "INSERT ODKU statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  return failed;
+}
+
+static int expect_replace_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "REPLACE INTO t (a, b) VALUES (1, DEFAULT), (?, b + 1)";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "REPLACE VALUES statement view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstReplaceStatement *view =
+        mylite_ast_replace_statement_view(ast, 0);
+    const MyliteAstReplaceColumn *column0 =
+        view == NULL ? NULL
+                     : mylite_ast_replace_statement_view_column_at(view, 0);
+    const MyliteAstReplaceValue *value1 =
+        view == NULL ? NULL
+                     : mylite_ast_replace_statement_view_value_at(view, 1);
+    const MyliteAstReplaceValue *value3 =
+        view == NULL ? NULL
+                     : mylite_ast_replace_statement_view_value_at(view, 3);
+    const MyliteAstExpression *value3_expression =
+        mylite_ast_replace_value_view_expression(value3);
+    if (view == NULL || mylite_ast_statement_kind(ast, 0) !=
+                            MYLITE_STATEMENT_REPLACE ||
+        mylite_ast_replace_statement_view_source_kind(view) !=
+            MYLITE_REPLACE_SOURCE_VALUES ||
+        !mylite_ast_replace_statement_view_has_into(view) ||
+        mylite_ast_replace_statement_view_column_count(view) != 2 ||
+        mylite_ast_replace_statement_view_value_row_count(view) != 2 ||
+        mylite_ast_replace_statement_view_value_count(view) != 4 ||
+        column0 == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_replace_column_view_name_value(column0),
+            mylite_ast_replace_column_view_name_value_length(column0), "a") ||
+        value1 == NULL || !mylite_ast_replace_value_view_is_default(value1) ||
+        value3_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(value3_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_ADD) {
+      fprintf(stderr, "REPLACE VALUES statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "REPLACE LOW_PRIORITY t SET a = 1, b = DEFAULT";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "REPLACE SET statement view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstReplaceStatement *view =
+        mylite_ast_replace_statement_view(ast, 0);
+    const MyliteAstReplaceAssignment *assignment1 =
+        view == NULL
+            ? NULL
+            : mylite_ast_replace_statement_view_set_assignment_at(view, 1);
+    const MyliteAstExpression *assignment1_expression =
+        mylite_ast_replace_assignment_view_value_expression(assignment1);
+    if (view == NULL ||
+        mylite_ast_replace_statement_view_source_kind(view) !=
+            MYLITE_REPLACE_SOURCE_SET ||
+        mylite_ast_replace_statement_view_priority(view) !=
+            MYLITE_REPLACE_PRIORITY_LOW ||
+        mylite_ast_replace_statement_view_has_into(view) ||
+        mylite_ast_replace_statement_view_set_assignment_count(view) != 2 ||
+        assignment1 == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_replace_assignment_view_name_value(assignment1),
+            mylite_ast_replace_assignment_view_name_value_length(assignment1),
+            "b") ||
+        assignment1_expression == NULL ||
+        mylite_ast_expression_view_kind(assignment1_expression) !=
+            MYLITE_EXPRESSION_DEFAULT) {
+      fprintf(stderr, "REPLACE SET statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "REPLACE DELAYED INTO t PARTITION (p0) (a) SELECT a FROM s";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "REPLACE SELECT statement view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstReplaceStatement *view =
+        mylite_ast_replace_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_replace_statement_view_source_kind(view) !=
+            MYLITE_REPLACE_SOURCE_SELECT ||
+        mylite_ast_replace_statement_view_priority(view) !=
+            MYLITE_REPLACE_PRIORITY_DELAYED ||
+        !mylite_ast_replace_statement_view_has_into(view) ||
+        !mylite_ast_replace_statement_view_has_partition_clause(view) ||
+        !span_matches(sql,
+                      mylite_ast_replace_statement_view_partition_start(view),
+                      mylite_ast_replace_statement_view_partition_end(view),
+                      "PARTITION (p0)") ||
+        mylite_ast_replace_statement_view_column_count(view) != 1 ||
+        mylite_ast_replace_statement_view_select_source_node(view) == NULL) {
+      fprintf(stderr, "REPLACE SELECT statement view failed: %s\n", sql);
       failed = 1;
     }
     mylite_ast_free(ast);

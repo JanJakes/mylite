@@ -51,6 +51,10 @@ typedef struct MyliteAstNode MyliteAstNode;
 typedef struct MyliteAstPreparedStatementVariable
     MyliteAstPreparedStatementVariable;
 typedef struct MyliteAstPrepareStatement MyliteAstPrepareStatement;
+typedef struct MyliteAstReplaceAssignment MyliteAstReplaceAssignment;
+typedef struct MyliteAstReplaceColumn MyliteAstReplaceColumn;
+typedef struct MyliteAstReplaceStatement MyliteAstReplaceStatement;
+typedef struct MyliteAstReplaceValue MyliteAstReplaceValue;
 typedef struct MyliteAstRenameTable MyliteAstRenameTable;
 typedef struct MyliteAstSelectProjection MyliteAstSelectProjection;
 typedef struct MyliteAstSelectStatement MyliteAstSelectStatement;
@@ -210,6 +214,20 @@ typedef enum MyliteDeletePriority {
   MYLITE_DELETE_PRIORITY_HIGH,
   MYLITE_DELETE_PRIORITY_DELAYED
 } MyliteDeletePriority;
+
+typedef enum MyliteReplaceSourceKind {
+  MYLITE_REPLACE_SOURCE_UNKNOWN = 0,
+  MYLITE_REPLACE_SOURCE_VALUES,
+  MYLITE_REPLACE_SOURCE_SET,
+  MYLITE_REPLACE_SOURCE_SELECT
+} MyliteReplaceSourceKind;
+
+typedef enum MyliteReplacePriority {
+  MYLITE_REPLACE_PRIORITY_NONE = 0,
+  MYLITE_REPLACE_PRIORITY_LOW,
+  MYLITE_REPLACE_PRIORITY_HIGH,
+  MYLITE_REPLACE_PRIORITY_DELAYED
+} MyliteReplacePriority;
 
 typedef enum MyliteUpdatePriority {
   MYLITE_UPDATE_PRIORITY_NONE = 0,
@@ -627,6 +645,8 @@ const char *mylite_insert_priority_name(MyliteInsertPriority priority);
 const char *mylite_delete_statement_kind_name(
     MyliteDeleteStatementKind kind);
 const char *mylite_delete_priority_name(MyliteDeletePriority priority);
+const char *mylite_replace_source_kind_name(MyliteReplaceSourceKind kind);
+const char *mylite_replace_priority_name(MyliteReplacePriority priority);
 const char *mylite_update_priority_name(MyliteUpdatePriority priority);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
@@ -779,6 +799,8 @@ const MyliteAstDeallocateStatement *mylite_ast_deallocate_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstReplaceStatement *mylite_ast_replace_statement_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstRenameTable *mylite_ast_rename_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstSelectStatement *mylite_ast_select_statement_view(
@@ -909,6 +931,115 @@ size_t mylite_ast_insert_assignment_view_value_end(
 const MyliteAstExpression *
 mylite_ast_insert_assignment_view_value_expression(
     const MyliteAstInsertAssignment *assignment);
+const MyliteAstNode *mylite_ast_replace_statement_view_node(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_start(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_end(
+    const MyliteAstReplaceStatement *replace_statement);
+MyliteReplaceSourceKind mylite_ast_replace_statement_view_source_kind(
+    const MyliteAstReplaceStatement *replace_statement);
+MyliteReplacePriority mylite_ast_replace_statement_view_priority(
+    const MyliteAstReplaceStatement *replace_statement);
+int mylite_ast_replace_statement_view_has_into(
+    const MyliteAstReplaceStatement *replace_statement);
+int mylite_ast_replace_statement_view_has_partition_clause(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_target_start(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_target_end(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_target_schema_start(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_target_schema_end(
+    const MyliteAstReplaceStatement *replace_statement);
+const char *mylite_ast_replace_statement_view_target_schema_value(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_target_schema_value_length(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_target_name_start(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_target_name_end(
+    const MyliteAstReplaceStatement *replace_statement);
+const char *mylite_ast_replace_statement_view_target_name_value(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_target_name_value_length(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_partition_start(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_partition_end(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_source_start(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_source_end(
+    const MyliteAstReplaceStatement *replace_statement);
+const MyliteAstNode *mylite_ast_replace_statement_view_source_node(
+    const MyliteAstReplaceStatement *replace_statement);
+const MyliteAstNode *mylite_ast_replace_statement_view_select_source_node(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_column_count(
+    const MyliteAstReplaceStatement *replace_statement);
+const MyliteAstReplaceColumn *mylite_ast_replace_statement_view_column_at(
+    const MyliteAstReplaceStatement *replace_statement, size_t column_index);
+size_t mylite_ast_replace_statement_view_value_row_count(
+    const MyliteAstReplaceStatement *replace_statement);
+size_t mylite_ast_replace_statement_view_value_count(
+    const MyliteAstReplaceStatement *replace_statement);
+const MyliteAstReplaceValue *mylite_ast_replace_statement_view_value_at(
+    const MyliteAstReplaceStatement *replace_statement, size_t value_index);
+size_t mylite_ast_replace_statement_view_set_assignment_count(
+    const MyliteAstReplaceStatement *replace_statement);
+const MyliteAstReplaceAssignment *
+mylite_ast_replace_statement_view_set_assignment_at(
+    const MyliteAstReplaceStatement *replace_statement,
+    size_t assignment_index);
+const MyliteAstNode *mylite_ast_replace_column_view_node(
+    const MyliteAstReplaceColumn *column);
+size_t mylite_ast_replace_column_view_start(
+    const MyliteAstReplaceColumn *column);
+size_t mylite_ast_replace_column_view_end(
+    const MyliteAstReplaceColumn *column);
+const char *mylite_ast_replace_column_view_name_value(
+    const MyliteAstReplaceColumn *column);
+size_t mylite_ast_replace_column_view_name_value_length(
+    const MyliteAstReplaceColumn *column);
+const MyliteAstNode *mylite_ast_replace_value_view_node(
+    const MyliteAstReplaceValue *value);
+size_t mylite_ast_replace_value_view_row_index(
+    const MyliteAstReplaceValue *value);
+size_t mylite_ast_replace_value_view_value_index(
+    const MyliteAstReplaceValue *value);
+size_t mylite_ast_replace_value_view_start(
+    const MyliteAstReplaceValue *value);
+size_t mylite_ast_replace_value_view_end(
+    const MyliteAstReplaceValue *value);
+int mylite_ast_replace_value_view_is_default(
+    const MyliteAstReplaceValue *value);
+const MyliteAstExpression *mylite_ast_replace_value_view_expression(
+    const MyliteAstReplaceValue *value);
+const MyliteAstNode *mylite_ast_replace_assignment_view_node(
+    const MyliteAstReplaceAssignment *assignment);
+size_t mylite_ast_replace_assignment_view_start(
+    const MyliteAstReplaceAssignment *assignment);
+size_t mylite_ast_replace_assignment_view_end(
+    const MyliteAstReplaceAssignment *assignment);
+size_t mylite_ast_replace_assignment_view_name_start(
+    const MyliteAstReplaceAssignment *assignment);
+size_t mylite_ast_replace_assignment_view_name_end(
+    const MyliteAstReplaceAssignment *assignment);
+const char *mylite_ast_replace_assignment_view_name_value(
+    const MyliteAstReplaceAssignment *assignment);
+size_t mylite_ast_replace_assignment_view_name_value_length(
+    const MyliteAstReplaceAssignment *assignment);
+const MyliteAstNode *mylite_ast_replace_assignment_view_value_node(
+    const MyliteAstReplaceAssignment *assignment);
+size_t mylite_ast_replace_assignment_view_value_start(
+    const MyliteAstReplaceAssignment *assignment);
+size_t mylite_ast_replace_assignment_view_value_end(
+    const MyliteAstReplaceAssignment *assignment);
+const MyliteAstExpression *
+mylite_ast_replace_assignment_view_value_expression(
+    const MyliteAstReplaceAssignment *assignment);
 const MyliteAstNode *mylite_ast_delete_statement_view_node(
     const MyliteAstDeleteStatement *delete_statement);
 size_t mylite_ast_delete_statement_view_start(

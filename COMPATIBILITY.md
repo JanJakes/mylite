@@ -105,6 +105,11 @@ single-table versus joined/multi-table target references, priority and `IGNORE`
 modifiers, ordered assignment descriptors with decoded names and recursive value
 expression views, statement-level `WHERE` predicate expression views, and
 `ORDER BY` / `LIMIT` anchors for forms that allow them. The
+`REPLACE` view currently covers decoded target tables, source-form
+classification for `VALUES`, `SET`, and `SELECT`, priority and `INTO`
+modifiers, partition markers, optional column lists, VALUES row/value
+descriptors with recursive expression views, SET assignment descriptors, and
+SELECT source anchors. The
 prepared-statement views currently cover decoded statement handles, `PREPARE`
 source kind and decoded source value, ordered
 `EXECUTE ... USING` user variables, and `DEALLOCATE`/`DROP PREPARE` mode.
@@ -195,10 +200,10 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `LOAD DATA LOCAL INFILE` | ❌ | high | Client-side LOCAL INFILE request flow, security controls, warnings, and protocol interaction. |  |
 | `LOAD XML INFILE` | ❌ | low | Server-side XML import syntax, row matching, namespaces, SET clause, warnings, and security restrictions. |  |
 | `LOAD XML LOCAL INFILE` | ❌ | low | Client-side XML import request behavior and embedded-compatible diagnostics. |  |
-| `REPLACE ... VALUES` | ❌ | top | Delete-then-insert semantics, cascades, triggers, affected rows, and auto-increment behavior. |  |
-| `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
-| `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
-| `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. |  |
+| `REPLACE ... VALUES` | ❌ | top | Delete-then-insert semantics, cascades, triggers, affected rows, and auto-increment behavior. | Parser prototype exposes target table, optional column list, row/value descriptors, `DEFAULT` markers, and recursive value expression views. Runtime semantics are not implemented yet. |
+| `REPLACE ... SET` | ❌ | high | SET-form replace semantics. | Parser prototype exposes ordered assignment descriptors with decoded column names and recursive value expression views. Runtime semantics are not implemented yet. |
+| `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. | Parser prototype classifies the source as SELECT, preserves the optional column list, and anchors the SELECT CST source. Semantic query/replace integration is not implemented yet. |
+| `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. | Parser prototype records low/high/delayed priority modifiers. Runtime behavior is not implemented yet. |
 | `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser view exposes CTE/set-operation markers, query-block count, projection descriptors, common clause spans, aliases, wildcard qualifiers, and recursive parser-level expression views for projections, `WHERE`, and `HAVING`; semantic query AST and execution are not implemented yet. |
 | `SELECT ... INTO var_list` | ❌ | high | User/local variable assignment semantics. |  |
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. |  |

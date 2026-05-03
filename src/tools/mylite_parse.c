@@ -142,6 +142,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
         mylite_ast_insert_statement_view(ast, i);
+    const MyliteAstReplaceStatement *replace_statement =
+        mylite_ast_replace_statement_view(ast, i);
     const MyliteAstRenameTable *rename_table =
         mylite_ast_rename_table_view(ast, i);
     const MyliteAstSelectStatement *select_statement =
@@ -900,6 +902,153 @@ static void dump_statements(const MyliteAst *ast) {
             mylite_ast_insert_assignment_view_value_expression(assignment);
         if (expression != NULL) {
           printf("      insert_duplicate_assignment[%zu].expression\n", j);
+          dump_expression_tree(expression, 4);
+        }
+      }
+    }
+    if (replace_statement != NULL) {
+      printf("  replace_statement span=%zu..%zu source=%s priority=%s "
+             "into=%d target=%zu..%zu schema=%zu..%zu name=%zu..%zu "
+             "partition=%zu..%zu source_span=%zu..%zu columns=%zu rows=%zu "
+             "values=%zu set_assignments=%zu node=%s\n",
+             mylite_ast_replace_statement_view_start(replace_statement),
+             mylite_ast_replace_statement_view_end(replace_statement),
+             mylite_replace_source_kind_name(
+                 mylite_ast_replace_statement_view_source_kind(
+                     replace_statement)),
+             mylite_replace_priority_name(
+                 mylite_ast_replace_statement_view_priority(
+                     replace_statement)),
+             mylite_ast_replace_statement_view_has_into(replace_statement),
+             mylite_ast_replace_statement_view_target_start(replace_statement),
+             mylite_ast_replace_statement_view_target_end(replace_statement),
+             mylite_ast_replace_statement_view_target_schema_start(
+                 replace_statement),
+             mylite_ast_replace_statement_view_target_schema_end(
+                 replace_statement),
+             mylite_ast_replace_statement_view_target_name_start(
+                 replace_statement),
+             mylite_ast_replace_statement_view_target_name_end(
+                 replace_statement),
+             mylite_ast_replace_statement_view_partition_start(
+                 replace_statement),
+             mylite_ast_replace_statement_view_partition_end(
+                 replace_statement),
+             mylite_ast_replace_statement_view_source_start(
+                 replace_statement),
+             mylite_ast_replace_statement_view_source_end(replace_statement),
+             mylite_ast_replace_statement_view_column_count(replace_statement),
+             mylite_ast_replace_statement_view_value_row_count(
+                 replace_statement),
+             mylite_ast_replace_statement_view_value_count(replace_statement),
+             mylite_ast_replace_statement_view_set_assignment_count(
+                 replace_statement),
+             node_symbol_or_none(
+                 mylite_ast_replace_statement_view_node(replace_statement)));
+      printf("    replace_target.schema len=%zu value=",
+             mylite_ast_replace_statement_view_target_schema_value_length(
+                 replace_statement));
+      const char *schema =
+          mylite_ast_replace_statement_view_target_schema_value(
+              replace_statement);
+      if (schema == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            schema,
+            mylite_ast_replace_statement_view_target_schema_value_length(
+                replace_statement));
+      }
+      printf(" name_len=%zu value=",
+             mylite_ast_replace_statement_view_target_name_value_length(
+                 replace_statement));
+      const char *name =
+          mylite_ast_replace_statement_view_target_name_value(
+              replace_statement);
+      if (name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            name, mylite_ast_replace_statement_view_target_name_value_length(
+                      replace_statement));
+      }
+      fputc('\n', stdout);
+
+      for (size_t j = 0;
+           j < mylite_ast_replace_statement_view_column_count(
+                   replace_statement);
+           j++) {
+        const MyliteAstReplaceColumn *column =
+            mylite_ast_replace_statement_view_column_at(replace_statement, j);
+        printf("    replace_column[%zu] span=%zu..%zu name_len=%zu name=",
+               j, mylite_ast_replace_column_view_start(column),
+               mylite_ast_replace_column_view_end(column),
+               mylite_ast_replace_column_view_name_value_length(column));
+        const char *column_name =
+            mylite_ast_replace_column_view_name_value(column);
+        if (column_name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              column_name,
+              mylite_ast_replace_column_view_name_value_length(column));
+        }
+        fputc('\n', stdout);
+      }
+
+      for (size_t j = 0;
+           j < mylite_ast_replace_statement_view_value_count(
+                   replace_statement);
+           j++) {
+        const MyliteAstReplaceValue *value =
+            mylite_ast_replace_statement_view_value_at(replace_statement, j);
+        printf("    replace_value[%zu] row=%zu index=%zu span=%zu..%zu "
+               "default=%d\n",
+               j, mylite_ast_replace_value_view_row_index(value),
+               mylite_ast_replace_value_view_value_index(value),
+               mylite_ast_replace_value_view_start(value),
+               mylite_ast_replace_value_view_end(value),
+               mylite_ast_replace_value_view_is_default(value));
+        const MyliteAstExpression *expression =
+            mylite_ast_replace_value_view_expression(value);
+        if (expression != NULL) {
+          printf("      replace_value[%zu].expression\n", j);
+          dump_expression_tree(expression, 4);
+        }
+      }
+
+      for (size_t j = 0;
+           j < mylite_ast_replace_statement_view_set_assignment_count(
+                   replace_statement);
+           j++) {
+        const MyliteAstReplaceAssignment *assignment =
+            mylite_ast_replace_statement_view_set_assignment_at(
+                replace_statement, j);
+        printf("    replace_set_assignment[%zu] span=%zu..%zu name=%zu..%zu "
+               "value=%zu..%zu name_len=%zu name=",
+               j, mylite_ast_replace_assignment_view_start(assignment),
+               mylite_ast_replace_assignment_view_end(assignment),
+               mylite_ast_replace_assignment_view_name_start(assignment),
+               mylite_ast_replace_assignment_view_name_end(assignment),
+               mylite_ast_replace_assignment_view_value_start(assignment),
+               mylite_ast_replace_assignment_view_value_end(assignment),
+               mylite_ast_replace_assignment_view_name_value_length(
+                   assignment));
+        const char *assignment_name =
+            mylite_ast_replace_assignment_view_name_value(assignment);
+        if (assignment_name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              assignment_name,
+              mylite_ast_replace_assignment_view_name_value_length(
+                  assignment));
+        }
+        fputc('\n', stdout);
+        const MyliteAstExpression *expression =
+            mylite_ast_replace_assignment_view_value_expression(assignment);
+        if (expression != NULL) {
+          printf("      replace_set_assignment[%zu].expression\n", j);
           dump_expression_tree(expression, 4);
         }
       }

@@ -102,6 +102,23 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t insert_statement_expression_tree_nodes = 0;
   size_t insert_statement_expression_tree_operators = 0;
   size_t insert_statement_expression_tree_leaf_values = 0;
+  size_t replace_statement_views = 0;
+  size_t replace_statement_values_sources = 0;
+  size_t replace_statement_set_sources = 0;
+  size_t replace_statement_select_sources = 0;
+  size_t replace_statement_priorities = 0;
+  size_t replace_statement_into_clauses = 0;
+  size_t replace_statement_partition_clauses = 0;
+  size_t replace_statement_columns = 0;
+  size_t replace_statement_column_name_values = 0;
+  size_t replace_statement_value_rows = 0;
+  size_t replace_statement_values = 0;
+  size_t replace_statement_default_values = 0;
+  size_t replace_statement_set_assignments = 0;
+  size_t replace_statement_assignment_name_values = 0;
+  size_t replace_statement_expression_tree_nodes = 0;
+  size_t replace_statement_expression_tree_operators = 0;
+  size_t replace_statement_expression_tree_leaf_values = 0;
   size_t delete_statement_views = 0;
   size_t delete_statement_with_clauses = 0;
   size_t delete_statement_multi_table = 0;
@@ -1115,6 +1132,94 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                     &insert_statement_expression_tree_leaf_values);
               }
             }
+            const MyliteAstReplaceStatement *replace_statement =
+                mylite_ast_replace_statement_view(ast, i);
+            if (replace_statement != NULL) {
+              replace_statement_views++;
+              switch (mylite_ast_replace_statement_view_source_kind(
+                  replace_statement)) {
+                case MYLITE_REPLACE_SOURCE_VALUES:
+                  replace_statement_values_sources++;
+                  break;
+                case MYLITE_REPLACE_SOURCE_SET:
+                  replace_statement_set_sources++;
+                  break;
+                case MYLITE_REPLACE_SOURCE_SELECT:
+                  replace_statement_select_sources++;
+                  break;
+                case MYLITE_REPLACE_SOURCE_UNKNOWN:
+                  break;
+              }
+              if (mylite_ast_replace_statement_view_priority(
+                      replace_statement) != MYLITE_REPLACE_PRIORITY_NONE) {
+                replace_statement_priorities++;
+              }
+              if (mylite_ast_replace_statement_view_has_into(
+                      replace_statement)) {
+                replace_statement_into_clauses++;
+              }
+              if (mylite_ast_replace_statement_view_has_partition_clause(
+                      replace_statement)) {
+                replace_statement_partition_clauses++;
+              }
+              replace_statement_columns +=
+                  mylite_ast_replace_statement_view_column_count(
+                      replace_statement);
+              for (size_t j = 0;
+                   j < mylite_ast_replace_statement_view_column_count(
+                           replace_statement);
+                   j++) {
+                const MyliteAstReplaceColumn *column =
+                    mylite_ast_replace_statement_view_column_at(
+                        replace_statement, j);
+                if (mylite_ast_replace_column_view_name_value(column) != NULL) {
+                  replace_statement_column_name_values++;
+                }
+              }
+              replace_statement_value_rows +=
+                  mylite_ast_replace_statement_view_value_row_count(
+                      replace_statement);
+              replace_statement_values +=
+                  mylite_ast_replace_statement_view_value_count(
+                      replace_statement);
+              for (size_t j = 0;
+                   j < mylite_ast_replace_statement_view_value_count(
+                           replace_statement);
+                   j++) {
+                const MyliteAstReplaceValue *value =
+                    mylite_ast_replace_statement_view_value_at(
+                        replace_statement, j);
+                if (mylite_ast_replace_value_view_is_default(value)) {
+                  replace_statement_default_values++;
+                }
+                count_expression_tree(
+                    mylite_ast_replace_value_view_expression(value),
+                    &replace_statement_expression_tree_nodes,
+                    &replace_statement_expression_tree_operators,
+                    &replace_statement_expression_tree_leaf_values);
+              }
+              replace_statement_set_assignments +=
+                  mylite_ast_replace_statement_view_set_assignment_count(
+                      replace_statement);
+              for (size_t j = 0;
+                   j < mylite_ast_replace_statement_view_set_assignment_count(
+                           replace_statement);
+                   j++) {
+                const MyliteAstReplaceAssignment *assignment =
+                    mylite_ast_replace_statement_view_set_assignment_at(
+                        replace_statement, j);
+                if (mylite_ast_replace_assignment_view_name_value(assignment) !=
+                    NULL) {
+                  replace_statement_assignment_name_values++;
+                }
+                count_expression_tree(
+                    mylite_ast_replace_assignment_view_value_expression(
+                        assignment),
+                    &replace_statement_expression_tree_nodes,
+                    &replace_statement_expression_tree_operators,
+                    &replace_statement_expression_tree_leaf_values);
+              }
+            }
             const MyliteAstDeleteStatement *delete_statement =
                 mylite_ast_delete_statement_view(ast, i);
             if (delete_statement != NULL) {
@@ -1675,6 +1780,23 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_insert_statement_expression_tree_nodes=%.2f "
            "avg_insert_statement_expression_tree_operators=%.2f "
            "avg_insert_statement_expression_tree_leaf_values=%.2f "
+           "avg_replace_statement_views=%.2f "
+           "avg_replace_statement_values_sources=%.2f "
+           "avg_replace_statement_set_sources=%.2f "
+           "avg_replace_statement_select_sources=%.2f "
+           "avg_replace_statement_priorities=%.2f "
+           "avg_replace_statement_into_clauses=%.2f "
+           "avg_replace_statement_partition_clauses=%.2f "
+           "avg_replace_statement_columns=%.2f "
+           "avg_replace_statement_column_name_values=%.2f "
+           "avg_replace_statement_value_rows=%.2f "
+           "avg_replace_statement_values=%.2f "
+           "avg_replace_statement_default_values=%.2f "
+           "avg_replace_statement_set_assignments=%.2f "
+           "avg_replace_statement_assignment_name_values=%.2f "
+           "avg_replace_statement_expression_tree_nodes=%.2f "
+           "avg_replace_statement_expression_tree_operators=%.2f "
+           "avg_replace_statement_expression_tree_leaf_values=%.2f "
            "avg_delete_statement_views=%.2f "
            "avg_delete_statement_with_clauses=%.2f "
            "avg_delete_statement_multi_table=%.2f "
@@ -1925,6 +2047,25 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)insert_statement_expression_tree_operators /
                (double)parsed,
            (double)insert_statement_expression_tree_leaf_values /
+               (double)parsed,
+           (double)replace_statement_views / (double)parsed,
+           (double)replace_statement_values_sources / (double)parsed,
+           (double)replace_statement_set_sources / (double)parsed,
+           (double)replace_statement_select_sources / (double)parsed,
+           (double)replace_statement_priorities / (double)parsed,
+           (double)replace_statement_into_clauses / (double)parsed,
+           (double)replace_statement_partition_clauses / (double)parsed,
+           (double)replace_statement_columns / (double)parsed,
+           (double)replace_statement_column_name_values / (double)parsed,
+           (double)replace_statement_value_rows / (double)parsed,
+           (double)replace_statement_values / (double)parsed,
+           (double)replace_statement_default_values / (double)parsed,
+           (double)replace_statement_set_assignments / (double)parsed,
+           (double)replace_statement_assignment_name_values / (double)parsed,
+           (double)replace_statement_expression_tree_nodes / (double)parsed,
+           (double)replace_statement_expression_tree_operators /
+               (double)parsed,
+           (double)replace_statement_expression_tree_leaf_values /
                (double)parsed,
            (double)delete_statement_views / (double)parsed,
            (double)delete_statement_with_clauses / (double)parsed,

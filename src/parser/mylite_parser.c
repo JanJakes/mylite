@@ -6113,6 +6113,7 @@ static void validate_with_cte_body_from(MyliteParseContext *ctx,
   MyliteToken token;
   int token_id;
   int saw_body = 0;
+  int saw_query_start = 0;
   int depth = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
@@ -6125,10 +6126,36 @@ static void validate_with_cte_body_from(MyliteParseContext *ctx,
       continue;
     }
 
-    if (depth == 1 && token_id == ML_SELECT) {
-      validate_select_list_tail_from(ctx, token, 1, 1, 0);
-      if (ctx->failed) {
+    if (!saw_query_start) {
+      if (token_id == ML_LP) {
+        depth++;
+        continue;
+      }
+      if (token_closes_nested_expression(token_id)) {
+        mylite_parser_reject(ctx, start, "malformed CTE body");
         return;
+      }
+      if (token_id != ML_SELECT && token_id != ML_TABLE &&
+          token_id != ML_VALUES && token_id != ML_WITH) {
+        mylite_parser_reject(ctx, token, "malformed CTE body");
+        return;
+      }
+      saw_query_start = 1;
+      if (token_id == ML_SELECT) {
+        validate_select_list_tail_from(ctx, token, 1, 1, 0);
+        if (ctx->failed) {
+          return;
+        }
+      } else if (token_id == ML_TABLE) {
+        validate_table_statement_from(ctx, token, 1);
+        if (ctx->failed) {
+          return;
+        }
+      } else if (token_id == ML_VALUES) {
+        mylite_parser_validate_values_statement_from(ctx, token);
+        if (ctx->failed) {
+          return;
+        }
       }
     }
 
@@ -6142,6 +6169,10 @@ static void validate_with_cte_body_from(MyliteParseContext *ctx,
         return;
       }
     }
+  }
+
+  if (!saw_query_start) {
+    mylite_parser_reject(ctx, start, "malformed CTE body");
   }
 }
 
@@ -6228,8 +6259,7 @@ static int with_cte_name_token(int token_id) {
 }
 
 static int with_query_body_start(int token_id) {
-  return token_id == ML_DELETE || token_id == ML_INSERT ||
-         token_id == ML_LP || token_id == ML_REPLACE ||
+  return token_id == ML_DELETE || token_id == ML_LP ||
          token_id == ML_SELECT || token_id == ML_TABLE ||
          token_id == ML_UPDATE || token_id == ML_VALUES ||
          token_id == ML_WITH;

@@ -118,7 +118,11 @@ token sink:
   rejects `BETWEEN` expressions that omit the lower bound before `AND`.
 - `WITH` CTE wrappers dispatch their main query/body forms through the same
   validators used by top-level `SELECT`, `TABLE`, `VALUES`, parenthesized query,
-  and DML statements, and validate CTE-body `SELECT` list tails.
+  and MySQL-supported `UPDATE`/`DELETE` bodies. Top-level `WITH ... INSERT` and
+  `WITH ... REPLACE` are rejected, while `INSERT`/`REPLACE ... WITH ... SELECT`
+  payloads remain valid. CTE bodies must begin with a query expression
+  (`SELECT`, `TABLE`, `VALUES`, nested `WITH`, or parenthesized forms), and DML
+  bodies inside a CTE are rejected.
 - Top-level `SELECT` recognizes `SQL_NO_CACHE` as a deprecated MySQL 8.4
   modifier token.
 - Top-level `SELECT` rejects incompatible `ALL` and `DISTINCT` modifiers.

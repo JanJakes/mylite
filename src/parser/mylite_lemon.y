@@ -23,6 +23,7 @@
 %type start_tail {MyliteStatementKind}
 %type lock_tail {MyliteStatementKind}
 %type unlock_tail {MyliteStatementKind}
+%type with_query_body {MyliteStatementKind}
 %type start_transaction_tail {MyliteTransactionOptions}
 %type transaction_characteristics {MyliteTransactionOptions}
 %type transaction_characteristic {MyliteTransactionOptions}
@@ -3794,10 +3795,10 @@ delete_partition_clause ::= PARTITION LP delete_partition_list RP.
 delete_partition_list ::= cache_name_part.
 delete_partition_list ::= delete_partition_list import_comma cache_name_part.
 
-with_statement ::= WITH(A) with_recursive_tail with_cte_list with_query_body. {
+with_statement ::= WITH(A) with_recursive_tail with_cte_list with_query_body(B). {
   mylite_parser_validate_with_statement_from(ctx, A);
   if (!ctx->failed) {
-    mylite_parser_record_statement(ctx, MYLITE_STATEMENT_SELECT);
+    mylite_parser_record_statement(ctx, B);
   }
 }
 
@@ -3836,39 +3837,40 @@ with_cte_body_token ::= LC.
 with_cte_body_token ::= RC.
 with_cte_body_token ::= STAR.
 
-with_query_body ::= SELECT(A) select_tail. {
-  mylite_parser_validate_select_statement_from(ctx, A);
+with_query_body(A) ::= SELECT(B) select_tail. {
+  A = MYLITE_STATEMENT_SELECT;
+  mylite_parser_validate_select_statement_from(ctx, B);
 }
-with_query_body ::= TABLE(A) table_statement_target table_query_tail. {
-  mylite_parser_validate_table_statement_from(ctx, A);
+with_query_body(A) ::= TABLE(B) table_statement_target table_query_tail. {
+  A = MYLITE_STATEMENT_SELECT;
+  mylite_parser_validate_table_statement_from(ctx, B);
 }
-with_query_body ::= VALUES(A) values_row_list. {
-  mylite_parser_validate_values_statement_from(ctx, A);
+with_query_body(A) ::= VALUES(B) values_row_list. {
+  A = MYLITE_STATEMENT_SELECT;
+  mylite_parser_validate_values_statement_from(ctx, B);
   if (!ctx->failed) {
-    mylite_parser_validate_select_statement_from(ctx, A);
+    mylite_parser_validate_select_statement_from(ctx, B);
   }
 }
 [INTO]
-with_query_body ::= VALUES(A) values_row_list values_statement_tail_nonempty. {
-  mylite_parser_validate_values_statement_from(ctx, A);
+with_query_body(A) ::= VALUES(B) values_row_list values_statement_tail_nonempty. {
+  A = MYLITE_STATEMENT_SELECT;
+  mylite_parser_validate_values_statement_from(ctx, B);
   if (!ctx->failed) {
-    mylite_parser_validate_select_statement_from(ctx, A);
+    mylite_parser_validate_select_statement_from(ctx, B);
   }
 }
-with_query_body ::= DELETE(A) delete_tail. {
-  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_DELETE);
+with_query_body(A) ::= DELETE(B) delete_tail. {
+  A = MYLITE_STATEMENT_DELETE;
+  mylite_parser_validate_dml_statement(ctx, B, MYLITE_STATEMENT_DELETE);
 }
-with_query_body ::= INSERT(A) insert_tail. {
-  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_INSERT);
+with_query_body(A) ::= UPDATE(B) update_tail. {
+  A = MYLITE_STATEMENT_UPDATE;
+  mylite_parser_validate_dml_statement(ctx, B, MYLITE_STATEMENT_UPDATE);
 }
-with_query_body ::= REPLACE(A) replace_tail. {
-  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_REPLACE);
-}
-with_query_body ::= UPDATE(A) update_tail. {
-  mylite_parser_validate_dml_statement(ctx, A, MYLITE_STATEMENT_UPDATE);
-}
-with_query_body ::= LP(A) dml_write_query_start dml_write_parenthesized_query_tail RP query_parenthesized_statement_tail. {
-  mylite_parser_validate_parenthesized_statement(ctx, A);
+with_query_body(A) ::= LP(B) dml_write_query_start dml_write_parenthesized_query_tail RP query_parenthesized_statement_tail. {
+  A = MYLITE_STATEMENT_SELECT;
+  mylite_parser_validate_parenthesized_statement(ctx, B);
 }
 
 table_statement ::= TABLE(A) table_statement_target table_query_tail. {

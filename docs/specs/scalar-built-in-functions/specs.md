@@ -23,6 +23,7 @@ In scope for the initial implementation:
   - `CONCAT`, `CONCAT_WS`
   - `LEFT`, `RIGHT`
   - `SUBSTRING`, `SUBSTR`, `MID`
+  - `SUBSTRING_INDEX`
   - `LOCATE`, `POSITION`, `INSTR`
   - `INSERT`
   - `LOWER`, `LCASE`, `UPPER`, `UCASE`
@@ -116,11 +117,13 @@ by common scalar expressions:
 - string functions: `CONCAT`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`,
   `CHARACTER_LENGTH`, `LOWER`, `LCASE`, `UPPER`, `UCASE`, `LEFT`, `RIGHT`,
   `REPLACE`, `CONCAT_WS`, `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`,
-  `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, `INSTR`, `INSERT`, `QUOTE`,
+  `RTRIM`, `SUBSTRING_INDEX`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, `INSTR`,
+  `INSERT`, `QUOTE`,
   `REPEAT`, `SPACE`, `REVERSE`, `LPAD`, `RPAD`, `ELT`, `FIELD`,
   `FIND_IN_SET`, `MAKE_SET`, `HEX`, `UNHEX`, `TO_BASE64`, `FROM_BASE64`,
   `BIN`, and `OCT`; see
   `docs/specs/string-functions-substring-trim/specs.md` and
+  `docs/specs/substring-index-function/specs.md` and
   `docs/specs/string-search-code-functions/specs.md` and
   `docs/specs/string-insert-function/specs.md` and
   `docs/specs/string-quote-function/specs.md` and
@@ -288,6 +291,8 @@ Representative runtime results with `SET NAMES utf8mb4`:
 | `RIGHT('abcdef', 3)` | `def` |
 | `SUBSTRING('abcdef', 2, 3)` | `bcd` |
 | `SUBSTRING('abcdef', -2)` | `ef` |
+| `SUBSTRING_INDEX('www.mysql.com', '.', 2)` | `www.mysql` |
+| `SUBSTRING_INDEX('www.mysql.com', '.', -2)` | `mysql.com` |
 | `LOCATE('pha', 'alpha')` | `3` |
 | `POSITION('ph' IN 'alpha')` | `3` |
 | `INSTR('alpha', 'z')` | `0` |
@@ -479,6 +484,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `BIT_LENGTH('abc') AS bit_len` | `LONGLONG` | `10` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `BIT_COUNT(7) AS bit_count` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `SUBSTRING('abcdef',2,3) AS substr_value` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | none |
+| `SUBSTRING_INDEX('www.mysql.com','.',2) AS substring_index_value` | `VAR_STRING` | `52` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `ABS(-12.5) AS abs_decimal` | `NEWDECIMAL` | `5` | `1` | `binary` | `NOT_NULL BINARY NUM` |
 | `ROUND(123.456,2) AS round_scale` | `NEWDECIMAL` | `8` | `2` | `binary` | `NOT_NULL BINARY NUM` |
 | `POW(2,10) AS pow_value` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
@@ -910,7 +916,7 @@ docker exec -i mylite-mysql-849 mysql -uroot --column-type-info -vvv
 and `LIMIT 0` queries for:
 
 - string functions: `CONCAT`, `CONCAT_WS`, `LENGTH`, `CHAR_LENGTH`,
-  `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`, `RTRIM`
+  `SUBSTRING`, `SUBSTR`, `MID`, `SUBSTRING_INDEX`, `TRIM`, `LTRIM`, `RTRIM`
 - numeric functions: `ABS`, `ROUND`, `POW`, `SQRT`
 - conditional/comparison functions: `IF`, `IFNULL`, `COALESCE`, `GREATEST`
 - temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`

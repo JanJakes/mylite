@@ -2458,6 +2458,13 @@ static int test_scalar_builtin_functions_execution(void)
         {"make_nums", NULL, NULL, NULL, NULL, NULL, 24U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
          MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
     };
+    static const struct expected_result_metadata substring_index_metadata[] = {
+        {"substring_index_utf8mb4", NULL, NULL, NULL, NULL, NULL, 52U, MYLITE_FIELD_TYPE_VAR_STRING,
+         31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
     static const struct expected_result_metadata hex_metadata[] = {
         {"hex_text", NULL, NULL, NULL, NULL, NULL, 64U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
@@ -2752,6 +2759,13 @@ static int test_scalar_builtin_functions_execution(void)
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
     };
+    static const struct expected_result_metadata substring_index_latin1_metadata[] = {
+        {"substring_index_latin1", NULL, NULL, NULL, NULL, NULL, 13U, MYLITE_FIELD_TYPE_VAR_STRING,
+         31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
     static const struct expected_result_metadata base_latin1_metadata[] = {
         {"bin_int", NULL, NULL, NULL, NULL, NULL, 65U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
@@ -2872,6 +2886,68 @@ static int test_scalar_builtin_functions_execution(void)
         "",     "\xE8\xB1\x9A", "bcd", "ef",   "bcd", "bcd", "bcd",  "bcd", "hi", "hi  ",
         "  hi", "hi",           "hix", "xxhi", "hi",  "bar", "barx", "abc", "hi", "hi  ",
         "  hi", NULL,           NULL,  NULL,
+    };
+    static const char *const substring_index_columns[] = {
+        "pos_two",
+        "neg_two",
+        "zero_count",
+        "pos_large",
+        "neg_large",
+        "absent_pos",
+        "absent_neg",
+        "empty_delim_pos",
+        "empty_delim_neg",
+        "empty_str",
+        "multichar_pos",
+        "multichar_neg",
+        "case_sensitive",
+        "utf8_ascii_delim",
+        "utf8_delim_pos",
+        "utf8_delim_neg",
+        "null_str",
+        "null_delim",
+        "null_count",
+        "numeric_args",
+        "string_count_warn",
+        "string_count_zero_warn",
+        "decimal_count",
+        "uint_literal_count",
+        "uint_string_count",
+        "uint_string_overflow",
+        "neg_string_underflow",
+        "overlap_pos",
+        "overlap_neg",
+    };
+    static const char *const substring_index_values[] = {
+        "www.mysql",
+        "mysql.com",
+        "",
+        "www.mysql.com",
+        "www.mysql.com",
+        "abcdef",
+        "abcdef",
+        "",
+        "",
+        "",
+        "ab--cd",
+        "ef",
+        "A",
+        "\xE6\xB5\xB7.\xE8\xB1\x9A",
+        "\xE6\xB5\xB7",
+        "\xE7\x8A\xAC",
+        NULL,
+        NULL,
+        NULL,
+        "12",
+        "a,b",
+        "",
+        "a,b",
+        "a,b,c",
+        "c",
+        "c",
+        "a,b,c",
+        "aa",
+        "aaa",
     };
     static const char *const search_columns[] = {
         "ascii_empty",
@@ -3475,6 +3551,12 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const crc32_site_projection_values[] = {
         "2", "235179326", "808273962", "1", "409728153", "2658551721",
     };
+    static const char *const substring_site_projection_columns[] = {"id", "part"};
+    static const char *const substring_site_projection_values[] = {
+        "1", "www.mysql", "2", "beta", "3", NULL, "4", "plain",
+    };
+    static const char *const substring_site_order_values[] = {"2", "4", "1"};
+    static const char *const substring_site_remaining_values[] = {"1", "3", "4"};
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
     static const char *const id_2[] = {"2"};
@@ -3605,6 +3687,20 @@ static int test_scalar_builtin_functions_execution(void)
         stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "scalar function metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "scalar metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "scalar metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT SUBSTRING_INDEX('www.mysql.com', '.', 2) AS "
+                            "substring_index_utf8mb4",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, substring_index_metadata,
+        (int)(sizeof(substring_index_metadata) / sizeof(substring_index_metadata[0])),
+        "substring_index utf8mb4 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "substring_index metadata row");
+    failures += expect_int(mylite_warning_count(database), 0, "substring_index metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "substring_index metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -3762,6 +3858,19 @@ static int test_scalar_builtin_functions_execution(void)
                                        "latin1 string function metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "latin1 string metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "latin1 string metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "SELECT SUBSTRING_INDEX('www.mysql.com', '.', 2) AS "
+                            "substring_index_latin1",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, substring_index_latin1_metadata,
+        (int)(sizeof(substring_index_latin1_metadata) / sizeof(substring_index_latin1_metadata[0])),
+        "substring_index latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "substring_index latin1 metadata row");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "substring_index latin1 metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(database,
@@ -3964,6 +4073,51 @@ static int test_scalar_builtin_functions_execution(void)
         "TRIM('x' FROM NULL) AS trim_null_source",
         slice_columns, (int)(sizeof(slice_columns) / sizeof(slice_columns[0])), slice_values, 1,
         "substring trim scalar values");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT SUBSTRING_INDEX('www.mysql.com', '.', 2) AS pos_two, "
+        "SUBSTRING_INDEX('www.mysql.com', '.', -2) AS neg_two, "
+        "SUBSTRING_INDEX('www.mysql.com', '.', 0) AS zero_count, "
+        "SUBSTRING_INDEX('www.mysql.com', '.', 9) AS pos_large, "
+        "SUBSTRING_INDEX('www.mysql.com', '.', -9) AS neg_large, "
+        "SUBSTRING_INDEX('abcdef', '.', 1) AS absent_pos, "
+        "SUBSTRING_INDEX('abcdef', '.', -1) AS absent_neg, "
+        "SUBSTRING_INDEX('abcdef', '', 1) AS empty_delim_pos, "
+        "SUBSTRING_INDEX('abcdef', '', -1) AS empty_delim_neg, "
+        "SUBSTRING_INDEX('', '.', 1) AS empty_str, "
+        "SUBSTRING_INDEX('ab--cd--ef', '--', 2) AS multichar_pos, "
+        "SUBSTRING_INDEX('ab--cd--ef', '--', -1) AS multichar_neg, "
+        "SUBSTRING_INDEX('AaA', 'a', 1) AS case_sensitive, "
+        "SUBSTRING_INDEX('\xE6\xB5\xB7.\xE8\xB1\x9A.\xE7\x8C\xAB', '.', 2) AS "
+        "utf8_ascii_delim, "
+        "SUBSTRING_INDEX('\xE6\xB5\xB7\xE8\xB1\x9A\xE7\x8C\xAB\xE8\xB1\x9A\xE7\x8A\xAC', "
+        "'\xE8\xB1\x9A', 1) AS utf8_delim_pos, "
+        "SUBSTRING_INDEX('\xE6\xB5\xB7\xE8\xB1\x9A\xE7\x8C\xAB\xE8\xB1\x9A\xE7\x8A\xAC', "
+        "'\xE8\xB1\x9A', -1) AS utf8_delim_neg, "
+        "SUBSTRING_INDEX(NULL, '.', 1) AS null_str, "
+        "SUBSTRING_INDEX('abc', NULL, 1) AS null_delim, "
+        "SUBSTRING_INDEX('abc', '.', NULL) AS null_count, "
+        "SUBSTRING_INDEX(12345, 3, 1) AS numeric_args, "
+        "SUBSTRING_INDEX('a,b,c', ',', '2x') AS string_count_warn, "
+        "SUBSTRING_INDEX('a,b,c', ',', 'x') AS string_count_zero_warn, "
+        "SUBSTRING_INDEX('a,b,c', ',', 1.9) AS decimal_count, "
+        "SUBSTRING_INDEX('a,b,c', ',', 18446744073709551615) AS uint_literal_count, "
+        "SUBSTRING_INDEX('a,b,c', ',', '18446744073709551615') AS uint_string_count, "
+        "SUBSTRING_INDEX('a,b,c', ',', '18446744073709551616') AS uint_string_overflow, "
+        "SUBSTRING_INDEX('a,b,c', ',', '-9223372036854775809') AS neg_string_underflow, "
+        "SUBSTRING_INDEX('aaaaa', 'aa', 2) AS overlap_pos, "
+        "SUBSTRING_INDEX('aaaaa', 'aa', -2) AS overlap_neg",
+        substring_index_columns,
+        (int)(sizeof(substring_index_columns) / sizeof(substring_index_columns[0])),
+        substring_index_values, 1, "substring_index scalar values");
+    failures +=
+        expect_int(mylite_warning_count(database), 4, "substring_index conversion warning count");
+    for (int index = 0; index < 4; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value,
+                               "substring_index conversion warning code");
+    }
 
     failures += expect_select_rows(
         database,
@@ -4577,6 +4731,29 @@ static int test_scalar_builtin_functions_execution(void)
                                    1, "table function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE SUBSTRING(s,1,1)='B'",
                                    id_column, 1, id_2, 1, "substring function where");
+    failures += execute_sql(database,
+                            "CREATE TABLE substring_sites "
+                            "(id INT PRIMARY KEY, host VARCHAR(40), delim VARCHAR(4), n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO substring_sites VALUES "
+                            "(1,'www.mysql.com','.',2),(2,'alpha.beta','.',-1),"
+                            "(3,NULL,'.',1),(4,'plain','.',1)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, SUBSTRING_INDEX(host, delim, n) AS part FROM substring_sites ORDER BY id",
+        substring_site_projection_columns, 2, substring_site_projection_values, 4,
+        "table substring_index projection");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM substring_sites "
+                                   "WHERE SUBSTRING_INDEX(host, delim, n) = 'beta'",
+                                   id_column, 1, id_2, 1, "substring_index function where");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM substring_sites WHERE host IS NOT NULL "
+                                   "ORDER BY SUBSTRING_INDEX(host, delim, n), id",
+                                   id_column, 1, substring_site_order_values, 3,
+                                   "substring_index function order");
     failures += expect_select_rows(database,
                                    "SELECT id, ASCII(s) AS first_code, ORD(s) AS left_code, "
                                    "LOCATE('a', s) AS a_pos, INSTR(s, 't') AS t_pos "
@@ -4770,6 +4947,21 @@ static int test_scalar_builtin_functions_execution(void)
         "update string function assignment");
     failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 2", id_s_n_columns,
                                    3, updated_string_values, 1, "updated string function values");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE substring_sites SET host = SUBSTRING_INDEX(host, delim, n) "
+        "WHERE SUBSTRING_INDEX(host, delim, n) = 'www.mysql'",
+        1, "update substring_index assignment and predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id, host AS part FROM substring_sites WHERE id = 1",
+                           substring_site_projection_columns, 2, substring_site_projection_values,
+                           1, "updated substring_index values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM substring_sites WHERE SUBSTRING_INDEX(host, delim, n) = 'beta'", 1,
+        "delete substring_index predicate");
+    failures += expect_select_rows(database, "SELECT id FROM substring_sites ORDER BY id",
+                                   id_column, 1, substring_site_remaining_values, 3,
+                                   "delete substring_index remaining rows");
 
     failures += execute_sql_expect_done_affected(
         database, "UPDATE t SET n = LENGTH(LPAD(s, 6, '.')) WHERE RPAD(s, 5, '.') = 'x-be.'", 1,
@@ -5264,6 +5456,14 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported rtrim zero arity");
     failures += prepare_sql(database, "SELECT RTRIM('a','b')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported rtrim two arity");
+    failures += prepare_sql(database, "SELECT SUBSTRING_INDEX('a')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported substring_index one arity");
+    failures +=
+        prepare_sql(database, "SELECT SUBSTRING_INDEX('a', ',')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported substring_index two arity");
+    failures +=
+        prepare_sql(database, "SELECT SUBSTRING_INDEX('a', ',', 1, 2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported substring_index four arity");
     failures += prepare_sql(database, "SELECT PI(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported pi arity");
 

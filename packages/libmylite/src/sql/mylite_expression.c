@@ -133,6 +133,15 @@ struct substring_context {
     size_t arity;
 };
 
+struct substring_index_input {
+    const char *text;
+    size_t text_length;
+    const char *delimiter;
+    size_t delimiter_length;
+    uint64_t requested;
+    bool negative_count;
+};
+
 struct trim_match {
     const char *source;
     const char *remove;
@@ -330,6 +339,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_IS_UUID = 64,
     MYLITE_SCALAR_FUNCTION_UUID_TO_BIN = 65,
     MYLITE_SCALAR_FUNCTION_BIN_TO_UUID = 66,
+    MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX = 67,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -435,6 +445,25 @@ static int eval_substring_function(const struct mylite_sql_ast_node *arguments,
 static struct substring_range
 substring_range_from_arguments(const struct mylite_expression_value *values,
                                struct substring_context context);
+static int eval_substring_index_function(const struct mylite_sql_ast_node *arguments,
+                                         const struct mylite_expression_eval_context *context,
+                                         struct mylite_expression_warnings *warnings,
+                                         struct mylite_expression_value *out_value);
+static int substring_index_count_from_value(const struct mylite_expression_value *value,
+                                            struct mylite_expression_warnings *warnings,
+                                            uint64_t *out_requested, bool *out_negative);
+static int substring_index_count_from_text(const char *text,
+                                           struct mylite_expression_warnings *warnings,
+                                           uint64_t *out_requested, bool *out_negative);
+static int substring_index_text_value(struct substring_index_input input,
+                                      struct mylite_expression_value *out_value);
+static int substring_index_positive_value(struct substring_index_input input, uint64_t requested,
+                                          struct mylite_expression_value *out_value);
+static int substring_index_negative_value(struct substring_index_input input, uint64_t requested,
+                                          struct mylite_expression_value *out_value);
+static size_t count_substring_index_delimiters(struct substring_index_input input);
+static bool find_next_substring_index_delimiter(struct substring_index_input input,
+                                                size_t start_offset, size_t *out_offset);
 static int eval_trim_function(enum mylite_scalar_function_id function_id,
                               const struct mylite_sql_ast_node *arguments,
                               const struct mylite_expression_eval_context *context,
@@ -1239,6 +1268,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_SUBSTRING:
     case MYLITE_SCALAR_FUNCTION_LOCATE:
         return arity == 2U || arity == 3U;
+    case MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX:
+        return arity == 3U;
     case MYLITE_SCALAR_FUNCTION_TRIM:
         return arguments->trim_spec ? (arity == 1U || arity == 2U) : arity == 1U;
     case MYLITE_SCALAR_FUNCTION_REPLACE:
@@ -1980,6 +2011,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_left_right_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_SUBSTRING:
         return eval_substring_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX:
+        return eval_substring_index_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TRIM:
     case MYLITE_SCALAR_FUNCTION_LTRIM:
     case MYLITE_SCALAR_FUNCTION_RTRIM:
@@ -2433,6 +2466,209 @@ substring_range_from_arguments(const struct mylite_expression_value *values,
     }
     range.empty = false;
     return range;
+}
+
+static int eval_substring_index_function(const struct mylite_sql_ast_node *arguments,
+                                         const struct mylite_expression_eval_context *context,
+                                         struct mylite_expression_warnings *warnings,
+                                         struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value values[3] = {{0}, {0}, {0}};
+    char *text = NULL;
+    char *delimiter = NULL;
+    size_t text_length = 0U;
+    size_t delimiter_length = 0U;
+    uint64_t requested = 0U;
+    bool negative_count = false;
+    int status = 0;
+
+    for (size_t index = 0U; index < 3U; ++index) {
+        status = eval_node(child_at(arguments, index), context, warnings, &values[index]);
+        if (status != 0) {
+            goto cleanup;
+        }
+    }
+    if (is_null(&values[0]) || is_null(&values[1]) || is_null(&values[2])) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = value_to_string_with_length(&values[0], &text, &text_length);
+    if (status == 0) {
+        status = value_to_string_with_length(&values[1], &delimiter, &delimiter_length);
+    }
+    if (status == 0) {
+        status =
+            substring_index_count_from_value(&values[2], warnings, &requested, &negative_count);
+    }
+    if (status == 0) {
+        status = substring_index_text_value(
+            (struct substring_index_input){
+                .text = text == NULL ? "" : text,
+                .text_length = text_length,
+                .delimiter = delimiter == NULL ? "" : delimiter,
+                .delimiter_length = delimiter_length,
+                .requested = requested,
+                .negative_count = negative_count,
+            },
+            out_value);
+    }
+
+cleanup:
+    free(text);
+    free(delimiter);
+    for (size_t index = 0U; index < 3U; ++index) {
+        mylite_expression_value_deinit(&values[index]);
+    }
+    return status;
+}
+
+static int substring_index_count_from_value(const struct mylite_expression_value *value,
+                                            struct mylite_expression_warnings *warnings,
+                                            uint64_t *out_requested, bool *out_negative)
+{
+    int64_t signed_count = 0;
+
+    if (value == NULL || out_requested == NULL || out_negative == NULL) {
+        return -1;
+    }
+    *out_requested = 0U;
+    *out_negative = false;
+    if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
+        *out_requested = value->uint64_value;
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return substring_index_count_from_text(value->text_value == NULL ? "" : value->text_value,
+                                               warnings, out_requested, out_negative);
+    }
+    if (cast_value_to_signed_integer(value, warnings, &signed_count) != 0) {
+        return -1;
+    }
+    if (signed_count < 0) {
+        *out_negative = true;
+        *out_requested = (uint64_t)(-(signed_count + 1)) + 1U;
+        return 0;
+    }
+    *out_requested = (uint64_t)signed_count;
+    return 0;
+}
+
+static int substring_index_count_from_text(const char *text,
+                                           struct mylite_expression_warnings *warnings,
+                                           uint64_t *out_requested, bool *out_negative)
+{
+    struct cast_integer_parse parsed = parse_cast_integer_text(text);
+    bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
+
+    if (truncated) {
+        int status = append_cast_truncation_warning(warnings, "INTEGER", text);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+    if (!parsed.saw_digit) {
+        *out_requested = 0U;
+        *out_negative = false;
+        return 0;
+    }
+    if (parsed.negative) {
+        *out_requested = parsed.magnitude;
+        *out_negative = parsed.magnitude != 0U;
+        return 0;
+    }
+
+    int64_t signed_count = signed_integer_from_uint64(parsed.magnitude);
+
+    if (signed_count < 0) {
+        *out_requested = (uint64_t)(-(signed_count + 1)) + 1U;
+        *out_negative = true;
+        return 0;
+    }
+    *out_requested = (uint64_t)signed_count;
+    *out_negative = false;
+    return 0;
+}
+
+static int substring_index_text_value(struct substring_index_input input,
+                                      struct mylite_expression_value *out_value)
+{
+    if (input.requested == 0U || input.delimiter_length == 0U) {
+        return set_text_value("", 0U, out_value);
+    }
+    if (!input.negative_count) {
+        return substring_index_positive_value(input, input.requested, out_value);
+    }
+    return substring_index_negative_value(input, input.requested, out_value);
+}
+
+static int substring_index_positive_value(struct substring_index_input input, uint64_t requested,
+                                          struct mylite_expression_value *out_value)
+{
+    uint64_t matches = 0U;
+    size_t offset = 0U;
+    size_t match_offset = 0U;
+
+    while (find_next_substring_index_delimiter(input, offset, &match_offset)) {
+        ++matches;
+        if (matches == requested) {
+            return set_text_value(input.text, match_offset, out_value);
+        }
+        offset = match_offset + input.delimiter_length;
+    }
+    return set_text_value(input.text, input.text_length, out_value);
+}
+
+static int substring_index_negative_value(struct substring_index_input input, uint64_t requested,
+                                          struct mylite_expression_value *out_value)
+{
+    size_t delimiter_count = count_substring_index_delimiters(input);
+    size_t offset = 0U;
+    size_t match_offset = 0U;
+    size_t target = 0U;
+
+    if (requested > (uint64_t)delimiter_count) {
+        return set_text_value(input.text, input.text_length, out_value);
+    }
+    target = delimiter_count - (size_t)requested;
+    for (size_t index = 0U; index <= target; ++index) {
+        if (!find_next_substring_index_delimiter(input, offset, &match_offset)) {
+            return set_text_value(input.text, input.text_length, out_value);
+        }
+        offset = match_offset + input.delimiter_length;
+    }
+    return set_text_value(input.text + offset, input.text_length - offset, out_value);
+}
+
+static size_t count_substring_index_delimiters(struct substring_index_input input)
+{
+    size_t count = 0U;
+    size_t offset = 0U;
+    size_t match_offset = 0U;
+
+    while (find_next_substring_index_delimiter(input, offset, &match_offset)) {
+        ++count;
+        offset = match_offset + input.delimiter_length;
+    }
+    return count;
+}
+
+static bool find_next_substring_index_delimiter(struct substring_index_input input,
+                                                size_t start_offset, size_t *out_offset)
+{
+    if (input.delimiter_length == 0U || input.delimiter_length > input.text_length ||
+        start_offset > input.text_length - input.delimiter_length) {
+        return false;
+    }
+    for (size_t offset = start_offset; offset <= input.text_length - input.delimiter_length;
+         ++offset) {
+        if (memcmp(input.text + offset, input.delimiter, input.delimiter_length) == 0) {
+            *out_offset = offset;
+            return true;
+        }
+    }
+    return false;
 }
 
 static int eval_trim_function(enum mylite_scalar_function_id function_id,
@@ -4817,6 +5053,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_LEFT:
     case MYLITE_SCALAR_FUNCTION_RIGHT:
     case MYLITE_SCALAR_FUNCTION_SUBSTRING:
+    case MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX:
     case MYLITE_SCALAR_FUNCTION_TRIM:
     case MYLITE_SCALAR_FUNCTION_LTRIM:
     case MYLITE_SCALAR_FUNCTION_RTRIM:
@@ -8002,6 +8239,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"SUBSTRING", MYLITE_SCALAR_FUNCTION_SUBSTRING},
         {"SUBSTR", MYLITE_SCALAR_FUNCTION_SUBSTRING},
         {"MID", MYLITE_SCALAR_FUNCTION_SUBSTRING},
+        {"SUBSTRING_INDEX", MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX},
         {"TRIM", MYLITE_SCALAR_FUNCTION_TRIM},
         {"LTRIM", MYLITE_SCALAR_FUNCTION_LTRIM},
         {"RTRIM", MYLITE_SCALAR_FUNCTION_RTRIM},
@@ -8098,6 +8336,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_LEFT:
     case MYLITE_SCALAR_FUNCTION_RIGHT:
     case MYLITE_SCALAR_FUNCTION_SUBSTRING:
+    case MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX:
     case MYLITE_SCALAR_FUNCTION_TRIM:
     case MYLITE_SCALAR_FUNCTION_LTRIM:
     case MYLITE_SCALAR_FUNCTION_RTRIM:

@@ -19,7 +19,8 @@ projection, `WHERE`, `ORDER BY`, and supported single-table `UPDATE` and
 
 Out of scope:
 
-- `SUBSTRING_INDEX()`
+- `SUBSTRING_INDEX()`; see the dedicated
+  `docs/specs/substring-index-function/specs.md` slice
 - `LOCATE()`, `POSITION()`, and `INSTR()`
 - `LPAD()`, `RPAD()`, `REPEAT()`, `REVERSE()`, `HEX()`, and `UNHEX()`
 - binary-string-specific metadata and display behavior beyond the current

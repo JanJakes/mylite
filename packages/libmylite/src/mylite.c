@@ -2205,7 +2205,7 @@ static bool function_name_has_binary_string_result(const struct mylite_sql_ast_n
 static bool function_name_has_connection_string_result(const struct mylite_sql_ast_node *name);
 static bool function_name_has_base_conversion_result(const struct mylite_sql_ast_node *name);
 static bool function_name_is_concat_ws(const struct mylite_sql_ast_node *name);
-static bool function_name_uses_trim_source_length(const struct mylite_sql_ast_node *name);
+static bool function_name_uses_source_length(const struct mylite_sql_ast_node *name);
 static bool function_name_is_charset(const struct mylite_sql_ast_node *name);
 static bool function_name_is_collation(const struct mylite_sql_ast_node *name);
 static bool function_name_is_coercibility(const struct mylite_sql_ast_node *name);
@@ -11553,7 +11553,7 @@ static uint64_t slice_string_function_result_length( // NOLINT(misc-no-recursion
     if (function_name_is_insert(name)) {
         return insert_function_result_length(database, plan, expression);
     }
-    if (!function_name_uses_trim_source_length(name) && value != NULL &&
+    if (!function_name_uses_source_length(name) && value != NULL &&
         value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return expression_string_length(database, value, NULL);
     }
@@ -12268,8 +12268,9 @@ static bool function_name_has_text_result(const struct mylite_sql_ast_node *name
 static bool function_name_has_slice_string_result(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {
-        "CONCAT_WS", "SUBSTRING", "SUBSTR", "MID",     "TRIM", "LTRIM", "RTRIM", "INSERT",
-        "QUOTE",     "REPEAT",    "SPACE",  "REVERSE", "LPAD", "RPAD",  "ELT",   "MAKE_SET"};
+        "CONCAT_WS", "SUBSTRING", "SUBSTR", "MID",   "SUBSTRING_INDEX", "TRIM",
+        "LTRIM",     "RTRIM",     "INSERT", "QUOTE", "REPEAT",          "SPACE",
+        "REVERSE",   "LPAD",      "RPAD",   "ELT",   "MAKE_SET"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
@@ -12382,9 +12383,9 @@ static bool function_name_is_concat_ws(const struct mylite_sql_ast_node *name)
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
-static bool function_name_uses_trim_source_length(const struct mylite_sql_ast_node *name)
+static bool function_name_uses_source_length(const struct mylite_sql_ast_node *name)
 {
-    static const char *const names[] = {"TRIM", "LTRIM", "RTRIM"};
+    static const char *const names[] = {"TRIM", "LTRIM", "RTRIM", "SUBSTRING_INDEX"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

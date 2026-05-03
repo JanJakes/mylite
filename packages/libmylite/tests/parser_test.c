@@ -5181,7 +5181,7 @@ static int test_scalar_function_call_syntax(void)
     // NOLINTBEGIN(readability-magic-numbers)
     enum {
         expected_select_item_count = 19,
-        string_function_item_count = 15,
+        string_function_item_count = 17,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
         list_function_item_count = 19,
@@ -5262,7 +5262,9 @@ static int test_scalar_function_call_syntax(void)
                           "MID('abcdef', 2, 3), MID('abcdef' FROM -2), "
                           "TRIM('  hi  '), TRIM(LEADING 'x' FROM 'xx'), "
                           "TRIM(TRAILING 'x' FROM 'xx'), TRIM('x' FROM 'xx'), "
-                          "TRIM(BOTH FROM '  hi  '), LTRIM('  hi  '), RTRIM('  hi  ');",
+                          "TRIM(BOTH FROM '  hi  '), LTRIM('  hi  '), RTRIM('  hi  '), "
+                          "SUBSTRING_INDEX('www.mysql.com', '.', 2), "
+                          "substring_index('www.mysql.com', '.', -2);",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures +=
@@ -5349,6 +5351,10 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 13U), 0U), "LTRIM", 1U, "LTRIM call");
     failures +=
         expect_function_call(child_at(child_at(select_list, 14U), 0U), "RTRIM", 1U, "RTRIM call");
+    failures += expect_function_call(child_at(child_at(select_list, 15U), 0U), "SUBSTRING_INDEX",
+                                     3U, "SUBSTRING_INDEX call");
+    failures += expect_function_call(child_at(child_at(select_list, 16U), 0U), "substring_index",
+                                     3U, "lowercase SUBSTRING_INDEX call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT ASCII('A'), ORD('\xE6\xB5\xB7'), LOCATE('a','alpha'), "

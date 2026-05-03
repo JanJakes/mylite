@@ -19,7 +19,7 @@ static void count_expression_tree(const MyliteAstExpression *expression,
                                   size_t *leaf_values);
 static void count_semantic_tree(const MyliteSemanticAstNode *node,
                                 size_t *targets, size_t *queries,
-                                size_t *table_references,
+                                size_t *table_references, size_t *sources,
                                 size_t *descriptors,
                                 size_t *clauses,
                                 size_t *structural_clauses,
@@ -574,6 +574,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t semantic_targets = 0;
   size_t semantic_queries = 0;
   size_t semantic_table_references = 0;
+  size_t semantic_sources = 0;
   size_t semantic_descriptors = 0;
   size_t semantic_clauses = 0;
   size_t semantic_structural_clauses = 0;
@@ -2842,7 +2843,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
           count_semantic_tree(mylite_semantic_ast_root(semantic_ast),
                               &semantic_targets, &semantic_queries,
                               &semantic_table_references,
-                              &semantic_descriptors,
+                              &semantic_sources, &semantic_descriptors,
                               &semantic_clauses,
                               &semantic_structural_clauses,
                               &semantic_data_types,
@@ -3895,6 +3896,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_semantic_statements=%.2f avg_semantic_targets=%.2f "
            "avg_semantic_queries=%.2f "
            "avg_semantic_table_references=%.2f "
+           "avg_semantic_sources=%.2f "
            "avg_semantic_descriptors=%.2f "
            "avg_semantic_clauses=%.2f "
            "avg_semantic_structural_clauses=%.2f "
@@ -3914,6 +3916,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)semantic_targets / (double)parsed,
            (double)semantic_queries / (double)parsed,
            (double)semantic_table_references / (double)parsed,
+           (double)semantic_sources / (double)parsed,
            (double)semantic_descriptors / (double)parsed,
            (double)semantic_clauses / (double)parsed,
            (double)semantic_structural_clauses / (double)parsed,
@@ -3963,7 +3966,7 @@ static void count_expression_tree(const MyliteAstExpression *expression,
 
 static void count_semantic_tree(const MyliteSemanticAstNode *node,
                                 size_t *targets, size_t *queries,
-                                size_t *table_references,
+                                size_t *table_references, size_t *sources,
                                 size_t *descriptors,
                                 size_t *clauses,
                                 size_t *structural_clauses,
@@ -3991,6 +3994,9 @@ static void count_semantic_tree(const MyliteSemanticAstNode *node,
   if (kind == MYLITE_SEMANTIC_NODE_TABLE_REFERENCE &&
       table_references != NULL) {
     (*table_references)++;
+  }
+  if (kind == MYLITE_SEMANTIC_NODE_SOURCE && sources != NULL) {
+    (*sources)++;
   }
   if (kind == MYLITE_SEMANTIC_NODE_DESCRIPTOR &&
       descriptors != NULL) {
@@ -4051,7 +4057,7 @@ static void count_semantic_tree(const MyliteSemanticAstNode *node,
 
   for (size_t i = 0; i < mylite_semantic_ast_node_child_count(node); i++) {
     count_semantic_tree(mylite_semantic_ast_node_child_at(node, i), targets,
-                        queries, table_references, descriptors, clauses,
+                        queries, table_references, sources, descriptors, clauses,
                         structural_clauses, data_types,
                         data_type_numeric_parameters, data_type_elements,
                         data_type_attributes, expressions, operators, leaf_values,

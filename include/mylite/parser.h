@@ -120,8 +120,16 @@ typedef enum MyliteSemanticNodeKind {
   MYLITE_SEMANTIC_NODE_DATA_TYPE_ELEMENT = 8,
   MYLITE_SEMANTIC_NODE_DATA_TYPE_ATTRIBUTE = 9,
   MYLITE_SEMANTIC_NODE_QUERY = 10,
-  MYLITE_SEMANTIC_NODE_TABLE_REFERENCE = 11
+  MYLITE_SEMANTIC_NODE_TABLE_REFERENCE = 11,
+  MYLITE_SEMANTIC_NODE_SOURCE = 12
 } MyliteSemanticNodeKind;
+
+typedef enum MyliteSemanticSourceKind {
+  MYLITE_SEMANTIC_SOURCE_UNKNOWN = 0,
+  MYLITE_SEMANTIC_SOURCE_VALUES,
+  MYLITE_SEMANTIC_SOURCE_SET,
+  MYLITE_SEMANTIC_SOURCE_SELECT
+} MyliteSemanticSourceKind;
 
 typedef enum MyliteSemanticDataTypeAttributeKind {
   MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_UNKNOWN = 0,
@@ -1038,6 +1046,7 @@ const char *mylite_parse_status_name(MyliteParseStatus status);
 const char *mylite_statement_kind_name(MyliteStatementKind kind);
 const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
 const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
+const char *mylite_semantic_source_kind_name(MyliteSemanticSourceKind kind);
 const char *mylite_semantic_data_type_attribute_kind_name(
     MyliteSemanticDataTypeAttributeKind kind);
 const char *mylite_semantic_clause_kind_name(MyliteSemanticClauseKind kind);
@@ -1179,6 +1188,8 @@ size_t mylite_semantic_ast_node_query_block_count(
 int mylite_semantic_ast_node_query_has_with_clause(
     const MyliteSemanticAstNode *node);
 int mylite_semantic_ast_node_query_has_set_operation(
+    const MyliteSemanticAstNode *node);
+MyliteSemanticSourceKind mylite_semantic_ast_node_source_kind(
     const MyliteSemanticAstNode *node);
 MyliteSemanticClauseKind mylite_semantic_ast_node_clause_kind(
     const MyliteSemanticAstNode *node);

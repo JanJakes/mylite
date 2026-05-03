@@ -19,6 +19,7 @@ struct MyliteSemanticAstNode {
   size_t query_block_count;
   int query_has_with_clause;
   int query_has_set_operation;
+  MyliteSemanticSourceKind source_kind;
   MyliteSemanticClauseKind clause_kind;
   MyliteSemanticDescriptorKind descriptor_kind;
   MyliteCreateTableColumnTypeFamily data_type_family;
@@ -60,6 +61,8 @@ static MyliteSemanticAstNode *mylite_semantic_ast_materialize_statement(
     size_t statement_index);
 static size_t mylite_semantic_ast_count_statement_queries(
     const MyliteAst *parser_ast, size_t statement_index);
+static size_t mylite_semantic_ast_count_statement_sources(
+    const MyliteAst *parser_ast, size_t statement_index);
 static size_t mylite_semantic_ast_count_statement_descriptors(
     const MyliteAst *parser_ast, size_t statement_index);
 static size_t mylite_semantic_ast_count_statement_clauses(
@@ -70,6 +73,44 @@ static int mylite_semantic_ast_fill_statement_children(
 static int mylite_semantic_ast_fill_statement_queries(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *statement,
     const MyliteAst *parser_ast, size_t statement_index, size_t *child_index);
+static int mylite_semantic_ast_fill_statement_sources(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *statement,
+    const MyliteAst *parser_ast, size_t statement_index, size_t *child_index);
+static MyliteSemanticAstNode *mylite_semantic_ast_materialize_insert_source(
+    MyliteSemanticAst *ast, const MyliteAstInsertStatement *insert_statement);
+static size_t mylite_semantic_ast_count_insert_source_children(
+    const MyliteAstInsertStatement *insert_statement);
+static int mylite_semantic_ast_fill_insert_source_children(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    const MyliteAstInsertStatement *insert_statement);
+static int mylite_semantic_ast_append_insert_value_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    size_t *child_index, const MyliteAstInsertStatement *insert_statement);
+static int mylite_semantic_ast_append_insert_set_assignment_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    size_t *child_index, const MyliteAstInsertStatement *insert_statement);
+static MyliteSemanticAstNode *mylite_semantic_ast_materialize_replace_source(
+    MyliteSemanticAst *ast, const MyliteAstReplaceStatement *replace_statement);
+static size_t mylite_semantic_ast_count_replace_source_children(
+    const MyliteAstReplaceStatement *replace_statement);
+static int mylite_semantic_ast_fill_replace_source_children(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    const MyliteAstReplaceStatement *replace_statement);
+static int mylite_semantic_ast_append_replace_value_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    size_t *child_index, const MyliteAstReplaceStatement *replace_statement);
+static int mylite_semantic_ast_append_replace_set_assignment_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    size_t *child_index, const MyliteAstReplaceStatement *replace_statement);
+static MyliteSemanticAstNode *mylite_semantic_ast_materialize_source(
+    MyliteSemanticAst *ast, MyliteSemanticSourceKind source_kind, size_t start,
+    size_t end, size_t child_count);
+static MyliteSemanticSourceKind
+mylite_semantic_source_kind_from_insert_source_kind(
+    MyliteInsertSourceKind source_kind);
+static MyliteSemanticSourceKind
+mylite_semantic_source_kind_from_replace_source_kind(
+    MyliteReplaceSourceKind source_kind);
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_select_query(
     MyliteSemanticAst *ast, const MyliteAstSelectStatement *select_statement);
 static size_t mylite_semantic_ast_count_select_query_children(
@@ -298,6 +339,25 @@ int mylite_semantic_ast_node_query_has_with_clause(
 int mylite_semantic_ast_node_query_has_set_operation(
     const MyliteSemanticAstNode *node) {
   return node == NULL ? 0 : node->query_has_set_operation;
+}
+
+const char *mylite_semantic_source_kind_name(MyliteSemanticSourceKind kind) {
+  switch (kind) {
+  case MYLITE_SEMANTIC_SOURCE_UNKNOWN:
+    return "unknown";
+  case MYLITE_SEMANTIC_SOURCE_VALUES:
+    return "values";
+  case MYLITE_SEMANTIC_SOURCE_SET:
+    return "set";
+  case MYLITE_SEMANTIC_SOURCE_SELECT:
+    return "select";
+  }
+  return "unknown";
+}
+
+MyliteSemanticSourceKind mylite_semantic_ast_node_source_kind(
+    const MyliteSemanticAstNode *node) {
+  return node == NULL ? MYLITE_SEMANTIC_SOURCE_UNKNOWN : node->source_kind;
 }
 
 const char *mylite_semantic_data_type_attribute_kind_name(
@@ -639,6 +699,8 @@ static MyliteSemanticAstNode *mylite_semantic_ast_materialize_statement(
       mylite_ast_statement_target_count(parser_ast, statement_index) +
       mylite_semantic_ast_count_statement_queries(parser_ast,
                                                   statement_index) +
+      mylite_semantic_ast_count_statement_sources(parser_ast,
+                                                  statement_index) +
       mylite_semantic_ast_count_statement_descriptors(parser_ast,
                                                       statement_index) +
       mylite_semantic_ast_count_statement_clauses(parser_ast, statement_index);
@@ -661,6 +723,15 @@ static size_t mylite_semantic_ast_count_statement_queries(
              : 0;
 }
 
+static size_t mylite_semantic_ast_count_statement_sources(
+    const MyliteAst *parser_ast, size_t statement_index) {
+  return mylite_ast_insert_statement_view(parser_ast, statement_index) != NULL ||
+                 mylite_ast_replace_statement_view(parser_ast,
+                                                   statement_index) != NULL
+             ? 1
+             : 0;
+}
+
 static size_t mylite_semantic_ast_count_statement_descriptors(
     const MyliteAst *parser_ast, size_t statement_index) {
   size_t count = 0;
@@ -669,9 +740,6 @@ static size_t mylite_semantic_ast_count_statement_descriptors(
       mylite_ast_insert_statement_view(parser_ast, statement_index);
   if (insert_statement != NULL) {
     count += mylite_ast_insert_statement_view_column_count(insert_statement);
-    count += mylite_ast_insert_statement_view_value_count(insert_statement);
-    count +=
-        mylite_ast_insert_statement_view_set_assignment_count(insert_statement);
     count += mylite_ast_insert_statement_view_duplicate_assignment_count(
         insert_statement);
   }
@@ -680,9 +748,6 @@ static size_t mylite_semantic_ast_count_statement_descriptors(
       mylite_ast_replace_statement_view(parser_ast, statement_index);
   if (replace_statement != NULL) {
     count += mylite_ast_replace_statement_view_column_count(replace_statement);
-    count += mylite_ast_replace_statement_view_value_count(replace_statement);
-    count += mylite_ast_replace_statement_view_set_assignment_count(
-        replace_statement);
   }
 
   const MyliteAstUpdateStatement *update_statement =
@@ -924,6 +989,10 @@ static int mylite_semantic_ast_fill_statement_children(
           ast, statement, parser_ast, statement_index, &child_index)) {
     return 0;
   }
+  if (!mylite_semantic_ast_fill_statement_sources(
+          ast, statement, parser_ast, statement_index, &child_index)) {
+    return 0;
+  }
   if (!mylite_semantic_ast_fill_statement_descriptors(
           ast, statement, parser_ast, statement_index, &child_index)) {
     return 0;
@@ -953,6 +1022,273 @@ static int mylite_semantic_ast_fill_statement_queries(
   }
 
   return 1;
+}
+
+static int mylite_semantic_ast_fill_statement_sources(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *statement,
+    const MyliteAst *parser_ast, size_t statement_index, size_t *child_index) {
+  const MyliteAstInsertStatement *insert_statement =
+      mylite_ast_insert_statement_view(parser_ast, statement_index);
+  if (insert_statement != NULL) {
+    return mylite_semantic_ast_append_child(
+        statement, child_index,
+        mylite_semantic_ast_materialize_insert_source(ast, insert_statement));
+  }
+
+  const MyliteAstReplaceStatement *replace_statement =
+      mylite_ast_replace_statement_view(parser_ast, statement_index);
+  if (replace_statement != NULL) {
+    return mylite_semantic_ast_append_child(
+        statement, child_index,
+        mylite_semantic_ast_materialize_replace_source(ast, replace_statement));
+  }
+
+  return 1;
+}
+
+static MyliteSemanticAstNode *mylite_semantic_ast_materialize_insert_source(
+    MyliteSemanticAst *ast, const MyliteAstInsertStatement *insert_statement) {
+  MyliteSemanticAstNode *source = mylite_semantic_ast_materialize_source(
+      ast,
+      mylite_semantic_source_kind_from_insert_source_kind(
+          mylite_ast_insert_statement_view_source_kind(insert_statement)),
+      mylite_ast_insert_statement_view_source_start(insert_statement),
+      mylite_ast_insert_statement_view_source_end(insert_statement),
+      mylite_semantic_ast_count_insert_source_children(insert_statement));
+  if (source == NULL) {
+    return NULL;
+  }
+  if (!mylite_semantic_ast_fill_insert_source_children(ast, source,
+                                                       insert_statement)) {
+    return NULL;
+  }
+  return source;
+}
+
+static size_t mylite_semantic_ast_count_insert_source_children(
+    const MyliteAstInsertStatement *insert_statement) {
+  switch (mylite_ast_insert_statement_view_source_kind(insert_statement)) {
+  case MYLITE_INSERT_SOURCE_VALUES:
+    return mylite_ast_insert_statement_view_value_count(insert_statement);
+  case MYLITE_INSERT_SOURCE_SET:
+    return mylite_ast_insert_statement_view_set_assignment_count(
+        insert_statement);
+  case MYLITE_INSERT_SOURCE_SELECT:
+  case MYLITE_INSERT_SOURCE_UNKNOWN:
+    return 0;
+  }
+  return 0;
+}
+
+static int mylite_semantic_ast_fill_insert_source_children(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    const MyliteAstInsertStatement *insert_statement) {
+  size_t child_index = 0;
+  switch (mylite_ast_insert_statement_view_source_kind(insert_statement)) {
+  case MYLITE_INSERT_SOURCE_VALUES:
+    if (!mylite_semantic_ast_append_insert_value_descriptors(
+            ast, source, &child_index, insert_statement)) {
+      return 0;
+    }
+    break;
+  case MYLITE_INSERT_SOURCE_SET:
+    if (!mylite_semantic_ast_append_insert_set_assignment_descriptors(
+            ast, source, &child_index, insert_statement)) {
+      return 0;
+    }
+    break;
+  case MYLITE_INSERT_SOURCE_SELECT:
+  case MYLITE_INSERT_SOURCE_UNKNOWN:
+    break;
+  }
+  return child_index == source->child_count;
+}
+
+static int mylite_semantic_ast_append_insert_value_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    size_t *child_index, const MyliteAstInsertStatement *insert_statement) {
+  for (size_t i = 0;
+       i < mylite_ast_insert_statement_view_value_count(insert_statement); i++) {
+    const MyliteAstInsertValue *value =
+        mylite_ast_insert_statement_view_value_at(insert_statement, i);
+    if (!mylite_semantic_ast_append_descriptor_with_expression_child(
+            ast, source, child_index, MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
+            mylite_ast_insert_value_view_start(value),
+            mylite_ast_insert_value_view_end(value), NULL, 0,
+            mylite_ast_insert_value_view_expression(value))) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_semantic_ast_append_insert_set_assignment_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    size_t *child_index, const MyliteAstInsertStatement *insert_statement) {
+  for (size_t i = 0;
+       i < mylite_ast_insert_statement_view_set_assignment_count(
+               insert_statement);
+       i++) {
+    const MyliteAstInsertAssignment *assignment =
+        mylite_ast_insert_statement_view_set_assignment_at(insert_statement, i);
+    if (!mylite_semantic_ast_append_descriptor_with_expression_child(
+            ast, source, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT,
+            mylite_ast_insert_assignment_view_start(assignment),
+            mylite_ast_insert_assignment_view_end(assignment),
+            mylite_ast_insert_assignment_view_name_value(assignment),
+            mylite_ast_insert_assignment_view_name_value_length(assignment),
+            mylite_ast_insert_assignment_view_value_expression(assignment))) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static MyliteSemanticAstNode *mylite_semantic_ast_materialize_replace_source(
+    MyliteSemanticAst *ast, const MyliteAstReplaceStatement *replace_statement) {
+  MyliteSemanticAstNode *source = mylite_semantic_ast_materialize_source(
+      ast,
+      mylite_semantic_source_kind_from_replace_source_kind(
+          mylite_ast_replace_statement_view_source_kind(replace_statement)),
+      mylite_ast_replace_statement_view_source_start(replace_statement),
+      mylite_ast_replace_statement_view_source_end(replace_statement),
+      mylite_semantic_ast_count_replace_source_children(replace_statement));
+  if (source == NULL) {
+    return NULL;
+  }
+  if (!mylite_semantic_ast_fill_replace_source_children(ast, source,
+                                                        replace_statement)) {
+    return NULL;
+  }
+  return source;
+}
+
+static size_t mylite_semantic_ast_count_replace_source_children(
+    const MyliteAstReplaceStatement *replace_statement) {
+  switch (mylite_ast_replace_statement_view_source_kind(replace_statement)) {
+  case MYLITE_REPLACE_SOURCE_VALUES:
+    return mylite_ast_replace_statement_view_value_count(replace_statement);
+  case MYLITE_REPLACE_SOURCE_SET:
+    return mylite_ast_replace_statement_view_set_assignment_count(
+        replace_statement);
+  case MYLITE_REPLACE_SOURCE_SELECT:
+  case MYLITE_REPLACE_SOURCE_UNKNOWN:
+    return 0;
+  }
+  return 0;
+}
+
+static int mylite_semantic_ast_fill_replace_source_children(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    const MyliteAstReplaceStatement *replace_statement) {
+  size_t child_index = 0;
+  switch (mylite_ast_replace_statement_view_source_kind(replace_statement)) {
+  case MYLITE_REPLACE_SOURCE_VALUES:
+    if (!mylite_semantic_ast_append_replace_value_descriptors(
+            ast, source, &child_index, replace_statement)) {
+      return 0;
+    }
+    break;
+  case MYLITE_REPLACE_SOURCE_SET:
+    if (!mylite_semantic_ast_append_replace_set_assignment_descriptors(
+            ast, source, &child_index, replace_statement)) {
+      return 0;
+    }
+    break;
+  case MYLITE_REPLACE_SOURCE_SELECT:
+  case MYLITE_REPLACE_SOURCE_UNKNOWN:
+    break;
+  }
+  return child_index == source->child_count;
+}
+
+static int mylite_semantic_ast_append_replace_value_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    size_t *child_index, const MyliteAstReplaceStatement *replace_statement) {
+  for (size_t i = 0;
+       i < mylite_ast_replace_statement_view_value_count(replace_statement);
+       i++) {
+    const MyliteAstReplaceValue *value =
+        mylite_ast_replace_statement_view_value_at(replace_statement, i);
+    if (!mylite_semantic_ast_append_descriptor_with_expression_child(
+            ast, source, child_index, MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
+            mylite_ast_replace_value_view_start(value),
+            mylite_ast_replace_value_view_end(value), NULL, 0,
+            mylite_ast_replace_value_view_expression(value))) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_semantic_ast_append_replace_set_assignment_descriptors(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
+    size_t *child_index, const MyliteAstReplaceStatement *replace_statement) {
+  for (size_t i = 0;
+       i < mylite_ast_replace_statement_view_set_assignment_count(
+               replace_statement);
+       i++) {
+    const MyliteAstReplaceAssignment *assignment =
+        mylite_ast_replace_statement_view_set_assignment_at(replace_statement,
+                                                            i);
+    if (!mylite_semantic_ast_append_descriptor_with_expression_child(
+            ast, source, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT,
+            mylite_ast_replace_assignment_view_start(assignment),
+            mylite_ast_replace_assignment_view_end(assignment),
+            mylite_ast_replace_assignment_view_name_value(assignment),
+            mylite_ast_replace_assignment_view_name_value_length(assignment),
+            mylite_ast_replace_assignment_view_value_expression(assignment))) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static MyliteSemanticAstNode *mylite_semantic_ast_materialize_source(
+    MyliteSemanticAst *ast, MyliteSemanticSourceKind source_kind, size_t start,
+    size_t end, size_t child_count) {
+  MyliteSemanticAstNode *source =
+      mylite_semantic_ast_new_node(ast, MYLITE_SEMANTIC_NODE_SOURCE, start, end);
+  if (source == NULL) {
+    return NULL;
+  }
+  source->source_kind = source_kind;
+  if (!mylite_semantic_ast_set_node_child_count(ast, source, child_count)) {
+    return NULL;
+  }
+  return source;
+}
+
+static MyliteSemanticSourceKind
+mylite_semantic_source_kind_from_insert_source_kind(
+    MyliteInsertSourceKind source_kind) {
+  switch (source_kind) {
+  case MYLITE_INSERT_SOURCE_VALUES:
+    return MYLITE_SEMANTIC_SOURCE_VALUES;
+  case MYLITE_INSERT_SOURCE_SET:
+    return MYLITE_SEMANTIC_SOURCE_SET;
+  case MYLITE_INSERT_SOURCE_SELECT:
+    return MYLITE_SEMANTIC_SOURCE_SELECT;
+  case MYLITE_INSERT_SOURCE_UNKNOWN:
+    return MYLITE_SEMANTIC_SOURCE_UNKNOWN;
+  }
+  return MYLITE_SEMANTIC_SOURCE_UNKNOWN;
+}
+
+static MyliteSemanticSourceKind
+mylite_semantic_source_kind_from_replace_source_kind(
+    MyliteReplaceSourceKind source_kind) {
+  switch (source_kind) {
+  case MYLITE_REPLACE_SOURCE_VALUES:
+    return MYLITE_SEMANTIC_SOURCE_VALUES;
+  case MYLITE_REPLACE_SOURCE_SET:
+    return MYLITE_SEMANTIC_SOURCE_SET;
+  case MYLITE_REPLACE_SOURCE_SELECT:
+    return MYLITE_SEMANTIC_SOURCE_SELECT;
+  case MYLITE_REPLACE_SOURCE_UNKNOWN:
+    return MYLITE_SEMANTIC_SOURCE_UNKNOWN;
+  }
+  return MYLITE_SEMANTIC_SOURCE_UNKNOWN;
 }
 
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_select_query(
@@ -1358,35 +1694,6 @@ static int mylite_semantic_ast_fill_statement_descriptors(
       }
     }
     for (size_t i = 0;
-         i < mylite_ast_insert_statement_view_value_count(insert_statement);
-         i++) {
-      const MyliteAstInsertValue *value =
-          mylite_ast_insert_statement_view_value_at(insert_statement, i);
-      if (!mylite_semantic_ast_append_descriptor_with_expression_child(
-              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
-              mylite_ast_insert_value_view_start(value),
-              mylite_ast_insert_value_view_end(value), NULL, 0,
-              mylite_ast_insert_value_view_expression(value))) {
-        return 0;
-      }
-    }
-    for (size_t i = 0; i < mylite_ast_insert_statement_view_set_assignment_count(
-                               insert_statement);
-         i++) {
-      const MyliteAstInsertAssignment *assignment =
-          mylite_ast_insert_statement_view_set_assignment_at(insert_statement,
-                                                             i);
-      if (!mylite_semantic_ast_append_descriptor_with_expression_child(
-              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT,
-              mylite_ast_insert_assignment_view_start(assignment),
-              mylite_ast_insert_assignment_view_end(assignment),
-              mylite_ast_insert_assignment_view_name_value(assignment),
-              mylite_ast_insert_assignment_view_name_value_length(assignment),
-              mylite_ast_insert_assignment_view_value_expression(assignment))) {
-        return 0;
-      }
-    }
-    for (size_t i = 0;
          i < mylite_ast_insert_statement_view_duplicate_assignment_count(
                  insert_statement);
          i++) {
@@ -1419,37 +1726,6 @@ static int mylite_semantic_ast_fill_statement_descriptors(
               mylite_ast_replace_column_view_end(column),
               mylite_ast_replace_column_view_name_value(column),
               mylite_ast_replace_column_view_name_value_length(column))) {
-        return 0;
-      }
-    }
-    for (size_t i = 0;
-         i < mylite_ast_replace_statement_view_value_count(replace_statement);
-         i++) {
-      const MyliteAstReplaceValue *value =
-          mylite_ast_replace_statement_view_value_at(replace_statement, i);
-      if (!mylite_semantic_ast_append_descriptor_with_expression_child(
-              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
-              mylite_ast_replace_value_view_start(value),
-              mylite_ast_replace_value_view_end(value), NULL, 0,
-              mylite_ast_replace_value_view_expression(value))) {
-        return 0;
-      }
-    }
-    for (size_t i = 0;
-         i < mylite_ast_replace_statement_view_set_assignment_count(
-                 replace_statement);
-         i++) {
-      const MyliteAstReplaceAssignment *assignment =
-          mylite_ast_replace_statement_view_set_assignment_at(replace_statement,
-                                                              i);
-      if (!mylite_semantic_ast_append_descriptor_with_expression_child(
-              ast, statement, child_index, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT,
-              mylite_ast_replace_assignment_view_start(assignment),
-              mylite_ast_replace_assignment_view_end(assignment),
-              mylite_ast_replace_assignment_view_name_value(assignment),
-              mylite_ast_replace_assignment_view_name_value_length(
-                  assignment),
-              mylite_ast_replace_assignment_view_value_expression(assignment))) {
         return 0;
       }
     }

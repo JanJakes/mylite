@@ -27,6 +27,8 @@ def main() -> int:
         "semantic_statements=1",
         "statement_kind=insert",
         "target_kind=table",
+        "semantic kind=source",
+        "source_kind=values",
         "descriptor_kind=column",
         'value="a"',
         "children=1 descriptor_kind=value",

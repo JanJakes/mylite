@@ -60,10 +60,14 @@ enum mylite_information_schema_table {
 };
 
 enum mylite_mysql_condition_code {
+    MYLITE_MYSQL_ER_PARSE_ERROR = 1064,
+    MYLITE_MYSQL_ER_UNKNOWN_ERROR = 1105,
+    MYLITE_MYSQL_ER_DB_CREATE_EXISTS = 1007,
     MYLITE_MYSQL_ER_NO_DB_ERROR = 1046,
     MYLITE_MYSQL_ER_BAD_NULL_ERROR = 1048,
     MYLITE_MYSQL_ER_BAD_DB_ERROR = 1049,
     MYLITE_MYSQL_ER_TABLE_EXISTS_ERROR = 1050,
+    MYLITE_MYSQL_ER_BAD_TABLE_ERROR = 1051,
     MYLITE_MYSQL_ER_NON_UNIQ_ERROR = 1052,
     MYLITE_MYSQL_ER_BAD_FIELD_ERROR = 1054,
     MYLITE_MYSQL_ER_DUP_FIELDNAME = 1060,
@@ -1194,6 +1198,13 @@ struct mylite_show_create_table_target {
     char *table_name;
 };
 
+struct mylite_show_diagnostics_query {
+    enum mylite_sql_ast_show_diagnostics_kind kind;
+    uint64_t offset;
+    uint64_t row_count;
+    bool has_limit;
+};
+
 struct mylite_show_create_table_info {
     char *engine;
     bool has_auto_increment;
@@ -1570,6 +1581,22 @@ static void show_index_target_deinit(struct mylite_show_index_target *target);
 static int prepare_show_create_table_statement(mylite_db *database,
                                                const struct mylite_sql_ast_node *statement,
                                                mylite_stmt **out_stmt);
+static int prepare_show_diagnostics_statement(mylite_db *database,
+                                              const struct mylite_sql_ast_node *statement,
+                                              mylite_stmt **out_stmt);
+static int prepare_show_diagnostics_count_statement(mylite_db *database,
+                                                    const struct mylite_sql_ast_node *statement,
+                                                    mylite_stmt **out_stmt);
+static bool show_diagnostics_query_from_statement(const struct mylite_sql_ast_node *statement,
+                                                  struct mylite_show_diagnostics_query *out_query);
+static char *show_diagnostics_sql(mylite_db *database,
+                                  const struct mylite_show_diagnostics_query *query);
+static char *show_diagnostics_count_sql(mylite_db *database,
+                                        enum mylite_sql_ast_show_diagnostics_kind kind);
+static bool diagnostic_condition_matches(const struct mylite_expression_warning *condition,
+                                         enum mylite_sql_ast_show_diagnostics_kind kind);
+static const char *
+diagnostic_condition_level_name(const struct mylite_expression_warning *condition);
 static int copy_show_create_table_target(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          struct mylite_show_create_table_target *out_target);
@@ -3062,7 +3089,8 @@ static int map_table_select_expression_eval_status(mylite_stmt *stmt, int status
 static int set_where_predicate_eval_error(mylite_stmt *stmt);
 static void table_select_group_deinit(struct mylite_table_select_group *group);
 static int validate_create_table_plan(mylite_stmt *stmt, const char *schema_name,
-                                      struct mylite_schema_default *schema_default);
+                                      struct mylite_schema_default *schema_default,
+                                      bool *out_skip_create);
 static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
                                     const struct mylite_schema_default *schema_default);
 static int create_physical_table(mylite_stmt *stmt, const char *schema_name,
@@ -4248,6 +4276,8 @@ static int set_collation_charset_error(mylite_db *database, const char *collatio
                                        const char *character_set);
 static int set_unknown_table_error(mylite_db *database, const char *schema_name,
                                    const char *table_name);
+static int append_unknown_table_note(mylite_db *database, const char *schema_name,
+                                     const char *table_name);
 static bool write_statement_kind(enum mylite_stmt_kind kind);
 static int set_connection_released_error(mylite_db *database);
 static int set_read_only_transaction_error(mylite_db *database);
@@ -4331,6 +4361,7 @@ static const struct mylite_sql_ast_node *find_child_kind(const struct mylite_sql
                                                          enum mylite_sql_ast_node_kind kind);
 static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *expression);
 static const struct mylite_sql_ast_node *single_statement(const struct mylite_sql_ast_node *root);
+static bool statement_preserves_diagnostics(const struct mylite_sql_ast_node *statement);
 static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status status);
 static int map_translate_status(mylite_db *database, enum mylite_sqlite_translate_status status);
 static int set_sqlite_error(mylite_db *database);
@@ -4339,6 +4370,16 @@ static int set_error_message(mylite_db *database, const char *message);
 static int set_error_message_parts(mylite_db *database, const char *prefix, const char *value,
                                    const char *suffix);
 static int append_database_warning(mylite_db *database, unsigned int code, const char *message);
+static int append_database_note(mylite_db *database, unsigned int code, const char *message);
+static int append_database_error(mylite_db *database, unsigned int code, const char *message);
+static int ensure_current_error_condition(mylite_db *database, unsigned int fallback_code);
+static bool database_has_error_condition(const mylite_db *database);
+static bool promote_current_error_message_condition(mylite_db *database);
+static unsigned int current_error_condition_code(mylite_db *database, unsigned int fallback_code);
+static int append_database_condition(mylite_db *database,
+                                     enum mylite_expression_warning_level level, unsigned int code,
+                                     const char *message);
+static int append_current_error_condition(mylite_db *database, unsigned int code);
 static void clear_error_message(mylite_db *database);
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
@@ -4427,6 +4468,7 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
 {
     struct mylite_sql_parse_result parse_result;
     enum mylite_sql_parse_status parse_status = MYLITE_SQL_PARSE_OK;
+    const struct mylite_sql_ast_node *statement = NULL;
     int status = MYLITE_OK;
 
     if (out_stmt == NULL) {
@@ -4442,7 +4484,6 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
     if (database->transaction_released) {
         return set_connection_released_error(database);
     }
-    clear_warnings(database);
     parse_status = mylite_sql_parse(
         (struct mylite_sql_parse_config){
             .input = sql,
@@ -4451,12 +4492,24 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
         },
         &parse_result);
     if (parse_status != MYLITE_SQL_PARSE_OK) {
+        clear_warnings(database);
         status = map_parse_status(database, parse_status);
+        if (status != MYLITE_NOMEM) {
+            (void)append_current_error_condition(database, MYLITE_MYSQL_ER_PARSE_ERROR);
+        }
         mylite_sql_parse_result_deinit(&parse_result);
         return status;
     }
 
+    statement = single_statement(parse_result.root);
+    if (!statement_preserves_diagnostics(statement)) {
+        clear_warnings(database);
+    }
+
     status = prepare_parsed_statement(database, parse_result.root, sql, length, out_stmt);
+    if (status != MYLITE_OK && status != MYLITE_NOMEM) {
+        (void)ensure_current_error_condition(database, MYLITE_MYSQL_ER_UNKNOWN_ERROR);
+    }
     mylite_sql_parse_result_deinit(&parse_result);
     return status;
 }
@@ -4517,7 +4570,12 @@ int mylite_step(mylite_stmt *stmt)
         clear_warnings(stmt->database);
     }
     if (stmt->kind != MYLITE_STMT_SQLITE) {
-        return execute_custom_statement(stmt);
+        int status = execute_custom_statement(stmt);
+        if (status != MYLITE_ROW && status != MYLITE_DONE && status != MYLITE_OK &&
+            status != MYLITE_NOMEM) {
+            (void)ensure_current_error_condition(stmt->database, MYLITE_MYSQL_ER_UNKNOWN_ERROR);
+        }
+        return status;
     }
 
     rc = sqlite3_step(stmt->sqlite_stmt);
@@ -4530,7 +4588,11 @@ int mylite_step(mylite_stmt *stmt)
         return MYLITE_DONE;
     }
 
-    return set_sqlite_error(stmt->database);
+    rc = set_sqlite_error(stmt->database);
+    if (rc != MYLITE_NOMEM) {
+        (void)ensure_current_error_condition(stmt->database, MYLITE_MYSQL_ER_UNKNOWN_ERROR);
+    }
+    return rc;
 }
 
 int64_t mylite_affected_rows(const mylite_stmt *stmt)
@@ -4931,6 +4993,10 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_show_index_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
             return prepare_show_create_table_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+            return prepare_show_diagnostics_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
+            return prepare_show_diagnostics_count_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
             return prepare_describe_table_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_QUERY_EXPRESSION:
@@ -5141,6 +5207,8 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
     case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
@@ -5285,6 +5353,8 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
     case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
@@ -5594,6 +5664,8 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
     case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
@@ -5655,6 +5727,163 @@ static int prepare_transaction_statement(mylite_db *database,
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt)
 {
     return prepare_sqlite_statement(database, show_schemas_sql, out_stmt);
+}
+
+static int prepare_show_diagnostics_statement(mylite_db *database,
+                                              const struct mylite_sql_ast_node *statement,
+                                              mylite_stmt **out_stmt)
+{
+    struct mylite_show_diagnostics_query query = {0};
+    char *sqlite_sql = NULL;
+    int status = MYLITE_OK;
+
+    if (!show_diagnostics_query_from_statement(statement, &query)) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    sqlite_sql = show_diagnostics_sql(database, &query);
+    if (sqlite_sql == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+    if (status == MYLITE_OK) {
+        (*out_stmt)->preserve_prepare_warnings = true;
+    }
+    sqlite3_free(sqlite_sql);
+    return status;
+}
+
+static int prepare_show_diagnostics_count_statement(mylite_db *database,
+                                                    const struct mylite_sql_ast_node *statement,
+                                                    mylite_stmt **out_stmt)
+{
+    char *sqlite_sql = show_diagnostics_count_sql(database, statement->show_diagnostics_kind);
+    int status = MYLITE_OK;
+
+    if (sqlite_sql == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+    if (status == MYLITE_OK) {
+        (*out_stmt)->preserve_prepare_warnings = true;
+    }
+    sqlite3_free(sqlite_sql);
+    return status;
+}
+
+static bool show_diagnostics_query_from_statement(const struct mylite_sql_ast_node *statement,
+                                                  struct mylite_show_diagnostics_query *out_query)
+{
+    const struct mylite_sql_ast_node *limit = child_at(statement, 0U);
+
+    *out_query = (struct mylite_show_diagnostics_query){
+        .kind = statement->show_diagnostics_kind,
+        .offset = 0U,
+        .row_count = UINT64_MAX,
+        .has_limit = false,
+    };
+
+    if (limit == NULL) {
+        return true;
+    }
+    if (limit->kind != MYLITE_SQL_AST_LIMIT_CLAUSE ||
+        mylite_sql_ast_node_child_count(limit) != 2U) {
+        return false;
+    }
+    out_query->offset = child_at(limit, 0U)->limit_bound_value;
+    out_query->row_count = child_at(limit, 1U)->limit_bound_value;
+    out_query->has_limit = true;
+    return true;
+}
+
+static char *show_diagnostics_sql(mylite_db *database,
+                                  const struct mylite_show_diagnostics_query *query)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    uint64_t matched = 0U;
+    uint64_t emitted = 0U;
+    bool first = true;
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    for (size_t index = 0U; index < database->warnings.count; ++index) {
+        const struct mylite_expression_warning *condition = &database->warnings.items[index];
+
+        if (!diagnostic_condition_matches(condition, query->kind)) {
+            continue;
+        }
+        if (query->has_limit && matched++ < query->offset) {
+            continue;
+        }
+        if (query->has_limit && emitted >= query->row_count) {
+            break;
+        }
+        if (!first) {
+            sqlite3_str_appendall(sql, " UNION ALL ");
+        }
+        sqlite3_str_appendf(sql, "SELECT %Q AS \"Level\", %u AS \"Code\", %Q AS \"Message\"",
+                            diagnostic_condition_level_name(condition), condition->code,
+                            condition->message == NULL ? "" : condition->message);
+        first = false;
+        ++emitted;
+    }
+
+    if (first) {
+        sqlite3_str_appendall(sql, "SELECT CAST(NULL AS TEXT) AS \"Level\", "
+                                   "CAST(NULL AS INTEGER) AS \"Code\", "
+                                   "CAST(NULL AS TEXT) AS \"Message\" WHERE 0");
+    }
+    return sqlite3_str_finish(sql);
+}
+
+static char *show_diagnostics_count_sql(mylite_db *database,
+                                        enum mylite_sql_ast_show_diagnostics_kind kind)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    uint64_t count = 0U;
+    const char *column_name = kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_ERRORS
+                                  ? "@@session.error_count"
+                                  : "@@session.warning_count";
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    for (size_t index = 0U; index < database->warnings.count; ++index) {
+        if (diagnostic_condition_matches(&database->warnings.items[index], kind)) {
+            ++count;
+        }
+    }
+
+    sqlite3_str_appendf(sql, "SELECT %llu AS \"%w\"", (unsigned long long)count, column_name);
+    return sqlite3_str_finish(sql);
+}
+
+static bool diagnostic_condition_matches(const struct mylite_expression_warning *condition,
+                                         enum mylite_sql_ast_show_diagnostics_kind kind)
+{
+    if (kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_WARNINGS) {
+        return true;
+    }
+    return condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR;
+}
+
+static const char *
+diagnostic_condition_level_name(const struct mylite_expression_warning *condition)
+{
+    if (condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
+        return "Error";
+    }
+    if (condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_NOTE) {
+        return "Note";
+    }
+    return "Warning";
 }
 
 static int prepare_show_tables_statement(mylite_db *database,
@@ -6103,6 +6332,9 @@ static int set_unknown_information_schema_table_error(mylite_db *database, const
     }
 
     status = set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = append_database_error(database, MYLITE_MYSQL_ER_NO_SUCH_TABLE, message);
+    }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -8130,6 +8362,8 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
     case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
@@ -10599,8 +10833,8 @@ static int validate_select_table_aliases(mylite_db *database, const struct mylit
                     set_error_message_parts(database, "Not unique table/alias: '", left_name, "'");
 
                 if (status == MYLITE_OK) {
-                    status = append_database_warning(database, MYLITE_MYSQL_ER_NONUNIQ_TABLE,
-                                                     mylite_error_message(database));
+                    status = append_database_error(database, MYLITE_MYSQL_ER_NONUNIQ_TABLE,
+                                                   mylite_error_message(database));
                 }
                 return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
             }
@@ -10808,8 +11042,8 @@ static int set_select_unknown_from_column_error(mylite_db *database, const char 
     int status = set_error_message_parts(database, "Unknown column '", name, "' in 'from clause'");
 
     if (status == MYLITE_OK) {
-        status = append_database_warning(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                         mylite_error_message(database));
+        status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                       mylite_error_message(database));
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -11081,6 +11315,8 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
     case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
@@ -11779,6 +12015,8 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
     case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
@@ -12337,6 +12575,8 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
     case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
@@ -13050,6 +13290,8 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
     case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
@@ -14306,7 +14548,7 @@ static int set_select_ambiguous_column_error(mylite_db *database, const char *co
     }
     status = set_error_message(database, message);
     if (status == MYLITE_OK) {
-        status = append_database_warning(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR, message);
+        status = append_database_error(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -14332,7 +14574,7 @@ static int set_select_unknown_column_in_clause_error(mylite_db *database, const 
     }
     status = set_error_message(database, message);
     if (status == MYLITE_OK) {
-        status = append_database_warning(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR, message);
+        status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -14583,8 +14825,8 @@ static int resolve_select_having_reference_internal(mylite_db *database,
         status = set_error_message_parts(database, "Unknown column '", reference,
                                          "' in 'having clause'");
         if (status == MYLITE_OK) {
-            status = append_database_warning(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                             mylite_error_message(database));
+            status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                           mylite_error_message(database));
             status = status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
         }
         free(reference);
@@ -14927,8 +15169,8 @@ static int set_select_unknown_where_column_error(mylite_db *database, const char
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -14940,8 +15182,8 @@ static int set_select_unknown_order_column_error(mylite_db *database, const char
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -14953,8 +15195,8 @@ static int set_select_ambiguous_order_column_error(mylite_db *database, const ch
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -14966,8 +15208,8 @@ static int set_select_unknown_group_column_error(mylite_db *database, const char
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -14995,8 +15237,8 @@ static int set_select_invalid_group_function_error(mylite_db *database)
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_INVALID_GROUP_FUNC_USE,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_INVALID_GROUP_FUNC_USE,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -15007,8 +15249,8 @@ static int set_select_duplicate_mode_error(mylite_db *database)
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_WRONG_USAGE,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_WRONG_USAGE,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -15027,8 +15269,8 @@ static int set_select_only_full_group_by_error(mylite_db *database, const char *
         if (status == MYLITE_NOMEM) {
             return MYLITE_NOMEM;
         }
-        status = append_database_warning(database, MYLITE_MYSQL_ER_MIX_OF_GROUP_FUNC_AND_FIELDS,
-                                         mylite_error_message(database));
+        status = append_database_error(database, MYLITE_MYSQL_ER_MIX_OF_GROUP_FUNC_AND_FIELDS,
+                                       mylite_error_message(database));
     } else {
         status = set_error_message_parts(
             database, "Expression contains nonaggregated column '",
@@ -15038,8 +15280,8 @@ static int set_select_only_full_group_by_error(mylite_db *database, const char *
         if (status == MYLITE_NOMEM) {
             return MYLITE_NOMEM;
         }
-        status = append_database_warning(database, MYLITE_MYSQL_ER_WRONG_FIELD_WITH_GROUP,
-                                         mylite_error_message(database));
+        status = append_database_error(database, MYLITE_MYSQL_ER_WRONG_FIELD_WITH_GROUP,
+                                       mylite_error_message(database));
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -15074,7 +15316,7 @@ static int set_select_distinct_order_column_error(
     status = set_error_message(database, message);
     if (status == MYLITE_OK) {
         status =
-            append_database_warning(database, MYLITE_MYSQL_ER_FIELD_IN_ORDER_NOT_SELECT, message);
+            append_database_error(database, MYLITE_MYSQL_ER_FIELD_IN_ORDER_NOT_SELECT, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -15128,8 +15370,8 @@ static int set_union_column_count_error(mylite_db *database)
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_WRONG_NUMBER_OF_COLUMNS_IN_SELECT,
-                                     message);
+    status =
+        append_database_error(database, MYLITE_MYSQL_ER_WRONG_NUMBER_OF_COLUMNS_IN_SELECT, message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -15147,7 +15389,7 @@ static int set_union_global_order_table_error(mylite_db *database, const char *t
     status = set_error_message(database, message);
     if (status == MYLITE_OK) {
         status =
-            append_database_warning(database, MYLITE_MYSQL_ER_TABLENAME_NOT_ALLOWED_HERE, message);
+            append_database_error(database, MYLITE_MYSQL_ER_TABLENAME_NOT_ALLOWED_HERE, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -16037,7 +16279,14 @@ static int execute_create_schema_statement(mylite_stmt *stmt)
     }
     if (presence.exists) {
         if (stmt->if_not_exists) {
-            return MYLITE_OK;
+            int note_status = set_error_message_parts(stmt->database, "Can't create database '",
+                                                      stmt->schema_name, "'; database exists");
+
+            if (note_status == MYLITE_NOMEM) {
+                return MYLITE_NOMEM;
+            }
+            return append_database_note(stmt->database, MYLITE_MYSQL_ER_DB_CREATE_EXISTS,
+                                        mylite_error_message(stmt->database));
         }
         (void)set_error_message_parts(stmt->database, "Can't create database '", stmt->schema_name,
                                       "'; database exists");
@@ -16156,6 +16405,7 @@ static int execute_create_table_statement(mylite_stmt *stmt)
                                   ? stmt->database->selected_schema
                                   : stmt->create_table.schema_name;
     struct mylite_schema_default schema_default;
+    bool skip_create = false;
     int status = MYLITE_OK;
 
     if (schema_name == NULL) {
@@ -16163,9 +16413,12 @@ static int execute_create_table_statement(mylite_stmt *stmt)
         return MYLITE_EXEC_ERROR;
     }
 
-    status = validate_create_table_plan(stmt, schema_name, &schema_default);
+    status = validate_create_table_plan(stmt, schema_name, &schema_default, &skip_create);
     if (status != MYLITE_OK) {
         return status;
+    }
+    if (skip_create) {
+        return MYLITE_OK;
     }
 
     return create_table_transaction(stmt, schema_name, &schema_default);
@@ -16180,7 +16433,9 @@ static int execute_drop_table_statement(mylite_stmt *stmt)
     }
     if (stmt->drop_table.temporary) {
         if (stmt->if_exists) {
-            return MYLITE_OK;
+            return append_unknown_table_note(stmt->database,
+                                             stmt->drop_table.targets[0].schema_name,
+                                             stmt->drop_table.targets[0].table_name);
         }
         return set_unknown_table_error(stmt->database, stmt->drop_table.targets[0].schema_name,
                                        stmt->drop_table.targets[0].table_name);
@@ -16190,12 +16445,14 @@ static int execute_drop_table_statement(mylite_stmt *stmt)
 }
 
 static int validate_create_table_plan(mylite_stmt *stmt, const char *schema_name,
-                                      struct mylite_schema_default *schema_default)
+                                      struct mylite_schema_default *schema_default,
+                                      bool *out_skip_create)
 {
     struct mylite_schema_presence presence;
     bool exists = false;
     int status = schema_exists(stmt->database, schema_name, &presence);
 
+    *out_skip_create = false;
     if (status != MYLITE_OK) {
         return status;
     }
@@ -16215,7 +16472,18 @@ static int validate_create_table_plan(mylite_stmt *stmt, const char *schema_name
     }
     if (exists) {
         if (stmt->if_not_exists) {
-            return MYLITE_DONE;
+            int note_status = set_error_message_parts(
+                stmt->database, "Table '", stmt->create_table.table_name, "' already exists");
+
+            if (note_status == MYLITE_NOMEM) {
+                return MYLITE_NOMEM;
+            }
+            note_status = append_database_note(stmt->database, MYLITE_MYSQL_ER_TABLE_EXISTS_ERROR,
+                                               mylite_error_message(stmt->database));
+            if (note_status == MYLITE_OK) {
+                *out_skip_create = true;
+            }
+            return note_status;
         }
         (void)set_error_message_parts(stmt->database, "Table '", stmt->create_table.table_name,
                                       "' already exists");
@@ -16684,7 +16952,8 @@ static int validate_drop_table_target(mylite_stmt *stmt, struct mylite_drop_tabl
     }
     if (!presence.exists) {
         if (stmt->if_exists) {
-            return MYLITE_OK;
+            return append_unknown_table_note(stmt->database, target->schema_name,
+                                             target->table_name);
         }
         return set_unknown_table_error(stmt->database, target->schema_name, target->table_name);
     }
@@ -16693,7 +16962,11 @@ static int validate_drop_table_target(mylite_stmt *stmt, struct mylite_drop_tabl
     if (status != MYLITE_OK) {
         return status;
     }
-    if (!exists && !stmt->if_exists) {
+    if (!exists) {
+        if (stmt->if_exists) {
+            return append_unknown_table_note(stmt->database, target->schema_name,
+                                             target->table_name);
+        }
         return set_unknown_table_error(stmt->database, target->schema_name, target->table_name);
     }
     target->exists = exists;
@@ -19873,8 +20146,8 @@ static int set_alter_table_duplicate_column_error(mylite_db *database, const cha
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_DUP_FIELDNAME,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_DUP_FIELDNAME,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -19893,8 +20166,8 @@ static int set_alter_table_unknown_column_error(mylite_db *database, const char 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -19912,8 +20185,8 @@ static int set_alter_table_cant_drop_column_error(mylite_db *database, const cha
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_CANT_DROP_FIELD_OR_KEY,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_CANT_DROP_FIELD_OR_KEY,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -19925,8 +20198,8 @@ static int set_alter_table_cant_remove_all_columns_error(mylite_db *database)
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_CANT_REMOVE_ALL_FIELDS,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_CANT_REMOVE_ALL_FIELDS,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -19937,8 +20210,8 @@ static int set_alter_table_all_invisible_error(mylite_db *database)
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_INVISIBLE_NOT_NULL_WITHOUT_DEFAULT,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_INVISIBLE_NOT_NULL_WITHOUT_DEFAULT,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -19952,8 +20225,8 @@ static int set_alter_table_wrong_auto_increment_error(mylite_db *database)
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_WRONG_AUTO_KEY,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_WRONG_AUTO_KEY,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -19964,8 +20237,8 @@ static int set_alter_table_multiple_primary_key_error(mylite_db *database)
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_MULTIPLE_PRI_KEY,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_MULTIPLE_PRI_KEY,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -19976,8 +20249,8 @@ static int set_alter_table_duplicate_key_name_error(mylite_db *database, const c
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_DUP_KEYNAME,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_DUP_KEYNAME,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -19989,8 +20262,8 @@ static int set_alter_table_missing_key_column_error(mylite_db *database, const c
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_KEY_COLUMN_DOES_NOT_EXITS,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_KEY_COLUMN_DOES_NOT_EXITS,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -20001,8 +20274,8 @@ static int set_alter_table_invalid_null_error(mylite_db *database)
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_INVALID_USE_OF_NULL,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_INVALID_USE_OF_NULL,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -20013,8 +20286,8 @@ static int set_alter_table_primary_invisible_error(mylite_db *database)
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_PK_INDEX_CANT_BE_INVISIBLE,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_PK_INDEX_CANT_BE_INVISIBLE,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -21043,6 +21316,8 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
     case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
@@ -22508,6 +22783,8 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
     case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
@@ -30440,6 +30717,9 @@ static int set_table_doesnt_exist_error(mylite_db *database, const char *schema_
     }
 
     status = set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = append_database_error(database, MYLITE_MYSQL_ER_NO_SUCH_TABLE, message);
+    }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -33773,8 +34053,9 @@ static int append_subquery_warnings(struct mylite_expression_warnings *destinati
         return MYLITE_OK;
     }
     for (size_t index = 0U; index < source->count; ++index) {
-        if (mylite_expression_warnings_append(destination, source->items[index].code,
-                                              source->items[index].message) != 0) {
+        if (mylite_expression_warnings_append_condition(destination, source->items[index].level,
+                                                        source->items[index].code,
+                                                        source->items[index].message) != 0) {
             return MYLITE_NOMEM;
         }
     }
@@ -33798,7 +34079,7 @@ static int set_subquery_operand_column_count_error(mylite_db *database, size_t e
     }
     status = set_error_message(database, message);
     if (status == MYLITE_OK) {
-        status = append_database_warning(database, MYLITE_MYSQL_ER_OPERAND_COLUMNS, message);
+        status = append_database_error(database, MYLITE_MYSQL_ER_OPERAND_COLUMNS, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -33811,7 +34092,7 @@ static int set_in_subquery_limit_error(mylite_db *database)
     int status = set_error_message(database, message);
 
     if (status == MYLITE_OK) {
-        status = append_database_warning(database, MYLITE_MYSQL_ER_NOT_SUPPORTED_YET, message);
+        status = append_database_error(database, MYLITE_MYSQL_ER_NOT_SUPPORTED_YET, message);
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -33833,7 +34114,7 @@ static int set_scalar_subquery_cardinality_error(mylite_db *database)
     int status = set_error_message(database, message);
 
     if (status == MYLITE_OK) {
-        status = append_database_warning(database, MYLITE_MYSQL_ER_SUBQUERY_NO_1_ROW, message);
+        status = append_database_error(database, MYLITE_MYSQL_ER_SUBQUERY_NO_1_ROW, message);
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -34054,6 +34335,8 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
     case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
@@ -36479,8 +36762,27 @@ static int set_unknown_table_error(mylite_db *database, const char *schema_name,
     }
 
     status = set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = append_database_error(database, MYLITE_MYSQL_ER_BAD_TABLE_ERROR, message);
+    }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int append_unknown_table_note(mylite_db *database, const char *schema_name,
+                                     const char *table_name)
+{
+    char *message = sqlite3_mprintf("Unknown table '%q.%q'", schema_name, table_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = append_database_note(database, MYLITE_MYSQL_ER_BAD_TABLE_ERROR, message);
+    sqlite3_free(message);
+    return status;
 }
 
 static bool write_statement_kind(enum mylite_stmt_kind kind)
@@ -36524,8 +36826,8 @@ static int set_savepoint_does_not_exist_error(mylite_db *database, const char *n
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_SP_DOES_NOT_EXIST,
-                                     mylite_error_message(database));
+    status = append_database_error(database, MYLITE_MYSQL_ER_SP_DOES_NOT_EXIST,
+                                   mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -37924,6 +38226,20 @@ static const struct mylite_sql_ast_node *single_statement(const struct mylite_sq
     return root->first_child;
 }
 
+static bool statement_preserves_diagnostics(const struct mylite_sql_ast_node *statement)
+{
+    if (statement == NULL) {
+        return false;
+    }
+    if (statement->kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT) {
+        return true;
+    }
+    if (statement->kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT) {
+        return true;
+    }
+    return false;
+}
+
 static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status status)
 {
     switch (status) {
@@ -38039,6 +38355,68 @@ static int set_error_message_parts(mylite_db *database, const char *prefix, cons
 
 static int append_database_warning(mylite_db *database, unsigned int code, const char *message)
 {
+    return append_database_condition(database, MYLITE_EXPRESSION_WARNING_LEVEL_WARNING, code,
+                                     message);
+}
+
+static int append_database_note(mylite_db *database, unsigned int code, const char *message)
+{
+    return append_database_condition(database, MYLITE_EXPRESSION_WARNING_LEVEL_NOTE, code, message);
+}
+
+static int append_database_error(mylite_db *database, unsigned int code, const char *message)
+{
+    return append_database_condition(database, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, code,
+                                     message);
+}
+
+static int ensure_current_error_condition(mylite_db *database, unsigned int fallback_code)
+{
+    if (database_has_error_condition(database)) {
+        return MYLITE_OK;
+    }
+    if (promote_current_error_message_condition(database)) {
+        return MYLITE_OK;
+    }
+    return append_current_error_condition(database, fallback_code);
+}
+
+static bool database_has_error_condition(const mylite_db *database)
+{
+    if (database == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < database->warnings.count; ++index) {
+        if (database->warnings.items[index].level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool promote_current_error_message_condition(mylite_db *database)
+{
+    const char *message = mylite_error_message(database);
+
+    if (database == NULL || message == NULL || message[0] == '\0') {
+        return false;
+    }
+    for (size_t index = database->warnings.count; index > 0U; --index) {
+        struct mylite_expression_warning *condition = &database->warnings.items[index - 1U];
+
+        if (condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_WARNING &&
+            condition->message != NULL && strcmp(condition->message, message) == 0) {
+            condition->level = MYLITE_EXPRESSION_WARNING_LEVEL_ERROR;
+            return true;
+        }
+    }
+    return false;
+}
+
+static int append_database_condition(mylite_db *database,
+                                     enum mylite_expression_warning_level level, unsigned int code,
+                                     const char *message)
+{
     struct mylite_expression_warning *items = NULL;
     char *copy = NULL;
 
@@ -38061,8 +38439,30 @@ static int append_database_warning(mylite_db *database, unsigned int code, const
 
     database->warnings.items = items;
     database->warnings.items[database->warnings.count++] =
-        (struct mylite_expression_warning){.code = code, .message = copy};
+        (struct mylite_expression_warning){.code = code, .message = copy, .level = level};
     return MYLITE_OK;
+}
+
+static int append_current_error_condition(mylite_db *database, unsigned int code)
+{
+    const char *message = mylite_error_message(database);
+
+    if (message == NULL || message[0] == '\0') {
+        message = "Unknown error";
+    } else {
+        code = current_error_condition_code(database, code);
+    }
+    return append_database_error(database, code, message);
+}
+
+static unsigned int current_error_condition_code(mylite_db *database, unsigned int fallback_code)
+{
+    const char *message = mylite_error_message(database);
+
+    if (message != NULL && strcmp(message, "No database selected") == 0) {
+        return MYLITE_MYSQL_ER_NO_DB_ERROR;
+    }
+    return fallback_code;
 }
 
 static void clear_error_message(mylite_db *database)

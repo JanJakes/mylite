@@ -47,6 +47,8 @@
 %type show_index_keyword { struct mylite_sql_token }
 %type opt_show_index_schema { struct mylite_sql_ast_node * }
 %type opt_show_index_filter { struct mylite_sql_ast_node * }
+%type show_diagnostics_kind { struct mylite_sql_parser_show_diagnostics_kind }
+%type opt_show_diagnostics_limit { struct mylite_sql_ast_node * }
 %type describe_table_keyword { struct mylite_sql_token }
 %type opt_describe_column_filter { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
@@ -89,10 +91,10 @@
 %right LOGICAL_NOT.
 %right KEY.
 %fallback IDENTIFIER AFTER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLUMN_FORMAT
-    COMMENT COMMIT CONSISTENT DATE DATETIME DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION
-    FIRST FIXED HASH INSTANT INVISIBLE KEY_BLOCK_SIZE MEMORY MODIFY NCHAR NO NVARCHAR OFFSET ONLY
-    ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE
-    TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE WORK YEAR.
+    COMMENT COMMIT CONSISTENT COUNT DATE DATETIME DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION
+    ERRORS FIRST FIXED HASH INSTANT INVISIBLE KEY_BLOCK_SIZE MEMORY MODIFY NCHAR NO NVARCHAR
+    OFFSET ONLY ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE
+    TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE WARNINGS WORK YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -197,6 +199,9 @@ statement(A) ::= show_index_statement(B). {
     A = B;
 }
 statement(A) ::= show_create_table_statement(B). {
+    A = B;
+}
+statement(A) ::= show_diagnostics_statement(B). {
     A = B;
 }
 statement(A) ::= describe_table_statement(B). {
@@ -1115,6 +1120,35 @@ opt_show_index_filter(A) ::= where_clause(B). {
 show_create_table_statement(A) ::= SHOW(S) CREATE TABLE(T) table_name(B). {
     A = mylite_sql_parser_make_show_create_table_statement(
         state, (struct mylite_sql_parser_show_create_table_tokens){.show = S, .table = T}, B);
+}
+
+show_diagnostics_statement(A) ::= SHOW(T) show_diagnostics_kind(K)
+        opt_show_diagnostics_limit(L). {
+    A = mylite_sql_parser_make_show_diagnostics_statement(state, T, K, L);
+}
+show_diagnostics_statement(A) ::= SHOW(T) COUNT(C) LPAREN STAR RPAREN(R)
+        show_diagnostics_kind(K). {
+    A = mylite_sql_parser_make_show_diagnostics_count_statement(
+        state,
+        (struct mylite_sql_parser_show_diagnostics_count_tokens){
+            .show = T, .count = C, .right_paren = R},
+        K);
+}
+
+show_diagnostics_kind(A) ::= WARNINGS(T). {
+    A = mylite_sql_parser_make_show_diagnostics_kind(
+        T, MYLITE_SQL_AST_SHOW_DIAGNOSTICS_WARNINGS);
+}
+show_diagnostics_kind(A) ::= ERRORS(T). {
+    A = mylite_sql_parser_make_show_diagnostics_kind(
+        T, MYLITE_SQL_AST_SHOW_DIAGNOSTICS_ERRORS);
+}
+
+opt_show_diagnostics_limit(A) ::= . {
+    A = NULL;
+}
+opt_show_diagnostics_limit(A) ::= limit_clause(B). {
+    A = B;
 }
 
 set_names_statement(A) ::= SET(T) NAMES charset_value(B) opt_set_names_collation(C). {

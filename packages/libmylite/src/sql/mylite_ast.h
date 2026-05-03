@@ -135,6 +135,8 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SHOW_INDEX_STATEMENT = 124,
     MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT = 125,
     MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT = 126,
+    MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT = 127,
+    MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT = 128,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -149,6 +151,11 @@ enum mylite_sql_ast_literal_kind {
     MYLITE_SQL_AST_LITERAL_TRUE = 8,
     MYLITE_SQL_AST_LITERAL_FALSE = 9,
     MYLITE_SQL_AST_LITERAL_NULL = 10,
+};
+
+enum mylite_sql_ast_show_diagnostics_kind {
+    MYLITE_SQL_AST_SHOW_DIAGNOSTICS_WARNINGS = 0,
+    MYLITE_SQL_AST_SHOW_DIAGNOSTICS_ERRORS = 1,
 };
 
 enum mylite_sql_ast_operator {
@@ -500,6 +507,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_select_duplicate_mode select_duplicate_mode;
     enum mylite_sql_ast_set_duplicate_mode set_duplicate_mode;
     enum mylite_sql_ast_subquery_quantifier subquery_quantifier;
+    enum mylite_sql_ast_show_diagnostics_kind show_diagnostics_kind;
     unsigned int column_display_width;
     bool column_type_unsigned;
     bool column_type_signed;
@@ -639,6 +647,8 @@ void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_columns_extended(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_columns_full(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_index_extended(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_show_diagnostics_kind(struct mylite_sql_ast_node *node,
+                                                   enum mylite_sql_ast_show_diagnostics_kind kind);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 

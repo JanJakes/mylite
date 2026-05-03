@@ -15,9 +15,16 @@ enum mylite_expression_value_kind {
     MYLITE_EXPRESSION_VALUE_TEXT = 4,
 };
 
+enum mylite_expression_warning_level {
+    MYLITE_EXPRESSION_WARNING_LEVEL_WARNING = 0,
+    MYLITE_EXPRESSION_WARNING_LEVEL_ERROR = 1,
+    MYLITE_EXPRESSION_WARNING_LEVEL_NOTE = 2,
+};
+
 struct mylite_expression_warning {
     unsigned int code;
     char *message;
+    enum mylite_expression_warning_level level;
 };
 
 struct mylite_expression_warnings {
@@ -78,6 +85,9 @@ void mylite_expression_value_deinit(struct mylite_expression_value *value);
 void mylite_expression_warnings_deinit(struct mylite_expression_warnings *warnings);
 int mylite_expression_warnings_append(struct mylite_expression_warnings *warnings,
                                       unsigned int code, const char *message);
+int mylite_expression_warnings_append_condition(struct mylite_expression_warnings *warnings,
+                                                enum mylite_expression_warning_level level,
+                                                unsigned int code, const char *message);
 
 int mylite_expression_eval(const struct mylite_sql_ast_node *expression,
                            struct mylite_expression_warnings *warnings,

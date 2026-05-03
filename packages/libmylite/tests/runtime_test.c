@@ -68,6 +68,7 @@ enum {
     simple_create_amount_precision = 10,
     simple_create_column_count = 6,
     simple_create_statistics_count = 3,
+    mysql_warning_no_database = 1046,
     mysql_warning_bad_null = 1048,
     mysql_warning_ambiguous_column = 1052,
     mysql_warning_unknown_column = 1054,
@@ -200,6 +201,7 @@ static int test_show_tables_execution(void);
 static int test_show_columns_execution(void);
 static int test_show_index_execution(void);
 static int test_show_create_table_execution(void);
+static int test_show_diagnostics_execution(void);
 static int test_describe_table_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
@@ -340,6 +342,7 @@ int main(void)
     failures += test_show_columns_execution();
     failures += test_show_index_execution();
     failures += test_show_create_table_execution();
+    failures += test_show_diagnostics_execution();
     failures += test_describe_table_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
@@ -5133,6 +5136,168 @@ static int test_show_create_table_execution(void)
     return failures;
 }
 
+static int test_show_diagnostics_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
+    static const char *const warning_count_column[] = {"@@session.warning_count"};
+    static const char *const error_count_column[] = {"@@session.error_count"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const one_count[] = {"1"};
+    static const char *const division_warning[] = {"Warning", "1365", "Division by 0"};
+    static const char *const delayed_warning[] = {
+        "Warning",
+        "3005",
+        "REPLACE DELAYED is no longer supported. The statement was converted to REPLACE.",
+    };
+    static const char *const syntax_error[] = {"Error", "1064", "syntax_error"};
+    static const char *const missing_table_error[] = {
+        "Error",
+        "1146",
+        "Table 'mylite_show_diagnostics.missing_show_diagnostics_table' doesn't exist",
+    };
+    static const char *const unknown_column_error[] = {
+        "Error",
+        "1054",
+        "Unknown column 'missing_column' in 'field list'",
+    };
+    static const char *const savepoint_error[] = {
+        "Error",
+        "1305",
+        "SAVEPOINT missing_sp does not exist",
+    };
+    static const char *const missing_drop_note[] = {
+        "Note",
+        "1051",
+        "Unknown table 'mylite_show_diagnostics.missing_show_diagnostics_table'",
+    };
+    static const char *const existing_table_note[] = {
+        "Note",
+        "1050",
+        "Table 'r' already exists",
+    };
+    static const char *const existing_schema_note[] = {
+        "Note",
+        "1007",
+        "Can't create database 'mylite_show_diagnostics'; database exists",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open show diagnostics database");
+
+    failures += expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3, NULL, 0,
+                                   "empty show warnings");
+    failures += expect_select_rows(database, "SHOW ERRORS", diagnostics_columns, 3, NULL, 0,
+                                   "empty show errors");
+    failures += expect_select_rows(database, "SHOW COUNT(*) WARNINGS", warning_count_column, 1,
+                                   zero_count, 1, "empty warning count");
+    failures += expect_select_rows(database, "SHOW COUNT(*) ERRORS", error_count_column, 1,
+                                   zero_count, 1, "empty error count");
+
+    failures +=
+        expect_select_rows(database, "SELECT 1/0 AS divzero", (const char *const[]){"divzero"}, 1,
+                           (const char *const[]){NULL}, 1, "division warning source");
+    failures += expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3,
+                                   division_warning, 1, "show warnings after division");
+    failures += expect_select_rows(database, "SHOW COUNT(*) WARNINGS", warning_count_column, 1,
+                                   one_count, 1, "warning count after division");
+    failures += expect_select_rows(database, "SHOW ERRORS", diagnostics_columns, 3, NULL, 0,
+                                   "show errors excludes warning");
+    failures += expect_select_rows(database, "SHOW COUNT(*) ERRORS", error_count_column, 1,
+                                   zero_count, 1, "error count excludes warning");
+    failures += expect_select_rows(database, "SHOW WARNINGS LIMIT 0", diagnostics_columns, 3, NULL,
+                                   0, "show warnings limit zero");
+    failures += expect_select_rows(database, "SHOW WARNINGS LIMIT 1, 0", diagnostics_columns, 3,
+                                   NULL, 0, "show warnings comma zero");
+    failures += expect_select_rows(database, "SHOW WARNINGS LIMIT 1, 1", diagnostics_columns, 3,
+                                   NULL, 0, "show warnings beyond end");
+    failures += expect_select_rows(database, "SHOW WARNINGS LIMIT 0 OFFSET 1", diagnostics_columns,
+                                   3, NULL, 0, "show warnings offset beyond end");
+    failures +=
+        expect_select_rows(database, "SHOW WARNINGS LIMIT 18446744073709551615",
+                           diagnostics_columns, 3, division_warning, 1, "show warnings max limit");
+
+    failures += execute_sql(database, "SELECT 1", MYLITE_ROW);
+    failures += expect_select_rows(database, "SHOW COUNT(*) WARNINGS", warning_count_column, 1,
+                                   zero_count, 1, "warning count after clear");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_diagnostics", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_diagnostics", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE r (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "DROP TABLE IF EXISTS missing_show_diagnostics_table", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3,
+                                   missing_drop_note, 1, "show warnings after drop missing note");
+    failures += expect_select_rows(database, "SHOW ERRORS", diagnostics_columns, 3, NULL, 0,
+                                   "show errors excludes drop missing note");
+    failures += expect_select_rows(database, "SHOW COUNT(*) WARNINGS", warning_count_column, 1,
+                                   one_count, 1, "warning count includes note");
+    failures += expect_select_rows(database, "SHOW COUNT(*) ERRORS", error_count_column, 1,
+                                   zero_count, 1, "error count excludes note");
+    failures += execute_sql(database, "CREATE TABLE IF NOT EXISTS r (id INT)", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3,
+                                   existing_table_note, 1, "show warnings after existing table");
+    failures +=
+        execute_sql(database, "CREATE DATABASE IF NOT EXISTS mylite_show_diagnostics", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3,
+                                   existing_schema_note, 1, "show warnings after existing schema");
+    failures += execute_sql(database, "REPLACE DELAYED INTO r VALUES (1)", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3,
+                                   delayed_warning, 1, "show warnings after replace delayed");
+
+    failures += expect_prepare_error(database, "SHOW WARNINGS LIKE 'x'", MYLITE_PARSE_ERROR,
+                                     "syntax_error", "show warnings like syntax");
+    failures += expect_select_rows(database, "SHOW ERRORS", diagnostics_columns, 3, syntax_error, 1,
+                                   "show errors after syntax error");
+    failures += expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3, syntax_error,
+                                   1, "show warnings includes syntax error");
+    failures += expect_select_rows(database, "SHOW ERRORS LIMIT 1", diagnostics_columns, 3,
+                                   syntax_error, 1, "show errors limit row count");
+    failures += expect_select_rows(database, "SHOW ERRORS LIMIT 0, 1", diagnostics_columns, 3,
+                                   syntax_error, 1, "show errors comma limit");
+    failures += expect_select_rows(database, "SHOW ERRORS LIMIT 1 OFFSET 0", diagnostics_columns, 3,
+                                   syntax_error, 1, "show errors offset limit");
+    failures += expect_select_rows(database, "SHOW COUNT(*) WARNINGS", warning_count_column, 1,
+                                   one_count, 1, "warning count includes syntax error");
+    failures += expect_select_rows(database, "SHOW COUNT(*) ERRORS", error_count_column, 1,
+                                   one_count, 1, "error count includes syntax error");
+
+    failures += execute_sql(database, "SELECT 1", MYLITE_ROW);
+    failures += expect_select_rows(database, "SHOW COUNT(*) ERRORS", error_count_column, 1,
+                                   zero_count, 1, "error count after clear");
+
+    failures +=
+        expect_prepare_error(database, "SELECT * FROM missing_show_diagnostics_table",
+                             MYLITE_EXEC_ERROR, "doesn't exist", "missing table diagnostic source");
+    failures += expect_select_rows(database, "SHOW ERRORS", diagnostics_columns, 3,
+                                   missing_table_error, 1, "show errors after prepare failure");
+    failures +=
+        expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3, missing_table_error,
+                           1, "show warnings includes missing table error");
+
+    failures +=
+        expect_prepare_error(database, "SELECT missing_column FROM r", MYLITE_EXEC_ERROR,
+                             "Unknown column 'missing_column'", "unknown column diagnostic source");
+    failures += expect_select_rows(database, "SHOW ERRORS", diagnostics_columns, 3,
+                                   unknown_column_error, 1, "show errors after unknown column");
+
+    failures += execute_sql(database, "SAVEPOINT outside_sp", MYLITE_DONE);
+    failures += prepare_sql(database, "ROLLBACK TO SAVEPOINT missing_sp", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "SAVEPOINT missing_sp does not exist",
+                                  "missing savepoint diagnostic source");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SHOW ERRORS", diagnostics_columns, 3, savepoint_error,
+                                   1, "show errors after missing savepoint");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
 static int test_show_index_execution(void)
 {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
@@ -6164,7 +6329,7 @@ static int test_replace_execution(void)
         prepare_sql(database, "REPLACE DELAYED INTO no_database VALUES (1)", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "replace delayed no database");
     failures +=
-        expect_int(mylite_warning_count(database), 1, "replace delayed error warning count");
+        expect_int(mylite_warning_count(database), 2, "replace delayed error warning count");
     failures +=
         expect_int((int)mylite_warning_code(database, 0), mysql_warning_legacy_syntax_converted,
                    "replace delayed error warning code");
@@ -6172,6 +6337,10 @@ static int test_replace_execution(void)
         mylite_warning_message(database, 0),
         "REPLACE DELAYED is no longer supported. The statement was converted to REPLACE.",
         "replace delayed error warning message");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_no_database,
+                           "replace delayed no database error code");
+    failures += expect_string(mylite_warning_message(database, 1), "No database selected",
+                              "replace delayed no database error message");
     mylite_finalize(stmt);
     stmt = NULL;
 

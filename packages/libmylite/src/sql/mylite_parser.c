@@ -2653,6 +2653,56 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_table_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_diagnostics_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
+    struct mylite_sql_parser_show_diagnostics_kind kind, struct mylite_sql_ast_node *limit_clause)
+{
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&show_token), span_from_token(&kind.token));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (limit_clause != NULL) {
+        span = span_join(span, limit_clause->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_set_show_diagnostics_kind(statement, kind.kind);
+    mylite_sql_ast_node_append_child(statement, limit_clause);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_diagnostics_count_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_show_diagnostics_count_tokens tokens,
+    struct mylite_sql_parser_show_diagnostics_kind kind)
+{
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&tokens.show), span_from_token(&kind.token));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    (void)tokens.count;
+    span = span_join(span, span_from_token(&tokens.right_paren));
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_set_show_diagnostics_kind(statement, kind.kind);
+    return statement;
+}
+
+struct mylite_sql_parser_show_diagnostics_kind
+mylite_sql_parser_make_show_diagnostics_kind(struct mylite_sql_token token,
+                                             enum mylite_sql_ast_show_diagnostics_kind kind)
+{
+    return (struct mylite_sql_parser_show_diagnostics_kind){
+        .token = token,
+        .kind = kind,
+    };
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_describe_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_describe_table_tokens tokens,
     struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *filter)
@@ -5426,6 +5476,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"CONSISTENT", MYLITE_SQL_PARSE_CONSISTENT},
         {"CONSTRAINT", MYLITE_SQL_PARSE_CONSTRAINT},
         {"COPY", MYLITE_SQL_PARSE_COPY},
+        {"COUNT", MYLITE_SQL_PARSE_COUNT},
         {"CREATE", MYLITE_SQL_PARSE_CREATE},
         {"CROSS", MYLITE_SQL_PARSE_CROSS},
         {"CURRENT_DATE", MYLITE_SQL_PARSE_CURRENT_DATE},
@@ -5458,6 +5509,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_ENGINE_ATTRIBUTE},
         {"ENFORCED", MYLITE_SQL_PARSE_ENFORCED},
         {"ENCRYPTION", MYLITE_SQL_PARSE_ENCRYPTION},
+        {"ERRORS", MYLITE_SQL_PARSE_ERRORS},
         {"ESCAPE", MYLITE_SQL_PARSE_ESCAPE},
         {"EXCLUSIVE", MYLITE_SQL_PARSE_EXCLUSIVE},
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
@@ -5596,6 +5648,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"WHEN", MYLITE_SQL_PARSE_WHEN},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"VISIBLE", MYLITE_SQL_PARSE_VISIBLE},
+        {"WARNINGS", MYLITE_SQL_PARSE_WARNINGS},
         {"WITH", MYLITE_SQL_PARSE_WITH},
         {"WORK", MYLITE_SQL_PARSE_WORK},
         {"WRITE", MYLITE_SQL_PARSE_WRITE},

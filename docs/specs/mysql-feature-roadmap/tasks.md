@@ -212,6 +212,10 @@ level application surfaces.
        [SHOW CREATE TABLE](../show-create-table/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.
+       The diagnostic `SHOW WARNINGS` / `SHOW ERRORS` slice is specified for
+       current MyLite warning/error state, row and count result shapes,
+       supported `LIMIT` forms, and diagnostic lifecycle preservation. Spec:
+       [SHOW diagnostics](../show-diagnostics/specs.md).
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable
        validation, scope, charset/collation metadata, and expression use.
 42. [ ] Prepared statements: `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`,

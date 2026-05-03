@@ -352,6 +352,14 @@ void mylite_expression_warnings_deinit(struct mylite_expression_warnings *warnin
 int mylite_expression_warnings_append(struct mylite_expression_warnings *warnings,
                                       unsigned int code, const char *message)
 {
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_WARNING, code, message);
+}
+
+int mylite_expression_warnings_append_condition(struct mylite_expression_warnings *warnings,
+                                                enum mylite_expression_warning_level level,
+                                                unsigned int code, const char *message)
+{
     struct mylite_expression_warning *items = NULL;
     char *copy = NULL;
 
@@ -369,7 +377,7 @@ int mylite_expression_warnings_append(struct mylite_expression_warnings *warning
     }
     warnings->items = items;
     warnings->items[warnings->count++] =
-        (struct mylite_expression_warning){.code = code, .message = copy};
+        (struct mylite_expression_warning){.code = code, .message = copy, .level = level};
     return 0;
 }
 

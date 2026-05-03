@@ -624,6 +624,16 @@ void mylite_sql_ast_node_set_show_index_extended(struct mylite_sql_ast_node *nod
     node->show_index_extended = true;
 }
 
+void mylite_sql_ast_node_set_show_diagnostics_kind(struct mylite_sql_ast_node *node,
+                                                   enum mylite_sql_ast_show_diagnostics_kind kind)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->show_diagnostics_kind = kind;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -898,6 +908,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "describe_table_statement";
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
         return "show_create_table_statement";
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
+        return "show_diagnostics_statement";
+    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
+        return "show_diagnostics_count_statement";
     }
 
     return "unknown";

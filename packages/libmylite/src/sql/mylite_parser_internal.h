@@ -120,6 +120,17 @@ struct mylite_sql_parser_show_create_table_tokens {
     struct mylite_sql_token table;
 };
 
+struct mylite_sql_parser_show_diagnostics_kind {
+    struct mylite_sql_token token;
+    enum mylite_sql_ast_show_diagnostics_kind kind;
+};
+
+struct mylite_sql_parser_show_diagnostics_count_tokens {
+    struct mylite_sql_token show;
+    struct mylite_sql_token count;
+    struct mylite_sql_token right_paren;
+};
+
 struct mylite_sql_parser_describe_table_tokens {
     struct mylite_sql_token keyword;
 };
@@ -620,6 +631,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_index_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_create_table_tokens tokens,
     struct mylite_sql_ast_node *table_name);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_diagnostics_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
+    struct mylite_sql_parser_show_diagnostics_kind kind, struct mylite_sql_ast_node *limit_clause);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_diagnostics_count_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_show_diagnostics_count_tokens tokens,
+    struct mylite_sql_parser_show_diagnostics_kind kind);
+struct mylite_sql_parser_show_diagnostics_kind
+mylite_sql_parser_make_show_diagnostics_kind(struct mylite_sql_token token,
+                                             enum mylite_sql_ast_show_diagnostics_kind kind);
 struct mylite_sql_ast_node *mylite_sql_parser_make_describe_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_describe_table_tokens tokens,
     struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *filter);

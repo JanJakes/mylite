@@ -5,25 +5,23 @@ SQLite is part of the embedded runtime architecture and may need targeted local
 patches, including support for the `.mylite` file header and shifted SQLite page
 offset model.
 
-## Pinned release
+## Pinned experimental branch
 
 | Field | Value |
 | --- | --- |
-| Version | 3.53.0 |
-| Version number | 3053000 |
-| Download archive number | 3530000 |
-| Source archive | `https://www.sqlite.org/2026/sqlite-src-3530000.zip` |
-| SHA3-256 | `4ffbd00ba8db1e1172dbc69a5203a2c185556a32543e58585ba3713abf676fe5` |
-| Amalgamation archive | `https://www.sqlite.org/2026/sqlite-amalgamation-3530000.zip` |
-| Amalgamation SHA3-256 | `c2325c53b3b41761469f91cfb078e96882ac5d85bac10c11b0bd8f253b031e5b` |
+| Branch | `begin-concurrent` |
+| Version | 3.54.0 |
+| Manifest UUID | `7f954a9e2fa4203b55825dfd70a46ffde7c985a4c8b940208d74d97441f3fd04` |
+| Source snapshot | `https://sqlite.org/src/tarball/sqlite-begin-concurrent.tar.gz?r=begin-concurrent` |
+| Source snapshot SHA3-256 | `64921d9d0a85cfd520a600171b1a943f19b0892226b20bd7d853026bdaf07279` |
 
-The official SQLite download page identifies `sqlite-src-3530000.zip` as the
-canonical source tree for SQLite 3.53.0.
+This branch pin is an experimental MyLite prototype for evaluating SQLite's
+`BEGIN CONCURRENT` support. It is not a canonical SQLite release.
 
 ## Vendored files
 
-The repository vendors Lemon from the pinned SQLite source tree and the SQLite
-engine amalgamation from the matching release:
+The repository vendors Lemon from the pinned SQLite source tree and a generated
+SQLite engine amalgamation from the same source snapshot:
 
 | Source path | Repository path |
 | --- | --- |
@@ -37,15 +35,20 @@ engine amalgamation from the matching release:
 ## Refresh procedure
 
 ```sh
-curl -fsSL -o /tmp/sqlite-src-3530000.zip https://www.sqlite.org/2026/sqlite-src-3530000.zip
-openssl dgst -sha3-256 /tmp/sqlite-src-3530000.zip
-unzip -p /tmp/sqlite-src-3530000.zip sqlite-src-3530000/tool/lemon.c > third_party/sqlite/lemon/lemon.c
-unzip -p /tmp/sqlite-src-3530000.zip sqlite-src-3530000/tool/lempar.c > third_party/sqlite/lemon/lempar.c
-unzip -p /tmp/sqlite-src-3530000.zip sqlite-src-3530000/LICENSE.md > third_party/sqlite/upstream/LICENSE.md
+curl -fsSL -o /tmp/sqlite-begin-concurrent.tar.gz \
+  'https://sqlite.org/src/tarball/sqlite-begin-concurrent.tar.gz?r=begin-concurrent'
+openssl dgst -sha3-256 /tmp/sqlite-begin-concurrent.tar.gz
+tar -xzf /tmp/sqlite-begin-concurrent.tar.gz -C /tmp
 
-curl -fsSL -o /tmp/sqlite-amalgamation-3530000.zip https://www.sqlite.org/2026/sqlite-amalgamation-3530000.zip
-openssl dgst -sha3-256 /tmp/sqlite-amalgamation-3530000.zip
-unzip -p /tmp/sqlite-amalgamation-3530000.zip sqlite-amalgamation-3530000/sqlite3.c > third_party/sqlite/upstream/sqlite3.c
-unzip -p /tmp/sqlite-amalgamation-3530000.zip sqlite-amalgamation-3530000/sqlite3.h > third_party/sqlite/upstream/sqlite3.h
-unzip -p /tmp/sqlite-amalgamation-3530000.zip sqlite-amalgamation-3530000/sqlite3ext.h > third_party/sqlite/upstream/sqlite3ext.h
+cd /tmp/sqlite-begin-concurrent
+./configure --disable-shared --disable-load-extension
+make sqlite3.c
+
+cd /path/to/MyLite
+cp /tmp/sqlite-begin-concurrent/tool/lemon.c third_party/sqlite/lemon/lemon.c
+cp /tmp/sqlite-begin-concurrent/tool/lempar.c third_party/sqlite/lemon/lempar.c
+cp /tmp/sqlite-begin-concurrent/LICENSE.md third_party/sqlite/upstream/LICENSE.md
+cp /tmp/sqlite-begin-concurrent/sqlite3.c third_party/sqlite/upstream/sqlite3.c
+cp /tmp/sqlite-begin-concurrent/sqlite3.h third_party/sqlite/upstream/sqlite3.h
+cp /tmp/sqlite-begin-concurrent/sqlite3ext.h third_party/sqlite/upstream/sqlite3ext.h
 ```

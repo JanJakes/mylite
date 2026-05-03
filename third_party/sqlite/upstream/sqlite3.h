@@ -146,12 +146,12 @@ extern "C" {
 ** [sqlite3_libversion_number()], [sqlite3_sourceid()],
 ** [sqlite_version()] and [sqlite_source_id()].
 */
-#define SQLITE_VERSION        "3.53.0"
-#define SQLITE_VERSION_NUMBER 3053000
-#define SQLITE_SOURCE_ID      "2026-04-09 11:41:38 4525003a53a7fc63ca75c59b22c79608659ca12f0131f52c18637f829977f20b"
-#define SQLITE_SCM_BRANCH     "trunk"
-#define SQLITE_SCM_TAGS       "release major-release version-3.53.0"
-#define SQLITE_SCM_DATETIME   "2026-04-09T11:41:38.498Z"
+#define SQLITE_VERSION        "3.54.0"
+#define SQLITE_VERSION_NUMBER 3054000
+#define SQLITE_SOURCE_ID      "2026-04-22 19:50:38 7f954a9e2fa4203b55825dfd70a46ffde7c985a4c8b940208d74d97441f3fd04"
+#define SQLITE_SCM_BRANCH     "begin-concurrent"
+#define SQLITE_SCM_TAGS       ""
+#define SQLITE_SCM_DATETIME   "2026-04-22T19:50:38.120Z"
 
 /*
 ** CAPI3REF: Run-Time Library Version Numbers
@@ -2960,8 +2960,9 @@ SQLITE_API int sqlite3_is_interrupted(sqlite3*);
 ** These routines are useful during command-line input to determine if the
 ** currently entered text seems to form a complete SQL statement or
 ** if additional input is needed before sending the text into
-** SQLite for parsing.  ^These routines return 1 if the input string
-** appears to be a complete SQL statement.  ^A statement is judged to be
+** SQLite for parsing.  ^The sqlite3_complete(X) and sqlite3_complete16(X)
+** routines return 1 if the input string X appears to be a complete SQL
+** statement.  ^A statement is judged to be
 ** complete if it ends with a semicolon token and is not a prefix of a
 ** well-formed CREATE TRIGGER statement.  ^Semicolons that are embedded within
 ** string literals or quoted identifier names or comments are not
@@ -2969,11 +2970,21 @@ SQLITE_API int sqlite3_is_interrupted(sqlite3*);
 ** embedded) and thus do not count as a statement terminator.  ^Whitespace
 ** and comments that follow the final semicolon are ignored.
 **
-** ^These routines return 0 if the statement is incomplete.  ^If a
-** memory allocation fails, then SQLITE_NOMEM is returned.
+** ^The sqlite3_complete(X) and sqlite3_complete16(X) routines return 0
+** if the statement is incomplete.  ^If a memory allocation fails, then
+** SQLITE_NOMEM is returned.
 **
-** ^These routines do not parse the SQL statements and thus
-** will not detect syntactically incorrect SQL.
+** The [sqlite3_incomplete(X)] routine is similar to [sqlite3_complete(X)]
+** except that sqlite3_incomplete(X) returns 0 if the input X is complete
+** and non-zero if X is incomplete.  The non-zero return from
+** sqlite3_incomplete(X) contains additional information about what is
+** needed to complete the input X.  The sqlite3_incomplete(X) interface
+** is only available for UTF-8 text.
+**
+** ^None of these routines do a full parse the SQL statements and thus
+** will not detect syntactically incorrect SQL.  They only determine if
+** input text has properly terminated comments, string literals, and
+** quoted identifiers, and if the statement ends with a semicolon.
 **
 ** ^(If SQLite has not been initialized using [sqlite3_initialize()] prior
 ** to invoking sqlite3_complete16() then sqlite3_initialize() is invoked
@@ -2981,14 +2992,15 @@ SQLITE_API int sqlite3_is_interrupted(sqlite3*);
 ** then the return value from sqlite3_complete16() will be non-zero
 ** regardless of whether or not the input SQL is complete.)^
 **
-** The input to [sqlite3_complete()] must be a zero-terminated
-** UTF-8 string.
+** The X input to [sqlite3_complete(X)] and [sqlite3_incomplete(X)]
+** must be a zero-terminated UTF-8 string.
 **
 ** The input to [sqlite3_complete16()] must be a zero-terminated
 ** UTF-16 string in native byte order.
 */
 SQLITE_API int sqlite3_complete(const char *sql);
 SQLITE_API int sqlite3_complete16(const void *sql);
+SQLITE_API sqlite3_int64 sqlite3_incomplete(const char *sql);
 
 /*
 ** CAPI3REF: Register A Callback To Handle SQLITE_BUSY Errors
@@ -11127,6 +11139,31 @@ SQLITE_API int sqlite3_snapshot_cmp(
 SQLITE_API int sqlite3_snapshot_recover(sqlite3 *db, const char *zDb);
 
 /*
+** CAPI3REF: Wal related information regarding the most recent COMMIT
+** EXPERIMENTAL
+**
+** This function reports on the state of the wal file (if any) for database
+** zDb, which should be "main", "temp", or the name of the attached database.
+** Its results - the values written to the output parameters - are only
+** defined if the most recent SQL command on the connection was a successful
+** COMMIT that wrote data to wal-mode database zDb.
+**
+** Assuming the above conditions are met, output parameter (*pnFrame) is set
+** to the total number of frames in the wal file. Parameter (*pnPrior) is
+** set to the number of frames that were present in the wal file before the
+** most recent transaction was committed. So that the number of frames written
+** by the most recent transaction is (*pnFrame)-(*pnPrior).
+**
+** If successful, SQLITE_OK is returned. Otherwise, an SQLite error code. It
+** is not an error if this function is called at a time when the results
+** are undefined.
+*/
+SQLITE_API SQLITE_EXPERIMENTAL int sqlite3_wal_info(
+  sqlite3 *db, const char *zDb,
+  unsigned int *pnPrior, unsigned int *pnFrame
+);
+
+/*
 ** CAPI3REF: Serialize a database
 **
 ** The sqlite3_serialize(D,S,P,F) interface returns a pointer to
@@ -11851,6 +11888,19 @@ SQLITE_API void sqlite3session_table_filter(
 ** fields.
 */
 SQLITE_API int sqlite3session_changeset(
+  sqlite3_session *pSession,      /* Session object */
+  int *pnChangeset,               /* OUT: Size of buffer at *ppChangeset */
+  void **ppChangeset              /* OUT: Buffer containing changeset */
+);
+
+/*
+** CAPI3REF: Generate A Full Changeset From A Session Object
+**
+** This function is similar to sqlite3session_changeset(), except that for
+** each row affected by an UPDATE statement, all old.* values are recorded
+** as part of the changeset, not just those modified.
+*/
+SQLITE_API int sqlite3session_fullchangeset(
   sqlite3_session *pSession,      /* Session object */
   int *pnChangeset,               /* OUT: Size of buffer at *ppChangeset */
   void **ppChangeset              /* OUT: Buffer containing changeset */

@@ -1,12 +1,11 @@
 {
   "name": "SQLite",
-  "version": "3.53.0",
-  "version_number": 3053000,
-  "archive_number": 3530000,
-  "source_archive": "https://www.sqlite.org/2026/sqlite-src-3530000.zip",
-  "source_archive_sha3_256": "4ffbd00ba8db1e1172dbc69a5203a2c185556a32543e58585ba3713abf676fe5",
-  "amalgamation_archive": "https://www.sqlite.org/2026/sqlite-amalgamation-3530000.zip",
-  "amalgamation_archive_sha3_256": "c2325c53b3b41761469f91cfb078e96882ac5d85bac10c11b0bd8f253b031e5b",
+  "version": "3.54.0",
+  "branch": "begin-concurrent",
+  "manifest_uuid": "7f954a9e2fa4203b55825dfd70a46ffde7c985a4c8b940208d74d97441f3fd04",
+  "source_snapshot": "https://sqlite.org/src/tarball/sqlite-begin-concurrent.tar.gz?r=begin-concurrent",
+  "source_snapshot_sha3_256": "64921d9d0a85cfd520a600171b1a943f19b0892226b20bd7d853026bdaf07279",
+  "amalgamation_generated_from_source_snapshot": true,
   "vendored_files": [
     {
       "source": "LICENSE.md",

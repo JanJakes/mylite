@@ -146,6 +146,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_explain_statement_view(ast, i);
     const MyliteAstShowStatement *show_statement =
         mylite_ast_show_statement_view(ast, i);
+    const MyliteAstLockStatement *lock_statement =
+        mylite_ast_lock_statement_view(ast, i);
     const MyliteAstDeleteStatement *delete_statement =
         mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
@@ -895,6 +897,60 @@ static void dump_statements(const MyliteAst *ast) {
         fputs("    show.where_expression\n", stdout);
         dump_expression_tree(
             mylite_ast_show_statement_view_where_expression(show_statement), 3);
+      }
+    }
+    if (lock_statement != NULL) {
+      printf("  lock_statement span=%zu..%zu kind=%s table_locks=%zu "
+             "node=%s\n",
+             mylite_ast_lock_statement_view_start(lock_statement),
+             mylite_ast_lock_statement_view_end(lock_statement),
+             mylite_lock_statement_kind_name(
+                 mylite_ast_lock_statement_view_kind(lock_statement)),
+             mylite_ast_lock_statement_view_table_lock_count(lock_statement),
+             node_symbol_or_none(
+                 mylite_ast_lock_statement_view_node(lock_statement)));
+      for (size_t j = 0;
+           j < mylite_ast_lock_statement_view_table_lock_count(lock_statement);
+           j++) {
+        const MyliteAstTableLock *table_lock =
+            mylite_ast_lock_statement_view_table_lock_at(lock_statement, j);
+        printf("    table_lock[%zu] span=%zu..%zu mode=%s table=%zu..%zu "
+               "alias=%zu..%zu table=",
+               j, mylite_ast_table_lock_view_start(table_lock),
+               mylite_ast_table_lock_view_end(table_lock),
+               mylite_table_lock_mode_name(
+                   mylite_ast_table_lock_view_mode(table_lock)),
+               mylite_ast_table_lock_view_table_start(table_lock),
+               mylite_ast_table_lock_view_table_end(table_lock),
+               mylite_ast_table_lock_view_alias_start(table_lock),
+               mylite_ast_table_lock_view_alias_end(table_lock));
+        const char *schema =
+            mylite_ast_table_lock_view_table_schema_value(table_lock);
+        size_t schema_length =
+            mylite_ast_table_lock_view_table_schema_value_length(table_lock);
+        if (schema != NULL) {
+          print_escaped_bytes(schema, schema_length);
+          fputc('.', stdout);
+        }
+        const char *name =
+            mylite_ast_table_lock_view_table_name_value(table_lock);
+        size_t name_length =
+            mylite_ast_table_lock_view_table_name_value_length(table_lock);
+        if (name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(name, name_length);
+        }
+        fputs(" alias=", stdout);
+        const char *alias = mylite_ast_table_lock_view_alias_value(table_lock);
+        size_t alias_length =
+            mylite_ast_table_lock_view_alias_value_length(table_lock);
+        if (alias == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(alias, alias_length);
+        }
+        fputc('\n', stdout);
       }
     }
     if (insert_statement != NULL) {

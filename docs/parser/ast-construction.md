@@ -118,6 +118,10 @@ expression nodes.
   including statement kind, scope, `FULL`/`EXTENDED`/`COUNT` modifiers, decoded
   database/table targets, `LIKE` patterns, `WHERE` expressions, and `LIMIT`
   anchors.
+- `LOCK TABLES`, `UNLOCK TABLES`, `LOCK INSTANCE`, and TiDB stats-lock forms
+  expose typed lock statement views. `LOCK TABLES` also exposes ordered table
+  lock descriptors with decoded table/schema names, optional aliases, and lock
+  modes.
 - Transaction-control statements expose begin form, access mode, consistency
   modifiers, `WORK`, completion modifiers, and decoded savepoint names.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
@@ -233,6 +237,9 @@ expression nodes.
 - typed `SHOW` descriptors with common show-kind classification, scope,
   modifiers, target span, decoded database/table names, decoded `LIKE` string,
   recursive `LIKE`/`WHERE` expression handles, and `LIMIT` span
+- typed lock descriptors with statement form, table-lock count, decoded
+  table/schema names, optional aliases, and `READ`/`READ LOCAL`/`WRITE`/`WRITE
+  LOCAL`/`LOW_PRIORITY WRITE` modes
 - typed transaction-control descriptors with statement kind, begin form,
   TiDB begin mode, access mode, consistency modifiers, `WORK`, completion
   modifiers, savepoint-keyword marker, and decoded savepoint name
@@ -534,6 +541,15 @@ spans. This is intentionally still a parser view: result-set columns, privilege
 checks, warning table contents, status-variable lookup, and information-schema
 backing rows remain semantic/runtime work.
 
+Lock parser views cover MySQL table locks, unlocks, and instance backup locks,
+plus TiDB stats-lock statement forms at the classifier level. `LOCK TABLES`
+materializes ordered table-lock descriptors with decoded target schema/name,
+optional aliases from `AS alias` and bare-alias forms, and lock mode
+classification for `READ`, `READ LOCAL`, `WRITE`, `WRITE LOCAL`, and
+`LOW_PRIORITY WRITE`. Runtime lock compatibility, implicit commits, metadata
+locking, connection-level ownership, and stats-lock effects remain later
+semantic/runtime work.
+
 Transaction-control views cover `BEGIN`, `START TRANSACTION`, `COMMIT`,
 `ROLLBACK`, `SAVEPOINT`, and `RELEASE SAVEPOINT`. `BEGIN`/`START TRANSACTION`
 records the begin form, optional TiDB pessimistic/optimistic markers, MySQL
@@ -588,6 +604,13 @@ Latest SHOW parser-view run on May 3, 2026:
 ```text
 mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.446338 qps=186779 mbps=14.20 avg_us=5.354 avg_nodes=74.5 avg_ast_bytes=10907.9 avg_show_statement_views=0.02 avg_show_statement_table_forms=0.00 avg_show_statement_column_forms=0.00 avg_show_statement_variable_forms=0.00 avg_show_statement_warning_forms=0.00 avg_show_statement_create_forms=0.00 avg_show_statement_scopes=0.00 avg_show_statement_full_modifiers=0.00 avg_show_statement_extended_modifiers=0.00 avg_show_statement_count_modifiers=0.00 avg_show_statement_database_values=0.00 avg_show_statement_table_name_values=0.01 avg_show_statement_like_values=0.00 avg_show_statement_like_expressions=0.00 avg_show_statement_where_expressions=0.00 avg_show_statement_limit_clauses=0.00 avg_show_statement_expression_tree_nodes=0.01 avg_show_statement_expression_tree_operators=0.00 avg_show_statement_expression_tree_leaf_values=0.01
 mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.616669 qps=182602 mbps=13.89 avg_us=5.476 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.03
+```
+
+Latest lock parser-view run on May 3, 2026:
+
+```text
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.391203 qps=188172 mbps=14.31 avg_us=5.314 avg_nodes=74.5 avg_ast_bytes=10912.5 avg_lock_statement_views=0.00 avg_lock_statement_lock_tables=0.00 avg_lock_statement_unlock_tables=0.00 avg_lock_statement_instance_forms=0.00 avg_lock_statement_stats_forms=0.00 avg_lock_statement_table_locks=0.00 avg_lock_statement_table_name_values=0.00 avg_lock_statement_alias_values=0.00 avg_lock_statement_known_modes=0.00
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.510324 qps=185188 mbps=14.08 avg_us=5.400 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.03
 ```
 
 Release benchmark result on May 2, 2026:

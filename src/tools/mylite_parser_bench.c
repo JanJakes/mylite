@@ -343,6 +343,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t show_statement_expression_tree_nodes = 0;
   size_t show_statement_expression_tree_operators = 0;
   size_t show_statement_expression_tree_leaf_values = 0;
+  size_t lock_statement_views = 0;
+  size_t lock_statement_lock_tables = 0;
+  size_t lock_statement_unlock_tables = 0;
+  size_t lock_statement_instance_forms = 0;
+  size_t lock_statement_stats_forms = 0;
+  size_t lock_statement_table_locks = 0;
+  size_t lock_statement_table_name_values = 0;
+  size_t lock_statement_alias_values = 0;
+  size_t lock_statement_known_modes = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t set_statement_views = 0;
@@ -1731,6 +1740,50 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 show_statement_limit_clauses++;
               }
             }
+            const MyliteAstLockStatement *lock_statement =
+                mylite_ast_lock_statement_view(ast, i);
+            if (lock_statement != NULL) {
+              lock_statement_views++;
+              switch (mylite_ast_lock_statement_view_kind(lock_statement)) {
+                case MYLITE_LOCK_STATEMENT_LOCK_TABLES:
+                  lock_statement_lock_tables++;
+                  break;
+                case MYLITE_LOCK_STATEMENT_UNLOCK_TABLES:
+                  lock_statement_unlock_tables++;
+                  break;
+                case MYLITE_LOCK_STATEMENT_LOCK_INSTANCE:
+                case MYLITE_LOCK_STATEMENT_UNLOCK_INSTANCE:
+                  lock_statement_instance_forms++;
+                  break;
+                case MYLITE_LOCK_STATEMENT_LOCK_STATS:
+                case MYLITE_LOCK_STATEMENT_UNLOCK_STATS:
+                  lock_statement_stats_forms++;
+                  break;
+                case MYLITE_LOCK_STATEMENT_UNKNOWN:
+                  break;
+              }
+              size_t table_lock_count =
+                  mylite_ast_lock_statement_view_table_lock_count(
+                      lock_statement);
+              lock_statement_table_locks += table_lock_count;
+              for (size_t j = 0; j < table_lock_count; j++) {
+                const MyliteAstTableLock *table_lock =
+                    mylite_ast_lock_statement_view_table_lock_at(
+                        lock_statement, j);
+                if (mylite_ast_table_lock_view_table_name_value(table_lock) !=
+                    NULL) {
+                  lock_statement_table_name_values++;
+                }
+                if (mylite_ast_table_lock_view_alias_value(table_lock) !=
+                    NULL) {
+                  lock_statement_alias_values++;
+                }
+                if (mylite_ast_table_lock_view_mode(table_lock) !=
+                    MYLITE_TABLE_LOCK_MODE_UNKNOWN) {
+                  lock_statement_known_modes++;
+                }
+              }
+            }
             const MyliteAstSetStatement *set_statement =
                 mylite_ast_set_statement_view(ast, i);
             if (set_statement != NULL) {
@@ -2346,6 +2399,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_show_statement_expression_tree_nodes=%.2f "
            "avg_show_statement_expression_tree_operators=%.2f "
            "avg_show_statement_expression_tree_leaf_values=%.2f "
+           "avg_lock_statement_views=%.2f "
+           "avg_lock_statement_lock_tables=%.2f "
+           "avg_lock_statement_unlock_tables=%.2f "
+           "avg_lock_statement_instance_forms=%.2f "
+           "avg_lock_statement_stats_forms=%.2f "
+           "avg_lock_statement_table_locks=%.2f "
+           "avg_lock_statement_table_name_values=%.2f "
+           "avg_lock_statement_alias_values=%.2f "
+           "avg_lock_statement_known_modes=%.2f "
            "avg_set_statement_views=%.2f "
            "avg_set_statement_assignments=%.2f "
            "avg_set_assignment_name_values=%.2f "
@@ -2704,6 +2766,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)show_statement_expression_tree_operators / (double)parsed,
            (double)show_statement_expression_tree_leaf_values /
                (double)parsed,
+           (double)lock_statement_views / (double)parsed,
+           (double)lock_statement_lock_tables / (double)parsed,
+           (double)lock_statement_unlock_tables / (double)parsed,
+           (double)lock_statement_instance_forms / (double)parsed,
+           (double)lock_statement_stats_forms / (double)parsed,
+           (double)lock_statement_table_locks / (double)parsed,
+           (double)lock_statement_table_name_values / (double)parsed,
+           (double)lock_statement_alias_values / (double)parsed,
+           (double)lock_statement_known_modes / (double)parsed,
            (double)set_statement_views / (double)parsed,
            (double)set_statement_assignments / (double)parsed,
            (double)set_assignment_name_values / (double)parsed,

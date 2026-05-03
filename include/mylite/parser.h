@@ -54,6 +54,7 @@ typedef struct MyliteAstInsertAssignment MyliteAstInsertAssignment;
 typedef struct MyliteAstInsertColumn MyliteAstInsertColumn;
 typedef struct MyliteAstInsertStatement MyliteAstInsertStatement;
 typedef struct MyliteAstInsertValue MyliteAstInsertValue;
+typedef struct MyliteAstLockStatement MyliteAstLockStatement;
 typedef struct MyliteAstNode MyliteAstNode;
 typedef struct MyliteAstPreparedStatementVariable
     MyliteAstPreparedStatementVariable;
@@ -68,6 +69,7 @@ typedef struct MyliteAstSelectStatement MyliteAstSelectStatement;
 typedef struct MyliteAstShowStatement MyliteAstShowStatement;
 typedef struct MyliteAstSetAssignment MyliteAstSetAssignment;
 typedef struct MyliteAstSetStatement MyliteAstSetStatement;
+typedef struct MyliteAstTableLock MyliteAstTableLock;
 typedef struct MyliteAstTruncateTable MyliteAstTruncateTable;
 typedef struct MyliteAstTransactionStatement MyliteAstTransactionStatement;
 typedef struct MyliteAstUpdateAssignment MyliteAstUpdateAssignment;
@@ -309,6 +311,25 @@ typedef enum MyliteShowScope {
   MYLITE_SHOW_SCOPE_GLOBAL,
   MYLITE_SHOW_SCOPE_SESSION
 } MyliteShowScope;
+
+typedef enum MyliteLockStatementKind {
+  MYLITE_LOCK_STATEMENT_UNKNOWN = 0,
+  MYLITE_LOCK_STATEMENT_LOCK_TABLES,
+  MYLITE_LOCK_STATEMENT_UNLOCK_TABLES,
+  MYLITE_LOCK_STATEMENT_LOCK_INSTANCE,
+  MYLITE_LOCK_STATEMENT_UNLOCK_INSTANCE,
+  MYLITE_LOCK_STATEMENT_LOCK_STATS,
+  MYLITE_LOCK_STATEMENT_UNLOCK_STATS
+} MyliteLockStatementKind;
+
+typedef enum MyliteTableLockMode {
+  MYLITE_TABLE_LOCK_MODE_UNKNOWN = 0,
+  MYLITE_TABLE_LOCK_MODE_READ,
+  MYLITE_TABLE_LOCK_MODE_READ_LOCAL,
+  MYLITE_TABLE_LOCK_MODE_WRITE,
+  MYLITE_TABLE_LOCK_MODE_WRITE_LOCAL,
+  MYLITE_TABLE_LOCK_MODE_LOW_PRIORITY_WRITE
+} MyliteTableLockMode;
 
 typedef enum MyliteCreateTableColumnTypeFamily {
   MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN = 0,
@@ -730,6 +751,8 @@ const char *mylite_explain_statement_kind_name(
 const char *mylite_explain_format_kind_name(MyliteExplainFormatKind kind);
 const char *mylite_show_statement_kind_name(MyliteShowStatementKind kind);
 const char *mylite_show_scope_name(MyliteShowScope scope);
+const char *mylite_lock_statement_kind_name(MyliteLockStatementKind kind);
+const char *mylite_table_lock_mode_name(MyliteTableLockMode mode);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
     MyliteExpressionLiteralKind kind);
@@ -917,6 +940,8 @@ const MyliteAstDeallocateStatement *mylite_ast_deallocate_statement_view(
 const MyliteAstExplainStatement *mylite_ast_explain_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstShowStatement *mylite_ast_show_statement_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstLockStatement *mylite_ast_lock_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
     const MyliteAst *ast, size_t statement_index);
@@ -2054,6 +2079,45 @@ size_t mylite_ast_show_statement_view_limit_start(
     const MyliteAstShowStatement *show_statement);
 size_t mylite_ast_show_statement_view_limit_end(
     const MyliteAstShowStatement *show_statement);
+const MyliteAstNode *mylite_ast_lock_statement_view_node(
+    const MyliteAstLockStatement *lock_statement);
+size_t mylite_ast_lock_statement_view_start(
+    const MyliteAstLockStatement *lock_statement);
+size_t mylite_ast_lock_statement_view_end(
+    const MyliteAstLockStatement *lock_statement);
+MyliteLockStatementKind mylite_ast_lock_statement_view_kind(
+    const MyliteAstLockStatement *lock_statement);
+size_t mylite_ast_lock_statement_view_table_lock_count(
+    const MyliteAstLockStatement *lock_statement);
+const MyliteAstTableLock *mylite_ast_lock_statement_view_table_lock_at(
+    const MyliteAstLockStatement *lock_statement, size_t table_lock_index);
+const MyliteAstNode *mylite_ast_table_lock_view_node(
+    const MyliteAstTableLock *table_lock);
+size_t mylite_ast_table_lock_view_start(
+    const MyliteAstTableLock *table_lock);
+size_t mylite_ast_table_lock_view_end(const MyliteAstTableLock *table_lock);
+MyliteTableLockMode mylite_ast_table_lock_view_mode(
+    const MyliteAstTableLock *table_lock);
+size_t mylite_ast_table_lock_view_table_start(
+    const MyliteAstTableLock *table_lock);
+size_t mylite_ast_table_lock_view_table_end(
+    const MyliteAstTableLock *table_lock);
+const char *mylite_ast_table_lock_view_table_schema_value(
+    const MyliteAstTableLock *table_lock);
+size_t mylite_ast_table_lock_view_table_schema_value_length(
+    const MyliteAstTableLock *table_lock);
+const char *mylite_ast_table_lock_view_table_name_value(
+    const MyliteAstTableLock *table_lock);
+size_t mylite_ast_table_lock_view_table_name_value_length(
+    const MyliteAstTableLock *table_lock);
+size_t mylite_ast_table_lock_view_alias_start(
+    const MyliteAstTableLock *table_lock);
+size_t mylite_ast_table_lock_view_alias_end(
+    const MyliteAstTableLock *table_lock);
+const char *mylite_ast_table_lock_view_alias_value(
+    const MyliteAstTableLock *table_lock);
+size_t mylite_ast_table_lock_view_alias_value_length(
+    const MyliteAstTableLock *table_lock);
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
     const MyliteAstTransactionStatement *transaction_statement);
 size_t mylite_ast_transaction_statement_view_start(

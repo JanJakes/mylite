@@ -204,6 +204,7 @@ static int expect_drop_table_view(void);
 static int expect_drop_view_view(void);
 static int expect_explain_statement_view(void);
 static int expect_show_statement_view(void);
+static int expect_lock_statement_view(void);
 static int expect_call_statement_view(void);
 static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
@@ -822,6 +823,7 @@ int main(void) {
   failures += expect_drop_view_view();
   failures += expect_explain_statement_view();
   failures += expect_show_statement_view();
+  failures += expect_lock_statement_view();
   failures += expect_call_statement_view();
   failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
@@ -4421,6 +4423,105 @@ static int expect_show_statement_view(void) {
                       mylite_ast_show_statement_view_limit_end(view),
                       "LIMIT 2")) {
       fprintf(stderr, "SHOW WARNINGS view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  return failed;
+}
+
+static int expect_lock_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "LOCK TABLES `db``x`.`t``y` AS `a``b` WRITE, t2 READ LOCAL";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "LOCK TABLES view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstLockStatement *view = mylite_ast_lock_statement_view(ast, 0);
+    const MyliteAstTableLock *first =
+        mylite_ast_lock_statement_view_table_lock_at(view, 0);
+    const MyliteAstTableLock *second =
+        mylite_ast_lock_statement_view_table_lock_at(view, 1);
+    if (view == NULL ||
+        mylite_ast_lock_statement_view_kind(view) !=
+            MYLITE_LOCK_STATEMENT_LOCK_TABLES ||
+        mylite_ast_lock_statement_view_table_lock_count(view) != 2 ||
+        first == NULL || second == NULL ||
+        mylite_ast_table_lock_view_mode(first) !=
+            MYLITE_TABLE_LOCK_MODE_WRITE ||
+        mylite_ast_table_lock_view_mode(second) !=
+            MYLITE_TABLE_LOCK_MODE_READ_LOCAL ||
+        !value_matches_when_expected(
+            mylite_ast_table_lock_view_table_schema_value(first),
+            mylite_ast_table_lock_view_table_schema_value_length(first),
+            "db`x") ||
+        !value_matches_when_expected(
+            mylite_ast_table_lock_view_table_name_value(first),
+            mylite_ast_table_lock_view_table_name_value_length(first),
+            "t`y") ||
+        !value_matches_when_expected(
+            mylite_ast_table_lock_view_alias_value(first),
+            mylite_ast_table_lock_view_alias_value_length(first), "a`b") ||
+        !value_matches_when_expected(
+            mylite_ast_table_lock_view_table_name_value(second),
+            mylite_ast_table_lock_view_table_name_value_length(second), "t2")) {
+      fprintf(stderr, "LOCK TABLES view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "UNLOCK TABLES";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "UNLOCK TABLES view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstLockStatement *view = mylite_ast_lock_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_lock_statement_view_kind(view) !=
+            MYLITE_LOCK_STATEMENT_UNLOCK_TABLES ||
+        mylite_ast_lock_statement_view_table_lock_count(view) != 0) {
+      fprintf(stderr, "UNLOCK TABLES view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "LOCK INSTANCE FOR BACKUP";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "LOCK INSTANCE view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstLockStatement *view = mylite_ast_lock_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_lock_statement_view_kind(view) !=
+            MYLITE_LOCK_STATEMENT_LOCK_INSTANCE) {
+      fprintf(stderr, "LOCK INSTANCE view failed: %s\n", sql);
       failed = 1;
     }
     mylite_ast_free(ast);

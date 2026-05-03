@@ -969,6 +969,37 @@ struct MyliteAstShowStatement {
   int has_count;
 };
 
+struct MyliteAstTableLock {
+  const MyliteAstNode *node;
+  const MyliteAstNode *table_node;
+  MyliteTableLockMode mode;
+  size_t start;
+  size_t end;
+  size_t table_start;
+  size_t table_end;
+  size_t table_schema_start;
+  size_t table_schema_end;
+  const char *table_schema_value;
+  size_t table_schema_value_length;
+  size_t table_name_start;
+  size_t table_name_end;
+  const char *table_name_value;
+  size_t table_name_value_length;
+  size_t alias_start;
+  size_t alias_end;
+  const char *alias_value;
+  size_t alias_value_length;
+};
+
+struct MyliteAstLockStatement {
+  const MyliteAstNode *node;
+  MyliteLockStatementKind kind;
+  size_t start;
+  size_t end;
+  MyliteAstTableLock *table_locks;
+  size_t table_lock_count;
+};
+
 struct MyliteAstTransactionStatement {
   const MyliteAstNode *node;
   MyliteTransactionStatementKind kind;
@@ -1019,6 +1050,7 @@ typedef struct MyliteAstStatement {
   MyliteAstDeallocateStatement *deallocate_statement;
   MyliteAstExplainStatement *explain_statement;
   MyliteAstShowStatement *show_statement;
+  MyliteAstLockStatement *lock_statement;
   MyliteAstDeleteStatement *delete_statement;
   MyliteAstInsertStatement *insert_statement;
   MyliteAstReplaceStatement *replace_statement;
@@ -1519,6 +1551,25 @@ static int mylite_ast_set_show_where_filter(
     const MyliteAstNode *like_or_where);
 static void mylite_ast_set_show_limit(MyliteAstShowStatement *show_statement,
                                       const MyliteAstNode *payload);
+static int mylite_ast_set_lock_statement_view(MyliteAst *ast,
+                                              MyliteAstStatement *statement,
+                                              const MyliteAstNode *payload);
+static MyliteLockStatementKind mylite_ast_classify_lock_statement(
+    const char *symbol_name, const MyliteAstNode *payload);
+static int mylite_ast_set_lock_table_locks(
+    MyliteAst *ast, MyliteAstLockStatement *lock_statement,
+    const MyliteAstNode *payload);
+static size_t mylite_ast_count_table_locks(const MyliteAstNode *node);
+static int mylite_ast_fill_table_locks(
+    MyliteAst *ast, MyliteAstTableLock *table_locks, size_t table_lock_count,
+    const MyliteAstNode *node, size_t *index);
+static int mylite_ast_fill_table_lock(MyliteAst *ast,
+                                      MyliteAstTableLock *table_lock,
+                                      const MyliteAstNode *node);
+static MyliteTableLockMode mylite_ast_table_lock_mode(
+    const MyliteAstNode *node);
+static const MyliteAstNode *mylite_ast_table_lock_alias_node(
+    const MyliteAstNode *node);
 static int mylite_ast_set_prepared_statement_name_value(
     MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
     size_t *name_end, const char **name_value, size_t *name_value_length);
@@ -2367,6 +2418,44 @@ const char *mylite_show_scope_name(MyliteShowScope scope) {
       return "global";
     case MYLITE_SHOW_SCOPE_SESSION:
       return "session";
+  }
+  return "unknown";
+}
+
+const char *mylite_lock_statement_kind_name(MyliteLockStatementKind kind) {
+  switch (kind) {
+    case MYLITE_LOCK_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_LOCK_STATEMENT_LOCK_TABLES:
+      return "lock_tables";
+    case MYLITE_LOCK_STATEMENT_UNLOCK_TABLES:
+      return "unlock_tables";
+    case MYLITE_LOCK_STATEMENT_LOCK_INSTANCE:
+      return "lock_instance";
+    case MYLITE_LOCK_STATEMENT_UNLOCK_INSTANCE:
+      return "unlock_instance";
+    case MYLITE_LOCK_STATEMENT_LOCK_STATS:
+      return "lock_stats";
+    case MYLITE_LOCK_STATEMENT_UNLOCK_STATS:
+      return "unlock_stats";
+  }
+  return "unknown";
+}
+
+const char *mylite_table_lock_mode_name(MyliteTableLockMode mode) {
+  switch (mode) {
+    case MYLITE_TABLE_LOCK_MODE_UNKNOWN:
+      return "unknown";
+    case MYLITE_TABLE_LOCK_MODE_READ:
+      return "read";
+    case MYLITE_TABLE_LOCK_MODE_READ_LOCAL:
+      return "read_local";
+    case MYLITE_TABLE_LOCK_MODE_WRITE:
+      return "write";
+    case MYLITE_TABLE_LOCK_MODE_WRITE_LOCAL:
+      return "write_local";
+    case MYLITE_TABLE_LOCK_MODE_LOW_PRIORITY_WRITE:
+      return "low_priority_write";
   }
   return "unknown";
 }
@@ -3600,6 +3689,13 @@ const MyliteAstShowStatement *mylite_ast_show_statement_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->show_statement;
+}
+
+const MyliteAstLockStatement *mylite_ast_lock_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->lock_statement;
 }
 
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
@@ -6716,6 +6812,110 @@ size_t mylite_ast_show_statement_view_limit_start(
 size_t mylite_ast_show_statement_view_limit_end(
     const MyliteAstShowStatement *show_statement) {
   return show_statement == NULL ? 0 : show_statement->limit_end;
+}
+
+const MyliteAstNode *mylite_ast_lock_statement_view_node(
+    const MyliteAstLockStatement *lock_statement) {
+  return lock_statement == NULL ? NULL : lock_statement->node;
+}
+
+size_t mylite_ast_lock_statement_view_start(
+    const MyliteAstLockStatement *lock_statement) {
+  return lock_statement == NULL ? 0 : lock_statement->start;
+}
+
+size_t mylite_ast_lock_statement_view_end(
+    const MyliteAstLockStatement *lock_statement) {
+  return lock_statement == NULL ? 0 : lock_statement->end;
+}
+
+MyliteLockStatementKind mylite_ast_lock_statement_view_kind(
+    const MyliteAstLockStatement *lock_statement) {
+  return lock_statement == NULL ? MYLITE_LOCK_STATEMENT_UNKNOWN
+                                : lock_statement->kind;
+}
+
+size_t mylite_ast_lock_statement_view_table_lock_count(
+    const MyliteAstLockStatement *lock_statement) {
+  return lock_statement == NULL ? 0 : lock_statement->table_lock_count;
+}
+
+const MyliteAstTableLock *mylite_ast_lock_statement_view_table_lock_at(
+    const MyliteAstLockStatement *lock_statement, size_t table_lock_index) {
+  return lock_statement == NULL ||
+                 table_lock_index >= lock_statement->table_lock_count
+             ? NULL
+             : &lock_statement->table_locks[table_lock_index];
+}
+
+const MyliteAstNode *mylite_ast_table_lock_view_node(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? NULL : table_lock->node;
+}
+
+size_t mylite_ast_table_lock_view_start(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? 0 : table_lock->start;
+}
+
+size_t mylite_ast_table_lock_view_end(const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? 0 : table_lock->end;
+}
+
+MyliteTableLockMode mylite_ast_table_lock_view_mode(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? MYLITE_TABLE_LOCK_MODE_UNKNOWN
+                            : table_lock->mode;
+}
+
+size_t mylite_ast_table_lock_view_table_start(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? 0 : table_lock->table_start;
+}
+
+size_t mylite_ast_table_lock_view_table_end(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? 0 : table_lock->table_end;
+}
+
+const char *mylite_ast_table_lock_view_table_schema_value(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? NULL : table_lock->table_schema_value;
+}
+
+size_t mylite_ast_table_lock_view_table_schema_value_length(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? 0 : table_lock->table_schema_value_length;
+}
+
+const char *mylite_ast_table_lock_view_table_name_value(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? NULL : table_lock->table_name_value;
+}
+
+size_t mylite_ast_table_lock_view_table_name_value_length(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? 0 : table_lock->table_name_value_length;
+}
+
+size_t mylite_ast_table_lock_view_alias_start(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? 0 : table_lock->alias_start;
+}
+
+size_t mylite_ast_table_lock_view_alias_end(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? 0 : table_lock->alias_end;
+}
+
+const char *mylite_ast_table_lock_view_alias_value(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? NULL : table_lock->alias_value;
+}
+
+size_t mylite_ast_table_lock_view_alias_value_length(
+    const MyliteAstTableLock *table_lock) {
+  return table_lock == NULL ? 0 : table_lock->alias_value_length;
 }
 
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
@@ -10361,6 +10561,13 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   }
   if (strcmp(statement->symbol_name, "nt_show_stmt") == 0) {
     return mylite_ast_set_show_statement_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_lock_tables_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_unlock_tables_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_lock_instance_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_lock_stats_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_unlock_stats_stmt") == 0) {
+    return mylite_ast_set_lock_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_set_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_set_role_stmt") == 0 ||
@@ -14597,6 +14804,198 @@ static void mylite_ast_set_show_limit(MyliteAstShowStatement *show_statement,
   }
   show_statement->limit_start = mylite_ast_node_start(limit);
   show_statement->limit_end = mylite_ast_node_end(limit);
+}
+
+static int mylite_ast_set_lock_statement_view(MyliteAst *ast,
+                                              MyliteAstStatement *statement,
+                                              const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstLockStatement *lock_statement =
+      mylite_ast_alloc(ast, sizeof(*lock_statement));
+  if (lock_statement == NULL) {
+    return 0;
+  }
+  lock_statement->node = payload == NULL ? statement->node : payload;
+  lock_statement->start = mylite_ast_node_start(lock_statement->node);
+  lock_statement->end = mylite_ast_node_end(lock_statement->node);
+  lock_statement->kind =
+      mylite_ast_classify_lock_statement(statement->symbol_name,
+                                         lock_statement->node);
+  if (!mylite_ast_set_lock_table_locks(ast, lock_statement,
+                                       lock_statement->node)) {
+    return 0;
+  }
+  statement->lock_statement = lock_statement;
+  return 1;
+}
+
+static MyliteLockStatementKind mylite_ast_classify_lock_statement(
+    const char *symbol_name, const MyliteAstNode *payload) {
+  if (symbol_name == NULL) {
+    return MYLITE_LOCK_STATEMENT_UNKNOWN;
+  }
+  if (strcmp(symbol_name, "nt_lock_tables_stmt") == 0) {
+    return MYLITE_LOCK_STATEMENT_LOCK_TABLES;
+  }
+  if (strcmp(symbol_name, "nt_unlock_tables_stmt") == 0) {
+    return MYLITE_LOCK_STATEMENT_UNLOCK_TABLES;
+  }
+  if (strcmp(symbol_name, "nt_lock_stats_stmt") == 0) {
+    return MYLITE_LOCK_STATEMENT_LOCK_STATS;
+  }
+  if (strcmp(symbol_name, "nt_unlock_stats_stmt") == 0) {
+    return MYLITE_LOCK_STATEMENT_UNLOCK_STATS;
+  }
+  if (strcmp(symbol_name, "nt_mysql_lock_instance_stmt") == 0) {
+    return mylite_ast_find_direct_child_token(payload, MYLITE_TOK_UNLOCK) != NULL
+               ? MYLITE_LOCK_STATEMENT_UNLOCK_INSTANCE
+               : MYLITE_LOCK_STATEMENT_LOCK_INSTANCE;
+  }
+  return MYLITE_LOCK_STATEMENT_UNKNOWN;
+}
+
+static int mylite_ast_set_lock_table_locks(
+    MyliteAst *ast, MyliteAstLockStatement *lock_statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || lock_statement == NULL || payload == NULL ||
+      lock_statement->kind != MYLITE_LOCK_STATEMENT_LOCK_TABLES) {
+    return 1;
+  }
+  lock_statement->table_lock_count = mylite_ast_count_table_locks(payload);
+  if (lock_statement->table_lock_count == 0) {
+    return 1;
+  }
+  lock_statement->table_locks =
+      mylite_ast_alloc(ast, lock_statement->table_lock_count *
+                                sizeof(*lock_statement->table_locks));
+  if (lock_statement->table_locks == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  return mylite_ast_fill_table_locks(ast, lock_statement->table_locks,
+                                     lock_statement->table_lock_count, payload,
+                                     &index) &&
+         index == lock_statement->table_lock_count;
+}
+
+static size_t mylite_ast_count_table_locks(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_table_lock") == 0) {
+    return 1;
+  }
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_table_locks(node->children[i]);
+  }
+  return count;
+}
+
+static int mylite_ast_fill_table_locks(
+    MyliteAst *ast, MyliteAstTableLock *table_locks, size_t table_lock_count,
+    const MyliteAstNode *node, size_t *index) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_table_lock") == 0) {
+    if (index == NULL || *index >= table_lock_count ||
+        !mylite_ast_fill_table_lock(ast, &table_locks[*index], node)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_table_locks(ast, table_locks, table_lock_count,
+                                     node->children[i], index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_table_lock(MyliteAst *ast,
+                                      MyliteAstTableLock *table_lock,
+                                      const MyliteAstNode *node) {
+  if (ast == NULL || table_lock == NULL || node == NULL) {
+    return 1;
+  }
+  table_lock->node = node;
+  table_lock->start = mylite_ast_node_start(node);
+  table_lock->end = mylite_ast_node_end(node);
+  table_lock->mode = mylite_ast_table_lock_mode(node);
+  table_lock->table_node = mylite_ast_find_first_symbol(node, "nt_table_name");
+  if (table_lock->table_node != NULL) {
+    table_lock->table_start = mylite_ast_node_start(table_lock->table_node);
+    table_lock->table_end = mylite_ast_node_end(table_lock->table_node);
+    mylite_ast_set_table_name_span_parts(
+        table_lock->table_node, &table_lock->table_schema_start,
+        &table_lock->table_schema_end, &table_lock->table_name_start,
+        &table_lock->table_name_end);
+    if (table_lock->table_schema_start != table_lock->table_schema_end &&
+        !mylite_ast_decode_identifier(
+            ast, table_lock->table_schema_start, table_lock->table_schema_end,
+            &table_lock->table_schema_value,
+            &table_lock->table_schema_value_length)) {
+      return 0;
+    }
+    if (table_lock->table_name_start != table_lock->table_name_end &&
+        !mylite_ast_decode_identifier(
+            ast, table_lock->table_name_start, table_lock->table_name_end,
+            &table_lock->table_name_value,
+            &table_lock->table_name_value_length)) {
+      return 0;
+    }
+  }
+  const MyliteAstNode *alias = mylite_ast_table_lock_alias_node(node);
+  if (alias == NULL) {
+    return 1;
+  }
+  table_lock->alias_start = mylite_ast_node_start(alias);
+  table_lock->alias_end = mylite_ast_node_end(alias);
+  return mylite_ast_decode_identifier(
+      ast, table_lock->alias_start, table_lock->alias_end,
+      &table_lock->alias_value, &table_lock->alias_value_length);
+}
+
+static MyliteTableLockMode mylite_ast_table_lock_mode(
+    const MyliteAstNode *node) {
+  const MyliteAstNode *lock_type =
+      mylite_ast_find_first_symbol(node, "nt_lock_type");
+  if (mylite_ast_find_first_token(lock_type, MYLITE_TOK_LOW_PRIORITY) != NULL) {
+    return MYLITE_TABLE_LOCK_MODE_LOW_PRIORITY_WRITE;
+  }
+  if (mylite_ast_find_first_token(lock_type, MYLITE_TOK_READ) != NULL) {
+    return mylite_ast_find_first_token(lock_type, MYLITE_TOK_LOCAL) != NULL
+               ? MYLITE_TABLE_LOCK_MODE_READ_LOCAL
+               : MYLITE_TABLE_LOCK_MODE_READ;
+  }
+  if (mylite_ast_find_first_token(lock_type, MYLITE_TOK_WRITE) != NULL) {
+    return mylite_ast_find_first_token(lock_type, MYLITE_TOK_LOCAL) != NULL
+               ? MYLITE_TABLE_LOCK_MODE_WRITE_LOCAL
+               : MYLITE_TABLE_LOCK_MODE_WRITE;
+  }
+  return MYLITE_TABLE_LOCK_MODE_UNKNOWN;
+}
+
+static const MyliteAstNode *mylite_ast_table_lock_alias_node(
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return NULL;
+  }
+  if (node->child_count == 4 &&
+      mylite_ast_direct_child_token(node, 1, MYLITE_TOK_AS) != NULL) {
+    return mylite_ast_direct_child_symbol(node, 2, "nt_identifier");
+  }
+  if (node->child_count == 3) {
+    return mylite_ast_direct_child_symbol(node, 1, "nt_identifier");
+  }
+  return NULL;
 }
 
 static int mylite_ast_set_prepared_statement_name_value(

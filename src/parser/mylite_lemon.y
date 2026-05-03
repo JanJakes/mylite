@@ -284,9 +284,7 @@ create_index_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail text_stri
 create_index_option ::= SECONDARY_ENGINE_ATTRIBUTE drop_index_option_equals_tail text_string_literal.
 create_index_option ::= drop_index_option.
 
-index_number_value ::= BOOLEAN_NUMBER.
-index_number_value ::= FACTOR_NUMBER.
-index_number_value ::= NUMBER_LITERAL.
+index_number_value ::= unsigned_decimal_or_lower_hex_value.
 index_number_value ::= STRING_LITERAL(A). {
   mylite_parser_require_quoted_hex_literal(ctx, A);
 }

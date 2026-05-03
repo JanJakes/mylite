@@ -7129,6 +7129,7 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
   enum {
     CREATE_INDEX_OPTION_READY,
     CREATE_INDEX_OPTION_NUMBER,
+    CREATE_INDEX_OPTION_NUMBER_DOT,
     CREATE_INDEX_OPTION_STRING
   };
   MyliteLexer lexer;
@@ -7193,7 +7194,22 @@ void mylite_parser_validate_create_index_statement(MyliteParseContext *ctx,
             index_option_equals = 1;
             continue;
           }
+          if (token_id == ML_DOT) {
+            index_option_state = CREATE_INDEX_OPTION_NUMBER_DOT;
+            continue;
+          }
           if (!create_index_option_number_token(token_id, token)) {
+            mylite_parser_reject(ctx, pending_token,
+                                 "invalid CREATE INDEX option");
+            return;
+          }
+          index_option_state = CREATE_INDEX_OPTION_READY;
+          index_option_equals = 0;
+          continue;
+        }
+        if (index_option_state == CREATE_INDEX_OPTION_NUMBER_DOT) {
+          if (!create_table_tail_option_decimal_fraction_token(token_id,
+                                                               token)) {
             mylite_parser_reject(ctx, pending_token,
                                  "invalid CREATE INDEX option");
             return;
@@ -7518,6 +7534,7 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   enum {
     ALTER_INDEX_OPTION_READY,
     ALTER_INDEX_OPTION_NUMBER,
+    ALTER_INDEX_OPTION_NUMBER_DOT,
     ALTER_INDEX_OPTION_STRING,
     ALTER_INDEX_OPTION_USING,
     ALTER_INDEX_OPTION_AFTER_WITH,
@@ -8090,7 +8107,23 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
           add_index_option_equals = 1;
           continue;
         }
+        if (token_id == ML_DOT) {
+          add_index_option_state = ALTER_INDEX_OPTION_NUMBER_DOT;
+          continue;
+        }
         if (!create_index_option_number_token(token_id, token)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "invalid ALTER TABLE index option");
+          return;
+        }
+        add_index_option_state = ALTER_INDEX_OPTION_READY;
+        add_index_option_equals = 0;
+        continue;
+      }
+
+      if (add_index_option_state == ALTER_INDEX_OPTION_NUMBER_DOT) {
+        if (!create_table_tail_option_decimal_fraction_token(token_id,
+                                                             token)) {
           mylite_parser_reject(ctx, pending_token,
                                "invalid ALTER TABLE index option");
           return;
@@ -15208,8 +15241,9 @@ static int create_index_prefix_length_token(int token_id) {
 }
 
 static int create_index_option_number_token(int token_id, MyliteToken token) {
-  return create_index_prefix_length_token(token_id) ||
-         (token_id == ML_STRING_LITERAL && token_is_quoted_hex_literal(token));
+  return (create_index_prefix_length_token(token_id) ||
+          token_id == ML_STRING_LITERAL) &&
+         token_is_table_option_boolean_number_literal(token);
 }
 
 static int index_using_type_token(MyliteToken token) {

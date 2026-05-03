@@ -221,8 +221,9 @@ token sink:
   `IGNORE UNKNOWN USER`.
 - `CREATE INDEX` recognizes non-empty functional/key-part lists and standalone
   index options including parser plugins, string-literal comments, visibility,
-  string-literal attributes, numeric and quoted-hex `KEY_BLOCK_SIZE`, quoted
-  hex/bit rejection in text-string options, closed `USING`/`TYPE` values, and
+  string-literal attributes, unsigned decimal/lowercase-hex/quoted-hex
+  `KEY_BLOCK_SIZE`, quoted hex/bit rejection in text-string options, closed
+  `USING`/`TYPE` values, and
   identifier-valued `ALGORITHM`/`LOCK` with duplicate option rejection,
   while validating standalone key-part prefix lengths and `ASC`/`DESC` tails.
 - `CREATE TABLE` table-definition bodies require non-empty comma-separated
@@ -328,8 +329,9 @@ token sink:
   column-level `CONSTRAINT CHECK` restriction, `DEFAULT` charset/collation
   value rejection, storage modifier context and repetition checks, standalone
   reserved index/constraint names, index key-part prefix lengths,
-  `ASC`/`DESC` tails, and index option values including quoted-hex
-  `KEY_BLOCK_SIZE` values and closed index `USING`/`TYPE` values. `ADD FOREIGN KEY` child lists, referenced table names,
+  `ASC`/`DESC` tails, and index option values including unsigned
+  decimal/lowercase-hex/quoted-hex `KEY_BLOCK_SIZE` values and closed index
+  `USING`/`TYPE` values. `ADD FOREIGN KEY` child lists, referenced table names,
   optional parent column-list envelopes, and referential-action tails are also
   validated, including duplicate `MATCH`/`ON UPDATE`/`ON DELETE` rejection and MySQL's
   `MATCH`-before-actions order, and `ADD CHECK`

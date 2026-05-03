@@ -177,13 +177,15 @@ static void set_parser_error(MyliteParseContext *ctx, const MyliteToken *token,
 static void format_near_token(MyliteParseContext *ctx, int token_id,
                               const MyliteToken *token);
 static void validate_select_statement_from(MyliteParseContext *ctx,
-                                           int use_start, MyliteToken start);
+                                           int use_start, MyliteToken start,
+                                           int stop_at_insert_duplicate);
 static void validate_select_list_tails_from(MyliteParseContext *ctx,
                                             int use_start, MyliteToken start,
                                             int stop_at_insert_duplicate);
 static void validate_table_statement_from(MyliteParseContext *ctx,
                                           MyliteToken start,
-                                          int parenthesized_boundary);
+                                          int parenthesized_boundary,
+                                          int stop_at_insert_duplicate);
 static int select_clause_requires_by(int token_id);
 static int select_clause_requires_operand(int token_id);
 static int select_from_starts_nth_modifier(MyliteParseContext *ctx,
@@ -205,6 +207,9 @@ static int select_set_option(int token_id);
 static int select_set_operand_start(int token_id);
 static void validate_parenthesized_query_body_from(MyliteParseContext *ctx,
                                                    MyliteToken start);
+static void validate_parenthesized_statement_from(
+    MyliteParseContext *ctx, MyliteToken start,
+    int stop_at_insert_duplicate);
 static void validate_query_set_operand_after_operator_from(
     MyliteParseContext *ctx, MyliteToken start, const char *message);
 static int parenthesized_query_order_boundary(int token_id);
@@ -274,13 +279,15 @@ static int expression_start_follows_double_at_assignment(
     MyliteParseContext *ctx, MyliteToken start);
 static void validate_with_statement_from(MyliteParseContext *ctx,
                                          MyliteToken start,
-                                         const char *message);
+                                         const char *message,
+                                         int stop_at_insert_duplicate);
 static void validate_with_cte_body_from(MyliteParseContext *ctx,
                                         MyliteToken start);
 static void validate_query_body_after_optional_as_from(MyliteParseContext *ctx,
                                                        MyliteToken start);
 static void validate_query_body_from(MyliteParseContext *ctx, int token_id,
-                                     MyliteToken token);
+                                     MyliteToken token,
+                                     int stop_at_insert_duplicate);
 static int with_cte_name_token(int token_id);
 static int with_query_body_start(int token_id);
 static int select_window_name_token(int token_id, MyliteToken token);
@@ -872,7 +879,7 @@ void mylite_parser_record_empty_statement(MyliteParseContext *ctx) {
 
 void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
   MyliteToken start = {0};
-  validate_select_statement_from(ctx, 0, start);
+  validate_select_statement_from(ctx, 0, start, 0);
   if (!ctx->failed) {
     validate_select_list_tails_from(ctx, 0, start, 0);
   }
@@ -880,7 +887,7 @@ void mylite_parser_validate_select_statement(MyliteParseContext *ctx) {
 
 void mylite_parser_validate_select_statement_from(MyliteParseContext *ctx,
                                                   MyliteToken start) {
-  validate_select_statement_from(ctx, 1, start);
+  validate_select_statement_from(ctx, 1, start, 0);
   if (!ctx->failed) {
     validate_select_list_tails_from(ctx, 1, start, 0);
   }
@@ -888,11 +895,12 @@ void mylite_parser_validate_select_statement_from(MyliteParseContext *ctx,
 
 void mylite_parser_validate_table_statement_from(MyliteParseContext *ctx,
                                                  MyliteToken start) {
-  validate_table_statement_from(ctx, start, 0);
+  validate_table_statement_from(ctx, start, 0, 0);
 }
 
 static void validate_select_statement_from(MyliteParseContext *ctx,
-                                           int use_start, MyliteToken start) {
+                                           int use_start, MyliteToken start,
+                                           int stop_at_insert_duplicate) {
   enum {
     SELECT_MODIFIER_ALL = 1 << 0,
     SELECT_MODIFIER_DISTINCT = 1 << 1
@@ -1113,6 +1121,11 @@ static void validate_select_statement_from(MyliteParseContext *ctx,
         }
       }
       continue;
+    }
+
+    if (stop_at_insert_duplicate && token_id == ML_ON &&
+        insert_duplicate_clause_follows(ctx, token)) {
+      break;
     }
 
     if (select_prefix) {
@@ -2550,7 +2563,8 @@ static void validate_select_list_tails_from(MyliteParseContext *ctx,
 
 static void validate_table_statement_from(MyliteParseContext *ctx,
                                           MyliteToken start,
-                                          int parenthesized_boundary) {
+                                          int parenthesized_boundary,
+                                          int stop_at_insert_duplicate) {
   enum {
     TABLE_AFTER_TABLE,
     TABLE_AFTER_NAME,
@@ -2649,6 +2663,10 @@ static void validate_table_statement_from(MyliteParseContext *ctx,
     }
 
     if (state == TABLE_AFTER_TARGET) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        return;
+      }
       if (select_set_operator(token_id)) {
         mylite_parser_validate_select_statement_from(ctx, token);
         return;
@@ -2698,6 +2716,14 @@ static void validate_table_statement_from(MyliteParseContext *ctx,
     }
 
     if (state == TABLE_IN_ORDER_EXPR) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(ctx, order_previous_top_token,
+                               "incomplete TABLE ORDER BY clause");
+        }
+        return;
+      }
       if (token_id == ML_COMMA || token_id == ML_LIMIT || token_id == ML_INTO ||
           select_set_operator(token_id)) {
         if (order_previous_was_operator) {
@@ -2746,6 +2772,10 @@ static void validate_table_statement_from(MyliteParseContext *ctx,
     }
 
     if (state == TABLE_AFTER_ORDER_DIRECTION) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        return;
+      }
       if (token_id == ML_COMMA) {
         state = TABLE_AFTER_ORDER_BY;
         pending_token = token;
@@ -2784,6 +2814,10 @@ static void validate_table_statement_from(MyliteParseContext *ctx,
     }
 
     if (state == TABLE_AFTER_LIMIT_VALUE) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        return;
+      }
       if (token_id == ML_COMMA) {
         state = TABLE_AFTER_LIMIT_COMMA;
         pending_token = token;
@@ -2808,6 +2842,10 @@ static void validate_table_statement_from(MyliteParseContext *ctx,
     }
 
     if (state == TABLE_AFTER_LIMIT_FINAL_VALUE) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        return;
+      }
       if (token_id == ML_INTO) {
         state = TABLE_AFTER_INTO;
         pending_token = token;
@@ -2864,6 +2902,10 @@ static void validate_table_statement_from(MyliteParseContext *ctx,
     }
 
     if (state == TABLE_AFTER_INTO_TARGET) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        return;
+      }
       if (token_id == ML_COMMA) {
         state = TABLE_AFTER_INTO;
         pending_token = token;
@@ -2893,6 +2935,12 @@ static void validate_table_statement_from(MyliteParseContext *ctx,
 
 void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
                                                     MyliteToken start) {
+  validate_parenthesized_statement_from(ctx, start, 0);
+}
+
+static void validate_parenthesized_statement_from(
+    MyliteParseContext *ctx, MyliteToken start,
+    int stop_at_insert_duplicate) {
   enum {
     PAREN_QUERY_IN_BODY,
     PAREN_QUERY_AFTER_RP,
@@ -2987,6 +3035,10 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     }
 
     if (state == PAREN_QUERY_AFTER_RP) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        return;
+      }
       if (select_set_operator(token_id)) {
         validate_query_set_operand_after_operator_from(
             ctx, token, "incomplete parenthesized query expression");
@@ -3037,6 +3089,14 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     }
 
     if (state == PAREN_QUERY_AFTER_ORDER_EXPR) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        if (order_previous_was_operator) {
+          mylite_parser_reject(ctx, order_previous_top_token,
+                               "incomplete parenthesized query ORDER BY");
+        }
+        return;
+      }
       if (parenthesized_query_order_boundary(token_id)) {
         if (order_previous_was_operator) {
           mylite_parser_reject(ctx, order_previous_top_token,
@@ -3086,6 +3146,10 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     }
 
     if (state == PAREN_QUERY_AFTER_ORDER_DIRECTION) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        return;
+      }
       if (token_id == ML_COMMA) {
         state = PAREN_QUERY_AFTER_ORDER_BY;
         pending_token = token;
@@ -3124,6 +3188,10 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     }
 
     if (state == PAREN_QUERY_AFTER_LIMIT_VALUE) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        return;
+      }
       if (token_id == ML_COMMA) {
         state = PAREN_QUERY_AFTER_LIMIT_COMMA;
         pending_token = token;
@@ -3145,6 +3213,10 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     }
 
     if (state == PAREN_QUERY_AFTER_LIMIT_FINAL_VALUE) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        return;
+      }
       if (token_id == ML_INTO) {
         state = PAREN_QUERY_AFTER_INTO;
         pending_token = token;
@@ -3196,6 +3268,10 @@ void mylite_parser_validate_parenthesized_statement(MyliteParseContext *ctx,
     }
 
     if (state == PAREN_QUERY_AFTER_INTO_TARGET) {
+      if (stop_at_insert_duplicate && token_id == ML_ON &&
+          insert_duplicate_clause_follows(ctx, token)) {
+        return;
+      }
       if (token_id == ML_COMMA) {
         state = PAREN_QUERY_AFTER_INTO;
         pending_token = token;
@@ -3483,7 +3559,7 @@ static void validate_query_set_operand_after_operator_from(
       return;
     }
 
-    validate_query_body_from(ctx, token_id, token);
+    validate_query_body_from(ctx, token_id, token, 0);
     return;
   }
 
@@ -3527,7 +3603,7 @@ static void validate_parenthesized_query_body_from(MyliteParseContext *ctx,
           return;
         }
       } else if (!query_validated && token_id == ML_TABLE) {
-        validate_table_statement_from(ctx, token, 1);
+        validate_table_statement_from(ctx, token, 1, 0);
         if (ctx->failed) {
           return;
         }
@@ -4585,6 +4661,12 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
       continue;
     }
 
+    if (kind == MYLITE_STATEMENT_REPLACE && token_id == ML_ON &&
+        insert_duplicate_clause_follows(ctx, token)) {
+      mylite_parser_reject(ctx, token, "malformed REPLACE query tail");
+      return;
+    }
+
     if (kind == MYLITE_STATEMENT_INSERT && token_id == ML_ON) {
       duplicate_state = DML_DUP_AFTER_ON;
       duplicate_strict = payload_kind != DML_PAYLOAD_QUERY;
@@ -4638,11 +4720,18 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
         (token_id == ML_SELECT || token_id == ML_TABLE ||
          token_id == ML_WITH)) {
       if (token_id == ML_SELECT) {
-        validate_select_list_tails_from(ctx, 1, token, 1);
+        validate_select_statement_from(ctx, 1, token,
+                                       kind == MYLITE_STATEMENT_INSERT);
+        if (!ctx->failed) {
+          validate_select_list_tails_from(ctx, 1, token,
+                                          kind == MYLITE_STATEMENT_INSERT);
+        }
       } else if (token_id == ML_TABLE) {
-        mylite_parser_validate_table_statement_from(ctx, token);
+        validate_table_statement_from(ctx, token, 0,
+                                      kind == MYLITE_STATEMENT_INSERT);
       } else {
-        mylite_parser_validate_with_statement_from(ctx, token);
+        validate_with_statement_from(ctx, token, "incomplete WITH clause",
+                                     kind == MYLITE_STATEMENT_INSERT);
       }
       if (ctx->failed) {
         return;
@@ -6133,13 +6222,13 @@ void mylite_parser_validate_explain_statement(MyliteParseContext *ctx,
 
     if (token_id == ML_WITH) {
       validate_with_statement_from(ctx, token,
-                                   "incomplete EXPLAIN WITH clause");
+                                   "incomplete EXPLAIN WITH clause", 0);
       return;
     }
     if (token_id == ML_SELECT || token_id == ML_TABLE || token_id == ML_LP ||
         token_id == ML_DELETE || token_id == ML_INSERT ||
         token_id == ML_REPLACE || token_id == ML_UPDATE) {
-      validate_query_body_from(ctx, token_id, token);
+      validate_query_body_from(ctx, token_id, token, 0);
       return;
     }
 
@@ -6151,12 +6240,13 @@ void mylite_parser_validate_explain_statement(MyliteParseContext *ctx,
 
 void mylite_parser_validate_with_statement_from(MyliteParseContext *ctx,
                                                 MyliteToken start) {
-  validate_with_statement_from(ctx, start, "incomplete WITH clause");
+  validate_with_statement_from(ctx, start, "incomplete WITH clause", 0);
 }
 
 static void validate_with_statement_from(MyliteParseContext *ctx,
                                          MyliteToken start,
-                                         const char *message) {
+                                         const char *message,
+                                         int stop_at_insert_duplicate) {
   enum {
     WITH_AFTER_WITH,
     WITH_AFTER_RECURSIVE,
@@ -6278,7 +6368,8 @@ static void validate_with_statement_from(MyliteParseContext *ctx,
         continue;
       }
       if (with_query_body_start(token_id)) {
-        validate_query_body_from(ctx, token_id, token);
+        validate_query_body_from(ctx, token_id, token,
+                                 stop_at_insert_duplicate);
         return;
       }
       mylite_parser_reject(ctx, pending_token, message);
@@ -6329,7 +6420,7 @@ static void validate_with_cte_body_from(MyliteParseContext *ctx,
           return;
         }
       } else if (token_id == ML_TABLE) {
-        validate_table_statement_from(ctx, token, 1);
+        validate_table_statement_from(ctx, token, 1, 0);
         if (ctx->failed) {
           return;
         }
@@ -6359,28 +6450,39 @@ static void validate_with_cte_body_from(MyliteParseContext *ctx,
 }
 
 static void validate_query_body_from(MyliteParseContext *ctx, int token_id,
-                                     MyliteToken token) {
+                                     MyliteToken token,
+                                     int stop_at_insert_duplicate) {
   if (token_id == ML_SELECT) {
-    mylite_parser_validate_select_statement_from(ctx, token);
+    validate_select_statement_from(ctx, 1, token, stop_at_insert_duplicate);
+    if (!ctx->failed) {
+      validate_select_list_tails_from(ctx, 1, token,
+                                      stop_at_insert_duplicate);
+    }
     return;
   }
   if (token_id == ML_TABLE) {
-    mylite_parser_validate_table_statement_from(ctx, token);
+    validate_table_statement_from(ctx, token, 0, stop_at_insert_duplicate);
     return;
   }
   if (token_id == ML_VALUES) {
     mylite_parser_validate_values_statement_from(ctx, token);
     if (!ctx->failed) {
-      mylite_parser_validate_select_statement_from(ctx, token);
+      validate_select_statement_from(ctx, 1, token, stop_at_insert_duplicate);
+      if (!ctx->failed) {
+        validate_select_list_tails_from(ctx, 1, token,
+                                        stop_at_insert_duplicate);
+      }
     }
     return;
   }
   if (token_id == ML_WITH) {
-    mylite_parser_validate_with_statement_from(ctx, token);
+    validate_with_statement_from(ctx, token, "incomplete WITH clause",
+                                 stop_at_insert_duplicate);
     return;
   }
   if (token_id == ML_LP) {
-    mylite_parser_validate_parenthesized_statement(ctx, token);
+    validate_parenthesized_statement_from(ctx, token,
+                                          stop_at_insert_duplicate);
     return;
   }
   if (token_id == ML_DELETE) {
@@ -6428,7 +6530,7 @@ static void validate_query_body_after_optional_as_from(MyliteParseContext *ctx,
       return;
     }
     if (with_query_body_start(token_id)) {
-      validate_query_body_from(ctx, token_id, token);
+      validate_query_body_from(ctx, token_id, token, 0);
       return;
     }
     return;
@@ -10229,7 +10331,7 @@ void mylite_parser_validate_view_statement(MyliteParseContext *ctx,
         continue;
       }
       if (token_id == ML_SELECT || token_id == ML_WITH) {
-        validate_query_body_from(ctx, token_id, token);
+        validate_query_body_from(ctx, token_id, token, 0);
       }
       return;
     }
@@ -11093,6 +11195,10 @@ static void validate_select_list_tail_from(MyliteParseContext *ctx,
 
     if (stop_at_insert_duplicate && token_id == ML_ON &&
         insert_duplicate_clause_follows(ctx, token)) {
+      if (previous_was_operator) {
+        mylite_parser_reject(ctx, previous_top_token,
+                             "incomplete SELECT expression clause");
+      }
       goto done;
     }
 

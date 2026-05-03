@@ -80,11 +80,13 @@ token sink:
   `VALUE(S)`/`SET` row aliases,
   direct query payload `SELECT` list tails, parenthesized query payload
   `SELECT`/`WITH`/`TABLE`/`VALUES` expression tails plus outer `ORDER BY` and
-  MySQL-shaped `LIMIT` suffixes, malformed `SELECT` operands after set
-  operators, and
-  `ON DUPLICATE KEY UPDATE` assignment tails including whole-value `DEFAULT`,
-  malformed post-value continuations, and stray top-level `SELECT`/`FROM`
-  suffixes after assignment values.
+  MySQL-shaped `LIMIT` suffixes, CTE-backed `INSERT` query payloads,
+  malformed `SELECT` operands after set operators, and
+  `ON DUPLICATE KEY UPDATE` assignment tails after value, set, direct query,
+  parenthesized query, and CTE-backed query payloads including whole-value
+  `DEFAULT`, malformed post-value continuations, dangling select-list operands
+  before duplicate-key tails, unsupported `REPLACE` duplicate-key tails, and
+  stray top-level `SELECT`/`FROM` suffixes after assignment values.
 - Single-table `UPDATE` validates `SET` assignment lists, malformed top-level
   assignment value adjacent operands and dangling operators, adjacent operands,
   dangling operators, and trailing separators inside plain parenthesized
@@ -125,7 +127,9 @@ token sink:
   validators used by top-level `SELECT`, `TABLE`, `VALUES`, parenthesized query,
   and MySQL-supported `UPDATE`/`DELETE` bodies. Top-level `WITH ... INSERT` and
   `WITH ... REPLACE` are rejected, while `INSERT`/`REPLACE ... WITH ... SELECT`
-  payloads remain valid. CTE bodies must begin with a query expression
+  payloads remain valid and `INSERT ... WITH ...` duplicate-key continuations
+  are handled after `SELECT`, `TABLE`, `VALUES`, and parenthesized query
+  payloads. CTE bodies must begin with a query expression
   (`SELECT`, `TABLE`, `VALUES`, nested `WITH`, or parenthesized forms), and DML
   bodies inside a CTE are rejected.
 - Top-level `SELECT` recognizes `SQL_NO_CACHE` as a deprecated MySQL 8.4

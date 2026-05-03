@@ -3573,7 +3573,7 @@ dml_write_payload ::= LP dml_write_query_start dml_write_parenthesized_query_tai
 dml_write_payload ::= SET update_assignment_start.
 dml_write_payload ::= SELECT select_tail.
 dml_write_payload ::= TABLE table_statement_target table_query_tail.
-dml_write_payload ::= WITH with_recursive_tail with_cte_list with_query_body.
+dml_write_payload ::= WITH with_recursive_tail with_cte_list dml_write_with_query_start required_statement_tail.
 dml_write_payload ::= dml_write_partition_clause dml_write_payload.
 dml_write_payload ::= dml_write_start required_statement_tail.
 [INTO]
@@ -3609,6 +3609,11 @@ dml_write_query_start ::= SELECT.
 dml_write_query_start ::= TABLE.
 dml_write_query_start ::= VALUES.
 dml_write_query_start ::= WITH.
+
+dml_write_with_query_start ::= LP.
+dml_write_with_query_start ::= SELECT.
+dml_write_with_query_start ::= TABLE.
+dml_write_with_query_start ::= VALUES.
 
 dml_write_parenthesized_query_tail ::= .
 dml_write_parenthesized_query_tail ::= dml_write_parenthesized_query_tail dml_write_parenthesized_query_token.

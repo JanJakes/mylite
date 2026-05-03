@@ -103,9 +103,11 @@ by common scalar expressions:
 - string functions: `CONCAT`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`,
   `CHARACTER_LENGTH`, `LOWER`, `LCASE`, `UPPER`, `UCASE`, `LEFT`, `RIGHT`,
   `REPLACE`, `CONCAT_WS`, `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`,
-  `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, and `INSTR`; see
+  `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, `INSTR`, `REPEAT`,
+  `SPACE`, `REVERSE`, `LPAD`, and `RPAD`; see
   `docs/specs/string-functions-substring-trim/specs.md` and
-  `docs/specs/string-search-code-functions/specs.md`
+  `docs/specs/string-search-code-functions/specs.md` and
+  `docs/specs/string-padding-repeat-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`, and
   `PI`
 - conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and
@@ -121,6 +123,7 @@ runtime tests for scalar rows, NULL propagation, UTF-8 length and substring
 handling, zero and negative `LEFT`/`RIGHT` counts, `SUBSTRING` `FROM` / `FOR`
 syntax, trim direction syntax, byte-based `ASCII`, packed-byte `ORD`,
 `LOCATE` / `POSITION` / `INSTR` search positions, start-position edges,
+padding, repetition, spaces, UTF-8 reversal, empty pad strings,
 `MOD(..., 0)` warnings, table projection, filters, ordering, update assignment
 expressions, delete predicates, unsupported functions, unsupported arity, and
 selected result metadata.
@@ -239,7 +242,10 @@ Representative runtime results with `SET NAMES utf8mb4`:
 | `REPLACE('a.b.b', 'b', 'x')` | `a.x.x` |
 | `REPEAT('xy', 3)` | `xyxyxy` |
 | `REPEAT('xy', -1)` | empty string |
+| `SPACE(3)` | three spaces |
+| `REVERSE('海豚猫')` | `猫豚海` |
 | `LPAD('hi', 5, '.')` | `...hi` |
+| `RPAD('hi', 5, '.')` | `hi...` |
 | `TRIM(BOTH 'x' FROM 'xxhix')` | `hi` |
 | `TRIM(LEADING 'x' FROM 'xxhix')` | `hix` |
 | `LOWER('AbC')` | `abc` |

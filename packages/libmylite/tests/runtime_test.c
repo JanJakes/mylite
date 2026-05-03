@@ -2388,6 +2388,31 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
         {"instr_value", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"repeat_value", NULL, NULL, NULL, NULL, NULL, 24U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"space_value", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"reverse_value", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"lpad_value", NULL, NULL, NULL, NULL, NULL, 20U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"rpad_value", NULL, NULL, NULL, NULL, NULL, 20U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const struct expected_result_metadata nullable_search_metadata[] = {
         {"ascii_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
@@ -2414,6 +2439,29 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
         {"locate_latin1", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"repeat_latin1", NULL, NULL, NULL, NULL, NULL, 6U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"space_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"reverse_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"lpad_latin1", NULL, NULL, NULL, NULL, NULL, 5U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"rpad_latin1", NULL, NULL, NULL, NULL, NULL, 5U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const char *const edge_columns[] = {
         "left_zero", "left_negative", "right_zero", "right_negative", "replace_empty",
@@ -2498,6 +2546,98 @@ static int test_scalar_builtin_functions_execution(void)
         "0",  NULL, "65", "230", "0", NULL, "65", "15119799", "3", "0", "1", "5", "0", "0", "0",
         NULL, NULL, "2",  "3",   "0", "2",  "6",  "0",        "3", "0", "1", "1", "3", "0", "2",
     };
+    static const char *const padding_columns[] = {
+        "repeat_three",
+        "repeat_zero",
+        "repeat_negative",
+        "repeat_empty_source",
+        "repeat_null_source",
+        "repeat_null_count",
+        "space_three_len",
+        "space_zero",
+        "space_negative",
+        "space_null",
+        "reverse_ascii",
+        "reverse_utf8",
+        "reverse_null",
+        "lpad_value",
+        "rpad_value",
+        "lpad_truncate",
+        "rpad_truncate",
+        "lpad_one",
+        "rpad_one",
+        "lpad_zero",
+        "rpad_zero",
+        "lpad_negative",
+        "rpad_negative",
+        "lpad_empty_pad",
+        "rpad_empty_pad",
+        "lpad_empty_pad_truncate",
+        "rpad_empty_pad_truncate",
+        "lpad_null_source",
+        "lpad_null_len",
+        "lpad_null_pad",
+        "rpad_null_source",
+        "rpad_null_len",
+        "rpad_null_pad",
+        "rpad_utf8",
+        "lpad_utf8",
+        "repeat_round_down",
+        "repeat_round_up",
+        "space_round_up_len",
+        "lpad_round_up",
+        "rpad_round_down",
+        "repeat_string_count",
+        "space_string_count",
+        "lpad_string_len",
+        "rpad_string_len",
+    };
+    static const char *const padding_values[] = {
+        "ababab",
+        "",
+        "",
+        "",
+        NULL,
+        NULL,
+        "3",
+        "",
+        "",
+        NULL,
+        "cba",
+        "\xE7\x8C\xAB\xE8\xB1\x9A\xE6\xB5\xB7",
+        NULL,
+        "...hi",
+        "hi...",
+        "abc",
+        "abc",
+        "h",
+        "h",
+        "",
+        "",
+        NULL,
+        NULL,
+        "",
+        "",
+        "abc",
+        "abc",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "\xE6\xB5\xB7\xE8\xB1\x9A\xE7\x8C\xAB",
+        "\xE8\xB1\x9A\xE7\x8C\xAB\xE6\xB5\xB7",
+        "xx",
+        "xxx",
+        "3",
+        "..a",
+        "a.",
+        "xx",
+        "2",
+        ".a",
+        "a.",
+    };
     static const char *const abs_in_columns[] = {"abs_in"};
     static const char *const abs_in_values[] = {"1"};
     static const char *const projection_columns[] = {"id", "title"};
@@ -2512,6 +2652,12 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const search_projection_values[] = {
         "2", "66", "66", "4", "3", "1", "97", "97", "1", "0",
     };
+    static const char *const padding_projection_columns[] = {"id",       "repeated",  "reversed",
+                                                             "left_pad", "right_pad", "gap"};
+    static const char *const padding_projection_values[] = {
+        "1", "aaa", "ahpla", "..alpha", "alpha..", " ",
+        "2", "BBB", "ateB",  "...Beta", "Beta...", "  ",
+    };
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
     static const char *const id_2[] = {"2"};
@@ -2520,6 +2666,7 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const id_s_n_columns[] = {"id", "s", "n"};
     static const char *const updated_values[] = {"2", "beta", "2"};
     static const char *const updated_string_values[] = {"2", "x-be", "2"};
+    static const char *const updated_padding_values[] = {"2", "x-be", "6"};
     static const char *const updated_search_values[] = {"2", "x-be", "120"};
     static const char *const all_id_values[] = {"1", "2", "3"};
     static const char *const remaining_values[] = {"1"};
@@ -2597,7 +2744,12 @@ static int test_scalar_builtin_functions_execution(void)
                             "ORD('\xE6\xB5\xB7') AS ord_value, "
                             "LOCATE('ph', 'alpha') AS locate_value, "
                             "POSITION('ph' IN 'alpha') AS position_value, "
-                            "INSTR('alpha', 'ph') AS instr_value",
+                            "INSTR('alpha', 'ph') AS instr_value, "
+                            "REPEAT('ab', 3) AS repeat_value, "
+                            "SPACE(3) AS space_value, "
+                            "REVERSE('abc') AS reverse_value, "
+                            "LPAD('hi', 5, '.') AS lpad_value, "
+                            "RPAD('hi', 5, '.') AS rpad_value",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "scalar function metadata");
@@ -2625,7 +2777,12 @@ static int test_scalar_builtin_functions_execution(void)
                             "SUBSTRING('abcdef', 2, 3) AS substring_latin1, "
                             "TRIM('  hi  ') AS trim_latin1, "
                             "ASCII('A') AS ascii_latin1, "
-                            "LOCATE('a', 'alpha') AS locate_latin1",
+                            "LOCATE('a', 'alpha') AS locate_latin1, "
+                            "REPEAT('ab', 3) AS repeat_latin1, "
+                            "SPACE(3) AS space_latin1, "
+                            "REVERSE('abc') AS reverse_latin1, "
+                            "LPAD('hi', 5, '.') AS lpad_latin1, "
+                            "RPAD('hi', 5, '.') AS rpad_latin1",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(stmt, latin1_metadata,
                                        (int)(sizeof(latin1_metadata) / sizeof(latin1_metadata[0])),
@@ -2725,6 +2882,62 @@ static int test_scalar_builtin_functions_execution(void)
         search_columns, (int)(sizeof(search_columns) / sizeof(search_columns[0])), search_values, 1,
         "string search and code scalar values");
 
+    failures += expect_select_rows(
+        database,
+        "SELECT REPEAT('ab', 3) AS repeat_three, "
+        "REPEAT('ab', 0) AS repeat_zero, "
+        "REPEAT('ab', -1) AS repeat_negative, "
+        "REPEAT('', 3) AS repeat_empty_source, "
+        "REPEAT(NULL, 3) AS repeat_null_source, "
+        "REPEAT('ab', NULL) AS repeat_null_count, "
+        "LENGTH(SPACE(3)) AS space_three_len, "
+        "SPACE(0) AS space_zero, "
+        "SPACE(-1) AS space_negative, "
+        "SPACE(NULL) AS space_null, "
+        "REVERSE('abc') AS reverse_ascii, "
+        "REVERSE('\xE6\xB5\xB7\xE8\xB1\x9A\xE7\x8C\xAB') AS reverse_utf8, "
+        "REVERSE(NULL) AS reverse_null, "
+        "LPAD('hi', 5, '.') AS lpad_value, "
+        "RPAD('hi', 5, '.') AS rpad_value, "
+        "LPAD('abcdef', 3, '.') AS lpad_truncate, "
+        "RPAD('abcdef', 3, '.') AS rpad_truncate, "
+        "LPAD('hi', 1, '.') AS lpad_one, "
+        "RPAD('hi', 1, '.') AS rpad_one, "
+        "LPAD('hi', 0, '.') AS lpad_zero, "
+        "RPAD('hi', 0, '.') AS rpad_zero, "
+        "LPAD('hi', -1, '.') AS lpad_negative, "
+        "RPAD('hi', -1, '.') AS rpad_negative, "
+        "LPAD('hi', 5, '') AS lpad_empty_pad, "
+        "RPAD('hi', 5, '') AS rpad_empty_pad, "
+        "LPAD('abcdef', 3, '') AS lpad_empty_pad_truncate, "
+        "RPAD('abcdef', 3, '') AS rpad_empty_pad_truncate, "
+        "LPAD(NULL, 5, '.') AS lpad_null_source, "
+        "LPAD('hi', NULL, '.') AS lpad_null_len, "
+        "LPAD('hi', 5, NULL) AS lpad_null_pad, "
+        "RPAD(NULL, 5, '.') AS rpad_null_source, "
+        "RPAD('hi', NULL, '.') AS rpad_null_len, "
+        "RPAD('hi', 5, NULL) AS rpad_null_pad, "
+        "RPAD('\xE6\xB5\xB7', 3, '\xE8\xB1\x9A\xE7\x8C\xAB') AS rpad_utf8, "
+        "LPAD('\xE6\xB5\xB7', 3, '\xE8\xB1\x9A\xE7\x8C\xAB') AS lpad_utf8, "
+        "REPEAT('x', 2.4) AS repeat_round_down, "
+        "REPEAT('x', 2.5) AS repeat_round_up, "
+        "LENGTH(SPACE(2.5)) AS space_round_up_len, "
+        "LPAD('a', 2.5, '.') AS lpad_round_up, "
+        "RPAD('a', 2.4, '.') AS rpad_round_down, "
+        "REPEAT('x', '2.5') AS repeat_string_count, "
+        "LENGTH(SPACE('2.5')) AS space_string_count, "
+        "LPAD('a', '2.5', '.') AS lpad_string_len, "
+        "RPAD('a', '2.5', '.') AS rpad_string_len",
+        padding_columns, (int)(sizeof(padding_columns) / sizeof(padding_columns[0])),
+        padding_values, 1, "string padding and repeat scalar values");
+    failures +=
+        expect_int(mylite_warning_count(database), 4, "string padding coercion warning count");
+    for (int index = 0; index < 4; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "string padding coercion warning code");
+    }
+
     failures += expect_select_rows(database, "SELECT ABS(1 IN (1)) AS abs_in", abs_in_columns, 1,
                                    abs_in_values, 1, "function IN predicate argument");
 
@@ -2779,6 +2992,21 @@ static int test_scalar_builtin_functions_execution(void)
                                    1, n_1, 1, "locate function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE INSTR(s, 'ta')=3", id_column,
                                    1, id_2, 1, "instr function where");
+    failures += expect_select_rows(database,
+                                   "SELECT id, REPEAT(LEFT(s, 1), 3) AS repeated, "
+                                   "REVERSE(s) AS reversed, LPAD(s, 7, '.') AS left_pad, "
+                                   "RPAD(s, 7, '.') AS right_pad, SPACE(id) AS gap "
+                                   "FROM t WHERE ISNULL(s)=0 ORDER BY id",
+                                   padding_projection_columns, 6, padding_projection_values, 2,
+                                   "table padding function projection");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE LPAD(s, 5, '.')='alpha'",
+                                   id_column, 1, n_1, 1, "lpad function where");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE REVERSE(s)='ateB'", id_column,
+                                   1, id_2, 1, "reverse function where");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM t WHERE ISNULL(s)=0 ORDER BY REVERSE(s), id "
+                                   "LIMIT 1",
+                                   id_column, 1, n_1, 1, "padding function order");
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY COALESCE(n,0), id LIMIT 1",
                                    id_column, 1, id_2, 1, "table function order");
     failures += expect_select_rows(
@@ -2801,6 +3029,12 @@ static int test_scalar_builtin_functions_execution(void)
         "update string function assignment");
     failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 2", id_s_n_columns,
                                    3, updated_string_values, 1, "updated string function values");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE t SET n = LENGTH(LPAD(s, 6, '.')) WHERE RPAD(s, 5, '.') = 'x-be.'", 1,
+        "update padding function assignment and predicate");
+    failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 2", id_s_n_columns,
+                                   3, updated_padding_values, 1, "updated padding function values");
 
     failures += execute_sql_expect_done_affected(
         database, "UPDATE t SET n = ORD(s) WHERE INSTR(s, 'x-') = 1", 1,
@@ -2840,8 +3074,8 @@ static int test_scalar_builtin_functions_execution(void)
                                    all_id_values, 3, "delete warning predicate unchanged");
 
     failures += execute_sql_expect_done_affected(
-        database, "DELETE FROM t WHERE RTRIM(CONCAT(s, '  ')) = 'x-be'", 1,
-        "delete string function predicate");
+        database, "DELETE FROM t WHERE REVERSE(LPAD(s, 5, '.')) = 'eb-x.'", 1,
+        "delete padding function predicate");
     failures += execute_sql_expect_done_affected(
         database, "DELETE FROM t WHERE ISNULL(s) AND LOCATE('', s) IS NULL", 1,
         "delete search function predicate");
@@ -2860,6 +3094,26 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "ascii zero arity syntax");
     failures += prepare_sql(database, "SELECT ASCII('a','b')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "ascii two arity syntax");
+    failures += prepare_sql(database, "SELECT REPEAT('a')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "repeat one arity syntax");
+    failures += prepare_sql(database, "SELECT REPEAT('a',2,3)", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "repeat three arity syntax");
+    failures += prepare_sql(database, "SELECT REVERSE()", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "reverse zero arity syntax");
+    failures += prepare_sql(database, "SELECT REVERSE('a','b')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "reverse two arity syntax");
+    failures += prepare_sql(database, "SELECT SPACE()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported space zero arity");
+    failures += prepare_sql(database, "SELECT SPACE(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported space two arity");
+    failures += prepare_sql(database, "SELECT LPAD('a',2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported lpad two arity");
+    failures += prepare_sql(database, "SELECT LPAD('a',2,'.','x')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported lpad four arity");
+    failures += prepare_sql(database, "SELECT RPAD('a',2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported rpad two arity");
+    failures += prepare_sql(database, "SELECT RPAD('a',2,'.','x')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported rpad four arity");
     failures += prepare_sql(database, "SELECT ORD()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported ord zero arity");
     failures += prepare_sql(database, "SELECT ORD('a','b')", MYLITE_UNSUPPORTED, &stmt);

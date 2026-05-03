@@ -3367,6 +3367,9 @@ function_name(A) ::= LOCALTIMESTAMP(T). {
 function_name(A) ::= MOD(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+function_name(A) ::= REPEAT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 function_name(A) ::= REPLACE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }

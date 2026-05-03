@@ -11149,7 +11149,8 @@ static bool function_name_has_text_result(const struct mylite_sql_ast_node *name
 static bool function_name_has_slice_string_result(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"CONCAT_WS", "SUBSTRING", "SUBSTR", "MID",
-                                        "TRIM",      "LTRIM",     "RTRIM"};
+                                        "TRIM",      "LTRIM",     "RTRIM",  "REPEAT",
+                                        "SPACE",     "REVERSE",   "LPAD",   "RPAD"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

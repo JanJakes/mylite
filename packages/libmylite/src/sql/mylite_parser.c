@@ -64,8 +64,9 @@ static bool lexer_next_non_comment(struct mylite_sql_lexer *lexer,
                                    struct mylite_sql_token *out_token);
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
 static bool span_text_equals(struct mylite_sql_source_span span, const char *text);
-static bool function_name_is_ascii(const struct mylite_sql_ast_node *name);
 static bool function_name_is_position(const struct mylite_sql_ast_node *name);
+static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_node *name,
+                                                   size_t *out_arity);
 static bool function_name_is_trim(const struct mylite_sql_ast_node *name);
 static bool function_name_is_substring(const struct mylite_sql_ast_node *name);
 static bool function_name_matches(const struct mylite_sql_ast_node *name, const char *text);
@@ -4854,10 +4855,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
         return call;
     }
 
-    if (function_name_is_ascii(name) &&
-        (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U)) {
-        mylite_sql_parser_state_parse_failed(state);
-        return NULL;
+    {
+        size_t expected_arity = 0U;
+
+        if (function_name_has_parser_checked_arity(name, &expected_arity) &&
+            (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != expected_arity)) {
+            mylite_sql_parser_state_parse_failed(state);
+            return NULL;
+        }
     }
     if (function_name_is_position(name)) {
         mylite_sql_parser_state_parse_failed(state);
@@ -5893,6 +5898,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"REFERENCES", MYLITE_SQL_PARSE_REFERENCES},
         {"RELEASE", MYLITE_SQL_PARSE_RELEASE},
         {"RENAME", MYLITE_SQL_PARSE_RENAME},
+        {"REPEAT", MYLITE_SQL_PARSE_REPEAT},
         {"REPLACE", MYLITE_SQL_PARSE_REPLACE},
         {"RESTRICT", MYLITE_SQL_PARSE_RESTRICT},
         {"RIGHT", MYLITE_SQL_PARSE_RIGHT},
@@ -6158,14 +6164,23 @@ static bool span_text_equals(struct mylite_sql_source_span span, const char *tex
     return true;
 }
 
-static bool function_name_is_ascii(const struct mylite_sql_ast_node *name)
-{
-    return function_name_matches(name, "ASCII");
-}
-
 static bool function_name_is_position(const struct mylite_sql_ast_node *name)
 {
     return function_name_matches(name, "POSITION");
+}
+
+static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_node *name,
+                                                   size_t *out_arity)
+{
+    if (function_name_matches(name, "ASCII") || function_name_matches(name, "REVERSE")) {
+        *out_arity = 1U;
+        return true;
+    }
+    if (function_name_matches(name, "REPEAT")) {
+        *out_arity = 2U;
+        return true;
+    }
+    return false;
 }
 
 static bool function_name_is_trim(const struct mylite_sql_ast_node *name)

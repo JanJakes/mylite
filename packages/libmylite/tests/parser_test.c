@@ -5426,6 +5426,17 @@ static int test_information_schema_select(void)
                                  "table constraints information schema table");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "INFORMATION_SCHEMA",
+                                 "referential constraints information schema qualifier");
+    failures += expect_span_text(child_at(qualified, 1U), "REFERENTIAL_CONSTRAINTS",
+                                 "referential constraints information schema table");
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("SELECT * FROM information_schema.engines;", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
@@ -5511,6 +5522,17 @@ static int test_information_schema_select(void)
                                  "lower table constraints information schema qualifier");
     failures += expect_span_text(child_at(qualified, 1U), "table_constraints",
                                  "lower table constraints table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM information_schema.referential_constraints;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "information_schema",
+                                 "lower referential constraints information schema qualifier");
+    failures += expect_span_text(child_at(qualified, 1U), "referential_constraints",
+                                 "lower referential constraints table");
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -5600,6 +5622,17 @@ static int test_information_schema_select(void)
                                  "mixed table constraints table");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT * FROM Information_Schema.Referential_Constraints;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "Information_Schema",
+                                 "mixed referential constraints qualifier");
+    failures += expect_span_text(child_at(qualified, 1U), "Referential_Constraints",
+                                 "mixed referential constraints table");
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("SELECT * FROM `information_schema`.`ENGINES`;", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
@@ -5686,6 +5719,17 @@ static int test_information_schema_select(void)
                                  "quoted table constraints qualifier");
     failures += expect_span_text(child_at(qualified, 1U), "`TABLE_CONSTRAINTS`",
                                  "quoted table constraints table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM `information_schema`.`REFERENTIAL_CONSTRAINTS`;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "`information_schema`",
+                                 "quoted referential constraints qualifier");
+    failures += expect_span_text(child_at(qualified, 1U), "`REFERENTIAL_CONSTRAINTS`",
+                                 "quoted referential constraints table");
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -5793,6 +5837,18 @@ static int test_information_schema_select(void)
                           MYLITE_SQL_PARSE_OK, &result);
     failures += expect_node(child_at(child_at(result.root, 0U), 2U), MYLITE_SQL_AST_WHERE_CLAUSE,
                             "information schema table constraints where clause");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CONSTRAINT_NAME FROM "
+                          "INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE "
+                          "CONSTRAINT_NAME = 'fk_parent';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(child_at(child_at(result.root, 0U), 2U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "information schema referential constraints where clause");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -239,11 +239,14 @@ level application surfaces.
        exclusion, and the same wildcard-only policy. The first
        `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` slice exposes the exact
        four-column system-view shape and intentionally returns zero rows until
-       CHECK DDL/catalog/enforcement support exists. Full
+       CHECK DDL/catalog/enforcement support exists. The first
+       `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` slice exposes the exact
+       eleven-column system-view shape and intentionally returns zero rows
+       until foreign-key DDL/catalog/enforcement support exists. Full
        build-dependent engine catalog breadth, full MySQL character-set
        catalog breadth, full MySQL collation catalog breadth, exact MySQL
-       keyword catalog completeness, actual CHECK rows, foreign-key constraint
-       rows, and general information-schema query
+       keyword catalog completeness, actual CHECK rows, actual foreign-key
+       constraint rows, and general information-schema query
        processing remain deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),
@@ -256,6 +259,7 @@ level application surfaces.
        [INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY](../information-schema-collation-character-set-applicability/specs.md),
        [INFORMATION_SCHEMA.COLLATIONS](../information-schema-collations/specs.md),
        [INFORMATION_SCHEMA.CHECK_CONSTRAINTS](../information-schema-check-constraints/specs.md),
+       [INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS](../information-schema-referential-constraints/specs.md),
        [INFORMATION_SCHEMA.TABLE_CONSTRAINTS](../information-schema-table-constraints/specs.md),
        [INFORMATION_SCHEMA.KEY_COLUMN_USAGE](../information-schema-key-column-usage/specs.md),
        [INFORMATION_SCHEMA.KEYWORDS](../information-schema-keywords/specs.md).

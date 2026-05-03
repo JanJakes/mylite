@@ -29,7 +29,8 @@ catalog for primary and unique metadata. Nonunique indexes are excluded.
 Functional or expression-only key parts are excluded because this information
 schema table reports columns, not expressions. CHECK constraints do not appear
 in `KEY_COLUMN_USAGE`. Foreign-key rows remain deferred until MyLite has
-foreign-key catalogs and runtime semantics.
+foreign-key catalogs and runtime semantics; `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`
+currently exposes only the empty MySQL-compatible system-view shape.
 
 ## Compatibility Sources
 
@@ -39,6 +40,9 @@ foreign-key catalogs and runtime semantics.
   https://dev.mysql.com/doc/refman/8.4/en/information-schema-table-reference.html
 - MySQL 8.4 Reference Manual, constraint information-schema tables:
   https://dev.mysql.com/doc/refman/8.4/en/constraint-information-schema.html
+- MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA`
+  `REFERENTIAL_CONSTRAINTS` table:
+  https://dev.mysql.com/doc/refman/8.4/en/information-schema-referential-constraints-table.html
 - Runtime observations verified against MySQL `8.4.9`.
 
 This specification is independently authored from official documentation and
@@ -315,7 +319,8 @@ Runtime coverage:
 - CHECK constraints are omitted. MySQL does not expose CHECK constraints in
   `KEY_COLUMN_USAGE`.
 - Foreign-key rows are omitted until MyLite has foreign-key catalogs,
-  referential actions, enforcement, and `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`.
+  referential actions, enforcement, and catalog-backed
+  `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` rows.
 - Expression-only key parts are omitted until MyLite has functional index
   runtime/catalog support; even then `KEY_COLUMN_USAGE` should remain
   column-only.

@@ -21,7 +21,8 @@ current system-view inventory also includes `INFORMATION_SCHEMA.ENGINES`,
 `INFORMATION_SCHEMA.KEYWORDS`. Constraint metadata views
 `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`,
 `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` and
-`INFORMATION_SCHEMA.KEY_COLUMN_USAGE` are specified separately in
+`INFORMATION_SCHEMA.KEY_COLUMN_USAGE`, and
+`INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` are specified separately in
 [INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md),
 [INFORMATION_SCHEMA.CHARACTER_SETS](../information-schema-character-sets/specs.md),
 [INFORMATION_SCHEMA.COLLATIONS](../information-schema-collations/specs.md),
@@ -29,7 +30,8 @@ current system-view inventory also includes `INFORMATION_SCHEMA.ENGINES`,
 [INFORMATION_SCHEMA.KEYWORDS](../information-schema-keywords/specs.md),
 [INFORMATION_SCHEMA.CHECK_CONSTRAINTS](../information-schema-check-constraints/specs.md),
 [INFORMATION_SCHEMA.TABLE_CONSTRAINTS](../information-schema-table-constraints/specs.md),
-and [INFORMATION_SCHEMA.KEY_COLUMN_USAGE](../information-schema-key-column-usage/specs.md).
+[INFORMATION_SCHEMA.KEY_COLUMN_USAGE](../information-schema-key-column-usage/specs.md),
+and [INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS](../information-schema-referential-constraints/specs.md).
 General `SELECT` projection, explicit duplicate modifiers, filtering, ordering,
 aliases, joins, expressions over metadata tables, and privilege-sensitive
 metadata visibility are later features.
@@ -50,6 +52,9 @@ metadata visibility are later features.
   https://dev.mysql.com/doc/refman/8.4/en/information-schema-key-column-usage-table.html
 - MySQL 8.4 Reference Manual, The `INFORMATION_SCHEMA` `CHECK_CONSTRAINTS` table:
   https://dev.mysql.com/doc/refman/8.4/en/information-schema-check-constraints-table.html
+- MySQL 8.4 Reference Manual, The `INFORMATION_SCHEMA`
+  `REFERENTIAL_CONSTRAINTS` table:
+  https://dev.mysql.com/doc/refman/8.4/en/information-schema-referential-constraints-table.html
 - Observed MySQL 8.4.9 runtime behavior from Docker container
   `mylite-mysql-849`.
 
@@ -82,8 +87,8 @@ sources.
   `INFORMATION_SCHEMA.CHARACTER_SETS`,
   `COLLATION_CHARACTER_SET_APPLICABILITY`, `COLLATIONS`, `SCHEMATA`, `TABLES`,
   `CHECK_CONSTRAINTS`, `COLUMNS`, `ENGINES`, `KEYWORDS`, `KEY_COLUMN_USAGE`,
-  `STATISTICS`, and `TABLE_CONSTRAINTS` system views. In the verified runtime,
-  each has
+  `REFERENTIAL_CONSTRAINTS`, `STATISTICS`, and `TABLE_CONSTRAINTS` system
+  views. In the verified runtime, each has
   `TABLE_TYPE='SYSTEM VIEW'`,
   `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, `TABLE_COLLATION=NULL`, and an
   empty `TABLE_COMMENT`.
@@ -230,7 +235,7 @@ Behavior:
 - Also exposes system-view rows for `INFORMATION_SCHEMA.CHARACTER_SETS`,
   `COLLATION_CHARACTER_SET_APPLICABILITY`, `COLLATIONS`, `SCHEMATA`, `TABLES`,
   `CHECK_CONSTRAINTS`, `COLUMNS`, `ENGINES`, `KEYWORDS`, `KEY_COLUMN_USAGE`,
-  `STATISTICS`, and `TABLE_CONSTRAINTS`.
+  `REFERENTIAL_CONSTRAINTS`, `STATISTICS`, and `TABLE_CONSTRAINTS`.
 - For these system views, MyLite returns `TABLE_TYPE='SYSTEM VIEW'`,
   `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, `TABLE_COLLATION=NULL`, and
   `TABLE_COMMENT=''`, matching observed MySQL 8.4.9 behavior for the fields
@@ -320,6 +325,24 @@ Behavior:
   exist. See
   [INFORMATION_SCHEMA.KEY_COLUMN_USAGE](../information-schema-key-column-usage/specs.md).
 
+### `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`
+
+Supported query:
+
+```sql
+SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+```
+
+Behavior:
+
+- Exposes the MySQL-compatible eleven-column shape as a static read-only
+  system view.
+- Returns no rows until MyLite has foreign-key DDL, a foreign-key catalog,
+  referenced-index validation, dependency checks, referential actions, and DML
+  enforcement.
+- Does not create an internal foreign-key catalog or fake foreign-key rows. See
+  [INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS](../information-schema-referential-constraints/specs.md).
+
 ### Unsupported query forms
 
 The following are intentionally out of scope and should return MyLite's normal
@@ -406,5 +429,7 @@ The following observations were verified against `mylite-mysql-849`:
     metadata
   - `KEY_COLUMN_USAGE` exposes primary and unique key-part rows from index
     metadata
+  - `REFERENTIAL_CONSTRAINTS` exposes the eleven MySQL column names and returns
+    no rows until foreign-key catalog support lands
   - unsupported projection and filtering forms fail without silently returning
     misleading metadata

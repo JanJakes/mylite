@@ -19,7 +19,8 @@ enum {
     table_constraints_column_count = 7,
     key_column_usage_column_count = 12,
     check_constraints_column_count = 4,
-    information_schema_view_count = 12,
+    referential_constraints_column_count = 11,
+    information_schema_view_count = 13,
     schemata_catalog_column = 0,
     schemata_name_column = 1,
     schemata_character_set_column = 2,
@@ -259,6 +260,7 @@ static int test_information_schema_collations_execution(void);
 static int test_information_schema_collation_character_set_applicability_execution(void);
 static int test_information_schema_keywords_execution(void);
 static int test_information_schema_check_constraints_execution(void);
+static int test_information_schema_referential_constraints_execution(void);
 static int test_information_schema_table_constraints_execution(void);
 static int test_information_schema_key_column_usage_execution(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
@@ -439,6 +441,7 @@ int main(void)
     failures += test_information_schema_collation_character_set_applicability_execution();
     failures += test_information_schema_keywords_execution();
     failures += test_information_schema_check_constraints_execution();
+    failures += test_information_schema_referential_constraints_execution();
     failures += test_information_schema_table_constraints_execution();
     failures += test_information_schema_key_column_usage_execution();
     failures += test_mylite_file_preamble_and_vfs_payload();
@@ -1759,6 +1762,146 @@ static int test_information_schema_check_constraints_execution(void)
                             "INFORMATION_SCHEMA.TABLES",
                             MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "information schema check constraints join");
+
+    mylite_close(database);
+    mylite_finalize(stmt);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_information_schema_referential_constraints_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {
+        "CONSTRAINT_CATALOG",
+        "CONSTRAINT_SCHEMA",
+        "CONSTRAINT_NAME",
+        "UNIQUE_CONSTRAINT_CATALOG",
+        "UNIQUE_CONSTRAINT_SCHEMA",
+        "UNIQUE_CONSTRAINT_NAME",
+        "MATCH_OPTION",
+        "UPDATE_RULE",
+        "DELETE_RULE",
+        "TABLE_NAME",
+        "REFERENCED_TABLE_NAME",
+    };
+    static const char *const show_tables_name_columns[] = {
+        "Tables_in_information_schema (REFERENTIAL_CONSTRAINTS)"};
+    static const char *const show_tables_columns[] = {
+        "Tables_in_information_schema (REFERENTIAL_CONSTRAINTS)", "Table_type"};
+    static const char *const show_tables_name_values[] = {"REFERENTIAL_CONSTRAINTS"};
+    static const char *const show_tables_values[] = {"REFERENTIAL_CONSTRAINTS", "SYSTEM VIEW"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open information schema referential constraints");
+
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS", columns,
+        referential_constraints_column_count);
+
+    failures +=
+        execute_sql(database, "CREATE DATABASE mylite_referential_constraints", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_referential_constraints", MYLITE_DONE);
+    failures += execute_sql(
+        database, "CREATE TABLE referential_constraints_parent (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE referential_constraints_child ("
+                            "id INT PRIMARY KEY,"
+                            "parent_id INT,"
+                            "KEY parent_id_idx (parent_id))",
+                            MYLITE_DONE);
+
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS", columns,
+        referential_constraints_column_count);
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM information_schema.referential_constraints", columns,
+        referential_constraints_column_count);
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM Information_Schema.Referential_Constraints", columns,
+        referential_constraints_column_count);
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM `information_schema`.`REFERENTIAL_CONSTRAINTS`", columns,
+        referential_constraints_column_count);
+
+    failures += expect_information_schema_tables_views(database);
+    failures += expect_select_rows(
+        database, "SHOW TABLES FROM information_schema LIKE 'referential_constraints'",
+        show_tables_name_columns, 1, show_tables_name_values, 1,
+        "show tables information schema referential constraints");
+    failures += expect_select_rows(
+        database, "SHOW FULL TABLES FROM information_schema LIKE 'referential_constraints'",
+        show_tables_columns, 2, show_tables_values, 1,
+        "show full tables information schema referential constraints");
+
+    failures += prepare_sql(database,
+                            "ALTER TABLE referential_constraints_child "
+                            "ADD CONSTRAINT fk_parent FOREIGN KEY (parent_id) "
+                            "REFERENCES referential_constraints_parent(id) ON UPDATE CASCADE "
+                            "ON DELETE SET NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED,
+                              "alter foreign key does not create referential constraints rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS", columns,
+        referential_constraints_column_count);
+
+    failures += prepare_sql(
+        database, "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema referential constraints projection");
+    failures +=
+        prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints distinct");
+    failures +=
+        prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema referential constraints explicit all");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE "
+                            "CONSTRAINT_NAME = 'fk_parent'",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints where");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS ORDER BY "
+                            "CONSTRAINT_NAME",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints order by");
+    failures +=
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS LIMIT 1",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints limit");
+    failures +=
+        prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints count");
+    failures +=
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints AS alias");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema referential constraints bare alias");
+    failures += prepare_sql(database,
+                            "SELECT INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS.* FROM "
+                            "INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints qualified "
+                                             "wildcard");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS JOIN "
+                            "INFORMATION_SCHEMA.TABLES",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints join");
 
     mylite_close(database);
     mylite_finalize(stmt);
@@ -13212,17 +13355,12 @@ static int expect_no_information_schema_schemata_row(mylite_db *database, const 
 static int expect_information_schema_tables_views(mylite_db *database)
 {
     static const char *const expected_tables[] = {
-        "CHARACTER_SETS",
-        "COLLATION_CHARACTER_SET_APPLICABILITY",
-        "CHECK_CONSTRAINTS",
-        "COLLATIONS",
-        "COLUMNS",
-        "ENGINES",
-        "SCHEMATA",
-        "KEYWORDS",
-        "KEY_COLUMN_USAGE",
-        "STATISTICS",
-        "TABLES",
+        "CHARACTER_SETS",    "COLLATION_CHARACTER_SET_APPLICABILITY",
+        "CHECK_CONSTRAINTS", "COLLATIONS",
+        "COLUMNS",           "ENGINES",
+        "SCHEMATA",          "KEYWORDS",
+        "KEY_COLUMN_USAGE",  "REFERENTIAL_CONSTRAINTS",
+        "STATISTICS",        "TABLES",
         "TABLE_CONSTRAINTS",
     };
     mylite_stmt *stmt = NULL;

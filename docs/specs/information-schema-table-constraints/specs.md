@@ -26,8 +26,8 @@ supported. These MySQL-supported forms remain deferred until broader
 This slice exposes primary-key and unique constraints by deriving rows from
 `__mylite_index_catalog`. MyLite must not create a parallel constraint catalog
 for primary and unique metadata. Nonunique indexes are excluded. CHECK and
-foreign-key constraints remain deferred until MyLite has catalogs and runtime
-semantics for those constraint families.
+actual foreign-key constraint rows remain deferred until MyLite has catalogs
+and runtime semantics for those constraint families.
 
 ## Compatibility Sources
 
@@ -37,6 +37,9 @@ semantics for those constraint families.
   https://dev.mysql.com/doc/refman/8.4/en/information-schema-table-reference.html
 - MySQL 8.4 Reference Manual, constraint information-schema tables:
   https://dev.mysql.com/doc/refman/8.4/en/constraint-information-schema.html
+- MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA`
+  `REFERENTIAL_CONSTRAINTS` table:
+  https://dev.mysql.com/doc/refman/8.4/en/information-schema-referential-constraints-table.html
 - Runtime observations verified against MySQL `8.4.9`.
 
 This specification is independently authored from official documentation and
@@ -259,7 +262,8 @@ Runtime coverage:
   validation, enforcement flags, and catalog-backed
   `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` rows.
 - Foreign-key constraints are omitted until MyLite has foreign-key catalogs,
-  referential actions, enforcement, and `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`.
+  referential actions, enforcement, and catalog-backed
+  `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` rows.
 - Key-part ordinals for primary and unique constraints are exposed by
   [INFORMATION_SCHEMA.KEY_COLUMN_USAGE](../information-schema-key-column-usage/specs.md).
 - General information-schema projections, filters, ordering, limits, aliases,

@@ -29,8 +29,9 @@ MyLite:
 - schema-qualified and selected-schema table resolution
 - metadata updates in the internal column/index catalogs,
   `INFORMATION_SCHEMA.STATISTICS`, `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`, and
-  `INFORMATION_SCHEMA.KEY_COLUMN_USAGE`, with CHECK and foreign-key constraint
-  metadata deferred until those catalogs exist
+  `INFORMATION_SCHEMA.KEY_COLUMN_USAGE`, with `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
+  and `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` exposed as empty system-view
+  shapes until CHECK and foreign-key catalogs exist
 - duplicate validation, dependency validation, warning records, affected rows,
   diagnostics, statement atomicity, and deferred implicit-commit boundaries
 
@@ -114,6 +115,9 @@ visibility, and diagnostics.
   https://dev.mysql.com/doc/refman/8.4/en/information-schema-key-column-usage-table.html
 - MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` table:
   https://dev.mysql.com/doc/refman/8.4/en/information-schema-check-constraints-table.html
+- MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`
+  table:
+  https://dev.mysql.com/doc/refman/8.4/en/information-schema-referential-constraints-table.html
 - MySQL 8.4 Reference Manual, statements that cause implicit commits:
   https://dev.mysql.com/doc/refman/8.4/en/implicit-commit.html
 - MySQL 8.4 Reference Manual, atomic DDL:
@@ -715,6 +719,9 @@ Information schema:
   four-column system-view shape and currently returns zero rows. CHECK
   constraint names and clauses should be added when CHECK catalog support
   lands.
+- `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` exposes the MySQL-compatible
+  eleven-column system-view shape and currently returns zero rows. Foreign-key
+  rows should be added when foreign-key catalog and enforcement support lands.
 
 ### Affected rows, diagnostics, and warnings
 

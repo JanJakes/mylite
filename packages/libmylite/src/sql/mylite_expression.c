@@ -169,6 +169,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_ELT = 41,
     MYLITE_SCALAR_FUNCTION_FIELD = 42,
     MYLITE_SCALAR_FUNCTION_FIND_IN_SET = 43,
+    MYLITE_SCALAR_FUNCTION_MAKE_SET = 44,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -383,6 +384,16 @@ static int eval_find_in_set_function(const struct mylite_sql_ast_node *arguments
                                      struct mylite_expression_warnings *warnings,
                                      struct mylite_expression_value *out_value);
 static int64_t find_in_set_position(struct find_in_set_input input);
+static int eval_make_set_function(const struct mylite_sql_ast_node *arguments,
+                                  const struct mylite_expression_eval_context *context,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value);
+static int make_set_bits_from_value(const struct mylite_expression_value *value,
+                                    struct mylite_expression_warnings *warnings,
+                                    uint64_t *out_bits);
+static int make_set_bits_from_string(const char *text, struct mylite_expression_warnings *warnings,
+                                     uint64_t *out_bits);
+static bool make_set_member_is_selected(uint64_t bits, size_t index);
 static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
                              const struct mylite_expression_eval_context *context,
                              struct mylite_expression_warnings *warnings,
@@ -799,6 +810,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
     case MYLITE_SCALAR_FUNCTION_ELT:
     case MYLITE_SCALAR_FUNCTION_FIELD:
+    case MYLITE_SCALAR_FUNCTION_MAKE_SET:
         return arity >= 2U;
     case MYLITE_SCALAR_FUNCTION_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
@@ -1592,6 +1604,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_field_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
         return eval_find_in_set_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_MAKE_SET:
+        return eval_make_set_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_MOD:
         return eval_mod_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
@@ -3091,6 +3105,114 @@ static int64_t find_in_set_position(struct find_in_set_input input)
         }
     }
     return 0;
+}
+
+static int eval_make_set_function(const struct mylite_sql_ast_node *arguments,
+                                  const struct mylite_expression_eval_context *context,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value bits_value = {0};
+    char *result = copy_span_text("", 0U);
+    size_t result_length = 0U;
+    uint64_t bits = 0U;
+    bool appended = false;
+    int status =
+        result == NULL ? -1 : eval_node(child_at(arguments, 0U), context, warnings, &bits_value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&bits_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = make_set_bits_from_value(&bits_value, warnings, &bits);
+    if (status != 0) {
+        goto cleanup;
+    }
+
+    size_t member_index = 0U;
+    for (const struct mylite_sql_ast_node *member = child_at(arguments, 1U); member != NULL;
+         member = member->next_sibling, ++member_index) {
+        struct mylite_expression_value member_value = {0};
+        char *member_text = NULL;
+
+        if (!make_set_member_is_selected(bits, member_index)) {
+            continue;
+        }
+
+        status = eval_node(member, context, warnings, &member_value);
+        if (status != 0) {
+            mylite_expression_value_deinit(&member_value);
+            goto cleanup;
+        }
+        if (is_null(&member_value)) {
+            mylite_expression_value_deinit(&member_value);
+            continue;
+        }
+
+        status = value_to_string(&member_value, &member_text);
+        if (status == 0 && appended) {
+            status = append_text(&result, &result_length, ",", 1U);
+        }
+        if (status == 0) {
+            status = append_text(&result, &result_length, member_text, strlen(member_text));
+            appended = true;
+        }
+        free(member_text);
+        mylite_expression_value_deinit(&member_value);
+        if (status != 0) {
+            goto cleanup;
+        }
+    }
+
+    status = set_text_value(result, result_length, out_value);
+
+cleanup:
+    free(result);
+    mylite_expression_value_deinit(&bits_value);
+    return status;
+}
+
+static int make_set_bits_from_value(const struct mylite_expression_value *value,
+                                    struct mylite_expression_warnings *warnings, uint64_t *out_bits)
+{
+    if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return make_set_bits_from_string(value->text_value == NULL ? "" : value->text_value,
+                                         warnings, out_bits);
+    }
+    return cast_value_to_unsigned_integer(value, warnings, out_bits);
+}
+
+static int make_set_bits_from_string(const char *text, struct mylite_expression_warnings *warnings,
+                                     uint64_t *out_bits)
+{
+    struct cast_integer_parse parsed = parse_cast_integer_text(text);
+    bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
+
+    if (truncated) {
+        int status = append_cast_truncation_warning(warnings, "INTEGER", text);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+    if (!parsed.saw_digit) {
+        *out_bits = 0U;
+        return 0;
+    }
+    *out_bits =
+        parsed.negative ? unsigned_complement_from_magnitude(parsed.magnitude) : parsed.magnitude;
+    return 0;
+}
+
+static bool make_set_member_is_selected(uint64_t bits, size_t index)
+{
+    if (index >= (size_t)MYLITE_EXPRESSION_BITS_PER_UINT64) {
+        return false;
+    }
+    return (bits & (UINT64_C(1) << index)) != 0U;
 }
 
 static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
@@ -4840,6 +4962,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"ELT", MYLITE_SCALAR_FUNCTION_ELT},
         {"FIELD", MYLITE_SCALAR_FUNCTION_FIELD},
         {"FIND_IN_SET", MYLITE_SCALAR_FUNCTION_FIND_IN_SET},
+        {"MAKE_SET", MYLITE_SCALAR_FUNCTION_MAKE_SET},
         {"LOCATE", MYLITE_SCALAR_FUNCTION_LOCATE},
         {"POSITION", MYLITE_SCALAR_FUNCTION_LOCATE},
         {"INSTR", MYLITE_SCALAR_FUNCTION_INSTR},
@@ -4905,6 +5028,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_ELT:
     case MYLITE_SCALAR_FUNCTION_FIELD:
     case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
+    case MYLITE_SCALAR_FUNCTION_MAKE_SET:
     case MYLITE_SCALAR_FUNCTION_LOCATE:
     case MYLITE_SCALAR_FUNCTION_INSTR:
     case MYLITE_SCALAR_FUNCTION_ABS:

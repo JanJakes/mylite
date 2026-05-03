@@ -14,7 +14,8 @@ scalar built-ins: no-table `SELECT`, current table-backed projection, `WHERE`,
 
 Out of scope:
 
-- `MAKE_SET()`
+- `MAKE_SET()` for this list/index slice; it is specified separately in
+  `docs/specs/string-make-set-function/specs.md`
 - `SET` column bit-optimized `FIND_IN_SET()` execution
 - binary-string-specific matching and result typing
 - exact binary-collation metadata for all-`NULL` `ELT()` result lists
@@ -271,8 +272,9 @@ Add C tests for:
 
 After implementation and verification, the `ELT()`, `FIELD()`, and
 `FIND_IN_SET()` rows in `COMPATIBILITY.md` should move to partial support. The
-status remains partial because `MAKE_SET()`, `SET`-column optimization,
-binary-string behavior, all-`NULL` `ELT()` metadata, exact decimal/real
-string-conversion formatting, full collation/coercibility, exact lazy warning
-ordering for every expression-valued argument combination, and exact native
-arity error-code exposure are deferred.
+status remains partial because `SET`-column optimization, binary-string
+behavior, all-`NULL` `ELT()` metadata, exact decimal/real string-conversion
+formatting, full collation/coercibility, exact lazy warning ordering for every
+expression-valued argument combination, and exact native arity error-code
+exposure are deferred. `MAKE_SET()` is tracked separately in
+`docs/specs/string-make-set-function/specs.md`.

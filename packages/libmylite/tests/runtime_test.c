@@ -2444,6 +2444,12 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
         {"find_value", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"make_value", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"make_none", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"make_nums", NULL, NULL, NULL, NULL, NULL, 24U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
     };
     static const struct expected_result_metadata nullable_search_metadata[] = {
         {"ascii_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
@@ -2464,6 +2470,12 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
         {"find_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"make_null_bits", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         255U, 0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+        {"make_null_member", NULL, NULL, NULL, NULL, NULL, 20U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         255U, 0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+        {"make_all_null_members", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_VAR_STRING,
+         31U, 63U, MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL, 1},
     };
     static const struct expected_result_metadata latin1_metadata[] = {
         {"concat_ws_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
@@ -2525,6 +2537,10 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
         {"find_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"make_latin1", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"make_null_latin1", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         8U, 0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
     };
     static const struct expected_result_metadata quote_table_metadata[] = {
         {"quote_n", NULL, NULL, NULL, NULL, NULL, 96U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
@@ -2819,6 +2835,36 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const find_values[] = {
         "2", "2", "0", NULL, NULL, "2", "0", "1", "1", "0", "2", "2", "0", "2", "2", "3", "1",
     };
+    static const char *const make_columns[] = {
+        "make_bit0",
+        "make_bit1",
+        "make_bits",
+        "make_beyond",
+        "make_null_bits",
+        "make_null_member",
+        "make_empty_duplicate",
+        "make_comma_member",
+        "make_utf8",
+        "make_negative",
+        "make_negative_real",
+        "make_max_unsigned",
+        "make_signed_boundary",
+    };
+    static const char *const make_values[] = {
+        "a",     "b",   "a,b",   "", NULL, "a,c", ",dup,dup", "a,b,c", "\xE7\x8C\xAB,\xE6\xB5\xB7",
+        "a,b,c", "b,c", "a,b,c", "",
+    };
+    static const char *const make_warning_columns[] = {
+        "make_string_decimal",  "make_string_trailing", "make_string_invalid",
+        "make_overflow_string", "make_string_negative",
+    };
+    static const char *const make_warning_values[] = {"b", "a,b", "", "a,b,c", "a,b,c"};
+    static const char *const make_skip_columns[] = {"make_skip_all", "make_skip_first",
+                                                    "make_null_skip"};
+    static const char *const make_skip_values[] = {"", "b", NULL};
+    static const char *const make_selected_warning_columns[] = {"make_selected_null",
+                                                                "make_selected_second_null"};
+    static const char *const make_selected_warning_values[] = {"", "a"};
     static const char *const abs_in_columns[] = {"abs_in"};
     static const char *const abs_in_values[] = {"1"};
     static const char *const projection_columns[] = {"id", "title"};
@@ -2853,9 +2899,10 @@ static int test_scalar_builtin_functions_execution(void)
         "2",
         "'Beta'",
     };
-    static const char *const list_projection_columns[] = {"id", "label", "field_pos", "list_pos"};
+    static const char *const list_projection_columns[] = {"id", "label", "field_pos", "list_pos",
+                                                          "made"};
     static const char *const list_projection_values[] = {
-        "2", "two", "2", "1", "1", "one", "1", "2",
+        "2", "two", "2", "1", "-2", "1", "one", "1", "2", "alpha",
     };
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
@@ -2870,6 +2917,8 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const updated_insert_values[] = {"1", "a-ha", "1"};
     static const char *const updated_quote_values[] = {"1", "'a-ha'", "1"};
     static const char *const updated_list_values[] = {"3", NULL, "2"};
+    static const char *const updated_make_order_values[] = {"2", "a", "99"};
+    static const char *const make_order_remaining_values[] = {"1", "3"};
     static const char *const all_id_values[] = {"1", "2", "3"};
     static const char *const remaining_values[] = {"1"};
     mylite_db *database = NULL;
@@ -2959,7 +3008,10 @@ static int test_scalar_builtin_functions_execution(void)
                             "ELT(3, 'a', 'bc') AS elt_oob, "
                             "ELT(1, 1, 20) AS elt_ints, "
                             "FIELD('b', 'a', 'b') AS field_value, "
-                            "FIND_IN_SET('b', 'a,b') AS find_value",
+                            "FIND_IN_SET('b', 'a,b') AS find_value, "
+                            "MAKE_SET(3, 'a', 'bc') AS make_value, "
+                            "MAKE_SET(4, 'a', 'bc') AS make_none, "
+                            "MAKE_SET(1, 1, 20) AS make_nums",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "scalar function metadata");
@@ -2974,7 +3026,10 @@ static int test_scalar_builtin_functions_execution(void)
                             "INSERT('abc', NULL, 1, 'x') AS insert_null, "
                             "QUOTE(NULL) AS quote_null, "
                             "FIELD(NULL, 'a') AS field_null, "
-                            "FIND_IN_SET(NULL, 'a') AS find_null",
+                            "FIND_IN_SET(NULL, 'a') AS find_null, "
+                            "MAKE_SET(NULL, 'a', 'bc') AS make_null_bits, "
+                            "MAKE_SET(3, 'a', NULL, 'bc') AS make_null_member, "
+                            "MAKE_SET(3, NULL, NULL) AS make_all_null_members",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, nullable_search_metadata,
@@ -3001,7 +3056,9 @@ static int test_scalar_builtin_functions_execution(void)
                             "QUOTE('Don''t') AS quote_latin1, "
                             "ELT(2, 'a', 'bc') AS elt_latin1, "
                             "FIELD('b', 'a', 'b') AS field_latin1, "
-                            "FIND_IN_SET('b', 'a,b') AS find_latin1",
+                            "FIND_IN_SET('b', 'a,b') AS find_latin1, "
+                            "MAKE_SET(3, 'a', 'bc') AS make_latin1, "
+                            "MAKE_SET(NULL, 'a') AS make_null_latin1",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(stmt, latin1_metadata,
                                        (int)(sizeof(latin1_metadata) / sizeof(latin1_metadata[0])),
@@ -3295,6 +3352,61 @@ static int test_scalar_builtin_functions_execution(void)
                            find_columns, (int)(sizeof(find_columns) / sizeof(find_columns[0])),
                            find_values, 1, "string list FIND_IN_SET scalar values");
 
+    failures +=
+        expect_select_rows(database,
+                           "SELECT MAKE_SET(1,'a','b','c') AS make_bit0, "
+                           "MAKE_SET(2,'a','b','c') AS make_bit1, "
+                           "MAKE_SET(3,'a','b','c') AS make_bits, "
+                           "MAKE_SET(16,'a','b','c') AS make_beyond, "
+                           "MAKE_SET(NULL,'a','b') AS make_null_bits, "
+                           "MAKE_SET(7,'a',NULL,'c') AS make_null_member, "
+                           "MAKE_SET(7,'','dup','dup') AS make_empty_duplicate, "
+                           "MAKE_SET(3,'a,b','c') AS make_comma_member, "
+                           "MAKE_SET(3,'\xE7\x8C\xAB','\xE6\xB5\xB7') AS make_utf8, "
+                           "MAKE_SET(-1,'a','b','c') AS make_negative, "
+                           "MAKE_SET(-1.5,'a','b','c') AS make_negative_real, "
+                           "MAKE_SET(18446744073709551615,'a','b','c') AS make_max_unsigned, "
+                           "MAKE_SET(9223372036854775808,'a','b','c') AS make_signed_boundary",
+                           make_columns, (int)(sizeof(make_columns) / sizeof(make_columns[0])),
+                           make_values, 1, "string MAKE_SET scalar values");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT MAKE_SET('2.5','a','b','c') AS make_string_decimal, "
+        "MAKE_SET(' 3x ','a','b','c') AS make_string_trailing, "
+        "MAKE_SET('x3','a','b','c') AS make_string_invalid, "
+        "MAKE_SET('18446744073709551616','a','b','c') AS make_overflow_string, "
+        "MAKE_SET('-1','a','b','c') AS make_string_negative",
+        make_warning_columns, (int)(sizeof(make_warning_columns) / sizeof(make_warning_columns[0])),
+        make_warning_values, 1, "string MAKE_SET mask warning values");
+    failures += expect_int(mylite_warning_count(database), 4, "MAKE_SET mask warning count");
+    for (int index = 0; index < 4; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "MAKE_SET mask warning code");
+    }
+
+    failures += expect_select_rows(database,
+                                   "SELECT MAKE_SET(0, MOD(7,0), 'b') AS make_skip_all, "
+                                   "MAKE_SET(2, MOD(7,0), 'b') AS make_skip_first, "
+                                   "MAKE_SET(NULL, MOD(7,0), 'b') AS make_null_skip",
+                                   make_skip_columns,
+                                   (int)(sizeof(make_skip_columns) / sizeof(make_skip_columns[0])),
+                                   make_skip_values, 1, "string MAKE_SET lazy skip values");
+    failures += expect_int(mylite_warning_count(database), 0, "MAKE_SET lazy skip warning count");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT MAKE_SET(1, MOD(7,0), 'b') AS make_selected_null, "
+        "MAKE_SET(3, 'a', MOD(7,0)) AS make_selected_second_null",
+        make_selected_warning_columns,
+        (int)(sizeof(make_selected_warning_columns) / sizeof(make_selected_warning_columns[0])),
+        make_selected_warning_values, 1, "string MAKE_SET selected warning values");
+    failures += expect_int(mylite_warning_count(database), 2, "MAKE_SET selected warning count");
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_division_by_zero, "MAKE_SET selected warning code");
+    }
+
     failures += expect_select_rows(database, "SELECT ABS(1 IN (1)) AS abs_in", abs_in_columns, 1,
                                    abs_in_values, 1, "function IN predicate argument");
 
@@ -3377,9 +3489,10 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database,
                                    "SELECT id, ELT(id, 'one', 'two', 'three') AS label, "
                                    "FIELD(s, 'alpha', 'Beta') AS field_pos, "
-                                   "FIND_IN_SET(s, 'Beta,alpha') AS list_pos "
+                                   "FIND_IN_SET(s, 'Beta,alpha') AS list_pos, "
+                                   "MAKE_SET(id, s, n, 'tail') AS made "
                                    "FROM t WHERE ISNULL(s)=0 ORDER BY FIELD(s, 'Beta', 'alpha')",
-                                   list_projection_columns, 4, list_projection_values, 2,
+                                   list_projection_columns, 5, list_projection_values, 2,
                                    "table list function projection and order");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE LPAD(s, 5, '.')='alpha'",
                                    id_column, 1, n_1, 1, "lpad function where");
@@ -3396,6 +3509,12 @@ static int test_scalar_builtin_functions_execution(void)
                            id_column, 1, n_1, 1, "find_in_set function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE ELT(id, 'alpha', 'Beta') = s",
                                    id_column, 1, all_id_values, 2, "elt function where");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE MAKE_SET(1, s) = s", id_column,
+                                   1, all_id_values, 2, "make_set function where");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM t WHERE ISNULL(s)=0 "
+                                   "ORDER BY MAKE_SET(id, s, n), id LIMIT 1",
+                                   id_column, 1, id_2, 1, "make_set function order");
     failures += expect_select_rows(database,
                                    "SELECT id FROM t WHERE ISNULL(s)=0 ORDER BY REVERSE(s), id "
                                    "LIMIT 1",
@@ -3458,11 +3577,33 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures +=
         execute_sql_expect_done_affected(database,
-                                         "UPDATE t SET n = FIND_IN_SET('target', 'skip,target') "
-                                         "WHERE FIELD(id, 3, 4) = 1",
+                                         "UPDATE t SET "
+                                         "n = FIND_IN_SET(MAKE_SET(1, 'target'), 'skip,target') "
+                                         "WHERE MAKE_SET(1, id) = '3' AND FIELD(id, 3, 4) = 1",
                                          1, "update list function assignment and predicate");
     failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 3", id_s_n_columns,
                                    3, updated_list_values, 1, "updated list function values");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE make_order "
+                            "(id INT PRIMARY KEY, s VARCHAR(20), n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO make_order VALUES "
+                            "(1,'b',10),(2,'a',20),(3,'c',30)",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE make_order SET n = 99 ORDER BY MAKE_SET(id, s, n), id LIMIT 1", 1,
+        "update make_set order key");
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM make_order WHERE id = 2", id_s_n_columns,
+                           3, updated_make_order_values, 1, "updated make_set order key values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM make_order ORDER BY MAKE_SET(id, s, n), id LIMIT 1", 1,
+        "delete make_set order key");
+    failures += expect_select_rows(database, "SELECT id FROM make_order ORDER BY id", id_column, 1,
+                                   make_order_remaining_values, 2,
+                                   "delete make_set order key remaining rows");
 
     failures += prepare_sql(database, "UPDATE t SET n = 5 WHERE MOD(7,0)", MYLITE_OK, &stmt);
     failures +=
@@ -3511,7 +3652,8 @@ static int test_scalar_builtin_functions_execution(void)
     failures += execute_sql(database, "INSERT INTO t (s,n) VALUES ('list-delete',5)", MYLITE_DONE);
     failures += execute_sql_expect_done_affected(database,
                                                  "DELETE FROM t WHERE FIELD(s, 'list-delete') = 1 "
-                                                 "AND FIND_IN_SET('delete', 'keep,delete') = 2",
+                                                 "AND FIND_IN_SET('delete', 'keep,delete') = 2 "
+                                                 "AND MAKE_SET(1, s) = 'list-delete'",
                                                  1, "delete list function predicate");
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
                                    remaining_values, 1, "delete list function remaining rows");
@@ -3585,6 +3727,10 @@ static int test_scalar_builtin_functions_execution(void)
     failures +=
         prepare_sql(database, "SELECT FIND_IN_SET('a','a,b','x')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported find_in_set three arity");
+    failures += prepare_sql(database, "SELECT MAKE_SET()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported make_set zero arity");
+    failures += prepare_sql(database, "SELECT MAKE_SET(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported make_set one arity");
     failures += prepare_sql(database, "SELECT POSITION('a')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "position ordinary syntax");
     failures += prepare_sql(database, "SELECT LTRIM()", MYLITE_UNSUPPORTED, &stmt);

@@ -2048,6 +2048,11 @@ static bool infer_list_index_function_descriptor(const struct mylite_sql_ast_nod
                                                  bool nullable,
                                                  struct mylite_field_descriptor *out_descriptor);
 // NOLINTNEXTLINE(misc-no-recursion)
+static int infer_make_set_function_descriptor(mylite_db *database,
+                                              const struct mylite_select_plan *plan,
+                                              const struct mylite_sql_ast_node *expression,
+                                              struct mylite_field_descriptor *out_descriptor);
+// NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t quote_function_result_length(mylite_db *database,
                                              const struct mylite_select_plan *plan,
                                              const struct mylite_sql_ast_node *expression);
@@ -2065,6 +2070,16 @@ static uint64_t insert_function_result_length(mylite_db *database,
                                               const struct mylite_select_plan *plan,
                                               const struct mylite_sql_ast_node *expression);
 // NOLINTNEXTLINE(misc-no-recursion)
+static uint64_t make_set_function_result_length(mylite_db *database,
+                                                const struct mylite_select_plan *plan,
+                                                const struct mylite_sql_ast_node *expression);
+// NOLINTNEXTLINE(misc-no-recursion)
+static int make_set_function_members_are_all_null(mylite_db *database,
+                                                  const struct mylite_select_plan *plan,
+                                                  const struct mylite_sql_ast_node *expression,
+                                                  bool *out_all_null);
+static uint64_t make_set_all_null_result_length(const struct mylite_sql_ast_node *expression);
+// NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t elt_function_result_length(mylite_db *database,
                                            const struct mylite_select_plan *plan,
                                            const struct mylite_sql_ast_node *expression);
@@ -2077,18 +2092,17 @@ static uint64_t expression_text_display_length(mylite_db *database,
                                                const struct mylite_select_plan *plan,
                                                const struct mylite_sql_ast_node *expression);
 // NOLINTNEXTLINE(misc-no-recursion)
-static int infer_slice_string_function_descriptor(mylite_db *database,
-                                                  const struct mylite_select_plan *plan,
-                                                  const struct mylite_sql_ast_node *expression,
-                                                  const struct mylite_expression_value *value,
-                                                  struct mylite_field_descriptor *out_descriptor,
-                                                  bool *out_matched);
+static int infer_slice_string_function_descriptor(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    bool nullable, struct mylite_field_descriptor *out_descriptor, bool *out_matched);
 // NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t slice_string_function_result_length(mylite_db *database,
                                                     const struct mylite_select_plan *plan,
                                                     const struct mylite_sql_ast_node *expression,
                                                     const struct mylite_expression_value *value);
 static bool function_name_has_slice_string_result(const struct mylite_sql_ast_node *name);
+static bool function_name_is_make_set(const struct mylite_sql_ast_node *name);
 static bool function_name_is_elt(const struct mylite_sql_ast_node *name);
 static bool function_name_is_quote(const struct mylite_sql_ast_node *name);
 static bool function_name_is_insert(const struct mylite_sql_ast_node *name);
@@ -10332,7 +10346,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (infer_session_function_descriptor(database, name, out_descriptor)) {
         return MYLITE_OK;
     }
-    status = infer_slice_string_function_descriptor(database, plan, expression, value,
+    status = infer_slice_string_function_descriptor(database, plan, expression, value, nullable,
                                                     out_descriptor, &matched_slice_string);
     if (status != MYLITE_OK || matched_slice_string) {
         return status;
@@ -10472,6 +10486,48 @@ static bool infer_list_index_function_descriptor(const struct mylite_sql_ast_nod
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
+static int infer_make_set_function_descriptor(mylite_db *database,
+                                              const struct mylite_select_plan *plan,
+                                              const struct mylite_sql_ast_node *expression,
+                                              struct mylite_field_descriptor *out_descriptor)
+{
+    bool all_members_null = false;
+    int status =
+        make_set_function_members_are_all_null(database, plan, expression, &all_members_null);
+    bool nullable = false;
+    unsigned int flags = 0U;
+    uint64_t length = 0U;
+    unsigned int charset_id = field_descriptor_connection_charset_id(database);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    status = infer_function_arguments_nullable(database, plan, child_at(expression, 1U), &nullable);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    if (all_members_null) {
+        flags = MYLITE_FIELD_FLAG_BINARY;
+        length = make_set_all_null_result_length(expression);
+        charset_id = mylite_mysql_binary_charset_id;
+    } else {
+        length = make_set_function_result_length(database, plan, expression);
+    }
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = flags,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = charset_id,
+        .nullable = nullable,
+    };
+    field_descriptor_set_nullable(out_descriptor, nullable);
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t quote_function_result_length(mylite_db *database,
                                              const struct mylite_select_plan *plan,
                                              const struct mylite_sql_ast_node *expression)
@@ -10576,6 +10632,86 @@ static uint64_t insert_function_result_length(mylite_db *database,
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
+static uint64_t make_set_function_result_length(mylite_db *database,
+                                                const struct mylite_select_plan *plan,
+                                                const struct mylite_sql_ast_node *expression)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    uint64_t separator_length = connection_character_max_length(database);
+    uint64_t result = 0U;
+    size_t member_count = 0U;
+
+    for (const struct mylite_sql_ast_node *argument = arguments == NULL ||
+                                                              arguments->first_child == NULL
+                                                          ? NULL
+                                                          : arguments->first_child->next_sibling;
+         argument != NULL; argument = argument->next_sibling) {
+        uint64_t length = elt_argument_result_length(database, plan, argument);
+
+        if (member_count != 0U) {
+            if (result > UINT64_MAX - separator_length) {
+                return mylite_mysql_long_text_length;
+            }
+            result += separator_length;
+        }
+        if (result > UINT64_MAX - length) {
+            return mylite_mysql_long_text_length;
+        }
+        result += length;
+        ++member_count;
+    }
+    return result;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int make_set_function_members_are_all_null(mylite_db *database,
+                                                  const struct mylite_select_plan *plan,
+                                                  const struct mylite_sql_ast_node *expression,
+                                                  bool *out_all_null)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    bool saw_member = false;
+
+    for (const struct mylite_sql_ast_node *argument = arguments == NULL ||
+                                                              arguments->first_child == NULL
+                                                          ? NULL
+                                                          : arguments->first_child->next_sibling;
+         argument != NULL; argument = argument->next_sibling) {
+        struct mylite_field_descriptor descriptor = field_descriptor_defaults();
+        int status = infer_expression_descriptor(database, plan, argument, NULL, &descriptor);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        saw_member = true;
+        if (descriptor.type != MYLITE_FIELD_TYPE_NULL) {
+            *out_all_null = false;
+            return MYLITE_OK;
+        }
+    }
+    *out_all_null = saw_member;
+    return MYLITE_OK;
+}
+
+static uint64_t make_set_all_null_result_length(const struct mylite_sql_ast_node *expression)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    size_t member_count = 0U;
+
+    for (const struct mylite_sql_ast_node *argument = arguments == NULL ||
+                                                              arguments->first_child == NULL
+                                                          ? NULL
+                                                          : arguments->first_child->next_sibling;
+         argument != NULL; argument = argument->next_sibling) {
+        ++member_count;
+    }
+    if (member_count <= 1U) {
+        return 0U;
+    }
+    return (uint64_t)(member_count - 1U);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t elt_function_result_length(mylite_db *database,
                                            const struct mylite_select_plan *plan,
                                            const struct mylite_sql_ast_node *expression)
@@ -10654,13 +10790,18 @@ static uint64_t expression_text_display_length(mylite_db *database,
 static int infer_slice_string_function_descriptor( // NOLINT(misc-no-recursion)
     mylite_db *database, const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
-    struct mylite_field_descriptor *out_descriptor, bool *out_matched)
+    bool nullable, struct mylite_field_descriptor *out_descriptor, bool *out_matched)
 {
     const struct mylite_sql_ast_node *name = child_at(expression, 0U);
 
     *out_matched = function_name_has_slice_string_result(name);
     if (!*out_matched) {
         return MYLITE_OK;
+    }
+    if (function_name_is_make_set(name)) {
+        (void)value;
+        (void)nullable;
+        return infer_make_set_function_descriptor(database, plan, expression, out_descriptor);
     }
 
     *out_descriptor = (struct mylite_field_descriptor){
@@ -11399,9 +11540,16 @@ static bool function_name_has_text_result(const struct mylite_sql_ast_node *name
 
 static bool function_name_has_slice_string_result(const struct mylite_sql_ast_node *name)
 {
-    static const char *const names[] = {"CONCAT_WS", "SUBSTRING", "SUBSTR", "MID",   "TRIM",
-                                        "LTRIM",     "RTRIM",     "INSERT", "QUOTE", "REPEAT",
-                                        "SPACE",     "REVERSE",   "LPAD",   "RPAD",  "ELT"};
+    static const char *const names[] = {
+        "CONCAT_WS", "SUBSTRING", "SUBSTR", "MID",     "TRIM", "LTRIM", "RTRIM", "INSERT",
+        "QUOTE",     "REPEAT",    "SPACE",  "REVERSE", "LPAD", "RPAD",  "ELT",   "MAKE_SET"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_make_set(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"MAKE_SET"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

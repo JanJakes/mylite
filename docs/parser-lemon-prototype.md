@@ -254,10 +254,10 @@ token sink:
   envelopes plus referential-action tails, duplicate `MATCH`/`ON UPDATE`/`ON
   DELETE` rejection, and MySQL's `MATCH`-before-actions order. Trailing table options
   must start with known MySQL table-option keywords and validate selected value
-  domains, including numeric options, string-literal options, closed
-  `INSERT_METHOD`, closed `ROW_FORMAT`, decimal-versus-size number domains
-  with quoted-hex size values,
-  bounded `STATS_SAMPLE_PAGES`, storage values without equality signs,
+  domains, including unsigned decimal table numbers, MySQL boolean/default
+  number domains, string-literal options, closed `INSERT_METHOD`, closed
+  `ROW_FORMAT`, decimal-versus-size number domains with quoted-hex size values,
+  bounded numeric and quoted-hex `STATS_SAMPLE_PAGES`, storage values without equality signs,
   `UNION` table-name lists, and `START TRANSACTION`. No-definition and
   post-definition CTAS forms are recognized explicitly with table/partition options, including
   `IGNORE`/`REPLACE` duplicate-handling modifiers, and no-definition
@@ -311,11 +311,12 @@ token sink:
   tablespace/storage/union changes with closed storage values,
   secondary-engine load/unload actions,
   table option changes with charset/collation continuations,
-  numeric/boolean/default value domains, closed `INSERT_METHOD` and
+  unsigned decimal, boolean, and default-boolean value domains, closed `INSERT_METHOD` and
   `ROW_FORMAT` values, string-literal data/index
   directories, string-literal compression/password/connection/engine
   attributes, `AUTOEXTEND_SIZE`, `TABLE_CHECKSUM`, `START TRANSACTION`,
-  decimal-versus-size number domains, `STATS_SAMPLE_PAGES` bounds, storage
+  decimal-versus-size number domains, numeric and quoted-hex
+  `STATS_SAMPLE_PAGES` bounds, storage
   option equality rejection, identifier-valued `ALGORITHM`/`LOCK` options,
   invalid table-option continuation rejection,
   tablespace discard/import forms, and validated `ADD`/`CHANGE`/`MODIFY`

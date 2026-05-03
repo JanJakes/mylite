@@ -113,6 +113,12 @@ void mylite_parser_require_unsigned_decimal_literal(MyliteParseContext *ctx,
                                                     MyliteToken token);
 void mylite_parser_require_unsigned_decimal_or_lower_hex_literal(
     MyliteParseContext *ctx, MyliteToken token);
+void mylite_parser_require_table_option_boolean_number_literal(
+    MyliteParseContext *ctx, MyliteToken token);
+void mylite_parser_require_table_option_default_boolean_literal(
+    MyliteParseContext *ctx, MyliteToken token);
+void mylite_parser_require_table_option_stats_sample_pages_literal(
+    MyliteParseContext *ctx, MyliteToken token);
 void mylite_parser_require_unsigned_integer_or_lower_hex_literal(
     MyliteParseContext *ctx, MyliteToken token);
 void mylite_parser_require_unsigned_integer_or_hex_literal(

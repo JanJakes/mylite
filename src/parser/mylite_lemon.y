@@ -1579,11 +1579,11 @@ alter_table_exchange_validation_tail ::= .
 alter_table_exchange_validation_tail ::= WITH VALIDATION.
 alter_table_exchange_validation_tail ::= WITHOUT VALIDATION.
 
-alter_table_table_option ::= alter_table_number_table_option drop_index_option_equals_tail alter_table_number_value.
+alter_table_table_option ::= alter_table_number_table_option drop_index_option_equals_tail unsigned_decimal_value.
 alter_table_table_option ::= AUTOEXTEND_SIZE drop_index_option_equals_tail tablespace_number_value.
-alter_table_table_option ::= alter_table_boolean_table_option drop_index_option_equals_tail alter_table_number_value.
+alter_table_table_option ::= alter_table_boolean_table_option drop_index_option_equals_tail alter_table_boolean_number_value.
 alter_table_table_option ::= alter_table_default_boolean_table_option drop_index_option_equals_tail alter_table_default_boolean_value.
-alter_table_table_option ::= STATS_SAMPLE_PAGES drop_index_option_equals_tail alter_table_default_number_value.
+alter_table_table_option ::= STATS_SAMPLE_PAGES drop_index_option_equals_tail alter_table_stats_sample_pages_value.
 alter_table_table_option ::= COMMENT drop_index_option_equals_tail text_string_literal.
 alter_table_table_option ::= COMPRESSION drop_index_option_equals_tail text_string_literal.
 alter_table_table_option ::= CONNECTION drop_index_option_equals_tail text_string_literal.
@@ -1614,15 +1614,36 @@ alter_table_default_boolean_table_option ::= PACK_KEYS.
 alter_table_default_boolean_table_option ::= STATS_AUTO_RECALC.
 alter_table_default_boolean_table_option ::= STATS_PERSISTENT.
 
-alter_table_number_value ::= BOOLEAN_NUMBER.
-alter_table_number_value ::= FACTOR_NUMBER.
-alter_table_number_value ::= NUMBER_LITERAL.
+alter_table_boolean_number_value ::= unsigned_decimal_or_lower_hex_value.
+alter_table_boolean_number_value ::= STRING_LITERAL(A). {
+  mylite_parser_require_table_option_boolean_number_literal(ctx, A);
+}
 
-alter_table_default_number_value ::= alter_table_number_value.
-alter_table_default_number_value ::= DEFAULT.
-
-alter_table_default_boolean_value ::= BOOLEAN_NUMBER.
+alter_table_default_boolean_value ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_table_option_default_boolean_literal(ctx, A);
+}
+alter_table_default_boolean_value ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_table_option_default_boolean_literal(ctx, A);
+}
+alter_table_default_boolean_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_table_option_default_boolean_literal(ctx, A);
+}
+alter_table_default_boolean_value ::= DOT unsigned_decimal_fraction.
 alter_table_default_boolean_value ::= DEFAULT.
+
+alter_table_stats_sample_pages_value ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_table_option_stats_sample_pages_literal(ctx, A);
+}
+alter_table_stats_sample_pages_value ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_table_option_stats_sample_pages_literal(ctx, A);
+}
+alter_table_stats_sample_pages_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_table_option_stats_sample_pages_literal(ctx, A);
+}
+alter_table_stats_sample_pages_value ::= STRING_LITERAL(A). {
+  mylite_parser_require_table_option_stats_sample_pages_literal(ctx, A);
+}
+alter_table_stats_sample_pages_value ::= DEFAULT.
 
 alter_table_table_option_value ::= cache_name_part.
 alter_table_table_option_value ::= NO.

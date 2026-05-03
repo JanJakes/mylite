@@ -236,11 +236,19 @@ level application surfaces.
        `Default collation` / `Maxlen` metadata, supported MyLite charset
        registry rows, case-insensitive `LIKE` filtering with escapes, numeric
        `Maxlen`, nondiagnostic clearing, and a clear unsupported diagnostic
-       for parsed `WHERE` filters. Specs:
+       for parsed `WHERE` filters. The first `SHOW COLLATION` slice is
+       specified for `SHOW COLLATION [LIKE 'pattern' | WHERE expr]`, including
+       exact `Collation` / `Charset` / `Id` / `Default` / `Compiled` /
+       `Sortlen` / `Pad_attribute` metadata, supported MyLite collation
+       registry rows, MySQL-verified default flags, sort lengths, pad
+       attributes, case-insensitive `LIKE` filtering with escapes, numeric
+       `Id` and `Sortlen`, nondiagnostic clearing, and a clear unsupported
+       diagnostic for parsed `WHERE` filters. Specs:
        [SHOW diagnostics](../show-diagnostics/specs.md),
        [SHOW VARIABLES](../show-variables/specs.md),
        [SHOW STATUS](../show-status/specs.md),
-       [SHOW CHARACTER SET](../show-character-set/specs.md).
+       [SHOW CHARACTER SET](../show-character-set/specs.md),
+       [SHOW COLLATION](../show-collation/specs.md).
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable
        validation, scope, charset/collation metadata, and expression use.
 42. [ ] Prepared statements: `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`,

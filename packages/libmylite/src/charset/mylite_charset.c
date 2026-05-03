@@ -23,6 +23,51 @@ static const struct mylite_charset character_sets[] = {
      .max_length = 4},
 };
 
+static const struct mylite_collation collations[] = {
+    {.name = "binary",
+     .character_set = "binary",
+     .id = 63,
+     .sort_length = 1,
+     .pad_attribute = "NO PAD",
+     .is_default = true},
+    {.name = "latin1_swedish_ci",
+     .character_set = "latin1",
+     .id = 8,
+     .sort_length = 1,
+     .pad_attribute = "PAD SPACE",
+     .is_default = true},
+    {.name = "latin1_bin",
+     .character_set = "latin1",
+     .id = 47,
+     .sort_length = 1,
+     .pad_attribute = "PAD SPACE",
+     .is_default = false},
+    {.name = "utf8mb3_general_ci",
+     .character_set = "utf8mb3",
+     .id = 33,
+     .sort_length = 1,
+     .pad_attribute = "PAD SPACE",
+     .is_default = true},
+    {.name = "utf8mb3_bin",
+     .character_set = "utf8mb3",
+     .id = 83,
+     .sort_length = 1,
+     .pad_attribute = "PAD SPACE",
+     .is_default = false},
+    {.name = "utf8mb4_0900_ai_ci",
+     .character_set = "utf8mb4",
+     .id = 255,
+     .sort_length = 0,
+     .pad_attribute = "NO PAD",
+     .is_default = true},
+    {.name = "utf8mb4_bin",
+     .character_set = "utf8mb4",
+     .id = 46,
+     .sort_length = 1,
+     .pad_attribute = "PAD SPACE",
+     .is_default = false},
+};
+
 const char *mylite_charset_default_name(void)
 {
     return "utf8mb4";
@@ -56,19 +101,22 @@ const struct mylite_charset *mylite_charset_lookup(const char *name)
     return NULL;
 }
 
+size_t mylite_collation_count(void)
+{
+    return sizeof(collations) / sizeof(collations[0]);
+}
+
+const struct mylite_collation *mylite_collation_at(size_t index)
+{
+    if (index >= mylite_collation_count()) {
+        return NULL;
+    }
+    return &collations[index];
+}
+
 const struct mylite_collation *mylite_collation_lookup(const char *name)
 {
-    static const struct mylite_collation collations[] = {
-        {.name = "binary", .character_set = "binary", .id = 63, .is_default = true},
-        {.name = "latin1_swedish_ci", .character_set = "latin1", .id = 8, .is_default = true},
-        {.name = "latin1_bin", .character_set = "latin1", .id = 47, .is_default = false},
-        {.name = "utf8mb3_general_ci", .character_set = "utf8mb3", .id = 33, .is_default = true},
-        {.name = "utf8mb3_bin", .character_set = "utf8mb3", .id = 83, .is_default = false},
-        {.name = "utf8mb4_0900_ai_ci", .character_set = "utf8mb4", .id = 255, .is_default = true},
-        {.name = "utf8mb4_bin", .character_set = "utf8mb4", .id = 46, .is_default = false},
-    };
-
-    for (size_t index = 0U; index < sizeof(collations) / sizeof(collations[0]); ++index) {
+    for (size_t index = 0U; index < mylite_collation_count(); ++index) {
         if (ascii_case_equal(name, collations[index].name)) {
             return &collations[index];
         }

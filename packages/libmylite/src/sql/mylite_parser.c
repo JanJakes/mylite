@@ -2620,6 +2620,26 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_character_set_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_collation_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
+    struct mylite_sql_token collation_token, struct mylite_sql_ast_node *filter)
+{
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&show_token), span_from_token(&collation_token));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (filter != NULL) {
+        span = span_join(span, filter->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(statement, filter);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_tables_tokens tokens,
     struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *filter)
@@ -5552,6 +5572,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"CHANGE", MYLITE_SQL_PARSE_CHANGE},
         {"CHECK", MYLITE_SQL_PARSE_CHECK},
         {"COLLATE", MYLITE_SQL_PARSE_COLLATE},
+        {"COLLATION", MYLITE_SQL_PARSE_COLLATION},
         {"COLUMN", MYLITE_SQL_PARSE_COLUMN},
         {"COLUMN_FORMAT", MYLITE_SQL_PARSE_COLUMN_FORMAT},
         {"COLUMNS", MYLITE_SQL_PARSE_COLUMNS},

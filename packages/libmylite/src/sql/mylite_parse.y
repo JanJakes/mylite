@@ -45,6 +45,7 @@
 %type opt_show_status_filter { struct mylite_sql_ast_node * }
 %type show_character_set_keyword { struct mylite_sql_token }
 %type opt_show_character_set_filter { struct mylite_sql_ast_node * }
+%type opt_show_collation_filter { struct mylite_sql_ast_node * }
 %type opt_show_tables_schema { struct mylite_sql_ast_node * }
 %type opt_show_tables_filter { struct mylite_sql_ast_node * }
 %type show_columns_keyword { struct mylite_sql_token }
@@ -96,11 +97,12 @@
 %right UPLUS UMINUS BIT_NOT.
 %right LOGICAL_NOT.
 %right KEY.
-%fallback IDENTIFIER AFTER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLUMN_FORMAT
-    COMMENT COMMIT CONSISTENT COUNT DATE DATETIME DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION
-    ERRORS FIRST FIXED HASH INSTANT INVISIBLE KEY_BLOCK_SIZE MEMORY MODIFY NCHAR NO NVARCHAR
-    OFFSET ONLY ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE
-    TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE WARNINGS WORK YEAR.
+%fallback IDENTIFIER AFTER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLLATION
+    COLUMN_FORMAT COMMENT COMMIT CONSISTENT COUNT DATE DATETIME DISK DYNAMIC ENGINE
+    ENGINE_ATTRIBUTE ENCRYPTION ERRORS FIRST FIXED HASH INSTANT INVISIBLE KEY_BLOCK_SIZE MEMORY
+    MODIFY NCHAR NO NVARCHAR OFFSET ONLY ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE SIGNED
+    SNAPSHOT START STORAGE TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE WARNINGS
+    WORK YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -202,6 +204,9 @@ statement(A) ::= show_status_statement(B). {
     A = B;
 }
 statement(A) ::= show_character_set_statement(B). {
+    A = B;
+}
+statement(A) ::= show_collation_statement(B). {
     A = B;
 }
 statement(A) ::= show_tables_statement(B). {
@@ -1066,6 +1071,20 @@ opt_show_character_set_filter(A) ::= LIKE STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 opt_show_character_set_filter(A) ::= where_clause(B). {
+    A = B;
+}
+
+show_collation_statement(A) ::= SHOW(T) COLLATION(C) opt_show_collation_filter(F). {
+    A = mylite_sql_parser_make_show_collation_statement(state, T, C, F);
+}
+
+opt_show_collation_filter(A) ::= . {
+    A = NULL;
+}
+opt_show_collation_filter(A) ::= LIKE STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+opt_show_collation_filter(A) ::= where_clause(B). {
     A = B;
 }
 

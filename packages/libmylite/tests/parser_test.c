@@ -24,6 +24,7 @@ static int test_truncate_table_syntax(void);
 static int test_show_variables_syntax(void);
 static int test_show_status_syntax(void);
 static int test_show_character_set_syntax(void);
+static int test_show_collation_syntax(void);
 static int test_show_tables_syntax(void);
 static int test_show_columns_syntax(void);
 static int test_show_index_syntax(void);
@@ -170,6 +171,7 @@ int main(void)
     failures += test_show_variables_syntax();
     failures += test_show_status_syntax();
     failures += test_show_character_set_syntax();
+    failures += test_show_collation_syntax();
     failures += test_show_tables_syntax();
     failures += test_show_columns_syntax();
     failures += test_show_index_syntax();
@@ -3131,6 +3133,58 @@ static int test_show_character_set_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_collation_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW COLLATION; "
+                          "SHOW COLLATION LIKE 'utf8mb4%'; "
+                          "SHOW COLLATION WHERE Charset = 'utf8mb4'; "
+                          "SHOW COLLATION WHERE `Default` = 'Yes';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 4U, "show collation script count");
+
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT, "show collation");
+    failures += expect_child_count(statement, 0U, "show collation child count");
+
+    statement = child_at(result.root, 1U);
+    failures += expect_child_count(statement, 1U, "show collation like child count");
+    failures += expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "show collation like pattern");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "'utf8mb4%'", "show collation like pattern text");
+
+    statement = child_at(result.root, 2U);
+    failures += expect_child_count(statement, 1U, "show collation where child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "show collation where charset clause");
+
+    statement = child_at(result.root, 3U);
+    failures += expect_child_count(statement, 1U, "show collation where default child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "show collation where default clause");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW COLLATION LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW COLLATION LIKE 'a%' WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW COLLATION LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE show_collation_identifier (collation INT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

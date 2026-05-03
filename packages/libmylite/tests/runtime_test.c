@@ -49,6 +49,9 @@ enum {
     columns_extra_column = 17,
     columns_comment_column = 19,
     columns_table_name_column = 2,
+    show_collation_column_count = 7,
+    show_collation_id_column = 2,
+    show_collation_sortlen_column = 5,
     statistics_non_unique_column = 3,
     statistics_index_name_column = 5,
     statistics_seq_column = 6,
@@ -226,6 +229,7 @@ static int test_truncate_table_execution(void);
 static int test_show_variables_execution(void);
 static int test_show_status_execution(void);
 static int test_show_character_set_execution(void);
+static int test_show_collation_execution(void);
 static int test_show_tables_execution(void);
 static int test_show_columns_execution(void);
 static int test_show_index_execution(void);
@@ -274,6 +278,9 @@ static int expect_show_status_numeric_rows(mylite_db *database,
                                            const struct show_status_numeric_expectation *expected);
 static int expect_show_character_set_maxlen_int64(mylite_db *database, const char *sql,
                                                   int64_t expected, const char *context);
+static int expect_show_collation_numeric_columns(mylite_db *database, const char *sql,
+                                                 int64_t expected_id, int64_t expected_sortlen,
+                                                 const char *context);
 static int expect_select_row_count(mylite_db *database, const char *sql, int row_count,
                                    const char *context);
 static int expect_information_schema_schemata_row(mylite_db *database,
@@ -379,6 +386,7 @@ int main(void)
     failures += test_show_variables_execution();
     failures += test_show_status_execution();
     failures += test_show_character_set_execution();
+    failures += test_show_collation_execution();
     failures += test_show_tables_execution();
     failures += test_show_columns_execution();
     failures += test_show_index_execution();
@@ -5245,6 +5253,165 @@ static int expect_show_character_set_maxlen_int64(mylite_db *database, const cha
     failures += expect_column_names(stmt, columns, 4, context);
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, context);
     failures += expect_int64(mylite_column_int64(stmt, 3), expected, context);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, context);
+    failures += expect_int64(mylite_affected_rows(stmt), -1, context);
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int test_show_collation_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"Collation", "Charset", "Id",           "Default",
+                                          "Compiled",  "Sortlen", "Pad_attribute"};
+    static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
+    static const char *const error_count_column[] = {"@@session.error_count"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const one_count[] = {"1"};
+    static const char *const all_values[] = {
+        "binary",
+        "binary",
+        "63",
+        "Yes",
+        "Yes",
+        "1",
+        "NO PAD",
+        "latin1_bin",
+        "latin1",
+        "47",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "latin1_swedish_ci",
+        "latin1",
+        "8",
+        "Yes",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb3_bin",
+        "utf8mb3",
+        "83",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb3_general_ci",
+        "utf8mb3",
+        "33",
+        "Yes",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "255",
+        "Yes",
+        "Yes",
+        "0",
+        "NO PAD",
+        "utf8mb4_bin",
+        "utf8mb4",
+        "46",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
+    };
+    static const char *const utf8mb4_values[] = {
+        "utf8mb4_0900_ai_ci", "utf8mb4", "255", "Yes", "Yes", "0", "NO PAD",
+        "utf8mb4_bin",        "utf8mb4", "46",  "",    "Yes", "1", "PAD SPACE",
+    };
+    static const char *const binary_values[] = {"binary", "binary", "63",    "Yes",
+                                                "Yes",    "1",      "NO PAD"};
+    static const char *const latin1_values[] = {
+        "latin1_bin",        "latin1", "47", "",    "Yes", "1", "PAD SPACE",
+        "latin1_swedish_ci", "latin1", "8",  "Yes", "Yes", "1", "PAD SPACE",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open show collation");
+
+    failures += expect_select_rows(database, "SHOW COLLATION", columns, 7, all_values, 7,
+                                   "show collation supported catalog");
+    failures += expect_select_rows(database, "SHOW COLLATION LIKE 'utf8mb4%'", columns, 7,
+                                   utf8mb4_values, 2, "show collation utf8mb4 wildcard");
+    failures += expect_select_rows(database, "SHOW COLLATION LIKE 'UTF8MB4%'", columns, 7,
+                                   utf8mb4_values, 2, "show collation like is case-insensitive");
+    failures += expect_select_rows(database, "SHOW COLLATION LIKE 'utf8mb4\\_%'", columns, 7,
+                                   utf8mb4_values, 2, "show collation escaped underscore wildcard");
+    failures += expect_select_rows(
+        database, "SHOW COLLATION LIKE 'UTF8MB4\\_BIN'", columns, 7,
+        (const char *const[]){"utf8mb4_bin", "utf8mb4", "46", "", "Yes", "1", "PAD SPACE"}, 1,
+        "show collation escaped exact is case-insensitive");
+    failures += expect_select_rows(database, "SHOW COLLATION LIKE 'binary'", columns, 7,
+                                   binary_values, 1, "show collation binary row");
+    failures += expect_select_rows(database, "SHOW COLLATION LIKE 'BINARY'", columns, 7,
+                                   binary_values, 1, "show collation binary case-insensitive");
+    failures += expect_select_rows(database, "SHOW COLLATION LIKE 'latin1\\_%'", columns, 7,
+                                   latin1_values, 2, "show collation latin1 escaped wildcard");
+    failures += expect_select_rows(database, "SHOW COLLATION LIKE 'no_such_collation'", columns, 7,
+                                   NULL, 0, "show collation empty like result");
+    failures += expect_show_collation_numeric_columns(
+        database, "SHOW COLLATION LIKE 'utf8mb4\\_0900\\_ai\\_ci'", 255, 0,
+        "show collation id and sortlen are integers");
+
+    failures += expect_prepare_error(database, "SHOW COLLATION WHERE Charset = 'latin1'",
+                                     MYLITE_UNSUPPORTED, "SHOW COLLATION WHERE is not supported",
+                                     "show collation where charset unsupported");
+    failures += expect_prepare_error(database,
+                                     "SHOW COLLATION WHERE `Default` = 'Yes' AND Charset IN "
+                                     "('binary','latin1','utf8mb3','utf8mb4')",
+                                     MYLITE_UNSUPPORTED, "SHOW COLLATION WHERE is not supported",
+                                     "show collation where default unsupported");
+    failures += expect_prepare_error(
+        database, "SHOW COLLATION WHERE Pad_attribute = 'NO PAD' AND Charset = 'utf8mb4'",
+        MYLITE_UNSUPPORTED, "SHOW COLLATION WHERE is not supported",
+        "show collation where pad attribute unsupported");
+    failures += expect_prepare_error(
+        database, "SHOW COLLATION WHERE Sortlen > 1 AND Charset = 'latin1'", MYLITE_UNSUPPORTED,
+        "SHOW COLLATION WHERE is not supported", "show collation where sortlen unsupported");
+    failures += expect_prepare_error(database, "SHOW COLLATION LIKE 1", MYLITE_PARSE_ERROR,
+                                     "syntax_error", "show collation non-string like syntax");
+    failures += expect_prepare_error(database, "SHOW COLLATION LIMIT 1", MYLITE_PARSE_ERROR,
+                                     "syntax_error", "show collation limit syntax");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_collation", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_collation", MYLITE_DONE);
+    failures +=
+        expect_prepare_error(database, "SELECT * FROM missing_show_collation_table",
+                             MYLITE_EXEC_ERROR, "doesn't exist", "show collation error source");
+    failures += expect_select_rows(database, "SHOW COUNT(*) ERRORS", error_count_column, 1,
+                                   one_count, 1, "show collation source error count");
+    failures += expect_select_rows(database, "SHOW COLLATION LIKE 'binary'", columns, 7,
+                                   binary_values, 1, "show collation clears diagnostics");
+    failures += expect_select_rows(database, "SHOW COUNT(*) ERRORS", error_count_column, 1,
+                                   zero_count, 1, "show collation cleared error count");
+    failures += expect_select_rows(database, "SHOW ERRORS", diagnostics_columns, 3, NULL, 0,
+                                   "show collation cleared diagnostics");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int expect_show_collation_numeric_columns(mylite_db *database, const char *sql,
+                                                 int64_t expected_id, int64_t expected_sortlen,
+                                                 const char *context)
+{
+    static const char *const columns[] = {"Collation", "Charset", "Id",           "Default",
+                                          "Compiled",  "Sortlen", "Pad_attribute"};
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, sql, MYLITE_OK, &stmt);
+
+    failures += expect_column_names(stmt, columns, show_collation_column_count, context);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, context);
+    failures +=
+        expect_int64(mylite_column_int64(stmt, show_collation_id_column), expected_id, context);
+    failures += expect_int64(mylite_column_int64(stmt, show_collation_sortlen_column),
+                             expected_sortlen, context);
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, context);
     failures += expect_int64(mylite_affected_rows(stmt), -1, context);
     mylite_finalize(stmt);

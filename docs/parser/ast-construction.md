@@ -128,6 +128,9 @@ expression nodes.
 - `KILL` statements expose typed connection/query mode, TiDB-extension marker,
   and typed target metadata for numeric connection IDs, local names, user
   variables, and builtin-function expressions.
+- Grammar-backed `FLUSH` statements expose typed option/log kind, binlog/local
+  alias flags, table read-lock/export markers, stats cluster marker, decoded
+  table/stats targets, and decoded TiDB plugin names.
 - Transaction-control statements expose begin form, access mode, consistency
   modifiers, `WORK`, completion modifiers, and decoded savepoint names.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
@@ -253,6 +256,10 @@ expression nodes.
   target kind, parsed connection ID, decoded local/user-variable target values,
   and recursive expression handles for builtin-function targets such as
   `CONNECTION_ID()`
+- typed `FLUSH` descriptors with statement kind, log kind, no-write-to-binlog
+  and local-alias flags, table read-lock/export markers, stats cluster marker,
+  ordered decoded table/stats targets, wildcard stats target markers, and
+  decoded TiDB plugin names
 - typed transaction-control descriptors with statement kind, begin form,
   TiDB begin mode, access mode, consistency modifiers, `WORK`, completion
   modifiers, savepoint-keyword marker, and decoded savepoint name
@@ -578,6 +585,15 @@ user-variable targets, and exposes builtin-function targets through the shared
 recursive expression view. Session lookup, privilege checks, active-query
 cancellation, connection teardown, and diagnostics remain runtime work.
 
+Grammar-backed `FLUSH` parser views cover privileges, status, hosts, log
+variants, table flushes, table export, client error summaries, stats delta,
+optimizer costs, user resources, and TiDB plugin forms. The view records
+`NO_WRITE_TO_BINLOG`/`LOCAL`, log type, table read-lock/export flags, stats
+cluster marker, ordered table and stats targets, wildcard stats targets, and
+decoded plugin names. Some comma-list FLUSH forms are still accepted through the
+temporary recognizer and therefore do not yet produce a typed view; replacing
+those recognizers with real grammar productions remains parser-port work.
+
 Transaction-control views cover `BEGIN`, `START TRANSACTION`, `COMMIT`,
 `ROLLBACK`, `SAVEPOINT`, and `RELEASE SAVEPOINT`. `BEGIN`/`START TRANSACTION`
 records the begin form, optional TiDB pessimistic/optimistic markers, MySQL
@@ -653,6 +669,13 @@ Latest KILL parser-view run on May 3, 2026:
 ```text
 mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.179944 qps=193709 mbps=14.73 avg_us=5.162 avg_nodes=74.5 avg_ast_bytes=10942.9 avg_kill_statement_views=0.00 avg_kill_statement_queries=0.00 avg_kill_statement_tidb_extensions=0.00 avg_kill_statement_connection_ids=0.00 avg_kill_statement_target_values=0.00 avg_kill_statement_target_expressions=0.00 avg_kill_statement_expression_tree_nodes=0.00 avg_kill_statement_expression_tree_operators=0.00 avg_kill_statement_expression_tree_leaf_values=0.00
 mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.294432 qps=190669 mbps=14.50 avg_us=5.245 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
+```
+
+Latest FLUSH parser-view run on May 3, 2026:
+
+```text
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.204600 qps=193046 mbps=14.68 avg_us=5.180 avg_nodes=74.5 avg_ast_bytes=10998.9 avg_flush_statement_views=0.00 avg_flush_statement_log_forms=0.00 avg_flush_statement_table_forms=0.00 avg_flush_statement_stats_forms=0.00 avg_flush_statement_no_write_to_binlog=0.00 avg_flush_statement_read_locks=0.00 avg_flush_statement_for_exports=0.00 avg_flush_statement_cluster_flags=0.00 avg_flush_statement_targets=0.00 avg_flush_statement_target_name_values=0.00 avg_flush_statement_target_wildcards=0.00 avg_flush_statement_plugins=0.00 avg_flush_statement_plugin_name_values=0.00
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.431519 qps=187152 mbps=14.23 avg_us=5.343 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
 ```
 
 Release benchmark result on May 2, 2026:
@@ -762,7 +785,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 333K on disk, 194,019 bytes text/data/other
+parser support object: 344K on disk, 200,085 bytes text/data/other
 semantic AST object: 18K on disk, 8,095 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.4M on disk

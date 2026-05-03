@@ -152,6 +152,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_table_maintenance_statement_view(ast, i);
     const MyliteAstKillStatement *kill_statement =
         mylite_ast_kill_statement_view(ast, i);
+    const MyliteAstFlushStatement *flush_statement =
+        mylite_ast_flush_statement_view(ast, i);
     const MyliteAstDeleteStatement *delete_statement =
         mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
@@ -1053,6 +1055,76 @@ static void dump_statements(const MyliteAst *ast) {
           mylite_ast_kill_statement_view_target_expression(kill_statement);
       if (target_expression != NULL) {
         dump_expression_tree(target_expression, 3);
+      }
+    }
+    if (flush_statement != NULL) {
+      printf("  flush_statement span=%zu..%zu kind=%s log=%s "
+             "no_write_to_binlog=%d local_alias=%d read_lock=%d "
+             "for_export=%d cluster=%d targets=%zu plugins=%zu node=%s\n",
+             mylite_ast_flush_statement_view_start(flush_statement),
+             mylite_ast_flush_statement_view_end(flush_statement),
+             mylite_flush_statement_kind_name(
+                 mylite_ast_flush_statement_view_kind(flush_statement)),
+             mylite_flush_log_kind_name(
+                 mylite_ast_flush_statement_view_log_kind(flush_statement)),
+             mylite_ast_flush_statement_view_has_no_write_to_binlog(
+                 flush_statement),
+             mylite_ast_flush_statement_view_uses_local_alias(flush_statement),
+             mylite_ast_flush_statement_view_has_read_lock(flush_statement),
+             mylite_ast_flush_statement_view_has_for_export(flush_statement),
+             mylite_ast_flush_statement_view_is_cluster(flush_statement),
+             mylite_ast_flush_statement_view_target_count(flush_statement),
+             mylite_ast_flush_statement_view_plugin_count(flush_statement),
+             node_symbol_or_none(
+                 mylite_ast_flush_statement_view_node(flush_statement)));
+      for (size_t j = 0;
+           j < mylite_ast_flush_statement_view_target_count(flush_statement);
+           j++) {
+        const MyliteAstFlushTarget *target =
+            mylite_ast_flush_statement_view_target_at(flush_statement, j);
+        printf("    flush_target[%zu] span=%zu..%zu kind=%s wildcard=%d "
+               "target=",
+               j, mylite_ast_flush_target_view_start(target),
+               mylite_ast_flush_target_view_end(target),
+               mylite_flush_target_kind_name(
+                   mylite_ast_flush_target_view_kind(target)),
+               mylite_ast_flush_target_view_has_wildcard(target));
+        const char *schema = mylite_ast_flush_target_view_schema_value(target);
+        size_t schema_length =
+            mylite_ast_flush_target_view_schema_value_length(target);
+        if (schema != NULL) {
+          print_escaped_bytes(schema, schema_length);
+          fputc('.', stdout);
+        }
+        const char *name = mylite_ast_flush_target_view_name_value(target);
+        size_t name_length =
+            mylite_ast_flush_target_view_name_value_length(target);
+        if (name == NULL) {
+          fputs(mylite_ast_flush_target_view_has_wildcard(target) ? "*" :
+                                                               "none",
+                stdout);
+        } else {
+          print_escaped_bytes(name, name_length);
+        }
+        fputc('\n', stdout);
+      }
+      for (size_t j = 0;
+           j < mylite_ast_flush_statement_view_plugin_count(flush_statement);
+           j++) {
+        const MyliteAstFlushPlugin *plugin =
+            mylite_ast_flush_statement_view_plugin_at(flush_statement, j);
+        printf("    flush_plugin[%zu] span=%zu..%zu name_len=%zu name=", j,
+               mylite_ast_flush_plugin_view_start(plugin),
+               mylite_ast_flush_plugin_view_end(plugin),
+               mylite_ast_flush_plugin_view_name_value_length(plugin));
+        const char *name = mylite_ast_flush_plugin_view_name_value(plugin);
+        if (name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              name, mylite_ast_flush_plugin_view_name_value_length(plugin));
+        }
+        fputc('\n', stdout);
       }
     }
     if (insert_statement != NULL) {

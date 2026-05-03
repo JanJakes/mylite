@@ -365,6 +365,19 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t kill_statement_expression_tree_nodes = 0;
   size_t kill_statement_expression_tree_operators = 0;
   size_t kill_statement_expression_tree_leaf_values = 0;
+  size_t flush_statement_views = 0;
+  size_t flush_statement_log_forms = 0;
+  size_t flush_statement_table_forms = 0;
+  size_t flush_statement_stats_forms = 0;
+  size_t flush_statement_no_write_to_binlog = 0;
+  size_t flush_statement_read_locks = 0;
+  size_t flush_statement_for_exports = 0;
+  size_t flush_statement_cluster_flags = 0;
+  size_t flush_statement_targets = 0;
+  size_t flush_statement_target_name_values = 0;
+  size_t flush_statement_target_wildcards = 0;
+  size_t flush_statement_plugins = 0;
+  size_t flush_statement_plugin_name_values = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t set_statement_views = 0;
@@ -1862,6 +1875,68 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                     &kill_statement_expression_tree_leaf_values);
               }
             }
+            const MyliteAstFlushStatement *flush_statement =
+                mylite_ast_flush_statement_view(ast, i);
+            if (flush_statement != NULL) {
+              flush_statement_views++;
+              switch (mylite_ast_flush_statement_view_kind(flush_statement)) {
+                case MYLITE_FLUSH_STATEMENT_LOGS:
+                  flush_statement_log_forms++;
+                  break;
+                case MYLITE_FLUSH_STATEMENT_TABLES:
+                case MYLITE_FLUSH_STATEMENT_TABLES_FOR_EXPORT:
+                  flush_statement_table_forms++;
+                  break;
+                case MYLITE_FLUSH_STATEMENT_STATS_DELTA:
+                  flush_statement_stats_forms++;
+                  break;
+                default:
+                  break;
+              }
+              if (mylite_ast_flush_statement_view_has_no_write_to_binlog(
+                      flush_statement)) {
+                flush_statement_no_write_to_binlog++;
+              }
+              if (mylite_ast_flush_statement_view_has_read_lock(
+                      flush_statement)) {
+                flush_statement_read_locks++;
+              }
+              if (mylite_ast_flush_statement_view_has_for_export(
+                      flush_statement)) {
+                flush_statement_for_exports++;
+              }
+              if (mylite_ast_flush_statement_view_is_cluster(
+                      flush_statement)) {
+                flush_statement_cluster_flags++;
+              }
+              size_t target_count =
+                  mylite_ast_flush_statement_view_target_count(
+                      flush_statement);
+              flush_statement_targets += target_count;
+              for (size_t j = 0; j < target_count; j++) {
+                const MyliteAstFlushTarget *target =
+                    mylite_ast_flush_statement_view_target_at(flush_statement,
+                                                              j);
+                if (mylite_ast_flush_target_view_name_value(target) != NULL) {
+                  flush_statement_target_name_values++;
+                }
+                if (mylite_ast_flush_target_view_has_wildcard(target)) {
+                  flush_statement_target_wildcards++;
+                }
+              }
+              size_t plugin_count =
+                  mylite_ast_flush_statement_view_plugin_count(
+                      flush_statement);
+              flush_statement_plugins += plugin_count;
+              for (size_t j = 0; j < plugin_count; j++) {
+                const MyliteAstFlushPlugin *plugin =
+                    mylite_ast_flush_statement_view_plugin_at(flush_statement,
+                                                              j);
+                if (mylite_ast_flush_plugin_view_name_value(plugin) != NULL) {
+                  flush_statement_plugin_name_values++;
+                }
+              }
+            }
             const MyliteAstSetStatement *set_statement =
                 mylite_ast_set_statement_view(ast, i);
             if (set_statement != NULL) {
@@ -2499,6 +2574,19 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_kill_statement_expression_tree_nodes=%.2f "
            "avg_kill_statement_expression_tree_operators=%.2f "
            "avg_kill_statement_expression_tree_leaf_values=%.2f "
+           "avg_flush_statement_views=%.2f "
+           "avg_flush_statement_log_forms=%.2f "
+           "avg_flush_statement_table_forms=%.2f "
+           "avg_flush_statement_stats_forms=%.2f "
+           "avg_flush_statement_no_write_to_binlog=%.2f "
+           "avg_flush_statement_read_locks=%.2f "
+           "avg_flush_statement_for_exports=%.2f "
+           "avg_flush_statement_cluster_flags=%.2f "
+           "avg_flush_statement_targets=%.2f "
+           "avg_flush_statement_target_name_values=%.2f "
+           "avg_flush_statement_target_wildcards=%.2f "
+           "avg_flush_statement_plugins=%.2f "
+           "avg_flush_statement_plugin_name_values=%.2f "
            "avg_set_statement_views=%.2f "
            "avg_set_statement_assignments=%.2f "
            "avg_set_assignment_name_values=%.2f "
@@ -2881,6 +2969,19 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)kill_statement_expression_tree_operators / (double)parsed,
            (double)kill_statement_expression_tree_leaf_values /
                (double)parsed,
+           (double)flush_statement_views / (double)parsed,
+           (double)flush_statement_log_forms / (double)parsed,
+           (double)flush_statement_table_forms / (double)parsed,
+           (double)flush_statement_stats_forms / (double)parsed,
+           (double)flush_statement_no_write_to_binlog / (double)parsed,
+           (double)flush_statement_read_locks / (double)parsed,
+           (double)flush_statement_for_exports / (double)parsed,
+           (double)flush_statement_cluster_flags / (double)parsed,
+           (double)flush_statement_targets / (double)parsed,
+           (double)flush_statement_target_name_values / (double)parsed,
+           (double)flush_statement_target_wildcards / (double)parsed,
+           (double)flush_statement_plugins / (double)parsed,
+           (double)flush_statement_plugin_name_values / (double)parsed,
            (double)set_statement_views / (double)parsed,
            (double)set_statement_assignments / (double)parsed,
            (double)set_assignment_name_values / (double)parsed,

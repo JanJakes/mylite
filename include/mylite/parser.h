@@ -50,6 +50,9 @@ typedef struct MyliteAstDoExpression MyliteAstDoExpression;
 typedef struct MyliteAstDoStatement MyliteAstDoStatement;
 typedef struct MyliteAstExecuteStatement MyliteAstExecuteStatement;
 typedef struct MyliteAstExplainStatement MyliteAstExplainStatement;
+typedef struct MyliteAstFlushPlugin MyliteAstFlushPlugin;
+typedef struct MyliteAstFlushStatement MyliteAstFlushStatement;
+typedef struct MyliteAstFlushTarget MyliteAstFlushTarget;
 typedef struct MyliteAstInsertAssignment MyliteAstInsertAssignment;
 typedef struct MyliteAstInsertColumn MyliteAstInsertColumn;
 typedef struct MyliteAstInsertStatement MyliteAstInsertStatement;
@@ -357,6 +360,39 @@ typedef enum MyliteKillTargetKind {
   MYLITE_KILL_TARGET_USER_VARIABLE,
   MYLITE_KILL_TARGET_EXPRESSION
 } MyliteKillTargetKind;
+
+typedef enum MyliteFlushStatementKind {
+  MYLITE_FLUSH_STATEMENT_UNKNOWN = 0,
+  MYLITE_FLUSH_STATEMENT_PRIVILEGES,
+  MYLITE_FLUSH_STATEMENT_STATUS,
+  MYLITE_FLUSH_STATEMENT_TIDB_PLUGINS,
+  MYLITE_FLUSH_STATEMENT_HOSTS,
+  MYLITE_FLUSH_STATEMENT_LOGS,
+  MYLITE_FLUSH_STATEMENT_TABLES,
+  MYLITE_FLUSH_STATEMENT_TABLES_FOR_EXPORT,
+  MYLITE_FLUSH_STATEMENT_CLIENT_ERRORS_SUMMARY,
+  MYLITE_FLUSH_STATEMENT_STATS_DELTA,
+  MYLITE_FLUSH_STATEMENT_OPTIMIZER_COSTS,
+  MYLITE_FLUSH_STATEMENT_USER_RESOURCES
+} MyliteFlushStatementKind;
+
+typedef enum MyliteFlushLogKind {
+  MYLITE_FLUSH_LOG_UNSPECIFIED = 0,
+  MYLITE_FLUSH_LOG_BINARY,
+  MYLITE_FLUSH_LOG_ENGINE,
+  MYLITE_FLUSH_LOG_ERROR,
+  MYLITE_FLUSH_LOG_GENERAL,
+  MYLITE_FLUSH_LOG_SLOW,
+  MYLITE_FLUSH_LOG_RELAY
+} MyliteFlushLogKind;
+
+typedef enum MyliteFlushTargetKind {
+  MYLITE_FLUSH_TARGET_UNKNOWN = 0,
+  MYLITE_FLUSH_TARGET_TABLE,
+  MYLITE_FLUSH_TARGET_STATS_GLOBAL,
+  MYLITE_FLUSH_TARGET_STATS_DATABASE,
+  MYLITE_FLUSH_TARGET_STATS_TABLE
+} MyliteFlushTargetKind;
 
 typedef enum MyliteCreateTableColumnTypeFamily {
   MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN = 0,
@@ -784,6 +820,9 @@ const char *mylite_table_maintenance_kind_name(
     MyliteTableMaintenanceKind kind);
 const char *mylite_kill_statement_kind_name(MyliteKillStatementKind kind);
 const char *mylite_kill_target_kind_name(MyliteKillTargetKind kind);
+const char *mylite_flush_statement_kind_name(MyliteFlushStatementKind kind);
+const char *mylite_flush_log_kind_name(MyliteFlushLogKind kind);
+const char *mylite_flush_target_kind_name(MyliteFlushTargetKind kind);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
     MyliteExpressionLiteralKind kind);
@@ -978,6 +1017,8 @@ const MyliteAstTableMaintenanceStatement *
 mylite_ast_table_maintenance_statement_view(const MyliteAst *ast,
                                             size_t statement_index);
 const MyliteAstKillStatement *mylite_ast_kill_statement_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstFlushStatement *mylite_ast_flush_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
     const MyliteAst *ast, size_t statement_index);
@@ -2223,6 +2264,60 @@ unsigned long long mylite_ast_kill_statement_view_connection_id(
     const MyliteAstKillStatement *kill_statement);
 const MyliteAstExpression *mylite_ast_kill_statement_view_target_expression(
     const MyliteAstKillStatement *kill_statement);
+const MyliteAstNode *mylite_ast_flush_statement_view_node(
+    const MyliteAstFlushStatement *flush_statement);
+size_t mylite_ast_flush_statement_view_start(
+    const MyliteAstFlushStatement *flush_statement);
+size_t mylite_ast_flush_statement_view_end(
+    const MyliteAstFlushStatement *flush_statement);
+MyliteFlushStatementKind mylite_ast_flush_statement_view_kind(
+    const MyliteAstFlushStatement *flush_statement);
+MyliteFlushLogKind mylite_ast_flush_statement_view_log_kind(
+    const MyliteAstFlushStatement *flush_statement);
+int mylite_ast_flush_statement_view_has_no_write_to_binlog(
+    const MyliteAstFlushStatement *flush_statement);
+int mylite_ast_flush_statement_view_uses_local_alias(
+    const MyliteAstFlushStatement *flush_statement);
+int mylite_ast_flush_statement_view_has_read_lock(
+    const MyliteAstFlushStatement *flush_statement);
+int mylite_ast_flush_statement_view_has_for_export(
+    const MyliteAstFlushStatement *flush_statement);
+int mylite_ast_flush_statement_view_is_cluster(
+    const MyliteAstFlushStatement *flush_statement);
+size_t mylite_ast_flush_statement_view_target_count(
+    const MyliteAstFlushStatement *flush_statement);
+const MyliteAstFlushTarget *mylite_ast_flush_statement_view_target_at(
+    const MyliteAstFlushStatement *flush_statement, size_t target_index);
+size_t mylite_ast_flush_statement_view_plugin_count(
+    const MyliteAstFlushStatement *flush_statement);
+const MyliteAstFlushPlugin *mylite_ast_flush_statement_view_plugin_at(
+    const MyliteAstFlushStatement *flush_statement, size_t plugin_index);
+const MyliteAstNode *mylite_ast_flush_target_view_node(
+    const MyliteAstFlushTarget *target);
+MyliteFlushTargetKind mylite_ast_flush_target_view_kind(
+    const MyliteAstFlushTarget *target);
+size_t mylite_ast_flush_target_view_start(
+    const MyliteAstFlushTarget *target);
+size_t mylite_ast_flush_target_view_end(const MyliteAstFlushTarget *target);
+const char *mylite_ast_flush_target_view_schema_value(
+    const MyliteAstFlushTarget *target);
+size_t mylite_ast_flush_target_view_schema_value_length(
+    const MyliteAstFlushTarget *target);
+const char *mylite_ast_flush_target_view_name_value(
+    const MyliteAstFlushTarget *target);
+size_t mylite_ast_flush_target_view_name_value_length(
+    const MyliteAstFlushTarget *target);
+int mylite_ast_flush_target_view_has_wildcard(
+    const MyliteAstFlushTarget *target);
+const MyliteAstNode *mylite_ast_flush_plugin_view_node(
+    const MyliteAstFlushPlugin *plugin);
+size_t mylite_ast_flush_plugin_view_start(
+    const MyliteAstFlushPlugin *plugin);
+size_t mylite_ast_flush_plugin_view_end(const MyliteAstFlushPlugin *plugin);
+const char *mylite_ast_flush_plugin_view_name_value(
+    const MyliteAstFlushPlugin *plugin);
+size_t mylite_ast_flush_plugin_view_name_value_length(
+    const MyliteAstFlushPlugin *plugin);
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
     const MyliteAstTransactionStatement *transaction_statement);
 size_t mylite_ast_transaction_statement_view_start(

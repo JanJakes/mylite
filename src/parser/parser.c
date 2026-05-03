@@ -1048,6 +1048,48 @@ struct MyliteAstKillStatement {
   int has_target_expression;
 };
 
+struct MyliteAstFlushTarget {
+  const MyliteAstNode *node;
+  MyliteFlushTargetKind kind;
+  size_t start;
+  size_t end;
+  size_t schema_start;
+  size_t schema_end;
+  const char *schema_value;
+  size_t schema_value_length;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+  int has_wildcard;
+};
+
+struct MyliteAstFlushPlugin {
+  const MyliteAstNode *node;
+  size_t start;
+  size_t end;
+  const char *name_value;
+  size_t name_value_length;
+};
+
+struct MyliteAstFlushStatement {
+  const MyliteAstNode *node;
+  const MyliteAstNode *option_node;
+  MyliteAstFlushTarget *targets;
+  MyliteAstFlushPlugin *plugins;
+  MyliteFlushStatementKind kind;
+  MyliteFlushLogKind log_kind;
+  size_t start;
+  size_t end;
+  size_t target_count;
+  size_t plugin_count;
+  int has_no_write_to_binlog;
+  int uses_local_alias;
+  int has_read_lock;
+  int has_for_export;
+  int is_cluster;
+};
+
 struct MyliteAstTransactionStatement {
   const MyliteAstNode *node;
   MyliteTransactionStatementKind kind;
@@ -1101,6 +1143,7 @@ typedef struct MyliteAstStatement {
   MyliteAstLockStatement *lock_statement;
   MyliteAstTableMaintenanceStatement *table_maintenance_statement;
   MyliteAstKillStatement *kill_statement;
+  MyliteAstFlushStatement *flush_statement;
   MyliteAstDeleteStatement *delete_statement;
   MyliteAstInsertStatement *insert_statement;
   MyliteAstReplaceStatement *replace_statement;
@@ -1650,6 +1693,49 @@ static int mylite_ast_set_kill_target(MyliteAst *ast,
                                       const MyliteAstNode *target);
 static int mylite_ast_set_kill_target_value(
     MyliteAst *ast, MyliteAstKillStatement *kill_statement);
+static int mylite_ast_set_flush_statement_view(MyliteAst *ast,
+                                               MyliteAstStatement *statement,
+                                               const MyliteAstNode *payload);
+static MyliteFlushStatementKind mylite_ast_classify_flush_statement(
+    const MyliteAstNode *option);
+static MyliteFlushLogKind mylite_ast_flush_log_kind(
+    const MyliteAstNode *option);
+static int mylite_ast_set_flush_targets(
+    MyliteAst *ast, MyliteAstFlushStatement *flush_statement,
+    const MyliteAstNode *option);
+static const MyliteAstNode *mylite_ast_flush_target_list_node(
+    const MyliteAstFlushStatement *flush_statement,
+    const MyliteAstNode *option);
+static size_t mylite_ast_count_flush_targets(
+    const MyliteAstNode *node, MyliteFlushStatementKind kind);
+static int mylite_ast_fill_flush_targets(
+    MyliteAst *ast, MyliteAstFlushTarget *targets, size_t target_count,
+    const MyliteAstNode *node, MyliteFlushStatementKind kind, size_t *index);
+static int mylite_ast_fill_flush_target(MyliteAst *ast,
+                                        MyliteAstFlushTarget *target,
+                                        const MyliteAstNode *node,
+                                        MyliteFlushStatementKind kind);
+static int mylite_ast_fill_flush_table_target(MyliteAst *ast,
+                                              MyliteAstFlushTarget *target,
+                                              const MyliteAstNode *node);
+static int mylite_ast_fill_flush_stats_target(MyliteAst *ast,
+                                              MyliteAstFlushTarget *target,
+                                              const MyliteAstNode *node);
+static int mylite_ast_set_flush_target_identifier(
+    MyliteAst *ast, MyliteAstFlushTarget *target, const MyliteAstNode *node,
+    int schema);
+static int mylite_ast_set_flush_plugins(
+    MyliteAst *ast, MyliteAstFlushStatement *flush_statement,
+    const MyliteAstNode *option);
+static size_t mylite_ast_count_flush_plugins(const MyliteAstNode *node);
+static int mylite_ast_fill_flush_plugins(MyliteAst *ast,
+                                         MyliteAstFlushPlugin *plugins,
+                                         size_t plugin_count,
+                                         const MyliteAstNode *node,
+                                         size_t *index);
+static int mylite_ast_fill_flush_plugin(MyliteAst *ast,
+                                        MyliteAstFlushPlugin *plugin,
+                                        const MyliteAstNode *node);
 static int mylite_ast_set_prepared_statement_name_value(
     MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
     size_t *name_end, const char **name_value, size_t *name_value_length);
@@ -2581,6 +2667,72 @@ const char *mylite_kill_target_kind_name(MyliteKillTargetKind kind) {
       return "user_variable";
     case MYLITE_KILL_TARGET_EXPRESSION:
       return "expression";
+  }
+  return "unknown";
+}
+
+const char *mylite_flush_statement_kind_name(MyliteFlushStatementKind kind) {
+  switch (kind) {
+    case MYLITE_FLUSH_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_FLUSH_STATEMENT_PRIVILEGES:
+      return "privileges";
+    case MYLITE_FLUSH_STATEMENT_STATUS:
+      return "status";
+    case MYLITE_FLUSH_STATEMENT_TIDB_PLUGINS:
+      return "tidb_plugins";
+    case MYLITE_FLUSH_STATEMENT_HOSTS:
+      return "hosts";
+    case MYLITE_FLUSH_STATEMENT_LOGS:
+      return "logs";
+    case MYLITE_FLUSH_STATEMENT_TABLES:
+      return "tables";
+    case MYLITE_FLUSH_STATEMENT_TABLES_FOR_EXPORT:
+      return "tables_for_export";
+    case MYLITE_FLUSH_STATEMENT_CLIENT_ERRORS_SUMMARY:
+      return "client_errors_summary";
+    case MYLITE_FLUSH_STATEMENT_STATS_DELTA:
+      return "stats_delta";
+    case MYLITE_FLUSH_STATEMENT_OPTIMIZER_COSTS:
+      return "optimizer_costs";
+    case MYLITE_FLUSH_STATEMENT_USER_RESOURCES:
+      return "user_resources";
+  }
+  return "unknown";
+}
+
+const char *mylite_flush_log_kind_name(MyliteFlushLogKind kind) {
+  switch (kind) {
+    case MYLITE_FLUSH_LOG_UNSPECIFIED:
+      return "unspecified";
+    case MYLITE_FLUSH_LOG_BINARY:
+      return "binary";
+    case MYLITE_FLUSH_LOG_ENGINE:
+      return "engine";
+    case MYLITE_FLUSH_LOG_ERROR:
+      return "error";
+    case MYLITE_FLUSH_LOG_GENERAL:
+      return "general";
+    case MYLITE_FLUSH_LOG_SLOW:
+      return "slow";
+    case MYLITE_FLUSH_LOG_RELAY:
+      return "relay";
+  }
+  return "unknown";
+}
+
+const char *mylite_flush_target_kind_name(MyliteFlushTargetKind kind) {
+  switch (kind) {
+    case MYLITE_FLUSH_TARGET_UNKNOWN:
+      return "unknown";
+    case MYLITE_FLUSH_TARGET_TABLE:
+      return "table";
+    case MYLITE_FLUSH_TARGET_STATS_GLOBAL:
+      return "stats_global";
+    case MYLITE_FLUSH_TARGET_STATS_DATABASE:
+      return "stats_database";
+    case MYLITE_FLUSH_TARGET_STATS_TABLE:
+      return "stats_table";
   }
   return "unknown";
 }
@@ -3836,6 +3988,13 @@ const MyliteAstKillStatement *mylite_ast_kill_statement_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->kill_statement;
+}
+
+const MyliteAstFlushStatement *mylite_ast_flush_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->flush_statement;
 }
 
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
@@ -7233,6 +7392,152 @@ const MyliteAstExpression *mylite_ast_kill_statement_view_target_expression(
   return kill_statement == NULL || !kill_statement->has_target_expression
              ? NULL
              : &kill_statement->target_expression;
+}
+
+const MyliteAstNode *mylite_ast_flush_statement_view_node(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement == NULL ? NULL : flush_statement->node;
+}
+
+size_t mylite_ast_flush_statement_view_start(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement == NULL ? 0 : flush_statement->start;
+}
+
+size_t mylite_ast_flush_statement_view_end(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement == NULL ? 0 : flush_statement->end;
+}
+
+MyliteFlushStatementKind mylite_ast_flush_statement_view_kind(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement == NULL ? MYLITE_FLUSH_STATEMENT_UNKNOWN
+                                 : flush_statement->kind;
+}
+
+MyliteFlushLogKind mylite_ast_flush_statement_view_log_kind(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement == NULL ? MYLITE_FLUSH_LOG_UNSPECIFIED
+                                 : flush_statement->log_kind;
+}
+
+int mylite_ast_flush_statement_view_has_no_write_to_binlog(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement != NULL && flush_statement->has_no_write_to_binlog;
+}
+
+int mylite_ast_flush_statement_view_uses_local_alias(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement != NULL && flush_statement->uses_local_alias;
+}
+
+int mylite_ast_flush_statement_view_has_read_lock(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement != NULL && flush_statement->has_read_lock;
+}
+
+int mylite_ast_flush_statement_view_has_for_export(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement != NULL && flush_statement->has_for_export;
+}
+
+int mylite_ast_flush_statement_view_is_cluster(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement != NULL && flush_statement->is_cluster;
+}
+
+size_t mylite_ast_flush_statement_view_target_count(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement == NULL ? 0 : flush_statement->target_count;
+}
+
+const MyliteAstFlushTarget *mylite_ast_flush_statement_view_target_at(
+    const MyliteAstFlushStatement *flush_statement, size_t target_index) {
+  return flush_statement == NULL ||
+                 target_index >= flush_statement->target_count
+             ? NULL
+             : &flush_statement->targets[target_index];
+}
+
+size_t mylite_ast_flush_statement_view_plugin_count(
+    const MyliteAstFlushStatement *flush_statement) {
+  return flush_statement == NULL ? 0 : flush_statement->plugin_count;
+}
+
+const MyliteAstFlushPlugin *mylite_ast_flush_statement_view_plugin_at(
+    const MyliteAstFlushStatement *flush_statement, size_t plugin_index) {
+  return flush_statement == NULL ||
+                 plugin_index >= flush_statement->plugin_count
+             ? NULL
+             : &flush_statement->plugins[plugin_index];
+}
+
+const MyliteAstNode *mylite_ast_flush_target_view_node(
+    const MyliteAstFlushTarget *target) {
+  return target == NULL ? NULL : target->node;
+}
+
+MyliteFlushTargetKind mylite_ast_flush_target_view_kind(
+    const MyliteAstFlushTarget *target) {
+  return target == NULL ? MYLITE_FLUSH_TARGET_UNKNOWN : target->kind;
+}
+
+size_t mylite_ast_flush_target_view_start(
+    const MyliteAstFlushTarget *target) {
+  return target == NULL ? 0 : target->start;
+}
+
+size_t mylite_ast_flush_target_view_end(const MyliteAstFlushTarget *target) {
+  return target == NULL ? 0 : target->end;
+}
+
+const char *mylite_ast_flush_target_view_schema_value(
+    const MyliteAstFlushTarget *target) {
+  return target == NULL ? NULL : target->schema_value;
+}
+
+size_t mylite_ast_flush_target_view_schema_value_length(
+    const MyliteAstFlushTarget *target) {
+  return target == NULL ? 0 : target->schema_value_length;
+}
+
+const char *mylite_ast_flush_target_view_name_value(
+    const MyliteAstFlushTarget *target) {
+  return target == NULL ? NULL : target->name_value;
+}
+
+size_t mylite_ast_flush_target_view_name_value_length(
+    const MyliteAstFlushTarget *target) {
+  return target == NULL ? 0 : target->name_value_length;
+}
+
+int mylite_ast_flush_target_view_has_wildcard(
+    const MyliteAstFlushTarget *target) {
+  return target != NULL && target->has_wildcard;
+}
+
+const MyliteAstNode *mylite_ast_flush_plugin_view_node(
+    const MyliteAstFlushPlugin *plugin) {
+  return plugin == NULL ? NULL : plugin->node;
+}
+
+size_t mylite_ast_flush_plugin_view_start(
+    const MyliteAstFlushPlugin *plugin) {
+  return plugin == NULL ? 0 : plugin->start;
+}
+
+size_t mylite_ast_flush_plugin_view_end(const MyliteAstFlushPlugin *plugin) {
+  return plugin == NULL ? 0 : plugin->end;
+}
+
+const char *mylite_ast_flush_plugin_view_name_value(
+    const MyliteAstFlushPlugin *plugin) {
+  return plugin == NULL ? NULL : plugin->name_value;
+}
+
+size_t mylite_ast_flush_plugin_view_name_value_length(
+    const MyliteAstFlushPlugin *plugin) {
+  return plugin == NULL ? 0 : plugin->name_value_length;
 }
 
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
@@ -10878,6 +11183,9 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   }
   if (strcmp(statement->symbol_name, "nt_show_stmt") == 0) {
     return mylite_ast_set_show_statement_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_flush_stmt") == 0) {
+    return mylite_ast_set_flush_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_lock_tables_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_unlock_tables_stmt") == 0 ||
@@ -15655,6 +15963,400 @@ static int mylite_ast_set_kill_target_value(
         kill_statement->target_expression.value_length;
   }
   return 1;
+}
+
+static int mylite_ast_set_flush_statement_view(MyliteAst *ast,
+                                               MyliteAstStatement *statement,
+                                               const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstFlushStatement *flush_statement =
+      mylite_ast_alloc(ast, sizeof(*flush_statement));
+  if (flush_statement == NULL) {
+    return 0;
+  }
+  flush_statement->node = payload == NULL ? statement->node : payload;
+  flush_statement->option_node =
+      mylite_ast_find_first_symbol(flush_statement->node, "nt_flush_option");
+  flush_statement->start = mylite_ast_node_start(flush_statement->node);
+  flush_statement->end = mylite_ast_node_end(flush_statement->node);
+  flush_statement->kind =
+      mylite_ast_classify_flush_statement(flush_statement->option_node);
+  flush_statement->log_kind =
+      mylite_ast_flush_log_kind(flush_statement->option_node);
+  const MyliteAstNode *binlog_alias = mylite_ast_find_first_symbol(
+      flush_statement->node, "nt_no_write_to_bin_log_alias_opt");
+  flush_statement->uses_local_alias =
+      mylite_ast_find_first_token(binlog_alias, MYLITE_TOK_LOCAL) != NULL;
+  flush_statement->has_no_write_to_binlog =
+      flush_statement->uses_local_alias ||
+      mylite_ast_find_first_token(binlog_alias,
+                                  MYLITE_TOK_NO_WRITE_TO_BIN_LOG) != NULL;
+  const MyliteAstNode *read_lock = mylite_ast_find_first_symbol(
+      flush_statement->option_node, "nt_with_read_lock_opt");
+  flush_statement->has_read_lock =
+      mylite_ast_find_first_token(read_lock, MYLITE_TOK_READ) != NULL &&
+      mylite_ast_find_first_token(read_lock, MYLITE_TOK_LOCK) != NULL;
+  flush_statement->has_for_export =
+      mylite_ast_find_first_token(flush_statement->option_node,
+                                  MYLITE_TOK_FOR_KWD) != NULL &&
+      mylite_ast_find_first_token(flush_statement->option_node,
+                                  MYLITE_TOK_EXPORT) != NULL;
+  flush_statement->is_cluster =
+      mylite_ast_find_first_token(flush_statement->option_node,
+                                  MYLITE_TOK_CLUSTER) != NULL;
+  if (!mylite_ast_set_flush_targets(ast, flush_statement,
+                                    flush_statement->option_node) ||
+      !mylite_ast_set_flush_plugins(ast, flush_statement,
+                                    flush_statement->option_node)) {
+    return 0;
+  }
+  statement->flush_statement = flush_statement;
+  return 1;
+}
+
+static MyliteFlushStatementKind mylite_ast_classify_flush_statement(
+    const MyliteAstNode *option) {
+  if (option == NULL) {
+    return MYLITE_FLUSH_STATEMENT_UNKNOWN;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_PRIVILEGES) !=
+      NULL) {
+    return MYLITE_FLUSH_STATEMENT_PRIVILEGES;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_STATUS) != NULL) {
+    return MYLITE_FLUSH_STATEMENT_STATUS;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_TIDB) != NULL &&
+      mylite_ast_find_direct_child_token(option, MYLITE_TOK_PLUGINS) != NULL) {
+    return MYLITE_FLUSH_STATEMENT_TIDB_PLUGINS;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_HOSTS) != NULL) {
+    return MYLITE_FLUSH_STATEMENT_HOSTS;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_LOGS) != NULL) {
+    return MYLITE_FLUSH_STATEMENT_LOGS;
+  }
+  if (mylite_ast_find_first_symbol(option, "nt_table_or_tables") != NULL) {
+    return mylite_ast_find_direct_child_token(option, MYLITE_TOK_FOR_KWD) != NULL
+               ? MYLITE_FLUSH_STATEMENT_TABLES_FOR_EXPORT
+               : MYLITE_FLUSH_STATEMENT_TABLES;
+  }
+  if (mylite_ast_find_direct_child_token(option,
+                                         MYLITE_TOK_CLIENT_ERRORS_SUMMARY) !=
+      NULL) {
+    return MYLITE_FLUSH_STATEMENT_CLIENT_ERRORS_SUMMARY;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_STATS_DELTA) !=
+      NULL) {
+    return MYLITE_FLUSH_STATEMENT_STATS_DELTA;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_OPTIMIZER_COSTS) !=
+      NULL) {
+    return MYLITE_FLUSH_STATEMENT_OPTIMIZER_COSTS;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_USER_RESOURCES) !=
+      NULL) {
+    return MYLITE_FLUSH_STATEMENT_USER_RESOURCES;
+  }
+  return MYLITE_FLUSH_STATEMENT_UNKNOWN;
+}
+
+static MyliteFlushLogKind mylite_ast_flush_log_kind(
+    const MyliteAstNode *option) {
+  const MyliteAstNode *log_type =
+      mylite_ast_find_first_symbol(option, "nt_log_type_opt");
+  if (mylite_ast_find_first_token(log_type, MYLITE_TOK_BINARY_TYPE) != NULL) {
+    return MYLITE_FLUSH_LOG_BINARY;
+  }
+  if (mylite_ast_find_first_token(log_type, MYLITE_TOK_ENGINE) != NULL) {
+    return MYLITE_FLUSH_LOG_ENGINE;
+  }
+  if (mylite_ast_find_first_token(log_type, MYLITE_TOK_ERROR_KWD) != NULL) {
+    return MYLITE_FLUSH_LOG_ERROR;
+  }
+  if (mylite_ast_find_first_token(log_type, MYLITE_TOK_GENERAL) != NULL) {
+    return MYLITE_FLUSH_LOG_GENERAL;
+  }
+  if (mylite_ast_find_first_token(log_type, MYLITE_TOK_SLOW) != NULL) {
+    return MYLITE_FLUSH_LOG_SLOW;
+  }
+  if (mylite_ast_find_first_token(log_type, MYLITE_TOK_RELAY) != NULL) {
+    return MYLITE_FLUSH_LOG_RELAY;
+  }
+  return MYLITE_FLUSH_LOG_UNSPECIFIED;
+}
+
+static int mylite_ast_set_flush_targets(
+    MyliteAst *ast, MyliteAstFlushStatement *flush_statement,
+    const MyliteAstNode *option) {
+  if (ast == NULL || flush_statement == NULL || option == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *target_list =
+      mylite_ast_flush_target_list_node(flush_statement, option);
+  flush_statement->target_count = mylite_ast_count_flush_targets(
+      target_list, flush_statement->kind);
+  if (flush_statement->target_count == 0) {
+    return 1;
+  }
+  flush_statement->targets =
+      mylite_ast_alloc(ast, flush_statement->target_count *
+                                sizeof(*flush_statement->targets));
+  if (flush_statement->targets == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  return mylite_ast_fill_flush_targets(ast, flush_statement->targets,
+                                       flush_statement->target_count,
+                                       target_list, flush_statement->kind,
+                                       &index) &&
+         index == flush_statement->target_count;
+}
+
+static const MyliteAstNode *mylite_ast_flush_target_list_node(
+    const MyliteAstFlushStatement *flush_statement,
+    const MyliteAstNode *option) {
+  if (flush_statement == NULL || option == NULL) {
+    return NULL;
+  }
+  if (flush_statement->kind == MYLITE_FLUSH_STATEMENT_STATS_DELTA) {
+    return mylite_ast_find_first_symbol(option, "nt_stats_object_list");
+  }
+  if (flush_statement->kind == MYLITE_FLUSH_STATEMENT_TABLES ||
+      flush_statement->kind == MYLITE_FLUSH_STATEMENT_TABLES_FOR_EXPORT) {
+    return mylite_ast_find_first_symbol(option, "nt_table_name_list");
+  }
+  return NULL;
+}
+
+static size_t mylite_ast_count_flush_targets(
+    const MyliteAstNode *node, MyliteFlushStatementKind kind) {
+  if (node == NULL) {
+    return 0;
+  }
+  if ((kind == MYLITE_FLUSH_STATEMENT_TABLES ||
+       kind == MYLITE_FLUSH_STATEMENT_TABLES_FOR_EXPORT) &&
+      node->symbol_name != NULL && strcmp(node->symbol_name, "nt_table_name") == 0) {
+    return 1;
+  }
+  if (kind == MYLITE_FLUSH_STATEMENT_STATS_DELTA &&
+      node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_stats_object") == 0) {
+    return 1;
+  }
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_flush_targets(node->children[i], kind);
+  }
+  return count;
+}
+
+static int mylite_ast_fill_flush_targets(
+    MyliteAst *ast, MyliteAstFlushTarget *targets, size_t target_count,
+    const MyliteAstNode *node, MyliteFlushStatementKind kind, size_t *index) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (((kind == MYLITE_FLUSH_STATEMENT_TABLES ||
+        kind == MYLITE_FLUSH_STATEMENT_TABLES_FOR_EXPORT) &&
+       node->symbol_name != NULL &&
+       strcmp(node->symbol_name, "nt_table_name") == 0) ||
+      (kind == MYLITE_FLUSH_STATEMENT_STATS_DELTA &&
+       node->symbol_name != NULL &&
+       strcmp(node->symbol_name, "nt_stats_object") == 0)) {
+    if (index == NULL || *index >= target_count ||
+        !mylite_ast_fill_flush_target(ast, &targets[*index], node, kind)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_flush_targets(ast, targets, target_count,
+                                       node->children[i], kind, index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_flush_target(MyliteAst *ast,
+                                        MyliteAstFlushTarget *target,
+                                        const MyliteAstNode *node,
+                                        MyliteFlushStatementKind kind) {
+  if (kind == MYLITE_FLUSH_STATEMENT_STATS_DELTA) {
+    return mylite_ast_fill_flush_stats_target(ast, target, node);
+  }
+  return mylite_ast_fill_flush_table_target(ast, target, node);
+}
+
+static int mylite_ast_fill_flush_table_target(MyliteAst *ast,
+                                              MyliteAstFlushTarget *target,
+                                              const MyliteAstNode *node) {
+  if (ast == NULL || target == NULL || node == NULL) {
+    return 1;
+  }
+  target->node = node;
+  target->kind = MYLITE_FLUSH_TARGET_TABLE;
+  target->start = mylite_ast_node_start(node);
+  target->end = mylite_ast_node_end(node);
+  mylite_ast_set_table_name_span_parts(node, &target->schema_start,
+                                       &target->schema_end,
+                                       &target->name_start,
+                                       &target->name_end);
+  if (target->schema_start != target->schema_end &&
+      !mylite_ast_decode_identifier(ast, target->schema_start,
+                                    target->schema_end, &target->schema_value,
+                                    &target->schema_value_length)) {
+    return 0;
+  }
+  if (target->name_start != target->name_end) {
+    return mylite_ast_decode_identifier(ast, target->name_start,
+                                        target->name_end, &target->name_value,
+                                        &target->name_value_length);
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_flush_stats_target(MyliteAst *ast,
+                                              MyliteAstFlushTarget *target,
+                                              const MyliteAstNode *node) {
+  if (ast == NULL || target == NULL || node == NULL) {
+    return 1;
+  }
+  target->node = node;
+  target->start = mylite_ast_node_start(node);
+  target->end = mylite_ast_node_end(node);
+  if (mylite_ast_direct_child_token(node, 0, MYLITE_TOK_STAR) != NULL) {
+    target->kind = MYLITE_FLUSH_TARGET_STATS_GLOBAL;
+    target->has_wildcard = 1;
+    return 1;
+  }
+  const MyliteAstNode *first =
+      mylite_ast_direct_child_symbol(node, 0, "nt_identifier");
+  const MyliteAstNode *second =
+      mylite_ast_direct_child_symbol(node, 2, "nt_identifier");
+  if (first != NULL && second != NULL) {
+    target->kind = MYLITE_FLUSH_TARGET_STATS_TABLE;
+    return mylite_ast_set_flush_target_identifier(ast, target, first, 1) &&
+           mylite_ast_set_flush_target_identifier(ast, target, second, 0);
+  }
+  if (first != NULL &&
+      mylite_ast_direct_child_token(node, 2, MYLITE_TOK_STAR) != NULL) {
+    target->kind = MYLITE_FLUSH_TARGET_STATS_DATABASE;
+    target->has_wildcard = 1;
+    return mylite_ast_set_flush_target_identifier(ast, target, first, 1);
+  }
+  if (first != NULL) {
+    target->kind = MYLITE_FLUSH_TARGET_STATS_TABLE;
+    return mylite_ast_set_flush_target_identifier(ast, target, first, 0);
+  }
+  target->kind = MYLITE_FLUSH_TARGET_UNKNOWN;
+  return 1;
+}
+
+static int mylite_ast_set_flush_target_identifier(
+    MyliteAst *ast, MyliteAstFlushTarget *target, const MyliteAstNode *node,
+    int schema) {
+  if (ast == NULL || target == NULL || node == NULL) {
+    return 1;
+  }
+  if (schema) {
+    target->schema_start = mylite_ast_node_start(node);
+    target->schema_end = mylite_ast_node_end(node);
+    return mylite_ast_decode_identifier(ast, target->schema_start,
+                                        target->schema_end,
+                                        &target->schema_value,
+                                        &target->schema_value_length);
+  }
+  target->name_start = mylite_ast_node_start(node);
+  target->name_end = mylite_ast_node_end(node);
+  return mylite_ast_decode_identifier(ast, target->name_start,
+                                      target->name_end, &target->name_value,
+                                      &target->name_value_length);
+}
+
+static int mylite_ast_set_flush_plugins(
+    MyliteAst *ast, MyliteAstFlushStatement *flush_statement,
+    const MyliteAstNode *option) {
+  if (ast == NULL || flush_statement == NULL || option == NULL ||
+      flush_statement->kind != MYLITE_FLUSH_STATEMENT_TIDB_PLUGINS) {
+    return 1;
+  }
+  const MyliteAstNode *plugin_list =
+      mylite_ast_find_first_symbol(option, "nt_plugin_name_list");
+  flush_statement->plugin_count = mylite_ast_count_flush_plugins(plugin_list);
+  if (flush_statement->plugin_count == 0) {
+    return 1;
+  }
+  flush_statement->plugins =
+      mylite_ast_alloc(ast, flush_statement->plugin_count *
+                                sizeof(*flush_statement->plugins));
+  if (flush_statement->plugins == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  return mylite_ast_fill_flush_plugins(ast, flush_statement->plugins,
+                                       flush_statement->plugin_count,
+                                       plugin_list, &index) &&
+         index == flush_statement->plugin_count;
+}
+
+static size_t mylite_ast_count_flush_plugins(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_identifier") == 0) {
+    return 1;
+  }
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_flush_plugins(node->children[i]);
+  }
+  return count;
+}
+
+static int mylite_ast_fill_flush_plugins(MyliteAst *ast,
+                                         MyliteAstFlushPlugin *plugins,
+                                         size_t plugin_count,
+                                         const MyliteAstNode *node,
+                                         size_t *index) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_identifier") == 0) {
+    if (index == NULL || *index >= plugin_count ||
+        !mylite_ast_fill_flush_plugin(ast, &plugins[*index], node)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_flush_plugins(ast, plugins, plugin_count,
+                                       node->children[i], index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_flush_plugin(MyliteAst *ast,
+                                        MyliteAstFlushPlugin *plugin,
+                                        const MyliteAstNode *node) {
+  if (ast == NULL || plugin == NULL || node == NULL) {
+    return 1;
+  }
+  plugin->node = node;
+  plugin->start = mylite_ast_node_start(node);
+  plugin->end = mylite_ast_node_end(node);
+  return mylite_ast_decode_identifier(ast, plugin->start, plugin->end,
+                                      &plugin->name_value,
+                                      &plugin->name_value_length);
 }
 
 static int mylite_ast_set_prepared_statement_name_value(

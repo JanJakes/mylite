@@ -207,6 +207,7 @@ static int expect_show_statement_view(void);
 static int expect_lock_statement_view(void);
 static int expect_table_maintenance_statement_view(void);
 static int expect_kill_statement_view(void);
+static int expect_flush_statement_view(void);
 static int expect_call_statement_view(void);
 static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
@@ -828,6 +829,7 @@ int main(void) {
   failures += expect_lock_statement_view();
   failures += expect_table_maintenance_statement_view();
   failures += expect_kill_statement_view();
+  failures += expect_flush_statement_view();
   failures += expect_call_statement_view();
   failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
@@ -4703,6 +4705,145 @@ static int expect_kill_statement_view(void) {
             mylite_ast_expression_view_value_length(expression),
             "CONNECTION_ID")) {
       fprintf(stderr, "KILL expression view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  return failed;
+}
+
+static int expect_flush_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql = "FLUSH NO_WRITE_TO_BINLOG TABLES `db``x`.`t``y` "
+                      "WITH READ LOCK";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "FLUSH TABLES view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstFlushStatement *view =
+        mylite_ast_flush_statement_view(ast, 0);
+    const MyliteAstFlushTarget *target =
+        mylite_ast_flush_statement_view_target_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_flush_statement_view_kind(view) !=
+            MYLITE_FLUSH_STATEMENT_TABLES ||
+        !mylite_ast_flush_statement_view_has_no_write_to_binlog(view) ||
+        !mylite_ast_flush_statement_view_has_read_lock(view) ||
+        mylite_ast_flush_statement_view_target_count(view) != 1 ||
+        target == NULL ||
+        mylite_ast_flush_target_view_kind(target) !=
+            MYLITE_FLUSH_TARGET_TABLE ||
+        !value_matches_when_expected(
+            mylite_ast_flush_target_view_schema_value(target),
+            mylite_ast_flush_target_view_schema_value_length(target),
+            "db`x") ||
+        !value_matches_when_expected(
+            mylite_ast_flush_target_view_name_value(target),
+            mylite_ast_flush_target_view_name_value_length(target), "t`y")) {
+      fprintf(stderr, "FLUSH TABLES view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "FLUSH RELAY LOGS";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "FLUSH LOGS view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstFlushStatement *view =
+        mylite_ast_flush_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_flush_statement_view_kind(view) !=
+            MYLITE_FLUSH_STATEMENT_LOGS ||
+        mylite_ast_flush_statement_view_log_kind(view) !=
+            MYLITE_FLUSH_LOG_RELAY) {
+      fprintf(stderr, "FLUSH LOGS view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "FLUSH STATS_DELTA db1.t1 CLUSTER";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "FLUSH STATS_DELTA view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstFlushStatement *view =
+        mylite_ast_flush_statement_view(ast, 0);
+    const MyliteAstFlushTarget *first =
+        mylite_ast_flush_statement_view_target_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_flush_statement_view_kind(view) !=
+            MYLITE_FLUSH_STATEMENT_STATS_DELTA ||
+        !mylite_ast_flush_statement_view_is_cluster(view) ||
+        mylite_ast_flush_statement_view_target_count(view) != 1 ||
+        first == NULL ||
+        mylite_ast_flush_target_view_kind(first) !=
+            MYLITE_FLUSH_TARGET_STATS_TABLE ||
+        !value_matches_when_expected(
+            mylite_ast_flush_target_view_schema_value(first),
+            mylite_ast_flush_target_view_schema_value_length(first), "db1") ||
+        !value_matches_when_expected(
+            mylite_ast_flush_target_view_name_value(first),
+            mylite_ast_flush_target_view_name_value_length(first), "t1")) {
+      fprintf(stderr, "FLUSH STATS_DELTA view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "FLUSH TIDB PLUGINS `plugin``b`";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "FLUSH TIDB PLUGINS view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstFlushStatement *view =
+        mylite_ast_flush_statement_view(ast, 0);
+    const MyliteAstFlushPlugin *plugin =
+        mylite_ast_flush_statement_view_plugin_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_flush_statement_view_kind(view) !=
+            MYLITE_FLUSH_STATEMENT_TIDB_PLUGINS ||
+        mylite_ast_flush_statement_view_plugin_count(view) != 1 ||
+        plugin == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_flush_plugin_view_name_value(plugin),
+            mylite_ast_flush_plugin_view_name_value_length(plugin),
+            "plugin`b")) {
+      fprintf(stderr, "FLUSH TIDB PLUGINS view failed: %s\n", sql);
       failed = 1;
     }
     mylite_ast_free(ast);

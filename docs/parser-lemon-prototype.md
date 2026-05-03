@@ -326,8 +326,9 @@ token sink:
   reorganize forms, validated partition-method expression lists, validated
   `PARTITION BY ... (...)`, `ADD PARTITION (...)`, and
   `REORGANIZE PARTITION ... INTO (...)` partition-definition envelopes, maintenance
-  binlog modifiers, CHECK/REPAIR maintenance options, and unsigned
-  integer/lowercase-hex coalesce/add-partition counts,
+  binlog modifiers, CHECK/REPAIR maintenance options, strict `PARTITION BY`
+  method modifiers and count literals, and unsigned integer/lowercase-hex
+  coalesce/add-partition counts,
   tablespace/storage/union changes with closed storage values,
   secondary-engine load/unload actions with optional concrete partition lists,
   table option changes with charset/collation continuations,

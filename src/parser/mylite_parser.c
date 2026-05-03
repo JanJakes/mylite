@@ -322,7 +322,7 @@ static int create_table_tail_option_start_token(int token_id);
 static void validate_create_table_tail_options(MyliteParseContext *ctx,
                                                MyliteToken start);
 static void validate_create_table_partition_key_list_from(
-    MyliteParseContext *ctx, MyliteToken start);
+    MyliteParseContext *ctx, MyliteToken start, const char *message);
 static void validate_create_table_partition_definitions_from(
     MyliteParseContext *ctx, MyliteToken start, int values_required);
 static void validate_create_table_subpartition_definitions_from(
@@ -499,9 +499,7 @@ static void validate_alter_table_partition_definition_bodies(
     MyliteParseContext *ctx, MyliteToken start);
 static void validate_alter_table_order_by_from(MyliteParseContext *ctx,
                                                MyliteToken start);
-static int alter_table_partition_method_token(int token_id, MyliteToken token);
-static int alter_table_parenthesized_group_empty(MyliteParseContext *ctx,
-                                                 MyliteToken start);
+static int alter_table_partition_count_token(int token_id, MyliteToken token);
 static int event_interval_unit_token(MyliteToken token);
 static int event_schedule_boundary(int token_id);
 static int event_schedule_option_start(MyliteToken token);
@@ -9202,7 +9200,29 @@ static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
     ALTER_EXPR_AFTER_ORDER_BY,
     ALTER_EXPR_AFTER_PARTITION,
     ALTER_EXPR_AFTER_PARTITION_BY,
-    ALTER_EXPR_AFTER_PARTITION_METHOD
+    ALTER_EXPR_IN_PARTITION_METHOD,
+    ALTER_EXPR_AFTER_PARTITION_METHOD,
+    ALTER_EXPR_EXPECT_PARTITION_COUNT,
+    ALTER_EXPR_AFTER_SUBPARTITION,
+    ALTER_EXPR_AFTER_SUBPARTITION_BY
+  };
+  enum {
+    ALTER_EXPR_PARTITION_METHOD_NONE,
+    ALTER_EXPR_PARTITION_METHOD_HASH,
+    ALTER_EXPR_PARTITION_METHOD_KEY,
+    ALTER_EXPR_PARTITION_METHOD_RANGE,
+    ALTER_EXPR_PARTITION_METHOD_LIST
+  };
+  enum {
+    ALTER_EXPR_PARTITION_SCOPE_NONE,
+    ALTER_EXPR_PARTITION_SCOPE_OUTER,
+    ALTER_EXPR_PARTITION_SCOPE_SUBPARTITION
+  };
+  enum {
+    ALTER_EXPR_PARTITION_KEY_ALGORITHM_NONE,
+    ALTER_EXPR_PARTITION_KEY_ALGORITHM_EXPECT_EQUALS,
+    ALTER_EXPR_PARTITION_KEY_ALGORITHM_EXPECT_VALUE,
+    ALTER_EXPR_PARTITION_KEY_ALGORITHM_DONE
   };
   MyliteLexer lexer;
   MyliteToken token;
@@ -9214,7 +9234,15 @@ static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
   int table_name_parts = 0;
   int table_dot_pending = 0;
   int state = ALTER_EXPR_READY;
-  int partition_key_method = 0;
+  int skip_depth = 0;
+  int partition_method = ALTER_EXPR_PARTITION_METHOD_NONE;
+  int partition_method_scope = ALTER_EXPR_PARTITION_SCOPE_NONE;
+  int partition_last_scope = ALTER_EXPR_PARTITION_SCOPE_NONE;
+  int partition_linear_seen = 0;
+  int partition_columns_seen = 0;
+  int partition_definitions_seen = 0;
+  int partition_key_algorithm_state =
+      ALTER_EXPR_PARTITION_KEY_ALGORITHM_NONE;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -9252,7 +9280,24 @@ static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
       table_ref_done = 1;
     }
 
+    if (skip_depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        skip_depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        skip_depth--;
+      }
+      continue;
+    }
+
     if (token_is_statement_terminator(token_id, token)) {
+      if (state == ALTER_EXPR_AFTER_PARTITION_BY ||
+          state == ALTER_EXPR_IN_PARTITION_METHOD ||
+          state == ALTER_EXPR_EXPECT_PARTITION_COUNT ||
+          state == ALTER_EXPR_AFTER_SUBPARTITION ||
+          state == ALTER_EXPR_AFTER_SUBPARTITION_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete ALTER TABLE partition expression");
+      }
       return;
     }
 
@@ -9283,44 +9328,228 @@ static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
 
     if (state == ALTER_EXPR_AFTER_PARTITION_BY) {
       if (token_ascii_equal(token, "linear")) {
+        if (partition_linear_seen) {
+          mylite_parser_reject(ctx, token,
+                               "invalid ALTER TABLE partition option");
+          return;
+        }
+        partition_linear_seen = 1;
+        pending_token = token;
         continue;
       }
-      if (alter_table_partition_method_token(token_id, token)) {
-        state = ALTER_EXPR_AFTER_PARTITION_METHOD;
-        partition_key_method = token_id == ML_KEY;
+      if (token_ascii_equal(token, "hash")) {
+        partition_method = ALTER_EXPR_PARTITION_METHOD_HASH;
+      } else if (token_id == ML_KEY) {
+        partition_method = ALTER_EXPR_PARTITION_METHOD_KEY;
+      } else if (token_ascii_equal(token, "range")) {
+        if (partition_linear_seen) {
+          mylite_parser_reject(ctx, token,
+                               "invalid ALTER TABLE partition option");
+          return;
+        }
+        partition_method = ALTER_EXPR_PARTITION_METHOD_RANGE;
+      } else if (token_ascii_equal(token, "list")) {
+        if (partition_linear_seen) {
+          mylite_parser_reject(ctx, token,
+                               "invalid ALTER TABLE partition option");
+          return;
+        }
+        partition_method = ALTER_EXPR_PARTITION_METHOD_LIST;
       } else {
         state = ALTER_EXPR_READY;
+        partition_method = ALTER_EXPR_PARTITION_METHOD_NONE;
+        partition_method_scope = ALTER_EXPR_PARTITION_SCOPE_NONE;
+        partition_linear_seen = 0;
+        partition_columns_seen = 0;
+        partition_key_algorithm_state =
+            ALTER_EXPR_PARTITION_KEY_ALGORITHM_NONE;
+        pending_token = token;
+        continue;
       }
+      state = ALTER_EXPR_IN_PARTITION_METHOD;
+      partition_method_scope = ALTER_EXPR_PARTITION_SCOPE_OUTER;
+      partition_columns_seen = 0;
+      partition_key_algorithm_state =
+          ALTER_EXPR_PARTITION_KEY_ALGORITHM_NONE;
       pending_token = token;
       continue;
     }
 
-    if (state == ALTER_EXPR_AFTER_PARTITION_METHOD) {
-      if (token_id == ML_COLUMNS) {
+    if (state == ALTER_EXPR_AFTER_SUBPARTITION) {
+      if (token_id != ML_BY) {
+        mylite_parser_reject(ctx, pending_token,
+                             "incomplete ALTER TABLE partition expression");
+        return;
+      }
+      state = ALTER_EXPR_AFTER_SUBPARTITION_BY;
+      partition_method = ALTER_EXPR_PARTITION_METHOD_NONE;
+      partition_method_scope = ALTER_EXPR_PARTITION_SCOPE_SUBPARTITION;
+      partition_linear_seen = 0;
+      partition_columns_seen = 0;
+      partition_key_algorithm_state =
+          ALTER_EXPR_PARTITION_KEY_ALGORITHM_NONE;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == ALTER_EXPR_AFTER_SUBPARTITION_BY) {
+      if (token_ascii_equal(token, "linear")) {
+        if (partition_linear_seen) {
+          mylite_parser_reject(ctx, token,
+                               "invalid ALTER TABLE partition option");
+          return;
+        }
+        partition_linear_seen = 1;
         pending_token = token;
         continue;
       }
-      if (token_id == ML_LP) {
-        if (partition_key_method &&
-            alter_table_parenthesized_group_empty(ctx, token)) {
-          state = ALTER_EXPR_READY;
-          partition_key_method = 0;
-          continue;
+      if (token_ascii_equal(token, "hash")) {
+        partition_method = ALTER_EXPR_PARTITION_METHOD_HASH;
+      } else if (token_id == ML_KEY) {
+        partition_method = ALTER_EXPR_PARTITION_METHOD_KEY;
+      } else {
+        mylite_parser_reject(ctx, token,
+                             "invalid ALTER TABLE partition option");
+        return;
+      }
+      state = ALTER_EXPR_IN_PARTITION_METHOD;
+      partition_method_scope = ALTER_EXPR_PARTITION_SCOPE_SUBPARTITION;
+      partition_columns_seen = 0;
+      partition_key_algorithm_state =
+          ALTER_EXPR_PARTITION_KEY_ALGORITHM_NONE;
+      pending_token = token;
+      continue;
+    }
+
+    if (state == ALTER_EXPR_IN_PARTITION_METHOD) {
+      if (partition_key_algorithm_state ==
+          ALTER_EXPR_PARTITION_KEY_ALGORITHM_EXPECT_EQUALS) {
+        if (token_id != ML_EQUALS) {
+          mylite_parser_reject(ctx, pending_token,
+                               "invalid ALTER TABLE partition option");
+          return;
         }
-        mylite_parser_validate_parenthesized_expression_list_from(
-            ctx, token, "malformed ALTER TABLE partition expression");
-        state = ALTER_EXPR_READY;
-        partition_key_method = 0;
+        partition_key_algorithm_state =
+            ALTER_EXPR_PARTITION_KEY_ALGORITHM_EXPECT_VALUE;
         continue;
       }
-      if (token_id == ML_ASSIGN || token_id == ML_EQUALS ||
-          token_id == ML_NUMBER_LITERAL || token_id == ML_BOOLEAN_NUMBER ||
-          token_id == ML_FACTOR_NUMBER) {
+      if (partition_key_algorithm_state ==
+          ALTER_EXPR_PARTITION_KEY_ALGORITHM_EXPECT_VALUE) {
+        if (!create_table_partition_key_algorithm_value_token(token_id,
+                                                             token)) {
+          mylite_parser_reject(ctx, pending_token,
+                               "invalid ALTER TABLE partition option");
+          return;
+        }
+        partition_key_algorithm_state =
+            ALTER_EXPR_PARTITION_KEY_ALGORITHM_DONE;
+        continue;
+      }
+      if (partition_method == ALTER_EXPR_PARTITION_METHOD_KEY &&
+          token_id == ML_ALGORITHM &&
+          partition_key_algorithm_state ==
+              ALTER_EXPR_PARTITION_KEY_ALGORITHM_NONE) {
+        partition_key_algorithm_state =
+            ALTER_EXPR_PARTITION_KEY_ALGORITHM_EXPECT_EQUALS;
+        pending_token = token;
+        continue;
+      }
+      if ((partition_method == ALTER_EXPR_PARTITION_METHOD_RANGE ||
+           partition_method == ALTER_EXPR_PARTITION_METHOD_LIST) &&
+          token_id == ML_COLUMNS && !partition_columns_seen) {
+        partition_columns_seen = 1;
+        continue;
+      }
+      if (token_id == ML_LP) {
+        if (partition_key_algorithm_state !=
+                ALTER_EXPR_PARTITION_KEY_ALGORITHM_NONE &&
+            partition_key_algorithm_state !=
+                ALTER_EXPR_PARTITION_KEY_ALGORITHM_DONE) {
+          mylite_parser_reject(ctx, pending_token,
+                               "invalid ALTER TABLE partition option");
+          return;
+        }
+        if (partition_method == ALTER_EXPR_PARTITION_METHOD_KEY) {
+          validate_create_table_partition_key_list_from(
+              ctx, token, "malformed ALTER TABLE partition key list");
+        } else {
+          mylite_parser_validate_parenthesized_expression_list_from(
+              ctx, token, "malformed ALTER TABLE partition expression");
+        }
+        if (ctx->failed) {
+          return;
+        }
+        skip_depth = 1;
+        state = ALTER_EXPR_AFTER_PARTITION_METHOD;
+        partition_last_scope = partition_method_scope;
+        partition_method = ALTER_EXPR_PARTITION_METHOD_NONE;
+        partition_method_scope = ALTER_EXPR_PARTITION_SCOPE_NONE;
+        partition_linear_seen = 0;
+        partition_columns_seen = 0;
+        partition_key_algorithm_state =
+            ALTER_EXPR_PARTITION_KEY_ALGORITHM_NONE;
         continue;
       }
       mylite_parser_reject(ctx, pending_token,
                            "incomplete ALTER TABLE partition expression");
-      partition_key_method = 0;
+      return;
+    }
+
+    if (state == ALTER_EXPR_EXPECT_PARTITION_COUNT) {
+      if (!alter_table_partition_count_token(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "invalid ALTER TABLE partition option");
+        return;
+      }
+      state = ALTER_EXPR_AFTER_PARTITION_METHOD;
+      continue;
+    }
+
+    if (state == ALTER_EXPR_AFTER_PARTITION_METHOD) {
+      if (token_id == ML_PARTITIONS ||
+          token_ascii_equal(token, "subpartitions")) {
+        if (partition_definitions_seen ||
+            (token_id == ML_PARTITIONS &&
+             partition_last_scope != ALTER_EXPR_PARTITION_SCOPE_OUTER) ||
+            (token_ascii_equal(token, "subpartitions") &&
+             partition_last_scope !=
+                 ALTER_EXPR_PARTITION_SCOPE_SUBPARTITION)) {
+          mylite_parser_reject(ctx, token,
+                               "invalid ALTER TABLE partition option");
+          return;
+        }
+        state = ALTER_EXPR_EXPECT_PARTITION_COUNT;
+        pending_token = token;
+        continue;
+      }
+      if (token_ascii_equal(token, "subpartition")) {
+        if (partition_definitions_seen ||
+            partition_last_scope != ALTER_EXPR_PARTITION_SCOPE_OUTER) {
+          mylite_parser_reject(ctx, token,
+                               "invalid ALTER TABLE partition option");
+          return;
+        }
+        state = ALTER_EXPR_AFTER_SUBPARTITION;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_LP) {
+        if (partition_definitions_seen) {
+          mylite_parser_reject(ctx, token,
+                               "invalid ALTER TABLE partition option");
+          return;
+        }
+        partition_definitions_seen = 1;
+        skip_depth = 1;
+        continue;
+      }
+      if (token_id == ML_COMMA) {
+        mylite_parser_reject(ctx, token,
+                             "invalid ALTER TABLE partition option");
+        return;
+      }
+      mylite_parser_reject(ctx, token,
+                           "invalid ALTER TABLE partition option");
       return;
     }
 
@@ -9382,6 +9611,14 @@ static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
     if (token_id == ML_PARTITION) {
       state = ALTER_EXPR_AFTER_PARTITION;
       pending_token = token;
+      partition_method = ALTER_EXPR_PARTITION_METHOD_NONE;
+      partition_method_scope = ALTER_EXPR_PARTITION_SCOPE_NONE;
+      partition_last_scope = ALTER_EXPR_PARTITION_SCOPE_NONE;
+      partition_linear_seen = 0;
+      partition_columns_seen = 0;
+      partition_definitions_seen = 0;
+      partition_key_algorithm_state =
+          ALTER_EXPR_PARTITION_KEY_ALGORITHM_NONE;
       continue;
     }
     if (token_id == ML_ALTER) {
@@ -9389,6 +9626,15 @@ static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
       pending_token = token;
       continue;
     }
+  }
+
+  if (state == ALTER_EXPR_AFTER_PARTITION_BY ||
+      state == ALTER_EXPR_IN_PARTITION_METHOD ||
+      state == ALTER_EXPR_EXPECT_PARTITION_COUNT ||
+      state == ALTER_EXPR_AFTER_SUBPARTITION ||
+      state == ALTER_EXPR_AFTER_SUBPARTITION_BY) {
+    mylite_parser_reject(ctx, pending_token,
+                         "incomplete ALTER TABLE partition expression");
   }
 }
 
@@ -9719,30 +9965,17 @@ static void validate_alter_table_order_by_from(MyliteParseContext *ctx,
   }
 }
 
-static int alter_table_partition_method_token(int token_id, MyliteToken token) {
-  return token_id == ML_KEY || token_ascii_equal(token, "hash") ||
-         token_ascii_equal(token, "list") || token_ascii_equal(token, "range");
-}
+static int alter_table_partition_count_token(int token_id,
+                                             MyliteToken token) {
+  unsigned long value;
 
-static int alter_table_parenthesized_group_empty(MyliteParseContext *ctx,
-                                                 MyliteToken start) {
-  MyliteLexer lexer;
-  MyliteToken token;
-  int token_id;
-  int saw_start = 0;
-
-  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
-  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
-    if (!saw_start) {
-      if (token.offset == start.offset) {
-        saw_start = 1;
-      }
-      continue;
-    }
-    return token_id == ML_RP;
+  if (token_id != ML_BOOLEAN_NUMBER && token_id != ML_FACTOR_NUMBER &&
+      token_id != ML_NUMBER_LITERAL) {
+    return 0;
   }
 
-  return 0;
+  return token_is_plain_unsigned_integer(token, &value) ||
+         token_lower_hex_literal_value(token, &value);
 }
 
 void mylite_parser_validate_view_statement(MyliteParseContext *ctx,
@@ -13259,7 +13492,8 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
             return;
           }
           if (partition_method == CREATE_TABLE_PARTITION_METHOD_KEY) {
-            validate_create_table_partition_key_list_from(ctx, token);
+            validate_create_table_partition_key_list_from(
+                ctx, token, "malformed CREATE TABLE partition key list");
           } else {
             mylite_parser_validate_parenthesized_expression_list_from(
                 ctx, token, "malformed CREATE TABLE partition expression");
@@ -13618,7 +13852,7 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
 }
 
 static void validate_create_table_partition_key_list_from(
-    MyliteParseContext *ctx, MyliteToken start) {
+    MyliteParseContext *ctx, MyliteToken start, const char *message) {
   enum {
     CREATE_TABLE_PARTITION_KEY_NEED_NAME_OR_END,
     CREATE_TABLE_PARTITION_KEY_NEED_NAME,
@@ -13652,16 +13886,14 @@ static void validate_create_table_partition_key_list_from(
 
     if (depth == 1 && token_id == ML_RP) {
       if (state == CREATE_TABLE_PARTITION_KEY_NEED_NAME) {
-        mylite_parser_reject(ctx, pending_token,
-                             "malformed CREATE TABLE partition key list");
+        mylite_parser_reject(ctx, pending_token, message);
       }
       return;
     }
 
     if (depth == 1 && token_id == ML_COMMA) {
       if (state != CREATE_TABLE_PARTITION_KEY_AFTER_NAME) {
-        mylite_parser_reject(ctx, token,
-                             "malformed CREATE TABLE partition key list");
+        mylite_parser_reject(ctx, token, message);
         return;
       }
       state = CREATE_TABLE_PARTITION_KEY_NEED_NAME;
@@ -13670,8 +13902,7 @@ static void validate_create_table_partition_key_list_from(
     }
 
     if (token_opens_nested_expression(token_id)) {
-      mylite_parser_reject(ctx, token,
-                           "malformed CREATE TABLE partition key list");
+      mylite_parser_reject(ctx, token, message);
       return;
     }
 
@@ -13687,14 +13918,12 @@ static void validate_create_table_partition_key_list_from(
       continue;
     }
 
-    mylite_parser_reject(ctx, token,
-                         "malformed CREATE TABLE partition key list");
+    mylite_parser_reject(ctx, token, message);
     return;
   }
 
   if (saw_list && depth > 0) {
-    mylite_parser_reject(ctx, pending_token,
-                         "malformed CREATE TABLE partition key list");
+    mylite_parser_reject(ctx, pending_token, message);
   }
 }
 

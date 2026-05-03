@@ -122,6 +122,10 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_DROP_INDEX_STATEMENT = 111,
     MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST = 112,
     MYLITE_SQL_AST_DDL_TABLE_OPTION = 113,
+    MYLITE_SQL_AST_ALTER_TABLE_STATEMENT = 114,
+    MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST = 115,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION = 116,
+    MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION = 117,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -296,6 +300,21 @@ enum mylite_sql_ast_table_option {
     MYLITE_SQL_AST_TABLE_OPTION_AUTO_INCREMENT = 5,
 };
 
+enum mylite_sql_ast_alter_table_action {
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_NONE = 0,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_COLUMN = 1,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_COLUMN = 2,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_COLUMN = 3,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_CHANGE_COLUMN = 4,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_MODIFY_COLUMN = 5,
+};
+
+enum mylite_sql_ast_alter_table_column_position {
+    MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_NONE = 0,
+    MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_FIRST = 1,
+    MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_AFTER = 2,
+};
+
 enum mylite_sql_ast_transaction_access_mode {
     MYLITE_SQL_AST_TRANSACTION_ACCESS_NONE = 0,
     MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE = 1,
@@ -398,6 +417,8 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_index_class index_class;
     enum mylite_sql_ast_ddl_table_option ddl_table_option;
     enum mylite_sql_ast_table_option table_option;
+    enum mylite_sql_ast_alter_table_action alter_table_action;
+    enum mylite_sql_ast_alter_table_column_position alter_table_column_position;
     enum mylite_sql_ast_transaction_access_mode transaction_access_mode;
     enum mylite_sql_ast_transaction_chain transaction_chain;
     enum mylite_sql_ast_transaction_release transaction_release;
@@ -429,6 +450,7 @@ struct mylite_sql_ast_node {
     bool insert_ignore;
     bool replace_low_priority;
     bool replace_delayed;
+    bool alter_table_action_column_keyword;
     bool select_duplicate_mode_explicit;
     bool select_duplicate_mode_conflict;
     bool transaction_consistent_snapshot;
@@ -491,6 +513,11 @@ void mylite_sql_ast_node_set_ddl_table_option(struct mylite_sql_ast_node *node,
                                               enum mylite_sql_ast_ddl_table_option option);
 void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
                                           enum mylite_sql_ast_table_option option);
+void mylite_sql_ast_node_set_alter_table_action(struct mylite_sql_ast_node *node,
+                                                enum mylite_sql_ast_alter_table_action action,
+                                                bool column_keyword);
+void mylite_sql_ast_node_set_alter_table_column_position(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_column_position position);
 void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node);
@@ -536,6 +563,9 @@ const char *mylite_sql_ast_index_algorithm_name(enum mylite_sql_ast_index_algori
 const char *mylite_sql_ast_index_option_name(enum mylite_sql_ast_index_option option);
 const char *mylite_sql_ast_index_class_name(enum mylite_sql_ast_index_class index_class);
 const char *mylite_sql_ast_ddl_table_option_name(enum mylite_sql_ast_ddl_table_option option);
+const char *mylite_sql_ast_alter_table_action_name(enum mylite_sql_ast_alter_table_action action);
+const char *mylite_sql_ast_alter_table_column_position_name(
+    enum mylite_sql_ast_alter_table_column_position position);
 const char *mylite_sql_ast_aggregate_kind_name(enum mylite_sql_ast_aggregate_kind aggregate_kind);
 const char *
 mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument aggregate_argument);

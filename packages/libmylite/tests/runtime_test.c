@@ -131,6 +131,18 @@ struct expected_column_metadata {
     const char *origin_column_name;
 };
 
+struct expected_columns_row {
+    const char *table_name;
+    const char *column_name;
+    int64_t ordinal_position;
+    const char *column_default;
+    const char *is_nullable;
+    const char *data_type;
+    const char *column_type;
+    const char *column_key;
+    const char *extra;
+};
+
 struct expected_statistics_row {
     const char *table_name;
     const char *index_name;
@@ -176,6 +188,7 @@ static int test_create_table_base_execution(void);
 static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
 static int test_create_drop_index_execution(void);
+static int test_alter_table_column_operations_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_replace_execution(void);
@@ -216,13 +229,20 @@ static int expect_information_schema_schemata_row(mylite_db *database,
                                                   const struct expected_schemata_row *expected);
 static int expect_no_information_schema_schemata_row(mylite_db *database, const char *schema_name);
 static int expect_information_schema_tables_views(mylite_db *database);
+static int expect_information_schema_column_row(mylite_db *database,
+                                                const struct expected_columns_row *expected);
 static int expect_no_information_schema_table_schema_row(mylite_db *database,
                                                          const char *schema_name);
 static int expect_no_information_schema_table_name_row(mylite_db *database, const char *table_name);
 static int expect_no_information_schema_column_table_name_row(mylite_db *database,
                                                               const char *table_name);
+static int expect_no_information_schema_column_row(mylite_db *database, const char *table_name,
+                                                   const char *column_name);
 static int expect_no_information_schema_statistics_table_name_row(mylite_db *database,
                                                                   const char *table_name);
+static int expect_no_information_schema_statistics_column_row(mylite_db *database,
+                                                              const char *table_name,
+                                                              const char *column_name);
 static int expect_information_schema_statistics_row(mylite_db *database,
                                                     const struct expected_statistics_row *expected);
 static int expect_no_information_schema_statistics_index_row(mylite_db *database,
@@ -300,6 +320,7 @@ int main(void)
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
     failures += test_create_drop_index_execution();
+    failures += test_alter_table_column_operations_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_replace_execution();
@@ -3206,6 +3227,454 @@ static int test_create_drop_index_execution(void)
     mylite_finalize(stmt);
     stmt = NULL;
     mylite_close(no_schema_database);
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_alter_table_column_operations_execution(void)
+{
+    static const char *const all_columns[] = {"first_col", "id", "added",  "a",
+                                              "b",         "c",  "hidden", "nn"};
+    static const char *const visible_after_add_columns[] = {"first_col", "id", "added", "a",
+                                                            "b",         "c",  "nn"};
+    static const char *const final_columns[] = {"c", "first_col", "id", "b2", "added", "nn"};
+    static const char *const ai_drop_columns[] = {"v"};
+    static const char *const empty_default_columns[] = {"id", "s"};
+    static const char *const one_col_columns[] = {"only_col"};
+    static const char *const invisible_alter_columns[] = {"v"};
+    static const char *const all_values[] = {"q", "1", "7", "10", "b1", NULL, "100", "0",
+                                             "q", "2", "7", "20", "b2", "5",  "200", "0"};
+    static const char *const visible_after_add_values[] = {"q", "1", "7", "10", "b1", NULL, "0",
+                                                           "q", "2", "7", "20", "b2", "5",  "0"};
+    static const struct expected_columns_row metadata_rows[] = {
+        {.table_name = "alter_ops",
+         .column_name = "first_col",
+         .ordinal_position = 1,
+         .column_default = "q",
+         .is_nullable = "NO",
+         .data_type = "varchar",
+         .column_type = "varchar(5)",
+         .column_key = "",
+         .extra = ""},
+        {.table_name = "alter_ops",
+         .column_name = "id",
+         .ordinal_position = 2,
+         .column_default = NULL,
+         .is_nullable = "NO",
+         .data_type = "int",
+         .column_type = "int",
+         .column_key = "PRI",
+         .extra = ""},
+        {.table_name = "alter_ops",
+         .column_name = "added",
+         .ordinal_position = 3,
+         .column_default = "7",
+         .is_nullable = "YES",
+         .data_type = "int",
+         .column_type = "int",
+         .column_key = "",
+         .extra = ""},
+        {.table_name = "alter_ops",
+         .column_name = "a",
+         .ordinal_position = 4,
+         .column_default = NULL,
+         .is_nullable = "YES",
+         .data_type = "int",
+         .column_type = "int",
+         .column_key = "MUL",
+         .extra = ""},
+        {.table_name = "alter_ops",
+         .column_name = "b",
+         .ordinal_position = 5,
+         .column_default = "x",
+         .is_nullable = "YES",
+         .data_type = "varchar",
+         .column_type = "varchar(20)",
+         .column_key = "MUL",
+         .extra = ""},
+        {.table_name = "alter_ops",
+         .column_name = "c",
+         .ordinal_position = 6,
+         .column_default = NULL,
+         .is_nullable = "YES",
+         .data_type = "int",
+         .column_type = "int",
+         .column_key = "",
+         .extra = ""},
+        {.table_name = "alter_ops",
+         .column_name = "hidden",
+         .ordinal_position = 7,
+         .column_default = NULL,
+         .is_nullable = "YES",
+         .data_type = "int",
+         .column_type = "int",
+         .column_key = "",
+         .extra = "INVISIBLE"},
+        {.table_name = "alter_ops",
+         .column_name = "nn",
+         .ordinal_position = 8,
+         .column_default = NULL,
+         .is_nullable = "NO",
+         .data_type = "int",
+         .column_type = "int",
+         .column_key = "",
+         .extra = ""},
+    };
+    static const char *const final_values[] = {"0", "q", "1", "b1", "7", "0",
+                                               "5", "q", "2", "b2", "7", "0"};
+    static const char *const ai_drop_values[] = {"10", "20"};
+    static const char *const empty_default_values[] = {"1", ""};
+    static const char *const invisible_values[] = {"1"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open alter database");
+    failures += prepare_sql(database, "ALTER TABLE no_default ADD COLUMN c INT", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "No database selected", "alter no database");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_alter", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_alter", MYLITE_DONE);
+
+    failures +=
+        prepare_sql(database, "ALTER TABLE missing_alter.t ADD COLUMN c INT", MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "Unknown database", "alter rejects missing schema");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "ALTER TABLE information_schema.tables ADD COLUMN c INT",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "system schema", "alter rejects system schema");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        execute_sql(database, "CREATE TABLE mylite_alter.qualified_alter (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO qualified_alter VALUES (1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE mylite_alter.qualified_alter ADD COLUMN v INT DEFAULT 9, "
+        "ALGORITHM=DEFAULT, LOCK DEFAULT",
+        0, "alter schema-qualified target with default options");
+    {
+        static const char *const qualified_columns[] = {"id", "v"};
+        static const char *const qualified_values[] = {"1", "9"};
+
+        failures +=
+            expect_select_rows(database, "SELECT id, v FROM qualified_alter", qualified_columns, 2,
+                               qualified_values, 1, "alter schema-qualified data");
+    }
+
+    failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
+    failures += prepare_sql(database, "ALTER TABLE qualified_alter ADD COLUMN blocked INT",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "READ ONLY", "read only transaction rejects alter table");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "read only alter affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_no_information_schema_column_row(database, "qualified_alter", "blocked");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE alter_ops ("
+                            "id INT PRIMARY KEY, a INT, b VARCHAR(20) DEFAULT 'x', "
+                            "c INT NULL, hidden INT INVISIBLE)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO alter_ops (id, a, b, c, hidden) VALUES "
+                            "(1,10,'b1',NULL,100),(2,20,'b2',5,200)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "CREATE INDEX idx_ab ON alter_ops (a, b)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE INDEX idx_b ON alter_ops (b)", MYLITE_DONE);
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_ops "
+        "ADD COLUMN added INT DEFAULT 7 AFTER id, "
+        "ADD COLUMN first_col VARCHAR(5) NOT NULL DEFAULT 'q' FIRST, "
+        "ADD COLUMN nn INT NOT NULL",
+        0, "alter add column multi-action affected rows");
+    failures += expect_select_rows(database,
+                                   "SELECT first_col, id, added, a, b, c, hidden, nn "
+                                   "FROM alter_ops ORDER BY id",
+                                   all_columns, (int)(sizeof(all_columns) / sizeof(all_columns[0])),
+                                   all_values, 2, "alter add preserves data and backfills");
+    failures += expect_select_rows(
+        database, "SELECT * FROM alter_ops ORDER BY id", visible_after_add_columns,
+        (int)(sizeof(visible_after_add_columns) / sizeof(visible_after_add_columns[0])),
+        visible_after_add_values, 2, "alter add keeps invisible column hidden from wildcard");
+    for (size_t index = 0U; index < sizeof(metadata_rows) / sizeof(metadata_rows[0]); ++index) {
+        failures += expect_information_schema_column_row(database, &metadata_rows[index]);
+    }
+
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE alter_ops RENAME COLUMN b TO renamed_b", 0,
+        "alter rename column affected rows");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_ops",
+                                                               .index_name = "idx_ab",
+                                                               .seq_in_index = 2,
+                                                               .column_name = "renamed_b",
+                                                               .non_unique = 1,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_ops",
+                                                               .index_name = "idx_b",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "renamed_b",
+                                                               .non_unique = 1,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_ops CHANGE COLUMN renamed_b b2 BIGINT NOT NULL DEFAULT 5 AFTER id", 2,
+        "alter change column affected rows");
+    failures +=
+        expect_no_information_schema_statistics_column_row(database, "alter_ops", "renamed_b");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_ops",
+                                                               .index_name = "idx_ab",
+                                                               .seq_in_index = 2,
+                                                               .column_name = "b2",
+                                                               .non_unique = 1,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+
+    failures += execute_sql(database, "UPDATE alter_ops SET c = 0 WHERE c IS NULL", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE alter_ops MODIFY COLUMN c VARCHAR(20) NOT NULL DEFAULT 'z' FIRST", 0,
+        "alter modify column affected rows");
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE alter_ops DROP COLUMN a, DROP COLUMN hidden", 0,
+        "alter drop column affected rows");
+    failures += expect_int(mylite_warning_count(database), 1, "alter drop duplicate index warning");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_duplicate_index,
+                           "alter drop duplicate index warning code");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT c, first_col, id, b2, added, nn "
+                           "FROM alter_ops ORDER BY id",
+                           final_columns, (int)(sizeof(final_columns) / sizeof(final_columns[0])),
+                           final_values, 2, "alter final data and order");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_ops",
+                                                               .index_name = "idx_ab",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "b2",
+                                                               .non_unique = 1,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+    failures += expect_no_information_schema_statistics_column_row(database, "alter_ops", "a");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE alter_unique ("
+                            "id INT PRIMARY KEY, u INT, v INT, "
+                            "UNIQUE KEY uq_u (u), UNIQUE KEY uq_vu (v, u))",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO alter_unique VALUES (1,1,10),(2,2,20)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE alter_unique RENAME COLUMN u TO renamed_u", 0,
+        "alter unique rename affected rows");
+    failures += prepare_sql(database, "INSERT INTO alter_unique VALUES (3,1,30)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "alter renamed unique index still rejects duplicates");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(database, "ALTER TABLE alter_unique DROP COLUMN v",
+                                                 0, "alter unique drop affected rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "alter unique drop duplicate index warning");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_duplicate_index,
+                           "alter unique drop duplicate index warning code");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_unique",
+                                                               .index_name = "uq_vu",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "renamed_u",
+                                                               .non_unique = 0,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+    failures += prepare_sql(database, "INSERT INTO alter_unique (id, renamed_u) VALUES (4,2)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "alter dropped unique index part still rejects duplicates");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database, "CREATE TABLE ai_drop (id INT AUTO_INCREMENT PRIMARY KEY, v INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ai_drop (v) VALUES (10),(20)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database, "ALTER TABLE ai_drop DROP COLUMN id", 2,
+                                                 "alter drop auto increment affected rows");
+    failures += expect_select_rows(database, "SELECT v FROM ai_drop ORDER BY v", ai_drop_columns, 1,
+                                   ai_drop_values, 2, "alter drop auto increment preserves rows");
+    failures += expect_no_information_schema_statistics_index_row(database, "ai_drop", "PRIMARY");
+
+    failures += execute_sql(database, "CREATE TABLE empty_default_alter (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO empty_default_alter VALUES (1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE empty_default_alter ADD COLUMN s VARCHAR(5) NOT NULL DEFAULT ''", 0,
+        "alter add empty string default affected rows");
+    failures +=
+        expect_select_rows(database, "SELECT id, s FROM empty_default_alter", empty_default_columns,
+                           2, empty_default_values, 1, "alter add empty string default backfill");
+    failures +=
+        expect_information_schema_column_row(database, &(const struct expected_columns_row){
+                                                           .table_name = "empty_default_alter",
+                                                           .column_name = "s",
+                                                           .ordinal_position = 2,
+                                                           .column_default = "",
+                                                           .is_nullable = "NO",
+                                                           .data_type = "varchar",
+                                                           .column_type = "varchar(5)",
+                                                           .column_key = "",
+                                                           .extra = "",
+                                                       });
+
+    failures += prepare_sql(database, "ALTER TABLE alter_ops DROP COLUMN b2, ADD COLUMN id INT",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate column name",
+                                  "alter multi-action rollback on duplicate column");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database,
+                           "SELECT c, first_col, id, b2, added, nn "
+                           "FROM alter_ops ORDER BY id",
+                           final_columns, (int)(sizeof(final_columns) / sizeof(final_columns[0])),
+                           final_values, 2, "failed alter leaves table data unchanged");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_ops",
+                                                               .index_name = "idx_ab",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "b2",
+                                                               .non_unique = 1,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+
+    failures += prepare_sql(database,
+                            "ALTER TABLE alter_ops ADD COLUMN algorithm_col INT, "
+                            "ALGORITHM=INSTANT",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED, "alter rejects non-default algorithm");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), -1, "alter unsupported algorithm affected");
+    failures += expect_contains(mylite_error_message(database), "ALGORITHM",
+                                "alter unsupported algorithm error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_column_row(database, "alter_ops", "algorithm_col");
+
+    failures += prepare_sql(database, "ALTER TABLE alter_ops ADD COLUMN lock_col INT, LOCK NONE",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED, "alter rejects non-default lock");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "alter unsupported lock affected");
+    failures +=
+        expect_contains(mylite_error_message(database), "LOCK", "alter unsupported lock error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_column_row(database, "alter_ops", "lock_col");
+
+    failures += prepare_sql(database, "ALTER TABLE alter_ops ADD COLUMN id INT", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate column name",
+                                  "alter rejects duplicate resulting column");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "ALTER TABLE alter_ops DROP COLUMN missing_col", MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "Can't DROP", "alter rejects missing drop column");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "ALTER TABLE alter_ops ADD COLUMN after_missing INT "
+                            "AFTER missing_col",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "Unknown column", "alter rejects missing after column");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_column_row(database, "alter_ops", "after_missing");
+
+    failures += execute_sql(database, "CREATE TABLE one_col (only_col INT)", MYLITE_DONE);
+    failures += prepare_sql(database, "ALTER TABLE one_col DROP COLUMN only_col", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "delete all columns",
+                                  "alter rejects dropping every column");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT only_col FROM one_col", one_col_columns, 1,
+                                   NULL, 0, "drop every column leaves table queryable");
+
+    failures += execute_sql(database, "CREATE TABLE invisible_alter (v INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO invisible_alter VALUES (1)", MYLITE_DONE);
+    failures += prepare_sql(database, "ALTER TABLE invisible_alter MODIFY COLUMN v INT INVISIBLE",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "visible column", "alter rejects all-invisible result");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT * FROM invisible_alter", invisible_alter_columns, 1,
+                           invisible_values, 1, "all-invisible failure preserves column");
+
+    failures += prepare_sql(database, "ALTER TABLE alter_ops ADD COLUMN ai INT AUTO_INCREMENT",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Incorrect table definition",
+                                  "alter rejects inline auto increment");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "ALTER TABLE alter_ops ADD COLUMN inline_key INT UNIQUE",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Incorrect table definition",
+                                  "alter rejects inline add unique key");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "ALTER TABLE alter_ops CHANGE COLUMN nn nn INT PRIMARY KEY",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Incorrect table definition",
+                                  "alter rejects inline change primary key");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "ALTER TABLE alter_ops MODIFY COLUMN nn INT UNIQUE",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Incorrect table definition",
+                                  "alter rejects inline modify unique key");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     mylite_close(database);
     return failures;
@@ -9142,6 +9611,66 @@ static int expect_no_information_schema_table_name_row(mylite_db *database, cons
     return failures;
 }
 
+static int expect_information_schema_column_row(mylite_db *database,
+                                                const struct expected_columns_row *expected)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLUMNS", MYLITE_OK, &stmt);
+    int saw_row = 0;
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *table_name = NULL;
+        const char *column_name = NULL;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "columns row");
+        if (failures != 0) {
+            break;
+        }
+        table_name = mylite_column_text(stmt, columns_table_name_column);
+        column_name = mylite_column_text(stmt, columns_name_column);
+        if (strcmp(table_name, expected->table_name) != 0 ||
+            strcmp(column_name, expected->column_name) != 0) {
+            continue;
+        }
+
+        saw_row = 1;
+        failures += expect_int64(mylite_column_int64(stmt, columns_ordinal_column),
+                                 expected->ordinal_position, "columns ordinal");
+        if (expected->column_default == NULL) {
+            failures += expect_null_text(mylite_column_text(stmt, columns_default_column),
+                                         "columns default");
+        } else {
+            failures += expect_string(mylite_column_text(stmt, columns_default_column),
+                                      expected->column_default, "columns default");
+        }
+        failures += expect_string(mylite_column_text(stmt, columns_nullable_column),
+                                  expected->is_nullable, "columns nullable");
+        failures += expect_string(mylite_column_text(stmt, columns_data_type_column),
+                                  expected->data_type, "columns data type");
+        failures += expect_string(mylite_column_text(stmt, columns_type_column),
+                                  expected->column_type, "columns type");
+        failures += expect_string(mylite_column_text(stmt, columns_key_column),
+                                  expected->column_key, "columns key");
+        failures += expect_string(mylite_column_text(stmt, columns_extra_column), expected->extra,
+                                  "columns extra");
+        break;
+    }
+
+    if (!saw_row) {
+        fprintf(stderr, "columns did not return row for table '%s' column '%s'\n",
+                expected->table_name, expected->column_name);
+        failures = 1;
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
 static int expect_no_information_schema_column_table_name_row(mylite_db *database,
                                                               const char *table_name)
 {
@@ -9170,6 +9699,36 @@ static int expect_no_information_schema_column_table_name_row(mylite_db *databas
     return failures;
 }
 
+static int expect_no_information_schema_column_row(mylite_db *database, const char *table_name,
+                                                   const char *column_name)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLUMNS", MYLITE_OK, &stmt);
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "columns row");
+        if (failures != 0) {
+            break;
+        }
+        if (strcmp(mylite_column_text(stmt, columns_table_name_column), table_name) == 0 &&
+            strcmp(mylite_column_text(stmt, columns_name_column), column_name) == 0) {
+            fprintf(stderr, "columns unexpectedly returned row for table '%s' column '%s'\n",
+                    table_name, column_name);
+            failures = 1;
+            break;
+        }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
 static int expect_no_information_schema_statistics_table_name_row(mylite_db *database,
                                                                   const char *table_name)
 {
@@ -9189,6 +9748,37 @@ static int expect_no_information_schema_statistics_table_name_row(mylite_db *dat
         }
         if (strcmp(mylite_column_text(stmt, statistics_table_name_column), table_name) == 0) {
             fprintf(stderr, "statistics unexpectedly returned row for table '%s'\n", table_name);
+            failures = 1;
+            break;
+        }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_no_information_schema_statistics_column_row(mylite_db *database,
+                                                              const char *table_name,
+                                                              const char *column_name)
+{
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.STATISTICS", MYLITE_OK, &stmt);
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "statistics row");
+        if (failures != 0) {
+            break;
+        }
+        if (strcmp(mylite_column_text(stmt, statistics_table_name_column), table_name) == 0 &&
+            strcmp(mylite_column_text(stmt, statistics_column_name_column), column_name) == 0) {
+            fprintf(stderr, "statistics unexpectedly returned row for table '%s' column '%s'\n",
+                    table_name, column_name);
             failures = 1;
             break;
         }

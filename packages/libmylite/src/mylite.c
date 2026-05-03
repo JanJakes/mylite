@@ -46,6 +46,7 @@ enum mylite_stmt_kind {
     MYLITE_STMT_RELEASE_SAVEPOINT = 24,
     MYLITE_STMT_CREATE_INDEX = 25,
     MYLITE_STMT_DROP_INDEX = 26,
+    MYLITE_STMT_ALTER_TABLE = 27,
 };
 
 enum mylite_information_schema_table {
@@ -62,10 +63,13 @@ enum mylite_mysql_condition_code {
     MYLITE_MYSQL_ER_BAD_DB_ERROR = 1049,
     MYLITE_MYSQL_ER_NON_UNIQ_ERROR = 1052,
     MYLITE_MYSQL_ER_BAD_FIELD_ERROR = 1054,
+    MYLITE_MYSQL_ER_DUP_FIELDNAME = 1060,
     MYLITE_MYSQL_ER_WRONG_FIELD_WITH_GROUP = 1055,
     MYLITE_MYSQL_ER_DUP_KEYNAME = 1061,
     MYLITE_MYSQL_ER_DUP_ENTRY = 1062,
     MYLITE_MYSQL_ER_KEY_COLUMN_DOES_NOT_EXITS = 1072,
+    MYLITE_MYSQL_ER_WRONG_AUTO_KEY = 1075,
+    MYLITE_MYSQL_ER_CANT_REMOVE_ALL_FIELDS = 1090,
     MYLITE_MYSQL_ER_CANT_DROP_FIELD_OR_KEY = 1091,
     MYLITE_MYSQL_ER_NONUNIQ_TABLE = 1066,
     MYLITE_MYSQL_ER_INVALID_GROUP_FUNC_USE = 1111,
@@ -85,6 +89,7 @@ enum mylite_mysql_condition_code {
     MYLITE_MYSQL_ER_DIVISION_BY_ZERO = 1365,
     MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE_FOR_FIELD = 1366,
     MYLITE_MYSQL_ER_WARN_LEGACY_SYNTAX_CONVERTED = 3005,
+    MYLITE_MYSQL_ER_INVISIBLE_NOT_NULL_WITHOUT_DEFAULT = 4028,
     MYLITE_MYSQL_ER_FIELD_IN_ORDER_NOT_SELECT = 3065,
     MYLITE_MYSQL_ER_CANT_EXECUTE_IN_READ_ONLY_TRANSACTION = 1792,
     MYLITE_MYSQL_ER_DUP_INDEX = 1831,
@@ -251,6 +256,38 @@ struct mylite_drop_table_plan {
     bool temporary;
     bool restrict_mode;
     bool cascade_mode;
+};
+
+enum mylite_alter_table_action_kind {
+    MYLITE_ALTER_TABLE_ACTION_ADD_COLUMN = 0,
+    MYLITE_ALTER_TABLE_ACTION_DROP_COLUMN = 1,
+    MYLITE_ALTER_TABLE_ACTION_RENAME_COLUMN = 2,
+    MYLITE_ALTER_TABLE_ACTION_CHANGE_COLUMN = 3,
+    MYLITE_ALTER_TABLE_ACTION_MODIFY_COLUMN = 4,
+};
+
+enum mylite_alter_table_column_position_kind {
+    MYLITE_ALTER_TABLE_COLUMN_POSITION_NONE = 0,
+    MYLITE_ALTER_TABLE_COLUMN_POSITION_FIRST = 1,
+    MYLITE_ALTER_TABLE_COLUMN_POSITION_AFTER = 2,
+};
+
+struct mylite_alter_table_action {
+    enum mylite_alter_table_action_kind kind;
+    enum mylite_alter_table_column_position_kind position;
+    char *old_name;
+    char *new_name;
+    char *after_column;
+    struct mylite_create_table_column column;
+};
+
+struct mylite_alter_table_plan {
+    char *schema_name;
+    char *table_name;
+    struct mylite_alter_table_action *actions;
+    size_t action_count;
+    char *unsupported_algorithm;
+    char *unsupported_lock;
 };
 
 struct mylite_index_ddl_plan {
@@ -452,6 +489,106 @@ struct mylite_insert_unique_index_part {
     size_t column_index;
     uint64_t prefix_length;
     bool has_prefix_length;
+};
+
+struct mylite_alter_table_column {
+    char *name;
+    char *source_name;
+    char *column_default;
+    char *is_nullable;
+    char *data_type;
+    char *character_set_name;
+    char *collation_name;
+    char *column_type;
+    char *column_key;
+    char *extra;
+    char *column_comment;
+    char *generation_expression;
+    int64_t character_maximum_length;
+    int64_t character_octet_length;
+    int64_t numeric_precision;
+    int64_t numeric_scale;
+    int64_t datetime_precision;
+    int64_t srs_id;
+    bool has_character_maximum_length;
+    bool has_character_octet_length;
+    bool has_numeric_precision;
+    bool has_numeric_scale;
+    bool has_datetime_precision;
+    bool has_srs_id;
+    bool nullable;
+    bool auto_increment;
+    bool visible;
+    bool added;
+};
+
+struct mylite_alter_table_index_part {
+    char *column_name;
+    char *collation;
+    char *nullable;
+    int64_t sub_part;
+    bool has_sub_part;
+};
+
+struct mylite_alter_table_index {
+    char *index_schema;
+    char *name;
+    char *index_type;
+    char *comment;
+    char *index_comment;
+    char *is_visible;
+    struct mylite_alter_table_index_part *parts;
+    size_t part_count;
+    int non_unique;
+    bool changed;
+};
+
+struct mylite_alter_table_model {
+    char *schema_name;
+    char *table_name;
+    char *physical_name;
+    char *table_collation;
+    struct mylite_alter_table_column *columns;
+    size_t column_count;
+    struct mylite_alter_table_index *indexes;
+    size_t index_count;
+    bool clear_auto_increment;
+    bool report_copied_rows;
+};
+
+enum mylite_alter_table_column_catalog_field {
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_NAME = 0,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_DEFAULT = 1,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_IS_NULLABLE = 2,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_DATA_TYPE = 3,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_CHARACTER_MAXIMUM_LENGTH = 4,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_CHARACTER_OCTET_LENGTH = 5,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_NUMERIC_PRECISION = 6,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_NUMERIC_SCALE = 7,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_DATETIME_PRECISION = 8,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_CHARACTER_SET_NAME = 9,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_COLLATION_NAME = 10,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_COLUMN_TYPE = 11,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_COLUMN_KEY = 12,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_EXTRA = 13,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_COMMENT = 14,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_GENERATION_EXPRESSION = 15,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_SRS_ID = 16,
+};
+
+enum mylite_alter_table_index_catalog_field {
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_NON_UNIQUE = 0,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_SCHEMA = 1,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_NAME = 2,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_SEQ_IN_INDEX = 3,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_COLUMN_NAME = 4,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_COLLATION = 5,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_SUB_PART = 6,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_NULLABLE = 7,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_TYPE = 8,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_COMMENT = 9,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_INDEX_COMMENT = 10,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_VISIBLE = 11,
 };
 
 struct mylite_insert_table {
@@ -1005,6 +1142,7 @@ struct mylite_stmt {
     struct mylite_schema_options options;
     struct mylite_create_table_plan create_table;
     struct mylite_drop_table_plan drop_table;
+    struct mylite_alter_table_plan alter_table;
     struct mylite_index_ddl_plan index_ddl;
     struct mylite_insert_values_plan insert_values;
     struct mylite_insert_set_plan insert_set;
@@ -1240,6 +1378,9 @@ static int prepare_create_table_statement(mylite_db *database,
 static int prepare_drop_table_statement(mylite_db *database,
                                         const struct mylite_sql_ast_node *statement,
                                         mylite_stmt **out_stmt);
+static int prepare_alter_table_statement(mylite_db *database,
+                                         const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt **out_stmt);
 static int prepare_create_index_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           mylite_stmt **out_stmt);
@@ -2130,6 +2271,7 @@ static int execute_set_names_statement(mylite_stmt *stmt);
 static int execute_set_character_set_statement(mylite_stmt *stmt);
 static int execute_create_table_statement(mylite_stmt *stmt);
 static int execute_drop_table_statement(mylite_stmt *stmt);
+static int execute_alter_table_statement(mylite_stmt *stmt);
 static int execute_create_index_statement(mylite_stmt *stmt);
 static int execute_drop_index_statement(mylite_stmt *stmt);
 static int execute_insert_values_statement(mylite_stmt *stmt);
@@ -2755,6 +2897,150 @@ static int delete_table_catalog_rows(mylite_stmt *stmt,
                                      const struct mylite_drop_table_target *target);
 static int delete_table_catalog_row(mylite_db *database, const char *sql,
                                     const struct mylite_drop_table_target *target);
+static int validate_alter_table_plan(mylite_stmt *stmt, const char **out_schema_name);
+static int resolve_alter_table_schema(mylite_stmt *stmt);
+static int validate_alter_table_target(mylite_stmt *stmt);
+static int load_alter_table_model(mylite_stmt *stmt, const char *schema_name,
+                                  struct mylite_alter_table_model *model);
+static int load_alter_table_columns(mylite_stmt *stmt, struct mylite_alter_table_model *model);
+static int load_alter_table_column_from_catalog_row(mylite_stmt *stmt, sqlite3_stmt *select,
+                                                    struct mylite_alter_table_model *model);
+static int load_alter_table_column_text_catalog_fields(sqlite3_stmt *select,
+                                                       struct mylite_alter_table_column *column);
+static void
+load_alter_table_column_numeric_catalog_fields(sqlite3_stmt *select,
+                                               struct mylite_alter_table_column *column);
+static void load_alter_table_column_flags(struct mylite_alter_table_column *column);
+static int add_alter_table_column(struct mylite_alter_table_model *model,
+                                  struct mylite_alter_table_column column);
+static int load_alter_table_indexes(mylite_stmt *stmt, struct mylite_alter_table_model *model);
+static int add_alter_table_index_part(mylite_stmt *stmt, struct mylite_alter_table_model *model,
+                                      sqlite3_stmt *select);
+static int append_alter_table_index_part(struct mylite_alter_table_index *index,
+                                         struct mylite_alter_table_index_part part);
+static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_table_model *model);
+static int apply_alter_table_add_column(mylite_stmt *stmt,
+                                        const struct mylite_alter_table_action *action,
+                                        struct mylite_alter_table_model *model);
+static int apply_alter_table_drop_column(mylite_stmt *stmt,
+                                         const struct mylite_alter_table_action *action,
+                                         struct mylite_alter_table_model *model);
+static int apply_alter_table_rename_column(mylite_stmt *stmt,
+                                           const struct mylite_alter_table_action *action,
+                                           struct mylite_alter_table_model *model);
+static int apply_alter_table_change_column(mylite_stmt *stmt,
+                                           const struct mylite_alter_table_action *action,
+                                           struct mylite_alter_table_model *model);
+static int apply_alter_table_modify_column(mylite_stmt *stmt,
+                                           const struct mylite_alter_table_action *action,
+                                           struct mylite_alter_table_model *model);
+static int apply_alter_table_column_position(mylite_stmt *stmt,
+                                             const struct mylite_alter_table_action *action,
+                                             struct mylite_alter_table_model *model,
+                                             size_t column_index);
+static int replace_alter_table_column_from_definition(
+    mylite_stmt *stmt, const struct mylite_create_table_column *definition, const char *source_name,
+    bool added, struct mylite_alter_table_column *target);
+static int init_alter_table_column_from_definition(
+    mylite_stmt *stmt, const struct mylite_create_table_column *definition, const char *source_name,
+    bool added, struct mylite_alter_table_column *out_column);
+static int alter_table_column_descriptor(mylite_stmt *stmt,
+                                         const struct mylite_create_table_column *definition,
+                                         struct mylite_column_type_descriptor *out_descriptor);
+static int remove_alter_table_column(struct mylite_alter_table_model *model, size_t column_index);
+static int validate_alter_table_final_model(mylite_stmt *stmt,
+                                            struct mylite_alter_table_model *model);
+static int validate_alter_table_columns(mylite_stmt *stmt, struct mylite_alter_table_model *model,
+                                        bool *out_has_visible_column,
+                                        size_t *out_auto_increment_count);
+static int validate_alter_table_source_not_null(mylite_stmt *stmt,
+                                                const struct mylite_alter_table_model *model,
+                                                const struct mylite_alter_table_column *column);
+static int validate_alter_table_auto_increment_shape(mylite_stmt *stmt,
+                                                     struct mylite_alter_table_model *model,
+                                                     size_t auto_increment_count);
+static const struct mylite_alter_table_column *
+find_alter_table_auto_increment_column(const struct mylite_alter_table_model *model);
+static bool
+alter_table_auto_increment_column_is_indexed(const struct mylite_alter_table_model *model,
+                                             const struct mylite_alter_table_column *auto_column);
+static int validate_alter_table_unique_indexes(mylite_stmt *stmt,
+                                               const struct mylite_alter_table_model *model);
+static int validate_alter_table_unique_index(mylite_stmt *stmt,
+                                             const struct mylite_alter_table_model *model,
+                                             const struct mylite_alter_table_index *index);
+static char *build_alter_table_unique_duplicate_sql(mylite_db *database,
+                                                    const struct mylite_alter_table_model *model,
+                                                    const struct mylite_alter_table_index *index);
+static int execute_alter_table_transaction(mylite_stmt *stmt,
+                                           struct mylite_alter_table_model *model);
+static int create_alter_table_shadow_table(mylite_stmt *stmt,
+                                           const struct mylite_alter_table_model *model,
+                                           const char *shadow_name);
+static char *build_alter_table_create_shadow_sql(mylite_db *database,
+                                                 const struct mylite_alter_table_model *model,
+                                                 const char *shadow_name);
+static int copy_alter_table_rows(mylite_stmt *stmt, const struct mylite_alter_table_model *model,
+                                 const char *shadow_name, int64_t *out_copied_rows);
+static char *build_alter_table_copy_sql(mylite_db *database,
+                                        const struct mylite_alter_table_model *model,
+                                        const char *shadow_name);
+static int bind_alter_table_added_column_values(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                                const struct mylite_alter_table_model *model);
+static int resolve_alter_table_added_column_value(mylite_stmt *stmt,
+                                                  const struct mylite_alter_table_column *column,
+                                                  struct mylite_insert_bound_value *out_value);
+static int rewrite_alter_table_catalog(mylite_stmt *stmt, struct mylite_alter_table_model *model);
+static int delete_alter_table_catalog_rows(mylite_stmt *stmt);
+static int insert_alter_table_column_catalog_rows(mylite_stmt *stmt,
+                                                  struct mylite_alter_table_model *model);
+static int insert_alter_table_column_catalog_row(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                                 const struct mylite_alter_table_model *model,
+                                                 const struct mylite_alter_table_column *column,
+                                                 size_t column_index);
+static int insert_alter_table_index_catalog_rows(mylite_stmt *stmt,
+                                                 const struct mylite_alter_table_model *model);
+static int insert_alter_table_index_catalog_part(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                                 const struct mylite_alter_table_model *model,
+                                                 const struct mylite_alter_table_index *index,
+                                                 const struct mylite_alter_table_index_part *part,
+                                                 size_t part_index);
+static int update_alter_table_auto_increment(mylite_stmt *stmt,
+                                             const struct mylite_alter_table_model *model);
+static int swap_alter_table_physical_table(mylite_stmt *stmt, const char *shadow_name,
+                                           const char *physical_name);
+static char *alter_table_shadow_physical_name(mylite_db *database, const char *physical_name);
+static bool sqlite_table_name_exists(mylite_db *database, const char *name);
+static int append_alter_table_warnings(mylite_stmt *stmt,
+                                       const struct mylite_alter_table_model *model);
+static bool alter_table_indexes_are_duplicate_warning_candidates(
+    const struct mylite_alter_table_index *index, const struct mylite_alter_table_index *previous);
+static bool alter_table_index_parts_match(const struct mylite_alter_table_index_part *left,
+                                          const struct mylite_alter_table_index_part *right);
+static const char *alter_table_column_key(const struct mylite_alter_table_model *model,
+                                          const char *column_name);
+static int refresh_alter_table_column_keys(struct mylite_alter_table_model *model);
+static int refresh_alter_table_index_nullability(struct mylite_alter_table_model *model);
+static const struct mylite_alter_table_column *
+find_alter_table_column(const struct mylite_alter_table_model *model, const char *name);
+static size_t alter_table_column_index(const struct mylite_alter_table_model *model,
+                                       const char *name);
+static size_t alter_table_index_index(const struct mylite_alter_table_model *model,
+                                      const char *name);
+static bool alter_table_column_definition_has_deferred_features(
+    const struct mylite_create_table_column *column);
+static bool alter_table_option_is_default(const struct mylite_sql_ast_node *option);
+static int set_alter_table_unsupported_option_error(mylite_db *database, const char *kind,
+                                                    const char *value);
+static int set_alter_table_duplicate_column_error(mylite_db *database, const char *column_name);
+static int set_alter_table_unknown_column_error(mylite_db *database, const char *table_name,
+                                                const char *column_name);
+static int set_alter_table_cant_drop_column_error(mylite_db *database, const char *column_name);
+static int set_alter_table_cant_remove_all_columns_error(mylite_db *database);
+static int set_alter_table_all_invisible_error(mylite_db *database);
+static int set_alter_table_wrong_auto_increment_error(mylite_db *database);
+static int copy_sqlite_text_column(sqlite3_stmt *stmt, int column, char **out_text);
+static int copy_sqlite_nullable_text_column(sqlite3_stmt *stmt, int column, char **out_text);
 static int validate_create_index_plan(mylite_stmt *stmt);
 static int validate_drop_index_plan(mylite_stmt *stmt);
 static int resolve_index_ddl_schema(mylite_stmt *stmt);
@@ -3243,6 +3529,18 @@ static int copy_create_table_statement(const struct mylite_sql_ast_node *stateme
                                        mylite_stmt *stmt);
 static int copy_drop_table_statement(const struct mylite_sql_ast_node *statement,
                                      mylite_stmt *stmt);
+static int copy_alter_table_statement(const struct mylite_sql_ast_node *statement,
+                                      mylite_stmt *stmt);
+static int copy_alter_table_item(const struct mylite_sql_ast_node *item,
+                                 struct mylite_alter_table_plan *plan);
+static int copy_alter_table_action(const struct mylite_sql_ast_node *action_node,
+                                   struct mylite_alter_table_plan *plan);
+static int copy_alter_table_column_definition(const struct mylite_sql_ast_node *column_node,
+                                              struct mylite_create_table_column *out_column);
+static int copy_alter_table_column_position(const struct mylite_sql_ast_node *position_node,
+                                            struct mylite_alter_table_action *action);
+static int add_alter_table_action(struct mylite_alter_table_plan *plan,
+                                  struct mylite_alter_table_action action);
 static int copy_create_index_statement(const struct mylite_sql_ast_node *statement,
                                        mylite_stmt *stmt);
 static int copy_drop_index_statement(const struct mylite_sql_ast_node *statement,
@@ -3547,6 +3845,7 @@ static bool
 create_table_column_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type);
 static const char *
 sqlite_affinity_for_descriptor(const struct mylite_column_type_descriptor *descriptor);
+static const char *sqlite_affinity_for_catalog_data_type(const char *data_type);
 static char *physical_table_name(const char *schema_name, const char *table_name);
 static bool hex_encoded_text_length(size_t text_length, size_t *out_length);
 static char *append_hex_encoded_text(char *target, const char *source);
@@ -3646,6 +3945,12 @@ static void schema_options_deinit(struct mylite_schema_options *options);
 static void create_table_options_deinit(struct mylite_create_table_options *options);
 static void create_table_plan_deinit(struct mylite_create_table_plan *plan);
 static void drop_table_plan_deinit(struct mylite_drop_table_plan *plan);
+static void alter_table_plan_deinit(struct mylite_alter_table_plan *plan);
+static void alter_table_action_deinit(struct mylite_alter_table_action *action);
+static void alter_table_model_deinit(struct mylite_alter_table_model *model);
+static void alter_table_column_deinit(struct mylite_alter_table_column *column);
+static void alter_table_index_deinit(struct mylite_alter_table_index *index);
+static void alter_table_index_part_deinit(struct mylite_alter_table_index_part *part);
 static void index_ddl_plan_deinit(struct mylite_index_ddl_plan *plan);
 static void drop_table_target_deinit(struct mylite_drop_table_target *target);
 static void insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
@@ -3836,6 +4141,7 @@ void mylite_finalize(mylite_stmt *stmt)
     schema_options_deinit(&stmt->options);
     create_table_plan_deinit(&stmt->create_table);
     drop_table_plan_deinit(&stmt->drop_table);
+    alter_table_plan_deinit(&stmt->alter_table);
     index_ddl_plan_deinit(&stmt->index_ddl);
     insert_values_plan_deinit(&stmt->insert_values);
     insert_set_plan_deinit(&stmt->insert_set);
@@ -4249,6 +4555,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_create_table_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
             return prepare_drop_table_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+            return prepare_alter_table_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
             return prepare_create_index_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
@@ -4384,6 +4692,9 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
         case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
         case MYLITE_SQL_AST_DDL_TABLE_OPTION:
+        case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+        case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+        case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
             break;
         }
     }
@@ -4472,6 +4783,10 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
@@ -4603,6 +4918,10 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
@@ -4676,6 +4995,13 @@ static int prepare_drop_table_statement(mylite_db *database,
                                         mylite_stmt **out_stmt)
 {
     return prepare_custom_statement(database, MYLITE_STMT_DROP_TABLE, statement, out_stmt);
+}
+
+static int prepare_alter_table_statement(mylite_db *database,
+                                         const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt **out_stmt)
+{
+    return prepare_custom_statement(database, MYLITE_STMT_ALTER_TABLE, statement, out_stmt);
 }
 
 static int prepare_create_index_statement(mylite_db *database,
@@ -4882,6 +5208,10 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_TABLE_NAME_LIST:
     case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
     case MYLITE_SQL_AST_INSERT_COLUMN_LIST:
@@ -5974,6 +6304,10 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -8912,6 +9246,10 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -9597,6 +9935,10 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
@@ -10142,6 +10484,10 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -10842,6 +11188,10 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -13456,6 +13806,9 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     case MYLITE_STMT_DROP_TABLE:
         status = copy_drop_table_statement(statement, stmt);
         break;
+    case MYLITE_STMT_ALTER_TABLE:
+        status = copy_alter_table_statement(statement, stmt);
+        break;
     case MYLITE_STMT_CREATE_INDEX:
         status = copy_create_index_statement(statement, stmt);
         break;
@@ -13581,6 +13934,9 @@ static int execute_custom_statement(mylite_stmt *stmt)
         break;
     case MYLITE_STMT_DROP_TABLE:
         status = execute_drop_table_statement(stmt);
+        break;
+    case MYLITE_STMT_ALTER_TABLE:
+        status = execute_alter_table_statement(stmt);
         break;
     case MYLITE_STMT_CREATE_INDEX:
         status = execute_create_index_statement(stmt);
@@ -14590,6 +14946,1990 @@ static int delete_table_catalog_row(mylite_db *database, const char *sql,
     return MYLITE_OK;
 }
 
+static int execute_alter_table_statement(mylite_stmt *stmt)
+{
+    const char *schema_name = NULL;
+    struct mylite_alter_table_model model = {0};
+    int status = validate_alter_table_plan(stmt, &schema_name);
+
+    stmt->affected_rows = 0;
+    if (status == MYLITE_OK) {
+        status = load_alter_table_model(stmt, schema_name, &model);
+    }
+    if (status == MYLITE_OK) {
+        status = apply_alter_table_actions(stmt, &model);
+    }
+    if (status == MYLITE_OK) {
+        status = validate_alter_table_final_model(stmt, &model);
+    }
+    if (status == MYLITE_OK) {
+        status = validate_alter_table_unique_indexes(stmt, &model);
+    }
+    if (status == MYLITE_OK) {
+        status = execute_alter_table_transaction(stmt, &model);
+    }
+
+    alter_table_model_deinit(&model);
+    if (status != MYLITE_OK) {
+        stmt->affected_rows = -1;
+    }
+    return status;
+}
+
+static int validate_alter_table_plan(mylite_stmt *stmt, const char **out_schema_name)
+{
+    int status = MYLITE_OK;
+
+    *out_schema_name = NULL;
+    if (stmt->alter_table.unsupported_algorithm != NULL) {
+        return set_alter_table_unsupported_option_error(stmt->database, "ALGORITHM",
+                                                        stmt->alter_table.unsupported_algorithm);
+    }
+    if (stmt->alter_table.unsupported_lock != NULL) {
+        return set_alter_table_unsupported_option_error(stmt->database, "LOCK",
+                                                        stmt->alter_table.unsupported_lock);
+    }
+
+    status = resolve_alter_table_schema(stmt);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    status = validate_alter_table_target(stmt);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    *out_schema_name = stmt->alter_table.schema_name;
+    return MYLITE_OK;
+}
+
+static int resolve_alter_table_schema(mylite_stmt *stmt)
+{
+    if (stmt->alter_table.schema_name != NULL) {
+        return MYLITE_OK;
+    }
+    if (stmt->database->selected_schema == NULL || stmt->database->selected_schema[0] == '\0') {
+        (void)set_error_message(stmt->database, "No database selected");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    stmt->alter_table.schema_name = copy_nonempty_cstring(stmt->database->selected_schema);
+    if (stmt->alter_table.schema_name == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_target(mylite_stmt *stmt)
+{
+    struct mylite_schema_presence presence;
+    bool exists = false;
+    int status = schema_exists(stmt->database, stmt->alter_table.schema_name, &presence);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!presence.exists) {
+        (void)set_error_message_parts(stmt->database, "Unknown database '",
+                                      stmt->alter_table.schema_name, "'");
+        return MYLITE_EXEC_ERROR;
+    }
+    if (presence.is_system) {
+        (void)set_error_message_parts(stmt->database, "Access to system schema '",
+                                      stmt->alter_table.schema_name, "' is rejected.");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    status = table_exists(stmt->database, stmt->alter_table.schema_name,
+                          stmt->alter_table.table_name, &exists);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!exists) {
+        return set_table_doesnt_exist_error(stmt->database, stmt->alter_table.schema_name,
+                                            stmt->alter_table.table_name);
+    }
+    return MYLITE_OK;
+}
+
+static int load_alter_table_model(mylite_stmt *stmt, const char *schema_name,
+                                  struct mylite_alter_table_model *model)
+{
+    sqlite3_stmt *select = NULL;
+    static const char sql[] =
+        "SELECT table_collation FROM __mylite_table_catalog WHERE table_schema = ? "
+        "AND table_name = ?";
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    *model = (struct mylite_alter_table_model){0};
+    model->schema_name = copy_nonempty_cstring(schema_name);
+    model->table_name = copy_nonempty_cstring(stmt->alter_table.table_name);
+    model->physical_name = physical_table_name(schema_name, stmt->alter_table.table_name);
+    if (model->schema_name == NULL || model->table_name == NULL || model->physical_name == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        alter_table_model_deinit(model);
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
+                            NULL);
+    if (rc != SQLITE_OK) {
+        alter_table_model_deinit(model);
+        return set_sqlite_error(stmt->database);
+    }
+    sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, stmt->alter_table.table_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(select);
+    if (rc == SQLITE_ROW) {
+        status = copy_sqlite_nullable_text_column(select, 0, &model->table_collation);
+    } else {
+        status = rc == SQLITE_DONE ? set_table_doesnt_exist_error(stmt->database, schema_name,
+                                                                  stmt->alter_table.table_name)
+                                   : set_sqlite_error(stmt->database);
+    }
+    sqlite3_finalize(select);
+    if (status == MYLITE_OK) {
+        status = load_alter_table_columns(stmt, model);
+    }
+    if (status == MYLITE_OK) {
+        status = load_alter_table_indexes(stmt, model);
+    }
+    if (status != MYLITE_OK) {
+        alter_table_model_deinit(model);
+    }
+    return status;
+}
+
+static int load_alter_table_columns(mylite_stmt *stmt, struct mylite_alter_table_model *model)
+{
+    sqlite3_stmt *select = NULL;
+    static const char sql[] =
+        "SELECT column_name, column_default, is_nullable, data_type, "
+        "character_maximum_length, character_octet_length, numeric_precision, numeric_scale, "
+        "datetime_precision, character_set_name, collation_name, column_type, column_key, extra, "
+        "column_comment, generation_expression, srs_id FROM __mylite_column_catalog "
+        "WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position";
+    int rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
+                                NULL);
+
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    sqlite3_bind_text(select, 1, model->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, model->table_name, -1, sqlite_transient_destructor());
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        int status = load_alter_table_column_from_catalog_row(stmt, select, model);
+
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(select);
+            return status;
+        }
+    }
+    sqlite3_finalize(select);
+    if (rc != SQLITE_DONE) {
+        return set_sqlite_error(stmt->database);
+    }
+    if (model->column_count == 0U) {
+        return set_table_doesnt_exist_error(stmt->database, model->schema_name, model->table_name);
+    }
+    return MYLITE_OK;
+}
+
+static int load_alter_table_column_from_catalog_row(mylite_stmt *stmt, sqlite3_stmt *select,
+                                                    struct mylite_alter_table_model *model)
+{
+    struct mylite_alter_table_column column = {0};
+    int status = load_alter_table_column_text_catalog_fields(select, &column);
+
+    load_alter_table_column_numeric_catalog_fields(select, &column);
+    if (status != MYLITE_OK) {
+        alter_table_column_deinit(&column);
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(stmt->database, "out of memory");
+        }
+        return status;
+    }
+
+    load_alter_table_column_flags(&column);
+    status = add_alter_table_column(model, column);
+    if (status != MYLITE_OK) {
+        alter_table_column_deinit(&column);
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(stmt->database, "out of memory");
+        }
+    }
+    return status;
+}
+
+static int load_alter_table_column_text_catalog_fields(sqlite3_stmt *select,
+                                                       struct mylite_alter_table_column *column)
+{
+    int status =
+        copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_NAME, &column->name);
+
+    if (status == MYLITE_OK) {
+        column->source_name = copy_nonempty_cstring(column->name);
+        if (column->source_name == NULL) {
+            status = MYLITE_NOMEM;
+        }
+    }
+    if (status == MYLITE_OK) {
+        status = copy_sqlite_nullable_text_column(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_DEFAULT,
+                                                  &column->column_default);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_IS_NULLABLE,
+                                         &column->is_nullable);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_sqlite_nullable_text_column(
+            select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_DATA_TYPE, &column->data_type);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_sqlite_nullable_text_column(
+            select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_CHARACTER_SET_NAME,
+            &column->character_set_name);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_sqlite_nullable_text_column(
+            select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_COLLATION_NAME, &column->collation_name);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_COLUMN_TYPE,
+                                         &column->column_type);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_COLUMN_KEY,
+                                         &column->column_key);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_sqlite_nullable_text_column(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_EXTRA,
+                                                  &column->extra);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_COMMENT,
+                                         &column->column_comment);
+    }
+    if (status == MYLITE_OK) {
+        status =
+            copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_GENERATION_EXPRESSION,
+                                    &column->generation_expression);
+    }
+    return status;
+}
+
+static void load_alter_table_column_numeric_catalog_fields(sqlite3_stmt *select,
+                                                           struct mylite_alter_table_column *column)
+{
+    if (sqlite3_column_type(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_CHARACTER_MAXIMUM_LENGTH) !=
+        SQLITE_NULL) {
+        column->character_maximum_length = sqlite3_column_int64(
+            select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_CHARACTER_MAXIMUM_LENGTH);
+        column->has_character_maximum_length = true;
+    }
+    if (sqlite3_column_type(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_CHARACTER_OCTET_LENGTH) !=
+        SQLITE_NULL) {
+        column->character_octet_length =
+            sqlite3_column_int64(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_CHARACTER_OCTET_LENGTH);
+        column->has_character_octet_length = true;
+    }
+    if (sqlite3_column_type(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_NUMERIC_PRECISION) !=
+        SQLITE_NULL) {
+        column->numeric_precision =
+            sqlite3_column_int64(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_NUMERIC_PRECISION);
+        column->has_numeric_precision = true;
+    }
+    if (sqlite3_column_type(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_NUMERIC_SCALE) !=
+        SQLITE_NULL) {
+        column->numeric_scale =
+            sqlite3_column_int64(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_NUMERIC_SCALE);
+        column->has_numeric_scale = true;
+    }
+    if (sqlite3_column_type(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_DATETIME_PRECISION) !=
+        SQLITE_NULL) {
+        column->datetime_precision =
+            sqlite3_column_int64(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_DATETIME_PRECISION);
+        column->has_datetime_precision = true;
+    }
+    if (sqlite3_column_type(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_SRS_ID) != SQLITE_NULL) {
+        column->srs_id = sqlite3_column_int64(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_SRS_ID);
+        column->has_srs_id = true;
+    }
+}
+
+static void load_alter_table_column_flags(struct mylite_alter_table_column *column)
+{
+    column->nullable = ascii_case_equal(column->is_nullable, "YES");
+    column->auto_increment = text_contains_word(column->extra, "auto_increment");
+    column->visible = true;
+    if (text_contains_word(column->extra, "INVISIBLE")) {
+        column->visible = false;
+    }
+}
+
+static int add_alter_table_column(struct mylite_alter_table_model *model,
+                                  struct mylite_alter_table_column column)
+{
+    struct mylite_alter_table_column *columns =
+        realloc(model->columns, (model->column_count + 1U) * sizeof(*model->columns));
+
+    if (columns == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    model->columns = columns;
+    model->columns[model->column_count++] = column;
+    return MYLITE_OK;
+}
+
+static int load_alter_table_indexes(mylite_stmt *stmt, struct mylite_alter_table_model *model)
+{
+    sqlite3_stmt *select = NULL;
+    static const char sql[] =
+        "SELECT non_unique, index_schema, index_name, seq_in_index, column_name, collation, "
+        "sub_part, nullable, index_type, comment, index_comment, is_visible "
+        "FROM __mylite_index_catalog WHERE table_schema = ? AND table_name = ? "
+        "ORDER BY rowid";
+    int rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
+                                NULL);
+
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    sqlite3_bind_text(select, 1, model->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, model->table_name, -1, sqlite_transient_destructor());
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        int status = add_alter_table_index_part(stmt, model, select);
+
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(select);
+            return status;
+        }
+    }
+    sqlite3_finalize(select);
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static int add_alter_table_index_part(mylite_stmt *stmt, struct mylite_alter_table_model *model,
+                                      sqlite3_stmt *select)
+{
+    const char *index_name =
+        (const char *)sqlite3_column_text(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_NAME);
+    size_t index = alter_table_index_index(model, index_name);
+    struct mylite_alter_table_index_part part = {0};
+    int status = MYLITE_OK;
+
+    if (index == model->index_count) {
+        struct mylite_alter_table_index *indexes =
+            realloc(model->indexes, (model->index_count + 1U) * sizeof(*model->indexes));
+
+        if (indexes == NULL) {
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        model->indexes = indexes;
+        model->indexes[model->index_count] = (struct mylite_alter_table_index){
+            .non_unique = sqlite3_column_int(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_NON_UNIQUE),
+        };
+        index = model->index_count++;
+
+        status = copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_SCHEMA,
+                                         &model->indexes[index].index_schema);
+        if (status == MYLITE_OK) {
+            status = copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_NAME,
+                                             &model->indexes[index].name);
+        }
+        if (status == MYLITE_OK) {
+            status = copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_TYPE,
+                                             &model->indexes[index].index_type);
+        }
+        if (status == MYLITE_OK) {
+            status = copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_COMMENT,
+                                             &model->indexes[index].comment);
+        }
+        if (status == MYLITE_OK) {
+            status = copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_INDEX_COMMENT,
+                                             &model->indexes[index].index_comment);
+        }
+        if (status == MYLITE_OK) {
+            status = copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_VISIBLE,
+                                             &model->indexes[index].is_visible);
+        }
+        if (status != MYLITE_OK) {
+            if (status == MYLITE_NOMEM) {
+                (void)set_error_message(stmt->database, "out of memory");
+            }
+            return status;
+        }
+    }
+
+    status = copy_sqlite_nullable_text_column(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_COLUMN_NAME,
+                                              &part.column_name);
+    if (status == MYLITE_OK) {
+        status = copy_sqlite_nullable_text_column(
+            select, MYLITE_ALTER_TABLE_INDEX_CATALOG_COLLATION, &part.collation);
+    }
+    if (sqlite3_column_type(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_SUB_PART) != SQLITE_NULL) {
+        part.sub_part = sqlite3_column_int64(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_SUB_PART);
+        part.has_sub_part = true;
+    }
+    if (status == MYLITE_OK) {
+        status = copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_INDEX_CATALOG_NULLABLE,
+                                         &part.nullable);
+    }
+    if (status == MYLITE_OK) {
+        status = append_alter_table_index_part(&model->indexes[index], part);
+    }
+    if (status != MYLITE_OK) {
+        alter_table_index_part_deinit(&part);
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(stmt->database, "out of memory");
+        }
+    }
+    return status;
+}
+
+static int append_alter_table_index_part(struct mylite_alter_table_index *index,
+                                         struct mylite_alter_table_index_part part)
+{
+    struct mylite_alter_table_index_part *parts =
+        realloc(index->parts, (index->part_count + 1U) * sizeof(*index->parts));
+
+    if (parts == NULL) {
+        return MYLITE_NOMEM;
+    }
+    index->parts = parts;
+    index->parts[index->part_count++] = part;
+    return MYLITE_OK;
+}
+
+static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_table_model *model)
+{
+    int status = MYLITE_OK;
+
+    for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
+        const struct mylite_alter_table_action *action = &stmt->alter_table.actions[index];
+
+        switch (action->kind) {
+        case MYLITE_ALTER_TABLE_ACTION_ADD_COLUMN:
+            status = apply_alter_table_add_column(stmt, action, model);
+            break;
+        case MYLITE_ALTER_TABLE_ACTION_DROP_COLUMN:
+            status = apply_alter_table_drop_column(stmt, action, model);
+            break;
+        case MYLITE_ALTER_TABLE_ACTION_RENAME_COLUMN:
+            status = apply_alter_table_rename_column(stmt, action, model);
+            break;
+        case MYLITE_ALTER_TABLE_ACTION_CHANGE_COLUMN:
+            status = apply_alter_table_change_column(stmt, action, model);
+            break;
+        case MYLITE_ALTER_TABLE_ACTION_MODIFY_COLUMN:
+            status = apply_alter_table_modify_column(stmt, action, model);
+            break;
+        }
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+
+    status = refresh_alter_table_column_keys(model);
+    if (status == MYLITE_OK) {
+        status = refresh_alter_table_index_nullability(model);
+    }
+    if (status == MYLITE_NOMEM) {
+        (void)set_error_message(stmt->database, "out of memory");
+    }
+    return status;
+}
+
+static int apply_alter_table_add_column(mylite_stmt *stmt,
+                                        const struct mylite_alter_table_action *action,
+                                        struct mylite_alter_table_model *model)
+{
+    struct mylite_alter_table_column column = {0};
+    int status = MYLITE_OK;
+
+    if (find_alter_table_column(model, action->column.name) != NULL) {
+        return set_alter_table_duplicate_column_error(stmt->database, action->column.name);
+    }
+    if (alter_table_column_definition_has_deferred_features(&action->column)) {
+        return set_alter_table_wrong_auto_increment_error(stmt->database);
+    }
+
+    status = init_alter_table_column_from_definition(stmt, &action->column, NULL, true, &column);
+    if (status == MYLITE_OK) {
+        status = add_alter_table_column(model, column);
+    }
+    if (status != MYLITE_OK) {
+        alter_table_column_deinit(&column);
+        return status;
+    }
+    return apply_alter_table_column_position(stmt, action, model, model->column_count - 1U);
+}
+
+static int apply_alter_table_drop_column(mylite_stmt *stmt,
+                                         const struct mylite_alter_table_action *action,
+                                         struct mylite_alter_table_model *model)
+{
+    size_t column_index = alter_table_column_index(model, action->old_name);
+
+    if (column_index == model->column_count) {
+        return set_alter_table_cant_drop_column_error(stmt->database, action->old_name);
+    }
+    if (model->column_count == 1U) {
+        return set_alter_table_cant_remove_all_columns_error(stmt->database);
+    }
+
+    for (size_t index = 0U; index < model->index_count;) {
+        struct mylite_alter_table_index *table_index = &model->indexes[index];
+
+        for (size_t part = 0U; part < table_index->part_count;) {
+            if (ascii_case_equal(table_index->parts[part].column_name, action->old_name)) {
+                alter_table_index_part_deinit(&table_index->parts[part]);
+                for (size_t next = part + 1U; next < table_index->part_count; ++next) {
+                    table_index->parts[next - 1U] = table_index->parts[next];
+                }
+                --table_index->part_count;
+                table_index->changed = true;
+                continue;
+            }
+            ++part;
+        }
+        if (table_index->part_count == 0U) {
+            alter_table_index_deinit(table_index);
+            for (size_t next = index + 1U; next < model->index_count; ++next) {
+                model->indexes[next - 1U] = model->indexes[next];
+            }
+            --model->index_count;
+            continue;
+        }
+        ++index;
+    }
+
+    if (model->columns[column_index].auto_increment) {
+        model->clear_auto_increment = true;
+        model->report_copied_rows = true;
+    }
+    return remove_alter_table_column(model, column_index);
+}
+
+static int apply_alter_table_rename_column(mylite_stmt *stmt,
+                                           const struct mylite_alter_table_action *action,
+                                           struct mylite_alter_table_model *model)
+{
+    size_t column_index = alter_table_column_index(model, action->old_name);
+    char *new_name = NULL;
+
+    if (column_index == model->column_count) {
+        return set_alter_table_unknown_column_error(stmt->database, model->table_name,
+                                                    action->old_name);
+    }
+    if (model->columns == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (!ascii_case_equal(action->old_name, action->new_name) &&
+        find_alter_table_column(model, action->new_name) != NULL) {
+        return set_alter_table_duplicate_column_error(stmt->database, action->new_name);
+    }
+
+    new_name = copy_nonempty_cstring(action->new_name);
+    if (new_name == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    free(model->columns[column_index].name);
+    model->columns[column_index].name = new_name;
+
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
+            if (ascii_case_equal(model->indexes[index].parts[part].column_name, action->old_name)) {
+                char *part_name = copy_nonempty_cstring(action->new_name);
+
+                if (part_name == NULL) {
+                    (void)set_error_message(stmt->database, "out of memory");
+                    return MYLITE_NOMEM;
+                }
+                free(model->indexes[index].parts[part].column_name);
+                model->indexes[index].parts[part].column_name = part_name;
+                model->indexes[index].changed = true;
+            }
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int apply_alter_table_change_column(mylite_stmt *stmt,
+                                           const struct mylite_alter_table_action *action,
+                                           struct mylite_alter_table_model *model)
+{
+    size_t column_index = alter_table_column_index(model, action->old_name);
+    const char *new_name = action->column.name;
+    int status = MYLITE_OK;
+
+    if (column_index == model->column_count) {
+        return set_alter_table_unknown_column_error(stmt->database, model->table_name,
+                                                    action->old_name);
+    }
+    if (model->columns == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (!ascii_case_equal(action->old_name, new_name) &&
+        find_alter_table_column(model, new_name) != NULL) {
+        return set_alter_table_duplicate_column_error(stmt->database, new_name);
+    }
+    if (alter_table_column_definition_has_deferred_features(&action->column)) {
+        return set_alter_table_wrong_auto_increment_error(stmt->database);
+    }
+
+    status = replace_alter_table_column_from_definition(stmt, &action->column,
+                                                        model->columns[column_index].source_name,
+                                                        false, &model->columns[column_index]);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    model->report_copied_rows = true;
+
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
+            if (ascii_case_equal(model->indexes[index].parts[part].column_name, action->old_name)) {
+                char *part_name = copy_nonempty_cstring(new_name);
+
+                if (part_name == NULL) {
+                    (void)set_error_message(stmt->database, "out of memory");
+                    return MYLITE_NOMEM;
+                }
+                free(model->indexes[index].parts[part].column_name);
+                model->indexes[index].parts[part].column_name = part_name;
+                model->indexes[index].changed = true;
+            }
+        }
+    }
+    return apply_alter_table_column_position(stmt, action, model, column_index);
+}
+
+static int apply_alter_table_modify_column(mylite_stmt *stmt,
+                                           const struct mylite_alter_table_action *action,
+                                           struct mylite_alter_table_model *model)
+{
+    size_t column_index = alter_table_column_index(model, action->column.name);
+    int status = MYLITE_OK;
+
+    if (column_index == model->column_count) {
+        return set_alter_table_unknown_column_error(stmt->database, model->table_name,
+                                                    action->column.name);
+    }
+    if (model->columns == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (alter_table_column_definition_has_deferred_features(&action->column)) {
+        return set_alter_table_wrong_auto_increment_error(stmt->database);
+    }
+
+    status = replace_alter_table_column_from_definition(stmt, &action->column,
+                                                        model->columns[column_index].source_name,
+                                                        false, &model->columns[column_index]);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return apply_alter_table_column_position(stmt, action, model, column_index);
+}
+
+static int apply_alter_table_column_position(mylite_stmt *stmt,
+                                             const struct mylite_alter_table_action *action,
+                                             struct mylite_alter_table_model *model,
+                                             size_t column_index)
+{
+    struct mylite_alter_table_column moved = {0};
+    size_t target_index = 0U;
+
+    if (action->position == MYLITE_ALTER_TABLE_COLUMN_POSITION_NONE) {
+        return MYLITE_OK;
+    }
+    if (column_index >= model->column_count) {
+        return MYLITE_MISUSE;
+    }
+    if (action->position == MYLITE_ALTER_TABLE_COLUMN_POSITION_AFTER) {
+        if (ascii_case_equal(model->columns[column_index].name, action->after_column)) {
+            return MYLITE_OK;
+        }
+        target_index = alter_table_column_index(model, action->after_column);
+        if (target_index == model->column_count) {
+            return set_alter_table_unknown_column_error(stmt->database, model->table_name,
+                                                        action->after_column);
+        }
+    }
+
+    moved = model->columns[column_index];
+    for (size_t next = column_index + 1U; next < model->column_count; ++next) {
+        model->columns[next - 1U] = model->columns[next];
+    }
+    --model->column_count;
+
+    if (action->position == MYLITE_ALTER_TABLE_COLUMN_POSITION_FIRST) {
+        target_index = 0U;
+    } else {
+        target_index = alter_table_column_index(model, action->after_column);
+        if (target_index == model->column_count) {
+            model->columns[model->column_count++] = moved;
+            return set_alter_table_unknown_column_error(stmt->database, model->table_name,
+                                                        action->after_column);
+        }
+        ++target_index;
+    }
+    for (size_t index = model->column_count; index > target_index; --index) {
+        model->columns[index] = model->columns[index - 1U];
+    }
+    model->columns[target_index] = moved;
+    ++model->column_count;
+    return MYLITE_OK;
+}
+
+static int replace_alter_table_column_from_definition(
+    mylite_stmt *stmt, const struct mylite_create_table_column *definition, const char *source_name,
+    bool added, struct mylite_alter_table_column *target)
+{
+    char *source_copy = source_name == NULL ? NULL : copy_nonempty_cstring(source_name);
+    struct mylite_alter_table_column replacement = {0};
+    int status = MYLITE_OK;
+
+    if (source_name != NULL && source_copy == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status =
+        init_alter_table_column_from_definition(stmt, definition, source_copy, added, &replacement);
+    free(source_copy);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    alter_table_column_deinit(target);
+    *target = replacement;
+    return MYLITE_OK;
+}
+
+static int init_alter_table_column_from_definition(
+    mylite_stmt *stmt, const struct mylite_create_table_column *definition, const char *source_name,
+    bool added, struct mylite_alter_table_column *out_column)
+{
+    struct mylite_column_type_descriptor descriptor;
+    const char *extra = create_table_column_extra(definition);
+    const char *nullable_text = "NO";
+    int status = alter_table_column_descriptor(stmt, definition, &descriptor);
+
+    *out_column = (struct mylite_alter_table_column){0};
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (definition->nullable) {
+        nullable_text = "YES";
+    }
+
+    out_column->name = copy_nonempty_cstring(definition->name);
+    if (source_name != NULL) {
+        out_column->source_name = copy_nonempty_cstring(source_name);
+    }
+    if (definition->default_text != NULL) {
+        out_column->column_default =
+            copy_span_text(definition->default_text, strlen(definition->default_text));
+    }
+    out_column->is_nullable = copy_span_text(nullable_text, strlen(nullable_text));
+    out_column->data_type = copy_nonempty_cstring(descriptor.data_type);
+    out_column->column_type = copy_nonempty_cstring(descriptor.column_type);
+    out_column->column_key = copy_span_text("", 0U);
+    out_column->extra =
+        copy_span_text(extra == NULL ? "" : extra, extra == NULL ? 0U : strlen(extra));
+    out_column->column_comment =
+        copy_span_text(definition->comment == NULL ? "" : definition->comment,
+                       definition->comment == NULL ? 0U : strlen(definition->comment));
+    out_column->generation_expression = copy_span_text("", 0U);
+    if (out_column->name == NULL || (source_name != NULL && out_column->source_name == NULL) ||
+        (definition->default_text != NULL && out_column->column_default == NULL) ||
+        out_column->is_nullable == NULL || out_column->data_type == NULL ||
+        out_column->column_type == NULL || out_column->column_key == NULL ||
+        out_column->extra == NULL || out_column->column_comment == NULL ||
+        out_column->generation_expression == NULL) {
+        alter_table_column_deinit(out_column);
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    if (descriptor.is_character_string || descriptor.is_binary_string) {
+        out_column->character_maximum_length = (int64_t)descriptor.character_maximum_length;
+        out_column->character_octet_length = (int64_t)descriptor.character_octet_length;
+        out_column->has_character_maximum_length = true;
+        out_column->has_character_octet_length = true;
+    }
+    if (descriptor.numeric_precision != 0U) {
+        out_column->numeric_precision = (int64_t)descriptor.numeric_precision;
+        out_column->has_numeric_precision = true;
+    }
+    if (descriptor.has_numeric_scale) {
+        out_column->numeric_scale = (int64_t)descriptor.numeric_scale;
+        out_column->has_numeric_scale = true;
+    }
+    if (descriptor.has_datetime_precision) {
+        out_column->datetime_precision = (int64_t)descriptor.datetime_precision;
+        out_column->has_datetime_precision = true;
+    }
+    if (descriptor.character_set_name != NULL) {
+        out_column->character_set_name = copy_nonempty_cstring(descriptor.character_set_name);
+        if (out_column->character_set_name == NULL) {
+            alter_table_column_deinit(out_column);
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    if (descriptor.collation_name != NULL) {
+        out_column->collation_name = copy_nonempty_cstring(descriptor.collation_name);
+        if (out_column->collation_name == NULL) {
+            alter_table_column_deinit(out_column);
+            (void)set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    out_column->nullable = definition->nullable;
+    out_column->auto_increment = definition->auto_increment;
+    out_column->visible = definition->visible;
+    out_column->added = added;
+    return MYLITE_OK;
+}
+
+static int alter_table_column_descriptor(mylite_stmt *stmt,
+                                         const struct mylite_create_table_column *definition,
+                                         struct mylite_column_type_descriptor *out_descriptor)
+{
+    struct mylite_schema_default schema_default;
+    struct mylite_create_table_options options = {0};
+    int status =
+        schema_default_by_name(stmt->database, stmt->alter_table.schema_name, &schema_default);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (definition == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (schema_default.character_set == NULL || schema_default.collation == NULL) {
+        (void)set_error_message(stmt->database, "Unsupported charset/collation registry entry");
+        return MYLITE_EXEC_ERROR;
+    }
+    options.character_set = (char *)schema_default.character_set;
+    options.collation = (char *)schema_default.collation;
+    return describe_create_table_column(definition, &schema_default, &options, out_descriptor);
+}
+
+static int remove_alter_table_column(struct mylite_alter_table_model *model, size_t column_index)
+{
+    if (column_index >= model->column_count) {
+        return MYLITE_MISUSE;
+    }
+
+    alter_table_column_deinit(&model->columns[column_index]);
+    for (size_t index = column_index + 1U; index < model->column_count; ++index) {
+        model->columns[index - 1U] = model->columns[index];
+    }
+    --model->column_count;
+    model->columns[model->column_count] = (struct mylite_alter_table_column){0};
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_final_model(mylite_stmt *stmt,
+                                            struct mylite_alter_table_model *model)
+{
+    bool has_visible_column = false;
+    size_t auto_increment_count = 0U;
+    int status = MYLITE_OK;
+
+    if (model->column_count == 0U) {
+        return set_alter_table_cant_remove_all_columns_error(stmt->database);
+    }
+    status = validate_alter_table_columns(stmt, model, &has_visible_column, &auto_increment_count);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!has_visible_column) {
+        return set_alter_table_all_invisible_error(stmt->database);
+    }
+    return validate_alter_table_auto_increment_shape(stmt, model, auto_increment_count);
+}
+
+static int validate_alter_table_columns(mylite_stmt *stmt, struct mylite_alter_table_model *model,
+                                        bool *out_has_visible_column,
+                                        size_t *out_auto_increment_count)
+{
+    *out_has_visible_column = false;
+    *out_auto_increment_count = 0U;
+    if (model->columns == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    for (size_t column = 0U; column < model->column_count; ++column) {
+        for (size_t next = column + 1U; next < model->column_count; ++next) {
+            if (ascii_case_equal(model->columns[column].name, model->columns[next].name)) {
+                return set_alter_table_duplicate_column_error(stmt->database,
+                                                              model->columns[next].name);
+            }
+        }
+        if (model->columns[column].visible) {
+            *out_has_visible_column = true;
+        }
+        if (model->columns[column].auto_increment) {
+            ++*out_auto_increment_count;
+        }
+        if (!model->columns[column].nullable && model->columns[column].source_name != NULL) {
+            int status = validate_alter_table_source_not_null(stmt, model, &model->columns[column]);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_source_not_null(mylite_stmt *stmt,
+                                                const struct mylite_alter_table_model *model,
+                                                const struct mylite_alter_table_column *column)
+{
+    char *sql = sqlite3_mprintf("SELECT 1 FROM \"%w\" WHERE \"%w\" IS NULL LIMIT 1",
+                                model->physical_name, column->source_name);
+    sqlite3_stmt *select = NULL;
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
+                            NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+    rc = sqlite3_step(select);
+    sqlite3_finalize(select);
+    if (rc == SQLITE_ROW) {
+        return set_insert_null_error(stmt->database, column->name);
+    }
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static int validate_alter_table_auto_increment_shape(mylite_stmt *stmt,
+                                                     struct mylite_alter_table_model *model,
+                                                     size_t auto_increment_count)
+{
+    if (auto_increment_count > 1U) {
+        return set_alter_table_wrong_auto_increment_error(stmt->database);
+    }
+    if (auto_increment_count == 1U) {
+        const struct mylite_alter_table_column *auto_column =
+            find_alter_table_auto_increment_column(model);
+
+        if (auto_column == NULL || auto_column->nullable ||
+            !alter_table_auto_increment_column_is_indexed(model, auto_column)) {
+            return set_alter_table_wrong_auto_increment_error(stmt->database);
+        }
+    }
+    if (auto_increment_count == 0U) {
+        model->clear_auto_increment = true;
+    }
+    return MYLITE_OK;
+}
+
+static const struct mylite_alter_table_column *
+find_alter_table_auto_increment_column(const struct mylite_alter_table_model *model)
+{
+    if (model->columns == NULL) {
+        return NULL;
+    }
+    for (size_t column = 0U; column < model->column_count; ++column) {
+        if (model->columns[column].auto_increment) {
+            return &model->columns[column];
+        }
+    }
+    return NULL;
+}
+
+static bool
+alter_table_auto_increment_column_is_indexed(const struct mylite_alter_table_model *model,
+                                             const struct mylite_alter_table_column *auto_column)
+{
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
+            if (ascii_case_equal(model->indexes[index].parts[part].column_name,
+                                 auto_column->name)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static int validate_alter_table_unique_indexes(mylite_stmt *stmt,
+                                               const struct mylite_alter_table_model *model)
+{
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        if (model->indexes[index].non_unique == 0) {
+            int status = validate_alter_table_unique_index(stmt, model, &model->indexes[index]);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_unique_index(mylite_stmt *stmt,
+                                             const struct mylite_alter_table_model *model,
+                                             const struct mylite_alter_table_index *index)
+{
+    char *sql = build_alter_table_unique_duplicate_sql(stmt->database, model, index);
+    sqlite3_stmt *select = NULL;
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
+                            NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+    rc = sqlite3_step(select);
+    sqlite3_finalize(select);
+    if (rc == SQLITE_ROW) {
+        (void)set_error_message_parts(stmt->database, "Duplicate entry for key '", index->name,
+                                      "'");
+        return MYLITE_EXEC_ERROR;
+    }
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static char *build_alter_table_unique_duplicate_sql(mylite_db *database,
+                                                    const struct mylite_alter_table_model *model,
+                                                    const struct mylite_alter_table_index *index)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+    sqlite3_str_append(sql, "SELECT 1 FROM (SELECT ", (int)strlen("SELECT 1 FROM (SELECT "));
+    for (size_t part = 0U; part < index->part_count; ++part) {
+        const struct mylite_alter_table_column *column =
+            find_alter_table_column(model, index->parts[part].column_name);
+
+        if (part != 0U) {
+            sqlite3_str_append(sql, ",", 1);
+        }
+        if (column == NULL || column->source_name == NULL) {
+            sqlite3_str_append(sql, "NULL", 4);
+        } else if (index->parts[part].has_sub_part) {
+            sqlite3_str_appendf(sql, "substr(\"%w\",1,%lld)", column->source_name,
+                                (long long)index->parts[part].sub_part);
+        } else {
+            sqlite3_str_appendf(sql, "\"%w\"", column->source_name);
+        }
+    }
+    sqlite3_str_appendf(sql, " FROM \"%w\" WHERE ", model->physical_name);
+    for (size_t part = 0U; part < index->part_count; ++part) {
+        const struct mylite_alter_table_column *column =
+            find_alter_table_column(model, index->parts[part].column_name);
+
+        if (part != 0U) {
+            sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
+        }
+        if (column == NULL || column->source_name == NULL) {
+            sqlite3_str_append(sql, "NULL IS NOT NULL", (int)strlen("NULL IS NOT NULL"));
+        } else {
+            sqlite3_str_appendf(sql, "\"%w\" IS NOT NULL", column->source_name);
+        }
+    }
+    sqlite3_str_append(sql, " GROUP BY ", (int)strlen(" GROUP BY "));
+    for (size_t part = 0U; part < index->part_count; ++part) {
+        if (part != 0U) {
+            sqlite3_str_append(sql, ",", 1);
+        }
+        sqlite3_str_appendf(sql, "%d", (int)(part + 1U));
+    }
+    sqlite3_str_append(sql, " HAVING COUNT(*) > 1) LIMIT 1",
+                       (int)strlen(" HAVING COUNT(*) > 1) LIMIT 1"));
+    return sqlite3_str_finish(sql);
+}
+
+static int execute_alter_table_transaction(mylite_stmt *stmt,
+                                           struct mylite_alter_table_model *model)
+{
+    struct mylite_statement_atomicity atomicity = {0};
+    char *shadow_name = alter_table_shadow_physical_name(stmt->database, model->physical_name);
+    int64_t copied_rows = 0;
+    int status = MYLITE_OK;
+
+    if (shadow_name == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = begin_statement_atomicity(stmt->database, &atomicity);
+    if (status == MYLITE_OK) {
+        status = create_alter_table_shadow_table(stmt, model, shadow_name);
+    }
+    if (status == MYLITE_OK) {
+        status = copy_alter_table_rows(stmt, model, shadow_name, &copied_rows);
+    }
+    if (status == MYLITE_OK) {
+        status = rewrite_alter_table_catalog(stmt, model);
+    }
+    if (status == MYLITE_OK) {
+        status = swap_alter_table_physical_table(stmt, shadow_name, model->physical_name);
+    }
+    if (status == MYLITE_OK) {
+        status = append_alter_table_warnings(stmt, model);
+    }
+    if (status == MYLITE_OK) {
+        status = commit_statement_atomicity(stmt->database, &atomicity);
+        if (status == MYLITE_OK) {
+            if (model->report_copied_rows) {
+                stmt->affected_rows = copied_rows;
+            } else {
+                stmt->affected_rows = 0;
+            }
+            free(shadow_name);
+            return MYLITE_OK;
+        }
+    }
+
+    rollback_statement_atomicity(stmt->database, &atomicity);
+    clear_warnings(stmt->database);
+    free(shadow_name);
+    return status;
+}
+
+static int create_alter_table_shadow_table(mylite_stmt *stmt,
+                                           const struct mylite_alter_table_model *model,
+                                           const char *shadow_name)
+{
+    char *sql = build_alter_table_create_shadow_sql(stmt->database, model, shadow_name);
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_exec(stmt->database->sqlite, sql, NULL, NULL, NULL);
+    sqlite3_free(sql);
+    return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static char *build_alter_table_create_shadow_sql(mylite_db *database,
+                                                 const struct mylite_alter_table_model *model,
+                                                 const char *shadow_name)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_appendf(sql, "CREATE TABLE \"%w\"(", shadow_name);
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        if (index != 0U) {
+            sqlite3_str_append(sql, ",", 1);
+        }
+        sqlite3_str_appendf(sql, "\"%w\" %s", model->columns[index].name,
+                            sqlite_affinity_for_catalog_data_type(model->columns[index].data_type));
+    }
+    sqlite3_str_append(sql, ")", 1);
+    return sqlite3_str_finish(sql);
+}
+
+static int copy_alter_table_rows(mylite_stmt *stmt, const struct mylite_alter_table_model *model,
+                                 const char *shadow_name, int64_t *out_copied_rows)
+{
+    sqlite3_stmt *insert = NULL;
+    char *sql = build_alter_table_copy_sql(stmt->database, model, shadow_name);
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    *out_copied_rows = 0;
+    if (sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert,
+                            NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+    status = bind_alter_table_added_column_values(stmt, insert, model);
+    if (status == MYLITE_OK) {
+        rc = sqlite3_step(insert);
+        if (rc != SQLITE_DONE) {
+            status = set_sqlite_error(stmt->database);
+        }
+    }
+    if (status == MYLITE_OK) {
+        *out_copied_rows = sqlite3_changes64(stmt->database->sqlite);
+    }
+    sqlite3_finalize(insert);
+    return status;
+}
+
+static char *build_alter_table_copy_sql(mylite_db *database,
+                                        const struct mylite_alter_table_model *model,
+                                        const char *shadow_name)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_appendf(sql, "INSERT INTO \"%w\"(", shadow_name);
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        if (index != 0U) {
+            sqlite3_str_append(sql, ",", 1);
+        }
+        sqlite3_str_appendf(sql, "\"%w\"", model->columns[index].name);
+    }
+    sqlite3_str_append(sql, ") SELECT ", (int)strlen(") SELECT "));
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        if (index != 0U) {
+            sqlite3_str_append(sql, ",", 1);
+        }
+        if (model->columns[index].source_name == NULL) {
+            sqlite3_str_append(sql, "?", 1);
+        } else {
+            sqlite3_str_appendf(sql, "\"%w\"", model->columns[index].source_name);
+        }
+    }
+    sqlite3_str_appendf(sql, " FROM \"%w\"", model->physical_name);
+    return sqlite3_str_finish(sql);
+}
+
+static int bind_alter_table_added_column_values(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                                const struct mylite_alter_table_model *model)
+{
+    int bind_index = 1;
+
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        struct mylite_insert_bound_value value = {0};
+        int status = MYLITE_OK;
+
+        if (model->columns[index].source_name != NULL) {
+            continue;
+        }
+
+        status = resolve_alter_table_added_column_value(stmt, &model->columns[index], &value);
+        if (status == MYLITE_OK &&
+            bind_insert_bound_value(insert, bind_index, &value) != SQLITE_OK) {
+            status = set_sqlite_error(stmt->database);
+        }
+        insert_bound_value_deinit(&value);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        ++bind_index;
+    }
+    return MYLITE_OK;
+}
+
+static int resolve_alter_table_added_column_value(mylite_stmt *stmt,
+                                                  const struct mylite_alter_table_column *column,
+                                                  struct mylite_insert_bound_value *out_value)
+{
+    struct mylite_insert_table_column insert_column = {
+        .name = column->name,
+        .default_text = column->column_default,
+        .data_type = column->data_type,
+        .extra = column->extra,
+        .nullable = column->nullable,
+        .auto_increment = column->auto_increment,
+        .generated_default = text_contains_word(column->extra, "DEFAULT_GENERATED"),
+    };
+
+    if (column->column_default != NULL) {
+        return resolve_insert_default_value(stmt, &insert_column, NULL, out_value);
+    }
+    if (column->nullable) {
+        *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
+        return MYLITE_OK;
+    }
+    return resolve_insert_implicit_expression_default(stmt, &insert_column, out_value);
+}
+
+static int rewrite_alter_table_catalog(mylite_stmt *stmt, struct mylite_alter_table_model *model)
+{
+    int status = delete_alter_table_catalog_rows(stmt);
+
+    if (status == MYLITE_OK) {
+        status = insert_alter_table_column_catalog_rows(stmt, model);
+    }
+    if (status == MYLITE_OK) {
+        status = insert_alter_table_index_catalog_rows(stmt, model);
+    }
+    if (status == MYLITE_OK) {
+        status = update_alter_table_auto_increment(stmt, model);
+    }
+    return status;
+}
+
+static int delete_alter_table_catalog_rows(mylite_stmt *stmt)
+{
+    static const char delete_indexes[] =
+        "DELETE FROM __mylite_index_catalog WHERE table_schema = ? AND table_name = ?";
+    static const char delete_columns[] =
+        "DELETE FROM __mylite_column_catalog WHERE table_schema = ? AND table_name = ?";
+    const struct mylite_drop_table_target target = {
+        .schema_name = stmt->alter_table.schema_name,
+        .table_name = stmt->alter_table.table_name,
+    };
+    int status = delete_table_catalog_row(stmt->database, delete_indexes, &target);
+
+    if (status == MYLITE_OK) {
+        status = delete_table_catalog_row(stmt->database, delete_columns, &target);
+    }
+    return status;
+}
+
+static int insert_alter_table_column_catalog_rows(mylite_stmt *stmt,
+                                                  struct mylite_alter_table_model *model)
+{
+    sqlite3_stmt *insert = NULL;
+    static const char sql[] =
+        "INSERT INTO __mylite_column_catalog("
+        "table_catalog, table_schema, table_name, column_name, ordinal_position, column_default, "
+        "is_nullable, data_type, character_maximum_length, character_octet_length, "
+        "numeric_precision, numeric_scale, datetime_precision, character_set_name, "
+        "collation_name, column_type, column_key, extra, privileges, column_comment, "
+        "generation_expression, srs_id)"
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+        "'select,insert,update,references', ?, ?, ?)";
+    int rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert,
+                                NULL);
+
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        int status = insert_alter_table_column_catalog_row(stmt, insert, model,
+                                                           &model->columns[index], index);
+
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(insert);
+            return status;
+        }
+    }
+    sqlite3_finalize(insert);
+    return MYLITE_OK;
+}
+
+static int insert_alter_table_column_catalog_row(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                                 const struct mylite_alter_table_model *model,
+                                                 const struct mylite_alter_table_column *column,
+                                                 size_t column_index)
+{
+    enum {
+        bind_table_schema = 1,
+        bind_table_name = 2,
+        bind_column_name = 3,
+        bind_ordinal_position = 4,
+        bind_column_default = 5,
+        bind_is_nullable = 6,
+        bind_data_type = 7,
+        bind_character_maximum_length = 8,
+        bind_character_octet_length = 9,
+        bind_numeric_precision = 10,
+        bind_numeric_scale = 11,
+        bind_datetime_precision = 12,
+        bind_character_set_name = 13,
+        bind_collation_name = 14,
+        bind_column_type = 15,
+        bind_column_key = 16,
+        bind_extra = 17,
+        bind_column_comment = 18,
+        bind_generation_expression = 19,
+        bind_srs_id = 20,
+    };
+    int rc = SQLITE_OK;
+
+    sqlite3_reset(insert);
+    sqlite3_clear_bindings(insert);
+    sqlite3_bind_text(insert, bind_table_schema, model->schema_name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_table_name, model->table_name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_column_name, column->name, -1, sqlite_transient_destructor());
+    sqlite3_bind_int64(insert, bind_ordinal_position, (sqlite3_int64)column_index + 1);
+    if (column->column_default == NULL) {
+        sqlite3_bind_null(insert, bind_column_default);
+    } else {
+        sqlite3_bind_text(insert, bind_column_default, column->column_default, -1,
+                          sqlite_transient_destructor());
+    }
+    sqlite3_bind_text(insert, bind_is_nullable, column->is_nullable, -1,
+                      sqlite_transient_destructor());
+    if (column->data_type == NULL) {
+        sqlite3_bind_null(insert, bind_data_type);
+    } else {
+        sqlite3_bind_text(insert, bind_data_type, column->data_type, -1,
+                          sqlite_transient_destructor());
+    }
+    if (column->has_character_maximum_length) {
+        sqlite3_bind_int64(insert, bind_character_maximum_length,
+                           (sqlite3_int64)column->character_maximum_length);
+    } else {
+        sqlite3_bind_null(insert, bind_character_maximum_length);
+    }
+    if (column->has_character_octet_length) {
+        sqlite3_bind_int64(insert, bind_character_octet_length,
+                           (sqlite3_int64)column->character_octet_length);
+    } else {
+        sqlite3_bind_null(insert, bind_character_octet_length);
+    }
+    if (column->has_numeric_precision) {
+        sqlite3_bind_int64(insert, bind_numeric_precision,
+                           (sqlite3_int64)column->numeric_precision);
+    } else {
+        sqlite3_bind_null(insert, bind_numeric_precision);
+    }
+    if (column->has_numeric_scale) {
+        sqlite3_bind_int64(insert, bind_numeric_scale, (sqlite3_int64)column->numeric_scale);
+    } else {
+        sqlite3_bind_null(insert, bind_numeric_scale);
+    }
+    if (column->has_datetime_precision) {
+        sqlite3_bind_int64(insert, bind_datetime_precision,
+                           (sqlite3_int64)column->datetime_precision);
+    } else {
+        sqlite3_bind_null(insert, bind_datetime_precision);
+    }
+    if (column->character_set_name == NULL) {
+        sqlite3_bind_null(insert, bind_character_set_name);
+    } else {
+        sqlite3_bind_text(insert, bind_character_set_name, column->character_set_name, -1,
+                          sqlite_transient_destructor());
+    }
+    if (column->collation_name == NULL) {
+        sqlite3_bind_null(insert, bind_collation_name);
+    } else {
+        sqlite3_bind_text(insert, bind_collation_name, column->collation_name, -1,
+                          sqlite_transient_destructor());
+    }
+    sqlite3_bind_text(insert, bind_column_type, column->column_type, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_column_key, column->column_key, -1,
+                      sqlite_transient_destructor());
+    if (column->extra == NULL) {
+        sqlite3_bind_null(insert, bind_extra);
+    } else {
+        sqlite3_bind_text(insert, bind_extra, column->extra, -1, sqlite_transient_destructor());
+    }
+    sqlite3_bind_text(insert, bind_column_comment, column->column_comment, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_generation_expression, column->generation_expression, -1,
+                      sqlite_transient_destructor());
+    if (column->has_srs_id) {
+        sqlite3_bind_int64(insert, bind_srs_id, (sqlite3_int64)column->srs_id);
+    } else {
+        sqlite3_bind_null(insert, bind_srs_id);
+    }
+
+    rc = sqlite3_step(insert);
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static int insert_alter_table_index_catalog_rows(mylite_stmt *stmt,
+                                                 const struct mylite_alter_table_model *model)
+{
+    sqlite3_stmt *insert = NULL;
+    static const char sql[] =
+        "INSERT INTO __mylite_index_catalog("
+        "table_catalog, table_schema, table_name, non_unique, index_schema, index_name, "
+        "seq_in_index, column_name, collation, cardinality, sub_part, packed, nullable, "
+        "index_type, comment, index_comment, is_visible, expression)"
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?, NULL)";
+    int rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert,
+                                NULL);
+
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
+            int status =
+                insert_alter_table_index_catalog_part(stmt, insert, model, &model->indexes[index],
+                                                      &model->indexes[index].parts[part], part);
+
+            if (status != MYLITE_OK) {
+                sqlite3_finalize(insert);
+                return status;
+            }
+        }
+    }
+    sqlite3_finalize(insert);
+    return MYLITE_OK;
+}
+
+static int insert_alter_table_index_catalog_part(mylite_stmt *stmt, sqlite3_stmt *insert,
+                                                 const struct mylite_alter_table_model *model,
+                                                 const struct mylite_alter_table_index *index,
+                                                 const struct mylite_alter_table_index_part *part,
+                                                 size_t part_index)
+{
+    enum {
+        bind_table_schema = 1,
+        bind_table_name = 2,
+        bind_non_unique = 3,
+        bind_index_schema = 4,
+        bind_index_name = 5,
+        bind_seq_in_index = 6,
+        bind_column_name = 7,
+        bind_collation = 8,
+        bind_sub_part = 9,
+        bind_nullable = 10,
+        bind_index_type = 11,
+        bind_comment = 12,
+        bind_index_comment = 13,
+        bind_is_visible = 14,
+    };
+    int rc = SQLITE_OK;
+
+    sqlite3_reset(insert);
+    sqlite3_clear_bindings(insert);
+    sqlite3_bind_text(insert, bind_table_schema, model->schema_name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_table_name, model->table_name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_int(insert, bind_non_unique, index->non_unique);
+    sqlite3_bind_text(insert, bind_index_schema, index->index_schema, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_index_name, index->name, -1, sqlite_transient_destructor());
+    sqlite3_bind_int64(insert, bind_seq_in_index, (sqlite3_int64)part_index + 1);
+    sqlite3_bind_text(insert, bind_column_name, part->column_name, -1,
+                      sqlite_transient_destructor());
+    if (part->collation == NULL) {
+        sqlite3_bind_null(insert, bind_collation);
+    } else {
+        sqlite3_bind_text(insert, bind_collation, part->collation, -1,
+                          sqlite_transient_destructor());
+    }
+    if (part->has_sub_part) {
+        sqlite3_bind_int64(insert, bind_sub_part, (sqlite3_int64)part->sub_part);
+    } else {
+        sqlite3_bind_null(insert, bind_sub_part);
+    }
+    sqlite3_bind_text(insert, bind_nullable, part->nullable, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_index_type, index->index_type, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_comment, index->comment, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_index_comment, index->index_comment, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_is_visible, index->is_visible, -1,
+                      sqlite_transient_destructor());
+
+    rc = sqlite3_step(insert);
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static int update_alter_table_auto_increment(mylite_stmt *stmt,
+                                             const struct mylite_alter_table_model *model)
+{
+    sqlite3_stmt *update = NULL;
+    static const char sql[] = "UPDATE __mylite_table_catalog SET auto_increment = NULL "
+                              "WHERE table_schema = ? AND table_name = ?";
+    int rc = SQLITE_OK;
+
+    if (!model->clear_auto_increment) {
+        return MYLITE_OK;
+    }
+    rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update,
+                            NULL);
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    sqlite3_bind_text(update, 1, model->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(update, 2, model->table_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(update);
+    sqlite3_finalize(update);
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static int swap_alter_table_physical_table(mylite_stmt *stmt, const char *shadow_name,
+                                           const char *physical_name)
+{
+    char *sql = sqlite3_mprintf("DROP TABLE \"%w\"; ALTER TABLE \"%w\" RENAME TO \"%w\"",
+                                physical_name, shadow_name, physical_name);
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_exec(stmt->database->sqlite, sql, NULL, NULL, NULL);
+    sqlite3_free(sql);
+    return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static char *alter_table_shadow_physical_name(mylite_db *database, const char *physical_name)
+{
+    enum { max_shadow_name_suffix = 1000U };
+
+    for (unsigned int suffix = 1U; suffix < max_shadow_name_suffix; ++suffix) {
+        char *candidate = sqlite3_mprintf("%s__alter_shadow_%u",
+                                          physical_name == NULL ? "" : physical_name, suffix);
+
+        if (candidate == NULL) {
+            return NULL;
+        }
+        if (!sqlite_table_name_exists(database, candidate)) {
+            return candidate;
+        }
+        sqlite3_free(candidate);
+    }
+    return NULL;
+}
+
+static bool sqlite_table_name_exists(mylite_db *database, const char *name)
+{
+    sqlite3_stmt *select = NULL;
+    static const char sql[] = "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?";
+    int rc =
+        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    bool exists = false;
+
+    if (rc != SQLITE_OK) {
+        return true;
+    }
+    sqlite3_bind_text(select, 1, name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(select);
+    exists = rc == SQLITE_ROW;
+    sqlite3_finalize(select);
+    return exists;
+}
+
+static int append_alter_table_warnings(mylite_stmt *stmt,
+                                       const struct mylite_alter_table_model *model)
+{
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        for (size_t previous = 0U; previous < index; ++previous) {
+            if (alter_table_indexes_are_duplicate_warning_candidates(&model->indexes[index],
+                                                                     &model->indexes[previous])) {
+                return append_duplicate_index_warning(stmt->database, model->indexes[index].name);
+            }
+        }
+    }
+    return MYLITE_OK;
+}
+
+static bool alter_table_indexes_are_duplicate_warning_candidates(
+    const struct mylite_alter_table_index *index, const struct mylite_alter_table_index *previous)
+{
+    if (!index->changed && !previous->changed) {
+        return false;
+    }
+    if (index->non_unique != previous->non_unique || index->part_count != previous->part_count) {
+        return false;
+    }
+
+    for (size_t part = 0U; part < index->part_count; ++part) {
+        if (!alter_table_index_parts_match(&index->parts[part], &previous->parts[part])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool alter_table_index_parts_match(const struct mylite_alter_table_index_part *left,
+                                          const struct mylite_alter_table_index_part *right)
+{
+    const char *left_collation = left->collation == NULL ? "" : left->collation;
+    const char *right_collation = right->collation == NULL ? "" : right->collation;
+
+    if (!ascii_case_equal(left->column_name, right->column_name)) {
+        return false;
+    }
+    if (strcmp(left_collation, right_collation) != 0) {
+        return false;
+    }
+    if (left->has_sub_part != right->has_sub_part) {
+        return false;
+    }
+    if (!left->has_sub_part) {
+        return true;
+    }
+    return left->sub_part == right->sub_part;
+}
+
+static const char *alter_table_column_key(const struct mylite_alter_table_model *model,
+                                          const char *column_name)
+{
+    bool indexed = false;
+    bool unique = false;
+
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
+            if (!ascii_case_equal(model->indexes[index].parts[part].column_name, column_name)) {
+                continue;
+            }
+            indexed = true;
+            if (ascii_case_equal(model->indexes[index].name, "PRIMARY")) {
+                return "PRI";
+            }
+            if (model->indexes[index].non_unique == 0 && part == 0U) {
+                unique = true;
+            }
+        }
+    }
+    if (unique) {
+        return "UNI";
+    }
+    if (indexed) {
+        return "MUL";
+    }
+    return "";
+}
+
+static int refresh_alter_table_column_keys(struct mylite_alter_table_model *model)
+{
+    for (size_t column = 0U; column < model->column_count; ++column) {
+        const char *key = alter_table_column_key(model, model->columns[column].name);
+        char *copy = copy_span_text(key, strlen(key));
+
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        free(model->columns[column].column_key);
+        model->columns[column].column_key = copy;
+    }
+    return MYLITE_OK;
+}
+
+static int refresh_alter_table_index_nullability(struct mylite_alter_table_model *model)
+{
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
+            struct mylite_alter_table_index_part *index_part = &model->indexes[index].parts[part];
+            const struct mylite_alter_table_column *column =
+                find_alter_table_column(model, index_part->column_name);
+            const char *nullable = column != NULL && column->nullable ? "YES" : "";
+            char *copy = copy_span_text(nullable, strlen(nullable));
+
+            if (copy == NULL) {
+                return MYLITE_NOMEM;
+            }
+            free(index_part->nullable);
+            index_part->nullable = copy;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static const struct mylite_alter_table_column *
+find_alter_table_column(const struct mylite_alter_table_model *model, const char *name)
+{
+    size_t index = alter_table_column_index(model, name);
+
+    return index == model->column_count ? NULL : &model->columns[index];
+}
+
+static size_t alter_table_column_index(const struct mylite_alter_table_model *model,
+                                       const char *name)
+{
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        if (ascii_case_equal(model->columns[index].name, name)) {
+            return index;
+        }
+    }
+    return model->column_count;
+}
+
+static size_t alter_table_index_index(const struct mylite_alter_table_model *model,
+                                      const char *name)
+{
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        if (ascii_case_equal(model->indexes[index].name, name)) {
+            return index;
+        }
+    }
+    return model->index_count;
+}
+
+static bool
+alter_table_column_definition_has_deferred_features(const struct mylite_create_table_column *column)
+{
+    if (column == NULL) {
+        return true;
+    }
+    if (column->primary_key || column->unique_key || column->auto_increment) {
+        return true;
+    }
+    if (column->has_generated_default &&
+        !column_default_is_current_timestamp(column->default_text)) {
+        return true;
+    }
+    return false;
+}
+
+static bool alter_table_option_is_default(const struct mylite_sql_ast_node *option)
+{
+    struct mylite_sql_source_span span =
+        option == NULL ? (struct mylite_sql_source_span){0} : option->span;
+
+    for (size_t index = 0U; index + strlen("DEFAULT") <= span.length; ++index) {
+        struct mylite_sql_source_span candidate = {
+            .text = span.text + index,
+            .length = strlen("DEFAULT"),
+        };
+
+        if (ascii_span_equal_ci(candidate, "DEFAULT")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int set_alter_table_unsupported_option_error(mylite_db *database, const char *kind,
+                                                    const char *value)
+{
+    char *message = sqlite3_mprintf("ALTER TABLE %s option is not supported: %q", kind, value);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = set_error_message(database, message);
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
+}
+
+static int set_alter_table_duplicate_column_error(mylite_db *database, const char *column_name)
+{
+    int status = set_error_message_parts(database, "Duplicate column name '", column_name, "'");
+
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = append_database_warning(database, MYLITE_MYSQL_ER_DUP_FIELDNAME,
+                                     mylite_error_message(database));
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_unknown_column_error(mylite_db *database, const char *table_name,
+                                                const char *column_name)
+{
+    char *message = sqlite3_mprintf("Unknown column '%q' in '%q'", column_name, table_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = set_error_message(database, message);
+    sqlite3_free(message);
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = append_database_warning(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                     mylite_error_message(database));
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_cant_drop_column_error(mylite_db *database, const char *column_name)
+{
+    char *message = sqlite3_mprintf("Can't DROP '%q'; check that column/key exists", column_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = set_error_message(database, message);
+    sqlite3_free(message);
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = append_database_warning(database, MYLITE_MYSQL_ER_CANT_DROP_FIELD_OR_KEY,
+                                     mylite_error_message(database));
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_cant_remove_all_columns_error(mylite_db *database)
+{
+    int status = set_error_message(database,
+                                   "You can't delete all columns with ALTER TABLE; use DROP TABLE");
+
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = append_database_warning(database, MYLITE_MYSQL_ER_CANT_REMOVE_ALL_FIELDS,
+                                     mylite_error_message(database));
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_all_invisible_error(mylite_db *database)
+{
+    int status = set_error_message(database, "A table must have at least one visible column");
+
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = append_database_warning(database, MYLITE_MYSQL_ER_INVISIBLE_NOT_NULL_WITHOUT_DEFAULT,
+                                     mylite_error_message(database));
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_wrong_auto_increment_error(mylite_db *database)
+{
+    int status = set_error_message(
+        database,
+        "Incorrect table definition; there can be only one auto column and it must be defined "
+        "as a key");
+
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = append_database_warning(database, MYLITE_MYSQL_ER_WRONG_AUTO_KEY,
+                                     mylite_error_message(database));
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int copy_sqlite_text_column(sqlite3_stmt *stmt, int column, char **out_text)
+{
+    const unsigned char *text = sqlite3_column_text(stmt, column);
+    int byte_count = sqlite3_column_bytes(stmt, column);
+
+    *out_text = copy_span_text(text == NULL ? "" : (const char *)text,
+                               text == NULL || byte_count < 0 ? 0U : (size_t)byte_count);
+    return *out_text == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static int copy_sqlite_nullable_text_column(sqlite3_stmt *stmt, int column, char **out_text)
+{
+    if (sqlite3_column_type(stmt, column) == SQLITE_NULL) {
+        *out_text = NULL;
+        return MYLITE_OK;
+    }
+    return copy_sqlite_text_column(stmt, column, out_text);
+}
+
 static int execute_create_index_statement(mylite_stmt *stmt)
 {
     struct mylite_insert_table table = {0};
@@ -15586,6 +17926,10 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -17038,6 +19382,10 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_QUERY_EXPRESSION:
     case MYLITE_SQL_AST_UNION_EXPRESSION:
@@ -17651,6 +19999,7 @@ static int execute_union_operand_statement(mylite_stmt *operand)
     case MYLITE_STMT_SET_CHARACTER_SET:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
+    case MYLITE_STMT_ALTER_TABLE:
     case MYLITE_STMT_CREATE_INDEX:
     case MYLITE_STMT_DROP_INDEX:
     case MYLITE_STMT_INSERT_VALUES:
@@ -25501,6 +27850,7 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
     case MYLITE_STMT_SET_CHARACTER_SET:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
+    case MYLITE_STMT_ALTER_TABLE:
     case MYLITE_STMT_CREATE_INDEX:
     case MYLITE_STMT_DROP_INDEX:
     case MYLITE_STMT_INSERT_VALUES:
@@ -25598,6 +27948,208 @@ static int copy_drop_table_statement(const struct mylite_sql_ast_node *statement
         }
     }
     return stmt->drop_table.target_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
+}
+
+static int copy_alter_table_statement(const struct mylite_sql_ast_node *statement,
+                                      mylite_stmt *stmt)
+{
+    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *items = child_at(statement, 1U);
+    int status = MYLITE_OK;
+
+    if (table_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        stmt->alter_table.table_name = copy_identifier_span(table_name);
+        if (stmt->alter_table.table_name == NULL) {
+            return MYLITE_NOMEM;
+        }
+    } else if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
+               child_at(table_name, 0U) != NULL && child_at(table_name, 1U) != NULL &&
+               child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+               child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        stmt->alter_table.schema_name = copy_identifier_span(child_at(table_name, 0U));
+        stmt->alter_table.table_name = copy_identifier_span(child_at(table_name, 1U));
+        if (stmt->alter_table.schema_name == NULL || stmt->alter_table.table_name == NULL) {
+            return MYLITE_NOMEM;
+        }
+    } else {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    if (items == NULL || items->kind != MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST ||
+        items->first_child == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    for (const struct mylite_sql_ast_node *item = items->first_child; item != NULL;
+         item = item->next_sibling) {
+        status = copy_alter_table_item(item, &stmt->alter_table);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return stmt->alter_table.action_count == 0U &&
+                   stmt->alter_table.unsupported_algorithm == NULL &&
+                   stmt->alter_table.unsupported_lock == NULL
+               ? MYLITE_UNSUPPORTED
+               : MYLITE_OK;
+}
+
+static int copy_alter_table_item(const struct mylite_sql_ast_node *item,
+                                 struct mylite_alter_table_plan *plan)
+{
+    if (item == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (item->kind == MYLITE_SQL_AST_ALTER_TABLE_ACTION) {
+        return copy_alter_table_action(item, plan);
+    }
+    if (item->kind == MYLITE_SQL_AST_DDL_TABLE_OPTION) {
+        char **target = NULL;
+
+        if (alter_table_option_is_default(item)) {
+            return MYLITE_OK;
+        }
+        if (item->ddl_table_option == MYLITE_SQL_AST_DDL_TABLE_OPTION_ALGORITHM) {
+            target = &plan->unsupported_algorithm;
+        } else if (item->ddl_table_option == MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK) {
+            target = &plan->unsupported_lock;
+        } else {
+            return MYLITE_UNSUPPORTED;
+        }
+        if (*target == NULL) {
+            *target = copy_span_text(item->span.text, item->span.length);
+            if (*target == NULL) {
+                return MYLITE_NOMEM;
+            }
+        }
+        return MYLITE_OK;
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
+static int copy_alter_table_action(const struct mylite_sql_ast_node *action_node,
+                                   struct mylite_alter_table_plan *plan)
+{
+    struct mylite_alter_table_action action = {0};
+    int status = MYLITE_OK;
+
+    if (action_node == NULL || action_node->kind != MYLITE_SQL_AST_ALTER_TABLE_ACTION) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    switch (action_node->alter_table_action) {
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_COLUMN:
+        action.kind = MYLITE_ALTER_TABLE_ACTION_ADD_COLUMN;
+        status = copy_alter_table_column_definition(child_at(action_node, 0U), &action.column);
+        if (status == MYLITE_OK) {
+            status = copy_alter_table_column_position(child_at(action_node, 1U), &action);
+        }
+        break;
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_COLUMN:
+        action.kind = MYLITE_ALTER_TABLE_ACTION_DROP_COLUMN;
+        action.old_name = copy_identifier_span(child_at(action_node, 0U));
+        status = action.old_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
+        break;
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_COLUMN:
+        action.kind = MYLITE_ALTER_TABLE_ACTION_RENAME_COLUMN;
+        action.old_name = copy_identifier_span(child_at(action_node, 0U));
+        action.new_name = copy_identifier_span(child_at(action_node, 1U));
+        status = action.old_name == NULL || action.new_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
+        break;
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_CHANGE_COLUMN:
+        action.kind = MYLITE_ALTER_TABLE_ACTION_CHANGE_COLUMN;
+        action.old_name = copy_identifier_span(child_at(action_node, 0U));
+        status = action.old_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
+        if (status == MYLITE_OK) {
+            status = copy_alter_table_column_definition(child_at(action_node, 1U), &action.column);
+        }
+        if (status == MYLITE_OK) {
+            status = copy_alter_table_column_position(child_at(action_node, 2U), &action);
+        }
+        break;
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_MODIFY_COLUMN:
+        action.kind = MYLITE_ALTER_TABLE_ACTION_MODIFY_COLUMN;
+        status = copy_alter_table_column_definition(child_at(action_node, 0U), &action.column);
+        if (status == MYLITE_OK) {
+            status = copy_alter_table_column_position(child_at(action_node, 1U), &action);
+        }
+        break;
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_NONE:
+        status = MYLITE_UNSUPPORTED;
+        break;
+    }
+
+    if (status == MYLITE_OK) {
+        status = add_alter_table_action(plan, action);
+    }
+    if (status != MYLITE_OK) {
+        alter_table_action_deinit(&action);
+    }
+    return status;
+}
+
+static int copy_alter_table_column_definition(const struct mylite_sql_ast_node *column_node,
+                                              struct mylite_create_table_column *out_column)
+{
+    struct mylite_create_table_plan plan = {0};
+    int status = copy_create_table_column(column_node, &plan);
+
+    if (status != MYLITE_OK) {
+        create_table_plan_deinit(&plan);
+        return status;
+    }
+    if (plan.column_count != 1U) {
+        create_table_plan_deinit(&plan);
+        return MYLITE_UNSUPPORTED;
+    }
+
+    *out_column = plan.columns[0];
+    plan.columns[0] = (struct mylite_create_table_column){0};
+    create_table_plan_deinit(&plan);
+    return MYLITE_OK;
+}
+
+static int copy_alter_table_column_position(const struct mylite_sql_ast_node *position_node,
+                                            struct mylite_alter_table_action *action)
+{
+    if (position_node == NULL) {
+        action->position = MYLITE_ALTER_TABLE_COLUMN_POSITION_NONE;
+        return MYLITE_OK;
+    }
+    if (position_node->kind != MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    switch (position_node->alter_table_column_position) {
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_NONE:
+        action->position = MYLITE_ALTER_TABLE_COLUMN_POSITION_NONE;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_FIRST:
+        action->position = MYLITE_ALTER_TABLE_COLUMN_POSITION_FIRST;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_AFTER:
+        action->position = MYLITE_ALTER_TABLE_COLUMN_POSITION_AFTER;
+        action->after_column = copy_identifier_span(child_at(position_node, 0U));
+        return action->after_column == NULL ? MYLITE_NOMEM : MYLITE_OK;
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
+static int add_alter_table_action(struct mylite_alter_table_plan *plan,
+                                  struct mylite_alter_table_action action)
+{
+    struct mylite_alter_table_action *actions =
+        realloc(plan->actions, (plan->action_count + 1U) * sizeof(*plan->actions));
+
+    if (actions == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->actions = actions;
+    plan->actions[plan->action_count++] = action;
+    return MYLITE_OK;
 }
 
 static int copy_create_index_statement(const struct mylite_sql_ast_node *statement,
@@ -28128,6 +30680,10 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:
@@ -29554,6 +32110,31 @@ sqlite_affinity_for_descriptor(const struct mylite_column_type_descriptor *descr
     return "TEXT";
 }
 
+static const char *sqlite_affinity_for_catalog_data_type(const char *data_type)
+{
+    if (data_type == NULL) {
+        return "TEXT";
+    }
+    if (ascii_case_equal(data_type, "tinyint") || ascii_case_equal(data_type, "smallint") ||
+        ascii_case_equal(data_type, "mediumint") || ascii_case_equal(data_type, "int") ||
+        ascii_case_equal(data_type, "bigint") || ascii_case_equal(data_type, "bool") ||
+        ascii_case_equal(data_type, "boolean")) {
+        return "INTEGER";
+    }
+    if (ascii_case_equal(data_type, "float") || ascii_case_equal(data_type, "double")) {
+        return "REAL";
+    }
+    if (ascii_case_equal(data_type, "decimal")) {
+        return "NUMERIC";
+    }
+    if (ascii_case_equal(data_type, "binary") || ascii_case_equal(data_type, "varbinary") ||
+        ascii_case_equal(data_type, "tinyblob") || ascii_case_equal(data_type, "blob") ||
+        ascii_case_equal(data_type, "mediumblob") || ascii_case_equal(data_type, "longblob")) {
+        return "BLOB";
+    }
+    return "TEXT";
+}
+
 static char *physical_table_name(const char *schema_name, const char *table_name)
 {
     static const char prefix[] = "__mylite_user_";
@@ -30533,7 +33114,8 @@ static bool write_statement_kind(enum mylite_stmt_kind kind)
 {
     if (kind == MYLITE_STMT_INSERT_VALUES || kind == MYLITE_STMT_INSERT_SET ||
         kind == MYLITE_STMT_REPLACE_VALUES || kind == MYLITE_STMT_REPLACE_SET ||
-        kind == MYLITE_STMT_UPDATE || kind == MYLITE_STMT_DELETE) {
+        kind == MYLITE_STMT_UPDATE || kind == MYLITE_STMT_DELETE ||
+        kind == MYLITE_STMT_ALTER_TABLE) {
         return true;
     }
     return false;
@@ -31002,6 +33584,109 @@ static void drop_table_plan_deinit(struct mylite_drop_table_plan *plan)
     }
     free(plan->targets);
     *plan = (struct mylite_drop_table_plan){0};
+}
+
+static void alter_table_plan_deinit(struct mylite_alter_table_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->schema_name);
+    free(plan->table_name);
+    for (size_t index = 0U; index < plan->action_count; ++index) {
+        alter_table_action_deinit(&plan->actions[index]);
+    }
+    free(plan->actions);
+    free(plan->unsupported_algorithm);
+    free(plan->unsupported_lock);
+    *plan = (struct mylite_alter_table_plan){0};
+}
+
+static void alter_table_action_deinit(struct mylite_alter_table_action *action)
+{
+    if (action == NULL) {
+        return;
+    }
+
+    free(action->old_name);
+    free(action->new_name);
+    free(action->after_column);
+    create_table_column_deinit(&action->column);
+    *action = (struct mylite_alter_table_action){0};
+}
+
+static void alter_table_model_deinit(struct mylite_alter_table_model *model)
+{
+    if (model == NULL) {
+        return;
+    }
+
+    free(model->schema_name);
+    free(model->table_name);
+    free(model->physical_name);
+    free(model->table_collation);
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        alter_table_column_deinit(&model->columns[index]);
+    }
+    free(model->columns);
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        alter_table_index_deinit(&model->indexes[index]);
+    }
+    free(model->indexes);
+    *model = (struct mylite_alter_table_model){0};
+}
+
+static void alter_table_column_deinit(struct mylite_alter_table_column *column)
+{
+    if (column == NULL) {
+        return;
+    }
+
+    free(column->name);
+    free(column->source_name);
+    free(column->column_default);
+    free(column->is_nullable);
+    free(column->data_type);
+    free(column->character_set_name);
+    free(column->collation_name);
+    free(column->column_type);
+    free(column->column_key);
+    free(column->extra);
+    free(column->column_comment);
+    free(column->generation_expression);
+    *column = (struct mylite_alter_table_column){0};
+}
+
+static void alter_table_index_deinit(struct mylite_alter_table_index *index)
+{
+    if (index == NULL) {
+        return;
+    }
+
+    free(index->index_schema);
+    free(index->name);
+    free(index->index_type);
+    free(index->comment);
+    free(index->index_comment);
+    free(index->is_visible);
+    for (size_t part = 0U; part < index->part_count; ++part) {
+        alter_table_index_part_deinit(&index->parts[part]);
+    }
+    free(index->parts);
+    *index = (struct mylite_alter_table_index){0};
+}
+
+static void alter_table_index_part_deinit(struct mylite_alter_table_index_part *part)
+{
+    if (part == NULL) {
+        return;
+    }
+
+    free(part->column_name);
+    free(part->collation);
+    free(part->nullable);
+    *part = (struct mylite_alter_table_index_part){0};
 }
 
 static void index_ddl_plan_deinit(struct mylite_index_ddl_plan *plan)

@@ -17,6 +17,7 @@ static int test_create_table_primary_keys_auto_increment(void);
 static int test_create_table_unique_secondary_indexes(void);
 static int test_create_table_base_execution_syntax(void);
 static int test_create_drop_index_syntax(void);
+static int test_alter_table_column_operations_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
@@ -114,6 +115,13 @@ static int expect_index_class(const struct mylite_sql_ast_node *node,
 static int expect_ddl_table_option(const struct mylite_sql_ast_node *node,
                                    enum mylite_sql_ast_ddl_table_option expected,
                                    const char *context);
+static int expect_alter_table_action(const struct mylite_sql_ast_node *node,
+                                     enum mylite_sql_ast_alter_table_action expected,
+                                     bool column_keyword, const char *context);
+static int
+expect_alter_table_column_position(const struct mylite_sql_ast_node *node,
+                                   enum mylite_sql_ast_alter_table_column_position expected,
+                                   const char *context);
 static int expect_table_option(const struct mylite_sql_ast_node *node,
                                enum mylite_sql_ast_table_option expected, const char *context);
 static int expect_transaction_access_mode(const struct mylite_sql_ast_node *node,
@@ -143,6 +151,7 @@ int main(void)
     failures += test_create_table_unique_secondary_indexes();
     failures += test_create_table_base_execution_syntax();
     failures += test_create_drop_index_syntax();
+    failures += test_alter_table_column_operations_syntax();
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
@@ -2275,6 +2284,169 @@ static int test_create_drop_index_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE INDEX idx ON t (a,);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_column_operations_syntax(void)
+{
+    enum {
+        complex_varchar_length = 20,
+        alter_rename_change_modify_item_count = 5,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *items = NULL;
+    const struct mylite_sql_ast_node *action = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    const struct mylite_sql_ast_node *attributes = NULL;
+    const struct mylite_sql_ast_node *position = NULL;
+    int failures = 0;
+
+    failures += parse_sql("ALTER TABLE app.t ADD c INT AFTER id, DROP COLUMN old_col, "
+                          "ALGORITHM DEFAULT, LOCK=SHARED;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_ALTER_TABLE_STATEMENT, "alter table statement");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "alter table qualified name");
+    items = child_at(statement, 1U);
+    failures += expect_node(items, MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST, "alter item list");
+    failures += expect_child_count(items, 4U, "alter item count");
+
+    action = child_at(items, 0U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_COLUMN,
+                                          false, "alter add action");
+    column = child_at(action, 0U);
+    failures += expect_span_text(child_at(column, 0U), "c", "alter add column name");
+    failures +=
+        expect_column_type(child_at(column, 1U), MYLITE_SQL_AST_COLUMN_TYPE_INT, "alter add type");
+    position = child_at(action, 1U);
+    failures += expect_alter_table_column_position(
+        position, MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_AFTER, "alter add after");
+    failures += expect_span_text(child_at(position, 0U), "id", "alter add after target");
+
+    action = child_at(items, 1U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_COLUMN,
+                                          true, "alter drop action");
+    failures += expect_span_text(child_at(action, 0U), "old_col", "alter drop column name");
+    failures += expect_ddl_table_option(
+        child_at(items, 2U), MYLITE_SQL_AST_DDL_TABLE_OPTION_ALGORITHM, "alter algorithm option");
+    failures += expect_ddl_table_option(child_at(items, 3U), MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK,
+                                        "alter lock option");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t RENAME COLUMN old_name TO new_name, "
+                          "CHANGE old_name new_name BIGINT NOT NULL DEFAULT 5 FIRST, "
+                          "MODIFY COLUMN new_name VARCHAR(20) COMMENT 'x' AFTER old_name, "
+                          "ALGORITHM=INSTANT, LOCK NONE;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    failures += expect_child_count(items, (size_t)alter_rename_change_modify_item_count,
+                                   "alter rename/change/modify item count");
+
+    action = child_at(items, 0U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_COLUMN,
+                                          false, "alter rename action");
+    failures += expect_span_text(child_at(action, 0U), "old_name", "alter rename old name");
+    failures += expect_span_text(child_at(action, 1U), "new_name", "alter rename new name");
+
+    action = child_at(items, 1U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_CHANGE_COLUMN,
+                                          false, "alter change action");
+    failures += expect_span_text(child_at(action, 0U), "old_name", "alter change old name");
+    column = child_at(action, 1U);
+    failures += expect_span_text(child_at(column, 0U), "new_name", "alter change new name");
+    failures += expect_column_type(child_at(column, 1U), MYLITE_SQL_AST_COLUMN_TYPE_BIGINT,
+                                   "alter change type");
+    attributes = child_at(column, 2U);
+    failures += expect_child_count(attributes, 2U, "alter change attributes");
+    position = child_at(action, 2U);
+    failures += expect_alter_table_column_position(
+        position, MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_FIRST, "alter change first");
+
+    action = child_at(items, 2U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_MODIFY_COLUMN,
+                                          true, "alter modify action");
+    column = child_at(action, 0U);
+    failures += expect_span_text(child_at(column, 0U), "new_name", "alter modify column name");
+    failures += expect_column_type(child_at(column, 1U), MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR,
+                                   "alter modify type");
+    position = child_at(action, 1U);
+    failures += expect_alter_table_column_position(
+        position, MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_AFTER, "alter modify after");
+    failures += expect_span_text(child_at(position, 0U), "old_name", "alter modify after target");
+    failures += expect_ddl_table_option(
+        child_at(items, 3U), MYLITE_SQL_AST_DDL_TABLE_OPTION_ALGORITHM, "alter instant option");
+    failures +=
+        expect_span_text(child_at(items, 3U), "ALGORITHM=INSTANT", "alter instant option span");
+    failures += expect_ddl_table_option(child_at(items, 4U), MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK,
+                                        "alter lock none option");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t ADD COLUMN complex_col VARCHAR(20) "
+                          "CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'q' "
+                          "COMMENT 'text' INVISIBLE;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    action = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_COLUMN,
+                                          true, "alter add column keyword");
+    column = child_at(action, 0U);
+    column_type = child_at(column, 1U);
+    attributes = child_at(column, 2U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR, "alter complex type");
+    if (column_type != NULL &&
+        (!column_type->has_column_length || column_type->column_length != complex_varchar_length)) {
+        fprintf(stderr, "alter complex VARCHAR length was not recorded as 20\n");
+        failures = 1;
+    }
+    failures += expect_child_count(attributes, 4U, "alter complex attributes");
+    failures +=
+        expect_column_attribute(child_at(attributes, 0U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NOT_NULL,
+                                "alter complex not null");
+    failures += expect_column_attribute(
+        child_at(attributes, 1U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_DEFAULT, "alter complex default");
+    failures += expect_column_attribute(
+        child_at(attributes, 2U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COMMENT, "alter complex comment");
+    failures +=
+        expect_column_attribute(child_at(attributes, 3U), MYLITE_SQL_AST_COLUMN_ATTRIBUTE_INVISIBLE,
+                                "alter complex invisible");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t DROP old_col, CHANGE COLUMN old_col new_col INT, "
+                          "MODIFY new_col INT;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t ADD c INT,;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t RENAME COLUMN old_name new_name;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t ADD c INT AFTER;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t ALGORITHM=MERGE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t LOCK=WRITE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t ADD c INT FIRST AFTER id;", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t ADD c VARCHAR;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -5604,6 +5776,53 @@ static int expect_ddl_table_option(const struct mylite_sql_ast_node *node,
         fprintf(stderr, "%s: expected DDL table option %s, got %s\n", context,
                 mylite_sql_ast_ddl_table_option_name(expected),
                 mylite_sql_ast_ddl_table_option_name(node->ddl_table_option));
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_alter_table_action(const struct mylite_sql_ast_node *node,
+                                     enum mylite_sql_ast_alter_table_action expected,
+                                     bool column_keyword, const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_ALTER_TABLE_ACTION, context);
+
+    if (node != NULL && node->alter_table_action != expected) {
+        fprintf(stderr, "%s: expected ALTER TABLE action %s, got %s\n", context,
+                mylite_sql_ast_alter_table_action_name(expected),
+                mylite_sql_ast_alter_table_action_name(node->alter_table_action));
+        failures = 1;
+    }
+    if (node != NULL && node->alter_table_action_column_keyword != column_keyword) {
+        const char *actual_keyword_text = "false";
+        const char *expected_keyword_text = "false";
+
+        if (node->alter_table_action_column_keyword) {
+            actual_keyword_text = "true";
+        }
+        if (column_keyword) {
+            expected_keyword_text = "true";
+        }
+        fprintf(stderr, "%s: expected ALTER TABLE COLUMN keyword %s, got %s\n", context,
+                expected_keyword_text, actual_keyword_text);
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int
+expect_alter_table_column_position(const struct mylite_sql_ast_node *node,
+                                   enum mylite_sql_ast_alter_table_column_position expected,
+                                   const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION, context);
+
+    if (node != NULL && node->alter_table_column_position != expected) {
+        fprintf(stderr, "%s: expected ALTER TABLE column position %s, got %s\n", context,
+                mylite_sql_ast_alter_table_column_position_name(expected),
+                mylite_sql_ast_alter_table_column_position_name(node->alter_table_column_position));
         failures = 1;
     }
 

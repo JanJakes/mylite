@@ -333,6 +333,28 @@ void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
     node->table_option = option;
 }
 
+void mylite_sql_ast_node_set_alter_table_action(struct mylite_sql_ast_node *node,
+                                                enum mylite_sql_ast_alter_table_action action,
+                                                bool column_keyword)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->alter_table_action = action;
+    node->alter_table_action_column_keyword = column_keyword;
+}
+
+void mylite_sql_ast_node_set_alter_table_column_position(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_column_position position)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->alter_table_column_position = position;
+}
+
 void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node)
 {
     if (node == NULL) {
@@ -745,6 +767,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "ddl_table_option_list";
     case MYLITE_SQL_AST_DDL_TABLE_OPTION:
         return "ddl_table_option";
+    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
+        return "alter_table_statement";
+    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
+        return "alter_table_item_list";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
+        return "alter_table_action";
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
+        return "alter_table_column_position";
     }
 
     return "unknown";
@@ -978,6 +1008,41 @@ const char *mylite_sql_ast_ddl_table_option_name(enum mylite_sql_ast_ddl_table_o
         return "algorithm";
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK:
         return "lock";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_alter_table_action_name(enum mylite_sql_ast_alter_table_action action)
+{
+    switch (action) {
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_NONE:
+        return "none";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_COLUMN:
+        return "add_column";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_COLUMN:
+        return "drop_column";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_COLUMN:
+        return "rename_column";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_CHANGE_COLUMN:
+        return "change_column";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_MODIFY_COLUMN:
+        return "modify_column";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_alter_table_column_position_name(
+    enum mylite_sql_ast_alter_table_column_position position)
+{
+    switch (position) {
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_NONE:
+        return "none";
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_FIRST:
+        return "first";
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_AFTER:
+        return "after";
     }
 
     return "unknown";

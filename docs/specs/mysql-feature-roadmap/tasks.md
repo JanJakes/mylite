@@ -112,7 +112,13 @@ level application surfaces.
        [standalone CREATE INDEX and DROP INDEX](../create-drop-index/specs.md).
 35. [ ] `ALTER TABLE` column operations: `ADD`, `DROP`, `RENAME`, `CHANGE`,
        `MODIFY`, defaults, positioning, validation, and metadata rewrite.
-       Started; spec:
+       First executable slice is implemented for existing MyLite base tables,
+       including parser coverage, multi-action atomic shadow rewrites,
+       default backfill, column positioning, column/index metadata rewrites,
+       duplicate-index warnings, and rejection of non-default `ALGORITHM` and
+       `LOCK` before mutation. Inline key/constraint creation, generated
+       column dependencies, foreign-key dependencies, table rename, and full
+       MySQL conversion fidelity remain deferred. Spec:
        [ALTER TABLE column operations](../alter-table-column-operations/specs.md).
 36. [ ] `ALTER TABLE` key and constraint operations: primary, unique, index,
        check, and foreign-key add/drop/rename/toggle behavior.

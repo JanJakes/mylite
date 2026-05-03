@@ -467,6 +467,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"INSERT_METHOD", 0U},
         {"INSTALL", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL},
         {"INSTANCE", 0U},
+        {"INSTANT", 0U},
         {"INT", MYLITE_SQL_KEYWORD_RESERVED},
         {"INT1", MYLITE_SQL_KEYWORD_RESERVED},
         {"INT2", MYLITE_SQL_KEYWORD_RESERVED},

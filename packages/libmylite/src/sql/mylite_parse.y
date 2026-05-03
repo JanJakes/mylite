@@ -5,6 +5,7 @@
 %type opt_into { struct mylite_sql_token }
 %type opt_insert_ignore { struct mylite_sql_token }
 %type opt_replace_modifier { struct mylite_sql_parser_replace_modifier }
+%type opt_column { struct mylite_sql_token }
 %type opt_temporary { struct mylite_sql_token }
 %type opt_drop_table_mode { struct mylite_sql_token }
 %type insert_values_keyword { struct mylite_sql_token }
@@ -66,10 +67,10 @@
 %right UPLUS UMINUS BIT_NOT.
 %right LOGICAL_NOT.
 %right KEY.
-%fallback IDENTIFIER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLUMN_FORMAT
+%fallback IDENTIFIER AFTER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLUMN_FORMAT
     COMMENT COMMIT CONSISTENT DATE DATETIME DISK DYNAMIC ENGINE ENGINE_ATTRIBUTE ENCRYPTION
-    FIXED HASH INVISIBLE KEY_BLOCK_SIZE MEMORY NCHAR NO NVARCHAR OFFSET ONLY ROLLBACK SAVEPOINT
-    SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE
+    FIRST FIXED HASH INSTANT INVISIBLE KEY_BLOCK_SIZE MEMORY MODIFY NCHAR NO NVARCHAR OFFSET ONLY
+    ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE
     TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE WORK YEAR.
 
 input ::= statement_list(A). {
@@ -106,6 +107,9 @@ statement(A) ::= create_schema_statement(B). {
     A = B;
 }
 statement(A) ::= alter_schema_statement(B). {
+    A = B;
+}
+statement(A) ::= alter_table_statement(B). {
     A = B;
 }
 statement(A) ::= drop_schema_statement(B). {
@@ -213,6 +217,71 @@ drop_table_statement(A) ::= DROP(T) opt_temporary(U) TABLE opt_if_exists(B) drop
         },
         B,
         C);
+}
+
+alter_table_statement(A) ::= ALTER(T) TABLE table_name(B) alter_table_item_list(C). {
+    A = mylite_sql_parser_make_alter_table_statement(state, T, B, C);
+}
+
+alter_table_item_list(A) ::= alter_table_item(B). {
+    A = mylite_sql_parser_make_alter_table_item_list(state, B);
+}
+alter_table_item_list(A) ::= alter_table_item_list(B) COMMA alter_table_item(C). {
+    A = mylite_sql_parser_append_alter_table_item(state, B, C);
+}
+
+alter_table_item(A) ::= alter_table_action(B). {
+    A = B;
+}
+alter_table_item(A) ::= ddl_table_option(B). {
+    A = B;
+}
+
+alter_table_action(A) ::= ADD(T) opt_column(C) column_definition(D) opt_column_position(P). {
+    A = mylite_sql_parser_make_alter_table_add_column_action(
+        state,
+        (struct mylite_sql_parser_alter_table_action_tokens){.action = T, .column = C},
+        D, P);
+}
+alter_table_action(A) ::= DROP(T) opt_column(C) identifier(B). {
+    A = mylite_sql_parser_make_alter_table_drop_column_action(
+        state,
+        (struct mylite_sql_parser_alter_table_action_tokens){.action = T, .column = C},
+        B);
+}
+alter_table_action(A) ::= RENAME(T) COLUMN identifier(B) TO(O) identifier(C). {
+    A = mylite_sql_parser_make_alter_table_rename_column_action(state, T, B, O, C);
+}
+alter_table_action(A) ::= CHANGE(T) opt_column(C) identifier(B) column_definition(D) opt_column_position(P). {
+    A = mylite_sql_parser_make_alter_table_change_column_action(
+        state,
+        (struct mylite_sql_parser_alter_table_action_tokens){.action = T, .column = C},
+        B, D, P);
+}
+alter_table_action(A) ::= MODIFY(T) opt_column(C) column_definition(D) opt_column_position(P). {
+    A = mylite_sql_parser_make_alter_table_modify_column_action(
+        state,
+        (struct mylite_sql_parser_alter_table_action_tokens){.action = T, .column = C},
+        D, P);
+}
+
+opt_column(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_column(A) ::= COLUMN(T). {
+    A = T;
+}
+
+opt_column_position(A) ::= . {
+    A = NULL;
+}
+opt_column_position(A) ::= FIRST(T). {
+    A = mylite_sql_parser_make_alter_table_column_position(
+        state, T, MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_FIRST, NULL);
+}
+opt_column_position(A) ::= AFTER(T) identifier(B). {
+    A = mylite_sql_parser_make_alter_table_column_position(
+        state, T, MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_AFTER, B);
 }
 
 opt_temporary(A) ::= . {
@@ -1443,6 +1512,9 @@ ddl_table_option(A) ::= LOCK(T) opt_equal ddl_lock(V). {
 }
 
 ddl_algorithm(A) ::= DEFAULT(T). {
+    A = T;
+}
+ddl_algorithm(A) ::= INSTANT(T). {
     A = T;
 }
 ddl_algorithm(A) ::= INPLACE(T). {
@@ -2678,13 +2750,25 @@ identifier(A) ::= nonreserved_identifier_keyword(T). {
 nonreserved_identifier_keyword(A) ::= ALGORITHM(T). {
     A = T;
 }
+nonreserved_identifier_keyword(A) ::= AFTER(T). {
+    A = T;
+}
 nonreserved_identifier_keyword(A) ::= COPY(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= EXCLUSIVE(T). {
     A = T;
 }
+nonreserved_identifier_keyword(A) ::= FIRST(T). {
+    A = T;
+}
 nonreserved_identifier_keyword(A) ::= INPLACE(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= INSTANT(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= MODIFY(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= NONE(T). {

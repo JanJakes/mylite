@@ -40,6 +40,8 @@ typedef struct MyliteAstDropIndex MyliteAstDropIndex;
 typedef struct MyliteAstDropTable MyliteAstDropTable;
 typedef struct MyliteAstExpression MyliteAstExpression;
 typedef struct MyliteAstDeallocateStatement MyliteAstDeallocateStatement;
+typedef struct MyliteAstDeleteStatement MyliteAstDeleteStatement;
+typedef struct MyliteAstDeleteTarget MyliteAstDeleteTarget;
 typedef struct MyliteAstExecuteStatement MyliteAstExecuteStatement;
 typedef struct MyliteAstInsertAssignment MyliteAstInsertAssignment;
 typedef struct MyliteAstInsertColumn MyliteAstInsertColumn;
@@ -194,6 +196,20 @@ typedef enum MyliteInsertPriority {
   MYLITE_INSERT_PRIORITY_HIGH,
   MYLITE_INSERT_PRIORITY_DELAYED
 } MyliteInsertPriority;
+
+typedef enum MyliteDeleteStatementKind {
+  MYLITE_DELETE_STATEMENT_UNKNOWN = 0,
+  MYLITE_DELETE_STATEMENT_SINGLE_TABLE,
+  MYLITE_DELETE_STATEMENT_MULTI_TABLE_FROM,
+  MYLITE_DELETE_STATEMENT_MULTI_TABLE_USING
+} MyliteDeleteStatementKind;
+
+typedef enum MyliteDeletePriority {
+  MYLITE_DELETE_PRIORITY_NONE = 0,
+  MYLITE_DELETE_PRIORITY_LOW,
+  MYLITE_DELETE_PRIORITY_HIGH,
+  MYLITE_DELETE_PRIORITY_DELAYED
+} MyliteDeletePriority;
 
 typedef enum MyliteUpdatePriority {
   MYLITE_UPDATE_PRIORITY_NONE = 0,
@@ -608,6 +624,9 @@ const char *mylite_select_projection_kind_name(
     MyliteSelectProjectionKind kind);
 const char *mylite_insert_source_kind_name(MyliteInsertSourceKind kind);
 const char *mylite_insert_priority_name(MyliteInsertPriority priority);
+const char *mylite_delete_statement_kind_name(
+    MyliteDeleteStatementKind kind);
+const char *mylite_delete_priority_name(MyliteDeletePriority priority);
 const char *mylite_update_priority_name(MyliteUpdatePriority priority);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
@@ -758,6 +777,8 @@ const MyliteAstExecuteStatement *mylite_ast_execute_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDeallocateStatement *mylite_ast_deallocate_statement_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstRenameTable *mylite_ast_rename_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstSelectStatement *mylite_ast_select_statement_view(
@@ -888,6 +909,74 @@ size_t mylite_ast_insert_assignment_view_value_end(
 const MyliteAstExpression *
 mylite_ast_insert_assignment_view_value_expression(
     const MyliteAstInsertAssignment *assignment);
+const MyliteAstNode *mylite_ast_delete_statement_view_node(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_start(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_end(
+    const MyliteAstDeleteStatement *delete_statement);
+int mylite_ast_delete_statement_view_has_with_clause(
+    const MyliteAstDeleteStatement *delete_statement);
+int mylite_ast_delete_statement_view_is_multi_table(
+    const MyliteAstDeleteStatement *delete_statement);
+MyliteDeleteStatementKind mylite_ast_delete_statement_view_kind(
+    const MyliteAstDeleteStatement *delete_statement);
+MyliteDeletePriority mylite_ast_delete_statement_view_priority(
+    const MyliteAstDeleteStatement *delete_statement);
+int mylite_ast_delete_statement_view_has_quick(
+    const MyliteAstDeleteStatement *delete_statement);
+int mylite_ast_delete_statement_view_has_ignore(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_target_list_start(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_target_list_end(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_table_reference_start(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_table_reference_end(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_target_count(
+    const MyliteAstDeleteStatement *delete_statement);
+const MyliteAstDeleteTarget *mylite_ast_delete_statement_view_target_at(
+    const MyliteAstDeleteStatement *delete_statement, size_t target_index);
+size_t mylite_ast_delete_statement_view_where_start(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_where_end(
+    const MyliteAstDeleteStatement *delete_statement);
+const MyliteAstExpression *mylite_ast_delete_statement_view_where_expression(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_order_by_start(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_order_by_end(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_limit_start(
+    const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_limit_end(
+    const MyliteAstDeleteStatement *delete_statement);
+const MyliteAstNode *mylite_ast_delete_target_view_node(
+    const MyliteAstDeleteTarget *target);
+size_t mylite_ast_delete_target_view_start(
+    const MyliteAstDeleteTarget *target);
+size_t mylite_ast_delete_target_view_end(
+    const MyliteAstDeleteTarget *target);
+size_t mylite_ast_delete_target_view_schema_start(
+    const MyliteAstDeleteTarget *target);
+size_t mylite_ast_delete_target_view_schema_end(
+    const MyliteAstDeleteTarget *target);
+const char *mylite_ast_delete_target_view_schema_value(
+    const MyliteAstDeleteTarget *target);
+size_t mylite_ast_delete_target_view_schema_value_length(
+    const MyliteAstDeleteTarget *target);
+size_t mylite_ast_delete_target_view_name_start(
+    const MyliteAstDeleteTarget *target);
+size_t mylite_ast_delete_target_view_name_end(
+    const MyliteAstDeleteTarget *target);
+const char *mylite_ast_delete_target_view_name_value(
+    const MyliteAstDeleteTarget *target);
+size_t mylite_ast_delete_target_view_name_value_length(
+    const MyliteAstDeleteTarget *target);
+int mylite_ast_delete_target_view_has_wildcard(
+    const MyliteAstDeleteTarget *target);
 const MyliteAstNode *mylite_ast_update_statement_view_node(
     const MyliteAstUpdateStatement *update_statement);
 size_t mylite_ast_update_statement_view_start(

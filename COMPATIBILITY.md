@@ -83,7 +83,12 @@ optional definer spans, explicit column descriptors, and the query CST anchor.
 The `SELECT` view currently covers CTE/set-operation markers, query-block
 counts, projection descriptors, common clause spans, decoded projection aliases,
 table-wildcard qualifiers, and recursive parser-level expression views for
-projection, `WHERE`, and `HAVING` expressions.
+projection, `WHERE`, and `HAVING` expressions. The `DELETE` view currently
+covers single-table, multi-table `FROM`, and multi-table `USING` forms, `WITH`
+markers, priority, `QUICK`, and `IGNORE` modifiers, ordered delete-target
+descriptors with decoded names and wildcard markers, table-reference spans,
+statement-level `WHERE` predicate expression views, and `ORDER BY` / `LIMIT`
+anchors for forms that allow them.
 The `SET` view currently covers statement form, ordered assignments, assignment
 kind, variable scope, assignment operator, decoded assignment names, value CST
 anchors, `SET NAMES` extended collation spans, and recursive parser-level
@@ -174,8 +179,8 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | `CALL` | ❌ | medium | Procedure invocation, result sets, OUT/INOUT parameters, and diagnostics. |  |
-| `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. |  |
-| `DELETE` (multi-table) | ❌ | high | Multi-table delete forms using FROM and USING, join semantics, and affected rows. |  |
+| `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. | Parser prototype exposes target table spans, priority, `QUICK`, and `IGNORE` modifiers, statement-level `WHERE` predicate views, and `ORDER BY` / `LIMIT` anchors. Runtime semantics are not implemented yet. |
+| `DELETE` (multi-table) | ❌ | high | Multi-table delete forms using FROM and USING, join semantics, and affected rows. | Parser prototype classifies `DELETE target_list FROM table_refs` and `DELETE FROM target_list USING table_refs`, exposes ordered delete-target descriptors with decoded names and wildcard markers, anchors joined table references, and exposes statement-level `WHERE` predicate views. Runtime semantics are not implemented yet. |
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. |  |
 | `HANDLER` | ❌ | low | HANDLER OPEN, READ, and CLOSE cursor-like table access. |  |
 | `IMPORT TABLE` | ❌ | low | Transportable tablespace import syntax and diagnostics. |  |

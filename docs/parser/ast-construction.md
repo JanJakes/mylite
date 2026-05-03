@@ -69,6 +69,11 @@ expression nodes.
   markers, query-block counts, projection descriptors, common clause spans, and
   recursive expression views for projection, `WHERE`, and `HAVING`
   expressions.
+- `DELETE` statements expose parser-level views for single-table, multi-table
+  `FROM`, and multi-table `USING` forms, `WITH` markers, priority, `QUICK`, and
+  `IGNORE` modifiers, ordered delete-target descriptors, table-reference spans,
+  statement-level `WHERE` predicate expressions, and `ORDER BY` / `LIMIT`
+  anchors.
 - `INSERT` statements expose parser-level views for decoded target tables,
   source-form classification (`VALUES`, `SET`, or `SELECT`), priority and
   `IGNORE` modifiers, partition and duplicate-update markers, optional column
@@ -158,6 +163,12 @@ expression nodes.
 - typed `SELECT` projection descriptors with expression/wildcard/table-wildcard
   kind, source spans, expression spans, decoded aliases, table-wildcard
   qualifier spans, and recursive expression views where present
+- typed `DELETE` descriptors with statement form, `WITH` and multi-table
+  markers, priority, `QUICK`, and `IGNORE` modifiers, delete-target handles,
+  target-list spans, table-reference spans, statement-level `WHERE` predicate
+  expression handles, and `ORDER BY` / `LIMIT` spans
+- typed `DELETE` target descriptors with target/schema/name spans, decoded
+  schema/name values, and wildcard markers for `tbl.*`
 - typed `UPDATE` descriptors with `WITH` and multi-table markers, priority and
   `IGNORE` modifiers, table-reference spans, ordered assignment handles,
   statement-level `WHERE` predicate expression handles, and `ORDER BY` / `LIMIT`
@@ -362,6 +373,17 @@ projections in statement order for now; the later semantic query AST must split
 them into query-expression and query-block objects with scope-aware name
 resolution.
 
+The first parser-level `DELETE` view covers all TiDB grammar-level DELETE
+shapes currently used by the MySQL corpus: single-table `DELETE FROM table`,
+multi-table `DELETE target_list FROM table_refs`, and multi-table `DELETE FROM
+target_list USING table_refs`. It records `WITH`, statement form, priority,
+`QUICK`, `IGNORE`, ordered delete targets with decoded schema/name values and
+`tbl.*` markers, table-reference spans, statement-level `WHERE` predicate
+expression handles, and `ORDER BY` / `LIMIT` anchors for single-table forms.
+The view does not yet implement partition pruning, alias resolution, joined
+delete target filtering, affected-row semantics, warning demotion, or runtime
+diagnostics.
+
 The first parser-level `INSERT` view covers the statement forms needed before
 semantic insert execution can be built. It records the decoded target table,
 classifies the source as `VALUES`, `SET`, or `SELECT`, records priority and
@@ -495,6 +517,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.9707
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=36.136379 qps=192440 mbps=14.64 avg_us=5.196 avg_nodes=74.5 avg_ast_bytes=10876.5 avg_update_statement_views=0.03 avg_update_statement_with_clauses=0.00 avg_update_statement_multi_table=0.00 avg_update_statement_priorities=0.00 avg_update_statement_ignores=0.00 avg_update_statement_assignments=0.03 avg_update_statement_assignment_name_values=0.03 avg_update_statement_where_expressions=0.02 avg_update_statement_order_by_clauses=0.00 avg_update_statement_limit_clauses=0.00 avg_update_statement_expression_tree_nodes=0.10 avg_update_statement_expression_tree_operators=0.02 avg_update_statement_expression_tree_leaf_values=0.07
 ```
 
+Latest DELETE parser-view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.847471 qps=502193 mbps=38.19 avg_us=1.991
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=35.768205 qps=194421 mbps=14.79 avg_us=5.143 avg_nodes=74.5 avg_ast_bytes=10879.6 avg_delete_statement_views=0.01 avg_delete_statement_with_clauses=0.00 avg_delete_statement_multi_table=0.00 avg_delete_statement_multi_table_from=0.00 avg_delete_statement_multi_table_using=0.00 avg_delete_statement_priorities=0.00 avg_delete_statement_quicks=0.00 avg_delete_statement_ignores=0.00 avg_delete_statement_targets=0.01 avg_delete_statement_target_schema_values=0.00 avg_delete_statement_target_name_values=0.01 avg_delete_statement_target_wildcards=0.00 avg_delete_statement_where_expressions=0.01 avg_delete_statement_order_by_clauses=0.00 avg_delete_statement_limit_clauses=0.00 avg_delete_statement_expression_tree_nodes=0.02 avg_delete_statement_expression_tree_operators=0.01 avg_delete_statement_expression_tree_leaf_values=0.01
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -505,7 +534,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 269K on disk, 157,293 bytes text/data/other
+parser support object: 278K on disk, 162,470 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.4M on disk
 mylite-parse: 1.2M on disk
@@ -529,9 +558,9 @@ mylite-parse: 1.2M on disk
 - Split the parser-level `SELECT` view into semantic query-expression,
   query-block, table-reference, projection, and clause objects with scoped name
   resolution.
-- Extend executable-statement parser views beyond `UPDATE` into `DELETE` and
-  `REPLACE`, reusing the expression-view infrastructure where statement
-  payloads carry targets, assignments, predicates, ordering, and limits.
+- Extend executable-statement parser views beyond `DELETE` into `REPLACE`,
+  reusing the expression-view infrastructure where statement payloads carry
+  targets, assignments, predicates, ordering, and limits.
 - Decide whether syntax-only builds should use a separate no-action generated
   parser if the action overhead matters.
 - Add tree-shape tests for representative DDL, DML, expressions, stored

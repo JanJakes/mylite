@@ -195,6 +195,7 @@ static int expect_drop_database_view(void);
 static int expect_drop_index_view(void);
 static int expect_drop_table_view(void);
 static int expect_drop_view_view(void);
+static int expect_delete_statement_view(void);
 static int expect_insert_statement_view(void);
 static int expect_prepared_statement_views(void);
 static int expect_rename_table_view(void);
@@ -801,6 +802,7 @@ int main(void) {
   failures += expect_drop_index_view();
   failures += expect_drop_table_view();
   failures += expect_drop_view_view();
+  failures += expect_delete_statement_view();
   failures += expect_insert_statement_view();
   failures += expect_prepared_statement_views();
   failures += expect_rename_table_view();
@@ -4731,6 +4733,172 @@ static int expect_transaction_statement_views(void) {
     }
     mylite_ast_free(ast);
   }
+  return failed;
+}
+
+static int expect_delete_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "DELETE FROM t WHERE id = ? ORDER BY created_at DESC LIMIT 5";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "DELETE statement view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstDeleteStatement *view =
+        mylite_ast_delete_statement_view(ast, 0);
+    const MyliteAstDeleteTarget *target =
+        view == NULL ? NULL
+                     : mylite_ast_delete_statement_view_target_at(view, 0);
+    const MyliteAstExpression *where_expression =
+        mylite_ast_delete_statement_view_where_expression(view);
+    if (view == NULL || mylite_ast_statement_kind(ast, 0) !=
+                            MYLITE_STATEMENT_DELETE ||
+        mylite_ast_delete_statement_view_has_with_clause(view) ||
+        mylite_ast_delete_statement_view_is_multi_table(view) ||
+        mylite_ast_delete_statement_view_kind(view) !=
+            MYLITE_DELETE_STATEMENT_SINGLE_TABLE ||
+        mylite_ast_delete_statement_view_target_count(view) != 1 ||
+        !span_matches(sql,
+                      mylite_ast_delete_statement_view_target_list_start(view),
+                      mylite_ast_delete_statement_view_target_list_end(view),
+                      "t") ||
+        !span_matches(
+            sql, mylite_ast_delete_statement_view_table_reference_start(view),
+            mylite_ast_delete_statement_view_table_reference_end(view), "t") ||
+        !span_matches(sql, mylite_ast_delete_statement_view_where_start(view),
+                      mylite_ast_delete_statement_view_where_end(view),
+                      "WHERE id = ?") ||
+        !span_matches(sql, mylite_ast_delete_statement_view_order_by_start(view),
+                      mylite_ast_delete_statement_view_order_by_end(view),
+                      "ORDER BY created_at DESC") ||
+        !span_matches(sql, mylite_ast_delete_statement_view_limit_start(view),
+                      mylite_ast_delete_statement_view_limit_end(view),
+                      "LIMIT 5") ||
+        target == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_delete_target_view_name_value(target),
+            mylite_ast_delete_target_view_name_value_length(target), "t") ||
+        mylite_ast_delete_target_view_has_wildcard(target) ||
+        where_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(where_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_EQ) {
+      fprintf(stderr, "DELETE statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "DELETE LOW_PRIORITY QUICK IGNORE t.*, s FROM db1.t AS t JOIN s "
+        "ON t.id = s.id WHERE s.id > 0";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "multi-table DELETE statement view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstDeleteStatement *view =
+        mylite_ast_delete_statement_view(ast, 0);
+    const MyliteAstDeleteTarget *target0 =
+        view == NULL ? NULL
+                     : mylite_ast_delete_statement_view_target_at(view, 0);
+    const MyliteAstDeleteTarget *target1 =
+        view == NULL ? NULL
+                     : mylite_ast_delete_statement_view_target_at(view, 1);
+    const MyliteAstExpression *where_expression =
+        mylite_ast_delete_statement_view_where_expression(view);
+    if (view == NULL ||
+        mylite_ast_delete_statement_view_kind(view) !=
+            MYLITE_DELETE_STATEMENT_MULTI_TABLE_FROM ||
+        !mylite_ast_delete_statement_view_is_multi_table(view) ||
+        mylite_ast_delete_statement_view_priority(view) !=
+            MYLITE_DELETE_PRIORITY_LOW ||
+        !mylite_ast_delete_statement_view_has_quick(view) ||
+        !mylite_ast_delete_statement_view_has_ignore(view) ||
+        mylite_ast_statement_target_count(ast, 0) != 2 ||
+        mylite_ast_delete_statement_view_target_count(view) != 2 ||
+        !span_matches(sql,
+                      mylite_ast_delete_statement_view_target_list_start(view),
+                      mylite_ast_delete_statement_view_target_list_end(view),
+                      "t.*, s") ||
+        !span_matches(
+            sql, mylite_ast_delete_statement_view_table_reference_start(view),
+            mylite_ast_delete_statement_view_table_reference_end(view),
+            "db1.t AS t JOIN s ON t.id = s.id") ||
+        target0 == NULL ||
+        !mylite_ast_delete_target_view_has_wildcard(target0) ||
+        !value_matches_when_expected(
+            mylite_ast_delete_target_view_name_value(target0),
+            mylite_ast_delete_target_view_name_value_length(target0), "t") ||
+        target1 == NULL ||
+        mylite_ast_delete_target_view_has_wildcard(target1) ||
+        !value_matches_when_expected(
+            mylite_ast_delete_target_view_name_value(target1),
+            mylite_ast_delete_target_view_name_value_length(target1), "s") ||
+        where_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(where_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_GT) {
+      fprintf(stderr, "multi-table DELETE statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "WITH cte AS (SELECT 1 AS id) DELETE FROM t USING t JOIN cte "
+        "ON t.id = cte.id WHERE cte.id = 1";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "WITH DELETE statement view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstDeleteStatement *view =
+        mylite_ast_delete_statement_view(ast, 0);
+    const MyliteAstExpression *where_expression =
+        mylite_ast_delete_statement_view_where_expression(view);
+    if (view == NULL ||
+        !mylite_ast_delete_statement_view_has_with_clause(view) ||
+        mylite_ast_delete_statement_view_kind(view) !=
+            MYLITE_DELETE_STATEMENT_MULTI_TABLE_USING ||
+        !mylite_ast_delete_statement_view_is_multi_table(view) ||
+        mylite_ast_delete_statement_view_target_count(view) != 1 ||
+        !span_matches(
+            sql, mylite_ast_delete_statement_view_table_reference_start(view),
+            mylite_ast_delete_statement_view_table_reference_end(view),
+            "t JOIN cte ON t.id = cte.id") ||
+        where_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(where_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_EQ) {
+      fprintf(stderr, "WITH DELETE statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
   return failed;
 }
 

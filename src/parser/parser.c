@@ -523,6 +523,49 @@ struct MyliteAstInsertStatement {
   int has_on_duplicate_key_update;
 };
 
+struct MyliteAstDeleteTarget {
+  const MyliteAstNode *node;
+  size_t start;
+  size_t end;
+  size_t schema_start;
+  size_t schema_end;
+  size_t name_start;
+  size_t name_end;
+  const char *schema_value;
+  size_t schema_value_length;
+  const char *name_value;
+  size_t name_value_length;
+  int has_wildcard;
+};
+
+struct MyliteAstDeleteStatement {
+  const MyliteAstNode *node;
+  const MyliteAstNode *payload_node;
+  const MyliteAstNode *with_node;
+  const MyliteAstNode *target_list_node;
+  const MyliteAstNode *table_reference_node;
+  const MyliteAstNode *where_expression_node;
+  MyliteAstExpression where_expression;
+  MyliteAstDeleteTarget *targets;
+  size_t target_count;
+  MyliteDeleteStatementKind kind;
+  MyliteDeletePriority priority;
+  size_t start;
+  size_t end;
+  size_t target_list_start;
+  size_t target_list_end;
+  size_t table_reference_start;
+  size_t table_reference_end;
+  size_t where_start;
+  size_t where_end;
+  size_t order_by_start;
+  size_t order_by_end;
+  size_t limit_start;
+  size_t limit_end;
+  int has_quick;
+  int has_ignore;
+};
+
 struct MyliteAstUpdateAssignment {
   const MyliteAstNode *node;
   const MyliteAstNode *value_node;
@@ -759,6 +802,7 @@ typedef struct MyliteAstStatement {
   MyliteAstPrepareStatement *prepare_statement;
   MyliteAstExecuteStatement *execute_statement;
   MyliteAstDeallocateStatement *deallocate_statement;
+  MyliteAstDeleteStatement *delete_statement;
   MyliteAstInsertStatement *insert_statement;
   MyliteAstRenameTable *rename_table;
   MyliteAstSelectStatement *select_statement;
@@ -834,6 +878,33 @@ static int mylite_ast_set_statement_target(MyliteAstStatement *statement,
 static int mylite_ast_set_statement_details(MyliteAst *ast,
                                             MyliteAstStatement *statement,
                                             const MyliteAstNode *payload);
+static int mylite_ast_set_delete_statement_view(MyliteAst *ast,
+                                                MyliteAstStatement *statement,
+                                                const MyliteAstNode *payload);
+static void mylite_ast_set_delete_statement_shape(
+    MyliteAstDeleteStatement *delete_statement, const MyliteAstNode *payload);
+static int mylite_ast_set_delete_targets(
+    MyliteAst *ast, MyliteAstDeleteStatement *delete_statement);
+static int mylite_ast_set_delete_clause_expression_views(
+    MyliteAst *ast, MyliteAstDeleteStatement *delete_statement);
+static const MyliteAstNode *mylite_ast_delete_payload(
+    const MyliteAstNode *payload);
+static MyliteDeleteStatementKind mylite_ast_delete_statement_kind(
+    const MyliteAstNode *payload);
+static MyliteDeletePriority mylite_ast_delete_priority(
+    const MyliteAstNode *priority_node);
+static void mylite_ast_set_delete_single_table_reference_span(
+    MyliteAstDeleteStatement *delete_statement, const MyliteAstNode *payload);
+static const char *mylite_ast_delete_target_symbol(
+    const MyliteAstDeleteStatement *delete_statement);
+static size_t mylite_ast_count_delete_targets(const MyliteAstNode *node,
+                                              const char *target_symbol);
+static int mylite_ast_fill_delete_targets(
+    MyliteAst *ast, MyliteAstDeleteTarget *targets, size_t target_count,
+    const MyliteAstNode *node, const char *target_symbol, size_t *index);
+static int mylite_ast_fill_delete_target(MyliteAst *ast,
+                                         MyliteAstDeleteTarget *target,
+                                         const MyliteAstNode *node);
 static int mylite_ast_set_insert_statement_view(MyliteAst *ast,
                                                 MyliteAstStatement *statement,
                                                 const MyliteAstNode *payload);
@@ -1746,6 +1817,35 @@ const char *mylite_insert_priority_name(MyliteInsertPriority priority) {
     case MYLITE_INSERT_PRIORITY_HIGH:
       return "high";
     case MYLITE_INSERT_PRIORITY_DELAYED:
+      return "delayed";
+  }
+  return "unknown";
+}
+
+const char *mylite_delete_statement_kind_name(
+    MyliteDeleteStatementKind kind) {
+  switch (kind) {
+    case MYLITE_DELETE_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_DELETE_STATEMENT_SINGLE_TABLE:
+      return "single_table";
+    case MYLITE_DELETE_STATEMENT_MULTI_TABLE_FROM:
+      return "multi_table_from";
+    case MYLITE_DELETE_STATEMENT_MULTI_TABLE_USING:
+      return "multi_table_using";
+  }
+  return "unknown";
+}
+
+const char *mylite_delete_priority_name(MyliteDeletePriority priority) {
+  switch (priority) {
+    case MYLITE_DELETE_PRIORITY_NONE:
+      return "none";
+    case MYLITE_DELETE_PRIORITY_LOW:
+      return "low";
+    case MYLITE_DELETE_PRIORITY_HIGH:
+      return "high";
+    case MYLITE_DELETE_PRIORITY_DELAYED:
       return "delayed";
   }
   return "unknown";
@@ -2968,6 +3068,13 @@ const MyliteAstDeallocateStatement *mylite_ast_deallocate_statement_view(
   return statement == NULL ? NULL : statement->deallocate_statement;
 }
 
+const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->delete_statement;
+}
+
 const MyliteAstRenameTable *mylite_ast_rename_table_view(
     const MyliteAst *ast, size_t statement_index) {
   const MyliteAstStatement *statement =
@@ -3329,6 +3436,186 @@ mylite_ast_insert_assignment_view_value_expression(
   return assignment == NULL || assignment->value_expression.node == NULL
              ? NULL
              : &assignment->value_expression;
+}
+
+const MyliteAstNode *mylite_ast_delete_statement_view_node(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? NULL : delete_statement->node;
+}
+
+size_t mylite_ast_delete_statement_view_start(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->start;
+}
+
+size_t mylite_ast_delete_statement_view_end(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->end;
+}
+
+int mylite_ast_delete_statement_view_has_with_clause(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement != NULL && delete_statement->with_node != NULL;
+}
+
+int mylite_ast_delete_statement_view_is_multi_table(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement != NULL &&
+         delete_statement->kind != MYLITE_DELETE_STATEMENT_SINGLE_TABLE;
+}
+
+MyliteDeleteStatementKind mylite_ast_delete_statement_view_kind(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? MYLITE_DELETE_STATEMENT_UNKNOWN
+                                  : delete_statement->kind;
+}
+
+MyliteDeletePriority mylite_ast_delete_statement_view_priority(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? MYLITE_DELETE_PRIORITY_NONE
+                                  : delete_statement->priority;
+}
+
+int mylite_ast_delete_statement_view_has_quick(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->has_quick;
+}
+
+int mylite_ast_delete_statement_view_has_ignore(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->has_ignore;
+}
+
+size_t mylite_ast_delete_statement_view_target_list_start(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->target_list_start;
+}
+
+size_t mylite_ast_delete_statement_view_target_list_end(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->target_list_end;
+}
+
+size_t mylite_ast_delete_statement_view_table_reference_start(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0
+                                  : delete_statement->table_reference_start;
+}
+
+size_t mylite_ast_delete_statement_view_table_reference_end(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->table_reference_end;
+}
+
+size_t mylite_ast_delete_statement_view_target_count(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->target_count;
+}
+
+const MyliteAstDeleteTarget *mylite_ast_delete_statement_view_target_at(
+    const MyliteAstDeleteStatement *delete_statement, size_t target_index) {
+  if (delete_statement == NULL || target_index >= delete_statement->target_count) {
+    return NULL;
+  }
+  return &delete_statement->targets[target_index];
+}
+
+size_t mylite_ast_delete_statement_view_where_start(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->where_start;
+}
+
+size_t mylite_ast_delete_statement_view_where_end(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->where_end;
+}
+
+const MyliteAstExpression *mylite_ast_delete_statement_view_where_expression(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ||
+                 delete_statement->where_expression_node == NULL
+             ? NULL
+             : &delete_statement->where_expression;
+}
+
+size_t mylite_ast_delete_statement_view_order_by_start(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->order_by_start;
+}
+
+size_t mylite_ast_delete_statement_view_order_by_end(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->order_by_end;
+}
+
+size_t mylite_ast_delete_statement_view_limit_start(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->limit_start;
+}
+
+size_t mylite_ast_delete_statement_view_limit_end(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->limit_end;
+}
+
+const MyliteAstNode *mylite_ast_delete_target_view_node(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? NULL : target->node;
+}
+
+size_t mylite_ast_delete_target_view_start(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? 0 : target->start;
+}
+
+size_t mylite_ast_delete_target_view_end(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? 0 : target->end;
+}
+
+size_t mylite_ast_delete_target_view_schema_start(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? 0 : target->schema_start;
+}
+
+size_t mylite_ast_delete_target_view_schema_end(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? 0 : target->schema_end;
+}
+
+const char *mylite_ast_delete_target_view_schema_value(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? NULL : target->schema_value;
+}
+
+size_t mylite_ast_delete_target_view_schema_value_length(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? 0 : target->schema_value_length;
+}
+
+size_t mylite_ast_delete_target_view_name_start(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? 0 : target->name_start;
+}
+
+size_t mylite_ast_delete_target_view_name_end(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? 0 : target->name_end;
+}
+
+const char *mylite_ast_delete_target_view_name_value(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? NULL : target->name_value;
+}
+
+size_t mylite_ast_delete_target_view_name_value_length(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? 0 : target->name_value_length;
+}
+
+int mylite_ast_delete_target_view_has_wildcard(
+    const MyliteAstDeleteTarget *target) {
+  return target == NULL ? 0 : target->has_wildcard;
 }
 
 const MyliteAstNode *mylite_ast_update_statement_view_node(
@@ -8599,6 +8886,9 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   if (statement->kind == MYLITE_STATEMENT_INSERT) {
     return mylite_ast_set_insert_statement_view(ast, statement, payload);
   }
+  if (statement->kind == MYLITE_STATEMENT_DELETE) {
+    return mylite_ast_set_delete_statement_view(ast, statement, payload);
+  }
   if (statement->kind == MYLITE_STATEMENT_UPDATE) {
     return mylite_ast_set_update_statement_view(ast, statement, payload);
   }
@@ -8658,6 +8948,295 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   }
   if (strcmp(statement->symbol_name, "nt_use_stmt") == 0) {
     return mylite_ast_set_use_database_view(ast, statement, payload);
+  }
+  return 1;
+}
+
+static int mylite_ast_set_delete_statement_view(MyliteAst *ast,
+                                                MyliteAstStatement *statement,
+                                                const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL || payload == NULL) {
+    return 1;
+  }
+  MyliteAstDeleteStatement *delete_statement =
+      mylite_ast_alloc(ast, sizeof(*delete_statement));
+  if (delete_statement == NULL) {
+    return 0;
+  }
+  delete_statement->node = payload;
+  delete_statement->payload_node = mylite_ast_delete_payload(payload);
+  delete_statement->start = mylite_ast_node_start(payload);
+  delete_statement->end = mylite_ast_node_end(payload);
+  delete_statement->with_node =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_with_clause");
+  mylite_ast_set_delete_statement_shape(delete_statement,
+                                        delete_statement->payload_node);
+  if (!mylite_ast_set_delete_targets(ast, delete_statement) ||
+      !mylite_ast_set_delete_clause_expression_views(ast, delete_statement)) {
+    return 0;
+  }
+  statement->delete_statement = delete_statement;
+  return 1;
+}
+
+static void mylite_ast_set_delete_statement_shape(
+    MyliteAstDeleteStatement *delete_statement, const MyliteAstNode *payload) {
+  if (delete_statement == NULL || payload == NULL) {
+    return;
+  }
+  delete_statement->kind = mylite_ast_delete_statement_kind(payload);
+  const MyliteAstNode *priority =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_priority_opt");
+  const MyliteAstNode *quick =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_quick_optional");
+  const MyliteAstNode *ignore =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_ignore_optional");
+  delete_statement->priority = mylite_ast_delete_priority(priority);
+  delete_statement->has_quick = quick != NULL && quick->has_span;
+  delete_statement->has_ignore = ignore != NULL && ignore->has_span;
+
+  if (delete_statement->kind == MYLITE_DELETE_STATEMENT_SINGLE_TABLE) {
+    delete_statement->target_list_node =
+        mylite_ast_insert_direct_child_symbol(payload, "nt_table_name");
+    mylite_ast_set_delete_single_table_reference_span(delete_statement,
+                                                      payload);
+  } else {
+    delete_statement->target_list_node =
+        mylite_ast_insert_direct_child_symbol(payload,
+                                              "nt_table_alias_ref_list");
+    delete_statement->table_reference_node =
+        mylite_ast_insert_direct_child_symbol(payload, "nt_table_refs");
+    if (delete_statement->table_reference_node != NULL) {
+      delete_statement->table_reference_start =
+          mylite_ast_node_start(delete_statement->table_reference_node);
+      delete_statement->table_reference_end =
+          mylite_ast_node_end(delete_statement->table_reference_node);
+    }
+  }
+  if (delete_statement->target_list_node != NULL) {
+    delete_statement->target_list_start =
+        mylite_ast_node_start(delete_statement->target_list_node);
+    delete_statement->target_list_end =
+        mylite_ast_node_end(delete_statement->target_list_node);
+  }
+
+  const MyliteAstNode *where_optional =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_where_clause_optional");
+  const MyliteAstNode *where =
+      mylite_ast_find_first_spanned_symbol(where_optional, "nt_where_clause");
+  if (where != NULL) {
+    delete_statement->where_start = mylite_ast_node_start(where);
+    delete_statement->where_end = mylite_ast_node_end(where);
+    delete_statement->where_expression_node =
+        mylite_ast_find_first_spanned_symbol(where, "nt_expression");
+  }
+
+  const MyliteAstNode *order_by_optional =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_order_by_optional");
+  const MyliteAstNode *order_by =
+      mylite_ast_find_first_spanned_symbol(order_by_optional, "nt_order_by");
+  if (order_by != NULL) {
+    delete_statement->order_by_start = mylite_ast_node_start(order_by);
+    delete_statement->order_by_end = mylite_ast_node_end(order_by);
+  }
+
+  const MyliteAstNode *limit =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_limit_clause");
+  if (limit != NULL && limit->has_span) {
+    delete_statement->limit_start = mylite_ast_node_start(limit);
+    delete_statement->limit_end = mylite_ast_node_end(limit);
+  }
+}
+
+static int mylite_ast_set_delete_targets(
+    MyliteAst *ast, MyliteAstDeleteStatement *delete_statement) {
+  if (ast == NULL || delete_statement == NULL ||
+      delete_statement->target_list_node == NULL) {
+    return 1;
+  }
+  const char *target_symbol = mylite_ast_delete_target_symbol(delete_statement);
+  delete_statement->target_count = mylite_ast_count_delete_targets(
+      delete_statement->target_list_node, target_symbol);
+  if (delete_statement->target_count == 0) {
+    return 1;
+  }
+  delete_statement->targets =
+      mylite_ast_alloc(ast, delete_statement->target_count *
+                                sizeof(*delete_statement->targets));
+  if (delete_statement->targets == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  return mylite_ast_fill_delete_targets(
+             ast, delete_statement->targets, delete_statement->target_count,
+             delete_statement->target_list_node, target_symbol, &index) &&
+         index == delete_statement->target_count;
+}
+
+static int mylite_ast_set_delete_clause_expression_views(
+    MyliteAst *ast, MyliteAstDeleteStatement *delete_statement) {
+  if (ast == NULL || delete_statement == NULL) {
+    return 1;
+  }
+  if (delete_statement->where_expression_node != NULL &&
+      !mylite_ast_set_expression_summary(ast,
+                                         &delete_statement->where_expression,
+                                         delete_statement
+                                             ->where_expression_node)) {
+    return 0;
+  }
+  return 1;
+}
+
+static const MyliteAstNode *mylite_ast_delete_payload(
+    const MyliteAstNode *payload) {
+  if (payload == NULL) {
+    return NULL;
+  }
+  const MyliteAstNode *without_using =
+      mylite_ast_insert_direct_child_symbol(payload,
+                                            "nt_delete_without_using_stmt");
+  if (without_using != NULL) {
+    return without_using;
+  }
+  const MyliteAstNode *with_using =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_delete_with_using_stmt");
+  return with_using == NULL ? payload : with_using;
+}
+
+static MyliteDeleteStatementKind mylite_ast_delete_statement_kind(
+    const MyliteAstNode *payload) {
+  if (payload == NULL || payload->symbol_name == NULL) {
+    return MYLITE_DELETE_STATEMENT_UNKNOWN;
+  }
+  if (strcmp(payload->symbol_name, "nt_delete_with_using_stmt") == 0) {
+    return MYLITE_DELETE_STATEMENT_MULTI_TABLE_USING;
+  }
+  if (mylite_ast_insert_direct_child_symbol(payload,
+                                            "nt_table_alias_ref_list") != NULL) {
+    return MYLITE_DELETE_STATEMENT_MULTI_TABLE_FROM;
+  }
+  return MYLITE_DELETE_STATEMENT_SINGLE_TABLE;
+}
+
+static MyliteDeletePriority mylite_ast_delete_priority(
+    const MyliteAstNode *priority_node) {
+  if (priority_node == NULL || !priority_node->has_span) {
+    return MYLITE_DELETE_PRIORITY_NONE;
+  }
+  switch (mylite_ast_first_token(priority_node)) {
+    case MYLITE_TOK_LOW_PRIORITY:
+      return MYLITE_DELETE_PRIORITY_LOW;
+    case MYLITE_TOK_HIGH_PRIORITY:
+      return MYLITE_DELETE_PRIORITY_HIGH;
+    case MYLITE_TOK_DELAYED:
+      return MYLITE_DELETE_PRIORITY_DELAYED;
+    default:
+      return MYLITE_DELETE_PRIORITY_NONE;
+  }
+}
+
+static void mylite_ast_set_delete_single_table_reference_span(
+    MyliteAstDeleteStatement *delete_statement, const MyliteAstNode *payload) {
+  if (delete_statement == NULL || payload == NULL ||
+      delete_statement->target_list_node == NULL) {
+    return;
+  }
+  delete_statement->table_reference_node = delete_statement->target_list_node;
+  delete_statement->table_reference_start =
+      mylite_ast_node_start(delete_statement->target_list_node);
+  delete_statement->table_reference_end =
+      mylite_ast_node_end(delete_statement->target_list_node);
+  static const char *const tail_symbols[] = {
+      "nt_partition_name_list_opt",
+      "nt_table_as_name_opt",
+      "nt_index_hint_list_opt",
+  };
+  for (size_t i = 0; i < sizeof(tail_symbols) / sizeof(tail_symbols[0]); i++) {
+    const MyliteAstNode *tail =
+        mylite_ast_insert_direct_child_symbol(payload, tail_symbols[i]);
+    if (tail != NULL && tail->has_span &&
+        mylite_ast_node_end(tail) > delete_statement->table_reference_end) {
+      delete_statement->table_reference_end = mylite_ast_node_end(tail);
+    }
+  }
+}
+
+static const char *mylite_ast_delete_target_symbol(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement != NULL &&
+                 delete_statement->kind == MYLITE_DELETE_STATEMENT_SINGLE_TABLE
+             ? "nt_table_name"
+             : "nt_table_name_opt_wild";
+}
+
+static size_t mylite_ast_count_delete_targets(const MyliteAstNode *node,
+                                              const char *target_symbol) {
+  if (node == NULL || target_symbol == NULL) {
+    return 0;
+  }
+  if (mylite_ast_expression_is_symbol(node, target_symbol)) {
+    return 1;
+  }
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_delete_targets(node->children[i], target_symbol);
+  }
+  return count;
+}
+
+static int mylite_ast_fill_delete_targets(
+    MyliteAst *ast, MyliteAstDeleteTarget *targets, size_t target_count,
+    const MyliteAstNode *node, const char *target_symbol, size_t *index) {
+  if (node == NULL || target_symbol == NULL) {
+    return 1;
+  }
+  if (mylite_ast_expression_is_symbol(node, target_symbol)) {
+    if (targets == NULL || index == NULL || *index >= target_count) {
+      return 0;
+    }
+    if (!mylite_ast_fill_delete_target(ast, &targets[*index], node)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_delete_targets(ast, targets, target_count,
+                                        node->children[i], target_symbol,
+                                        index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_delete_target(MyliteAst *ast,
+                                         MyliteAstDeleteTarget *target,
+                                         const MyliteAstNode *node) {
+  if (ast == NULL || target == NULL || node == NULL) {
+    return 1;
+  }
+  target->node = node;
+  target->start = mylite_ast_node_start(node);
+  target->end = mylite_ast_node_end(node);
+  target->has_wildcard =
+      mylite_ast_find_first_token(node, MYLITE_TOK_STAR) != NULL;
+  mylite_ast_set_table_name_span_parts(node, &target->schema_start,
+                                       &target->schema_end,
+                                       &target->name_start,
+                                       &target->name_end);
+  if (target->schema_start < target->schema_end &&
+      !mylite_ast_decode_identifier(ast, target->schema_start,
+                                    target->schema_end, &target->schema_value,
+                                    &target->schema_value_length)) {
+    return 0;
+  }
+  if (target->name_start < target->name_end &&
+      !mylite_ast_decode_identifier(ast, target->name_start, target->name_end,
+                                    &target->name_value,
+                                    &target->name_value_length)) {
+    return 0;
   }
   return 1;
 }

@@ -138,6 +138,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_execute_statement_view(ast, i);
     const MyliteAstDeallocateStatement *deallocate_statement =
         mylite_ast_deallocate_statement_view(ast, i);
+    const MyliteAstDeleteStatement *delete_statement =
+        mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
         mylite_ast_insert_statement_view(ast, i);
     const MyliteAstRenameTable *rename_table =
@@ -900,6 +902,82 @@ static void dump_statements(const MyliteAst *ast) {
           printf("      insert_duplicate_assignment[%zu].expression\n", j);
           dump_expression_tree(expression, 4);
         }
+      }
+    }
+    if (delete_statement != NULL) {
+      printf("  delete_statement span=%zu..%zu with=%d kind=%s "
+             "multi_table=%d priority=%s quick=%d ignore=%d "
+             "targets=%zu target_list=%zu..%zu table_refs=%zu..%zu "
+             "where=%zu..%zu order=%zu..%zu limit=%zu..%zu node=%s\n",
+             mylite_ast_delete_statement_view_start(delete_statement),
+             mylite_ast_delete_statement_view_end(delete_statement),
+             mylite_ast_delete_statement_view_has_with_clause(
+                 delete_statement),
+             mylite_delete_statement_kind_name(
+                 mylite_ast_delete_statement_view_kind(delete_statement)),
+             mylite_ast_delete_statement_view_is_multi_table(
+                 delete_statement),
+             mylite_delete_priority_name(
+                 mylite_ast_delete_statement_view_priority(delete_statement)),
+             mylite_ast_delete_statement_view_has_quick(delete_statement),
+             mylite_ast_delete_statement_view_has_ignore(delete_statement),
+             mylite_ast_delete_statement_view_target_count(delete_statement),
+             mylite_ast_delete_statement_view_target_list_start(
+                 delete_statement),
+             mylite_ast_delete_statement_view_target_list_end(
+                 delete_statement),
+             mylite_ast_delete_statement_view_table_reference_start(
+                 delete_statement),
+             mylite_ast_delete_statement_view_table_reference_end(
+                 delete_statement),
+             mylite_ast_delete_statement_view_where_start(delete_statement),
+             mylite_ast_delete_statement_view_where_end(delete_statement),
+             mylite_ast_delete_statement_view_order_by_start(delete_statement),
+             mylite_ast_delete_statement_view_order_by_end(delete_statement),
+             mylite_ast_delete_statement_view_limit_start(delete_statement),
+             mylite_ast_delete_statement_view_limit_end(delete_statement),
+             node_symbol_or_none(
+                 mylite_ast_delete_statement_view_node(delete_statement)));
+      const MyliteAstExpression *where_expression =
+          mylite_ast_delete_statement_view_where_expression(delete_statement);
+      if (where_expression != NULL) {
+        fputs("    delete_statement.where_expression\n", stdout);
+        dump_expression_tree(where_expression, 3);
+      }
+      for (size_t j = 0;
+           j < mylite_ast_delete_statement_view_target_count(delete_statement);
+           j++) {
+        const MyliteAstDeleteTarget *target =
+            mylite_ast_delete_statement_view_target_at(delete_statement, j);
+        printf("    delete_target[%zu] span=%zu..%zu schema=%zu..%zu "
+               "name=%zu..%zu wildcard=%d schema_len=%zu schema=",
+               j, mylite_ast_delete_target_view_start(target),
+               mylite_ast_delete_target_view_end(target),
+               mylite_ast_delete_target_view_schema_start(target),
+               mylite_ast_delete_target_view_schema_end(target),
+               mylite_ast_delete_target_view_name_start(target),
+               mylite_ast_delete_target_view_name_end(target),
+               mylite_ast_delete_target_view_has_wildcard(target),
+               mylite_ast_delete_target_view_schema_value_length(target));
+        const char *schema =
+            mylite_ast_delete_target_view_schema_value(target);
+        if (schema == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              schema,
+              mylite_ast_delete_target_view_schema_value_length(target));
+        }
+        printf(" name_len=%zu name=",
+               mylite_ast_delete_target_view_name_value_length(target));
+        const char *name = mylite_ast_delete_target_view_name_value(target);
+        if (name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              name, mylite_ast_delete_target_view_name_value_length(target));
+        }
+        fputc('\n', stdout);
       }
     }
     if (update_statement != NULL) {

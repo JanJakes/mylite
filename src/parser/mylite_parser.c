@@ -11341,6 +11341,15 @@ void mylite_parser_require_unsigned_integer_or_hex_literal(
   mylite_parser_reject(ctx, token, "invalid integer literal");
 }
 
+void mylite_parser_require_unsigned_size_literal(MyliteParseContext *ctx,
+                                                 MyliteToken token) {
+  if (token_is_unsigned_size_literal(token)) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid size literal");
+}
+
 void mylite_parser_require_text_string_literal(MyliteParseContext *ctx,
                                                MyliteToken token) {
   if (!token_is_quoted_hex_or_bit_literal(token)) {

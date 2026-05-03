@@ -266,17 +266,20 @@ token sink:
   `SELECT`/`WITH`/`TABLE`/`VALUES` expression tails plus their outer `ORDER BY`
   and `LIMIT` suffixes.
 - `CREATE LOGFILE GROUP` and `ALTER LOGFILE GROUP` recognize `ADD UNDOFILE`,
-  string-literal file names, documented NDB logfile options with numeric
-  size/nodegroup values including quoted hex where MySQL accepts it, `WAIT`,
-  and optional `ENGINE`/`STORAGE ENGINE` clauses, while rejecting quoted
-  hex/bit literals in text-string file/comment positions.
+  string-literal file names, documented NDB logfile options with unsigned size
+  values including suffixes and numeric/quoted hex, unsigned
+  integer/lowercase-hex nodegroups, `WAIT`, and optional
+  `ENGINE`/`STORAGE ENGINE` clauses, while rejecting quoted hex/bit literals in
+  text-string file/comment positions.
 - `CREATE TABLESPACE` and `ALTER TABLESPACE` recognize documented
-  string-literal data files, numeric size including quoted hex, `WAIT`,
+  string-literal data files, unsigned size values including suffixes and
+  numeric/quoted hex, unsigned integer/lowercase-hex nodegroups, `WAIT`,
   string-literal encryption, optional-equals engine/storage-engine options, and
-  string-literal attribute clauses, including repeated simple `ALTER TABLESPACE`
-  option lists, while rejecting quoted hex/bit literals in text-string
-  positions. UNDO tablespaces use MySQL's narrower option list: required
-  string-literal create data files plus optional `ENGINE`/`STORAGE ENGINE`.
+  string-literal attribute clauses, including repeated simple
+  `ALTER TABLESPACE` option lists, while rejecting quoted hex/bit literals in
+  text-string positions. UNDO tablespaces use MySQL's narrower option list:
+  required string-literal create data files plus optional
+  `ENGINE`/`STORAGE ENGINE`.
   Drop tablespace/logfile tails recognize MySQL option lists including `ENGINE`,
   `STORAGE ENGINE`,
   `WAIT`, and `NO_WAIT`.

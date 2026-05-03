@@ -997,7 +997,7 @@ create_logfile_group_options_tail ::= create_logfile_group_options_tail create_l
 create_logfile_group_option ::= INITIAL_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_logfile_group_option ::= UNDO_BUFFER_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_logfile_group_option ::= REDO_BUFFER_SIZE drop_index_option_equals_tail tablespace_number_value.
-create_logfile_group_option ::= NODEGROUP drop_index_option_equals_tail tablespace_number_value.
+create_logfile_group_option ::= NODEGROUP drop_index_option_equals_tail tablespace_nodegroup_value.
 create_logfile_group_option ::= tablespace_engine_option.
 create_logfile_group_option ::= WAIT.
 create_logfile_group_option ::= COMMENT drop_index_option_equals_tail text_string_literal.
@@ -1024,7 +1024,7 @@ create_tablespace_option ::= USE LOGFILE create_logfile_group cache_name_part.
 create_tablespace_option ::= EXTENT_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= INITIAL_SIZE drop_index_option_equals_tail tablespace_number_value.
 create_tablespace_option ::= MAX_SIZE drop_index_option_equals_tail tablespace_number_value.
-create_tablespace_option ::= NODEGROUP drop_index_option_equals_tail tablespace_number_value.
+create_tablespace_option ::= NODEGROUP drop_index_option_equals_tail tablespace_nodegroup_value.
 create_tablespace_option ::= WAIT.
 create_tablespace_option ::= COMMENT drop_index_option_equals_tail text_string_literal.
 create_tablespace_option ::= tablespace_engine_option.
@@ -1032,12 +1032,20 @@ create_tablespace_option ::= ENGINE_ATTRIBUTE drop_index_option_equals_tail text
 
 create_undo_tablespace_tail ::= create_add create_datafile text_string_literal undo_tablespace_options_tail.
 
-tablespace_number_value ::= BOOLEAN_NUMBER.
-tablespace_number_value ::= FACTOR_NUMBER.
-tablespace_number_value ::= NUMBER_LITERAL.
+tablespace_number_value ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_size_literal(ctx, A);
+}
+tablespace_number_value ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_size_literal(ctx, A);
+}
+tablespace_number_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_size_literal(ctx, A);
+}
 tablespace_number_value ::= STRING_LITERAL(A). {
   mylite_parser_require_quoted_hex_literal(ctx, A);
 }
+
+tablespace_nodegroup_value ::= unsigned_integer_or_lower_hex_value.
 
 create_server_tail ::= create_foreign DATA create_wrapper cache_name_part create_server_options.
 

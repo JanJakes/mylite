@@ -117,6 +117,8 @@ void mylite_parser_require_unsigned_integer_or_lower_hex_literal(
     MyliteParseContext *ctx, MyliteToken token);
 void mylite_parser_require_unsigned_integer_or_hex_literal(
     MyliteParseContext *ctx, MyliteToken token);
+void mylite_parser_require_unsigned_size_literal(MyliteParseContext *ctx,
+                                                 MyliteToken token);
 void mylite_parser_require_text_string_literal(MyliteParseContext *ctx,
                                                MyliteToken token);
 void mylite_parser_require_quoted_hex_literal(MyliteParseContext *ctx,

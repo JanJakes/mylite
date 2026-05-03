@@ -144,6 +144,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_deallocate_statement_view(ast, i);
     const MyliteAstExplainStatement *explain_statement =
         mylite_ast_explain_statement_view(ast, i);
+    const MyliteAstShowStatement *show_statement =
+        mylite_ast_show_statement_view(ast, i);
     const MyliteAstDeleteStatement *delete_statement =
         mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
@@ -800,6 +802,100 @@ static void dump_statements(const MyliteAst *ast) {
                 explain_statement));
       }
       fputc('\n', stdout);
+    }
+    if (show_statement != NULL) {
+      printf("  show_statement span=%zu..%zu kind=%s scope=%s full=%d "
+             "extended=%d count=%d target=%zu..%zu database=%zu..%zu "
+             "table=%zu..%zu like=%zu..%zu where=%zu..%zu limit=%zu..%zu "
+             "node=%s target_node=%s\n",
+             mylite_ast_show_statement_view_start(show_statement),
+             mylite_ast_show_statement_view_end(show_statement),
+             mylite_show_statement_kind_name(
+                 mylite_ast_show_statement_view_kind(show_statement)),
+             mylite_show_scope_name(
+                 mylite_ast_show_statement_view_scope(show_statement)),
+             mylite_ast_show_statement_view_has_full(show_statement),
+             mylite_ast_show_statement_view_has_extended(show_statement),
+             mylite_ast_show_statement_view_has_count(show_statement),
+             mylite_ast_show_statement_view_target_start(show_statement),
+             mylite_ast_show_statement_view_target_end(show_statement),
+             mylite_ast_show_statement_view_database_start(show_statement),
+             mylite_ast_show_statement_view_database_end(show_statement),
+             mylite_ast_show_statement_view_table_start(show_statement),
+             mylite_ast_show_statement_view_table_end(show_statement),
+             mylite_ast_show_statement_view_like_start(show_statement),
+             mylite_ast_show_statement_view_like_end(show_statement),
+             mylite_ast_show_statement_view_where_start(show_statement),
+             mylite_ast_show_statement_view_where_end(show_statement),
+             mylite_ast_show_statement_view_limit_start(show_statement),
+             mylite_ast_show_statement_view_limit_end(show_statement),
+             node_symbol_or_none(
+                 mylite_ast_show_statement_view_node(show_statement)),
+             node_symbol_or_none(
+                 mylite_ast_show_statement_view_target_node(show_statement)));
+      printf("    show.database len=%zu value=",
+             mylite_ast_show_statement_view_database_value_length(
+                 show_statement));
+      const char *database =
+          mylite_ast_show_statement_view_database_value(show_statement);
+      if (database == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            database,
+            mylite_ast_show_statement_view_database_value_length(
+                show_statement));
+      }
+      printf(" table_schema_len=%zu value=",
+             mylite_ast_show_statement_view_table_schema_value_length(
+                 show_statement));
+      const char *schema =
+          mylite_ast_show_statement_view_table_schema_value(show_statement);
+      if (schema == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            schema,
+            mylite_ast_show_statement_view_table_schema_value_length(
+                show_statement));
+      }
+      printf(" table_name_len=%zu value=",
+             mylite_ast_show_statement_view_table_name_value_length(
+                 show_statement));
+      const char *name =
+          mylite_ast_show_statement_view_table_name_value(show_statement);
+      if (name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            name,
+            mylite_ast_show_statement_view_table_name_value_length(
+                show_statement));
+      }
+      printf(" like_len=%zu value=",
+             mylite_ast_show_statement_view_like_value_length(show_statement));
+      const char *like =
+          mylite_ast_show_statement_view_like_value(show_statement);
+      if (like == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            like,
+            mylite_ast_show_statement_view_like_value_length(show_statement));
+      }
+      fputc('\n', stdout);
+      if (mylite_ast_show_statement_view_like_expression(show_statement) !=
+          NULL) {
+        fputs("    show.like_expression\n", stdout);
+        dump_expression_tree(
+            mylite_ast_show_statement_view_like_expression(show_statement), 3);
+      }
+      if (mylite_ast_show_statement_view_where_expression(show_statement) !=
+          NULL) {
+        fputs("    show.where_expression\n", stdout);
+        dump_expression_tree(
+            mylite_ast_show_statement_view_where_expression(show_statement), 3);
+      }
     }
     if (insert_statement != NULL) {
       printf("  insert_statement span=%zu..%zu source=%s priority=%s "

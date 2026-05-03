@@ -203,6 +203,7 @@ static int expect_drop_index_view(void);
 static int expect_drop_table_view(void);
 static int expect_drop_view_view(void);
 static int expect_explain_statement_view(void);
+static int expect_show_statement_view(void);
 static int expect_call_statement_view(void);
 static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
@@ -820,6 +821,7 @@ int main(void) {
   failures += expect_drop_table_view();
   failures += expect_drop_view_view();
   failures += expect_explain_statement_view();
+  failures += expect_show_statement_view();
   failures += expect_call_statement_view();
   failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
@@ -4266,6 +4268,159 @@ static int expect_explain_statement_view(void) {
             mylite_ast_explain_statement_view_column_value_length(view),
             "c`z")) {
       fprintf(stderr, "DESCRIBE table view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  return failed;
+}
+
+static int expect_show_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql = "SHOW FULL TABLES FROM `db``x` LIKE 'a%'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "SHOW TABLES view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstShowStatement *view = mylite_ast_show_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_show_statement_view_kind(view) !=
+            MYLITE_SHOW_STATEMENT_TABLES ||
+        !mylite_ast_show_statement_view_has_full(view) ||
+        !value_matches_when_expected(
+            mylite_ast_show_statement_view_database_value(view),
+            mylite_ast_show_statement_view_database_value_length(view),
+            "db`x") ||
+        !value_matches_when_expected(
+            mylite_ast_show_statement_view_like_value(view),
+            mylite_ast_show_statement_view_like_value_length(view), "a%") ||
+        mylite_ast_show_statement_view_like_expression(view) == NULL) {
+      fprintf(stderr, "SHOW TABLES view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "SHOW COLUMNS FROM `db``x`.`t``y` WHERE Field = 'id'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "SHOW COLUMNS view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstShowStatement *view = mylite_ast_show_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_show_statement_view_kind(view) !=
+            MYLITE_SHOW_STATEMENT_COLUMNS ||
+        !value_matches_when_expected(
+            mylite_ast_show_statement_view_table_schema_value(view),
+            mylite_ast_show_statement_view_table_schema_value_length(view),
+            "db`x") ||
+        !value_matches_when_expected(
+            mylite_ast_show_statement_view_table_name_value(view),
+            mylite_ast_show_statement_view_table_name_value_length(view),
+            "t`y") ||
+        mylite_ast_show_statement_view_where_expression(view) == NULL) {
+      fprintf(stderr, "SHOW COLUMNS view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "SHOW GLOBAL VARIABLES LIKE 'max%'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "SHOW VARIABLES view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstShowStatement *view = mylite_ast_show_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_show_statement_view_kind(view) !=
+            MYLITE_SHOW_STATEMENT_VARIABLES ||
+        mylite_ast_show_statement_view_scope(view) != MYLITE_SHOW_SCOPE_GLOBAL ||
+        !value_matches_when_expected(
+            mylite_ast_show_statement_view_like_value(view),
+            mylite_ast_show_statement_view_like_value_length(view), "max%")) {
+      fprintf(stderr, "SHOW VARIABLES view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "SHOW CREATE TABLE `db``x`.`t``y`";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "SHOW CREATE TABLE view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstShowStatement *view = mylite_ast_show_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_show_statement_view_kind(view) !=
+            MYLITE_SHOW_STATEMENT_CREATE_TABLE ||
+        !value_matches_when_expected(
+            mylite_ast_show_statement_view_database_value(view),
+            mylite_ast_show_statement_view_database_value_length(view),
+            "db`x") ||
+        !value_matches_when_expected(
+            mylite_ast_show_statement_view_table_name_value(view),
+            mylite_ast_show_statement_view_table_name_value_length(view),
+            "t`y")) {
+      fprintf(stderr, "SHOW CREATE TABLE view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "SHOW WARNINGS LIMIT 2";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "SHOW WARNINGS view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstShowStatement *view = mylite_ast_show_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_show_statement_view_kind(view) !=
+            MYLITE_SHOW_STATEMENT_WARNINGS ||
+        !span_matches(sql, mylite_ast_show_statement_view_limit_start(view),
+                      mylite_ast_show_statement_view_limit_end(view),
+                      "LIMIT 2")) {
+      fprintf(stderr, "SHOW WARNINGS view failed: %s\n", sql);
       failed = 1;
     }
     mylite_ast_free(ast);

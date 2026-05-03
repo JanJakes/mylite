@@ -114,6 +114,10 @@ expression nodes.
   analyze, for-connection, and table-description forms, including format kind,
   explained statement anchors, parsed connection IDs, and decoded table/column
   names.
+- `SHOW` statements expose typed parser views for common metadata probes,
+  including statement kind, scope, `FULL`/`EXTENDED`/`COUNT` modifiers, decoded
+  database/table targets, `LIKE` patterns, `WHERE` expressions, and `LIMIT`
+  anchors.
 - Transaction-control statements expose begin form, access mode, consistency
   modifiers, `WORK`, completion modifiers, and decoded savepoint names.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
@@ -226,6 +230,9 @@ expression nodes.
 - typed `EXPLAIN`/`DESCRIBE` descriptors with statement form, format kind,
   `ANALYZE` marker, explained statement CST anchor/span, parsed connection ID,
   decoded table schema/name, and decoded optional column name
+- typed `SHOW` descriptors with common show-kind classification, scope,
+  modifiers, target span, decoded database/table names, decoded `LIKE` string,
+  recursive `LIKE`/`WHERE` expression handles, and `LIMIT` span
 - typed transaction-control descriptors with statement kind, begin form,
   TiDB begin mode, access mode, consistency modifiers, `WORK`, completion
   modifiers, savepoint-keyword marker, and decoded savepoint name
@@ -517,6 +524,16 @@ for `DESCRIBE table [column]`. The view intentionally matches only direct
 `EXPLAIN` children for modifiers, so keywords inside the explained query do not
 change the outer diagnostic statement classification.
 
+Metadata inspection views now cover common `SHOW` statements. The view
+classifies broad statement families such as databases, tables, columns, indexes,
+variables, status, warnings/errors, grants, processlist, `SHOW CREATE ...`, and
+other metadata probes. It records session/global scope, `FULL`, `EXTENDED`, and
+`COUNT(*)` modifiers, decoded database/table targets, decoded string-literal
+`LIKE` values, recursive expression handles for `LIKE` and `WHERE`, and `LIMIT`
+spans. This is intentionally still a parser view: result-set columns, privilege
+checks, warning table contents, status-variable lookup, and information-schema
+backing rows remain semantic/runtime work.
+
 Transaction-control views cover `BEGIN`, `START TRANSACTION`, `COMMIT`,
 `ROLLBACK`, `SAVEPOINT`, and `RELEASE SAVEPOINT`. `BEGIN`/`START TRANSACTION`
 records the begin form, optional TiDB pessimistic/optimistic markers, MySQL
@@ -564,6 +581,13 @@ Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:
 ```text
 mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.310846 qps=190241 mbps=14.47 avg_us=5.257 avg_nodes=74.5 avg_ast_bytes=10905.4 avg_explain_statement_views=0.05 avg_explain_statement_query_forms=0.05 avg_explain_statement_analyze_forms=0.00 avg_explain_statement_for_connection_forms=0.00 avg_explain_statement_table_forms=0.00 avg_explain_statement_format_values=0.01 avg_explain_statement_statement_nodes=0.05 avg_explain_statement_connection_ids=0.00 avg_explain_statement_table_name_values=0.00 avg_explain_statement_column_values=0.00
 mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.491807 qps=185645 mbps=14.12 avg_us=5.387 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.03
+```
+
+Latest SHOW parser-view run on May 3, 2026:
+
+```text
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.446338 qps=186779 mbps=14.20 avg_us=5.354 avg_nodes=74.5 avg_ast_bytes=10907.9 avg_show_statement_views=0.02 avg_show_statement_table_forms=0.00 avg_show_statement_column_forms=0.00 avg_show_statement_variable_forms=0.00 avg_show_statement_warning_forms=0.00 avg_show_statement_create_forms=0.00 avg_show_statement_scopes=0.00 avg_show_statement_full_modifiers=0.00 avg_show_statement_extended_modifiers=0.00 avg_show_statement_count_modifiers=0.00 avg_show_statement_database_values=0.00 avg_show_statement_table_name_values=0.01 avg_show_statement_like_values=0.00 avg_show_statement_like_expressions=0.00 avg_show_statement_where_expressions=0.00 avg_show_statement_limit_clauses=0.00 avg_show_statement_expression_tree_nodes=0.01 avg_show_statement_expression_tree_operators=0.00 avg_show_statement_expression_tree_leaf_values=0.01
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.616669 qps=182602 mbps=13.89 avg_us=5.476 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.03
 ```
 
 Release benchmark result on May 2, 2026:

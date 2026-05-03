@@ -65,6 +65,7 @@ typedef struct MyliteAstReplaceValue MyliteAstReplaceValue;
 typedef struct MyliteAstRenameTable MyliteAstRenameTable;
 typedef struct MyliteAstSelectProjection MyliteAstSelectProjection;
 typedef struct MyliteAstSelectStatement MyliteAstSelectStatement;
+typedef struct MyliteAstShowStatement MyliteAstShowStatement;
 typedef struct MyliteAstSetAssignment MyliteAstSetAssignment;
 typedef struct MyliteAstSetStatement MyliteAstSetStatement;
 typedef struct MyliteAstTruncateTable MyliteAstTruncateTable;
@@ -267,6 +268,47 @@ typedef enum MyliteExplainFormatKind {
   MYLITE_EXPLAIN_FORMAT_JSON,
   MYLITE_EXPLAIN_FORMAT_TREE
 } MyliteExplainFormatKind;
+
+typedef enum MyliteShowStatementKind {
+  MYLITE_SHOW_STATEMENT_UNKNOWN = 0,
+  MYLITE_SHOW_STATEMENT_OTHER,
+  MYLITE_SHOW_STATEMENT_ENGINES,
+  MYLITE_SHOW_STATEMENT_DATABASES,
+  MYLITE_SHOW_STATEMENT_CHARSET,
+  MYLITE_SHOW_STATEMENT_TABLES,
+  MYLITE_SHOW_STATEMENT_OPEN_TABLES,
+  MYLITE_SHOW_STATEMENT_TABLE_STATUS,
+  MYLITE_SHOW_STATEMENT_COLUMNS,
+  MYLITE_SHOW_STATEMENT_INDEX,
+  MYLITE_SHOW_STATEMENT_WARNINGS,
+  MYLITE_SHOW_STATEMENT_ERRORS,
+  MYLITE_SHOW_STATEMENT_VARIABLES,
+  MYLITE_SHOW_STATEMENT_STATUS,
+  MYLITE_SHOW_STATEMENT_COLLATION,
+  MYLITE_SHOW_STATEMENT_TRIGGERS,
+  MYLITE_SHOW_STATEMENT_EVENTS,
+  MYLITE_SHOW_STATEMENT_PROCESSLIST,
+  MYLITE_SHOW_STATEMENT_GRANTS,
+  MYLITE_SHOW_STATEMENT_CREATE_TABLE,
+  MYLITE_SHOW_STATEMENT_CREATE_VIEW,
+  MYLITE_SHOW_STATEMENT_CREATE_DATABASE,
+  MYLITE_SHOW_STATEMENT_CREATE_PROCEDURE,
+  MYLITE_SHOW_STATEMENT_MASTER_STATUS,
+  MYLITE_SHOW_STATEMENT_BINARY_LOG_STATUS,
+  MYLITE_SHOW_STATEMENT_REPLICA_STATUS,
+  MYLITE_SHOW_STATEMENT_PROFILE,
+  MYLITE_SHOW_STATEMENT_PROFILES,
+  MYLITE_SHOW_STATEMENT_PRIVILEGES,
+  MYLITE_SHOW_STATEMENT_PLUGINS,
+  MYLITE_SHOW_STATEMENT_PROCEDURE_STATUS,
+  MYLITE_SHOW_STATEMENT_FUNCTION_STATUS
+} MyliteShowStatementKind;
+
+typedef enum MyliteShowScope {
+  MYLITE_SHOW_SCOPE_UNSPECIFIED = 0,
+  MYLITE_SHOW_SCOPE_GLOBAL,
+  MYLITE_SHOW_SCOPE_SESSION
+} MyliteShowScope;
 
 typedef enum MyliteCreateTableColumnTypeFamily {
   MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN = 0,
@@ -686,6 +728,8 @@ const char *mylite_update_priority_name(MyliteUpdatePriority priority);
 const char *mylite_explain_statement_kind_name(
     MyliteExplainStatementKind kind);
 const char *mylite_explain_format_kind_name(MyliteExplainFormatKind kind);
+const char *mylite_show_statement_kind_name(MyliteShowStatementKind kind);
+const char *mylite_show_scope_name(MyliteShowScope scope);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
     MyliteExpressionLiteralKind kind);
@@ -871,6 +915,8 @@ const MyliteAstExecuteStatement *mylite_ast_execute_statement_view(
 const MyliteAstDeallocateStatement *mylite_ast_deallocate_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstExplainStatement *mylite_ast_explain_statement_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstShowStatement *mylite_ast_show_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
     const MyliteAst *ast, size_t statement_index);
@@ -1946,6 +1992,68 @@ const char *mylite_ast_explain_statement_view_column_value(
     const MyliteAstExplainStatement *explain_statement);
 size_t mylite_ast_explain_statement_view_column_value_length(
     const MyliteAstExplainStatement *explain_statement);
+const MyliteAstNode *mylite_ast_show_statement_view_node(
+    const MyliteAstShowStatement *show_statement);
+const MyliteAstNode *mylite_ast_show_statement_view_target_node(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_start(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_end(
+    const MyliteAstShowStatement *show_statement);
+MyliteShowStatementKind mylite_ast_show_statement_view_kind(
+    const MyliteAstShowStatement *show_statement);
+MyliteShowScope mylite_ast_show_statement_view_scope(
+    const MyliteAstShowStatement *show_statement);
+int mylite_ast_show_statement_view_has_full(
+    const MyliteAstShowStatement *show_statement);
+int mylite_ast_show_statement_view_has_extended(
+    const MyliteAstShowStatement *show_statement);
+int mylite_ast_show_statement_view_has_count(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_target_start(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_target_end(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_database_start(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_database_end(
+    const MyliteAstShowStatement *show_statement);
+const char *mylite_ast_show_statement_view_database_value(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_database_value_length(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_table_start(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_table_end(
+    const MyliteAstShowStatement *show_statement);
+const char *mylite_ast_show_statement_view_table_schema_value(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_table_schema_value_length(
+    const MyliteAstShowStatement *show_statement);
+const char *mylite_ast_show_statement_view_table_name_value(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_table_name_value_length(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_like_start(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_like_end(
+    const MyliteAstShowStatement *show_statement);
+const char *mylite_ast_show_statement_view_like_value(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_like_value_length(
+    const MyliteAstShowStatement *show_statement);
+const MyliteAstExpression *mylite_ast_show_statement_view_like_expression(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_where_start(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_where_end(
+    const MyliteAstShowStatement *show_statement);
+const MyliteAstExpression *mylite_ast_show_statement_view_where_expression(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_limit_start(
+    const MyliteAstShowStatement *show_statement);
+size_t mylite_ast_show_statement_view_limit_end(
+    const MyliteAstShowStatement *show_statement);
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
     const MyliteAstTransactionStatement *transaction_statement);
 size_t mylite_ast_transaction_statement_view_start(

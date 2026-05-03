@@ -324,6 +324,25 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t explain_statement_connection_ids = 0;
   size_t explain_statement_table_name_values = 0;
   size_t explain_statement_column_values = 0;
+  size_t show_statement_views = 0;
+  size_t show_statement_table_forms = 0;
+  size_t show_statement_column_forms = 0;
+  size_t show_statement_variable_forms = 0;
+  size_t show_statement_warning_forms = 0;
+  size_t show_statement_create_forms = 0;
+  size_t show_statement_scopes = 0;
+  size_t show_statement_full_modifiers = 0;
+  size_t show_statement_extended_modifiers = 0;
+  size_t show_statement_count_modifiers = 0;
+  size_t show_statement_database_values = 0;
+  size_t show_statement_table_name_values = 0;
+  size_t show_statement_like_values = 0;
+  size_t show_statement_like_expressions = 0;
+  size_t show_statement_where_expressions = 0;
+  size_t show_statement_limit_clauses = 0;
+  size_t show_statement_expression_tree_nodes = 0;
+  size_t show_statement_expression_tree_operators = 0;
+  size_t show_statement_expression_tree_leaf_values = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t set_statement_views = 0;
@@ -1614,6 +1633,104 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 explain_statement_column_values++;
               }
             }
+            const MyliteAstShowStatement *show_statement =
+                mylite_ast_show_statement_view(ast, i);
+            if (show_statement != NULL) {
+              show_statement_views++;
+              switch (mylite_ast_show_statement_view_kind(show_statement)) {
+                case MYLITE_SHOW_STATEMENT_TABLES:
+                case MYLITE_SHOW_STATEMENT_OPEN_TABLES:
+                case MYLITE_SHOW_STATEMENT_TABLE_STATUS:
+                  show_statement_table_forms++;
+                  break;
+                case MYLITE_SHOW_STATEMENT_COLUMNS:
+                  show_statement_column_forms++;
+                  break;
+                case MYLITE_SHOW_STATEMENT_VARIABLES:
+                  show_statement_variable_forms++;
+                  break;
+                case MYLITE_SHOW_STATEMENT_WARNINGS:
+                case MYLITE_SHOW_STATEMENT_ERRORS:
+                  show_statement_warning_forms++;
+                  break;
+                case MYLITE_SHOW_STATEMENT_CREATE_TABLE:
+                case MYLITE_SHOW_STATEMENT_CREATE_VIEW:
+                case MYLITE_SHOW_STATEMENT_CREATE_DATABASE:
+                case MYLITE_SHOW_STATEMENT_CREATE_PROCEDURE:
+                  show_statement_create_forms++;
+                  break;
+                case MYLITE_SHOW_STATEMENT_UNKNOWN:
+                case MYLITE_SHOW_STATEMENT_OTHER:
+                case MYLITE_SHOW_STATEMENT_ENGINES:
+                case MYLITE_SHOW_STATEMENT_DATABASES:
+                case MYLITE_SHOW_STATEMENT_CHARSET:
+                case MYLITE_SHOW_STATEMENT_INDEX:
+                case MYLITE_SHOW_STATEMENT_STATUS:
+                case MYLITE_SHOW_STATEMENT_COLLATION:
+                case MYLITE_SHOW_STATEMENT_TRIGGERS:
+                case MYLITE_SHOW_STATEMENT_EVENTS:
+                case MYLITE_SHOW_STATEMENT_PROCESSLIST:
+                case MYLITE_SHOW_STATEMENT_GRANTS:
+                case MYLITE_SHOW_STATEMENT_MASTER_STATUS:
+                case MYLITE_SHOW_STATEMENT_BINARY_LOG_STATUS:
+                case MYLITE_SHOW_STATEMENT_REPLICA_STATUS:
+                case MYLITE_SHOW_STATEMENT_PROFILE:
+                case MYLITE_SHOW_STATEMENT_PROFILES:
+                case MYLITE_SHOW_STATEMENT_PRIVILEGES:
+                case MYLITE_SHOW_STATEMENT_PLUGINS:
+                case MYLITE_SHOW_STATEMENT_PROCEDURE_STATUS:
+                case MYLITE_SHOW_STATEMENT_FUNCTION_STATUS:
+                  break;
+              }
+              if (mylite_ast_show_statement_view_scope(show_statement) !=
+                  MYLITE_SHOW_SCOPE_UNSPECIFIED) {
+                show_statement_scopes++;
+              }
+              if (mylite_ast_show_statement_view_has_full(show_statement)) {
+                show_statement_full_modifiers++;
+              }
+              if (mylite_ast_show_statement_view_has_extended(show_statement)) {
+                show_statement_extended_modifiers++;
+              }
+              if (mylite_ast_show_statement_view_has_count(show_statement)) {
+                show_statement_count_modifiers++;
+              }
+              if (mylite_ast_show_statement_view_database_value(
+                      show_statement) != NULL) {
+                show_statement_database_values++;
+              }
+              if (mylite_ast_show_statement_view_table_name_value(
+                      show_statement) != NULL) {
+                show_statement_table_name_values++;
+              }
+              if (mylite_ast_show_statement_view_like_value(show_statement) !=
+                  NULL) {
+                show_statement_like_values++;
+              }
+              const MyliteAstExpression *like_expression =
+                  mylite_ast_show_statement_view_like_expression(show_statement);
+              if (like_expression != NULL) {
+                show_statement_like_expressions++;
+                count_expression_tree(
+                    like_expression, &show_statement_expression_tree_nodes,
+                    &show_statement_expression_tree_operators,
+                    &show_statement_expression_tree_leaf_values);
+              }
+              const MyliteAstExpression *where_expression =
+                  mylite_ast_show_statement_view_where_expression(
+                      show_statement);
+              if (where_expression != NULL) {
+                show_statement_where_expressions++;
+                count_expression_tree(
+                    where_expression, &show_statement_expression_tree_nodes,
+                    &show_statement_expression_tree_operators,
+                    &show_statement_expression_tree_leaf_values);
+              }
+              if (mylite_ast_show_statement_view_limit_end(show_statement) !=
+                  0) {
+                show_statement_limit_clauses++;
+              }
+            }
             const MyliteAstSetStatement *set_statement =
                 mylite_ast_set_statement_view(ast, i);
             if (set_statement != NULL) {
@@ -2210,6 +2327,25 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_explain_statement_connection_ids=%.2f "
            "avg_explain_statement_table_name_values=%.2f "
            "avg_explain_statement_column_values=%.2f "
+           "avg_show_statement_views=%.2f "
+           "avg_show_statement_table_forms=%.2f "
+           "avg_show_statement_column_forms=%.2f "
+           "avg_show_statement_variable_forms=%.2f "
+           "avg_show_statement_warning_forms=%.2f "
+           "avg_show_statement_create_forms=%.2f "
+           "avg_show_statement_scopes=%.2f "
+           "avg_show_statement_full_modifiers=%.2f "
+           "avg_show_statement_extended_modifiers=%.2f "
+           "avg_show_statement_count_modifiers=%.2f "
+           "avg_show_statement_database_values=%.2f "
+           "avg_show_statement_table_name_values=%.2f "
+           "avg_show_statement_like_values=%.2f "
+           "avg_show_statement_like_expressions=%.2f "
+           "avg_show_statement_where_expressions=%.2f "
+           "avg_show_statement_limit_clauses=%.2f "
+           "avg_show_statement_expression_tree_nodes=%.2f "
+           "avg_show_statement_expression_tree_operators=%.2f "
+           "avg_show_statement_expression_tree_leaf_values=%.2f "
            "avg_set_statement_views=%.2f "
            "avg_set_statement_assignments=%.2f "
            "avg_set_assignment_name_values=%.2f "
@@ -2548,6 +2684,26 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)explain_statement_connection_ids / (double)parsed,
            (double)explain_statement_table_name_values / (double)parsed,
            (double)explain_statement_column_values / (double)parsed,
+           (double)show_statement_views / (double)parsed,
+           (double)show_statement_table_forms / (double)parsed,
+           (double)show_statement_column_forms / (double)parsed,
+           (double)show_statement_variable_forms / (double)parsed,
+           (double)show_statement_warning_forms / (double)parsed,
+           (double)show_statement_create_forms / (double)parsed,
+           (double)show_statement_scopes / (double)parsed,
+           (double)show_statement_full_modifiers / (double)parsed,
+           (double)show_statement_extended_modifiers / (double)parsed,
+           (double)show_statement_count_modifiers / (double)parsed,
+           (double)show_statement_database_values / (double)parsed,
+           (double)show_statement_table_name_values / (double)parsed,
+           (double)show_statement_like_values / (double)parsed,
+           (double)show_statement_like_expressions / (double)parsed,
+           (double)show_statement_where_expressions / (double)parsed,
+           (double)show_statement_limit_clauses / (double)parsed,
+           (double)show_statement_expression_tree_nodes / (double)parsed,
+           (double)show_statement_expression_tree_operators / (double)parsed,
+           (double)show_statement_expression_tree_leaf_values /
+               (double)parsed,
            (double)set_statement_views / (double)parsed,
            (double)set_statement_assignments / (double)parsed,
            (double)set_assignment_name_values / (double)parsed,

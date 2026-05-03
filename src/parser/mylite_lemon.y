@@ -2859,9 +2859,10 @@ xa_xid_part ::= NUMBER_LITERAL(A). {
   mylite_parser_require_xid_number(ctx, A);
 }
 
-xa_format_id ::= BOOLEAN_NUMBER.
-xa_format_id ::= FACTOR_NUMBER.
-xa_format_id ::= NUMBER_LITERAL.
+xa_format_id ::= unsigned_decimal_or_lower_hex_value.
+xa_format_id ::= STRING_LITERAL(A). {
+  mylite_parser_require_quoted_hex_literal(ctx, A);
+}
 
 xa_start_tail ::= .
 xa_start_tail ::= xa_start_option.

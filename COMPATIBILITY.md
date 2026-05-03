@@ -162,11 +162,11 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. | Parser recognizes the instance unlock statement shape. |
 | `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, aliases, and implicit commit behavior. | Parser recognizes table lists, MySQL 8.4 lock types, and aliases using the shared identifier grammar; removed `LOW_PRIORITY WRITE` syntax is accepted only in permissive corpus mode. |
 | `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. | Parser recognizes `UNLOCK TABLE` and `UNLOCK TABLES` without table tails. |
-| `XA START` | ❌ | low | XA transaction branch start. | Parser recognizes one-, two-, and three-part string, hex, or binary XIDs with numeric `formatID` values. |
+| `XA START` | ❌ | low | XA transaction branch start. | Parser recognizes one-, two-, and three-part string, hex, or binary XIDs with unsigned decimal, lowercase-hex, or quoted-hex `formatID` values. |
 | `XA END` | ❌ | low | XA transaction branch end. | Parser recognizes one-, two-, and three-part string, hex, or binary XIDs plus `SUSPEND [FOR MIGRATE]`. |
 | `XA PREPARE` | ❌ | low | XA prepare phase. | Parser recognizes one-, two-, and three-part string, hex, or binary XIDs. |
-| `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. | Parser recognizes one-, two-, and three-part string, hex, or binary XIDs with numeric `formatID` values. |
-| `XA ROLLBACK` | ❌ | low | XA rollback. | Parser recognizes one-, two-, and three-part string, hex, or binary XIDs with numeric `formatID` values. |
+| `XA COMMIT` | ❌ | low | XA one-phase and two-phase commit. | Parser recognizes one-, two-, and three-part string, hex, or binary XIDs with unsigned decimal, lowercase-hex, or quoted-hex `formatID` values. |
+| `XA ROLLBACK` | ❌ | low | XA rollback. | Parser recognizes one-, two-, and three-part string, hex, or binary XIDs with unsigned decimal, lowercase-hex, or quoted-hex `formatID` values. |
 | `XA RECOVER` | ❌ | low | XA recovery result-set metadata. |  |
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. | Parser requires a text-string payload with quoted hex/bit rejection. |
 | `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser recognizes `TO` text-string log names with quoted hex/bit rejection and validates `BEFORE` expression tails. |

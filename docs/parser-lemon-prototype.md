@@ -500,7 +500,7 @@ token sink:
   shared identifier grammar; `PREPARE ... FROM` accepts text-string and
   user-variable sources, rejecting quoted hex/bit statement text literals.
 - XA statements recognize one-, two-, and three-part string or hex XIDs with
-  numeric `formatID` values.
+  unsigned decimal, lowercase-hex, or quoted-hex `formatID` values.
 - `CACHE INDEX` recognizes table, single-table partition, optional empty or
   named key/index, and key-cache names using the shared identifier grammar;
   `RESET PERSIST` uses the shared grammar for persisted-variable names while

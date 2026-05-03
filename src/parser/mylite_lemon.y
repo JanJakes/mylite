@@ -2146,41 +2146,41 @@ start_until_log_options ::= start_until_log_option.
 start_until_log_options ::= start_until_log_options import_comma start_until_log_option.
 
 start_until_log_option ::= SOURCE_LOG_FILE start_option_equals text_string_literal.
-start_until_log_option ::= SOURCE_LOG_POS start_option_equals start_source_log_position_value.
+start_until_log_option ::= SOURCE_LOG_POS start_option_equals replication_source_log_position_value.
 start_until_log_option ::= RELAY_LOG_FILE start_option_equals text_string_literal.
-start_until_log_option ::= RELAY_LOG_POS start_option_equals start_relay_log_position_value.
+start_until_log_option ::= RELAY_LOG_POS start_option_equals replication_relay_log_position_value.
 
-start_source_log_position_value ::= start_decimal_log_position_value.
+replication_source_log_position_value ::= replication_decimal_log_position_value.
 
-start_relay_log_position_value ::= BOOLEAN_NUMBER(A). {
+replication_relay_log_position_value ::= BOOLEAN_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_or_lower_hex_literal(ctx, A);
 }
-start_relay_log_position_value ::= FACTOR_NUMBER(A). {
+replication_relay_log_position_value ::= FACTOR_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_or_lower_hex_literal(ctx, A);
 }
-start_relay_log_position_value ::= NUMBER_LITERAL(A). {
+replication_relay_log_position_value ::= NUMBER_LITERAL(A). {
   mylite_parser_require_unsigned_decimal_or_lower_hex_literal(ctx, A);
 }
-start_relay_log_position_value ::= DOT start_decimal_log_position_fraction.
+replication_relay_log_position_value ::= DOT replication_decimal_log_position_fraction.
 
-start_decimal_log_position_value ::= BOOLEAN_NUMBER(A). {
+replication_decimal_log_position_value ::= BOOLEAN_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
-start_decimal_log_position_value ::= FACTOR_NUMBER(A). {
+replication_decimal_log_position_value ::= FACTOR_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
-start_decimal_log_position_value ::= NUMBER_LITERAL(A). {
+replication_decimal_log_position_value ::= NUMBER_LITERAL(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
-start_decimal_log_position_value ::= DOT start_decimal_log_position_fraction.
+replication_decimal_log_position_value ::= DOT replication_decimal_log_position_fraction.
 
-start_decimal_log_position_fraction ::= BOOLEAN_NUMBER(A). {
+replication_decimal_log_position_fraction ::= BOOLEAN_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
-start_decimal_log_position_fraction ::= FACTOR_NUMBER(A). {
+replication_decimal_log_position_fraction ::= FACTOR_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
-start_decimal_log_position_fraction ::= NUMBER_LITERAL(A). {
+replication_decimal_log_position_fraction ::= NUMBER_LITERAL(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
 
@@ -2672,9 +2672,10 @@ change_source_option ::= ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS diagnostics_equa
 change_source_option ::= IGNORE_SERVER_IDS diagnostics_equals change_ignore_server_ids_value.
 change_source_option ::= PRIVILEGE_CHECKS_USER diagnostics_equals change_privilege_checks_user_value.
 change_source_option ::= REQUIRE_TABLE_PRIMARY_KEY_CHECK diagnostics_equals change_primary_key_check_value.
-change_source_option ::= change_shared_number_option_name diagnostics_equals change_option_number_value.
+change_source_option ::= RELAY_LOG_POS diagnostics_equals replication_relay_log_position_value.
 change_source_option ::= change_shared_boolean_option_name diagnostics_equals change_option_boolean_value.
 change_source_option ::= change_source_string_option_name diagnostics_equals change_option_string_value.
+change_source_option ::= SOURCE_LOG_POS diagnostics_equals replication_source_log_position_value.
 change_source_option ::= change_source_number_option_name diagnostics_equals change_option_number_value.
 change_source_option ::= change_source_boolean_option_name diagnostics_equals change_option_boolean_value.
 
@@ -2696,7 +2697,6 @@ change_source_string_option_name ::= SOURCE_TLS_CIPHERSUITES.
 change_source_string_option_name ::= SOURCE_PUBLIC_KEY_PATH.
 
 change_source_number_option_name ::= SOURCE_PORT.
-change_source_number_option_name ::= SOURCE_LOG_POS.
 change_source_number_option_name ::= SOURCE_HEARTBEAT_PERIOD.
 change_source_number_option_name ::= SOURCE_CONNECT_RETRY.
 change_source_number_option_name ::= SOURCE_RETRY_COUNT.
@@ -2716,9 +2716,10 @@ change_master_option ::= ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS diagnostics_equa
 change_master_option ::= IGNORE_SERVER_IDS diagnostics_equals change_ignore_server_ids_value.
 change_master_option ::= PRIVILEGE_CHECKS_USER diagnostics_equals change_privilege_checks_user_value.
 change_master_option ::= REQUIRE_TABLE_PRIMARY_KEY_CHECK diagnostics_equals change_primary_key_check_value.
-change_master_option ::= change_shared_number_option_name diagnostics_equals change_option_number_value.
+change_master_option ::= RELAY_LOG_POS diagnostics_equals replication_relay_log_position_value.
 change_master_option ::= change_shared_boolean_option_name diagnostics_equals change_option_boolean_value.
 change_master_option ::= change_master_string_option_name diagnostics_equals change_option_string_value.
+change_master_option ::= MASTER_LOG_POS diagnostics_equals replication_source_log_position_value.
 change_master_option ::= change_master_number_option_name diagnostics_equals change_option_number_value.
 change_master_option ::= change_master_boolean_option_name diagnostics_equals change_option_boolean_value.
 
@@ -2740,7 +2741,6 @@ change_master_string_option_name ::= MASTER_TLS_CIPHERSUITES.
 change_master_string_option_name ::= MASTER_PUBLIC_KEY_PATH.
 
 change_master_number_option_name ::= MASTER_PORT.
-change_master_number_option_name ::= MASTER_LOG_POS.
 change_master_number_option_name ::= MASTER_HEARTBEAT_PERIOD.
 change_master_number_option_name ::= MASTER_CONNECT_RETRY.
 change_master_number_option_name ::= MASTER_RETRY_COUNT.
@@ -2754,8 +2754,6 @@ change_master_boolean_option_name ::= GET_MASTER_PUBLIC_KEY.
 
 change_shared_string_option_name ::= NETWORK_NAMESPACE.
 change_shared_string_option_name ::= RELAY_LOG_FILE.
-
-change_shared_number_option_name ::= RELAY_LOG_POS.
 
 change_shared_boolean_option_name ::= GTID_ONLY.
 change_shared_boolean_option_name ::= REQUIRE_ROW_FORMAT.

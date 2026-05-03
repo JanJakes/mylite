@@ -424,8 +424,10 @@ token sink:
   names, typed numeric/boolean option values, string-or-`NULL` option values,
   `IGNORE_SERVER_IDS` lists,
   privilege-check users, fixed primary-key-check enums, GTID assignment values,
-  and optional channel clauses, rejecting quoted hex/bit literals in text-string
-  option values. Removed `CHANGE MASTER TO` syntax is permissive-corpus-only.
+  unsigned decimal source log positions, MySQL's unsigned decimal plus
+  lowercase-hex relay log-position forms, and optional channel clauses,
+  rejecting quoted hex/bit literals in text-string option values. Removed
+  `CHANGE MASTER TO` syntax is permissive-corpus-only.
 - Replication channel clauses share one text-string grammar across
   `START`/`STOP`/`RESET`/`SHOW`/`FLUSH` and `CHANGE ... FOR CHANNEL`, with
   quoted hex/bit rejection.

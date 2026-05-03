@@ -219,8 +219,13 @@ level application surfaces.
        slice shares the supported character-set registry used by
        `SHOW CHARACTER SET`, exposes exact uppercase columns and numeric
        `MAXLEN`, and preserves the same wildcard-only information-schema query
-       policy. Full build-dependent engine catalog breadth and full MySQL
-       character-set catalog breadth remain deferred. Specs:
+       policy. The first `INFORMATION_SCHEMA.COLLATIONS` slice shares the
+       supported collation registry used by `SHOW COLLATION`, exposes exact
+       uppercase columns with numeric `ID` and `SORTLEN`, and preserves the
+       same wildcard-only information-schema query policy. Full
+       build-dependent engine catalog breadth, full MySQL character-set
+       catalog breadth, and full MySQL collation catalog breadth remain
+       deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),
        [SHOW INDEX](../show-index/specs.md),
@@ -228,7 +233,8 @@ level application surfaces.
        [SHOW CREATE TABLE](../show-create-table/specs.md),
        [SHOW ENGINES](../show-engines/specs.md),
        [INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md),
-       [INFORMATION_SCHEMA.CHARACTER_SETS](../information-schema-character-sets/specs.md).
+       [INFORMATION_SCHEMA.CHARACTER_SETS](../information-schema-character-sets/specs.md),
+       [INFORMATION_SCHEMA.COLLATIONS](../information-schema-collations/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.
        The diagnostic `SHOW WARNINGS` / `SHOW ERRORS` slice is specified for

@@ -15,7 +15,7 @@ enum {
     tables_column_count = 21,
     columns_column_count = 22,
     statistics_column_count = 18,
-    information_schema_view_count = 6,
+    information_schema_view_count = 7,
     schemata_catalog_column = 0,
     schemata_name_column = 1,
     schemata_character_set_column = 2,
@@ -217,6 +217,7 @@ static int test_character_set_collation_foundation(void);
 static int test_core_metadata_catalog(void);
 static int test_information_schema_engines_execution(void);
 static int test_information_schema_character_sets_execution(void);
+static int test_information_schema_collations_execution(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
@@ -377,6 +378,7 @@ int main(void)
     failures += test_core_metadata_catalog();
     failures += test_information_schema_engines_execution();
     failures += test_information_schema_character_sets_execution();
+    failures += test_information_schema_collations_execution();
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
@@ -1047,6 +1049,148 @@ static int test_information_schema_character_sets_execution(void)
                             "INFORMATION_SCHEMA.TABLES",
                             MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "information schema character sets join");
+
+    mylite_close(database);
+    mylite_finalize(stmt);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_information_schema_collations_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"COLLATION_NAME", "CHARACTER_SET_NAME", "ID",
+                                          "IS_DEFAULT",     "IS_COMPILED",        "SORTLEN",
+                                          "PAD_ATTRIBUTE"};
+    static const char *const show_tables_columns[] = {"Tables_in_information_schema (COLLATIONS)",
+                                                      "Table_type"};
+    static const char *const show_tables_values[] = {"COLLATIONS", "SYSTEM VIEW"};
+    static const char *const values[] = {
+        "binary",
+        "binary",
+        "63",
+        "Yes",
+        "Yes",
+        "1",
+        "NO PAD",
+        "latin1_bin",
+        "latin1",
+        "47",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "latin1_swedish_ci",
+        "latin1",
+        "8",
+        "Yes",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb3_bin",
+        "utf8mb3",
+        "83",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb3_general_ci",
+        "utf8mb3",
+        "33",
+        "Yes",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "255",
+        "Yes",
+        "Yes",
+        "0",
+        "NO PAD",
+        "utf8mb4_bin",
+        "utf8mb4",
+        "46",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open information schema collations");
+
+    failures += expect_select_rows(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS", columns,
+                                   7, values, 7, "information schema collations registry");
+    failures += expect_select_rows(database, "SELECT * FROM information_schema.collations", columns,
+                                   7, values, 7, "information schema collations lower-case");
+    failures += expect_select_rows(database, "SELECT * FROM Information_Schema.Collations", columns,
+                                   7, values, 7, "information schema collations mixed-case");
+    failures += expect_select_rows(database, "SELECT * FROM `information_schema`.`COLLATIONS`",
+                                   columns, 7, values, 7, "information schema collations quoted");
+
+    failures +=
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS", MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, columns, 7, "information schema collations columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW,
+                              "information schema collations numeric binary row");
+    failures += expect_int64(mylite_column_int64(stmt, show_collation_id_column), 63,
+                             "information schema collations numeric id");
+    failures += expect_int64(mylite_column_int64(stmt, show_collation_sortlen_column), 1,
+                             "information schema collations numeric sortlen");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), -1, "information schema collations affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_information_schema_tables_views(database);
+    failures += expect_select_rows(
+        database, "SHOW FULL TABLES FROM information_schema LIKE 'collations'", show_tables_columns,
+        2, show_tables_values, 1, "show tables information schema collations");
+
+    failures += prepare_sql(database, "SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLLATIONS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema collations projection");
+    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.COLLATIONS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema collations distinct");
+    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.COLLATIONS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema collations explicit all");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS WHERE COLLATION_NAME = "
+                            "'utf8mb4_bin'",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema collations where");
+    failures +=
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS ORDER BY COLLATION_NAME",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema collations order by");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS LIMIT 1",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema collations limit");
+    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATIONS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema collations count");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS AS c",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema collations AS alias");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS c",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema collations bare alias");
+    failures += prepare_sql(database,
+                            "SELECT INFORMATION_SCHEMA.COLLATIONS.* FROM "
+                            "INFORMATION_SCHEMA.COLLATIONS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema collations qualified wildcard");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS JOIN "
+                            "INFORMATION_SCHEMA.TABLES",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema collations join");
 
     mylite_close(database);
     mylite_finalize(stmt);
@@ -12256,7 +12400,7 @@ static int expect_no_information_schema_schemata_row(mylite_db *database, const 
 static int expect_information_schema_tables_views(mylite_db *database)
 {
     static const char *const expected_tables[] = {
-        "CHARACTER_SETS", "COLUMNS", "ENGINES", "SCHEMATA", "STATISTICS", "TABLES",
+        "CHARACTER_SETS", "COLLATIONS", "COLUMNS", "ENGINES", "SCHEMATA", "STATISTICS", "TABLES",
     };
     mylite_stmt *stmt = NULL;
     int failures =

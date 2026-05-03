@@ -24,8 +24,11 @@ Deferred surfaces:
 
 - full MySQL collation catalog
 - executable `SHOW COLLATION ... WHERE expr` filtering
-- `INFORMATION_SCHEMA.COLLATIONS`
 - privilege filtering, if any future execution surface needs it
+
+`INFORMATION_SCHEMA.COLLATIONS` is implemented by the separate
+[INFORMATION_SCHEMA.COLLATIONS](../information-schema-collations/specs.md)
+slice and shares the same supported registry.
 
 ## Compatibility Sources
 
@@ -211,7 +214,9 @@ Runtime coverage:
 ## Known Incompatibilities
 
 - MyLite exposes the supported registry subset instead of MySQL's full
-  collation catalog. This is intentional for the first executable slice.
+  collation catalog through both `SHOW COLLATION` and
+  `INFORMATION_SCHEMA.COLLATIONS`. This is intentional for the first executable
+  slice.
 - `WHERE` filtering is parsed but not executed yet, matching the current
   `SHOW VARIABLES`, `SHOW STATUS`, and `SHOW CHARACTER SET` compatibility
   pattern.

@@ -565,6 +565,12 @@ token sink:
 - `SHOW CREATE DATABASE` and `SHOW CREATE SCHEMA` recognize optional
   `IF NOT EXISTS`.
 - `SHOW CREATE USER` reuses the shared account-reference grammar.
+- Core `SHOW` metadata statements recognize MySQL-supported `LIKE`/`WHERE`
+  filters where the server grammar allows them (`DATABASES`, `TABLES`,
+  `TABLE STATUS`, `OPEN TABLES`, `COLUMNS`/`FIELDS`, routine status,
+  `CHARACTER SET`, `COLLATION`, `STATUS`, and `VARIABLES`) and reject filters
+  on standalone forms such as `SHOW ENGINES`, `PLUGINS`, `PRIVILEGES`,
+  `PROCESSLIST`, `PROFILES`, and `REPLICAS`.
 - `FLUSH` recognizes `LOCAL`/`NO_WRITE_TO_BINLOG` modifiers, simple option
   lists, table forms, log variants, and channel-qualified relay logs. Removed
   `FLUSH HOSTS` syntax is permissive-corpus-only.

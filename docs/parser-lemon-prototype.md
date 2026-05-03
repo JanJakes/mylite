@@ -346,7 +346,7 @@ token sink:
   require string literals.
 - `CREATE DATABASE` and `ALTER DATABASE` recognize schema names, charset,
   collation, string-literal encryption, and alter-only `READ ONLY` option clauses
-  with MySQL's `DEFAULT`/`0`/`1` value grammar.
+  with MySQL-shaped `DEFAULT` or default-boolean numeric values.
 - `CREATE EVENT` and `ALTER EVENT` recognize ordered event metadata clauses
   for schedules, completion policy, enablement state, comments with text-string
   validation, and event bodies, and reject malformed event schedule tails;

@@ -65,7 +65,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. | Parser recognizes schema names using shared unreserved identifier grammar plus charset, collation, string-literal encryption values, and `READ ONLY` clauses limited to `DEFAULT`, `0`, or `1`. |
+| `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. | Parser recognizes schema names using shared unreserved identifier grammar plus charset, collation, string-literal encryption values, and `READ ONLY` clauses with MySQL-shaped `DEFAULT` or default-boolean numeric values. |
 | `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. | Parser recognizes schedule, completion, rename, enable/disable, comment with text-string validation, and `DO` clauses, validates `AT`/`EVERY` schedule tails including interval units and `STARTS`/`ENDS`, and routes recognized single-statement bodies through existing statement validators. |
 | `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. | Parser recognizes routine characteristic clauses: string-literal comments with quoted hex/bit rejection, `LANGUAGE SQL`, SQL data access, and SQL security. |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. | Parser recognizes redo-log enable/disable, InnoDB/binlog master-key rotation, TLS reload with channel and no-rollback options, and keyring reload. |

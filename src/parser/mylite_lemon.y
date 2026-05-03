@@ -1292,7 +1292,16 @@ alter_database_option ::= create_database_option.
 alter_database_option ::= READ ONLY drop_index_option_equals_tail alter_database_read_value.
 
 alter_database_read_value ::= DEFAULT.
-alter_database_read_value ::= BOOLEAN_NUMBER.
+alter_database_read_value ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_table_option_default_boolean_literal(ctx, A);
+}
+alter_database_read_value ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_table_option_default_boolean_literal(ctx, A);
+}
+alter_database_read_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_table_option_default_boolean_literal(ctx, A);
+}
+alter_database_read_value ::= DOT unsigned_decimal_fraction.
 
 alter_routine_kind ::= FUNCTION.
 alter_routine_kind ::= PROCEDURE.

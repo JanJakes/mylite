@@ -5417,6 +5417,36 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 8U), 0U), "CONV", 3U, "CONV call");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT CHAR(65), CHAR(65,66 USING utf8mb4), "
+                          "CHAR(65 USING 'latin1'), CHAR(65 USING binary);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, 4U, "CHAR function select list");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 0U), 0U), "CHAR", 1U, "CHAR call");
+    call = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(call, MYLITE_SQL_AST_FUNCTION_CALL, "CHAR utf8mb4 call");
+    failures += expect_span_text(child_at(call, 0U), "CHAR", "CHAR utf8mb4 name");
+    failures += expect_child_count(child_at(call, 1U), 2U, "CHAR utf8mb4 arguments");
+    failures += expect_span_text(child_at(call, 2U), "utf8mb4", "CHAR utf8mb4 charset");
+    call = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(call, MYLITE_SQL_AST_FUNCTION_CALL, "CHAR quoted latin1 call");
+    failures += expect_span_text(child_at(call, 0U), "CHAR", "CHAR quoted latin1 name");
+    failures += expect_child_count(child_at(call, 1U), 1U, "CHAR quoted latin1 arguments");
+    failures += expect_span_text(child_at(call, 2U), "'latin1'", "CHAR quoted latin1 charset");
+    call = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(call, MYLITE_SQL_AST_FUNCTION_CALL, "CHAR binary call");
+    failures += expect_span_text(child_at(call, 0U), "CHAR", "CHAR binary name");
+    failures += expect_child_count(child_at(call, 1U), 1U, "CHAR binary arguments");
+    failures += expect_span_text(child_at(call, 2U), "binary", "CHAR binary charset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CHAR();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CHAR(USING utf8mb4);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT POSITION('a' IN ('abc'));", MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     call = child_at(child_at(select_list, 0U), 0U);

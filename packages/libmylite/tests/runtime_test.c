@@ -117,6 +117,7 @@ enum {
     mysql_warning_table_name_not_allowed = 1250,
     mysql_warning_deprecated_syntax = 1287,
     mysql_warning_truncated_wrong_value = 1292,
+    mysql_warning_invalid_character_string = 1300,
     mysql_warning_savepoint_does_not_exist = 1305,
     mysql_warning_no_default = 1364,
     mysql_warning_division_by_zero = 1365,
@@ -2478,6 +2479,35 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
     };
+    static const struct expected_result_metadata char_metadata[] = {
+        {"char_binary", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"char_binary_multi", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         63U, MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"char_utf8", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"char_latin1", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"char_binary_using", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         63U, MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"char_ascii", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"char_null", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
     static const struct expected_result_metadata base_metadata[] = {
         {"bin_int", NULL, NULL, NULL, NULL, NULL, 260U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
@@ -2622,6 +2652,24 @@ static int test_scalar_builtin_functions_execution(void)
         {"unhex_null", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const struct expected_result_metadata char_latin1_metadata[] = {
+        {"char_binary", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"char_utf8", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"char_utf8_multi", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"char_ascii", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const struct expected_result_metadata base_latin1_metadata[] = {
         {"bin_int", NULL, NULL, NULL, NULL, NULL, 65U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
@@ -3046,6 +3094,31 @@ static int test_scalar_builtin_functions_execution(void)
         "4100FF",
         "3",
     };
+    static const char *const char_columns[] = {
+        "char_one",         "char_multi",       "char_null_len", "char_skip_null", "char_nul_hex",
+        "char_nul_len",     "char_controls",    "char_255",      "char_256",       "char_65535",
+        "char_65536",       "char_2p32_minus1", "char_2p32",     "char_u64_max",   "char_i64max",
+        "char_i64max_plus", "char_i64min",      "char_neg_one",  "char_neg_wrap",  "char_exact",
+        "char_approx",      "char_float_over",  "char_utf8",     "char_latin1",    "char_binary",
+        "char_ascii",
+    };
+    static const char *const char_values[] = {
+        "41",           "414243",     "0",    "4142",     "00",       "1",        "0A1A275C",
+        "FF",           "0100",       "FFFF", "010000",   "FFFFFFFF", "00",       "FFFFFFFF",
+        "FFFFFFFF",     "00",         "00",   "FFFFFFFF", "01",       "0C0D0D0D", "0C0C0D0D",
+        "6496FFFFFFFF", "4D7953514C", "41",   "FF",       "41",
+    };
+    static const char *const char_warning_columns[] = {
+        "text_tail",        "text_decimal",        "text_bad",
+        "text_empty",       "text_space",          "text_over",
+        "text_neg_over",    "text_neg_int64_over", "literal_over",
+        "literal_neg_over", "literal_neg_u64_max", "literal_neg_int64_over",
+        "utf8_invalid",     "ascii_invalid",
+    };
+    static const char *const char_warning_values[] = {
+        "41", "41",       "00", "00", "00", "FFFFFFFF", "00",
+        "00", "FFFFFFFF", "00", "00", "00", "1",        "80",
+    };
     static const char *const base_columns[] = {
         "bin_null",
         "oct_null",
@@ -3212,6 +3285,10 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const hex_site_projection_values[] = {
         "2", "4265", "4265", "FFFFFFFFFFFFFFFF", "1", "417A", "417A", "FF",
     };
+    static const char *const char_site_projection_columns[] = {"id", "bytes", "text"};
+    static const char *const char_site_projection_values[] = {
+        "2", "62", "b", "1", "41", "A",
+    };
     static const char *const base_site_projection_columns[] = {"id", "bin_s", "oct_n", "conv_h"};
     static const char *const base_site_projection_values[] = {
         "2", "1111", "1777777777777777777777", "15", "1", "1100", "377", "10",
@@ -3231,6 +3308,9 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const updated_list_values[] = {"3", NULL, "2"};
     static const char *const unchanged_hex_values[] = {"1", "Az", "255"};
     static const char *const updated_hex_values[] = {"2", "6265", "-1"};
+    static const char *const unchanged_char_values[] = {"1", "Az", "65"};
+    static const char *const updated_char_values[] = {"1", "43", "65"};
+    static const char *const char_remaining_values[] = {"1", "3"};
     static const char *const unchanged_base_values[] = {"1", "12", "255"};
     static const char *const updated_base_values[] = {"1", "FF", "255"};
     static const char *const base_remaining_values[] = {"1", "2"};
@@ -3362,6 +3442,24 @@ static int test_scalar_builtin_functions_execution(void)
     stmt = NULL;
 
     failures += prepare_sql(database,
+                            "SELECT CHAR(65) AS char_binary, "
+                            "CHAR(65,66) AS char_binary_multi, "
+                            "CHAR(65 USING utf8mb4) AS char_utf8, "
+                            "CHAR(65 USING latin1) AS char_latin1, "
+                            "CHAR(65 USING binary) AS char_binary_using, "
+                            "CHAR(65 USING ascii) AS char_ascii, "
+                            "CHAR(NULL) AS char_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, char_metadata,
+                                       (int)(sizeof(char_metadata) / sizeof(char_metadata[0])),
+                                       "CHAR utf8mb4 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CHAR utf8mb4 metadata row");
+    failures += expect_int(mylite_warning_count(database), 0, "CHAR utf8mb4 metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CHAR utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
                             "SELECT BIN(12) AS bin_int, "
                             "OCT(12) AS oct_int, "
                             "CONV('a',16,2) AS conv_text, "
@@ -3447,6 +3545,20 @@ static int test_scalar_builtin_functions_execution(void)
         expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_string_value,
                    "hex/unhex latin1 metadata warning code");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hex/unhex latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "SELECT CHAR(65) AS char_binary, "
+                            "CHAR(65 USING utf8mb4) AS char_utf8, "
+                            "CHAR(65,66 USING utf8mb4) AS char_utf8_multi, "
+                            "CHAR(65 USING ascii) AS char_ascii",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, char_latin1_metadata,
+        (int)(sizeof(char_latin1_metadata) / sizeof(char_latin1_metadata[0])),
+        "CHAR latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CHAR latin1 metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CHAR latin1 metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(database,
@@ -3834,6 +3946,77 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures +=
         expect_select_rows(database,
+                           "SELECT HEX(CHAR(65)) AS char_one, "
+                           "HEX(CHAR(65,66,67)) AS char_multi, "
+                           "LENGTH(CHAR(NULL)) AS char_null_len, "
+                           "HEX(CHAR(65,NULL,66)) AS char_skip_null, "
+                           "HEX(CHAR(0)) AS char_nul_hex, "
+                           "LENGTH(CHAR(0)) AS char_nul_len, "
+                           "HEX(CHAR(10,26,39,92)) AS char_controls, "
+                           "HEX(CHAR(255)) AS char_255, "
+                           "HEX(CHAR(256)) AS char_256, "
+                           "HEX(CHAR(65535)) AS char_65535, "
+                           "HEX(CHAR(65536)) AS char_65536, "
+                           "HEX(CHAR(4294967295)) AS char_2p32_minus1, "
+                           "HEX(CHAR(4294967296)) AS char_2p32, "
+                           "HEX(CHAR(18446744073709551615)) AS char_u64_max, "
+                           "HEX(CHAR(9223372036854775807)) AS char_i64max, "
+                           "HEX(CHAR(9223372036854775808)) AS char_i64max_plus, "
+                           "HEX(CHAR(-9223372036854775808)) AS char_i64min, "
+                           "HEX(CHAR(-1)) AS char_neg_one, "
+                           "HEX(CHAR(-4294967295)) AS char_neg_wrap, "
+                           "HEX(CHAR(12.4,12.5,12.6,12.9)) AS char_exact, "
+                           "HEX(CHAR(12.4E0,12.5E0,12.6E0,12.9E0)) AS char_approx, "
+                           "HEX(CHAR(1e2,1.5e2,1e20)) AS char_float_over, "
+                           "HEX(CHAR(77,121,83,81,'76' USING utf8mb4)) AS char_utf8, "
+                           "HEX(CHAR(65 USING 'latin1')) AS char_latin1, "
+                           "HEX(CHAR(255 USING binary)) AS char_binary, "
+                           "HEX(CHAR(65 USING ascii)) AS char_ascii",
+                           char_columns, (int)(sizeof(char_columns) / sizeof(char_columns[0])),
+                           char_values, 1, "string CHAR scalar values");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT HEX(CHAR('65x')) AS text_tail, "
+        "HEX(CHAR('65.9')) AS text_decimal, "
+        "HEX(CHAR('x65')) AS text_bad, "
+        "HEX(CHAR('')) AS text_empty, "
+        "HEX(CHAR(' ')) AS text_space, "
+        "HEX(CHAR('18446744073709551616')) AS text_over, "
+        "HEX(CHAR('-18446744073709551616')) AS text_neg_over, "
+        "HEX(CHAR('-9223372036854775809')) AS text_neg_int64_over, "
+        "HEX(CHAR(18446744073709551616)) AS literal_over, "
+        "HEX(CHAR(-18446744073709551616)) AS literal_neg_over, "
+        "HEX(CHAR(-18446744073709551615)) AS literal_neg_u64_max, "
+        "HEX(CHAR(-9223372036854775809)) AS literal_neg_int64_over, "
+        "CHAR(255 USING utf8mb4) IS NULL AS utf8_invalid, "
+        "HEX(CHAR(128 USING ascii)) AS ascii_invalid",
+        char_warning_columns, (int)(sizeof(char_warning_columns) / sizeof(char_warning_columns[0])),
+        char_warning_values, 1, "string CHAR warning values");
+    failures += expect_int(mylite_warning_count(database),
+                           (int)(sizeof(char_warning_columns) / sizeof(char_warning_columns[0])),
+                           "CHAR warning count");
+    for (int index = 0; index < 12; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "CHAR conversion warning code");
+    }
+    for (int index = 12; index < 14; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_invalid_character_string, "CHAR charset warning code");
+    }
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "INTEGER", "CHAR text warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 8), "DECIMAL", "CHAR literal warning");
+    failures += expect_contains(mylite_warning_message(database, 12), "Invalid utf8mb4",
+                                "CHAR utf8mb4 warning");
+
+    failures +=
+        expect_prepare_error(database, "SELECT CHAR(65 USING nosuchcharset)", MYLITE_EXEC_ERROR,
+                             "Unknown character set", "CHAR unknown charset");
+
+    failures +=
+        expect_select_rows(database,
                            "SELECT UNHEX('GG') IS NULL AS invalid_chars, "
                            "UNHEX('41 42') IS NULL AS space_chars, "
                            "UNHEX(1.0) IS NULL AS real_text, "
@@ -4059,6 +4242,28 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database, "SELECT id FROM hex_sites WHERE HEX(UNHEX(h))='417A'",
                                    id_column, 1, n_1, 1, "hex/unhex function where");
     failures += execute_sql(database,
+                            "CREATE TABLE char_sites "
+                            "(id INT PRIMARY KEY, s VARCHAR(20), n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO char_sites VALUES "
+                            "(1,'Az',65),(2,'be',98),(3,NULL,0)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(CHAR(n)) AS bytes, CHAR(n USING utf8mb4) AS text "
+        "FROM char_sites WHERE CHAR(n) >= CHAR(65) ORDER BY CHAR(n USING utf8mb4) DESC",
+        char_site_projection_columns, 3, char_site_projection_values, 2,
+        "table CHAR projection where and order");
+    failures += expect_select_rows(database, "SELECT id FROM char_sites WHERE CHAR(65,122)=s",
+                                   id_column, 1, n_1, 1, "CHAR function where");
+    failures += expect_prepare_error(
+        database, "SELECT id FROM char_sites WHERE CHAR(65 USING nosuchcharset)=s",
+        MYLITE_EXEC_ERROR, "Unknown character set", "CHAR unknown charset in WHERE");
+    failures += expect_prepare_error(
+        database, "SELECT id FROM char_sites ORDER BY CHAR(65 USING nosuchcharset)",
+        MYLITE_EXEC_ERROR, "Unknown character set", "CHAR unknown charset in ORDER BY");
+    failures += execute_sql(database,
                             "CREATE TABLE base_sites "
                             "(id INT PRIMARY KEY, s VARCHAR(20), h VARCHAR(20), n BIGINT)",
                             MYLITE_DONE);
@@ -4203,6 +4408,76 @@ static int test_scalar_builtin_functions_execution(void)
         "delete hex/unhex function predicate");
     failures += expect_select_rows(database, "SELECT id FROM hex_sites WHERE h IS NOT NULL",
                                    id_column, 1, id_2, 1, "delete hex/unhex remaining rows");
+
+    failures += prepare_sql(database, "UPDATE char_sites SET n = 9 WHERE CHAR('x') = CHAR(0)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update CHAR warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Truncated incorrect INTEGER value",
+                                "update CHAR warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "update CHAR warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "update CHAR warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM char_sites WHERE id = 1", id_s_n_columns,
+                           3, unchanged_char_values, 1, "update CHAR warning unchanged");
+    failures +=
+        prepare_sql(database, "UPDATE char_sites SET s = CHAR(65 USING nosuchcharset) WHERE id=1",
+                    MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "update CHAR unknown charset assignment");
+    failures += expect_contains(mylite_error_message(database), "Unknown character set",
+                                "update CHAR unknown charset assignment error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "UPDATE char_sites SET s = s WHERE CHAR(65 USING nosuchcharset)=s",
+                    MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update CHAR unknown charset WHERE");
+    failures += expect_contains(mylite_error_message(database), "Unknown character set",
+                                "update CHAR unknown charset WHERE error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database, "UPDATE char_sites SET s = s ORDER BY CHAR(65 USING nosuchcharset) LIMIT 1",
+        MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update CHAR unknown charset ORDER BY");
+    failures += expect_contains(mylite_error_message(database), "Unknown character set",
+                                "update CHAR unknown charset ORDER BY error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE char_sites SET s = HEX(CHAR(67)) WHERE CHAR(65,122)=s", 1,
+        "update CHAR assignment and predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM char_sites WHERE id = 1", id_s_n_columns,
+                           3, updated_char_values, 1, "updated CHAR function values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM char_sites WHERE CHAR(n USING utf8mb4) = 'b'", 1,
+        "delete CHAR function predicate");
+    failures += prepare_sql(database, "DELETE FROM char_sites WHERE CHAR(65 USING nosuchcharset)=s",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete CHAR unknown charset WHERE");
+    failures += expect_contains(mylite_error_message(database), "Unknown character set",
+                                "delete CHAR unknown charset WHERE error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "DELETE FROM char_sites ORDER BY CHAR(65 USING nosuchcharset) LIMIT 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete CHAR unknown charset ORDER BY");
+    failures += expect_contains(mylite_error_message(database), "Unknown character set",
+                                "delete CHAR unknown charset ORDER BY error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM char_sites ORDER BY id", id_column, 1,
+                                   char_remaining_values, 2, "delete CHAR remaining rows");
 
     failures += prepare_sql(database, "UPDATE base_sites SET n = BIN('x12') WHERE id = 1",
                             MYLITE_OK, &stmt);

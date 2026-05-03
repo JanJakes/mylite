@@ -17,6 +17,7 @@ In scope for the initial implementation:
   executable
 - string functions:
   - `ASCII`
+  - `CHAR`
   - `CHAR_LENGTH`, `CHARACTER_LENGTH`
   - `LENGTH`, `OCTET_LENGTH`
   - `CONCAT`, `CONCAT_WS`
@@ -138,6 +139,7 @@ syntax, trim direction syntax, byte-based `ASCII`, packed-byte `ORD`,
 `LOCATE` / `POSITION` / `INSTR` search positions, start-position edges,
 `INSERT` string splicing, `QUOTE` SQL-literal escaping, `QUOTE` numeric-source
 metadata, padding, repetition, spaces, UTF-8 reversal, empty pad strings,
+`CHAR()` byte emission and optional `USING` charset syntax,
 hex encoding, binary-string hex decoding, embedded-NUL byte lengths for
 `UNHEX()` results, invalid `UNHEX()` warnings,
 binary/octal/arbitrary-base conversion, invalid base ranges, base-conversion
@@ -248,6 +250,9 @@ Representative runtime results with `SET NAMES utf8mb4`:
 | --- | --- |
 | `ASCII('')` | `0` |
 | `ASCII(NULL)` | `NULL` |
+| `HEX(CHAR(65,66))` | `4142` |
+| `HEX(CHAR(65,NULL,66))` | `4142` |
+| `CHAR(77,121,83,81,'76' USING utf8mb4)` | `MySQL` |
 | `CHAR_LENGTH('海豚')` | `2` |
 | `LENGTH('海豚')` | `6` |
 | `CONCAT('My', NULL, 'QL')` | `NULL` |

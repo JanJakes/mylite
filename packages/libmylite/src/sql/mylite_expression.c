@@ -15,6 +15,7 @@ enum {
     MYLITE_WARNING_UNKNOWN = 1105,
     MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS = 1210,
     MYLITE_WARNING_TRUNCATED_WRONG_VALUE = 1292,
+    MYLITE_WARNING_INVALID_CHARACTER_STRING = 1300,
     MYLITE_WARNING_DIVISION_BY_ZERO = 1365,
     MYLITE_WARNING_INCORRECT_STRING_VALUE = 1411,
     MYLITE_EXPRESSION_TEXT_BUFFER_SIZE = 64,
@@ -32,6 +33,34 @@ enum {
     MYLITE_EXPRESSION_MIN_BASE = 2,
     MYLITE_EXPRESSION_MAX_BASE = 36,
     MYLITE_EXPRESSION_BASE_CONVERSION_BUFFER_SIZE = 66,
+    MYLITE_EXPRESSION_CHAR_VALUE_BYTES = 4,
+    MYLITE_EXPRESSION_CHAR_SHIFT_8 = 8,
+    MYLITE_EXPRESSION_CHAR_SHIFT_16 = 16,
+    MYLITE_EXPRESSION_CHAR_SHIFT_24 = 24,
+    MYLITE_ASCII_MAX = 0x7FU,
+    MYLITE_UTF8_SECOND_BYTE_OFFSET = 1,
+    MYLITE_UTF8_CONTINUATION_START_OFFSET = 2,
+    MYLITE_UTF8_TWO_BYTE_LENGTH = 2,
+    MYLITE_UTF8_THREE_BYTE_LENGTH = 3,
+    MYLITE_UTF8_FOUR_BYTE_LENGTH = 4,
+    MYLITE_UTF8_TWO_BYTE_MIN = 0xC2U,
+    MYLITE_UTF8_TWO_BYTE_MAX = 0xDFU,
+    MYLITE_UTF8_E0 = 0xE0U,
+    MYLITE_UTF8_E0_SECOND_MIN = 0xA0U,
+    MYLITE_UTF8_E1_MIN = 0xE1U,
+    MYLITE_UTF8_EC_MAX = 0xECU,
+    MYLITE_UTF8_ED = 0xEDU,
+    MYLITE_UTF8_ED_SECOND_MAX = 0x9FU,
+    MYLITE_UTF8_EE_MIN = 0xEEU,
+    MYLITE_UTF8_EF_MAX = 0xEFU,
+    MYLITE_UTF8_F0 = 0xF0U,
+    MYLITE_UTF8_F0_SECOND_MIN = 0x90U,
+    MYLITE_UTF8_F1_MIN = 0xF1U,
+    MYLITE_UTF8_F3_MAX = 0xF3U,
+    MYLITE_UTF8_F4 = 0xF4U,
+    MYLITE_UTF8_F4_SECOND_MAX = 0x8FU,
+    MYLITE_UTF8_CONTINUATION_MIN = 0x80U,
+    MYLITE_UTF8_CONTINUATION_MAX = 0xBFU,
     MYLITE_UTF8_CONTINUATION_MASK = 0xC0U,
     MYLITE_UTF8_CONTINUATION_MARKER = 0x80U,
     MYLITE_ASCII_CONTROL_Z = 0x1A,
@@ -132,6 +161,44 @@ struct cast_integer_parse {
     bool overflow;
 };
 
+enum char_function_charset {
+    CHAR_FUNCTION_CHARSET_BINARY = 0,
+    CHAR_FUNCTION_CHARSET_LATIN1 = 1,
+    CHAR_FUNCTION_CHARSET_UTF8MB4 = 2,
+    CHAR_FUNCTION_CHARSET_UTF8MB3 = 3,
+    CHAR_FUNCTION_CHARSET_ASCII = 4,
+    CHAR_FUNCTION_CHARSET_UNKNOWN = 5,
+};
+
+struct char_integer_parse {
+    uint64_t magnitude;
+    bool negative;
+    bool saw_digit;
+    bool trailing_garbage;
+    bool overflow;
+};
+
+struct char_invalid_string_warning {
+    const char *charset_name;
+    const char *text;
+    size_t text_length;
+};
+
+struct utf8_sequence_range {
+    size_t length;
+    unsigned char first_min;
+    unsigned char first_max;
+    unsigned char second_min;
+    unsigned char second_max;
+    bool requires_four_byte;
+};
+
+struct utf8_sequence {
+    size_t length;
+    unsigned char second_min;
+    unsigned char second_max;
+};
+
 struct base_conversion_parse {
     uint64_t bits;
     bool saw_digit;
@@ -202,6 +269,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_BIN = 47,
     MYLITE_SCALAR_FUNCTION_OCT = 48,
     MYLITE_SCALAR_FUNCTION_CONV = 49,
+    MYLITE_SCALAR_FUNCTION_CHAR = 50,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -426,6 +494,39 @@ static int make_set_bits_from_value(const struct mylite_expression_value *value,
 static int make_set_bits_from_string(const char *text, struct mylite_expression_warnings *warnings,
                                      uint64_t *out_bits);
 static bool make_set_member_is_selected(uint64_t bits, size_t index);
+static int eval_char_function(const struct mylite_sql_ast_node *function_call,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value);
+static int char_argument_value(const struct mylite_expression_value *value,
+                               const struct mylite_sql_ast_node *argument,
+                               struct mylite_expression_warnings *warnings, uint32_t *out_value);
+static int char_integer_literal_overflow_value(const struct mylite_sql_ast_node *argument,
+                                               struct mylite_expression_warnings *warnings,
+                                               uint32_t *out_value, bool *out_handled);
+static int char_text_value(const char *text, size_t text_length,
+                           struct mylite_expression_warnings *warnings, uint32_t *out_value);
+static struct char_integer_parse parse_char_integer_text(const char *text, size_t text_length);
+static int append_char_integer_warning(struct mylite_expression_warnings *warnings,
+                                       const char *type_name, const char *text, size_t text_length);
+static int append_char_bytes(char **result, size_t *result_length, uint32_t value);
+static int set_char_result(enum char_function_charset charset, const char *charset_name,
+                           const char *text, size_t text_length,
+                           struct mylite_expression_warnings *warnings,
+                           struct mylite_expression_value *out_value);
+static bool char_text_is_valid_for_charset(enum char_function_charset charset, const char *text,
+                                           size_t text_length);
+static bool char_text_is_ascii(const char *text, size_t text_length);
+static bool char_text_is_utf8(const char *text, size_t text_length, bool allow_four_byte);
+static bool utf8_sequence_from_first(unsigned char first, bool allow_four_byte,
+                                     struct utf8_sequence *out_sequence);
+static bool utf8_continuation_byte(unsigned char character);
+static int append_invalid_char_string_warning(struct mylite_expression_warnings *warnings,
+                                              struct char_invalid_string_warning warning);
+static char *copy_charset_node_name(const struct mylite_sql_ast_node *node);
+static char *copy_unquoted_identifier_text(struct mylite_sql_source_span span);
+static enum char_function_charset char_function_charset_from_name(const char *name);
+static bool char_charset_name_is(const char *text, size_t text_length, const char *expected);
 static int eval_hex_function(const struct mylite_sql_ast_node *arguments,
                              const struct mylite_expression_eval_context *context,
                              struct mylite_expression_warnings *warnings,
@@ -434,7 +535,7 @@ static int hex_numeric_value(const struct mylite_expression_value *value,
                              const struct mylite_sql_ast_node *argument,
                              struct mylite_expression_warnings *warnings, uint64_t *out_number);
 static int64_t hex_real_to_signed_integer(double value, const struct mylite_sql_ast_node *argument);
-static bool hex_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument);
+static bool numeric_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument);
 static int64_t cast_real_to_signed_integer_half_even(double value);
 static int set_hex_uint64_value(uint64_t number, struct mylite_expression_value *out_value);
 static int set_hex_bytes_value(const char *text, size_t text_length,
@@ -881,6 +982,10 @@ static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *e
             scalar_function_depends_on_session(scalar_function_id(expression))) {
             return false;
         }
+        if (require_cacheable && scalar_function_id(expression) == MYLITE_SCALAR_FUNCTION_CHAR &&
+            child_at(expression, 2U) != NULL) {
+            return false;
+        }
         for (const struct mylite_sql_ast_node *child =
                  child_at(expression, 1U) == NULL ? NULL : child_at(expression, 1U)->first_child;
              child != NULL; child = child->next_sibling) {
@@ -909,6 +1014,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     }
 
     switch (function_id) {
+    case MYLITE_SCALAR_FUNCTION_CHAR:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
         return arity >= 1U;
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
@@ -1715,6 +1821,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_find_in_set_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_MAKE_SET:
         return eval_make_set_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_CHAR:
+        return eval_char_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_HEX:
         return eval_hex_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_UNHEX:
@@ -3344,6 +3452,480 @@ static bool make_set_member_is_selected(uint64_t bits, size_t index)
     return (bits & (UINT64_C(1) << index)) != 0U;
 }
 
+static int eval_char_function(const struct mylite_sql_ast_node *function_call,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(function_call, 1U);
+    const struct mylite_sql_ast_node *charset_node = child_at(function_call, 2U);
+    char *charset_name = copy_charset_node_name(charset_node);
+    enum char_function_charset charset = char_function_charset_from_name(charset_name);
+    char *result = NULL;
+    size_t result_length = 0U;
+    int status = 0;
+
+    if (charset_name == NULL) {
+        return -1;
+    }
+    if (charset == CHAR_FUNCTION_CHARSET_UNKNOWN) {
+        free(charset_name);
+        return -1;
+    }
+
+    result = copy_span_text("", 0U);
+    if (result == NULL) {
+        free(charset_name);
+        return -1;
+    }
+    for (const struct mylite_sql_ast_node *argument = arguments->first_child;
+         status == 0 && argument != NULL; argument = argument->next_sibling) {
+        struct mylite_expression_value value = {0};
+        uint32_t char_value = 0U;
+
+        status = eval_node(argument, context, warnings, &value);
+        if (status == 0 && !is_null(&value)) {
+            status = char_argument_value(&value, argument, warnings, &char_value);
+            if (status == 0) {
+                status = append_char_bytes(&result, &result_length, char_value);
+            }
+        }
+        mylite_expression_value_deinit(&value);
+    }
+    if (status == 0) {
+        status = set_char_result(charset, charset_name, result, result_length, warnings, out_value);
+    }
+    free(result);
+    free(charset_name);
+    return status;
+}
+
+static int char_argument_value(const struct mylite_expression_value *value,
+                               const struct mylite_sql_ast_node *argument,
+                               struct mylite_expression_warnings *warnings, uint32_t *out_value)
+{
+    bool handled_literal = false;
+    int status =
+        char_integer_literal_overflow_value(argument, warnings, out_value, &handled_literal);
+
+    if (status != 0 || handled_literal) {
+        return status;
+    }
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        *out_value = (uint32_t)(uint64_t)value->int64_value;
+        return 0;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        *out_value = (uint32_t)value->uint64_value;
+        return 0;
+    case MYLITE_EXPRESSION_VALUE_REAL:
+        *out_value =
+            (uint32_t)(uint64_t)(numeric_argument_uses_exact_rounding(argument)
+                                     ? cast_real_to_signed_integer(value->real_value)
+                                     : cast_real_to_signed_integer_half_even(value->real_value));
+        return 0;
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        return char_text_value(value->text_value == NULL ? "" : value->text_value,
+                               value->text_value == NULL ? 0U : value->text_length, warnings,
+                               out_value);
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        break;
+    }
+    return -1;
+}
+
+static int char_integer_literal_overflow_value(const struct mylite_sql_ast_node *argument,
+                                               struct mylite_expression_warnings *warnings,
+                                               uint32_t *out_value, bool *out_handled)
+{
+    const struct mylite_sql_ast_node *node = argument;
+    bool negative = false;
+    struct char_integer_parse parsed = {0};
+    bool effective_negative = false;
+
+    *out_handled = false;
+    while (node != NULL && node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        node = child_at(node, 0U);
+    }
+    if (node != NULL && node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        (node->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+         node->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
+        negative = node->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE;
+        node = child_at(node, 0U);
+    }
+    if (node == NULL || node->kind != MYLITE_SQL_AST_LITERAL ||
+        node->literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return 0;
+    }
+
+    parsed = parse_char_integer_text(node->span.text, node->span.length);
+    effective_negative = negative || parsed.negative;
+    if (!parsed.overflow &&
+        !(effective_negative && parsed.magnitude > mylite_expression_int64_min_magnitude)) {
+        return 0;
+    }
+
+    *out_handled = true;
+    *out_value = effective_negative ? 0U : UINT32_MAX;
+    return append_char_integer_warning(warnings, "DECIMAL", argument->span.text,
+                                       argument->span.length);
+}
+
+static int char_text_value(const char *text, size_t text_length,
+                           struct mylite_expression_warnings *warnings, uint32_t *out_value)
+{
+    struct char_integer_parse parsed = parse_char_integer_text(text, text_length);
+    bool negative_overflow =
+        parsed.negative && parsed.magnitude > mylite_expression_int64_min_magnitude;
+    bool truncated =
+        !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow || negative_overflow;
+    uint64_t bits = 0U;
+
+    if (truncated) {
+        int status = append_char_integer_warning(warnings, "INTEGER", text, text_length);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+    if (!parsed.saw_digit) {
+        *out_value = 0U;
+        return 0;
+    }
+
+    if ((parsed.overflow && parsed.negative) || negative_overflow) {
+        bits = 0U;
+    } else {
+        bits = parsed.negative ? unsigned_complement_from_magnitude(parsed.magnitude)
+                               : parsed.magnitude;
+    }
+    *out_value = (uint32_t)bits;
+    return 0;
+}
+
+static struct char_integer_parse parse_char_integer_text(const char *text, size_t text_length)
+{
+    const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
+    size_t index = 0U;
+    struct char_integer_parse parsed = {0};
+
+    if (text == NULL) {
+        text_length = 0U;
+    }
+    while (index < text_length && isspace(source[index])) {
+        ++index;
+    }
+    if (index < text_length && (source[index] == '+' || source[index] == '-')) {
+        parsed.negative = source[index] == '-';
+        ++index;
+    }
+    while (index < text_length && isdigit(source[index])) {
+        uint64_t digit = (uint64_t)(source[index] - '0');
+
+        parsed.saw_digit = true;
+        if (parsed.magnitude > (UINT64_MAX - digit) / MYLITE_EXPRESSION_DECIMAL_BASE) {
+            parsed.magnitude = UINT64_MAX;
+            parsed.overflow = true;
+        } else if (!parsed.overflow) {
+            parsed.magnitude = (parsed.magnitude * MYLITE_EXPRESSION_DECIMAL_BASE) + digit;
+        }
+        ++index;
+    }
+    while (index < text_length && isspace(source[index])) {
+        ++index;
+    }
+    parsed.trailing_garbage = index != text_length;
+    return parsed;
+}
+
+static int append_char_integer_warning(struct mylite_expression_warnings *warnings,
+                                       const char *type_name, const char *text, size_t text_length)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int preview = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                      ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                      : (int)text_length;
+    int length = snprintf(message, sizeof(message), "Truncated incorrect %s value: '%.*s'",
+                          type_name == NULL ? "" : type_name, preview, text == NULL ? "" : text);
+
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
+}
+
+static int append_char_bytes(char **result, size_t *result_length, uint32_t value)
+{
+    char bytes[MYLITE_EXPRESSION_CHAR_VALUE_BYTES];
+    size_t offset = 0U;
+
+    bytes[0] = (char)((value >> MYLITE_EXPRESSION_CHAR_SHIFT_24) & UINT32_C(0xFF));
+    bytes[1] = (char)((value >> MYLITE_EXPRESSION_CHAR_SHIFT_16) & UINT32_C(0xFF));
+    bytes[2] = (char)((value >> MYLITE_EXPRESSION_CHAR_SHIFT_8) & UINT32_C(0xFF));
+    bytes[3] = (char)(value & UINT32_C(0xFF));
+
+    while (offset + 1U < sizeof(bytes) && bytes[offset] == '\0') {
+        ++offset;
+    }
+    return append_text(result, result_length, bytes + offset, sizeof(bytes) - offset);
+}
+
+static int set_char_result(enum char_function_charset charset, const char *charset_name,
+                           const char *text, size_t text_length,
+                           struct mylite_expression_warnings *warnings,
+                           struct mylite_expression_value *out_value)
+{
+    if (!char_text_is_valid_for_charset(charset, text, text_length)) {
+        int status =
+            append_invalid_char_string_warning(warnings, (struct char_invalid_string_warning){
+                                                             .charset_name = charset_name,
+                                                             .text = text,
+                                                             .text_length = text_length,
+                                                         });
+
+        if (status != 0) {
+            return status;
+        }
+        if (charset == CHAR_FUNCTION_CHARSET_UTF8MB4 || charset == CHAR_FUNCTION_CHARSET_UTF8MB3) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+            return 0;
+        }
+    }
+    return set_text_value(text == NULL ? "" : text, text_length, out_value);
+}
+
+static bool char_text_is_valid_for_charset(enum char_function_charset charset, const char *text,
+                                           size_t text_length)
+{
+    switch (charset) {
+    case CHAR_FUNCTION_CHARSET_BINARY:
+    case CHAR_FUNCTION_CHARSET_LATIN1:
+        return true;
+    case CHAR_FUNCTION_CHARSET_UTF8MB4:
+        return char_text_is_utf8(text, text_length, true);
+    case CHAR_FUNCTION_CHARSET_UTF8MB3:
+        return char_text_is_utf8(text, text_length, false);
+    case CHAR_FUNCTION_CHARSET_ASCII:
+        return char_text_is_ascii(text, text_length);
+    case CHAR_FUNCTION_CHARSET_UNKNOWN:
+        break;
+    }
+    return false;
+}
+
+static bool char_text_is_ascii(const char *text, size_t text_length)
+{
+    const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
+
+    for (size_t index = 0U; index < text_length; ++index) {
+        if (source[index] > MYLITE_ASCII_MAX) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool char_text_is_utf8(const char *text, size_t text_length, bool allow_four_byte)
+{
+    const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
+    size_t index = 0U;
+
+    while (index < text_length) {
+        unsigned char first = source[index];
+        struct utf8_sequence sequence = {0};
+
+        if (first <= MYLITE_ASCII_MAX) {
+            ++index;
+            continue;
+        }
+        if (!utf8_sequence_from_first(first, allow_four_byte, &sequence) ||
+            index + sequence.length > text_length ||
+            source[index + MYLITE_UTF8_SECOND_BYTE_OFFSET] < sequence.second_min ||
+            source[index + MYLITE_UTF8_SECOND_BYTE_OFFSET] > sequence.second_max) {
+            return false;
+        }
+        for (size_t offset = MYLITE_UTF8_CONTINUATION_START_OFFSET; offset < sequence.length;
+             ++offset) {
+            if (!utf8_continuation_byte(source[index + offset])) {
+                return false;
+            }
+        }
+        index += sequence.length;
+    }
+    return true;
+}
+
+static bool utf8_sequence_from_first(unsigned char first, bool allow_four_byte,
+                                     struct utf8_sequence *out_sequence)
+{
+    static const struct utf8_sequence_range ranges[] = {
+        {.length = MYLITE_UTF8_TWO_BYTE_LENGTH,
+         .first_min = MYLITE_UTF8_TWO_BYTE_MIN,
+         .first_max = MYLITE_UTF8_TWO_BYTE_MAX,
+         .second_min = MYLITE_UTF8_CONTINUATION_MIN,
+         .second_max = MYLITE_UTF8_CONTINUATION_MAX},
+        {.length = MYLITE_UTF8_THREE_BYTE_LENGTH,
+         .first_min = MYLITE_UTF8_E0,
+         .first_max = MYLITE_UTF8_E0,
+         .second_min = MYLITE_UTF8_E0_SECOND_MIN,
+         .second_max = MYLITE_UTF8_CONTINUATION_MAX},
+        {.length = MYLITE_UTF8_THREE_BYTE_LENGTH,
+         .first_min = MYLITE_UTF8_E1_MIN,
+         .first_max = MYLITE_UTF8_EC_MAX,
+         .second_min = MYLITE_UTF8_CONTINUATION_MIN,
+         .second_max = MYLITE_UTF8_CONTINUATION_MAX},
+        {.length = MYLITE_UTF8_THREE_BYTE_LENGTH,
+         .first_min = MYLITE_UTF8_ED,
+         .first_max = MYLITE_UTF8_ED,
+         .second_min = MYLITE_UTF8_CONTINUATION_MIN,
+         .second_max = MYLITE_UTF8_ED_SECOND_MAX},
+        {.length = MYLITE_UTF8_THREE_BYTE_LENGTH,
+         .first_min = MYLITE_UTF8_EE_MIN,
+         .first_max = MYLITE_UTF8_EF_MAX,
+         .second_min = MYLITE_UTF8_CONTINUATION_MIN,
+         .second_max = MYLITE_UTF8_CONTINUATION_MAX},
+        {.length = MYLITE_UTF8_FOUR_BYTE_LENGTH,
+         .first_min = MYLITE_UTF8_F0,
+         .first_max = MYLITE_UTF8_F0,
+         .second_min = MYLITE_UTF8_F0_SECOND_MIN,
+         .second_max = MYLITE_UTF8_CONTINUATION_MAX,
+         .requires_four_byte = true},
+        {.length = MYLITE_UTF8_FOUR_BYTE_LENGTH,
+         .first_min = MYLITE_UTF8_F1_MIN,
+         .first_max = MYLITE_UTF8_F3_MAX,
+         .second_min = MYLITE_UTF8_CONTINUATION_MIN,
+         .second_max = MYLITE_UTF8_CONTINUATION_MAX,
+         .requires_four_byte = true},
+        {.length = MYLITE_UTF8_FOUR_BYTE_LENGTH,
+         .first_min = MYLITE_UTF8_F4,
+         .first_max = MYLITE_UTF8_F4,
+         .second_min = MYLITE_UTF8_CONTINUATION_MIN,
+         .second_max = MYLITE_UTF8_F4_SECOND_MAX,
+         .requires_four_byte = true},
+    };
+
+    for (size_t index = 0U; index < sizeof(ranges) / sizeof(ranges[0]); ++index) {
+        const struct utf8_sequence_range *range = &ranges[index];
+
+        if (first >= range->first_min && first <= range->first_max &&
+            (allow_four_byte || !range->requires_four_byte)) {
+            *out_sequence = (struct utf8_sequence){
+                .length = range->length,
+                .second_min = range->second_min,
+                .second_max = range->second_max,
+            };
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool utf8_continuation_byte(unsigned char character)
+{
+    return (character & MYLITE_UTF8_CONTINUATION_MASK) == MYLITE_UTF8_CONTINUATION_MARKER;
+}
+
+static int append_invalid_char_string_warning(struct mylite_expression_warnings *warnings,
+                                              struct char_invalid_string_warning warning)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char hex_preview[(MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW * 2U) + 1U];
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    const unsigned char *source = (const unsigned char *)(warning.text == NULL ? "" : warning.text);
+    size_t preview = warning.text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                         ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                         : warning.text_length;
+    size_t output = 0U;
+    int length = 0;
+
+    for (size_t index = 0U; index < preview; ++index) {
+        hex_preview[output++] = digits[source[index] >> 4U];
+        hex_preview[output++] = digits[source[index] & MYLITE_EXPRESSION_HEX_LOW_NIBBLE_MASK];
+    }
+    hex_preview[output] = '\0';
+    length = snprintf(message, sizeof(message), "Invalid %s character string: '%s'",
+                      warning.charset_name == NULL || warning.charset_name[0] == '\0'
+                          ? "binary"
+                          : warning.charset_name,
+                      hex_preview);
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_INVALID_CHARACTER_STRING, message);
+}
+
+static char *copy_charset_node_name(const struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return copy_span_text("binary", strlen("binary"));
+    }
+    if (node->kind == MYLITE_SQL_AST_LITERAL) {
+        return decode_string_literal(node);
+    }
+    return copy_unquoted_identifier_text(node->span);
+}
+
+static char *copy_unquoted_identifier_text(struct mylite_sql_source_span span)
+{
+    const char *text = span.text == NULL ? "" : span.text;
+    size_t start = 0U;
+    size_t end = span.text == NULL ? 0U : span.length;
+    char *copy = NULL;
+    size_t output = 0U;
+
+    if (end >= 2U && text[0] == '`' && text[end - 1U] == '`') {
+        start = 1U;
+        --end;
+    }
+    copy = malloc(end >= start ? end - start + 1U : 1U);
+    if (copy == NULL) {
+        return NULL;
+    }
+    for (size_t index = start; index < end; ++index) {
+        if (text[index] == '`' && index + 1U < end && text[index + 1U] == '`') {
+            copy[output++] = text[index++];
+        } else {
+            copy[output++] = text[index];
+        }
+    }
+    copy[output] = '\0';
+    return copy;
+}
+
+static enum char_function_charset char_function_charset_from_name(const char *name)
+{
+    const char *text = name == NULL ? "binary" : name;
+    size_t length = strlen(text);
+
+    if (char_charset_name_is(text, length, "binary")) {
+        return CHAR_FUNCTION_CHARSET_BINARY;
+    }
+    if (char_charset_name_is(text, length, "latin1")) {
+        return CHAR_FUNCTION_CHARSET_LATIN1;
+    }
+    if (char_charset_name_is(text, length, "utf8mb4")) {
+        return CHAR_FUNCTION_CHARSET_UTF8MB4;
+    }
+    if (char_charset_name_is(text, length, "utf8mb3") ||
+        char_charset_name_is(text, length, "utf8")) {
+        return CHAR_FUNCTION_CHARSET_UTF8MB3;
+    }
+    if (char_charset_name_is(text, length, "ascii")) {
+        return CHAR_FUNCTION_CHARSET_ASCII;
+    }
+    return CHAR_FUNCTION_CHARSET_UNKNOWN;
+}
+
+static bool char_charset_name_is(const char *text, size_t text_length, const char *expected)
+{
+    return ascii_text_equal_ci((struct text_compare_input){
+        .left = text,
+        .left_length = text_length,
+        .right = expected,
+        .right_length = strlen(expected == NULL ? "" : expected),
+    });
+}
+
 static int eval_hex_function(const struct mylite_sql_ast_node *arguments,
                              const struct mylite_expression_eval_context *context,
                              struct mylite_expression_warnings *warnings,
@@ -3399,13 +3981,13 @@ static int hex_numeric_value(const struct mylite_expression_value *value,
 
 static int64_t hex_real_to_signed_integer(double value, const struct mylite_sql_ast_node *argument)
 {
-    if (hex_argument_uses_exact_rounding(argument)) {
+    if (numeric_argument_uses_exact_rounding(argument)) {
         return cast_real_to_signed_integer(value);
     }
     return cast_real_to_signed_integer_half_even(value);
 }
 
-static bool hex_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument)
+static bool numeric_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument)
 {
     while (argument != NULL && argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         argument = child_at(argument, 0U);
@@ -3419,7 +4001,7 @@ static bool hex_argument_uses_exact_rounding(const struct mylite_sql_ast_node *a
     if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
         (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
          argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
-        return hex_argument_uses_exact_rounding(child_at(argument, 0U));
+        return numeric_argument_uses_exact_rounding(child_at(argument, 0U));
     }
     return false;
 }
@@ -3702,6 +4284,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_FIELD:
     case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
     case MYLITE_SCALAR_FUNCTION_MAKE_SET:
+    case MYLITE_SCALAR_FUNCTION_CHAR:
     case MYLITE_SCALAR_FUNCTION_HEX:
     case MYLITE_SCALAR_FUNCTION_UNHEX:
         return -1;
@@ -5925,6 +6508,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"FIELD", MYLITE_SCALAR_FUNCTION_FIELD},
         {"FIND_IN_SET", MYLITE_SCALAR_FUNCTION_FIND_IN_SET},
         {"MAKE_SET", MYLITE_SCALAR_FUNCTION_MAKE_SET},
+        {"CHAR", MYLITE_SCALAR_FUNCTION_CHAR},
         {"HEX", MYLITE_SCALAR_FUNCTION_HEX},
         {"UNHEX", MYLITE_SCALAR_FUNCTION_UNHEX},
         {"BIN", MYLITE_SCALAR_FUNCTION_BIN},
@@ -5996,6 +6580,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_FIELD:
     case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
     case MYLITE_SCALAR_FUNCTION_MAKE_SET:
+    case MYLITE_SCALAR_FUNCTION_CHAR:
     case MYLITE_SCALAR_FUNCTION_HEX:
     case MYLITE_SCALAR_FUNCTION_UNHEX:
     case MYLITE_SCALAR_FUNCTION_BIN:

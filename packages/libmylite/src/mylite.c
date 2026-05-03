@@ -131,6 +131,7 @@ static const unsigned int mylite_mysql_binary_charset_id = 63U;
 static const unsigned int mylite_mysql_latin1_swedish_ci_charset_id = 8U;
 static const unsigned int mylite_mysql_utf8mb4_bin_charset_id = 46U;
 static const unsigned int mylite_mysql_utf8mb4_0900_ai_ci_charset_id = 255U;
+static const char mylite_mysql_binary_charset_name[] = "binary";
 static const unsigned int mylite_mysql_not_fixed_decimals = 31U;
 static const unsigned int mylite_utf8_continuation_mask = 0xC0U;
 static const unsigned int mylite_utf8_continuation_marker = 0x80U;
@@ -148,6 +149,7 @@ static const uint64_t mylite_mysql_length_function_display_length = 10U;
 static const uint64_t mylite_mysql_ascii_function_display_length = 3U;
 static const uint64_t mylite_mysql_search_function_display_length = 11U;
 static const uint64_t mylite_mysql_list_index_function_display_length = 3U;
+static const uint64_t mylite_mysql_char_function_argument_bytes = 4U;
 static const uint64_t mylite_mysql_hex_numeric_result_chars = 16U;
 static const uint64_t mylite_mysql_base_conversion_result_chars = 65U;
 static const uint64_t mylite_mysql_integer_function_display_length = 21U;
@@ -2058,6 +2060,12 @@ static int infer_make_set_function_descriptor(mylite_db *database,
                                               const struct mylite_select_plan *plan,
                                               const struct mylite_sql_ast_node *expression,
                                               struct mylite_field_descriptor *out_descriptor);
+static int infer_char_function_descriptor(mylite_db *database,
+                                          const struct mylite_sql_ast_node *expression,
+                                          struct mylite_field_descriptor *out_descriptor);
+static int validate_char_function_charset(mylite_db *database,
+                                          const struct mylite_sql_ast_node *expression);
+static bool char_function_charset_name_is_supported(const char *name);
 // NOLINTNEXTLINE(misc-no-recursion)
 static int infer_hex_unhex_function_descriptor(mylite_db *database,
                                                const struct mylite_select_plan *plan,
@@ -2131,6 +2139,7 @@ static bool function_name_is_make_set(const struct mylite_sql_ast_node *name);
 static bool function_name_is_elt(const struct mylite_sql_ast_node *name);
 static bool function_name_is_quote(const struct mylite_sql_ast_node *name);
 static bool function_name_is_insert(const struct mylite_sql_ast_node *name);
+static bool function_name_is_char(const struct mylite_sql_ast_node *name);
 static bool function_name_is_hex(const struct mylite_sql_ast_node *name);
 static bool function_name_is_unhex(const struct mylite_sql_ast_node *name);
 static bool function_name_has_base_conversion_result(const struct mylite_sql_ast_node *name);
@@ -2927,6 +2936,9 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
                                             const struct mylite_select_table *table,
                                             const struct mylite_sql_ast_node *expression,
                                             const char *clause_context);
+static int bind_update_function_call(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                     const struct mylite_sql_ast_node *expression,
+                                     const char *clause_context);
 static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_select_table *table,
                                        struct mylite_update_order_plan *order_plan);
 static int bind_update_order_expression(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -3066,6 +3078,9 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
                                             const struct mylite_select_table *table,
                                             const struct mylite_sql_ast_node *expression,
                                             const char *clause_context);
+static int bind_delete_function_call(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                     const struct mylite_sql_ast_node *expression,
+                                     const char *clause_context);
 static int bind_delete_order_by_clause(mylite_stmt *stmt, const struct mylite_select_table *table,
                                        struct mylite_update_order_plan *order_plan);
 static int bind_delete_order_expression(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -9676,6 +9691,13 @@ static int bind_union_global_order_function_call(mylite_db *database,
     if (!mylite_expression_is_supported_function_call(expression)) {
         return set_select_unsupported_order_error(database);
     }
+    {
+        int status = validate_char_function_charset(database, expression);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;
          child != NULL; child = child->next_sibling) {
@@ -10380,6 +10402,10 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (infer_base_conversion_function_descriptor(database, name, out_descriptor)) {
         return MYLITE_OK;
     }
+    status = infer_char_function_descriptor(database, expression, out_descriptor);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
     status = infer_hex_unhex_function_descriptor(database, plan, expression, out_descriptor,
                                                  &matched_hex_unhex);
     if (status != MYLITE_OK || matched_hex_unhex) {
@@ -10606,6 +10632,108 @@ infer_base_conversion_function_descriptor(mylite_db *database,
     };
     field_descriptor_set_nullable(out_descriptor, true);
     return true;
+}
+
+static int infer_char_function_descriptor(mylite_db *database,
+                                          const struct mylite_sql_ast_node *expression,
+                                          struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *charset_node = child_at(expression, 2U);
+    char *charset_name = NULL;
+    bool binary_result = false;
+    size_t arity = 0U;
+    uint64_t length = 0U;
+    unsigned int flags = 0U;
+    unsigned int charset_id = field_descriptor_connection_charset_id(database);
+
+    if (!function_name_is_char(name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    charset_name = charset_node == NULL ? copy_span_text(mylite_mysql_binary_charset_name,
+                                                         strlen(mylite_mysql_binary_charset_name))
+                                        : copy_schema_text_span(charset_node);
+    if (charset_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    if (ascii_case_equal(charset_name, "binary")) {
+        binary_result = true;
+    } else if (!char_function_charset_name_is_supported(charset_name)) {
+        int status = set_unknown_charset_error(database, charset_name);
+
+        free(charset_name);
+        return status;
+    }
+    free(charset_name);
+    if (binary_result) {
+        flags = MYLITE_FIELD_FLAG_BINARY;
+        charset_id = mylite_mysql_binary_charset_id;
+    }
+
+    arity = mylite_sql_ast_node_child_count(arguments);
+    if (arity > UINT64_MAX / mylite_mysql_char_function_argument_bytes) {
+        length = mylite_mysql_long_text_length;
+    } else {
+        length = (uint64_t)arity * mylite_mysql_char_function_argument_bytes;
+        if (!binary_result) {
+            uint64_t max_bytes_per_character = connection_character_max_length(database);
+
+            if (max_bytes_per_character != 0U && length > UINT64_MAX / max_bytes_per_character) {
+                length = mylite_mysql_long_text_length;
+            } else {
+                length *= max_bytes_per_character;
+            }
+        }
+    }
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = flags,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = charset_id,
+        .nullable = true,
+    };
+    field_descriptor_set_nullable(out_descriptor, true);
+    return MYLITE_OK;
+}
+
+static int validate_char_function_charset(mylite_db *database,
+                                          const struct mylite_sql_ast_node *expression)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *charset_node = child_at(expression, 2U);
+    char *charset_name = NULL;
+    int status = MYLITE_OK;
+
+    if (!function_name_is_char(name) || charset_node == NULL) {
+        return MYLITE_OK;
+    }
+    charset_name = copy_schema_text_span(charset_node);
+    if (charset_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (!char_function_charset_name_is_supported(charset_name)) {
+        status = set_unknown_charset_error(database, charset_name);
+    }
+    free(charset_name);
+    return status;
+}
+
+static bool char_function_charset_name_is_supported(const char *name)
+{
+    if (ascii_case_equal(name, mylite_mysql_binary_charset_name)) {
+        return true;
+    }
+    if (ascii_case_equal(name, "latin1") || ascii_case_equal(name, "utf8mb4") ||
+        ascii_case_equal(name, "utf8mb3") || ascii_case_equal(name, "utf8") ||
+        ascii_case_equal(name, "ascii")) {
+        return true;
+    }
+    return false;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -11755,6 +11883,13 @@ static bool function_name_is_quote(const struct mylite_sql_ast_node *name)
 static bool function_name_is_insert(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"INSERT"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_char(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"CHAR"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
@@ -14222,6 +14357,13 @@ static int bind_select_function_arguments(mylite_db *database,
     if (!mylite_expression_is_supported_function_call(expression)) {
         return set_select_unsupported_where_error(database);
     }
+    {
+        int status = validate_char_function_charset(database, expression);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;
          child != NULL; child = child->next_sibling) {
@@ -14511,6 +14653,13 @@ static int bind_select_aggregate_aware_function( // NOLINT(misc-no-recursion)
 
     if (!mylite_expression_is_supported_function_call(expression)) {
         return set_select_unsupported_projection_error(database);
+    }
+    {
+        int status = validate_char_function_charset(database, expression);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
     }
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;
@@ -14908,6 +15057,13 @@ static int bind_select_order_expression(mylite_db *database,
 
         if (!mylite_expression_is_supported_function_call(expression)) {
             return set_select_unsupported_order_error(database);
+        }
+        {
+            int status = validate_char_function_charset(database, expression);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
         }
         for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                          : arguments->first_child;
@@ -23659,23 +23815,8 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return bind_update_predicate_expression(stmt, table, child_at(expression, 0U),
                                                 clause_context);
-    case MYLITE_SQL_AST_FUNCTION_CALL: {
-        const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-
-        if (!mylite_expression_is_supported_function_call(expression)) {
-            return set_update_unsupported_expression_error(stmt->database, clause_context);
-        }
-        for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
-                                                                         : arguments->first_child;
-             child != NULL; child = child->next_sibling) {
-            int status = bind_update_predicate_expression(stmt, table, child, clause_context);
-
-            if (status != MYLITE_OK) {
-                return status;
-            }
-        }
-        return MYLITE_OK;
-    }
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+        return bind_update_function_call(stmt, table, expression, clause_context);
     case MYLITE_SQL_AST_AGGREGATE_CALL:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_DEFAULT:
@@ -23765,6 +23906,33 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     }
 
     return set_update_unsupported_expression_error(stmt->database, clause_context);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_update_function_call(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                     const struct mylite_sql_ast_node *expression,
+                                     const char *clause_context)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    int status = MYLITE_OK;
+
+    if (!mylite_expression_is_supported_function_call(expression)) {
+        return set_update_unsupported_expression_error(stmt->database, clause_context);
+    }
+    status = validate_char_function_charset(stmt->database, expression);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                     : arguments->first_child;
+         child != NULL; child = child->next_sibling) {
+        status = bind_update_predicate_expression(stmt, table, child, clause_context);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -25143,23 +25311,8 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return bind_delete_predicate_expression(stmt, table, child_at(expression, 0U),
                                                 clause_context);
-    case MYLITE_SQL_AST_FUNCTION_CALL: {
-        const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-
-        if (!mylite_expression_is_supported_function_call(expression)) {
-            return set_delete_unsupported_clause_error(stmt->database);
-        }
-        for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
-                                                                         : arguments->first_child;
-             child != NULL; child = child->next_sibling) {
-            int status = bind_delete_predicate_expression(stmt, table, child, clause_context);
-
-            if (status != MYLITE_OK) {
-                return status;
-            }
-        }
-        return MYLITE_OK;
-    }
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+        return bind_delete_function_call(stmt, table, expression, clause_context);
     case MYLITE_SQL_AST_AGGREGATE_CALL:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_DEFAULT:
@@ -25249,6 +25402,33 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     }
 
     return set_delete_unsupported_clause_error(stmt->database);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_delete_function_call(mylite_stmt *stmt, const struct mylite_select_table *table,
+                                     const struct mylite_sql_ast_node *expression,
+                                     const char *clause_context)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    int status = MYLITE_OK;
+
+    if (!mylite_expression_is_supported_function_call(expression)) {
+        return set_delete_unsupported_clause_error(stmt->database);
+    }
+    status = validate_char_function_charset(stmt->database, expression);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                     : arguments->first_child;
+         child != NULL; child = child->next_sibling) {
+        status = bind_delete_predicate_expression(stmt, table, child, clause_context);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int bind_delete_order_by_clause(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -35073,6 +35253,13 @@ static int validate_scalar_select_order_function_call(mylite_db *database,
 
     if (!mylite_expression_is_supported_function_call(expression)) {
         return set_select_unsupported_order_error(database);
+    }
+    {
+        int status = validate_char_function_charset(database, expression);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
     }
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;

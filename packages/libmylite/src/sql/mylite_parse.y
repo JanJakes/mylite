@@ -3281,6 +3281,26 @@ scalar_function_call(A) ::= function_name(B) LPAREN(L) RPAREN(R). {
 scalar_function_call(A) ::= function_name(B) LPAREN(L) function_argument_list(C) RPAREN(R). {
     A = mylite_sql_parser_make_function_call(state, B, L, C, R);
 }
+scalar_function_call(A) ::= CHAR(T) LPAREN(L) function_argument_list(C) RPAREN(R). {
+    A = mylite_sql_parser_make_char_function_call(
+        state, (struct mylite_sql_parser_char_function_call_parts){
+                   .char_token = T,
+                   .left_paren = L,
+                   .arguments = C,
+                   .charset = NULL,
+                   .right_paren = R,
+               });
+}
+scalar_function_call(A) ::= CHAR(T) LPAREN(L) function_argument_list(C) USING charset_value(U) RPAREN(R). {
+    A = mylite_sql_parser_make_char_function_call(
+        state, (struct mylite_sql_parser_char_function_call_parts){
+                   .char_token = T,
+                   .left_paren = L,
+                   .arguments = C,
+                   .charset = U,
+                   .right_paren = R,
+               });
+}
 scalar_function_call(A) ::= IF(T) LPAREN(L) expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
     struct mylite_sql_ast_node *arguments =
         mylite_sql_parser_make_function_argument_list(state, B);

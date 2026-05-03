@@ -4821,6 +4821,24 @@ mylite_sql_parser_make_bare_function_call(struct mylite_sql_parser_state *state,
     return call;
 }
 
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_char_function_call(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_parser_char_function_call_parts parts)
+{
+    struct mylite_sql_ast_node *name = mylite_sql_parser_make_identifier(state, parts.char_token);
+    struct mylite_sql_ast_node *call = NULL;
+
+    if (name == NULL) {
+        return NULL;
+    }
+    call = mylite_sql_parser_make_function_call(state, name, parts.left_paren, parts.arguments,
+                                                parts.right_paren);
+    if (call != NULL && parts.charset != NULL) {
+        mylite_sql_ast_node_append_child(call, parts.charset);
+    }
+    return call;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,

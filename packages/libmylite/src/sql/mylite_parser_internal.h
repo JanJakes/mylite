@@ -45,6 +45,14 @@ struct mylite_sql_parser_position_operands {
     struct mylite_sql_ast_node *source;
 };
 
+struct mylite_sql_parser_char_function_call_parts {
+    struct mylite_sql_token char_token;
+    struct mylite_sql_token left_paren;
+    struct mylite_sql_ast_node *arguments;
+    struct mylite_sql_ast_node *charset;
+    struct mylite_sql_token right_paren;
+};
+
 struct mylite_sql_parser_trim_operands {
     struct mylite_sql_ast_node *remove;
     struct mylite_sql_ast_node *source;
@@ -1075,6 +1083,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
     struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_char_function_call(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_parser_char_function_call_parts parts);
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_function_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *first,

@@ -121,7 +121,8 @@ level application surfaces.
        MySQL conversion fidelity remain deferred. Spec:
        [ALTER TABLE column operations](../alter-table-column-operations/specs.md).
 36. [ ] `ALTER TABLE` key and constraint operations: primary, unique, index,
-       check, and foreign-key add/drop/rename/toggle behavior.
+       check, and foreign-key add/drop/rename/toggle behavior. Started; spec:
+       [ALTER TABLE key and constraint operations](../alter-table-key-constraint-operations/specs.md).
 37. [ ] `RENAME TABLE` and `ALTER TABLE ... RENAME TO`: atomic multi-table
        rename, metadata rewrite, temporary table handling, and errors.
 38. [ ] `TRUNCATE TABLE`: DDL-like delete, auto-increment reset, foreign-key

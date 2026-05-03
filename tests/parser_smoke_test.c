@@ -7969,7 +7969,12 @@ static int expect_semantic_ast_materialization(void) {
       statement, MYLITE_SEMANTIC_NODE_TARGET);
   const MyliteSemanticAstNode *source = first_semantic_child_with_kind(
       statement, MYLITE_SEMANTIC_NODE_SOURCE);
+  const MyliteSemanticAstNode *insert_table =
+      first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_TABLE);
   const MyliteSemanticAstNode *column_descriptor =
+      first_semantic_child_with_descriptor_kind(
+          insert_table, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
+  const MyliteSemanticAstNode *direct_dml_column_descriptor =
       first_semantic_child_with_descriptor_kind(
           statement, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
   const MyliteSemanticAstNode *assignment_descriptor =
@@ -8005,6 +8010,19 @@ static int expect_semantic_ast_materialization(void) {
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(target),
           mylite_semantic_ast_node_value_length(target), "t`y") ||
+      insert_table == NULL ||
+      mylite_semantic_ast_node_target_kind(insert_table) !=
+          MYLITE_STATEMENT_TARGET_TABLE ||
+      mylite_semantic_ast_node_target_role(insert_table) !=
+          MYLITE_STATEMENT_TARGET_ROLE_PRIMARY ||
+      mylite_semantic_ast_node_child_count(insert_table) != 2 ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(insert_table),
+          mylite_semantic_ast_node_value_length(insert_table), "t`y") ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_schema_value(insert_table),
+          mylite_semantic_ast_node_schema_value_length(insert_table),
+          "db`x") ||
       source == NULL ||
       mylite_semantic_ast_node_source_kind(source) !=
           MYLITE_SEMANTIC_SOURCE_VALUES ||
@@ -8018,6 +8036,7 @@ static int expect_semantic_ast_materialization(void) {
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(column_descriptor),
           mylite_semantic_ast_node_value_length(column_descriptor), "a") ||
+      direct_dml_column_descriptor != NULL ||
       assignment_descriptor == NULL ||
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(assignment_descriptor),
@@ -8026,8 +8045,8 @@ static int expect_semantic_ast_materialization(void) {
       value_descriptor == NULL ||
       mylite_semantic_ast_node_child_count(value_descriptor) != 1 ||
       direct_value_descriptor != NULL || direct_expression != NULL ||
-      counts.targets != 1 || counts.sources != 1 || counts.rows != 2 ||
-      counts.descriptors < 7 || counts.clauses != 0 ||
+      counts.targets != 1 || counts.sources != 1 || counts.tables != 1 ||
+      counts.rows != 2 || counts.descriptors < 7 || counts.clauses != 0 ||
       counts.expressions < 7 || counts.operators < 1 ||
       counts.leaf_values < 5 ||
       mylite_semantic_ast_node_count(semantic_ast) < 10 ||
@@ -8061,6 +8080,8 @@ static int expect_semantic_ast_materialization(void) {
   statement = mylite_semantic_ast_node_child_at(root, 0);
   source = first_semantic_child_with_kind(statement,
                                          MYLITE_SEMANTIC_NODE_SOURCE);
+  const MyliteSemanticAstNode *insert_set_table =
+      first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_TABLE);
   const MyliteSemanticAstNode *source_assignment =
       first_semantic_child_with_descriptor_kind(
           source, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT);
@@ -8076,12 +8097,17 @@ static int expect_semantic_ast_materialization(void) {
       mylite_semantic_ast_node_source_kind(source) !=
           MYLITE_SEMANTIC_SOURCE_SET ||
       mylite_semantic_ast_node_child_count(source) != 2 ||
+      insert_set_table == NULL ||
+      mylite_semantic_ast_node_child_count(insert_set_table) != 0 ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(insert_set_table),
+          mylite_semantic_ast_node_value_length(insert_set_table), "t") ||
       source_assignment == NULL ||
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(source_assignment),
           mylite_semantic_ast_node_value_length(source_assignment), "a") ||
       direct_assignment != NULL || insert_set_counts.sources != 1 ||
-      insert_set_counts.rows != 0 ||
+      insert_set_counts.tables != 1 || insert_set_counts.rows != 0 ||
       insert_set_counts.descriptors != 2 ||
       insert_set_counts.expressions < 4 ||
       insert_set_counts.operators < 1 ||
@@ -8115,9 +8141,14 @@ static int expect_semantic_ast_materialization(void) {
   statement = mylite_semantic_ast_node_child_at(root, 0);
   source = first_semantic_child_with_kind(statement,
                                          MYLITE_SEMANTIC_NODE_SOURCE);
+  const MyliteSemanticAstNode *replace_table =
+      first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_TABLE);
   row = first_semantic_child_with_kind(source, MYLITE_SEMANTIC_NODE_ROW);
   column_descriptor = first_semantic_child_with_descriptor_kind(
-      statement, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
+      replace_table, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
+  const MyliteSemanticAstNode *direct_replace_column_descriptor =
+      first_semantic_child_with_descriptor_kind(
+          statement, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
   value_descriptor = first_semantic_child_with_descriptor_kind(
       row, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
   direct_value_descriptor = first_semantic_child_with_descriptor_kind(
@@ -8131,6 +8162,11 @@ static int expect_semantic_ast_materialization(void) {
       mylite_semantic_ast_node_source_kind(source) !=
           MYLITE_SEMANTIC_SOURCE_VALUES ||
       mylite_semantic_ast_node_child_count(source) != 2 ||
+      replace_table == NULL ||
+      mylite_semantic_ast_node_child_count(replace_table) != 2 ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(replace_table),
+          mylite_semantic_ast_node_value_length(replace_table), "t") ||
       row == NULL ||
       mylite_semantic_ast_node_row_index(row) != 0 ||
       mylite_semantic_ast_node_child_count(row) != 2 ||
@@ -8138,10 +8174,11 @@ static int expect_semantic_ast_materialization(void) {
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(column_descriptor),
           mylite_semantic_ast_node_value_length(column_descriptor), "a") ||
+      direct_replace_column_descriptor != NULL ||
       value_descriptor == NULL ||
       mylite_semantic_ast_node_child_count(value_descriptor) != 1 ||
       direct_value_descriptor != NULL || replace_values_counts.sources != 1 ||
-      replace_values_counts.rows != 2 ||
+      replace_values_counts.tables != 1 || replace_values_counts.rows != 2 ||
       replace_values_counts.descriptors != 6 ||
       replace_values_counts.expressions < 6 ||
       replace_values_counts.operators < 1 ||

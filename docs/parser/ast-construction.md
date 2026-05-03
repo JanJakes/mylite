@@ -95,6 +95,10 @@ expression nodes.
   `INTO` modifiers, partition markers, optional column lists, VALUES row/value
   descriptors, SET assignment descriptors, and SELECT source anchors. REPLACE
   values and assignments reuse the recursive expression view.
+- The semantic AST now gives `INSERT` and `REPLACE` statements one target table
+  node with decoded table/schema values. Explicit target column descriptors live
+  under that table node while VALUES/SET payload descriptors stay under the
+  source node.
 - `CALL` statements expose parser-level views for decoded routine
   schema/name, parenthesized-call markers, and ordered argument descriptors.
   CALL arguments reuse the recursive expression view.
@@ -407,14 +411,16 @@ descriptor layer exposes them; otherwise they keep the raw table-reference span
 fallback. `INSERT` and `REPLACE` statements now own one semantic source node
 with `VALUES`, `SET`, or `SELECT` source kind;
 VALUES sources own row nodes, each row node owns the row's value descriptors,
-and SET payload descriptors live directly under the source node. Column
-descriptors and duplicate-key assignment descriptors remain statement-scoped.
+and SET payload descriptors live directly under the source node. `INSERT` and
+`REPLACE` statements also own one semantic table node for the decoded target
+table/schema; explicit target column descriptors live under that table node.
+Duplicate-key assignment descriptors remain statement-scoped.
 `CREATE TABLE` statements own a semantic table node after the generic target
 node. The table node spans the parser-level create-table view, carries the
 decoded table name, and owns the table's column, key, key-part, key-option, and
-table-option descriptor children. `ALTER TABLE`, `CREATE INDEX`, and DML
-descriptor placement remains statement-scoped until those statement families get
-their own object nodes.
+table-option descriptor children. `ALTER TABLE`, `CREATE INDEX`, and remaining
+DML descriptor placement remains statement-scoped until those statement families
+get their own object nodes.
 Descriptor nodes own the obvious expression payload for their parser-view item,
 including projection, VALUES, assignment, column default/generated/check, key
 check/key-part, LOAD assignment, and LOAD option expressions. Column descriptor
@@ -808,14 +814,14 @@ counters. `semantic` parses through the parser AST, materializes the first
 semantic graph, frees the parser AST, and then counts the semantic graph.
 
 Latest semantic-AST construction run on May 3, 2026, after decoded
-SELECT/UPDATE/DELETE table-reference descriptors and semantic `CREATE TABLE`
-table-node grouping:
+SELECT/UPDATE/DELETE table-reference descriptors and semantic `CREATE TABLE`,
+`INSERT`, and `REPLACE` table-node grouping:
 
 ```text
-mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.802289 qps=496316 mbps=37.75 avg_us=2.015
-mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.442583 qps=164739 mbps=12.53 avg_us=6.070 avg_nodes=74.5 avg_ast_bytes=11244.6 avg_statements=1.00
-mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.609782 qps=161540 mbps=12.29 avg_us=6.190 avg_nodes=74.5 avg_ast_bytes=11244.6
-mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.946954 qps=155452 mbps=11.82 avg_us=6.433 avg_semantic_nodes=10.3 avg_semantic_bytes=4839.5 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_query_blocks=0.28 avg_semantic_tables=0.13 avg_semantic_table_references=0.23 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.58 avg_semantic_clauses=0.37 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.69 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
+mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.793061 qps=497955 mbps=37.87 avg_us=2.008
+mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.330159 qps=166962 mbps=12.70 avg_us=5.989 avg_nodes=74.5 avg_ast_bytes=11244.6 avg_statements=1.00
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.678595 qps=160259 mbps=12.19 avg_us=6.240 avg_nodes=74.5 avg_ast_bytes=11244.6
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.923778 qps=155856 mbps=11.85 avg_us=6.416 avg_semantic_nodes=10.5 avg_semantic_bytes=4939.7 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_query_blocks=0.28 avg_semantic_tables=0.33 avg_semantic_table_references=0.23 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.58 avg_semantic_clauses=0.37 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.69 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
 ```
 
 Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:
@@ -1016,7 +1022,7 @@ Current release build size on the same machine:
 generated parser C: 72,876 lines, 5,639,543 bytes
 generated parser object: 997K on disk, 905,630 bytes text/data/other
 parser support object: 421K on disk, 242,586 bytes text/data/other
-semantic AST object: 74K on disk, 35,811 bytes text/data/other
+semantic AST object: 76K on disk, 36,603 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.6M on disk
 mylite-parse: 1.3M on disk

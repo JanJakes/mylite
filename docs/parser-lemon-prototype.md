@@ -80,7 +80,7 @@ token sink:
   `VALUE(S)`/`SET` row aliases,
   direct query payload `SELECT` list tails, parenthesized query payload
   `SELECT`/`WITH`/`TABLE`/`VALUES` expression tails plus outer `ORDER BY` and
-  MySQL-shaped `LIMIT` suffixes, CTE-backed `INSERT` query payloads,
+  MySQL-shaped `LIMIT` suffixes, CTE-backed `INSERT`/`REPLACE` query payloads,
   malformed `SELECT` operands after set operators, and
   `ON DUPLICATE KEY UPDATE` assignment tails after value, set, direct query,
   parenthesized query, and CTE-backed query payloads including whole-value
@@ -126,7 +126,7 @@ token sink:
 - `WITH` CTE wrappers dispatch their main query/body forms through the same
   validators used by top-level `SELECT`, `TABLE`, `VALUES`, parenthesized query,
   and MySQL-supported `UPDATE`/`DELETE` bodies. Top-level `WITH ... INSERT` and
-  `WITH ... REPLACE` are rejected, while `INSERT`/`REPLACE ... WITH ... SELECT`
+  `WITH ... REPLACE` are rejected, while `INSERT`/`REPLACE ... WITH ...` query
   payloads remain valid and `INSERT ... WITH ...` duplicate-key continuations
   are handled after `SELECT`, `TABLE`, `VALUES`, and parenthesized query
   payloads. CTE bodies must begin with a query expression

@@ -19,6 +19,7 @@ static int test_create_table_base_execution_syntax(void);
 static int test_create_drop_index_syntax(void);
 static int test_alter_table_column_operations_syntax(void);
 static int test_alter_table_key_constraint_operations_syntax(void);
+static int test_rename_table_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
@@ -154,6 +155,7 @@ int main(void)
     failures += test_create_drop_index_syntax();
     failures += test_alter_table_column_operations_syntax();
     failures += test_alter_table_key_constraint_operations_syntax();
+    failures += test_rename_table_syntax();
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
@@ -2679,6 +2681,87 @@ static int test_alter_table_key_constraint_operations_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_rename_table_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *pairs = NULL;
+    const struct mylite_sql_ast_node *pair = NULL;
+    const struct mylite_sql_ast_node *items = NULL;
+    const struct mylite_sql_ast_node *action = NULL;
+    int failures = 0;
+
+    failures += parse_sql("RENAME TABLE app.old_name TO app.new_name, "
+                          "`from` TO `to`, a TO b;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    pairs = child_at(statement, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_RENAME_TABLE_STATEMENT, "rename table statement");
+    failures += expect_node(pairs, MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST, "rename table pair list");
+    failures += expect_child_count(pairs, 3U, "rename table pair count");
+    pair = child_at(pairs, 0U);
+    failures += expect_node(pair, MYLITE_SQL_AST_RENAME_TABLE_PAIR, "rename table pair");
+    failures += expect_node(child_at(pair, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "rename source qualified");
+    failures += expect_span_text(child_at(child_at(pair, 0U), 0U), "app", "rename source schema");
+    failures +=
+        expect_span_text(child_at(child_at(pair, 0U), 1U), "old_name", "rename source table");
+    failures += expect_node(child_at(pair, 1U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "rename target qualified");
+    failures += expect_span_text(child_at(child_at(pair, 1U), 0U), "app", "rename target schema");
+    failures +=
+        expect_span_text(child_at(child_at(pair, 1U), 1U), "new_name", "rename target table");
+    pair = child_at(pairs, 1U);
+    failures += expect_span_text(child_at(pair, 0U), "`from`", "rename quoted source");
+    failures += expect_span_text(child_at(pair, 1U), "`to`", "rename quoted target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE old_name RENAME new_name; "
+                          "ALTER TABLE old_name RENAME TO app.new_name; "
+                          "ALTER TABLE app.old_name RENAME AS new_name;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 3U, "alter table rename script count");
+
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    action = child_at(items, 0U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_TABLE,
+                                          false, "alter table rename bare action");
+    failures += expect_span_text(child_at(action, 0U), "new_name", "alter table rename target");
+
+    statement = child_at(result.root, 1U);
+    items = child_at(statement, 1U);
+    action = child_at(items, 0U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_TABLE,
+                                          false, "alter table rename to action");
+    failures += expect_node(child_at(action, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "alter table rename qualified target");
+
+    statement = child_at(result.root, 2U);
+    items = child_at(statement, 1U);
+    action = child_at(items, 0U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_TABLE,
+                                          false, "alter table rename as action");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "alter table rename qualified source");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t RENAME TABLE u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("RENAME TABLE t TO;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("RENAME TABLE t TO u,;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("RENAME TABLE t u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

@@ -117,8 +117,8 @@ level application surfaces.
        default backfill, column positioning, column/index metadata rewrites,
        duplicate-index warnings, and rejection of non-default `ALGORITHM` and
        `LOCK` before mutation. Inline key/constraint creation, generated
-       column dependencies, foreign-key dependencies, table rename, and full
-       MySQL conversion fidelity remain deferred. Spec:
+       column dependencies, foreign-key dependencies, and full MySQL
+       conversion fidelity remain deferred. Spec:
        [ALTER TABLE column operations](../alter-table-column-operations/specs.md).
 36. [ ] `ALTER TABLE` key and constraint operations: primary, unique, index,
        check, and foreign-key add/drop/rename/toggle behavior. First
@@ -134,7 +134,15 @@ level application surfaces.
        behavior remain. Spec:
        [ALTER TABLE key and constraint operations](../alter-table-key-constraint-operations/specs.md).
 37. [ ] `RENAME TABLE` and `ALTER TABLE ... RENAME TO`: atomic multi-table
-       rename, metadata rewrite, temporary table handling, and errors.
+       rename, metadata rewrite, temporary table handling, and errors. First
+       executable slice is implemented for supported MyLite base tables,
+       including parser coverage, selected-schema and schema-qualified
+       resolution, cross-schema moves, physical table rename, table/column/index
+       metadata rewrites, `INFORMATION_SCHEMA.TABLES`, `COLUMNS`, and
+       `STATISTICS` visibility, existing-target/missing-source/missing-schema
+       diagnostics, and all-or-nothing multi-pair atomicity. Temporary tables,
+       views, triggers, foreign keys, privileges, metadata locks, and implicit
+       commits remain deferred. Spec: [RENAME TABLE](../rename-table/specs.md).
 38. [ ] `TRUNCATE TABLE`: DDL-like delete, auto-increment reset, foreign-key
        restrictions, implicit commits, and affected-row behavior.
 39. [ ] `SHOW TABLES`, `SHOW COLUMNS`, `SHOW INDEX`, `DESCRIBE`, and

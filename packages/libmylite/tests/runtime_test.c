@@ -194,6 +194,7 @@ static int test_drop_table_base_execution(void);
 static int test_create_drop_index_execution(void);
 static int test_alter_table_column_operations_execution(void);
 static int test_alter_table_key_operations_execution(void);
+static int test_rename_table_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_replace_execution(void);
@@ -327,6 +328,7 @@ int main(void)
     failures += test_create_drop_index_execution();
     failures += test_alter_table_column_operations_execution();
     failures += test_alter_table_key_operations_execution();
+    failures += test_rename_table_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_replace_execution();
@@ -4141,6 +4143,287 @@ static int test_alter_table_key_operations_execution(void)
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_rename_table_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const id_columns[] = {"id"};
+    static const char *const id_v_columns[] = {"id", "v"};
+    static const char *const single_1[] = {"1"};
+    static const char *const single_2[] = {"2"};
+    static const char *const source_value[] = {"11"};
+    static const char *const target_value[] = {"22"};
+    static const char *const t2_values[] = {"1", "10", "2", "20"};
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    mylite_db *database = NULL;
+    mylite_db *file_database = NULL;
+    mylite_db *no_schema_database = NULL;
+    mylite_stmt *stmt = NULL;
+    char *physical_source = NULL;
+    char *physical_target = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open rename database");
+    failures += prepare_sql(database, "RENAME TABLE no_default TO renamed", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "No database selected",
+                                  "rename table requires selected schema");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_rename_a", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE DATABASE mylite_rename_b", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_rename_a", MYLITE_DONE);
+
+    failures += execute_sql(database,
+                            "CREATE TABLE t1 (id INT PRIMARY KEY, v INT, "
+                            "UNIQUE KEY uq_v (v), KEY k_v (v))",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO t1 VALUES (1,10),(2,20)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database, "RENAME TABLE t1 TO t2", 0,
+                                                 "rename table affected rows");
+    failures += expect_no_information_schema_table_name_row(database, "t1");
+    failures += expect_no_information_schema_column_table_name_row(database, "t1");
+    failures += expect_no_information_schema_statistics_table_name_row(database, "t1");
+    failures += expect_select_rows(database, "SELECT id, v FROM t2 ORDER BY id", id_v_columns, 2,
+                                   t2_values, 2, "renamed table preserves rows");
+    failures += expect_information_schema_column_row(database, &(const struct expected_columns_row){
+                                                                   .table_name = "t2",
+                                                                   .column_name = "id",
+                                                                   .ordinal_position = 1,
+                                                                   .column_default = NULL,
+                                                                   .is_nullable = "NO",
+                                                                   .data_type = "int",
+                                                                   .column_type = "int",
+                                                                   .column_key = "PRI",
+                                                                   .extra = "",
+                                                               });
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "t2",
+                                                               .index_name = "PRIMARY",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "id",
+                                                               .non_unique = 0,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "t2",
+                                                               .index_name = "k_v",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "v",
+                                                               .non_unique = 1,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+
+    failures += execute_sql_expect_done_affected(database, "ALTER TABLE t2 RENAME t3", 0,
+                                                 "alter table rename bare affected rows");
+    failures += execute_sql_expect_done_affected(database, "ALTER TABLE t3 RENAME TO t4", 0,
+                                                 "alter table rename to affected rows");
+    failures += execute_sql_expect_done_affected(database, "ALTER TABLE t4 RENAME AS t5", 0,
+                                                 "alter table rename as affected rows");
+    failures += expect_select_rows(database, "SELECT id, v FROM t5 ORDER BY id", id_v_columns, 2,
+                                   t2_values, 2, "alter renamed table preserves rows");
+    failures += expect_no_information_schema_table_name_row(database, "t2");
+    failures += expect_no_information_schema_table_name_row(database, "t3");
+    failures += expect_no_information_schema_table_name_row(database, "t4");
+
+    failures += execute_sql_expect_done_affected(database, "RENAME TABLE t5 TO mylite_rename_b.t5m",
+                                                 0, "rename table cross-schema affected rows");
+    failures +=
+        expect_select_rows(database, "SELECT id, v FROM mylite_rename_b.t5m ORDER BY id",
+                           id_v_columns, 2, t2_values, 2, "cross-schema rename preserves rows");
+    failures += expect_no_information_schema_table_name_row(database, "t5");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "t5m",
+                                                               .index_name = "uq_v",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "v",
+                                                               .non_unique = 0,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE mylite_rename_b.t5m RENAME mylite_rename_a.t5back", 0,
+        "alter table cross-schema rename affected rows");
+    failures += expect_select_rows(database, "SELECT id, v FROM t5back ORDER BY id", id_v_columns,
+                                   2, t2_values, 2, "alter cross-schema rename preserves rows");
+
+    failures += execute_sql(database, "USE mylite_rename_b", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE mylite_rename_a.selected_src (id INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO mylite_rename_a.selected_src VALUES (1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "RENAME TABLE mylite_rename_a.selected_src TO selected_dst", 0,
+        "rename table resolves unqualified target through selected schema");
+    failures += expect_select_rows(database, "SELECT id FROM selected_dst", id_columns, 1, single_1,
+                                   1, "rename selected target rows");
+    failures += expect_no_information_schema_table_name_row(database, "selected_src");
+
+    failures += execute_sql(database, "USE mylite_rename_a", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE swap_a (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE swap_b (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO swap_a VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO swap_b VALUES (2)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "RENAME TABLE swap_a TO swap_tmp, swap_b TO swap_a, swap_tmp TO swap_b", 0,
+        "rename table swap affected rows");
+    failures += expect_select_rows(database, "SELECT id FROM swap_a", id_columns, 1, single_2, 1,
+                                   "rename swap first table");
+    failures += expect_select_rows(database, "SELECT id FROM swap_b", id_columns, 1, single_1, 1,
+                                   "rename swap second table");
+
+    failures += execute_sql(database, "CREATE TABLE coll_src (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE coll_dst (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO coll_src VALUES (11)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO coll_dst VALUES (22)", MYLITE_DONE);
+    failures += prepare_sql(database, "RENAME TABLE coll_src TO coll_dst", MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "already exists", "rename table rejects existing target");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM coll_src", id_columns, 1, source_value,
+                                   1, "rename collision preserves source");
+    failures += expect_select_rows(database, "SELECT id FROM coll_dst", id_columns, 1, target_value,
+                                   1, "rename collision preserves target");
+
+    failures += prepare_sql(database, "RENAME TABLE coll_src TO coll_src", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "already exists",
+                                  "rename table rejects same source and target");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE TABLE rollback_src (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO rollback_src VALUES (1)", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "RENAME TABLE rollback_src TO rollback_done, missing_rename "
+                            "TO missing_done",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "doesn't exist",
+                                  "rename table rolls back missing later source");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM rollback_src", id_columns, 1, single_1,
+                                   1, "failed multi-rename preserves first source");
+    failures += expect_no_information_schema_table_name_row(database, "rollback_done");
+
+    failures += prepare_sql(database, "RENAME TABLE rollback_src TO missing_schema.rollback_dst",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Unknown database",
+                                  "rename table rejects missing target schema");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM rollback_src", id_columns, 1, single_1,
+                                   1, "missing schema leaves source table");
+
+    failures += prepare_sql(database,
+                            "ALTER TABLE rollback_src RENAME rollback_renamed, "
+                            "ADD COLUMN blocked INT",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED,
+                              "alter table rename rejects mixed actions");
+    failures += expect_contains(mylite_error_message(database), "with other actions",
+                                "alter table rename mixed action error");
+    failures += expect_int64(mylite_affected_rows(stmt), -1,
+                             "alter table rename mixed action affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM rollback_src", id_columns, 1, single_1,
+                                   1, "mixed alter rename leaves source table");
+    failures += expect_no_information_schema_table_name_row(database, "rollback_renamed");
+
+    failures += prepare_sql(database,
+                            "ALTER TABLE rollback_src RENAME algorithm_blocked, "
+                            "ALGORITHM=INPLACE",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED,
+                              "alter table rename rejects non-default algorithm");
+    failures += expect_contains(mylite_error_message(database), "ALGORITHM",
+                                "alter table rename algorithm error");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), -1, "alter table rename algorithm affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM rollback_src", id_columns, 1, single_1,
+                                   1, "alter rename algorithm leaves source table");
+    failures += expect_no_information_schema_table_name_row(database, "algorithm_blocked");
+
+    mylite_close(database);
+
+    failures += expect_status(mylite_open_memory(&no_schema_database), MYLITE_OK,
+                              "open no-schema rename database");
+    failures +=
+        execute_sql(no_schema_database, "CREATE DATABASE mylite_rename_no_default", MYLITE_DONE);
+    failures +=
+        execute_sql(no_schema_database,
+                    "CREATE TABLE mylite_rename_no_default.qualified_src (id INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(no_schema_database,
+                    "INSERT INTO mylite_rename_no_default.qualified_src VALUES (1)", MYLITE_DONE);
+    failures += prepare_sql(no_schema_database,
+                            "RENAME TABLE mylite_rename_no_default.qualified_src "
+                            "TO unqualified_dst",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, no_schema_database, "No database selected",
+                                  "rename qualified source requires schema for target");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        no_schema_database, "SELECT id FROM mylite_rename_no_default.qualified_src", id_columns, 1,
+        single_1, 1, "failed no-default target preserves qualified source");
+    failures +=
+        execute_sql_expect_done_affected(no_schema_database,
+                                         "RENAME TABLE mylite_rename_no_default.qualified_src "
+                                         "TO mylite_rename_no_default.qualified_dst",
+                                         0, "rename fully-qualified names without selected schema");
+    failures += expect_select_rows(
+        no_schema_database, "SELECT id FROM mylite_rename_no_default.qualified_dst", id_columns, 1,
+        single_1, 1, "qualified rename without selected schema preserves rows");
+    mylite_close(no_schema_database);
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &file_database), MYLITE_OK,
+                              "open rename physical database");
+    failures += execute_sql(file_database, "CREATE DATABASE mylite_rename_file", MYLITE_DONE);
+    failures += execute_sql(file_database, "USE mylite_rename_file", MYLITE_DONE);
+    failures += execute_sql(file_database, "CREATE TABLE physical_src (id INT)", MYLITE_DONE);
+    failures +=
+        execute_sql_expect_done_affected(file_database, "RENAME TABLE physical_src TO physical_dst",
+                                         0, "rename physical table affected rows");
+    mylite_close(file_database);
+
+    physical_source = expected_physical_table_name("mylite_rename_file", "physical_src");
+    physical_target = expected_physical_table_name("mylite_rename_file", "physical_dst");
+    if (physical_source == NULL || physical_target == NULL) {
+        fprintf(stderr, "out of memory while building rename physical table names\n");
+        failures = 1;
+    } else {
+        failures += expect_sqlite_table_missing(&(const struct sqlite_table_lookup){
+            .path = path,
+            .table_name = physical_source,
+        });
+        failures += expect_sqlite_table_exists(&(const struct sqlite_table_lookup){
+            .path = path,
+            .table_name = physical_target,
+        });
+    }
+    free(physical_source);
+    free(physical_target);
+    remove_runtime_test_files();
+
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 

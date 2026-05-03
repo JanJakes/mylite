@@ -126,6 +126,9 @@ statement(A) ::= drop_schema_statement(B). {
 statement(A) ::= drop_table_statement(B). {
     A = B;
 }
+statement(A) ::= rename_table_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -227,6 +230,10 @@ drop_table_statement(A) ::= DROP(T) opt_temporary(U) TABLE opt_if_exists(B) drop
         C);
 }
 
+rename_table_statement(A) ::= RENAME(T) TABLE rename_table_pair_list(P). {
+    A = mylite_sql_parser_make_rename_table_statement(state, T, P);
+}
+
 alter_table_statement(A) ::= ALTER(T) TABLE table_name(B) alter_table_item_list(C). {
     A = mylite_sql_parser_make_alter_table_statement(state, T, B, C);
 }
@@ -288,6 +295,15 @@ alter_table_action(A) ::= ADD(T) opt_constraint_symbol(C) FOREIGN KEY opt_index_
 }
 alter_table_action(A) ::= DROP(T) FOREIGN KEY(K) identifier(N). {
     A = mylite_sql_parser_make_alter_table_drop_foreign_key_action(state, T, K, N);
+}
+alter_table_action(A) ::= RENAME(T) table_name(N). {
+    A = mylite_sql_parser_make_alter_table_rename_table_action(state, T, N);
+}
+alter_table_action(A) ::= RENAME(T) TO table_name(N). {
+    A = mylite_sql_parser_make_alter_table_rename_table_action(state, T, N);
+}
+alter_table_action(A) ::= RENAME(T) AS table_name(N). {
+    A = mylite_sql_parser_make_alter_table_rename_table_action(state, T, N);
 }
 alter_table_action(A) ::= ADD(T) opt_column(C) column_definition(D) opt_column_position(P). {
     A = mylite_sql_parser_make_alter_table_add_column_action(
@@ -516,6 +532,17 @@ drop_table_name_list(A) ::= table_name(B). {
 }
 drop_table_name_list(A) ::= drop_table_name_list(B) COMMA table_name(C). {
     A = mylite_sql_parser_append_table_name(state, B, C);
+}
+
+rename_table_pair_list(A) ::= rename_table_pair(B). {
+    A = mylite_sql_parser_make_rename_table_pair_list(state, B);
+}
+rename_table_pair_list(A) ::= rename_table_pair_list(B) COMMA rename_table_pair(C). {
+    A = mylite_sql_parser_append_rename_table_pair(state, B, C);
+}
+
+rename_table_pair(A) ::= table_name(O) TO(T) table_name(N). {
+    A = mylite_sql_parser_make_rename_table_pair(state, O, T, N);
 }
 
 opt_drop_table_mode(A) ::= . {

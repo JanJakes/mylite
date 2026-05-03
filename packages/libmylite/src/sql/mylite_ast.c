@@ -835,6 +835,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "alter_table_action";
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
         return "alter_table_column_position";
+    case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+        return "rename_table_statement";
+    case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
+        return "rename_table_pair_list";
+    case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
+        return "rename_table_pair";
     }
 
     return "unknown";
@@ -1116,6 +1122,8 @@ const char *mylite_sql_ast_alter_table_action_name(enum mylite_sql_ast_alter_tab
         return "add_foreign_key";
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY:
         return "drop_foreign_key";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_TABLE:
+        return "rename_table";
     }
 
     return "unknown";

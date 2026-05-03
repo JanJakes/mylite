@@ -303,6 +303,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_drop_table_tokens tokens,
     struct mylite_sql_ast_node *if_exists, struct mylite_sql_ast_node *table_names);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_rename_table_statement(struct mylite_sql_parser_state *state,
+                                              struct mylite_sql_token rename_token,
+                                              struct mylite_sql_ast_node *pairs);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_rename_table_pair_list(struct mylite_sql_parser_state *state,
+                                              struct mylite_sql_ast_node *pair);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_rename_table_pair(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *list,
+                                           struct mylite_sql_ast_node *pair);
+struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_pair(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *old_name,
+    struct mylite_sql_token to_token, struct mylite_sql_ast_node *new_name);
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *items);
@@ -325,6 +339,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_column_act
     struct mylite_sql_parser_state *state, struct mylite_sql_token rename_token,
     struct mylite_sql_ast_node *old_name, struct mylite_sql_token to_token,
     struct mylite_sql_ast_node *new_name);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_alter_table_rename_table_action(struct mylite_sql_parser_state *state,
+                                                       struct mylite_sql_token rename_token,
+                                                       struct mylite_sql_ast_node *new_name);
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_change_column_action(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_alter_table_action_tokens tokens, struct mylite_sql_ast_node *old_name,

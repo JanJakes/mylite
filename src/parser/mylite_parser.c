@@ -556,6 +556,8 @@ static int routine_characteristic_token(MyliteParseContext *ctx,
                                         MyliteToken *token);
 static int token_is_statement_terminator(int token_id, MyliteToken token);
 static int token_is_plus(MyliteToken token);
+static void validate_delete_multi_table_tail_from(MyliteParseContext *ctx,
+                                                  MyliteToken start);
 static int dml_assignment_boundary(int mode, int token_id);
 static int dml_assignment_operator(int token_id);
 static int dml_assignment_target_token(int token_id);
@@ -3688,6 +3690,13 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   int update_table_condition_started = 0;
   int update_table_alias_pending = 0;
 
+  if (kind == MYLITE_STATEMENT_DELETE) {
+    validate_delete_multi_table_tail_from(ctx, start);
+    if (ctx->failed) {
+      return;
+    }
+  }
+
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
     if (!saw_statement) {
@@ -4748,6 +4757,161 @@ void mylite_parser_validate_dml_statement(MyliteParseContext *ctx,
   } else if (update_table_alias_pending) {
     mylite_parser_reject(ctx, pending_token,
                          "incomplete UPDATE table alias");
+  }
+}
+
+static void validate_delete_multi_table_tail_from(MyliteParseContext *ctx,
+                                                  MyliteToken start) {
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_order_token = start;
+  MyliteToken pending_using_token = start;
+  int token_id;
+  int saw_delete = 0;
+  int saw_head_token = 0;
+  int first_head_token_was_from = 0;
+  int target_list_form = 0;
+  int target_list_source_started = 0;
+  int using_form = 0;
+  int delete_modifier_scan = 1;
+  int depth = 0;
+  int previous_top_token_id = 0;
+  int pending_order = 0;
+  int pending_target_form_using = 0;
+  int target_list_join_condition_available = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    int multi_table_tail_active;
+
+    if (!saw_delete) {
+      if (token.offset == start.offset) {
+        saw_delete = 1;
+      }
+      continue;
+    }
+
+    if (depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        depth--;
+      }
+      continue;
+    }
+
+    if (token_is_statement_terminator(token_id, token)) {
+      if (pending_order) {
+        mylite_parser_reject(ctx, pending_order_token,
+                             "malformed multi-table DELETE tail");
+      } else if (pending_target_form_using) {
+        mylite_parser_reject(ctx, pending_using_token,
+                             "malformed multi-table DELETE tail");
+      }
+      return;
+    }
+
+    if (pending_target_form_using) {
+      if (token_id != ML_LP) {
+        mylite_parser_reject(ctx, pending_using_token,
+                             "malformed multi-table DELETE tail");
+        return;
+      }
+      pending_target_form_using = 0;
+      depth++;
+      previous_top_token_id = token_id;
+      continue;
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      if (pending_order) {
+        pending_order = 0;
+      }
+      depth++;
+      previous_top_token_id = token_id;
+      continue;
+    }
+
+    if (delete_modifier_scan &&
+        (token_id == ML_LOW_PRIORITY || token_id == ML_QUICK ||
+         token_id == ML_IGNORE)) {
+      previous_top_token_id = token_id;
+      continue;
+    }
+    delete_modifier_scan = 0;
+
+    if (!saw_head_token) {
+      saw_head_token = 1;
+      first_head_token_was_from = token_id == ML_FROM;
+      target_list_form = !first_head_token_was_from;
+      previous_top_token_id = token_id;
+      continue;
+    }
+
+    if (pending_order) {
+      if (token_id == ML_BY) {
+        mylite_parser_reject(ctx, pending_order_token,
+                             "malformed multi-table DELETE tail");
+        return;
+      }
+      pending_order = 0;
+    }
+
+    if (target_list_form && !target_list_source_started) {
+      if (token_id == ML_FROM) {
+        target_list_source_started = 1;
+      }
+      previous_top_token_id = token_id;
+      continue;
+    }
+
+    if (first_head_token_was_from && !using_form && token_id == ML_USING) {
+      using_form = 1;
+      previous_top_token_id = token_id;
+      continue;
+    }
+
+    multi_table_tail_active =
+        (target_list_form && target_list_source_started) || using_form;
+    if (target_list_form && target_list_source_started &&
+        (token_id == ML_JOIN || token_id == ML_STRAIGHT_JOIN)) {
+      target_list_join_condition_available = 1;
+    } else if (target_list_form && target_list_source_started &&
+               target_list_join_condition_available && token_id == ML_ON) {
+      target_list_join_condition_available = 0;
+    }
+    if (multi_table_tail_active && previous_top_token_id != ML_DOT) {
+      if (token_id == ML_ORDER) {
+        pending_order = 1;
+        pending_order_token = token;
+        previous_top_token_id = token_id;
+        continue;
+      }
+      if (target_list_form && token_id == ML_USING) {
+        if (!target_list_join_condition_available) {
+          mylite_parser_reject(ctx, token,
+                               "malformed multi-table DELETE tail");
+          return;
+        }
+        target_list_join_condition_available = 0;
+        pending_target_form_using = 1;
+        pending_using_token = token;
+        previous_top_token_id = token_id;
+        continue;
+      }
+      if (token_id == ML_LIMIT) {
+        mylite_parser_reject(ctx, token,
+                             "malformed multi-table DELETE tail");
+        return;
+      }
+    }
+
+    previous_top_token_id = token_id;
+  }
+
+  if (pending_order) {
+    mylite_parser_reject(ctx, pending_order_token,
+                         "malformed multi-table DELETE tail");
   }
 }
 

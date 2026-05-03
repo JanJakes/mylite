@@ -98,7 +98,10 @@ token sink:
   operators including inside plain parenthesized expression groups, trailing
   separators inside those groups, and out-of-order top-level DML clauses.
 - Multi-table `DELETE` recognizes both `DELETE tbl_list FROM ...` and
-  `DELETE FROM tbl_list USING ...` forms with joined sources and `WHERE` tails.
+  `DELETE FROM tbl_list USING ...` forms with joined sources, join
+  `USING (...)` conditions, and `WHERE` tails, and rejects MySQL-invalid
+  `ORDER BY`/`LIMIT` tails plus mixed source-level
+  `DELETE tbl_list FROM source USING source` forms.
 - `VALUES` recognizes comma-separated row contents, whole-value `DEFAULT`, and
   `DEFAULT(column)` while preserving nested expression bodies, rejects adjacent
   operands and dangling operators in row expression lists, applies the same

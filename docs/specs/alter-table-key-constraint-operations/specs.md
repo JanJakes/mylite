@@ -28,7 +28,8 @@ MyLite:
   column operations
 - schema-qualified and selected-schema table resolution
 - metadata updates in the internal column/index catalogs,
-  `INFORMATION_SCHEMA.STATISTICS`, and future constraint metadata tables
+  `INFORMATION_SCHEMA.STATISTICS`, `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`, and
+  future key-column, CHECK, and foreign-key constraint metadata tables
 - duplicate validation, dependency validation, warning records, affected rows,
   diagnostics, statement atomicity, and deferred implicit-commit boundaries
 
@@ -703,8 +704,9 @@ Information schema:
 
 - `INFORMATION_SCHEMA.STATISTICS` should reflect all supported index changes
   immediately.
-- `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` should expose primary, unique, CHECK,
-  and foreign-key constraints when the underlying catalogs exist.
+- `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` exposes primary and unique constraints
+  from `__mylite_index_catalog` for supported key DDL. CHECK and foreign-key
+  rows should be added when those underlying catalogs exist.
 - `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` should expose primary, unique, and
   foreign-key key parts with constraint-relative ordinals.
 - `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` should expose CHECK constraint names

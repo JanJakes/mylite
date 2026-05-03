@@ -16,7 +16,8 @@ enum {
     tables_column_count = 21,
     columns_column_count = 22,
     statistics_column_count = 18,
-    information_schema_view_count = 9,
+    table_constraints_column_count = 7,
+    information_schema_view_count = 10,
     schemata_catalog_column = 0,
     schemata_name_column = 1,
     schemata_character_set_column = 2,
@@ -64,6 +65,13 @@ enum {
     statistics_index_comment_column = 15,
     statistics_visible_column = 16,
     statistics_table_name_column = 2,
+    table_constraints_catalog_column = 0,
+    table_constraints_schema_column = 1,
+    table_constraints_name_column = 2,
+    table_constraints_table_schema_column = 3,
+    table_constraints_table_name_column = 4,
+    table_constraints_type_column = 5,
+    table_constraints_enforced_column = 6,
     information_schema_table_version = 10,
     simple_create_table_version = 10,
     simple_create_auto_increment = 10,
@@ -190,6 +198,13 @@ struct expected_statistics_row {
     const char *visible;
 };
 
+struct expected_table_constraints_row {
+    const char *schema_name;
+    const char *table_name;
+    const char *constraint_name;
+    const char *constraint_type;
+};
+
 struct expected_result_metadata {
     const char *name;
     const char *schema_name;
@@ -221,6 +236,7 @@ static int test_information_schema_character_sets_execution(void);
 static int test_information_schema_collations_execution(void);
 static int test_information_schema_collation_character_set_applicability_execution(void);
 static int test_information_schema_keywords_execution(void);
+static int test_information_schema_table_constraints_execution(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
@@ -317,6 +333,11 @@ static int expect_information_schema_statistics_row(mylite_db *database,
 static int expect_no_information_schema_statistics_index_row(mylite_db *database,
                                                              const char *table_name,
                                                              const char *index_name);
+static int expect_information_schema_table_constraints_row(
+    mylite_db *database, const struct expected_table_constraints_row *expected);
+static int expect_no_information_schema_table_constraints_row(mylite_db *database,
+                                                              const char *table_name,
+                                                              const char *constraint_name);
 static int
 expect_information_schema_table_collation(mylite_db *database,
                                           const struct expected_table_collation *expected);
@@ -388,6 +409,7 @@ int main(void)
     failures += test_information_schema_collations_execution();
     failures += test_information_schema_collation_character_set_applicability_execution();
     failures += test_information_schema_keywords_execution();
+    failures += test_information_schema_table_constraints_execution();
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
@@ -1425,6 +1447,170 @@ static int test_information_schema_keywords_execution(void)
                             "INFORMATION_SCHEMA.TABLES",
                             MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "information schema keywords join");
+
+    mylite_close(database);
+    mylite_finalize(stmt);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_information_schema_table_constraints_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {
+        "CONSTRAINT_CATALOG", "CONSTRAINT_SCHEMA", "CONSTRAINT_NAME", "TABLE_SCHEMA",
+        "TABLE_NAME",         "CONSTRAINT_TYPE",   "ENFORCED",
+    };
+    static const char *const show_tables_name_columns[] = {
+        "Tables_in_information_schema (TABLE_CONSTRAINTS)"};
+    static const char *const show_tables_columns[] = {
+        "Tables_in_information_schema (TABLE_CONSTRAINTS)", "Table_type"};
+    static const char *const show_tables_name_values[] = {"TABLE_CONSTRAINTS"};
+    static const char *const show_tables_values[] = {"TABLE_CONSTRAINTS", "SYSTEM VIEW"};
+    static const char *const values[] = {
+        "def",
+        "mylite_table_constraints",
+        "PRIMARY",
+        "mylite_table_constraints",
+        "table_constraints_fixture",
+        "PRIMARY KEY",
+        "YES",
+        "def",
+        "mylite_table_constraints",
+        "code",
+        "mylite_table_constraints",
+        "table_constraints_fixture",
+        "UNIQUE",
+        "YES",
+        "def",
+        "mylite_table_constraints",
+        "uq_name",
+        "mylite_table_constraints",
+        "table_constraints_fixture",
+        "UNIQUE",
+        "YES",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open information schema table constraints");
+
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS", columns,
+        table_constraints_column_count);
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_table_constraints", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_table_constraints", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE table_constraints_fixture ("
+                            "id INT PRIMARY KEY,"
+                            "code INT UNIQUE,"
+                            "name VARCHAR(20),"
+                            "UNIQUE KEY uq_name (name),"
+                            "KEY idx_name (name))",
+                            MYLITE_DONE);
+
+    failures += expect_select_rows(database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+                                   columns, table_constraints_column_count, values, 3,
+                                   "information schema table constraints rows");
+    failures += expect_select_rows(database, "SELECT * FROM information_schema.table_constraints",
+                                   columns, table_constraints_column_count, values, 3,
+                                   "information schema table constraints lower-case");
+    failures += expect_select_rows(database, "SELECT * FROM Information_Schema.Table_Constraints",
+                                   columns, table_constraints_column_count, values, 3,
+                                   "information schema table constraints mixed-case");
+    failures += expect_select_rows(
+        database, "SELECT * FROM `information_schema`.`TABLE_CONSTRAINTS`", columns,
+        table_constraints_column_count, values, 3, "information schema table constraints quoted");
+
+    failures += expect_no_information_schema_table_constraints_row(
+        database, "table_constraints_fixture", "idx_name");
+    failures += expect_information_schema_tables_views(database);
+    failures +=
+        expect_select_rows(database, "SHOW TABLES FROM information_schema LIKE 'table_constraints'",
+                           show_tables_name_columns, 1, show_tables_name_values, 1,
+                           "show tables information schema table constraints");
+    failures += expect_select_rows(
+        database, "SHOW FULL TABLES FROM information_schema LIKE 'table_constraints'",
+        show_tables_columns, 2, show_tables_values, 1,
+        "show full tables information schema table constraints");
+
+    failures +=
+        execute_sql(database, "DROP INDEX uq_name ON table_constraints_fixture", MYLITE_DONE);
+    failures += expect_no_information_schema_table_constraints_row(
+        database, "table_constraints_fixture", "uq_name");
+    failures += expect_information_schema_table_constraints_row(
+        database, &(const struct expected_table_constraints_row){
+                      .schema_name = "mylite_table_constraints",
+                      .table_name = "table_constraints_fixture",
+                      .constraint_name = "code",
+                      .constraint_type = "UNIQUE",
+                  });
+
+    failures += execute_sql(database,
+                            "ALTER TABLE table_constraints_fixture RENAME INDEX code TO "
+                            "code_renamed",
+                            MYLITE_DONE);
+    failures += expect_no_information_schema_table_constraints_row(
+        database, "table_constraints_fixture", "code");
+    failures += expect_information_schema_table_constraints_row(
+        database, &(const struct expected_table_constraints_row){
+                      .schema_name = "mylite_table_constraints",
+                      .table_name = "table_constraints_fixture",
+                      .constraint_name = "code_renamed",
+                      .constraint_type = "UNIQUE",
+                  });
+
+    failures += execute_sql(database, "ALTER TABLE table_constraints_fixture DROP PRIMARY KEY",
+                            MYLITE_DONE);
+    failures += expect_no_information_schema_table_constraints_row(
+        database, "table_constraints_fixture", "PRIMARY");
+
+    failures +=
+        prepare_sql(database, "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema table constraints projection");
+    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema table constraints distinct");
+    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema table constraints explicit all");
+    failures +=
+        prepare_sql(database,
+                    "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_TYPE = "
+                    "'UNIQUE'",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema table constraints where");
+    failures += prepare_sql(
+        database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS ORDER BY CONSTRAINT_NAME",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema table constraints order by");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS LIMIT 1",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema table constraints limit");
+    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema table constraints count");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema table constraints AS alias");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema table constraints bare alias");
+    failures += prepare_sql(database,
+                            "SELECT INFORMATION_SCHEMA.TABLE_CONSTRAINTS.* FROM "
+                            "INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema table constraints qualified wildcard");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS JOIN "
+                            "INFORMATION_SCHEMA.TABLES",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema table constraints join");
 
     mylite_close(database);
     mylite_finalize(stmt);
@@ -12638,7 +12824,7 @@ static int expect_information_schema_tables_views(mylite_db *database)
         "COLLATIONS",     "COLUMNS",
         "ENGINES",        "SCHEMATA",
         "KEYWORDS",       "STATISTICS",
-        "TABLES",
+        "TABLES",         "TABLE_CONSTRAINTS",
     };
     mylite_stmt *stmt = NULL;
     int failures =
@@ -13115,6 +13301,96 @@ static int expect_no_information_schema_statistics_index_row(mylite_db *database
             strcmp(current_index_name, index_name) == 0) {
             fprintf(stderr, "statistics unexpectedly returned row for table '%s' index '%s'\n",
                     table_name, index_name);
+            failures = 1;
+            break;
+        }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_information_schema_table_constraints_row(
+    mylite_db *database, const struct expected_table_constraints_row *expected)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+                               MYLITE_OK, &stmt);
+    int saw_row = 0;
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *schema_name = NULL;
+        const char *table_name = NULL;
+        const char *constraint_name = NULL;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "table constraints row");
+        if (failures != 0) {
+            break;
+        }
+
+        schema_name = mylite_column_text(stmt, table_constraints_schema_column);
+        table_name = mylite_column_text(stmt, table_constraints_table_name_column);
+        constraint_name = mylite_column_text(stmt, table_constraints_name_column);
+        if (strcmp(schema_name, expected->schema_name) != 0 ||
+            strcmp(table_name, expected->table_name) != 0 ||
+            strcmp(constraint_name, expected->constraint_name) != 0) {
+            continue;
+        }
+
+        saw_row = 1;
+        failures += expect_string(mylite_column_text(stmt, table_constraints_catalog_column), "def",
+                                  "table constraints catalog");
+        failures += expect_string(mylite_column_text(stmt, table_constraints_table_schema_column),
+                                  expected->schema_name, "table constraints table schema");
+        failures += expect_string(mylite_column_text(stmt, table_constraints_type_column),
+                                  expected->constraint_type, "table constraints type");
+        failures += expect_string(mylite_column_text(stmt, table_constraints_enforced_column),
+                                  "YES", "table constraints enforced");
+        break;
+    }
+
+    if (!saw_row) {
+        fprintf(stderr, "table constraints did not return row for %s.%s constraint '%s'\n",
+                expected->schema_name, expected->table_name, expected->constraint_name);
+        failures = 1;
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_no_information_schema_table_constraints_row(mylite_db *database,
+                                                              const char *table_name,
+                                                              const char *constraint_name)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+                               MYLITE_OK, &stmt);
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *current_table_name = NULL;
+        const char *current_constraint_name = NULL;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "table constraints row");
+        if (failures != 0) {
+            break;
+        }
+
+        current_table_name = mylite_column_text(stmt, table_constraints_table_name_column);
+        current_constraint_name = mylite_column_text(stmt, table_constraints_name_column);
+        if (strcmp(current_table_name, table_name) == 0 &&
+            strcmp(current_constraint_name, constraint_name) == 0) {
+            fprintf(stderr,
+                    "table constraints unexpectedly returned row for table '%s' constraint '%s'\n",
+                    table_name, constraint_name);
             failures = 1;
             break;
         }

@@ -218,7 +218,7 @@ Behavior:
 - Returns rows from `__mylite_table_catalog`.
 - Also exposes system-view rows for `INFORMATION_SCHEMA.CHARACTER_SETS`,
   `COLLATION_CHARACTER_SET_APPLICABILITY`, `COLLATIONS`, `SCHEMATA`, `TABLES`,
-  `COLUMNS`, `ENGINES`, `KEYWORDS`, and `STATISTICS`.
+  `COLUMNS`, `ENGINES`, `KEYWORDS`, `STATISTICS`, and `TABLE_CONSTRAINTS`.
 - For these system views, MyLite returns `TABLE_TYPE='SYSTEM VIEW'`,
   `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, `TABLE_COLLATION=NULL`, and
   `TABLE_COMMENT=''`, matching observed MySQL 8.4.9 behavior for the fields
@@ -254,6 +254,24 @@ Behavior:
 
 - Returns rows from `__mylite_index_catalog`.
 - Returns no rows before index metadata exists.
+
+### `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`
+
+Supported query:
+
+```sql
+SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+```
+
+Behavior:
+
+- Returns primary-key and unique-constraint rows derived from
+  `__mylite_index_catalog`.
+- Excludes nonunique indexes.
+- Returns no rows before primary or unique index metadata exists.
+- CHECK and foreign-key rows are deferred until those catalogs and runtime
+  semantics exist. See
+  [INFORMATION_SCHEMA.TABLE_CONSTRAINTS](../information-schema-table-constraints/specs.md).
 
 ### Unsupported query forms
 

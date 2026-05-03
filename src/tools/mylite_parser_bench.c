@@ -12,6 +12,9 @@ typedef enum BenchMode {
 } BenchMode;
 
 static int run_benchmark(const char *path, BenchMode mode, int iterations);
+static void count_expression_tree(const MyliteAstExpression *expression,
+                                  size_t *nodes, size_t *operators,
+                                  size_t *leaf_values);
 static char *read_file(const char *path, size_t *length);
 static double monotonic_seconds(void);
 static int parse_mode(const char *value, BenchMode *mode);
@@ -196,6 +199,9 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t set_assignment_expression_literals = 0;
   size_t set_assignment_expression_function_calls = 0;
   size_t set_assignment_expression_defaults = 0;
+  size_t set_assignment_expression_tree_nodes = 0;
+  size_t set_assignment_expression_tree_operators = 0;
+  size_t set_assignment_expression_tree_leaf_values = 0;
   size_t set_assignment_extend_value_nodes = 0;
   size_t set_assignment_system_variables = 0;
   size_t set_assignment_user_variables = 0;
@@ -864,6 +870,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                           expression)) {
                     set_assignment_expression_unsigned_integers++;
                   }
+                  count_expression_tree(
+                      expression, &set_assignment_expression_tree_nodes,
+                      &set_assignment_expression_tree_operators,
+                      &set_assignment_expression_tree_leaf_values);
                   switch (mylite_ast_expression_view_kind(expression)) {
                     case MYLITE_EXPRESSION_LITERAL:
                       set_assignment_expression_literals++;
@@ -878,6 +888,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                     case MYLITE_EXPRESSION_RAW:
                     case MYLITE_EXPRESSION_IDENTIFIER:
                     case MYLITE_EXPRESSION_VARIABLE:
+                    case MYLITE_EXPRESSION_PARAMETER:
+                    case MYLITE_EXPRESSION_UNARY:
+                    case MYLITE_EXPRESSION_BINARY:
+                    case MYLITE_EXPRESSION_PARENTHESIZED:
                       break;
                   }
                 }
@@ -1279,6 +1293,9 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_set_assignment_expression_literals=%.2f "
            "avg_set_assignment_expression_function_calls=%.2f "
            "avg_set_assignment_expression_defaults=%.2f "
+           "avg_set_assignment_expression_tree_nodes=%.2f "
+           "avg_set_assignment_expression_tree_operators=%.2f "
+           "avg_set_assignment_expression_tree_leaf_values=%.2f "
            "avg_set_assignment_extend_value_nodes=%.2f "
            "avg_set_assignment_system_variables=%.2f "
            "avg_set_assignment_user_variables=%.2f "
@@ -1466,6 +1483,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)set_assignment_expression_literals / (double)parsed,
            (double)set_assignment_expression_function_calls / (double)parsed,
            (double)set_assignment_expression_defaults / (double)parsed,
+           (double)set_assignment_expression_tree_nodes / (double)parsed,
+           (double)set_assignment_expression_tree_operators / (double)parsed,
+           (double)set_assignment_expression_tree_leaf_values /
+               (double)parsed,
            (double)set_assignment_extend_value_nodes / (double)parsed,
            (double)set_assignment_system_variables / (double)parsed,
            (double)set_assignment_user_variables / (double)parsed,
@@ -1542,6 +1563,33 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
 
   free(buffer);
   return failed == 0 ? 0 : 1;
+}
+
+static void count_expression_tree(const MyliteAstExpression *expression,
+                                  size_t *nodes, size_t *operators,
+                                  size_t *leaf_values) {
+  if (expression == NULL) {
+    return;
+  }
+  if (nodes != NULL) {
+    (*nodes)++;
+  }
+  if (operators != NULL &&
+      mylite_ast_expression_view_operator_kind(expression) !=
+          MYLITE_EXPRESSION_OPERATOR_NONE) {
+    (*operators)++;
+  }
+  if (leaf_values != NULL &&
+      mylite_ast_expression_view_child_count(expression) == 0 &&
+      mylite_ast_expression_view_value(expression) != NULL) {
+    (*leaf_values)++;
+  }
+
+  for (size_t i = 0; i < mylite_ast_expression_view_child_count(expression);
+       i++) {
+    count_expression_tree(mylite_ast_expression_view_child_at(expression, i),
+                          nodes, operators, leaf_values);
+  }
 }
 
 static char *read_file(const char *path, size_t *length) {

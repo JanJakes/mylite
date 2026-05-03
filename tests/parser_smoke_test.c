@@ -196,6 +196,7 @@ static int expect_drop_table_view(void);
 static int expect_drop_view_view(void);
 static int expect_prepared_statement_views(void);
 static int expect_rename_table_view(void);
+static int expect_set_expression_tree_view(void);
 static int expect_set_statement_view(void);
 static int expect_truncate_table_view(void);
 static int expect_transaction_statement_views(void);
@@ -798,6 +799,7 @@ int main(void) {
   failures += expect_prepared_statement_views();
   failures += expect_rename_table_view();
   failures += expect_set_statement_view();
+  failures += expect_set_expression_tree_view();
   failures += expect_truncate_table_view();
   failures += expect_transaction_statement_views();
   failures += expect_use_database_view();
@@ -3842,6 +3844,140 @@ static int expect_set_statement_view(void) {
           mylite_ast_expression_view_value_length(charset_expression),
           "DEFAULT")) {
     fprintf(stderr, "SET statement view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_set_expression_tree_view(void) {
+  const char *sql =
+      "SET @a := 1 + 2 * -3, @b := CONCAT(@@sql_mode, ',ANSI'), "
+      "@c := NOT (1 = 2), @d := ?, @e := foo.bar, "
+      "@f := CASE WHEN 1 THEN 2 END";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "SET expression tree parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstSetStatement *view = mylite_ast_set_statement_view(ast, 0);
+  const MyliteAstSetAssignment *arithmetic_assignment =
+      view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 0);
+  const MyliteAstSetAssignment *function_assignment =
+      view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 1);
+  const MyliteAstSetAssignment *logical_assignment =
+      view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 2);
+  const MyliteAstSetAssignment *parameter_assignment =
+      view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 3);
+  const MyliteAstSetAssignment *raw_assignment =
+      view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 4);
+  const MyliteAstSetAssignment *case_assignment =
+      view == NULL ? NULL : mylite_ast_set_statement_view_assignment_at(view, 5);
+  const MyliteAstExpression *arithmetic =
+      mylite_ast_set_assignment_view_value_expression(arithmetic_assignment);
+  const MyliteAstExpression *function =
+      mylite_ast_set_assignment_view_value_expression(function_assignment);
+  const MyliteAstExpression *logical =
+      mylite_ast_set_assignment_view_value_expression(logical_assignment);
+  const MyliteAstExpression *parameter =
+      mylite_ast_set_assignment_view_value_expression(parameter_assignment);
+  const MyliteAstExpression *raw =
+      mylite_ast_set_assignment_view_value_expression(raw_assignment);
+  const MyliteAstExpression *case_expression =
+      mylite_ast_set_assignment_view_value_expression(case_assignment);
+  const MyliteAstExpression *arithmetic_left =
+      mylite_ast_expression_view_child_at(arithmetic, 0);
+  const MyliteAstExpression *arithmetic_right =
+      mylite_ast_expression_view_child_at(arithmetic, 1);
+  const MyliteAstExpression *multiply_left =
+      mylite_ast_expression_view_child_at(arithmetic_right, 0);
+  const MyliteAstExpression *multiply_right =
+      mylite_ast_expression_view_child_at(arithmetic_right, 1);
+  const MyliteAstExpression *negative_child =
+      mylite_ast_expression_view_child_at(multiply_right, 0);
+  const MyliteAstExpression *function_arg0 =
+      mylite_ast_expression_view_child_at(function, 0);
+  const MyliteAstExpression *function_arg1 =
+      mylite_ast_expression_view_child_at(function, 1);
+  const MyliteAstExpression *logical_operand =
+      mylite_ast_expression_view_child_at(logical, 0);
+  const MyliteAstExpression *logical_inner =
+      mylite_ast_expression_view_child_at(logical_operand, 0);
+  int failed = 0;
+
+  if (view == NULL || mylite_ast_set_statement_view_assignment_count(view) != 6 ||
+      arithmetic == NULL ||
+      mylite_ast_expression_view_kind(arithmetic) != MYLITE_EXPRESSION_BINARY ||
+      mylite_ast_expression_view_operator_kind(arithmetic) !=
+          MYLITE_EXPRESSION_OPERATOR_ADD ||
+      mylite_ast_expression_view_child_count(arithmetic) != 2 ||
+      arithmetic_left == NULL ||
+      mylite_ast_expression_view_kind(arithmetic_left) !=
+          MYLITE_EXPRESSION_LITERAL ||
+      mylite_ast_expression_view_unsigned_integer_value(arithmetic_left) != 1 ||
+      arithmetic_right == NULL ||
+      mylite_ast_expression_view_operator_kind(arithmetic_right) !=
+          MYLITE_EXPRESSION_OPERATOR_MULTIPLY ||
+      multiply_left == NULL ||
+      mylite_ast_expression_view_unsigned_integer_value(multiply_left) != 2 ||
+      multiply_right == NULL ||
+      mylite_ast_expression_view_kind(multiply_right) !=
+          MYLITE_EXPRESSION_UNARY ||
+      mylite_ast_expression_view_operator_kind(multiply_right) !=
+          MYLITE_EXPRESSION_OPERATOR_UNARY_MINUS ||
+      negative_child == NULL ||
+      mylite_ast_expression_view_unsigned_integer_value(negative_child) != 3 ||
+      function == NULL ||
+      mylite_ast_expression_view_kind(function) !=
+          MYLITE_EXPRESSION_FUNCTION_CALL ||
+      mylite_ast_expression_view_child_count(function) != 2 ||
+      !value_matches_when_expected(
+          mylite_ast_expression_view_value(function),
+          mylite_ast_expression_view_value_length(function), "CONCAT") ||
+      function_arg0 == NULL ||
+      mylite_ast_expression_view_kind(function_arg0) !=
+          MYLITE_EXPRESSION_VARIABLE ||
+      function_arg1 == NULL ||
+      mylite_ast_expression_view_literal_kind(function_arg1) !=
+          MYLITE_EXPRESSION_LITERAL_STRING ||
+      !value_matches_when_expected(
+          mylite_ast_expression_view_value(function_arg1),
+          mylite_ast_expression_view_value_length(function_arg1), ",ANSI") ||
+      logical == NULL ||
+      mylite_ast_expression_view_kind(logical) != MYLITE_EXPRESSION_UNARY ||
+      mylite_ast_expression_view_operator_kind(logical) !=
+          MYLITE_EXPRESSION_OPERATOR_UNARY_LOGICAL_NOT ||
+      logical_operand == NULL ||
+      mylite_ast_expression_view_kind(logical_operand) !=
+          MYLITE_EXPRESSION_PARENTHESIZED ||
+      logical_inner == NULL ||
+      mylite_ast_expression_view_kind(logical_inner) !=
+          MYLITE_EXPRESSION_BINARY ||
+      mylite_ast_expression_view_operator_kind(logical_inner) !=
+          MYLITE_EXPRESSION_OPERATOR_EQ ||
+      parameter == NULL ||
+      mylite_ast_expression_view_kind(parameter) != MYLITE_EXPRESSION_PARAMETER ||
+      !value_matches_when_expected(
+          mylite_ast_expression_view_value(parameter),
+          mylite_ast_expression_view_value_length(parameter), "?") ||
+      raw == NULL ||
+      mylite_ast_expression_view_kind(raw) != MYLITE_EXPRESSION_RAW ||
+      !span_matches(sql, mylite_ast_expression_view_start(raw),
+                    mylite_ast_expression_view_end(raw), "foo.bar") ||
+      case_expression == NULL ||
+      mylite_ast_expression_view_kind(case_expression) != MYLITE_EXPRESSION_RAW ||
+      !span_matches(sql, mylite_ast_expression_view_start(case_expression),
+                    mylite_ast_expression_view_end(case_expression),
+                    "CASE WHEN 1 THEN 2 END")) {
+    fprintf(stderr, "SET expression tree view failed: %s\n", sql);
     failed = 1;
   }
 

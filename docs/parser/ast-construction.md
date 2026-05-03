@@ -64,9 +64,11 @@ expression nodes.
   database-option infrastructure.
 - `SET` statements expose typed statement-form and assignment descriptors for
   variable assignments, `SET NAMES`, `SET CHARACTER SET`, `SET TRANSACTION`,
-  and TiDB `SET CONFIG` syntax, while value expressions remain CST anchors.
-- SET assignment values now also expose a first parser-level expression summary
-  for root literals, identifiers, variables, function calls, and `DEFAULT`.
+  and TiDB `SET CONFIG` syntax, including value-expression CST anchors.
+- SET assignment values now also expose parser-level expression views for root
+  literals, identifiers, variables, parameters, function calls, `DEFAULT`,
+  unary operators, binary operators, parenthesized expressions, and function
+  arguments.
 - `USE` statements expose a typed decoded default-database view.
 - `PREPARE`, `EXECUTE`, and `DEALLOCATE` statements expose typed decoded
   prepared-statement handles, source descriptors, ordered `USING` user-variable
@@ -131,11 +133,11 @@ expression nodes.
   column handles, and a CST anchor/span for the view query
 - typed `SET` descriptors with statement form, assignment kind, variable scope,
   operator kind, decoded assignment names, value CST anchors/spans, and optional
-  extended value spans for `SET NAMES ... COLLATE ...`, plus expression-summary
+  extended value spans for `SET NAMES ... COLLATE ...`, plus expression-view
   handles for assignment values
-- expression-summary descriptors with kind, literal kind, span, value span,
-  decoded string/identifier/function-name values, raw values, and parsed
-  unsigned integer values where applicable
+- expression descriptors with kind, literal kind, operator kind, span, operator
+  span, value span, decoded string/identifier/function-name values, raw values,
+  parsed unsigned integer values where applicable, and recursive child handles
 - typed `USE` descriptors with decoded database name
 - typed `PREPARE` descriptors with decoded statement name, source kind, source
   span, and decoded source string or user-variable name
@@ -310,12 +312,13 @@ Session-level statement views now cover `SET` and `USE`. `SET` records the
 statement form, ordered assignments, assignment kind, variable scope, assignment
 operator, decoded assignment name, value CST anchor/span, and optional extended
 value span for `SET NAMES ... COLLATE ...`. Assignment values also expose the
-first parser-level expression summary: root expression kind, literal kind,
-source span, value span, decoded string/identifier/function-name value, raw
-value, or parsed unsigned integer where available. This is not yet the final
-recursive expression AST; it is the measured bridge between CST anchors and the
-future semantic expression tree. `USE` records the decoded default database
-target.
+first recursive parser-level expression view: root expression kind, literal
+kind, operator kind/span, source span, value span, decoded
+string/identifier/function-name value, raw value, parsed unsigned integer where
+available, and child expression handles for common unary/binary/parenthesized
+forms plus function arguments. This is still not the final semantic expression
+AST: unsupported expression shapes keep their CST anchor/span for later
+normalization. `USE` records the decoded default database target.
 
 Prepared-statement views now cover the SQL-level prepared statement surface.
 `PREPARE` records the decoded statement handle and distinguishes string-literal
@@ -379,6 +382,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.8956
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=23.614253 qps=294487 mbps=22.40 avg_us=3.396 avg_nodes=74.5 avg_ast_bytes=10258.4 avg_transaction_statement_views=0.00 avg_transaction_statement_begins=0.00 avg_transaction_statement_commits=0.00 avg_transaction_statement_rollbacks=0.00 avg_transaction_statement_savepoints=0.00 avg_transaction_statement_release_savepoints=0.00 avg_transaction_statement_work_keywords=0.00 avg_transaction_statement_access_modes=0.00 avg_transaction_statement_consistent_snapshots=0.00 avg_transaction_statement_completion_modifiers=0.00 avg_transaction_statement_savepoint_names=0.00
 ```
 
+Latest recursive SET-expression view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.220037 qps=489035 mbps=37.19 avg_us=2.045
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=23.858651 qps=291471 mbps=22.17 avg_us=3.431 avg_nodes=74.5 avg_ast_bytes=10258.6 avg_set_assignment_value_expressions=0.08 avg_set_assignment_expression_values=0.07 avg_set_assignment_expression_unsigned_integers=0.02 avg_set_assignment_expression_literals=0.05 avg_set_assignment_expression_function_calls=0.00 avg_set_assignment_expression_defaults=0.01 avg_set_assignment_expression_tree_nodes=0.09 avg_set_assignment_expression_tree_operators=0.00 avg_set_assignment_expression_tree_leaf_values=0.08
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -389,7 +399,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 227K on disk, 134,046 bytes text/data/other
+parser support object: 234K on disk, 137,988 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.3M on disk
 mylite-parse: 1.1M on disk

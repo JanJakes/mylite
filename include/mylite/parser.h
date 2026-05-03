@@ -67,7 +67,11 @@ typedef enum MyliteExpressionKind {
   MYLITE_EXPRESSION_IDENTIFIER,
   MYLITE_EXPRESSION_VARIABLE,
   MYLITE_EXPRESSION_FUNCTION_CALL,
-  MYLITE_EXPRESSION_DEFAULT
+  MYLITE_EXPRESSION_DEFAULT,
+  MYLITE_EXPRESSION_PARAMETER,
+  MYLITE_EXPRESSION_UNARY,
+  MYLITE_EXPRESSION_BINARY,
+  MYLITE_EXPRESSION_PARENTHESIZED
 } MyliteExpressionKind;
 
 typedef enum MyliteExpressionLiteralKind {
@@ -81,6 +85,41 @@ typedef enum MyliteExpressionLiteralKind {
   MYLITE_EXPRESSION_LITERAL_TRUE,
   MYLITE_EXPRESSION_LITERAL_FALSE
 } MyliteExpressionLiteralKind;
+
+typedef enum MyliteExpressionOperatorKind {
+  MYLITE_EXPRESSION_OPERATOR_NONE = 0,
+  MYLITE_EXPRESSION_OPERATOR_ASSIGNMENT,
+  MYLITE_EXPRESSION_OPERATOR_LOGICAL_OR,
+  MYLITE_EXPRESSION_OPERATOR_LOGICAL_XOR,
+  MYLITE_EXPRESSION_OPERATOR_LOGICAL_AND,
+  MYLITE_EXPRESSION_OPERATOR_IS,
+  MYLITE_EXPRESSION_OPERATOR_IS_NOT,
+  MYLITE_EXPRESSION_OPERATOR_EQ,
+  MYLITE_EXPRESSION_OPERATOR_NULL_SAFE_EQ,
+  MYLITE_EXPRESSION_OPERATOR_NEQ,
+  MYLITE_EXPRESSION_OPERATOR_LT,
+  MYLITE_EXPRESSION_OPERATOR_LE,
+  MYLITE_EXPRESSION_OPERATOR_GT,
+  MYLITE_EXPRESSION_OPERATOR_GE,
+  MYLITE_EXPRESSION_OPERATOR_BIT_OR,
+  MYLITE_EXPRESSION_OPERATOR_BIT_AND,
+  MYLITE_EXPRESSION_OPERATOR_LEFT_SHIFT,
+  MYLITE_EXPRESSION_OPERATOR_RIGHT_SHIFT,
+  MYLITE_EXPRESSION_OPERATOR_ADD,
+  MYLITE_EXPRESSION_OPERATOR_SUBTRACT,
+  MYLITE_EXPRESSION_OPERATOR_MULTIPLY,
+  MYLITE_EXPRESSION_OPERATOR_DIVIDE,
+  MYLITE_EXPRESSION_OPERATOR_INTEGER_DIVIDE,
+  MYLITE_EXPRESSION_OPERATOR_MODULO,
+  MYLITE_EXPRESSION_OPERATOR_BIT_XOR,
+  MYLITE_EXPRESSION_OPERATOR_CONCAT,
+  MYLITE_EXPRESSION_OPERATOR_COLLATE,
+  MYLITE_EXPRESSION_OPERATOR_UNARY_LOGICAL_NOT,
+  MYLITE_EXPRESSION_OPERATOR_UNARY_BIT_NOT,
+  MYLITE_EXPRESSION_OPERATOR_UNARY_MINUS,
+  MYLITE_EXPRESSION_OPERATOR_UNARY_PLUS,
+  MYLITE_EXPRESSION_OPERATOR_UNARY_BINARY
+} MyliteExpressionOperatorKind;
 
 typedef enum MyliteStatementKind {
   MYLITE_STATEMENT_UNKNOWN = 0,
@@ -532,6 +571,8 @@ const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
     MyliteExpressionLiteralKind kind);
+const char *mylite_expression_operator_kind_name(
+    MyliteExpressionOperatorKind kind);
 const char *mylite_create_table_column_type_family_name(
     MyliteCreateTableColumnTypeFamily family);
 const char *mylite_create_table_column_type_kind_name(
@@ -1187,8 +1228,14 @@ MyliteExpressionKind mylite_ast_expression_view_kind(
     const MyliteAstExpression *expression);
 MyliteExpressionLiteralKind mylite_ast_expression_view_literal_kind(
     const MyliteAstExpression *expression);
+MyliteExpressionOperatorKind mylite_ast_expression_view_operator_kind(
+    const MyliteAstExpression *expression);
 size_t mylite_ast_expression_view_start(const MyliteAstExpression *expression);
 size_t mylite_ast_expression_view_end(const MyliteAstExpression *expression);
+size_t mylite_ast_expression_view_operator_start(
+    const MyliteAstExpression *expression);
+size_t mylite_ast_expression_view_operator_end(
+    const MyliteAstExpression *expression);
 size_t mylite_ast_expression_view_value_start(
     const MyliteAstExpression *expression);
 size_t mylite_ast_expression_view_value_end(
@@ -1201,6 +1248,10 @@ int mylite_ast_expression_view_has_unsigned_integer(
     const MyliteAstExpression *expression);
 unsigned long long mylite_ast_expression_view_unsigned_integer_value(
     const MyliteAstExpression *expression);
+size_t mylite_ast_expression_view_child_count(
+    const MyliteAstExpression *expression);
+const MyliteAstExpression *mylite_ast_expression_view_child_at(
+    const MyliteAstExpression *expression, size_t index);
 const MyliteAstNode *mylite_ast_drop_index_view_node(
     const MyliteAstDropIndex *drop_index);
 size_t mylite_ast_drop_index_view_start(

@@ -17,6 +17,8 @@ static int parse_sql_text(const char *sql, const char *label, OutputMode mode);
 static void dump_statements(const MyliteAst *ast);
 static void dump_create_table_view_handles(
     const MyliteAstCreateTable *create_table);
+static void dump_expression_tree(const MyliteAstExpression *expression,
+                                 unsigned depth);
 static const char *node_symbol_or_none(const MyliteAstNode *node);
 static void print_escaped_bytes(const char *value, size_t length);
 static void dump_ast_node(const MyliteAstNode *node, unsigned depth);
@@ -751,14 +753,21 @@ static void dump_statements(const MyliteAst *ast) {
         const MyliteAstExpression *expression =
             mylite_ast_set_assignment_view_value_expression(assignment);
         if (expression != NULL) {
-          printf(" expr=%s literal=%s expr_span=%zu..%zu expr_value=%zu..%zu "
+          printf(" expr=%s literal=%s operator=%s "
+                 "expr_span=%zu..%zu expr_operator=%zu..%zu "
+                 "expr_children=%zu expr_value=%zu..%zu "
                  "expr_value_len=%zu expr_value=",
                  mylite_expression_kind_name(
                      mylite_ast_expression_view_kind(expression)),
                  mylite_expression_literal_kind_name(
                      mylite_ast_expression_view_literal_kind(expression)),
+                 mylite_expression_operator_kind_name(
+                     mylite_ast_expression_view_operator_kind(expression)),
                  mylite_ast_expression_view_start(expression),
                  mylite_ast_expression_view_end(expression),
+                 mylite_ast_expression_view_operator_start(expression),
+                 mylite_ast_expression_view_operator_end(expression),
+                 mylite_ast_expression_view_child_count(expression),
                  mylite_ast_expression_view_value_start(expression),
                  mylite_ast_expression_view_value_end(expression),
                  mylite_ast_expression_view_value_length(expression));
@@ -773,6 +782,10 @@ static void dump_statements(const MyliteAst *ast) {
           }
         }
         fputc('\n', stdout);
+        if (expression != NULL &&
+            mylite_ast_expression_view_child_count(expression) > 0) {
+          dump_expression_tree(expression, 3);
+        }
       }
     }
     if (rename_table != NULL) {
@@ -1359,6 +1372,44 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_table_option_value_start(ast, i, j),
              mylite_ast_create_table_option_value_end(ast, i, j));
     }
+  }
+}
+
+static void dump_expression_tree(const MyliteAstExpression *expression,
+                                 unsigned depth) {
+  if (expression == NULL) {
+    return;
+  }
+
+  for (unsigned i = 0; i < depth; i++) {
+    fputs("  ", stdout);
+  }
+  printf("expr_tree kind=%s literal=%s operator=%s span=%zu..%zu "
+         "operator_span=%zu..%zu children=%zu value_len=%zu value=",
+         mylite_expression_kind_name(
+             mylite_ast_expression_view_kind(expression)),
+         mylite_expression_literal_kind_name(
+             mylite_ast_expression_view_literal_kind(expression)),
+         mylite_expression_operator_kind_name(
+             mylite_ast_expression_view_operator_kind(expression)),
+         mylite_ast_expression_view_start(expression),
+         mylite_ast_expression_view_end(expression),
+         mylite_ast_expression_view_operator_start(expression),
+         mylite_ast_expression_view_operator_end(expression),
+         mylite_ast_expression_view_child_count(expression),
+         mylite_ast_expression_view_value_length(expression));
+  const char *value = mylite_ast_expression_view_value(expression);
+  if (value == NULL) {
+    fputs("none", stdout);
+  } else {
+    print_escaped_bytes(value, mylite_ast_expression_view_value_length(expression));
+  }
+  fputc('\n', stdout);
+
+  for (size_t i = 0; i < mylite_ast_expression_view_child_count(expression);
+       i++) {
+    dump_expression_tree(mylite_ast_expression_view_child_at(expression, i),
+                         depth + 1);
   }
 }
 
